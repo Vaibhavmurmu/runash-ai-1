@@ -97,25 +97,25 @@ export default function CompanyPage() {
           </section>
 
           {/* Founder & Story */}
-          <section className="bg-black text-white p-8 rounded-xl shadow-lg border border-slate-800">
+          <section className="bg-white text-blacm p-8 rounded-xl shadow-lg border border-slate-800">
             <h3 className="text-xl font-bold mb-4">Founder & Story</h3>
-            <p className="text-slate-300 text-sm leading-relaxed mb-6">
+            <p className="text-slate-600 text-sm leading-relaxed mb-6">
               {company.founders}
             </p>
 
-            <h4 className="font-bold text-sm uppercase tracking-widest text-slate-500 mb-3">Milestones</h4>
+            <h4 className="font-bold text-sm uppercase tracking-widest text-black mb-3">Milestones</h4>
             <ul className="space-y-3">
               {company.milestones.map((m, i) => (
-                <li key={i} className="flex gap-3 text-sm text-slate-300">
-                  <span className="text-blue-400 font-bold">0{i+1}</span>
+                <li key={i} className="flex gap-3 text-sm text-slate-600">
+                  <span className="text-slate-600 font-bold">0{i+1}</span>
                   {m}
                 </li>
               ))}
             </ul>
 
             <div className="mt-10 pt-6 border-t border-slate-800">
-              <p className="text-xs text-slate-500">Supported by open-source communities & initiatives including:</p>
-              <div className="mt-2 flex gap-3 font-bold text-sm text-slate-200">
+              <p className="text-xs text-slate-600">Supported by open-source communities & initiatives including:</p>
+              <div className="mt-2 flex gap-3 font-bold text-sm text-slate-600">
                 <span>MIT</span> • <span>GitHub</span> • <span>YC School</span>
               </div>
             </div>
