@@ -1,7 +1,5 @@
 'use client' // intentionally using a hybrid approach: top-level server file renders content and imports a client form component
 
-import Link from 'next/link'
-{/* import ContactForm from './ContactForm' */}
 
 export const metadata = {
   title: 'Company — RUNASH Digital Innovation',
@@ -16,8 +14,8 @@ export default function CompanyPage() {
     registrationNumber: '016339',
     incorporatedOn: 'Apr 06, 2021',
     registeredState: 'RoC-Jharkhand',
-    authorizedCapital: '₹ 15,00,000',
-    paidUpCapital: '₹ 15,00,000',
+    authorizedCapital: '₹ 1,00,000-15,00,000',
+    paidUpCapital: '₹ 1,00,000-15,00,000',
     principalActivity:
       'Retail trade, except of motor vehicles and motorcycles; repair of personal & household goods',
     registeredOffice:
@@ -64,9 +62,9 @@ export default function CompanyPage() {
                 We are building a new live streaming marketplace environment where retailers meet buyers and
                 demonstrate products live with integrated commerce flows.
               </p>
-              <Link href="/about">
+              <a href="/about">
                 <a className="text-blue-600 mt-2 inline-block">Learn more →</a>
-              </Link>
+              </a>
             </div>
 
             <div className="p-4 border rounded">
@@ -75,9 +73,9 @@ export default function CompanyPage() {
                 A live retail streaming hybrid platform focused on affordability and sustainability for
                 unorganized retailers.
               </p>
-              <Link href="/about">
+              <a href="/about">
                 <a className="text-blue-600 mt-2 inline-block">Learn more →</a>
-              </Link>
+              </a>
             </div>
           </div>
         </section>
@@ -155,7 +153,7 @@ export default function CompanyPage() {
           </p>
 
           <div className="mt-4">
-            {/*  <ContactForm /> */}
+            
           </div>
         </section>
       </main>
