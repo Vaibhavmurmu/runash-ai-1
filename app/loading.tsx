@@ -1,4 +1,4 @@
-export default function LoadingPost() {
+export default function LoadingPage() {
   return (
     <div className="container mx-auto max-w-4xl px-6 py-8">
       <div className="h-48 w-full rounded-2xl bg-muted animate-pulse" />
