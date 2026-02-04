@@ -13,10 +13,7 @@ export default function CompanyPage() {
     registrationNumber: '016339',
     incorporatedOn: 'Apr 06, 2021',
     registeredState: 'RoC-Jharkhand',
-    authorizedCapital: '₹ 1,00,000 - 15,00,000',
-    paidUpCapital: '₹ 1,00,000 - 15,00,000',
-    principalActivity: 'Retail trade, except of motor vehicles and motorcycles; repair of personal & household goods',
-    registeredOffice: 'C/o Ram Murmu, Manjhaladih Post Balidih, PS Balidih North Gorabali, Bokaro, Jharkhand 827014, INDIA',
+    registeredOffice: 'RunAsh AI Corporate Avenue, Bokaro, Jharkhand 827014, INDIA',
     contactEmail: 'admin@runash.in',
     brief: 'We build a live streaming marketplace for retail businesses. Our mission is to enable retailers to create real, engaging selling experiences through live video, product demonstrations, and commerce-first integrations.',
     founders: 'Brothers — Ram & co-founder (family-run retail background since 2007)',
@@ -91,9 +88,7 @@ export default function CompanyPage() {
               <Detail label="Registration Number" value={company.registrationNumber} />
               <Detail label="Incorporated On" value={company.incorporatedOn} />
               <Detail label="Registered State" value={company.registeredState} />
-              <Detail label="Principal Business" value={company.principalActivity} />
-              <Detail label="Authorized Capital" value={company.authorizedCapital} />
-              <Detail label="Paid-up Capital" value={company.paidUpCapital} />
+              
               <div className="sm:col-span-2 pt-4 border-t border-slate-100">
                 <dt className="font-bold text-slate-400 uppercase text-[10px] tracking-widest mb-1">Registered Office</dt>
                 <dd className="text-slate-700 leading-relaxed">{company.registeredOffice}</dd>
@@ -102,7 +97,7 @@ export default function CompanyPage() {
           </section>
 
           {/* Founder & Story */}
-          <section className="bg-white p-8 rounded-xl shadow-lg border border-slate-800">
+          <section className="bg-black text-white p-8 rounded-xl shadow-lg border border-slate-800">
             <h3 className="text-xl font-bold mb-4">Founder & Story</h3>
             <p className="text-slate-300 text-sm leading-relaxed mb-6">
               {company.founders}
