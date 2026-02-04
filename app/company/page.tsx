@@ -1,7 +1,7 @@
 'use client' // intentionally using a hybrid approach: top-level server file renders content and imports a client form component
 
 import Link from 'next/link'
-// import ContactForm from './ContactForm'
+{/* import ContactForm from './ContactForm' */}
 
 export const metadata = {
   title: 'Company — RUNASH Digital Innovation',
