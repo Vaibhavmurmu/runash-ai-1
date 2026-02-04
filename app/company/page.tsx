@@ -102,7 +102,7 @@ export default function CompanyPage() {
           </section>
 
           {/* Founder & Story */}
-          <section className="bg-slate-900 text-white p-8 rounded-xl shadow-lg border border-slate-800">
+          <section className="bg-white p-8 rounded-xl shadow-lg border border-slate-800">
             <h3 className="text-xl font-bold mb-4">Founder & Story</h3>
             <p className="text-slate-300 text-sm leading-relaxed mb-6">
               {company.founders}
