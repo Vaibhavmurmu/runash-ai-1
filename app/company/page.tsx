@@ -1,6 +1,4 @@
-'use client' // intentionally using a hybrid approach: top-level server file renders content and imports a client form component
-
-
+// 'use client'  intentionally using a hybrid approach: top-level server file renders content and imports a client form component
 export const metadata = {
   title: 'Company — RUNASH Digital Innovation',
   description: 'RUNASH Digital Innovation Technologies — company overview, mission, founders and contact.',
