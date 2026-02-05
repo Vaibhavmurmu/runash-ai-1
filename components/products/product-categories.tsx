@@ -90,3 +90,4 @@ export function ProductCategories({ products }: ProductCategoriesProps) {
     </div>
   )
 }
+
