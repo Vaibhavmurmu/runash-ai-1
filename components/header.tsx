@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Bell, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { Bell } from "lucide-react"
 
 export function Header() {
   return (
