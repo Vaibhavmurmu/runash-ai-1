@@ -1,6 +1,6 @@
 import { Bot } from "lucide-react"
 
-export function Logo() {
+export function AgentsLogo() {
   return (
     <div className="flex items-center gap-2 px-2 py-1">
       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
