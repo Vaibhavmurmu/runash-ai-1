@@ -231,3 +231,4 @@ export function CreateProductDialog({ open, onOpenChange, onCreateProduct, userI
     </Dialog>
   )
 }
+
