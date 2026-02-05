@@ -204,3 +204,4 @@ export function ProductAnalytics({ products }: ProductAnalyticsProps) {
     </div>
   )
 }
+
