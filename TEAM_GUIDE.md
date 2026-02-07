@@ -1,6 +1,17 @@
  
 # Team Guide
 
+## Documentation Governance
+
+Use the documentation governance matrix to determine which guidance docs must be reviewed and updated for each change:
+
+- `docs/DOC_GOVERNANCE.md`
+
+Before requesting review, confirm all impacted docs from the matrix have been updated (or a follow-up issue has been linked with rationale).
+
+ 
+# Team Guide
+
 ## Agent and MCP documentation
 
 - [MCP Server Guide](./MCP_SERVER.md)
@@ -194,6 +205,7 @@ For medium/large structural changes include:
 - impacted modules
 - migration/backward-compatibility plan
 - test/validation plan
+
 
 
 
