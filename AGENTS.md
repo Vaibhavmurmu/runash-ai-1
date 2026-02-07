@@ -1,3 +1,16 @@
+ 
+# Agent Working Notes
+
+## Skills discoverability
+
+This repository keeps reusable workflow playbooks in [`SKILLS/README.md`](./SKILLS/README.md).
+
+Direct links:
+- [Frontend Feature Workflow](./SKILLS/frontend-feature-workflow.md)
+- [Service Layer Change Workflow](./SKILLS/service-layer-change-workflow.md)
+- [Auth & Payment Change Workflow](./SKILLS/auth-payment-change-workflow.md)
+- [Docs Quality Review Workflow](./SKILLS/docs-quality-review-workflow.md)
+
 
 # AGENTS.md
 
@@ -172,6 +185,7 @@ PRs should include:
 - `MCP_SERVER.md` – MCP server integration standards
 - `SKILLS/README.md` – reusable contribution playbooks
 - `CODEX_CUSTOM_INSTRUCTIONS.md` – RunAsh AI Codex-specific execution and validation rules
+
 
 
 

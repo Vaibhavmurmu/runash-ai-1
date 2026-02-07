@@ -7,7 +7,21 @@
   <p>Open-source agentic live commerce built for retail automation, real-time video workflows, and multimodal customer experiences.</p>
 </div>
 
+ 
+
+## Skills Playbooks
+
+Use the repository playbooks in [`SKILLS/README.md`](./SKILLS/README.md) for repeatable workflows:
+
+- [Frontend Feature Workflow](./SKILLS/frontend-feature-workflow.md)
+- [Service Layer Change Workflow](./SKILLS/service-layer-change-workflow.md)
+- [Auth & Payment Change Workflow](./SKILLS/auth-payment-change-workflow.md)
+- [Docs Quality Review Workflow](./SKILLS/docs-quality-review-workflow.md)
+
+## Introduction
+
 ## What RunAsh AI is
+
 
 RunAsh AI is a Next.js-based platform for building and running AI-assisted commerce and livestream experiences.
 It combines storefront and content workflows with agentic tooling, authentication, and data services.
