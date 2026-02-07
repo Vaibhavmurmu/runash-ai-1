@@ -90,6 +90,8 @@ You can check out [the RunAsh.In GitHub repository](https://github.com/rammurmu/
 
 ## Contribution
 
+Team process, ownership boundaries, and delivery policy are documented in [`TEAM_GUIDE.md`](./TEAM_GUIDE.md).
+
 We welcome contributions to the RunAsh AI live streaming platform. To contribute, follow these steps:
 
 1. Fork the repository using Git: `git fork https://github.com/runash.in/runash.in.git`
