@@ -162,4 +162,17 @@ We welcome contributions to the RunAsh AI live streaming platform. To contribute
 
 ## License
 
+ 
+1. Create and modify your project using [v0.dev](https://v0.dev)
+2. Deploy your chats from the v0 interface
+3. Changes are automatically pushed to this repository
+4. Vercel deploys the latest version from this repository
+
+## Agent Operations
+
+- [MCP Server Guide](./MCP_SERVER.md)
+- [Agent Working Guide](./AGENTS.md)
+- [Team Guide](./TEAM_GUIDE.md)
+
 MIT and Apache-2.0.
+

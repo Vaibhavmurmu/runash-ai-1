@@ -1,4 +1,11 @@
  
+# Agent Working Guide
+
+For MCP usage patterns, safety constraints, and troubleshooting, see:
+
+- [MCP Server Guide](./MCP_SERVER.md)
+
+ 
 # Agent Working Notes
 
 ## Skills discoverability
@@ -185,6 +192,7 @@ PRs should include:
 - `MCP_SERVER.md` – MCP server integration standards
 - `SKILLS/README.md` – reusable contribution playbooks
 - `CODEX_CUSTOM_INSTRUCTIONS.md` – RunAsh AI Codex-specific execution and validation rules
+
 
 
 
