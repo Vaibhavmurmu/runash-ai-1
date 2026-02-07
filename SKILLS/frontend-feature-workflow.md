@@ -1,5 +1,6 @@
 # Frontend Feature Workflow
 
+ 
 ## When to use
 
 Use this workflow when changing user-facing UI in the Next.js app (new components, layout updates, styling changes, interactions, navigation, or page-level feature additions).
@@ -38,3 +39,14 @@ Use this workflow when changing user-facing UI in the Next.js app (new component
 - Environment-dependent UI can silently fail if `.env.local` keys are missing.
 - Broad style edits can unintentionally affect generated/landing page content.
 - Vercel/v0-synced content in root docs can be overwritten; keep product-facing docs scoped and additive.
+
+## Use when
+Adding or updating UI behavior in `app/` or `components/`.
+
+## Steps
+1. Inspect related components/routes.
+2. Implement minimal UI change.
+3. Ensure accessibility labels and responsive behavior.
+4. Run lint/build checks.
+5. Update docs if user-facing behavior changed.
+

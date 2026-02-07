@@ -1,5 +1,6 @@
 # Auth & Payment Change Workflow
 
+ 
 ## When to use
 
 Use this workflow for authentication, authorization, identity/session handling, billing flows, subscriptions, checkout, webhooks, or payment state transitions.
@@ -39,3 +40,14 @@ Use this workflow for authentication, authorization, identity/session handling, 
 - Client-side assumptions about subscription status can diverge from backend truth.
 - Webhook endpoints may fail silently without explicit local tunneling/provider config.
 - Mixed concerns in a single route can blur auth checks and billing logic.
+
+## Use when
+Touching auth/payment/business-critical logic.
+
+## Steps
+1. Confirm override rules in `AGENTS.override.md`.
+2. Avoid contract breaks unless versioned/migrated.
+3. Sanitize logging and avoid sensitive-data exposure.
+4. Update payment/auth docs.
+5. Validate with lint/build and record outcomes.
+
