@@ -52,7 +52,13 @@ npm run build
 3. Run validation commands.
 4. Open PR with summary, risks, and rollback notes.
 
+ 
+Team process, ownership boundaries, and delivery policy are documented in [`TEAM_GUIDE.md`](./TEAM_GUIDE.md).
+
+We welcome contributions to the RunAsh AI live streaming platform. To contribute, follow these steps:
+
 ## Contributor and Agent Governance
+
 
 - Default repository policy: [AGENTS.md](./AGENTS.md)
 - Temporary/higher-priority directives: [AGENTS.override.md](./AGENTS.override.md)
