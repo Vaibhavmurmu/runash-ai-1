@@ -1,0 +1,11 @@
+RunAsh AI - LLM Integration Notes
+
+- Primary app: Next.js (App Router) repository for RunAsh AI.
+- Main integration surfaces:
+  - API routes under app/api
+  - Service logic under services and lib/services
+  - Agentic features under lib/agentic-protocol.ts and related UI/components
+- Before introducing new model providers or prompts:
+  - document configuration in README and relevant guide
+  - avoid hardcoding provider secrets
+  - keep model-specific behavior behind service abstractions
