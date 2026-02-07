@@ -14,6 +14,16 @@
   
 ## The AI Live Streaming Platform
 
+
+## Skills Playbooks
+
+Use the repository playbooks in [`SKILLS/README.md`](./SKILLS/README.md) for repeatable workflows:
+
+- [Frontend Feature Workflow](./SKILLS/frontend-feature-workflow.md)
+- [Service Layer Change Workflow](./SKILLS/service-layer-change-workflow.md)
+- [Auth & Payment Change Workflow](./SKILLS/auth-payment-change-workflow.md)
+- [Docs Quality Review Workflow](./SKILLS/docs-quality-review-workflow.md)
+
 ## Introduction
 
 RunAsh AI is a live streaming platform that enables users to broadcast high-quality video content to a global audience. Our platform is designed to provideprovide a seamless and engaging experience for both streamers and viewers.
