@@ -13,7 +13,13 @@ RunAsh AI is a Next.js-based platform for building and running AI-assisted comme
 It combines storefront and content workflows with agentic tooling, authentication, and data services.
 The repository includes product UI, API routes, and shared service/data layers used by the platform.
 
+ 
+For AI-oriented contribution guidance, see [LLMs.txt](./LLMs.txt).
+
+## Features
+
 ## Quickstart
+
 
 ### 1) Install dependencies
 

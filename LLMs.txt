@@ -1,3 +1,48 @@
+ 
+Project summary
+RunAsh AI is an open-source live commerce and streaming platform built on Next.js. It combines live video, chat, AI-assisted workflows, and commerce/payment features for creators, sellers, and platform operators.
+
+Tech stack and runtime
+- Runtime: Node.js
+- App framework: Next.js App Router (React + TypeScript)
+- Styling: Tailwind CSS + PostCSS
+- Data and infra integrations: Neon/PostgreSQL, auth providers, cloud storage, realtime and payment-related services
+- Package manager lockfile present: pnpm (pnpm-lock.yaml)
+
+Important directories and their intent
+- app/: Next.js routes, pages, layouts, API route handlers
+- components/: Reusable UI and feature components
+- lib/: Core business logic, data access, auth/security utilities, services
+- services/: Domain-specific service modules (streaming, speech, platform integrations)
+- hooks/: Client-side React hooks
+- types/: Shared TypeScript type definitions
+- public/: Static assets (images/icons/manifest)
+- styles/: Global and theme CSS
+- data/: Static JSON/data fixtures
+
+Safe change boundaries
+- Safe to edit: feature-specific UI/components, isolated route/page logic, non-breaking utility improvements, documentation updates
+- Medium risk (require extra review): auth flows, billing/payment logic, DB access/repositories, realtime/streaming pipelines
+- High risk (avoid casual edits): security middleware, secrets handling, production infra configuration, destructive migration/automation scripts
+
+Required validation commands and quality gates
+- Install deps: pnpm install
+- Lint: pnpm lint
+- Build/type gate: pnpm build
+- Dev smoke test: pnpm dev (verify critical user flows locally)
+- Quality bar: no lint errors, build succeeds, and changed flows are manually sanity-checked before merge
+
+Security rules
+- Never expose secrets, tokens, private keys, or raw credentials in code, docs, logs, or commits
+- Sanitize logs: avoid PII/session data; redact sensitive identifiers
+- Do not add destructive scripts/commands (mass delete, force-reset, unsafe schema/data operations) without explicit maintainer approval
+- Prefer least-privilege config changes and keep security-relevant behavior backward compatible unless a reviewed breaking fix is required
+
+Preferred contribution style
+- Keep diffs small and scoped to one concern
+- Update docs when behavior or features change
+- Preserve API compatibility; if a breaking change is unavoidable, document migration steps clearly
+
 
 RunAsh AI - LLM Integration Notes
 
@@ -43,4 +88,5 @@ Documentation sync:
 Contribution style:
 - Prefer minimal, reversible changes.
 - Include validation commands and clear summary.
+
 
