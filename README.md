@@ -18,6 +18,8 @@
 
 RunAsh AI is a live streaming platform that enables users to broadcast high-quality video content to a global audience. Our platform is designed to provideprovide a seamless and engaging experience for both streamers and viewers.
 
+For AI-oriented contribution guidance, see [LLMs.txt](./LLMs.txt).
+
 ## Features
 
 * **Real-time video streaming**: Our platform uses advanced technology to ensure low-latency and high-quality video streaming.
