@@ -1,3 +1,4 @@
+ 
 Project summary
 RunAsh AI is an open-source live commerce and streaming platform built on Next.js. It combines live video, chat, AI-assisted workflows, and commerce/payment features for creators, sellers, and platform operators.
 
@@ -41,3 +42,51 @@ Preferred contribution style
 - Keep diffs small and scoped to one concern
 - Update docs when behavior or features change
 - Preserve API compatibility; if a breaking change is unavoidable, document migration steps clearly
+
+
+RunAsh AI - LLM Integration Notes
+
+- Primary app: Next.js (App Router) repository for RunAsh AI.
+- Main integration surfaces:
+  - API routes under app/api
+  - Service logic under services and lib/services
+  - Agentic features under lib/agentic-protocol.ts and related UI/components
+- Before introducing new model providers or prompts:
+  - document configuration in README and relevant guide
+  - avoid hardcoding provider secrets
+  - keep model-specific behavior behind service abstractions
+
+RunAsh AI - LLM Contributor Brief
+
+Project:
+- Agentic live commerce platform with streaming, AI video tooling, seller operations, and payment/auth business flows.
+
+Stack:
+- Next.js + React + TypeScript
+- Node.js runtime
+
+Key directories:
+- app/: route-driven UI surfaces
+- components/: reusable UI and domain components
+- services/: business/service integrations and processing logic
+- contexts/: app-level state providers
+- docs (*.md): product/architecture/security/process references
+
+Safety boundaries:
+- Never expose secrets in code or docs.
+- Avoid breaking API contracts in service/payment/auth flows.
+- Keep diffs small and scoped to user request.
+
+Required checks before handoff:
+- npm run lint
+- npm run build (when environment supports dependency graph)
+
+Documentation sync:
+- Update AGENTS.md / AGENTS.override.md / TEAM_GUIDE.md for process changes.
+- Update payment/auth docs when changing those flows.
+
+Contribution style:
+- Prefer minimal, reversible changes.
+- Include validation commands and clear summary.
+
+
