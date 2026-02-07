@@ -52,5 +52,10 @@ npm run build
 3. Run validation commands.
 4. Open PR with summary, risks, and rollback notes.
 
+## Contributor and Agent Governance
+
+- Default repository policy: [AGENTS.md](./AGENTS.md)
+- Temporary/higher-priority directives: [AGENTS.override.md](./AGENTS.override.md)
+
 ## License
 MIT and Apache-2.0.
