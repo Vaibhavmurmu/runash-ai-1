@@ -1,3 +1,9 @@
+
+# AGENTS.md
+
+This file is a placeholder index for agent-facing repository instructions.
+Refer to project and team guides for implementation details and standards.
+
  
 # AGENTS
 
@@ -166,5 +172,6 @@ PRs should include:
 - `MCP_SERVER.md` – MCP server integration standards
 - `SKILLS/README.md` – reusable contribution playbooks
 - `CODEX_CUSTOM_INSTRUCTIONS.md` – RunAsh AI Codex-specific execution and validation rules
+
 
 

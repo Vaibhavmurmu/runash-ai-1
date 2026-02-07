@@ -1,4 +1,10 @@
  
+# AGENTS.override.md
+
+Use this file for temporary, scoped overrides to AGENTS.md guidance when needed.
+If empty or unchanged, AGENTS.md remains the default instruction source.
+
+ 
 # AGENTS.override.md — Temporary / Higher-Priority Directives
 
 This file defines temporary execution rules that can supersede the default repository policy in `AGENTS.md` when explicitly activated.
@@ -91,4 +97,5 @@ Applies to changes touching:
 ## Precedence
 - This file overrides `AGENTS.md` for scoped files.
 - If no active override applies, follow `AGENTS.md`.
+
 
