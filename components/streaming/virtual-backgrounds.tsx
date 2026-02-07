@@ -174,6 +174,14 @@ export default function VirtualBackgrounds({
     }
   }
 
+  const getThumbnailSource = (url: string, id: string) => {
+    if (url.startsWith("data:")) {
+      return url
+    }
+
+    return `${url}${url.includes("?") ? "&" : "?"}r=${retrySeed[id] || 0}`
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -230,7 +238,7 @@ export default function VirtualBackgrounds({
               <div className="grid grid-cols-2 gap-2">
                 {filteredBackgrounds.map((background) => {
                   const hasError = imageErrors[background.id]
-                  const imageSrc = `${background.url}${background.url.includes("?") ? "&" : "?"}r=${retrySeed[background.id] || 0}`
+                  const imageSrc = getThumbnailSource(background.url, background.id)
                   return (
                     <div
                       key={background.id}
