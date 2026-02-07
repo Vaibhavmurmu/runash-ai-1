@@ -97,6 +97,11 @@ We welcome contributions to the RunAsh AI live streaming platform. To contribute
 3. Push your changes to your fork: `git push origin your-branch`
 4. Create a pull request to merge your changes into the main repository.
 
+## Contributor and Agent Governance
+
+- Default repository policy: [AGENTS.md](./AGENTS.md)
+- Temporary/higher-priority directives: [AGENTS.override.md](./AGENTS.override.md)
+
 ## License
 
 The RunAsh AI live streaming platform is licensed under the MIT License.And Apache-2.0.
