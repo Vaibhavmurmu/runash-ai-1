@@ -165,3 +165,9 @@ Continue building your app on:
 2. Deploy your chats from the v0 interface
 3. Changes are automatically pushed to this repository
 4. Vercel deploys the latest version from this repository
+
+## Agent Operations
+
+- [MCP Server Guide](./MCP_SERVER.md)
+- [Agent Working Guide](./AGENTS.md)
+- [Team Guide](./TEAM_GUIDE.md)
