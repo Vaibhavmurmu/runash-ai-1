@@ -174,6 +174,17 @@ export default function VirtualBackgrounds({
     }
   }
 
+  const getThumbnailSource = (url: string, id: string) => {
+    const isHttpUrl = url.startsWith("http://") || url.startsWith("https://")
+    const isPathUrl = url.startsWith("/") || url.startsWith("./") || url.startsWith("../") || !url.includes(":")
+
+    if (!isHttpUrl && !isPathUrl) {
+      return url
+    }
+
+    return `${url}${url.includes("?") ? "&" : "?"}r=${retrySeed[id] || 0}`
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -230,7 +241,7 @@ export default function VirtualBackgrounds({
               <div className="grid grid-cols-2 gap-2">
                 {filteredBackgrounds.map((background) => {
                   const hasError = imageErrors[background.id]
-                  const imageSrc = `${background.url}${background.url.includes("?") ? "&" : "?"}r=${retrySeed[background.id] || 0}`
+                  const imageSrc = getThumbnailSource(background.url, background.id)
                   return (
                     <div
                       key={background.id}
@@ -289,33 +300,12 @@ export default function VirtualBackgrounds({
       <div className="space-y-2 border-t border-orange-100 pt-4 dark:border-orange-900/40">
         <div className="flex items-center justify-between">
           <Label htmlFor="blur-slider">Background Blur</Label>
- 
           <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => onSelectBackground(null)} disabled={!selectedBackground}>
             <X className="mr-1 h-3 w-3" />
             Remove
           </Button>
         </div>
         <Slider id="blur-slider" value={[blurAmount]} max={20} step={1} onValueChange={handleBlurChange} disabled={!selectedBackground} />
-
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 px-2 text-xs"
-            onClick={() => onSelectBackground?.(null)}
-            disabled={!selectedBackground}
-          >
-            <X className="h-3 w-3 mr-1" />
-            Remove
-          </Button>
-        </div>
-        <Slider
-          id="blur-slider"
-          defaultValue={[blurAmount ?? 0]}
-          max={20}
-          step={1}
-          onValueChange={handleBlurChange}
-          disabled={!selectedBackground}
-        />
 
         <div className="flex justify-between text-xs text-gray-500">
           <span>None</span>
