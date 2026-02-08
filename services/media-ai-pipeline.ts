@@ -233,8 +233,9 @@ export class MediaAIPipeline {
       const supportedMimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((mimeType) =>
         MediaRecorder.isTypeSupported(mimeType),
       )
+      const audioOnlyStream = new MediaStream(stream.getAudioTracks())
 
-      recorder = new MediaRecorder(stream, supportedMimeType ? { mimeType: supportedMimeType } : undefined)
+      recorder = new MediaRecorder(audioOnlyStream, supportedMimeType ? { mimeType: supportedMimeType } : undefined)
       recorder.ondataavailable = async (event) => {
         if (!event.data || event.data.size === 0) return
         try {
@@ -247,8 +248,11 @@ export class MediaAIPipeline {
       recorder.start(3000)
     }
 
+    let lastSubmittedAudioBase64: string | null = null
     const interval = window.setInterval(async () => {
-      if (!active) return
+      if (!active || !latestAudioBase64 || latestAudioBase64 === lastSubmittedAudioBase64) return
+      lastSubmittedAudioBase64 = latestAudioBase64
+
       try {
         const response = await fetch("/api/ai/transcribe", {
           method: "POST",

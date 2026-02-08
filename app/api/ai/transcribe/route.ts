@@ -46,11 +46,11 @@ export async function POST(req: Request) {
   try {
     const audioBuffer = decodeBase64Audio(body.audioBase64)
     const extension = body.mimeType?.includes("mp4") ? "m4a" : "webm"
-    const file = new File([audioBuffer], `chunk.${extension}`, { type: body.mimeType ?? "audio/webm" })
+    const blob = new Blob([audioBuffer], { type: body.mimeType ?? "audio/webm" })
 
     const formData = new FormData()
     formData.append("model", "whisper-1")
-    formData.append("file", file)
+    formData.append("file", blob, `chunk.${extension}`)
     formData.append("language", languageMap[language] ?? "en")
 
     const transcriptionResponse = await fetch("https://api.openai.com/v1/audio/transcriptions", {
