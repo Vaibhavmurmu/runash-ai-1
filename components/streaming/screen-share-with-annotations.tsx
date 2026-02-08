@@ -18,6 +18,7 @@ import {
 } from "@/services/media-ai-pipeline"
 
 interface ScreenShareWithAnnotationsProps {
+ 
   isActive?: boolean
   isStreaming?: boolean
   onStart?: (stream: MediaStream) => void
@@ -43,6 +44,14 @@ export default function ScreenShareWithAnnotations({
 }: ScreenShareWithAnnotationsProps) {
   const aiPipeline = useMemo(() => new MediaAIPipeline(), [])
   const [isSharing, setIsSharing] = useState(isActive ?? isStreaming ?? false)
+
+  isStreaming: boolean
+}
+
+export default function ScreenShareWithAnnotations({ isStreaming }: ScreenShareWithAnnotationsProps) {
+  const [isSharing, setIsSharing] = useState(isStreaming)
+  const [availableScreens, setAvailableScreens] = useState<string[]>([])
+
   const [selectedScreen, setSelectedScreen] = useState<string>("entire-screen")
   const [frameRate, setFrameRate] = useState<number>(30)
   const [showCursor, setShowCursor] = useState<boolean>(true)
@@ -96,6 +105,7 @@ export default function ScreenShareWithAnnotations({
     }
   }, [isSharing, aiSettings, aiPipeline])
 
+ 
   useEffect(() => {
     if (!aiSettings.captionsEnabled || !isSharing) {
       captionCleanupRef.current?.()
@@ -114,6 +124,12 @@ export default function ScreenShareWithAnnotations({
       captionCleanupRef.current = null
     }
   }, [aiSettings.captionsEnabled, aiSettings.captionLanguage, isSharing, aiPipeline])
+
+  // Update isSharing when parent streaming state changes
+  useEffect(() => {
+    setIsSharing(isStreaming)
+  }, [isStreaming])
+
 
   const startScreenShare = async () => {
     try {
@@ -138,7 +154,9 @@ export default function ScreenShareWithAnnotations({
       }
 
       setIsSharing(true)
+ 
       onStart(enhancedStream)
+
     } catch (error) {
       setPipelineWarning("Unable to start screen share on this browser/device.")
       console.error("Error starting screen share:", error)
@@ -156,8 +174,10 @@ export default function ScreenShareWithAnnotations({
     captionCleanupRef.current = null
     setIsSharing(false)
     setAnnotationsEnabled(false)
+ 
     setLatestCaption(null)
     onStop()
+
   }
 
   const toggleFullscreen = () => {
