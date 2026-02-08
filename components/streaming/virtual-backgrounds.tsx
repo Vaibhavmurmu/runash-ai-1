@@ -177,6 +177,7 @@ export default function VirtualBackgrounds({
     }
   }
 
+ 
   const AI_STYLE_PALETTES: Record<string, [string, string, string]> = {
     cinematic: ["#f97316", "#0f172a", "#f8fafc"],
     minimal: ["#fb923c", "#fdba74", "#fff7ed"],
@@ -250,6 +251,8 @@ export default function VirtualBackgrounds({
       setIsGeneratingAI(false)
     }
   }
+
+
 
   const getThumbnailSource = (url: string, id: string) => {
     const isHttpUrl = url.startsWith("http://") || url.startsWith("https://")
