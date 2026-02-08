@@ -175,7 +175,10 @@ export default function VirtualBackgrounds({
   }
 
   const getThumbnailSource = (url: string, id: string) => {
-    if (url.startsWith("data:")) {
+    const isHttpUrl = url.startsWith("http://") || url.startsWith("https://")
+    const isPathUrl = url.startsWith("/") || url.startsWith("./") || url.startsWith("../") || !url.includes(":")
+
+    if (!isHttpUrl && !isPathUrl) {
       return url
     }
 
