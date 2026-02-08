@@ -44,12 +44,6 @@ export default function ScreenShareWithAnnotations({
 }: ScreenShareWithAnnotationsProps) {
   const aiPipeline = useMemo(() => new MediaAIPipeline(), [])
   const [isSharing, setIsSharing] = useState(isActive ?? isStreaming ?? false)
-
-  isStreaming: boolean
-}
-
-export default function ScreenShareWithAnnotations({ isStreaming }: ScreenShareWithAnnotationsProps) {
-  const [isSharing, setIsSharing] = useState(isStreaming)
   const [availableScreens, setAvailableScreens] = useState<string[]>([])
 
   const [selectedScreen, setSelectedScreen] = useState<string>("entire-screen")
@@ -75,6 +69,19 @@ export default function ScreenShareWithAnnotations({ isStreaming }: ScreenShareW
   useEffect(() => {
     setIsSharing(isActive ?? isStreaming ?? false)
   }, [isActive, isStreaming])
+
+  useEffect(() => {
+    if (!initialSettings) return
+
+    setAiSettings((previous) => {
+      const mergedSettings = { ...previous, ...initialSettings }
+      const hasChanges = (Object.keys(mergedSettings) as Array<keyof MediaAIPipelineSettings>).some(
+        (key) => mergedSettings[key] !== previous[key],
+      )
+
+      return hasChanges ? mergedSettings : previous
+    })
+  }, [initialSettings])
 
   useEffect(() => {
     aiPipeline.persistSettings(aiSettings)
@@ -117,6 +124,7 @@ export default function ScreenShareWithAnnotations({ isStreaming }: ScreenShareW
       aiSettings.captionLanguage,
       (packet) => setLatestCaption(packet),
       (error) => setPipelineWarning(error),
+      (videoRef.current?.srcObject as MediaStream | null) ?? null,
     )
 
     return () => {
@@ -124,13 +132,6 @@ export default function ScreenShareWithAnnotations({ isStreaming }: ScreenShareW
       captionCleanupRef.current = null
     }
   }, [aiSettings.captionsEnabled, aiSettings.captionLanguage, isSharing, aiPipeline])
-
-  // Update isSharing when parent streaming state changes
-  useEffect(() => {
-    setIsSharing(isStreaming)
-  }, [isStreaming])
-
-
   const startScreenShare = async () => {
     try {
       const displayMediaOptions: DisplayMediaStreamOptions = {

@@ -140,22 +140,45 @@ export class MediaAIPipeline {
   }
 
   async enhanceAudio(stream: MediaStream, enabled: boolean) {
-    if (!enabled || typeof navigator === "undefined") return stream
+    if (!enabled || typeof AudioContext === "undefined") return stream
+
+    const [audioTrack] = stream.getAudioTracks()
+    if (!audioTrack) return stream
+
     try {
       const [videoTrack] = stream.getVideoTracks()
-      const [audioTrack] = stream.getAudioTracks()
-      if (!audioTrack) return stream
+      const audioContext = new AudioContext()
+      const source = audioContext.createMediaStreamSource(new MediaStream([audioTrack]))
+      const destination = audioContext.createMediaStreamDestination()
 
-      const denoisedStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          noiseSuppression: true,
-          echoCancellation: true,
-          autoGainControl: true,
-        },
-        video: false,
+      const inputGain = audioContext.createGain()
+      inputGain.gain.value = 1
+
+      const compressor = audioContext.createDynamicsCompressor()
+      compressor.threshold.value = -50
+      compressor.knee.value = 30
+      compressor.ratio.value = 12
+      compressor.attack.value = 0.003
+      compressor.release.value = 0.25
+
+      const highpass = audioContext.createBiquadFilter()
+      highpass.type = "highpass"
+      highpass.frequency.value = 80
+
+      source.connect(highpass)
+      highpass.connect(compressor)
+      compressor.connect(inputGain)
+      inputGain.connect(destination)
+
+      const [processedTrack] = destination.stream.getAudioTracks()
+      if (!processedTrack) return stream
+
+      const enhancedStream = new MediaStream([...(videoTrack ? [videoTrack] : []), processedTrack])
+      processedTrack.addEventListener("ended", () => {
+        audioContext.close().catch(() => undefined)
       })
-      const [denoisedTrack] = denoisedStream.getAudioTracks()
-      return new MediaStream([...(videoTrack ? [videoTrack] : []), ...(denoisedTrack ? [denoisedTrack] : [audioTrack])])
+
+      return enhancedStream
     } catch {
       return stream
     }
@@ -165,6 +188,7 @@ export class MediaAIPipeline {
     language: string,
     onCaption: (packet: CaptionPacket) => void,
     onError: (message: string) => void,
+    stream?: MediaStream | null,
   ): (() => void) | null {
     if (this.recognizer.isSupported()) {
       this.recognizer.startListening(
@@ -184,13 +208,52 @@ export class MediaAIPipeline {
 
     // Server-side fallback polling hook.
     let active = true
+    let latestAudioBase64: string | null = null
+    let latestMimeType: string | null = null
+    let recorder: MediaRecorder | null = null
+
+    const toBase64 = (blob: Blob) =>
+      new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          const result = reader.result
+          if (typeof result !== "string") {
+            reject(new Error("Unable to encode audio chunk"))
+            return
+          }
+
+          const [, base64 = ""] = result.split(",")
+          resolve(base64)
+        }
+        reader.onerror = () => reject(reader.error ?? new Error("Unable to encode audio chunk"))
+        reader.readAsDataURL(blob)
+      })
+
+    if (typeof MediaRecorder !== "undefined" && stream?.getAudioTracks().length) {
+      const supportedMimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((mimeType) =>
+        MediaRecorder.isTypeSupported(mimeType),
+      )
+
+      recorder = new MediaRecorder(stream, supportedMimeType ? { mimeType: supportedMimeType } : undefined)
+      recorder.ondataavailable = async (event) => {
+        if (!event.data || event.data.size === 0) return
+        try {
+          latestAudioBase64 = await toBase64(event.data)
+          latestMimeType = event.data.type || supportedMimeType || "audio/webm"
+        } catch {
+          onError("Live captions fallback audio capture failed")
+        }
+      }
+      recorder.start(3000)
+    }
+
     const interval = window.setInterval(async () => {
       if (!active) return
       try {
         const response = await fetch("/api/ai/transcribe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ language }),
+          body: JSON.stringify({ language, audioBase64: latestAudioBase64, mimeType: latestMimeType }),
         })
         if (!response.ok) return
         const data = (await response.json()) as { text?: string }
@@ -205,6 +268,9 @@ export class MediaAIPipeline {
     return () => {
       active = false
       window.clearInterval(interval)
+      if (recorder?.state !== "inactive") {
+        recorder?.stop()
+      }
     }
   }
 }
