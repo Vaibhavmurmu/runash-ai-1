@@ -174,9 +174,12 @@ export class MediaAIPipeline {
       if (!processedTrack) return stream
 
       const enhancedStream = new MediaStream([...(videoTrack ? [videoTrack] : []), processedTrack])
-      processedTrack.addEventListener("ended", () => {
+      const closeContext = () => {
         audioContext.close().catch(() => undefined)
-      })
+      }
+
+      processedTrack.addEventListener("ended", closeContext)
+      audioTrack.addEventListener("ended", closeContext)
 
       return enhancedStream
     } catch {
@@ -251,15 +254,17 @@ export class MediaAIPipeline {
     let lastSubmittedAudioBase64: string | null = null
     const interval = window.setInterval(async () => {
       if (!active || !latestAudioBase64 || latestAudioBase64 === lastSubmittedAudioBase64) return
-      lastSubmittedAudioBase64 = latestAudioBase64
+      const payloadAudioBase64 = latestAudioBase64
 
       try {
         const response = await fetch("/api/ai/transcribe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ language, audioBase64: latestAudioBase64, mimeType: latestMimeType }),
+          body: JSON.stringify({ language, audioBase64: payloadAudioBase64, mimeType: latestMimeType }),
         })
         if (!response.ok) return
+
+        lastSubmittedAudioBase64 = payloadAudioBase64
         const data = (await response.json()) as { text?: string }
         if (data.text) {
           onCaption({ text: data.text, confidence: 0.55, isFinal: true, language, ts: Date.now() })

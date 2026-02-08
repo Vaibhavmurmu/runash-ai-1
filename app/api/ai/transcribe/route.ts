@@ -14,7 +14,11 @@ const languageMap: Record<string, string> = {
 }
 
 function decodeBase64Audio(base64: string) {
-  return Buffer.from(base64, "base64")
+  try {
+    return Buffer.from(base64, "base64")
+  } catch {
+    return null
+  }
 }
 
 export async function POST(req: Request) {
@@ -45,6 +49,10 @@ export async function POST(req: Request) {
 
   try {
     const audioBuffer = decodeBase64Audio(body.audioBase64)
+    if (!audioBuffer || audioBuffer.length === 0) {
+      return NextResponse.json({ language, text: "", source: "fallback", reason: "invalid_audio_payload" }, { status: 400 })
+    }
+
     const extension = body.mimeType?.includes("mp4") ? "m4a" : "webm"
     const blob = new Blob([audioBuffer], { type: body.mimeType ?? "audio/webm" })
 
