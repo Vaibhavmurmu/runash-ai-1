@@ -49,7 +49,6 @@ export default function RunAshChatPage() {
   })
 
   const [voiceEnabled, setVoiceEnabled] = useState(false)
-  const [autoSpeakResponses, setAutoSpeakResponses] = useState(false)
 
   const [chatSessions] = useState<ChatSession[]>([
     {
@@ -261,11 +260,6 @@ export default function RunAshChatPage() {
     handleSendMessage(transcript)
   }
 
-  const handleSpeakResponse = (text: string) => {
-    // This will be handled by the VoiceControls component
-    console.log("Speaking:", text)
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-orange-50 dark:from-gray-950 dark:to-gray-900">
       {/* Header */}
@@ -361,8 +355,8 @@ export default function RunAshChatPage() {
               <div className="p-4 border-t">
                 <VoiceControls
                   onVoiceInput={handleVoiceInput}
-                  onSpeakResponse={handleSpeakResponse}
                   isEnabled={voiceEnabled}
+                  latestAssistantMessage={messages.filter((message) => message.role === "assistant").at(-1)?.content}
                 />
               </div>
             )}
