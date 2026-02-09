@@ -38,8 +38,8 @@ interface VirtualBackgroundsProps {
 export default function VirtualBackgrounds({
   onSelectBackground = () => {},
   onBlurBackground = () => {},
-  selectedBackground = null,
-  blurAmount = 0,
+  selectedBackground,
+  blurAmount,
   onPersistUpload,
 }: VirtualBackgroundsProps) {
   const [searchQuery, setSearchQuery] = useState("")
@@ -52,6 +52,11 @@ export default function VirtualBackgrounds({
   const [aiPrompt, setAiPrompt] = useState("")
   const [aiStyle, setAiStyle] = useState("cinematic")
   const [isGeneratingAI, setIsGeneratingAI] = useState(false)
+ 
+  const [internalSelectedBackground, setInternalSelectedBackground] = useState<string | null>(selectedBackground ?? null)
+  const [internalBlurAmount, setInternalBlurAmount] = useState(blurAmount ?? 0)
+
+ 
 
   useEffect(() => {
     try {
@@ -69,6 +74,65 @@ export default function VirtualBackgrounds({
       setCustomUploads([])
     }
   }, [])
+
+  useEffect(() => {
+    if (selectedBackground !== undefined) {
+      setInternalSelectedBackground(selectedBackground ?? null)
+    }
+  }, [selectedBackground])
+
+  useEffect(() => {
+    if (typeof blurAmount === "number") {
+      setInternalBlurAmount(blurAmount)
+    }
+  }, [blurAmount])
+
+  const isSelectedBackgroundControlled = selectedBackground !== undefined
+  const currentSelectedBackground = isSelectedBackgroundControlled ? (selectedBackground ?? null) : internalSelectedBackground
+  const currentBlurAmount = typeof blurAmount === "number" ? blurAmount : internalBlurAmount
+  const blurSliderId = "virtual-background-blur-slider"
+
+  const handleSelectionChange = (nextBackground: string | null) => {
+    if (!isSelectedBackgroundControlled) {
+      setInternalSelectedBackground(nextBackground)
+    }
+
+    onSelectBackground(nextBackground)
+  }
+
+  const handleRemoveSelectedBackground = () => {
+    handleSelectionChange(null)
+    setInternalBlurAmount(0)
+    onBlurBackground?.(0)
+  }
+
+  const renderBlurControls = () => (
+    <div className="space-y-2 border-t border-orange-100 pt-4 dark:border-orange-900/40">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Label htmlFor={blurSliderId}>Background Blur</Label>
+          <span className="text-xs text-gray-500">{currentBlurAmount}</span>
+        </div>
+        <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={handleRemoveSelectedBackground} disabled={!currentSelectedBackground}>
+          <X className="mr-1 h-3 w-3" />
+          Remove
+        </Button>
+      </div>
+      <Slider
+        id={blurSliderId}
+        value={[currentBlurAmount]}
+        max={20}
+        step={1}
+        onValueChange={handleBlurChange}
+        disabled={!currentSelectedBackground}
+      />
+
+      <div className="flex justify-between text-xs text-gray-500">
+        <span>None</span>
+        <span>Max</span>
+      </div>
+    </div>
+  )
 
   const backgroundsByCategory = useMemo(() => {
     const allBackgrounds = [...BACKGROUND_CATALOG, ...customUploads].filter((item) => !removedIds[item.id])
@@ -93,20 +157,32 @@ export default function VirtualBackgrounds({
     )
   }, [customUploads, removedIds])
 
-  const filteredBackgrounds = useMemo(
-    () =>
-      (backgroundsByCategory[activeCategory] || []).filter((bg) =>
-        bg.name.toLowerCase().includes(searchQuery.toLowerCase().trim()),
-      ),
-    [activeCategory, backgroundsByCategory, searchQuery],
-  )
+  const filteredBackgroundsByCategory = useMemo(() => {
+    const query = searchQuery.toLowerCase().trim()
+
+    return BACKGROUND_CATEGORIES.reduce<Record<BackgroundCategoryId, BackgroundAsset[]>>((acc, category) => {
+      const items = backgroundsByCategory[category.id] || []
+      acc[category.id] = items.filter((bg) => bg.name.toLowerCase().includes(query))
+      return acc
+    }, {
+      featured: [],
+      office: [],
+      nature: [],
+      abstract: [],
+      gradients: [],
+      tech: [],
+      custom: [],
+    })
+  }, [backgroundsByCategory, searchQuery])
 
   const handleBackgroundSelect = (url: string) => {
-    onSelectBackground?.(url === selectedBackground ? null : url)
+    handleSelectionChange(url === currentSelectedBackground ? null : url)
   }
 
   const handleBlurChange = (value: number[]) => {
-    onBlurBackground?.(value[0])
+    const nextValue = value[0] ?? 0
+    setInternalBlurAmount(nextValue)
+    onBlurBackground?.(nextValue)
   }
 
   const persistCustomUploads = (uploads: BackgroundAsset[]) => {
@@ -153,7 +229,7 @@ export default function VirtualBackgrounds({
     }
 
     setActiveCategory("custom")
-    onSelectBackground(uploadedAsset.url)
+    handleSelectionChange(uploadedAsset.url)
     e.target.value = ""
   }
 
@@ -164,8 +240,8 @@ export default function VirtualBackgrounds({
 
   const removeBackground = (background: BackgroundAsset) => {
     setRemovedIds((prev) => ({ ...prev, [background.id]: true }))
-    if (selectedBackground === background.url) {
-      onSelectBackground(null)
+    if (currentSelectedBackground === background.url) {
+      handleRemoveSelectedBackground()
     }
 
     if (background.categories.includes("custom")) {
@@ -177,6 +253,9 @@ export default function VirtualBackgrounds({
     }
   }
 
+ 
+
+ 
  
   const AI_STYLE_PALETTES: Record<string, [string, string, string]> = {
     cinematic: ["#f97316", "#0f172a", "#f8fafc"],
@@ -244,7 +323,11 @@ export default function VirtualBackgrounds({
       }
 
       setActiveCategory("custom")
+ 
+      handleSelectionChange(generatedAssets[0].url)
+
       onSelectBackground(generatedAssets[0].url)
+ 
       setAiPrompt("")
       setIsAIDialogOpen(false)
     } finally {
@@ -254,6 +337,9 @@ export default function VirtualBackgrounds({
 
 
 
+
+
+ 
   const getThumbnailSource = (url: string, id: string) => {
     const isHttpUrl = url.startsWith("http://") || url.startsWith("https://")
     const isPathUrl = url.startsWith("/") || url.startsWith("./") || url.startsWith("../") || !url.includes(":")
@@ -367,9 +453,9 @@ export default function VirtualBackgrounds({
 
         {BACKGROUND_CATEGORIES.map((category) => (
           <TabsContent key={category.id} value={category.id} className="mt-4">
-            {filteredBackgrounds.length > 0 ? (
+            {filteredBackgroundsByCategory[category.id].length > 0 ? (
               <div className="grid grid-cols-2 gap-2">
-                {filteredBackgrounds.map((background) => {
+                {filteredBackgroundsByCategory[category.id].map((background) => {
                   const hasError = imageErrors[background.id]
                   const imageSrc = getThumbnailSource(background.url, background.id)
                   return (
@@ -377,7 +463,7 @@ export default function VirtualBackgrounds({
                       key={background.id}
                       className={cn(
                         "relative aspect-video overflow-hidden rounded-md border-2 transition",
-                        selectedBackground === background.url
+                        currentSelectedBackground === background.url
                           ? "border-orange-500"
                           : "border-transparent hover:border-orange-300",
                       )}
@@ -409,7 +495,7 @@ export default function VirtualBackgrounds({
                         </div>
                       )}
 
-                      {selectedBackground === background.url && !hasError && (
+                      {currentSelectedBackground === background.url && !hasError && (
                         <div className="absolute right-2 top-2 rounded-full bg-orange-500 p-0.5">
                           <Check className="h-3 w-3 text-white" />
                         </div>
@@ -427,6 +513,9 @@ export default function VirtualBackgrounds({
         ))}
       </Tabs>
 
+ 
+      {renderBlurControls()}
+
       <div className="space-y-2 border-t border-orange-100 pt-4 dark:border-orange-900/40">
         <div className="flex items-center justify-between">
           <Label htmlFor="blur-slider">Background Blur</Label>
@@ -442,6 +531,7 @@ export default function VirtualBackgrounds({
           <span>Max</span>
         </div>
       </div>
+ 
     </div>
   )
 }
