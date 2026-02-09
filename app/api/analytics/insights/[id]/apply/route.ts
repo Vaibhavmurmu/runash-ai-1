@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { jsonError, parsePeriod, requireAnalyticsSession } from "../../../../_lib"
+import { jsonError, parsePeriod, requireAnalyticsSession } from "../../../_lib"
 
 type ApplyInsightResponse = {
   ok: true
