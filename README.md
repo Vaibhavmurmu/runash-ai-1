@@ -106,6 +106,13 @@ Open `http://localhost:3000`.
 ## Overview
 RunAsh AI combines live streaming, AI-assisted creation tooling, seller operations, and commerce enablement into a unified platform.
 
+## Seller operations modules
+- Seller dashboard now uses live summary metrics from `/api/seller/dashboard/summary`.
+- Orders and inventory tabs are integrated with backend CRUD endpoints (`/api/orders`, `/api/products`, `/api/products/:id`).
+- Seller business configuration is now API-backed (`GET/PUT /api/seller/settings`) for persisted operations.
+- Payout tab is API-backed (`GET /api/seller/payouts`) with settlement summaries and weekly history.
+- Inventory supports inline stock edits and guarded deletes for production workflows.
+
 ## Quickstart
 1. Clone repository.
 2. Install dependencies:
