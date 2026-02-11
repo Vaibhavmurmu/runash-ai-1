@@ -118,3 +118,32 @@ Structured API logs include:
 - route and method metadata
 
 Sensitive payload fields in auth/payment/chat context are redacted before logging, including keys such as `password`, `token`, `secret`, `authorization`, `cookie`, `card`, `cvv`, `payment`, `otp`, `message`, `content`, and `prompt`.
+
+## Agent APIs (`/api/agents/*`)
+
+### `POST /api/agents/chat`
+- Auth required (NextAuth session).
+- Streams SSE events with event names:
+  - `token`: incremental model token payload.
+  - `tool_start`: tool execution starts (`status: tool-running`).
+  - `tool_result`: tool output or queued job metadata.
+  - `final`: terminal state payload (`completed` with final content).
+  - `error`: terminal failure payload.
+- Request body:
+  - `sessionId?: string`
+  - `title?: string`
+  - `message: string`
+  - `tools?: ("catalog_lookup"|"inventory_health"|"checkout_preview")[]`
+
+### `GET /api/agents/sessions/:id`
+- Auth required.
+- Returns normalized history + session state (`messages`, `tool_calls`, `tool_results`, `actions`, `feedback`) with pagination counters.
+
+### `POST /api/agents/actions`
+- Auth required.
+- Explicit action approval endpoint.
+- High-risk action types (payment/account impacting) require `confirmedByUser=true`; otherwise `409` with audit record.
+
+### `POST /api/agents/feedback`
+- Auth required.
+- Accepts quality/safety signals with bounded score (`1-5`).

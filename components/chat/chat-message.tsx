@@ -19,9 +19,20 @@ export default function ChatMessageComponent({ message }: ChatMessageProps) {
   }
 
   const handleFeedback = (type: "up" | "down") => {
-    // Handle feedback
-    console.log(`Feedback: ${type} for message ${message.id}`)
+    fetch("/api/agents/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: "chat-ui",
+        messageId: message.id,
+        signal: type === "up" ? "quality" : "safety",
+        score: type === "up" ? 5 : 2,
+        reason: type === "up" ? "helpful" : "needs-improvement",
+      }),
+    }).catch(() => undefined)
   }
+
+  const messageStatus = message.status ?? "completed"
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-4`}>
@@ -42,6 +53,9 @@ export default function ChatMessageComponent({ message }: ChatMessageProps) {
               isUser ? "bg-gradient-to-r from-orange-600 to-yellow-500 text-white" : "bg-white dark:bg-gray-800 border"
             }`}
           >
+            <div className="mb-1">
+              <span className="text-[10px] uppercase tracking-wide text-gray-500">{messageStatus}</span>
+            </div>
             <p className="text-sm leading-relaxed">{message.content}</p>
           </div>
 

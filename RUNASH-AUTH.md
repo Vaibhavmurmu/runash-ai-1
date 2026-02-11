@@ -355,3 +355,9 @@ The versioned backend route `POST /api/v1/agents/chat` enforces authentication f
 - Log turn lifecycle events as structured records: `turn_started`, `turn_completed`, `turn_failed`, and policy rejections.
 - Never log chat message content, auth credentials, or sensitive data; only metadata (counts, IDs, timing, policy outcomes).
 
+
+## Agent API authentication enforcement
+
+All `/api/agents/*` routes require an authenticated NextAuth session. Unauthenticated requests return `401`.
+
+Agent feedback, actions, and session history APIs are scoped to the authenticated user context to avoid cross-tenant access.

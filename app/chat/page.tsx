@@ -19,7 +19,6 @@ import VoiceControls from "@/components/chat/voice-controls"
  
 import { getRecommendedProducts, shouldRecommendProducts } from "@/lib/chat-product-recommendations"
 
-import { generateChatResponse } from "@/lib/chat-response-engine"
 
 
 export default function RunAshChatPage() {
@@ -236,18 +235,96 @@ export default function RunAshChatPage() {
       role: "user",
       timestamp: new Date(),
       type: "text",
+      status: "completed",
     }
 
-    setMessages((prev) => [...prev, userMessage])
+    const assistantId = `${Date.now()}-assistant`
+    const assistantMessage: ChatMessage = {
+      id: assistantId,
+      content: "",
+      role: "assistant",
+      timestamp: new Date(),
+      type: "text",
+      status: "queued",
+    }
+
+    setMessages((prev) => [...prev, userMessage, assistantMessage])
     setInputValue("")
     setIsTyping(true)
 
-    // Simulate AI response
-    setTimeout(() => {
-      const response = buildAssistantResponse(content)
-      setMessages((prev) => [...prev, response])
+    try {
+      const response = await fetch("/api/agents/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: currentSession?.id ?? querySessionId ?? undefined,
+          title: currentSession?.title ?? "RunAsh Agent Session",
+          message: content,
+          tools: ["catalog_lookup"],
+        }),
+      })
+
+      if (!response.ok || !response.body) {
+        throw new Error("stream_request_failed")
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+
+      const updateAssistantMessage = (updater: (existing: ChatMessage) => ChatMessage) => {
+        setMessages((prev) => prev.map((item) => (item.id === assistantId ? updater(item) : item)))
+      }
+
+      while (true) {
+        const chunk = await reader.read()
+        if (chunk.done) break
+
+        buffer += decoder.decode(chunk.value, { stream: true })
+        const events = buffer.split("\n\n")
+        buffer = events.pop() ?? ""
+
+        for (const rawEvent of events) {
+          const eventName = rawEvent.match(/event:\s*(.+)/)?.[1]?.trim() ?? "message"
+          const payloadLine = rawEvent
+            .split("\n")
+            .find((line) => line.startsWith("data:"))
+            ?.replace(/^data:\s*/, "")
+
+          if (!payloadLine) continue
+          const payload = JSON.parse(payloadLine)
+
+          if (eventName === "token") {
+            updateAssistantMessage((existing) => ({
+              ...existing,
+              status: "streaming",
+              content: `${existing.content}${String(payload.token ?? "")}`,
+            }))
+          }
+
+          if (eventName === "tool_start") {
+            updateAssistantMessage((existing) => ({ ...existing, status: "tool-running" }))
+          }
+
+          if (eventName === "final") {
+            updateAssistantMessage((existing) => ({
+              ...existing,
+              status: payload.status === "completed" ? "completed" : existing.status,
+              content: typeof payload.content === "string" && payload.content.length > 0 ? payload.content : existing.content,
+            }))
+          }
+
+          if (eventName === "error") {
+            updateAssistantMessage((existing) => ({ ...existing, status: "failed" }))
+          }
+        }
+      }
+    } catch {
+      const fallback = buildAssistantResponse(content)
+      setMessages((prev) => prev.map((entry) => (entry.id === assistantId ? { ...fallback, id: assistantId } : entry)))
+    } finally {
       setIsTyping(false)
-    }, 1500)
+    }
   }
 
  
@@ -413,8 +490,6 @@ export default function RunAshChatPage() {
       type: "text",
     }
   }
-
-  const generateAIResponse = (userInput: string): ChatMessage => generateChatResponse(userInput)
 
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
