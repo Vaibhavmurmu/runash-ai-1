@@ -1,5 +1,7 @@
 # RunAsh AI Repository Review, Production Readiness Roadmap, and Agentic Chat Implementation Plan
 
+> Status sync note: keep seller/chat implementation wording aligned with the README Seller Operations + chat preview limitations section: [`README.md`](../README.md).
+
 ## 1) Repository Review Snapshot
 
 ### 1.1 Current architecture and strengths
