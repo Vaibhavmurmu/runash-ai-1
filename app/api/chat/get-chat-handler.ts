@@ -1,25 +1,24 @@
 import type { ChatMessage, ChatMessagesQuery } from "../../../lib/database"
+import { z } from "zod"
 
 const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 100
 const MAX_OFFSET = 10_000
 
+const chatQuerySchema = z.object({
+  streamId: z.string().trim().min(1),
+  limit: z.coerce.number().int().min(1).max(MAX_LIMIT).default(DEFAULT_LIMIT),
+  offset: z.coerce.number().int().min(0).max(MAX_OFFSET).default(0),
+  cursor: z.string().datetime({ offset: true }).optional().or(z.literal("")).transform((value) => value || null),
+})
+
 export type ChatGetDependencies = {
   getSessionUserId: () => Promise<string | null>
   getChatMessages: (query: ChatMessagesQuery) => Promise<ChatMessage[]>
+  requestId?: string
+  logEvent?: (level: "info" | "warn" | "error", event: string, details?: Record<string, unknown>) => void
   respondError: (error: { code: string; message: string }, options: { status: number; legacy: Record<string, unknown> }) => Response
   respondSuccess: (data: Record<string, unknown>, options: { legacy: Record<string, unknown> }) => Response
-}
-
-function parseBoundedInteger(value: string | null, fallback: number, min: number, max: number): number | null {
-  if (value === null) return fallback
-
-  const parsed = Number.parseInt(value, 10)
-  if (Number.isNaN(parsed) || parsed < min || parsed > max) {
-    return null
-  }
-
-  return parsed
 }
 
 export async function handleGetChat(request: Request, dependencies: ChatGetDependencies) {
@@ -27,6 +26,7 @@ export async function handleGetChat(request: Request, dependencies: ChatGetDepen
     const userId = await dependencies.getSessionUserId()
 
     if (!userId) {
+      dependencies.logEvent?.("warn", "chat.get.unauthorized")
       return dependencies.respondError(
         { code: "UNAUTHORIZED", message: "Unauthorized" },
         { status: 401, legacy: { error: "Unauthorized" } },
@@ -34,19 +34,23 @@ export async function handleGetChat(request: Request, dependencies: ChatGetDepen
     }
 
     const { searchParams } = new URL(request.url)
-    const streamId = searchParams.get("streamId")
-    const limit = parseBoundedInteger(searchParams.get("limit"), DEFAULT_LIMIT, 1, MAX_LIMIT)
-    const offset = parseBoundedInteger(searchParams.get("offset"), 0, 0, MAX_OFFSET)
-    const cursor = searchParams.get("cursor")
+    const parsedQuery = chatQuerySchema.safeParse({
+      streamId: searchParams.get("streamId"),
+      limit: searchParams.get("limit") ?? DEFAULT_LIMIT,
+      offset: searchParams.get("offset") ?? 0,
+      cursor: searchParams.get("cursor") ?? "",
+    })
 
-    if (!streamId) {
-      return dependencies.respondError(
-        { code: "STREAM_ID_REQUIRED", message: "Stream ID required" },
-        { status: 400, legacy: { error: "Stream ID required" } },
-      )
-    }
+    if (!parsedQuery.success) {
+      const hasStreamIdIssue = parsedQuery.error.issues.some((issue) => issue.path.includes("streamId"))
+      if (hasStreamIdIssue) {
+        dependencies.logEvent?.("warn", "chat.get.validation_failed", { reason: "missing_stream_id" })
+        return dependencies.respondError(
+          { code: "STREAM_ID_REQUIRED", message: "Stream ID required" },
+          { status: 400, legacy: { error: "Stream ID required" } },
+        )
+      }
 
-    if (limit === null || offset === null) {
       return dependencies.respondError(
         {
           code: "INVALID_PAGINATION",
@@ -58,6 +62,8 @@ export async function handleGetChat(request: Request, dependencies: ChatGetDepen
         },
       )
     }
+
+    const { streamId, limit, offset, cursor } = parsedQuery.data
 
     const messages = await dependencies.getChatMessages({
       streamId,
@@ -83,6 +89,13 @@ export async function handleGetChat(request: Request, dependencies: ChatGetDepen
       },
     }
 
+    dependencies.logEvent?.("info", "chat.get.success", {
+      streamId,
+      limit,
+      offset,
+      resultCount: messages.length,
+    })
+
     return dependencies.respondSuccess(data, {
       legacy: {
         success: true,
@@ -90,7 +103,9 @@ export async function handleGetChat(request: Request, dependencies: ChatGetDepen
       },
     })
   } catch (error) {
-    console.error("Get chat messages error:", error)
+    dependencies.logEvent?.("error", "chat.get.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    })
     return dependencies.respondError(
       { code: "INTERNAL_ERROR", message: "Internal server error" },
       { status: 500, legacy: { error: "Internal server error" } },

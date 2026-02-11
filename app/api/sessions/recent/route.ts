@@ -8,7 +8,7 @@ function getRequestUserId(req: Request) {
 }
 
 export async function GET(req: Request) {
-  return handleGetRecentSession({
+  return handleGetRecentSession(req, {
     getMostRecentSession: () => getMostRecentSession(getRequestUserId(req)),
   })
 }

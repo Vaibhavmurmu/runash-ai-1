@@ -29,3 +29,11 @@ The `POST /api/v1/agents/chat` endpoint includes mandatory runtime controls per 
 - **Tool authorization:** requested tools are validated and mapped to RBAC permissions before use.
 - **Correlation IDs:** each turn carries a request correlation identifier (`x-correlation-id`) for traceability.
 - **Structured logging:** chat lifecycle events are logged as metadata-only records without prompt/response body data.
+
+## API Log Redaction Standard
+
+Chat/session handlers now emit structured logs with request correlation IDs and metadata-only payloads.
+
+Sensitive auth/payment/chat keys are redacted before logs are written (for example: `password`, `token`, `authorization`, `payment`, `card`, `cvv`, `otp`, `message`, `content`, `prompt`).
+
+Reference: `docs/API_CONTRACTS.md`.
