@@ -965,3 +965,35 @@ INFO (Monitor):
 ```
 
 Now let me create the database migration scripts and enhanced authentication service:
+
+---
+
+## RunAsh Chat Session Storage Rollout (Database-Backed)
+
+### Scope
+- New database tables: `runash_chat_sessions`, `runash_chat_session_messages`.
+- New repositories:
+  - `lib/repositories/sessions.ts`
+  - `lib/repositories/session-messages.ts`
+- Existing API contracts preserved for:
+  - `GET /api/sessions`
+  - `POST /api/sessions`
+  - `GET /api/sessions/recent`
+  - `GET /api/messages/session/:id`
+
+### Staged rollout with feature flag
+- **Flag:** `RUNASH_CHAT_DB_REPOSITORY_ENABLED`
+- **Default-safe behavior:** keep `RUNASH_CHAT_DB_REPOSITORY_ENABLED=false` to continue using the legacy filesystem path.
+- **Enable database path:** set `RUNASH_CHAT_DB_REPOSITORY_ENABLED=true` after migration is applied and verified.
+
+### Rollback guidance
+1. Set `RUNASH_CHAT_DB_REPOSITORY_ENABLED=false`.
+2. Redeploy API routes to immediately route reads/writes back to filesystem-backed storage.
+3. Keep migration tables in place during rollback to avoid destructive operations.
+4. Investigate and patch DB path issues, then re-enable the flag in staging first.
+
+### Risks and mitigation
+- **Risk:** unexpected DB latency or migration mismatch.
+  - **Mitigation:** use feature flag rollback and keep contracts unchanged.
+- **Risk:** session ordering regressions.
+  - **Mitigation:** indexed sort paths on `(user_id, updated_at)` and `(session_id, created_at)`.

@@ -6,12 +6,12 @@ type ApiError = {
 }
 
 export type RecentSessionDependencies = {
-  getMostRecentSession: () => RunashSession | null
+  getMostRecentSession: () => Promise<RunashSession | null>
 }
 
 export async function handleGetRecentSession(dependencies: RecentSessionDependencies) {
   try {
-    const session = dependencies.getMostRecentSession()
+    const session = await dependencies.getMostRecentSession()
 
     if (!session) {
       return Response.json(

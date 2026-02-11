@@ -1,24 +1,28 @@
 import fs from "fs"
 import path from "path"
 
+import {
+  createChatSession,
+  getMostRecentChatSession,
+  listChatSessions,
+  type ChatSession,
+} from "@/lib/repositories/sessions"
+import {
+  createChatSessionMessage,
+  listMessagesBySession,
+  type ChatSessionMessage,
+} from "@/lib/repositories/session-messages"
+
 const DATA_DIR = path.join(process.cwd(), "data")
 const SESSIONS_FILE = path.join(DATA_DIR, "sessions.json")
 const MESSAGES_FILE = path.join(DATA_DIR, "messages.json")
+const DEFAULT_USER_ID = "anonymous"
 
-export type RunashSession = {
-  id: string
-  title: string
-  created_at: string
-}
+const useDatabaseBackedChatStorage = process.env.RUNASH_CHAT_DB_REPOSITORY_ENABLED === "true"
 
-export type RunashSessionMessage = {
-  id: string | number
-  session_id: string
-  role: "assistant" | "user"
-  content: string
-  created_at?: string
-  message_type?: "text" | "product" | "recipe" | "tip" | "automation"
-}
+export type RunashSession = Pick<ChatSession, "id" | "title" | "created_at">
+
+export type RunashSessionMessage = ChatSessionMessage
 
 function ensureDataFile(filePath: string, initialValue: string) {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR)
@@ -41,12 +45,35 @@ function writeJsonFile<T>(filePath: string, value: T) {
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2))
 }
 
-export function listSessions(): RunashSession[] {
+function resolveUserId(userId?: string | null) {
+  const normalized = String(userId ?? "").trim()
+  return normalized || DEFAULT_USER_ID
+}
+
+function mapSession(session: ChatSession): RunashSession {
+  return {
+    id: session.id,
+    title: session.title,
+    created_at: session.created_at,
+  }
+}
+
+export async function listSessions(userId?: string): Promise<RunashSession[]> {
+  if (useDatabaseBackedChatStorage) {
+    const sessions = await listChatSessions(resolveUserId(userId))
+    return sessions.map(mapSession)
+  }
+
   return readJsonFile<RunashSession[]>(SESSIONS_FILE, [])
 }
 
-export function createSession(title = "Session"): RunashSession {
-  const sessions = listSessions()
+export async function createSession(title = "Session", userId?: string): Promise<RunashSession> {
+  if (useDatabaseBackedChatStorage) {
+    const session = await createChatSession(resolveUserId(userId), title)
+    return mapSession(session)
+  }
+
+  const sessions = await listSessions()
   const newSession: RunashSession = {
     id: `s-${Date.now()}`,
     title,
@@ -59,12 +86,21 @@ export function createSession(title = "Session"): RunashSession {
   return newSession
 }
 
-export function getMostRecentSession(): RunashSession | null {
-  const sessions = listSessions()
+export async function getMostRecentSession(userId?: string): Promise<RunashSession | null> {
+  if (useDatabaseBackedChatStorage) {
+    const session = await getMostRecentChatSession(resolveUserId(userId))
+    return session ? mapSession(session) : null
+  }
+
+  const sessions = await listSessions()
   return sessions[0] ?? null
 }
 
-export function listSessionMessages(sessionId: string, limit?: number): RunashSessionMessage[] {
+export async function listSessionMessages(sessionId: string, limit?: number): Promise<RunashSessionMessage[]> {
+  if (useDatabaseBackedChatStorage) {
+    return listMessagesBySession(String(sessionId), limit)
+  }
+
   const messages = readJsonFile<RunashSessionMessage[]>(MESSAGES_FILE, [])
   const normalizedSessionId = String(sessionId)
 
@@ -78,4 +114,30 @@ export function listSessionMessages(sessionId: string, limit?: number): RunashSe
 
   if (!limit || limit < 1) return filtered
   return filtered.slice(0, limit)
+}
+
+export async function createSessionMessage(
+  sessionId: string,
+  role: RunashSessionMessage["role"],
+  content: string,
+  messageType: RunashSessionMessage["message_type"] = "text",
+): Promise<RunashSessionMessage> {
+  if (useDatabaseBackedChatStorage) {
+    return createChatSessionMessage(sessionId, role, content, messageType)
+  }
+
+  const messages = readJsonFile<RunashSessionMessage[]>(MESSAGES_FILE, [])
+  const newMessage: RunashSessionMessage = {
+    id: Date.now(),
+    session_id: String(sessionId),
+    role,
+    content,
+    created_at: new Date().toISOString(),
+    message_type: messageType,
+  }
+
+  messages.unshift(newMessage)
+  writeJsonFile(MESSAGES_FILE, messages)
+
+  return newMessage
 }
