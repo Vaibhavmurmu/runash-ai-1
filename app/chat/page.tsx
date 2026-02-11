@@ -248,6 +248,7 @@ export default function RunAshChatPage() {
   }, [])
 
   useEffect(() => {
+ 
     try {
       window.localStorage.setItem("runash_chat_preferences", JSON.stringify(userPreferences))
     } catch {
@@ -256,6 +257,8 @@ export default function RunAshChatPage() {
   }, [userPreferences])
 
   useEffect(() => {
+
+
     ;(async () => {
       try {
         const response = await fetch("/api/sessions")
