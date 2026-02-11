@@ -150,6 +150,13 @@ Response payload includes:
 
 `GET /api/chat` requires an authenticated session and only returns chat history for streams owned by the current user.
 
+
+### Optional search integrations
+Set these environment variables to enable live product web search providers:
+- `EXA_API_KEY` for Exa neural web search
+- `RUNASH_MCP_SEARCH_ENDPOINT` for custom MCP-compatible search endpoint
+- `RUNASH_MCP_SEARCH_TOKEN` optional bearer token for MCP endpoint auth
+
 ## Validation commands
 ```bash
 npm run lint
