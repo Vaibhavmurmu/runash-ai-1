@@ -116,6 +116,14 @@ export interface DatabaseFilters {
   limit?: number
 }
 
+export interface ChatMessagesQuery {
+  streamId: string
+  userId: string
+  limit?: number
+  offset?: number
+  cursor?: string | null
+}
+
 export class DatabaseService {
   static async saveChatMessage(messageData: Omit<ChatMessage, "id">): Promise<ChatMessage> {
     const result = await sql`
@@ -139,13 +147,43 @@ export class DatabaseService {
     }
   }
 
-  static async getChatMessages(streamId: string, limit = 50, offset = 0): Promise<ChatMessage[]> {
-    const result = await sql`
-      SELECT * FROM chat_messages 
-      WHERE stream_id = ${streamId}
-      ORDER BY timestamp DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `
+  static async getChatMessages({
+    streamId,
+    userId,
+    limit = 50,
+    offset = 0,
+    cursor,
+  }: ChatMessagesQuery): Promise<ChatMessage[]> {
+    let cursorDate: Date | null = null
+
+    if (cursor) {
+      const parsedCursor = new Date(cursor)
+      if (!Number.isNaN(parsedCursor.getTime())) {
+        cursorDate = parsedCursor
+      }
+    }
+
+    const result =
+      cursorDate === null
+        ? await sql`
+            SELECT cm.*
+            FROM chat_messages cm
+            INNER JOIN streams s ON s.id = cm.stream_id
+            WHERE cm.stream_id = ${streamId}
+              AND s.user_id = ${userId}
+            ORDER BY cm.timestamp DESC
+            LIMIT ${limit} OFFSET ${offset}
+          `
+        : await sql`
+            SELECT cm.*
+            FROM chat_messages cm
+            INNER JOIN streams s ON s.id = cm.stream_id
+            WHERE cm.stream_id = ${streamId}
+              AND s.user_id = ${userId}
+              AND cm.timestamp < ${cursorDate.toISOString()}
+            ORDER BY cm.timestamp DESC
+            LIMIT ${limit} OFFSET ${offset}
+          `
 
     return result.map((row) => ({
       id: row.id,

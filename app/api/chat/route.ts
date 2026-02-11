@@ -8,6 +8,21 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 
 export const maxDuration = 30
 
+const DEFAULT_LIMIT = 50
+const MAX_LIMIT = 100
+const MAX_OFFSET = 10_000
+
+function parseBoundedInteger(value: string | null, fallback: number, min: number, max: number): number | null {
+  if (value === null) return fallback
+
+  const parsed = Number.parseInt(value, 10)
+  if (Number.isNaN(parsed) || parsed < min || parsed > max) {
+    return null
+  }
+
+  return parsed
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -51,10 +66,21 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions)
+
+    if (!session?.user?.id) {
+      return respondError(
+        request,
+        { code: "UNAUTHORIZED", message: "Unauthorized" },
+        { status: 401, legacy: { error: "Unauthorized" } },
+      )
+    }
+
     const { searchParams } = new URL(request.url)
     const streamId = searchParams.get("streamId")
-    const limit = Number.parseInt(searchParams.get("limit") || "50")
-    const offset = Number.parseInt(searchParams.get("offset") || "0")
+    const limit = parseBoundedInteger(searchParams.get("limit"), DEFAULT_LIMIT, 1, MAX_LIMIT)
+    const offset = parseBoundedInteger(searchParams.get("offset"), 0, 0, MAX_OFFSET)
+    const cursor = searchParams.get("cursor")
 
     if (!streamId) {
       return respondError(
@@ -64,17 +90,57 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const messages = await DatabaseService.getChatMessages(streamId, limit, offset)
+    if (limit === null || offset === null) {
+      return respondError(
+        request,
+        {
+          code: "INVALID_PAGINATION",
+          message: `Invalid pagination. limit must be 1-${MAX_LIMIT} and offset must be 0-${MAX_OFFSET}`,
+        },
+        {
+          status: 400,
+          legacy: { error: "Invalid pagination parameters" },
+        },
+      )
+    }
+
+    const messages = await DatabaseService.getChatMessages({
+      streamId,
+      userId: session.user.id,
+      limit,
+      offset,
+      cursor,
+    })
+
+    const nextOffset = offset + messages.length
+    const hasMore = messages.length === limit
+    const nextCursor = messages.length > 0 ? messages[messages.length - 1].timestamp.toISOString() : null
 
     return respondSuccess(
       request,
       {
         messages,
+        pagination: {
+          limit,
+          offset,
+          nextOffset,
+          hasMore,
+          cursor,
+          nextCursor,
+        },
       },
       {
         legacy: {
           success: true,
           messages,
+          pagination: {
+            limit,
+            offset,
+            nextOffset,
+            hasMore,
+            cursor,
+            nextCursor,
+          },
         },
       },
     )

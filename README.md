@@ -130,6 +130,22 @@ RunAsh AI combines live streaming, AI-assisted creation tooling, seller operatio
    ```
 5. Open `http://localhost:3000`.
 
+## Chat API (`/api/chat`)
+
+### `GET /api/chat`
+
+Query parameters:
+- `streamId` (required): stream identifier.
+- `limit` (optional): page size, integer between `1` and `100` (default `50`).
+- `offset` (optional): row offset, integer between `0` and `10000` (default `0`).
+- `cursor` (optional): ISO timestamp for cursor pagination; returns messages older than this timestamp.
+
+Response payload includes:
+- `messages`: chat messages sorted by `timestamp DESC`.
+- `pagination`: `{ limit, offset, nextOffset, hasMore, cursor, nextCursor }`.
+
+`GET /api/chat` requires an authenticated session and only returns chat history for streams owned by the current user.
+
 ## Validation commands
 ```bash
 npm run lint
