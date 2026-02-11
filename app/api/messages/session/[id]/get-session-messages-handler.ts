@@ -18,7 +18,7 @@ function getLimit(searchParams: URLSearchParams) {
 }
 
 export type SessionMessagesDependencies = {
-  listSessionMessages: (sessionId: string, limit?: number) => RunashSessionMessage[]
+  listSessionMessages: (sessionId: string, limit?: number) => Promise<RunashSessionMessage[]>
 }
 
 export async function handleGetSessionMessages(
@@ -59,7 +59,7 @@ export async function handleGetSessionMessages(
       )
     }
 
-    const messages = dependencies.listSessionMessages(sessionId, limit)
+    const messages = await dependencies.listSessionMessages(sessionId, limit)
 
     return Response.json({
       success: true,

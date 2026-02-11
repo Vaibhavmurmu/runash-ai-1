@@ -8,7 +8,7 @@ test("GET /api/messages/session/:id happy path returns frontend contract fields"
   let capturedLimit: number | undefined
 
   const response = await handleGetSessionMessages(new Request("http://localhost/api/messages/session/s-1?limit=2"), { id: "s-1" }, {
-    listSessionMessages: (sessionId, limit) => {
+    listSessionMessages: async (sessionId, limit) => {
       capturedSessionId = sessionId
       capturedLimit = limit
       return [
@@ -37,7 +37,7 @@ test("GET /api/messages/session/:id happy path returns frontend contract fields"
 
 test("GET /api/messages/session/:id empty state returns success with []", async () => {
   const response = await handleGetSessionMessages(new Request("http://localhost/api/messages/session/s-empty"), { id: "s-empty" }, {
-    listSessionMessages: () => [],
+    listSessionMessages: async () => [],
   })
 
   const payload = await response.json()
@@ -49,7 +49,7 @@ test("GET /api/messages/session/:id empty state returns success with []", async 
 
 test("GET /api/messages/session/:id rejects malformed query params and missing id", async () => {
   const missingIdResponse = await handleGetSessionMessages(new Request("http://localhost/api/messages/session/"), { id: "   " }, {
-    listSessionMessages: () => [],
+    listSessionMessages: async () => [],
   })
   const missingIdPayload = await missingIdResponse.json()
 
@@ -60,7 +60,7 @@ test("GET /api/messages/session/:id rejects malformed query params and missing i
     new Request("http://localhost/api/messages/session/s-1?limit=0"),
     { id: "s-1" },
     {
-      listSessionMessages: () => [],
+      listSessionMessages: async () => [],
     },
   )
   const malformedLimitPayload = await malformedLimitResponse.json()
