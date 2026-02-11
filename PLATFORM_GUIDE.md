@@ -437,3 +437,16 @@ Migration guidance:
 2. Read `requestId` for end-to-end tracing.
 3. Use `error.code` for programmatic handling instead of brittle message matching.
 4. Move payload reads to `data` while keeping legacy field fallbacks during rollout.
+
+---
+
+## API Reliability Contract (Chat & Session)
+
+For incident debugging and client consistency, chat/session APIs use a standard response envelope:
+
+- `success`
+- `data`
+- `error`
+- `requestId`
+
+See `docs/API_CONTRACTS.md` for request/response examples, streaming compatibility notes, and the endpoint error code catalog.

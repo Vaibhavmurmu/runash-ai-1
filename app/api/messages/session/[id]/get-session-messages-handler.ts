@@ -1,4 +1,7 @@
 import type { RunashSessionMessage } from "../../../../../lib/repositories/runash-chat"
+import { logApiEvent } from "../../../../../lib/api/logging"
+import { respondError, respondSuccess, resolveRequestId } from "../../../../../lib/api/response"
+import { z } from "zod"
 
 type ApiError = {
   code: string
@@ -8,14 +11,13 @@ type ApiError = {
 const DEFAULT_LIMIT = 4
 const MAX_LIMIT = 50
 
-function getLimit(searchParams: URLSearchParams) {
-  const rawLimit = searchParams.get("limit")
-  if (!rawLimit) return DEFAULT_LIMIT
+const sessionParamsSchema = z.object({
+  id: z.string().trim().min(1),
+})
 
-  const parsed = Number.parseInt(rawLimit, 10)
-  if (Number.isNaN(parsed) || parsed < 1) return null
-  return Math.min(parsed, MAX_LIMIT)
-}
+const sessionQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(MAX_LIMIT).default(DEFAULT_LIMIT),
+})
 
 export type SessionMessagesDependencies = {
   listSessionMessages: (sessionId: string, limit?: number) => Promise<RunashSessionMessage[]>
@@ -26,57 +28,73 @@ export async function handleGetSessionMessages(
   params: { id: string },
   dependencies: SessionMessagesDependencies,
 ) {
+  const requestId = resolveRequestId(request)
+
   try {
-    const sessionId = String(params?.id ?? "").trim()
-    if (!sessionId) {
-      return Response.json(
+    const parsedParams = sessionParamsSchema.safeParse(params)
+    if (!parsedParams.success) {
+      logApiEvent("warn", "session.messages.validation_failed", {
+        requestId,
+        route: "/api/messages/session/[id]",
+        method: "GET",
+        details: { reason: "missing_session_id" },
+      })
+
+      return respondError(
+        request,
         {
-          success: false,
-          data: null,
-          error: {
-            code: "SESSION_ID_REQUIRED",
-            message: "Session id is required",
-          } satisfies ApiError,
-        },
-        { status: 400 },
+          code: "SESSION_ID_REQUIRED",
+          message: "Session id is required",
+        } satisfies ApiError,
+        { status: 400, requestId },
       )
     }
 
     const url = new URL(request.url)
-    const limit = getLimit(url.searchParams)
+    const parsedQuery = sessionQuerySchema.safeParse({
+      limit: url.searchParams.get("limit") ?? DEFAULT_LIMIT,
+    })
 
-    if (limit === null) {
-      return Response.json(
+    if (!parsedQuery.success) {
+      return respondError(
+        request,
         {
-          success: false,
-          data: null,
-          error: {
-            code: "INVALID_LIMIT",
-            message: "limit must be a positive integer",
-          } satisfies ApiError,
-        },
-        { status: 400 },
+          code: "INVALID_LIMIT",
+          message: "limit must be a positive integer",
+        } satisfies ApiError,
+        { status: 400, requestId },
       )
     }
 
+    const { id: sessionId } = parsedParams.data
+    const { limit } = parsedQuery.data
+
     const messages = await dependencies.listSessionMessages(sessionId, limit)
 
-    return Response.json({
-      success: true,
-      data: messages,
-      error: null,
+    logApiEvent("info", "session.messages.fetch_success", {
+      requestId,
+      route: "/api/messages/session/[id]",
+      method: "GET",
+      details: { sessionId, limit, resultCount: messages.length },
     })
-  } catch {
-    return Response.json(
+
+    return respondSuccess(request, messages, { requestId })
+  } catch (error) {
+    logApiEvent("error", "session.messages.fetch_failed", {
+      requestId,
+      route: "/api/messages/session/[id]",
+      method: "GET",
+      details: {},
+      error,
+    })
+
+    return respondError(
+      request,
       {
-        success: false,
-        data: null,
-        error: {
-          code: "SESSION_MESSAGES_FETCH_FAILED",
-          message: "Unable to fetch session messages",
-        } satisfies ApiError,
-      },
-      { status: 500 },
+        code: "SESSION_MESSAGES_FETCH_FAILED",
+        message: "Unable to fetch session messages",
+      } satisfies ApiError,
+      { status: 500, requestId },
     )
   }
 }

@@ -1,12 +1,12 @@
-import { type NextRequest, NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
 
-export type ApiMeta = Record<string, unknown>
-
-export type ApiEnvelopeError = {
-  code: string
-  message: string
-  details?: unknown
-}
+import {
+  respondError as respondErrorBase,
+  respondSuccess as respondSuccessBase,
+  resolveRequestId,
+  type ApiEnvelopeError,
+  type ApiMeta,
+} from "@/lib/api/response"
 
 export type ApiSuccessEnvelope<T> = {
   success: true
@@ -28,38 +28,11 @@ type EnvelopeOptions = {
   status?: number
   meta?: ApiMeta
   legacy?: Record<string, unknown>
-}
-
-function sanitizeLegacy(legacy?: Record<string, unknown>) {
-  if (!legacy) {
-    return {}
-  }
-
-  const { success, data, error, requestId, meta, ...safeLegacy } = legacy
-  void success
-  void data
-  void error
-  void requestId
-  void meta
-
-  return safeLegacy
-}
-
-export function resolveRequestId(request: NextRequest) {
-  return request.headers.get("x-request-id") || request.headers.get("x-correlation-id") || crypto.randomUUID()
+  requestId?: string
 }
 
 export function respondSuccess<T>(request: NextRequest, data: T, options: EnvelopeOptions = {}) {
-  const requestId = resolveRequestId(request)
-  const envelope: ApiSuccessEnvelope<T> = {
-    success: true,
-    data,
-    error: null,
-    requestId,
-    ...(options.meta ? { meta: options.meta } : {}),
-  }
-
-  return NextResponse.json({ ...envelope, ...sanitizeLegacy(options.legacy) }, { status: options.status ?? 200 })
+  return respondSuccessBase(request, data, options)
 }
 
 export function respondError(
@@ -67,14 +40,5 @@ export function respondError(
   error: ApiEnvelopeError,
   options: EnvelopeOptions = {},
 ) {
-  const requestId = resolveRequestId(request)
-  const envelope: ApiErrorEnvelope = {
-    success: false,
-    data: null,
-    error,
-    requestId,
-    ...(options.meta ? { meta: options.meta } : {}),
-  }
-
-  return NextResponse.json({ ...envelope, ...sanitizeLegacy(options.legacy) }, { status: options.status ?? 500 })
+  return respondErrorBase(request, error, options)
 }

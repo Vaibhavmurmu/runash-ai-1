@@ -4,7 +4,7 @@ import test from "node:test"
 import { handleGetRecentSession } from "./get-recent-session-handler.ts"
 
 test("GET /api/sessions/recent returns latest session in happy path", async () => {
-  const response = await handleGetRecentSession({
+  const response = await handleGetRecentSession(new Request("http://localhost/api/sessions/recent"), {
     getMostRecentSession: async () => ({
       id: "s-100",
       title: "Latest",
@@ -16,11 +16,12 @@ test("GET /api/sessions/recent returns latest session in happy path", async () =
 
   assert.equal(response.status, 200)
   assert.equal(payload.success, true)
+  assert.equal(typeof payload.requestId, "string")
   assert.equal(payload.data.id, "s-100")
 })
 
 test("GET /api/sessions/recent empty state returns 404", async () => {
-  const response = await handleGetRecentSession({
+  const response = await handleGetRecentSession(new Request("http://localhost/api/sessions/recent"), {
     getMostRecentSession: async () => null,
   })
 
@@ -28,5 +29,6 @@ test("GET /api/sessions/recent empty state returns 404", async () => {
 
   assert.equal(response.status, 404)
   assert.equal(payload.success, false)
+  assert.equal(typeof payload.requestId, "string")
   assert.equal(payload.error.code, "SESSION_NOT_FOUND")
 })
