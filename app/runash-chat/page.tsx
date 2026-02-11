@@ -47,9 +47,10 @@ type ChatQuickPrompt = {
 
 export default function RunashChatPage() {
   const router = useRouter()
-  const [sessionId, setSessionId] = useState<number | null>(null)
+  const [sessionId, setSessionId] = useState<string | null>(null)
   const [messagesPreview, setMessagesPreview] = useState<ChatPreviewMessage[]>([])
   const [loadingSession, setLoadingSession] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
   const [prompt, setPrompt] = useState("")
   const [products, setProducts] = useState<ChatProduct[]>([])
   const [agents, setAgents] = useState<LiveAgent[]>([])
@@ -82,21 +83,31 @@ export default function RunashChatPage() {
     // load recent session and preview messages
     (async () => {
       setLoadingSession(true)
+      setPreviewError(null)
       try {
         const res = await fetch("/api/sessions/recent")
-        if (!res.ok) throw new Error("no recent session")
-        const data = await res.json()
-        if (data?.id) {
-          setSessionId(data.id)
-          const msgs = await fetch(`/api/messages/session/${data.id}?limit=4`)
+        const payload = await res.json()
+        if (!res.ok || !payload?.success || !payload?.data?.id) {
+          throw new Error(payload?.error?.message || "No recent session")
+        }
+
+        const recentSession = payload.data
+        setSessionId(String(recentSession.id))
+
+        if (recentSession?.id) {
+          const msgs = await fetch(`/api/messages/session/${recentSession.id}?limit=4`)
           if (msgs.ok) {
-            const jl = await msgs.json()
-            const preview = Array.isArray(jl) ? (jl as ChatPreviewMessage[]) : []
+            const messagePayload = await msgs.json()
+            const preview = Array.isArray(messagePayload?.data) ? (messagePayload.data as ChatPreviewMessage[]) : []
             setMessagesPreview(preview)
+          } else {
+            const messagePayload = await msgs.json().catch(() => null)
+            setPreviewError(messagePayload?.error?.message || "Unable to load message preview")
           }
         }
-      } catch (e) {
-        // ignore - will create on start
+      } catch (error) {
+        setPreviewError(error instanceof Error ? error.message : "Unable to load chat preview")
+        setMessagesPreview([])
       } finally {
         setLoadingSession(false)
       }
@@ -153,7 +164,7 @@ export default function RunashChatPage() {
         if (!sid) {
           const res = await fetch("/api/sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "Live Agent" }) })
           const created = await res.json()
-          sid = created?.id
+          sid = created?.id ? String(created.id) : null
           setSessionId(sid ?? null)
         }
 
@@ -286,7 +297,8 @@ export default function RunashChatPage() {
             <ScrollArea className="max-h-64 rounded-md border p-3">
               <div className="space-y-2">
                 {loadingSession && <div className="text-sm text-gray-500">Loading preview...</div>}
-                {!loadingSession && messagesPreview.length === 0 && <div className="text-sm text-gray-600">No messages yet — start a session to see previews</div>}
+                {!loadingSession && !previewError && messagesPreview.length === 0 && <div className="text-sm text-gray-600">No messages yet — start a session to see previews</div>}
+                {!loadingSession && previewError && <div className="text-sm text-amber-700 dark:text-amber-400">{previewError}</div>}
                 {messagesPreview.map((m) => (
                   <div key={m.id} className={`rounded-md border p-2 text-xs ${m.role === "user" ? "bg-orange-50 dark:bg-gray-900" : "bg-white dark:bg-gray-900"}`}>
                     <div className="mb-1 flex items-center justify-between">
