@@ -1055,3 +1055,10 @@ To improve payment auditability and reduce per-endpoint variance, payment-facing
 - **Risk:** consumers tightly coupled to old root-level response keys may fail if they assume exclusive shape.
 - **Mitigation:** dual-field compatibility during migration + phased client rollout.
 - **Rollback:** route callers back to non-versioned endpoints and keep legacy parsing paths enabled until parity checks pass.
+
+## Agentic payment-flow guardrails
+
+For agent-assisted workflows:
+- Payment-impacting actions are not auto-executed.
+- Actions enter an auditable approval path in `/api/agents/actions`.
+- Rollback path: disable `RUNASH_AGENT_CHAT_ENABLED` to immediately stop new agent actions while preserving existing payment APIs.

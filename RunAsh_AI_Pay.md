@@ -136,3 +136,9 @@ The stabilized payment contract is exposed under `/api/v1/payment/*` where suppo
 - Use `requestId` for reconciliation and support diagnostics.
 - Use `error.code` for deterministic retry/UX logic.
 - Continue accepting legacy fields during transition; remove fallbacks only after rollout verification.
+
+## Agent action safety integration
+
+RunAsh agent orchestration now treats payment/account-impacting intents as high-risk actions. These actions are recorded in action audit records and require explicit user confirmation (`confirmedByUser=true`) before approval.
+
+This preserves backward-compatible payment contracts while adding an approval gate at the orchestration layer.

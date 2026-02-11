@@ -3,6 +3,7 @@ export interface ChatMessage {
   content: string
   role: "user" | "assistant"
   timestamp: Date
+  status?: "queued" | "streaming" | "tool-running" | "completed" | "failed"
   type?: "text" | "product" | "recipe" | "tip" | "automation"
   metadata?: {
     products?: Product[]

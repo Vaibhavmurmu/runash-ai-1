@@ -311,3 +311,13 @@ No explicit inline review comment thread was included in the task payload. To ad
 7. Add performance/scalability controls: caching for frequent tool lookups, queue for long-running tools, and bounded concurrency limits.
 8. Validate with `npm run lint`, `npm run build`, and targeted chat/API test suites before staged rollout.
 :::
+
+## Agent orchestration rollout plan
+
+- Feature flag: `RUNASH_AGENT_CHAT_ENABLED` controls `/api/agents/*` activation.
+- Rollout sequence: internal users -> beta cohort -> GA.
+- Rollback: set flag to `false`, drain queued tool jobs, and continue serving existing non-agent chat routes.
+- SLO monitoring targets:
+  - error rate
+  - first-token latency
+  - tool failure rate

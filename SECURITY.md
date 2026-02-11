@@ -37,3 +37,10 @@ Chat/session handlers now emit structured logs with request correlation IDs and 
 Sensitive auth/payment/chat keys are redacted before logs are written (for example: `password`, `token`, `authorization`, `payment`, `card`, `cvv`, `otp`, `message`, `content`, `prompt`).
 
 Reference: `docs/API_CONTRACTS.md`.
+
+## Agent orchestration security controls
+
+- Prompt-injection screening rejects obvious jailbreak patterns before model execution.
+- Tool/audit payloads redact secrets and payment-like identifiers before persistence/logging.
+- High-risk actions (payment/account-impacting operations) require explicit user confirmation via `/api/agents/actions`.
+- Agent transcript/tool records use retention pruning (`RUNASH_AGENT_RETENTION_DAYS`, default 30 days) for PII minimization.
