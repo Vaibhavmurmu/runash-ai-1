@@ -1035,3 +1035,23 @@ This comprehensive plan provides RunAsh Pay with a roadmap to establish itself a
 - Compliance/Legal: $20K - $50K
 - Testing/QA: $20K - $40K
 - Security/Audits: $10K - $60K
+
+## Compatibility & Migration Notes (Envelope Standard)
+
+To improve payment auditability and reduce per-endpoint variance, payment-facing API responses are converging on a common envelope contract:
+
+- `success`
+- `data`
+- `error`
+- `requestId`
+- optional `meta`
+
+### Current policy
+- `/api/v1/*` is the preferred stabilized namespace for external clients.
+- Existing non-versioned endpoints remain active for backward compatibility.
+- Legacy response fields may be emitted in parallel during transition to reduce integration risk.
+
+### Risk and rollback
+- **Risk:** consumers tightly coupled to old root-level response keys may fail if they assume exclusive shape.
+- **Mitigation:** dual-field compatibility during migration + phased client rollout.
+- **Rollback:** route callers back to non-versioned endpoints and keep legacy parsing paths enabled until parity checks pass.
