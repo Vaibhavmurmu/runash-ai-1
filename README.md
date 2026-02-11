@@ -115,7 +115,11 @@ RunAsh AI combines live streaming, AI-assisted creation tooling, seller operatio
 - Seller business configuration is now API-backed (`GET/PUT /api/seller/settings`) for persisted operations.
 - Payout tab is API-backed (`GET /api/seller/payouts`) with settlement summaries and weekly history.
 - Inventory supports inline stock edits and guarded deletes for production workflows.
-- RunAsh Chat landing (`/runash-chat`) now includes an enhanced mini preview with quick agentic commerce/payment prompts that deep-link into full chat session continuity.
+- RunAsh Chat landing (`/runash-chat`) includes an enhanced mini preview with quick agentic commerce/payment prompts, with session continuity dependent on `GET /api/sessions/recent` and `GET /api/messages/session/:id` being available.
+
+### Current limitations (RunAsh Chat preview)
+- If either preview dependency endpoint (`/api/sessions/recent` or `/api/messages/session/:id`) is unavailable in a target deployment, the mini preview falls back to an error or empty state while users can still continue into `/chat`.
+- Preview reliability and roadmap milestones are tracked in [`docs/PRODUCTION_READINESS_AND_AGENTIC_PLAN.md`](docs/PRODUCTION_READINESS_AND_AGENTIC_PLAN.md).
 
 ## Quickstart
 1. Clone repository.
@@ -169,6 +173,7 @@ npm run build
 - [DRIZZLE_ORM.md](DRIZZLE_ORM.md)
 - [RunAsh_AI_Pay.md](RunAsh_AI_Pay.md)
 - [RUNASH_PAY_BUSINESS_IMPLEMENTATION.md](RUNASH_PAY_BUSINESS_IMPLEMENTATION.md)
+- [docs/PRODUCTION_READINESS_AND_AGENTIC_PLAN.md](docs/PRODUCTION_READINESS_AND_AGENTIC_PLAN.md)
 
 ## Contribution
 1. Create a focused branch.
