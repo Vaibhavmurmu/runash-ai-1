@@ -43,12 +43,56 @@ export default function RunAshChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const [userPreferences, setUserPreferences] = useState<UserPreferences>({
-    dietaryRestrictions: [],
-    sustainabilityPriority: "medium",
-    budgetRange: [0, 100],
-    preferredCategories: [],
-    cookingSkillLevel: "intermediate",
+  const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => {
+    if (typeof window === "undefined") {
+      return {
+        dietaryRestrictions: [],
+        sustainabilityPriority: "medium",
+        budgetRange: [0, 100],
+        preferredCategories: [],
+        cookingSkillLevel: "intermediate",
+      }
+    }
+
+    try {
+      const stored = window.localStorage.getItem("runash_chat_preferences")
+      if (!stored) {
+        return {
+          dietaryRestrictions: [],
+          sustainabilityPriority: "medium",
+          budgetRange: [0, 100],
+          preferredCategories: [],
+          cookingSkillLevel: "intermediate",
+        }
+      }
+
+      const parsed = JSON.parse(stored) as Partial<UserPreferences>
+      return {
+        dietaryRestrictions: Array.isArray(parsed.dietaryRestrictions) ? parsed.dietaryRestrictions : [],
+        sustainabilityPriority:
+          parsed.sustainabilityPriority === "low" || parsed.sustainabilityPriority === "high"
+            ? parsed.sustainabilityPriority
+            : "medium",
+        budgetRange:
+          Array.isArray(parsed.budgetRange) && parsed.budgetRange.length === 2
+            ? [Number(parsed.budgetRange[0]) || 0, Number(parsed.budgetRange[1]) || 100]
+            : [0, 100],
+        preferredCategories: Array.isArray(parsed.preferredCategories) ? parsed.preferredCategories : [],
+        cookingSkillLevel:
+          parsed.cookingSkillLevel === "beginner" || parsed.cookingSkillLevel === "advanced"
+            ? parsed.cookingSkillLevel
+            : "intermediate",
+        businessType: parsed.businessType,
+      }
+    } catch {
+      return {
+        dietaryRestrictions: [],
+        sustainabilityPriority: "medium",
+        budgetRange: [0, 100],
+        preferredCategories: [],
+        cookingSkillLevel: "intermediate",
+      }
+    }
   })
 
   const [voiceEnabled, setVoiceEnabled] = useState(false)
@@ -204,6 +248,17 @@ export default function RunAshChatPage() {
   }, [])
 
   useEffect(() => {
+ 
+    try {
+      window.localStorage.setItem("runash_chat_preferences", JSON.stringify(userPreferences))
+    } catch {
+      // ignore storage errors
+    }
+  }, [userPreferences])
+
+  useEffect(() => {
+
+
     ;(async () => {
       try {
         const response = await fetch("/api/sessions")
