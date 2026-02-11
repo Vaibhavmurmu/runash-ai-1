@@ -17,14 +17,14 @@
 ## 2) Four Concrete Fix Tasks Identified
 
 ### Task A — Typo Fix (high-confidence)
-**Issue:** Repository file appears to have a likely typo in extension: `lib/repositories/products.ys`.
+**Issue:** Product repository module should be `lib/repositories/products.ts` to align with TypeScript module resolution.
 
 **Why it matters:**
 - Multiple components import from `@/lib/repositories/products`, which conventionally resolves to `products.ts` or `products/index.ts`.
 - A `.ys` extension can break module resolution, type checking, and runtime imports.
 
 **Proposed fix task:**
-1. Rename `lib/repositories/products.ys` → `lib/repositories/products.ts`.
+1. Ensure `lib/repositories/products.ts` is used for this repository module.
 2. Run `npm run lint` and `npm run build`.
 3. Verify product pages/API routes compile and import cleanly.
 
@@ -246,8 +246,8 @@ No explicit inline review comment thread was included in the task payload. To ad
 
 ### 8.1 Fix typo blocking repository import resolution
 
-:::task-stub{title="Rename mistyped repository module products.ys to products.ts"}
-1. In `lib/repositories/`, rename `products.ys` to `products.ts`.
+:::task-stub{title="Standardize repository module filename to products.ts"}
+1. In `lib/repositories/`, verify `products.ts` is present and used by imports.
 2. Search imports using `@/lib/repositories/products` and confirm no file-extension-specific imports exist.
 3. Verify all exports in the renamed file are unchanged (`Product`, `listProducts`, `getProduct`, `createProduct`, `updateProduct`, `deleteProduct`) to preserve API compatibility.
 4. Run `npm run lint` and `npm run build`.
