@@ -147,3 +147,51 @@ Sensitive payload fields in auth/payment/chat context are redacted before loggin
 ### `POST /api/agents/feedback`
 - Auth required.
 - Accepts quality/safety signals with bounded score (`1-5`).
+
+## Grocery APIs (`/api/grocery/*`)
+
+### Product Catalog
+
+#### `GET /api/grocery/products`
+Supports filtering and pagination query params:
+- `category`, `search`, `organic`/`isOrganic`, `locallySourced`/`isFreshProduce`
+- `minPrice`, `maxPrice`, `sortBy` (`name|price|rating`), `sortOrder` (`asc|desc`)
+- `page`, `limit`, `format=chat`
+
+Response fields remain backward-compatible with prior catalog responses (`products`, `totalProducts`, `totalPages`, `currentPage`, `categories`, `filters`).
+
+#### `POST /api/grocery/products`
+- **Mode 1 (legacy compatibility):** `{ "productId": "<id>", "quantity": 1 }` adds to the caller cart.
+- **Mode 2 (new product create):** requires auth (`x-user-id`) and role `admin`/`seller` via `x-user-role`; validates product payload.
+
+#### `GET /api/grocery/products/:id`
+Returns one product by id.
+
+#### `PATCH|PUT /api/grocery/products/:id`
+Requires auth + role `admin`/`seller`. Validates partial payload and updates the record.
+
+#### `DELETE /api/grocery/products/:id`
+Requires auth + role `admin`/`seller`. Deletes a product.
+
+### Cart APIs
+
+All cart routes require `x-user-id`.
+
+#### `GET /api/grocery/cart`
+Lists cart items with product snapshots and derived subtotal.
+
+#### `POST /api/grocery/cart/add`
+Adds quantity to an existing item (or inserts one). Enforces inventory and product order limits atomically.
+
+#### `PATCH /api/grocery/cart/:productId`
+Sets quantity for a product in cart. Enforces inventory/order limits atomically.
+
+#### `DELETE /api/grocery/cart/:productId`
+Removes the product from the user cart.
+
+### Grocery migration notes
+
+- Cart storage moved from in-memory placeholder behavior to database-backed records in `grocery_cart_items`.
+- Existing product list response shape is preserved.
+- Legacy `POST /api/grocery/products` add-to-cart payload is still accepted for backward compatibility.
+- Apply DB migration script: `scripts/012-grocery-cart-schema.sql` before using new cart endpoints in production.
