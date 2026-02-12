@@ -3,13 +3,23 @@ export interface ChatMessage {
   content: string
   role: "user" | "assistant"
   timestamp: Date
+  status?: "queued" | "streaming" | "tool-running" | "completed" | "failed"
   type?: "text" | "product" | "recipe" | "tip" | "automation"
   metadata?: {
     products?: Product[]
     recipes?: Recipe[]
     tips?: SustainabilityTip[]
     automationSuggestions?: AutomationSuggestion[]
+    searchResults?: SearchResult[]
   }
+}
+
+export interface SearchResult {
+  id: string
+  title: string
+  snippet: string
+  url: string
+  source: "exa" | "mcp" | "fallback"
 }
 
 export interface Product {
@@ -21,6 +31,10 @@ export interface Product {
   isOrganic: boolean
   sustainabilityScore: number
   image: string
+  arModelUrl?: string
+  imageHd?: string
+  imageThumb?: string
+  imageAlt?: string
   inStock: boolean
   certifications: string[]
   nutritionalInfo?: NutritionalInfo
@@ -39,6 +53,9 @@ export interface Recipe {
   ingredients: Ingredient[]
   instructions: string[]
   image: string
+  imageHd?: string
+  imageThumb?: string
+  imageAlt?: string
   tags: string[]
   sustainabilityScore: number
   nutritionalInfo: NutritionalInfo
@@ -123,5 +140,5 @@ export interface QuickAction {
   label: string
   icon: string
   action: () => void
-  category: "product" | "recipe" | "tip" | "automation"
+  category: "product" | "recipe" | "tip" | "automation" | "search"
 }

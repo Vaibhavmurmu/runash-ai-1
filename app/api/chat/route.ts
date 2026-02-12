@@ -1,23 +1,70 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { type NextRequest } from "next/server"
 import { getServerSession } from "next-auth"
-import { DatabaseService } from "@/lib/database"
-import { authOptions } from "@/lib/auth"
+import { DatabaseService } from "../../../lib/database"
+import { authOptions } from "../../../lib/auth"
 import { openai } from "@ai-sdk/openai"
 import { streamText } from "ai"
+import { z } from "zod"
+import { respondError, respondSuccess } from "../../../lib/api/envelope"
+import { logApiEvent } from "../../../lib/api/logging"
+import { resolveRequestId } from "../../../lib/api/response"
+import { handleGetChat } from "./get-chat-handler"
 
 export const maxDuration = 30
 
+const chatPostSchema = z.object({
+  messages: z
+    .array(
+      z
+        .object({
+          role: z.string().min(1),
+          content: z.unknown(),
+        })
+        .passthrough(),
+    )
+    .min(1)
+    .max(100),
+  context: z.enum(["grocery", "streaming"]).optional(),
+})
+
 export async function POST(request: NextRequest) {
+  const requestId = resolveRequestId(request)
+
   try {
     const session = await getServerSession(authOptions)
 
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return respondError(
+        request,
+        { code: "UNAUTHORIZED", message: "Unauthorized" },
+        { status: 401, legacy: { error: "Unauthorized" }, requestId },
+      )
     }
 
-    const { messages, context } = await request.json()
+    const body = await request.json()
+    const validation = chatPostSchema.safeParse(body)
 
-    // Add context-aware system prompt based on the chat context
+    if (!validation.success) {
+      logApiEvent("warn", "chat.post.validation_failed", {
+        requestId,
+        route: "/api/chat",
+        method: "POST",
+        userId: session.user.id,
+        details: {
+          issues: validation.error.issues,
+          body,
+        },
+      })
+
+      return respondError(
+        request,
+        { code: "INVALID_REQUEST", message: "Invalid chat payload", details: validation.error.flatten() },
+        { status: 400, legacy: { error: "Invalid chat payload" }, requestId },
+      )
+    }
+
+    const { messages, context } = validation.data
+
     let systemPrompt = `You are RunAsh AI, a helpful assistant for the RunAsh platform. You help users with live streaming, grocery shopping, and platform features.`
 
     if (context === "grocery") {
@@ -34,32 +81,51 @@ export async function POST(request: NextRequest) {
       maxTokens: 1000,
     })
 
-    return result.toDataStreamResponse()
+    logApiEvent("info", "chat.post.stream_started", {
+      requestId,
+      route: "/api/chat",
+      method: "POST",
+      userId: session.user.id,
+      details: { context, messageCount: messages.length },
+    })
+
+    return result.toDataStreamResponse({ headers: { "x-request-id": requestId } })
   } catch (error) {
-    console.error("Chat API error:", error)
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
+    logApiEvent("error", "chat.post.failed", {
+      requestId,
+      route: "/api/chat",
+      method: "POST",
+      details: {},
+      error,
+    })
+
+    return respondError(
+      request,
+      { code: "INTERNAL_ERROR", message: "Internal Server Error" },
+      { status: 500, legacy: { error: "Internal Server Error" }, requestId },
+    )
   }
 }
 
 export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const streamId = searchParams.get("streamId")
-    const limit = Number.parseInt(searchParams.get("limit") || "50")
-    const offset = Number.parseInt(searchParams.get("offset") || "0")
+  const requestId = resolveRequestId(request)
 
-    if (!streamId) {
-      return NextResponse.json({ error: "Stream ID required" }, { status: 400 })
-    }
-
-    const messages = await DatabaseService.getChatMessages(streamId, limit, offset)
-
-    return NextResponse.json({
-      success: true,
-      messages,
-    })
-  } catch (error) {
-    console.error("Get chat messages error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
-  }
+  return handleGetChat(request, {
+    requestId,
+    logEvent: (level, event, details) => {
+      logApiEvent(level, event, {
+        requestId,
+        route: "/api/chat",
+        method: "GET",
+        details,
+      })
+    },
+    getSessionUserId: async () => {
+      const session = await getServerSession(authOptions)
+      return session?.user?.id ?? null
+    },
+    getChatMessages: DatabaseService.getChatMessages,
+    respondError: (error, options) => respondError(request, error, { ...options, requestId }),
+    respondSuccess: (data, options) => respondSuccess(request, data, { ...options, requestId }),
+  })
 }

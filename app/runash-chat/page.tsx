@@ -7,39 +7,107 @@ import ProductCarousel from "@/components/home/products-carousel"
 import AgentCard from "@/components/home/agent-card"
 import CTASection from "@/components/home/cta-section"
 import { Card } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import ChatMessageComponent from "@/components/chat/chat-message"
-import { Bot, Leaf, Sparkles } from "lucide-react"
+import { Bot, CreditCard, Leaf, PackageSearch, ShieldCheck, ShoppingCart, Sparkles } from "lucide-react"
+
+type ChatPreviewMessage = {
+  id: string | number
+  role: "assistant" | "user"
+  content: string
+  created_at?: string
+  message_type?: "text" | "product" | "recipe" | "tip" | "automation"
+}
+
+type ChatProduct = {
+  id: string
+  name: string
+  price: number
+  image: string
+  sustainability_score: number
+}
+
+type LiveAgent = {
+  id: string
+  name: string
+  tagline: string
+  avatar: string
+  online: boolean
+}
+
+type ChatQuickPrompt = {
+  id: string
+  label: string
+  description: string
+  prompt: string
+  icon: React.ComponentType<{ className?: string }>
+}
 
 export default function RunashChatPage() {
   const router = useRouter()
-  const [sessionId, setSessionId] = useState<number | null>(null)
-  const [messagesPreview, setMessagesPreview] = useState<any[]>([])
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [messagesPreview, setMessagesPreview] = useState<ChatPreviewMessage[]>([])
   const [loadingSession, setLoadingSession] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
   const [prompt, setPrompt] = useState("")
-  const [products, setProducts] = useState<any[]>([])
-  const [agents, setAgents] = useState<any[]>([])
+  const [products, setProducts] = useState<ChatProduct[]>([])
+  const [agents, setAgents] = useState<LiveAgent[]>([])
+
+  const quickPrompts: ChatQuickPrompt[] = [
+    {
+      id: "bundle",
+      label: "Build Bundle",
+      description: "Create high-conversion bundles with upsells",
+      prompt: "Create a high-converting organic breakfast bundle and suggest two upsells under $30.",
+      icon: ShoppingCart,
+    },
+    {
+      id: "checkout",
+      label: "Checkout Assist",
+      description: "Guide payment and reduce checkout drop-off",
+      prompt: "Act as checkout assistant and help complete a secure payment with cart summary and next steps.",
+      icon: CreditCard,
+    },
+    {
+      id: "order-followup",
+      label: "Post-Purchase",
+      description: "Handle order updates and support questions",
+      prompt: "Handle a post-purchase support request: order tracking, ETA, and return options.",
+      icon: PackageSearch,
+    },
+  ]
 
   useEffect(() => {
     // load recent session and preview messages
     (async () => {
       setLoadingSession(true)
+      setPreviewError(null)
       try {
         const res = await fetch("/api/sessions/recent")
-        if (!res.ok) throw new Error("no recent session")
-        const data = await res.json()
-        if (data?.id) {
-          setSessionId(data.id)
-          const msgs = await fetch(`/api/messages/session/${data.id}?limit=4`)
+        const payload = await res.json()
+        if (!res.ok || !payload?.success || !payload?.data?.id) {
+          throw new Error(payload?.error?.message || "No recent session")
+        }
+
+        const recentSession = payload.data
+        setSessionId(String(recentSession.id))
+
+        if (recentSession?.id) {
+          const msgs = await fetch(`/api/messages/session/${recentSession.id}?limit=4`)
           if (msgs.ok) {
-            const jl = await msgs.json()
-            setMessagesPreview(Array.isArray(jl) ? jl : [])
+            const messagePayload = await msgs.json()
+            const preview = Array.isArray(messagePayload?.data) ? (messagePayload.data as ChatPreviewMessage[]) : []
+            setMessagesPreview(preview)
+          } else {
+            const messagePayload = await msgs.json().catch(() => null)
+            setPreviewError(messagePayload?.error?.message || "Unable to load message preview")
           }
         }
-      } catch (e) {
-        // ignore - will create on start
+      } catch (error) {
+        setPreviewError(error instanceof Error ? error.message : "Unable to load chat preview")
+        setMessagesPreview([])
       } finally {
         setLoadingSession(false)
       }
@@ -96,13 +164,16 @@ export default function RunashChatPage() {
         if (!sid) {
           const res = await fetch("/api/sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "Live Agent" }) })
           const created = await res.json()
-          sid = created?.id
+          sid = created?.id ? String(created.id) : null
           setSessionId(sid ?? null)
         }
 
         if (initialPrompt) {
           // store in localStorage so chat page picks it up and sends immediately
-          localStorage.setItem("runash_initial_prompt", initialPrompt)
+          const cleanPrompt = initialPrompt.trim()
+          if (cleanPrompt) {
+            localStorage.setItem("runash_initial_prompt", cleanPrompt)
+          }
         }
 
         if (sid) {
@@ -116,6 +187,23 @@ export default function RunashChatPage() {
         router.push("/chat")
       }
     })()
+  }
+
+  const relativeTime = (timestamp?: string) => {
+    if (!timestamp) return "just now"
+
+    const delta = Date.now() - new Date(timestamp).getTime()
+    if (Number.isNaN(delta)) return "just now"
+
+    const minutes = Math.max(Math.round(delta / 60000), 0)
+    if (minutes < 1) return "now"
+    if (minutes < 60) return `${minutes}m ago`
+
+    const hours = Math.round(minutes / 60)
+    if (hours < 24) return `${hours}h ago`
+
+    const days = Math.round(hours / 24)
+    return `${days}d ago`
   }
 
   return (
@@ -185,34 +273,79 @@ export default function RunashChatPage() {
 
         <aside className="space-y-6">
           <Card className="p-4">
-            <h4 className="font-semibold mb-2">Mini Chat Preview</h4>
-            <div className="text-xs text-gray-500 mb-3">Recent conversation (click Continue to open full chat)</div>
-            <ScrollArea className="max-h-64">
-              <div className="space-y-3">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h4 className="font-semibold">Mini Chat Preview</h4>
+                <div className="text-xs text-gray-500">ChatGPT-style continuity for commerce and payment journeys.</div>
+              </div>
+              <Badge variant="secondary" className="whitespace-nowrap">
+                {sessionId ? `Session #${sessionId}` : "New session"}
+              </Badge>
+            </div>
+
+            <div className="mb-3 grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-md border bg-orange-50 p-2 dark:bg-gray-900">
+                <div className="font-medium text-orange-700 dark:text-orange-400">Messages</div>
+                <div className="text-gray-600 dark:text-gray-400">{messagesPreview.length || 0} in preview</div>
+              </div>
+              <div className="rounded-md border bg-green-50 p-2 dark:bg-gray-900">
+                <div className="font-medium text-green-700 dark:text-green-400">Agent mode</div>
+                <div className="text-gray-600 dark:text-gray-400">Commerce + payment</div>
+              </div>
+            </div>
+
+            <ScrollArea className="max-h-64 rounded-md border p-3">
+              <div className="space-y-2">
                 {loadingSession && <div className="text-sm text-gray-500">Loading preview...</div>}
-                {!loadingSession && messagesPreview.length === 0 && <div className="text-sm text-gray-600">No messages yet — start a session to see previews</div>}
-                {messagesPreview.map((m: any) => (
-                  <ChatMessageComponent
-                    key={m.id}
-                    message={{
-                      id: String(m.id),
-                      role: m.role,
-                      content: m.content,
-                      timestamp: m.created_at ? new Date(m.created_at) : new Date(),
-                      type: m.message_type ?? "text",
-                    }}
-                  />
+                {!loadingSession && !previewError && messagesPreview.length === 0 && <div className="text-sm text-gray-600">No messages yet — start a session to see previews</div>}
+                {!loadingSession && previewError && <div className="text-sm text-amber-700 dark:text-amber-400">{previewError}</div>}
+                {messagesPreview.map((m) => (
+                  <div key={m.id} className={`rounded-md border p-2 text-xs ${m.role === "user" ? "bg-orange-50 dark:bg-gray-900" : "bg-white dark:bg-gray-900"}`}>
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className={`font-medium ${m.role === "assistant" ? "text-orange-700 dark:text-orange-400" : "text-gray-700 dark:text-gray-200"}`}>
+                        {m.role === "assistant" ? "RunAsh Agent" : "You"}
+                      </span>
+                      <span className="text-[11px] text-gray-500">{relativeTime(m.created_at)}</span>
+                    </div>
+                    <p className="line-clamp-3 text-gray-700 dark:text-gray-300">{m.content}</p>
+                  </div>
                 ))}
               </div>
             </ScrollArea>
+
+            <div className="mt-3 space-y-2">
+              <div className="text-xs font-medium text-gray-600 dark:text-gray-300">Quick agent prompts</div>
+              <div className="grid grid-cols-1 gap-2">
+                {quickPrompts.map((item) => {
+                  const Icon = item.icon
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => startChatWithPrompt(item.prompt)}
+                      className="flex items-start gap-2 rounded-md border p-2 text-left transition-colors hover:bg-orange-50 dark:hover:bg-gray-900"
+                    >
+                      <Icon className="mt-0.5 h-4 w-4 text-orange-500" />
+                      <div>
+                        <div className="text-xs font-medium">{item.label}</div>
+                        <div className="text-[11px] text-gray-500">{item.description}</div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
 
             <div className="mt-4 flex gap-2">
               <Input value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Ask the agent something..." />
               <Button
                 onClick={() => {
-                  localStorage.setItem("runash_initial_prompt", prompt)
-                  startChatWithPrompt(prompt)
+                  const cleanPrompt = prompt.trim()
+                  if (!cleanPrompt) return
+                  localStorage.setItem("runash_initial_prompt", cleanPrompt)
+                  startChatWithPrompt(cleanPrompt)
                 }}
+                disabled={!prompt.trim()}
                 className="bg-gradient-to-r from-orange-600 to-yellow-500 text-white"
               >
                 Ask & Continue
@@ -222,6 +355,19 @@ export default function RunashChatPage() {
             <div className="mt-3 text-xs text-gray-500 flex gap-3">
               <span className="flex items-center"><Leaf className="h-3 w-3 mr-1 text-green-500" /> Organic Focus</span>
               <span className="flex items-center"><Sparkles className="h-3 w-3 mr-1 text-orange-500" /> Agentic AI</span>
+            </div>
+          </Card>
+
+          <Card className="p-4">
+            <h4 className="mb-2 font-semibold">Commerce Agent Playbook</h4>
+            <ul className="mb-4 space-y-2 text-sm text-gray-700 dark:text-gray-300">
+              <li className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-green-500" /> Secure handoff for payment and order assistance</li>
+              <li className="flex items-center gap-2"><ShoppingCart className="h-4 w-4 text-orange-500" /> Context-aware product recommendations and bundles</li>
+              <li className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-blue-500" /> Checkout help with guided next actions</li>
+            </ul>
+            <div className="flex gap-2">
+              <Button variant="outline" className="w-full" onClick={() => router.push("/payment/runash-pay")}>Open RunAsh Pay</Button>
+              <Button className="w-full bg-gradient-to-r from-orange-600 to-yellow-500 text-white" onClick={() => startChatWithPrompt("Help me complete checkout with best payment option and order confirmation steps.")}>Launch Agent Flow</Button>
             </div>
           </Card>
 

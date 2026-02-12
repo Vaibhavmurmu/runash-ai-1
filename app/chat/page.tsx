@@ -3,11 +3,12 @@
 import type React from "react"
 
 import { useState, useEffect, useRef } from "react"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Card } from "@/components/ui/card"
-import { Send, Sparkles, Leaf, Settings, History, Bot, Mic } from "lucide-react"
+import { Send, Sparkles, Leaf, Settings, History, Bot, Mic, Search } from "lucide-react"
 import type { ChatMessage, ChatSession, UserPreferences, QuickAction } from "@/types/runash-chat"
 import ChatMessageComponent from "@/components/chat/chat-message"
 import QuickActions from "@/components/chat/quick-actions"
@@ -15,18 +16,25 @@ import ChatSidebar from "@/components/chat/chat-sidebar"
 import UserPreferencesDialog from "@/components/chat/user-preferences-dialog"
 import CartDrawer from "@/components/cart/cart-drawer"
 import VoiceControls from "@/components/chat/voice-controls"
+ 
+import { getRecommendedProducts, shouldRecommendProducts } from "@/lib/chat-product-recommendations"
+
+
 
 export default function RunAshChatPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "1",
-      content:
-        "Hello! I'm RunAshChat, your AI assistant for organic products, sustainable living, recipes, and retailing automation. How can I help you today?",
-      role: "assistant",
-      timestamp: new Date(),
-      type: "text",
-    },
-  ])
+  const searchParams = useSearchParams()
+  const querySessionId = searchParams.get("sessionId")
+  const bootstrapCompletedRef = useRef(false)
+  const defaultAssistantMessage: ChatMessage = {
+    id: "1",
+    content:
+      "Hello! I'm RunAshChat, your AI assistant for organic products, sustainable living, recipes, and retailing automation. How can I help you today?",
+    role: "assistant",
+    timestamp: new Date(),
+    type: "text",
+  }
+
+  const [messages, setMessages] = useState<ChatMessage[]>([defaultAssistantMessage])
   const [inputValue, setInputValue] = useState("")
   const [isTyping, setIsTyping] = useState(false)
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null)
@@ -35,16 +43,163 @@ export default function RunAshChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const [userPreferences, setUserPreferences] = useState<UserPreferences>({
-    dietaryRestrictions: [],
-    sustainabilityPriority: "medium",
-    budgetRange: [0, 100],
-    preferredCategories: [],
-    cookingSkillLevel: "intermediate",
+  const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => {
+    if (typeof window === "undefined") {
+      return {
+        dietaryRestrictions: [],
+        sustainabilityPriority: "medium",
+        budgetRange: [0, 100],
+        preferredCategories: [],
+        cookingSkillLevel: "intermediate",
+      }
+    }
+
+    try {
+      const stored = window.localStorage.getItem("runash_chat_preferences")
+      if (!stored) {
+        return {
+          dietaryRestrictions: [],
+          sustainabilityPriority: "medium",
+          budgetRange: [0, 100],
+          preferredCategories: [],
+          cookingSkillLevel: "intermediate",
+        }
+      }
+
+      const parsed = JSON.parse(stored) as Partial<UserPreferences>
+      return {
+        dietaryRestrictions: Array.isArray(parsed.dietaryRestrictions) ? parsed.dietaryRestrictions : [],
+        sustainabilityPriority:
+          parsed.sustainabilityPriority === "low" || parsed.sustainabilityPriority === "high"
+            ? parsed.sustainabilityPriority
+            : "medium",
+        budgetRange:
+          Array.isArray(parsed.budgetRange) && parsed.budgetRange.length === 2
+            ? [Number(parsed.budgetRange[0]) || 0, Number(parsed.budgetRange[1]) || 100]
+            : [0, 100],
+        preferredCategories: Array.isArray(parsed.preferredCategories) ? parsed.preferredCategories : [],
+        cookingSkillLevel:
+          parsed.cookingSkillLevel === "beginner" || parsed.cookingSkillLevel === "advanced"
+            ? parsed.cookingSkillLevel
+            : "intermediate",
+        businessType: parsed.businessType,
+      }
+    } catch {
+      return {
+        dietaryRestrictions: [],
+        sustainabilityPriority: "medium",
+        budgetRange: [0, 100],
+        preferredCategories: [],
+        cookingSkillLevel: "intermediate",
+      }
+    }
   })
 
   const [voiceEnabled, setVoiceEnabled] = useState(false)
-  const [autoSpeakResponses, setAutoSpeakResponses] = useState(false)
+  const [voiceTranscriptHistory, setVoiceTranscriptHistory] = useState<string[]>([])
+
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([
+    {
+      id: "1",
+      title: "Organic Breakfast Ideas",
+      messages: [
+        {
+          id: "s1-1",
+          content: "Can you suggest a few organic vegan breakfast ideas under $20?",
+          role: "user",
+          timestamp: new Date(Date.now() - 86400000),
+          type: "text",
+        },
+        {
+          id: "s1-2",
+          content: "Absolutely — try overnight oats, tofu scramble wraps, and fruit-chia parfaits.",
+          role: "assistant",
+          timestamp: new Date(Date.now() - 86300000),
+          type: "text",
+        },
+      ],
+      createdAt: new Date(Date.now() - 86400000),
+      updatedAt: new Date(Date.now() - 86400000),
+      context: {
+        preferences: {
+          dietaryRestrictions: ["vegan"],
+          sustainabilityPriority: "high",
+          budgetRange: [0, 50],
+          preferredCategories: ["fruits-vegetables"],
+          cookingSkillLevel: "beginner",
+        },
+        currentCart: [],
+        recentSearches: ["organic oats", "plant milk"],
+      },
+    },
+    {
+      id: "2",
+      title: "Store Automation Setup",
+      messages: [
+        {
+          id: "s2-1",
+          content: "How do I automate low-stock alerts for my store?",
+          role: "user",
+          timestamp: new Date(Date.now() - 172800000),
+          type: "text",
+        },
+        {
+          id: "s2-2",
+          content: "Set reorder thresholds per SKU and trigger notifications when inventory drops below limits.",
+          role: "assistant",
+          timestamp: new Date(Date.now() - 172700000),
+          type: "text",
+        },
+      ],
+      createdAt: new Date(Date.now() - 172800000),
+      updatedAt: new Date(Date.now() - 172800000),
+      context: {
+        preferences: {
+          dietaryRestrictions: [],
+          sustainabilityPriority: "medium",
+          budgetRange: [0, 1000],
+          preferredCategories: [],
+          cookingSkillLevel: "intermediate",
+          businessType: "retail",
+        },
+        currentCart: [],
+        recentSearches: ["inventory management", "POS system"],
+      },
+    },
+    {
+      id: "3",
+      title: "Sustainable Living Tips",
+      messages: [
+        {
+          id: "s3-1",
+          content: "What are easy ways to reduce daily household waste?",
+          role: "user",
+          timestamp: new Date(Date.now() - 259200000),
+          type: "text",
+        },
+        {
+          id: "s3-2",
+          content: "Start with reusable bags, meal planning, and composting food scraps.",
+          role: "assistant",
+          timestamp: new Date(Date.now() - 259100000),
+          type: "text",
+        },
+      ],
+      createdAt: new Date(Date.now() - 259200000),
+      updatedAt: new Date(Date.now() - 259200000),
+      context: {
+        preferences: {
+          dietaryRestrictions: [],
+          sustainabilityPriority: "high",
+          budgetRange: [0, 100],
+          preferredCategories: [],
+          cookingSkillLevel: "advanced",
+        },
+        currentCart: [],
+        recentSearches: ["zero waste", "renewable energy"],
+      },
+    },
+  ])
 
   const quickActions: QuickAction[] = [
     {
@@ -75,6 +230,13 @@ export default function RunAshChatPage() {
       action: () => handleQuickAction("Help me automate my organic store inventory"),
       category: "automation",
     },
+    {
+      id: "5",
+      label: "Web Product Search",
+      icon: "search",
+      action: () => handleQuickAction("Search the web for eco-friendly organic pantry bundles under $30", "search"),
+      category: "search",
+    },
   ]
 
   useEffect(() => {
@@ -85,8 +247,145 @@ export default function RunAshChatPage() {
     inputRef.current?.focus()
   }, [])
 
-  const handleQuickAction = (message: string) => {
+  useEffect(() => {
+ 
+    try {
+      window.localStorage.setItem("runash_chat_preferences", JSON.stringify(userPreferences))
+    } catch {
+      // ignore storage errors
+    }
+  }, [userPreferences])
+
+  useEffect(() => {
+
+
+    ;(async () => {
+      try {
+        const response = await fetch("/api/sessions")
+        if (!response.ok) return
+        const payload = await response.json()
+        const listed = Array.isArray(payload?.data) ? payload.data : []
+        if (listed.length === 0) return
+
+        setChatSessions((previous) => {
+          const mapped = listed.map((entry: { id: string; title?: string; created_at?: string }) => ({
+            id: String(entry.id),
+            title: entry.title ?? "Session",
+            messages: [],
+            createdAt: new Date(entry.created_at ?? Date.now()),
+            updatedAt: new Date(entry.created_at ?? Date.now()),
+            context: {
+              preferences: {
+                dietaryRestrictions: [],
+                sustainabilityPriority: "medium" as const,
+                budgetRange: [0, 100] as [number, number],
+                preferredCategories: [],
+                cookingSkillLevel: "intermediate" as const,
+              },
+              currentCart: [],
+              recentSearches: [],
+            },
+          }))
+
+          return [...mapped, ...previous.filter((session) => !mapped.some((item) => item.id === session.id))]
+        })
+      } catch {
+        // keep local fallback sessions when api is unavailable
+      }
+    })()
+  }, [])
+
+  const loadSession = (session: ChatSession) => {
+    setCurrentSession(session)
+    setMessages(session.messages.length > 0 ? session.messages : [defaultAssistantMessage])
+  }
+
+  const handleNewChatSession = () => {
+    setCurrentSession(null)
+    setMessages([defaultAssistantMessage])
+    setInputValue("")
+  }
+
+  const handleDeleteSession = (sessionId: string) => {
+    setChatSessions((prev) => prev.filter((session) => session.id !== sessionId))
+    if (currentSession?.id === sessionId) {
+      setCurrentSession(null)
+      setMessages([defaultAssistantMessage])
+    }
+  }
+
+  useEffect(() => {
+    if (!querySessionId) return
+
+    const matchedSession = chatSessions.find((session) => session.id === querySessionId)
+    if (!matchedSession) return
+
+    loadSession(matchedSession)
+  }, [querySessionId, chatSessions])
+
+  useEffect(() => {
+    if (bootstrapCompletedRef.current) return
+
+    bootstrapCompletedRef.current = true
+    const storedPrompt = localStorage.getItem("runash_initial_prompt")?.trim()
+    if (!storedPrompt) return
+
+    localStorage.removeItem("runash_initial_prompt")
+    handleSendMessage(storedPrompt)
+  }, [])
+
+  const handleQuickAction = async (message: string, mode: QuickAction["category"] = "product") => {
     setInputValue(message)
+
+    if (mode === "search") {
+      const userMessage: ChatMessage = {
+        id: `${Date.now()}-search-user`,
+        content: message,
+        role: "user",
+        timestamp: new Date(),
+        type: "text",
+        status: "completed",
+      }
+
+      setMessages((prev) => [...prev, userMessage])
+      setIsTyping(true)
+
+      try {
+        const response = await fetch(`/api/web-search?query=${encodeURIComponent(message)}`)
+        const payload = await response.json()
+        const searchResults = Array.isArray(payload?.data?.results) ? payload.data.results : []
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `${Date.now()}-search-assistant`,
+            content: "Here are top product search results from EXA/MCP-compatible providers.",
+            role: "assistant",
+            timestamp: new Date(),
+            type: "text",
+            status: "completed",
+            metadata: { searchResults },
+          },
+        ])
+      } catch {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `${Date.now()}-search-error`,
+            content: "Web search is unavailable right now. Please try again in a moment.",
+            role: "assistant",
+            timestamp: new Date(),
+            type: "text",
+            status: "failed",
+          },
+        ])
+      } finally {
+        setIsTyping(false)
+      }
+
+      return
+    }
+
     handleSendMessage(message)
   }
 
@@ -100,60 +399,122 @@ export default function RunAshChatPage() {
       role: "user",
       timestamp: new Date(),
       type: "text",
+      status: "completed",
     }
 
-    setMessages((prev) => [...prev, userMessage])
+    const assistantId = `${Date.now()}-assistant`
+    const assistantMessage: ChatMessage = {
+      id: assistantId,
+      content: "",
+      role: "assistant",
+      timestamp: new Date(),
+      type: "text",
+      status: "queued",
+    }
+
+    setMessages((prev) => [...prev, userMessage, assistantMessage])
     setInputValue("")
     setIsTyping(true)
 
-    // Simulate AI response
-    setTimeout(() => {
-      const response = generateAIResponse(content)
-      setMessages((prev) => [...prev, response])
+    try {
+      const requestedTools = /search|find|best|compare|web/i.test(content)
+        ? ["catalog_lookup", "web_search"]
+        : ["catalog_lookup"]
+
+      const response = await fetch("/api/agents/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: currentSession?.id ?? querySessionId ?? undefined,
+          title: currentSession?.title ?? "RunAsh Agent Session",
+          message: content,
+          tools: requestedTools,
+        }),
+      })
+
+      if (!response.ok || !response.body) {
+        throw new Error("stream_request_failed")
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+
+      const updateAssistantMessage = (updater: (existing: ChatMessage) => ChatMessage) => {
+        setMessages((prev) => prev.map((item) => (item.id === assistantId ? updater(item) : item)))
+      }
+
+      while (true) {
+        const chunk = await reader.read()
+        if (chunk.done) break
+
+        buffer += decoder.decode(chunk.value, { stream: true })
+        const events = buffer.split("\n\n")
+        buffer = events.pop() ?? ""
+
+        for (const rawEvent of events) {
+          const eventName = rawEvent.match(/event:\s*(.+)/)?.[1]?.trim() ?? "message"
+          const payloadLine = rawEvent
+            .split("\n")
+            .find((line) => line.startsWith("data:"))
+            ?.replace(/^data:\s*/, "")
+
+          if (!payloadLine) continue
+          const payload = JSON.parse(payloadLine)
+
+          if (eventName === "token") {
+            updateAssistantMessage((existing) => ({
+              ...existing,
+              status: "streaming",
+              content: `${existing.content}${String(payload.token ?? "")}`,
+            }))
+          }
+
+          if (eventName === "tool_start") {
+            updateAssistantMessage((existing) => ({ ...existing, status: "tool-running" }))
+          }
+
+          if (eventName === "final") {
+            updateAssistantMessage((existing) => ({
+              ...existing,
+              status: payload.status === "completed" ? "completed" : existing.status,
+              content: typeof payload.content === "string" && payload.content.length > 0 ? payload.content : existing.content,
+            }))
+          }
+
+          if (eventName === "error") {
+            updateAssistantMessage((existing) => ({ ...existing, status: "failed" }))
+          }
+        }
+      }
+    } catch {
+      const fallback = buildAssistantResponse(content)
+      setMessages((prev) => prev.map((entry) => (entry.id === assistantId ? { ...fallback, id: assistantId } : entry)))
+    } finally {
       setIsTyping(false)
-    }, 1500)
+    }
   }
 
-  const generateAIResponse = (userInput: string): ChatMessage => {
+ 
+  const buildAssistantResponse = (userInput: string): ChatMessage => {
     const input = userInput.toLowerCase()
 
     // Product recommendations
-    if (input.includes("organic") || input.includes("product") || input.includes("buy")) {
+    if (shouldRecommendProducts(input)) {
+      const products = getRecommendedProducts(input, userPreferences)
+      const hasProducts = products.length > 0
+      const productText = hasProducts
+        ? `Here are ${products.length} grocery products matched to your budget and preferences:`
+        : "I couldn't find products matching all filters, but I can broaden the criteria if you'd like."
+
       return {
         id: Date.now().toString(),
-        content: "Here are some organic products I recommend based on your preferences:",
+        content: productText,
         role: "assistant",
         timestamp: new Date(),
         type: "product",
         metadata: {
-          products: [
-            {
-              id: "1",
-              name: "Organic Quinoa",
-              description: "Premium organic quinoa, rich in protein and fiber",
-              price: 12.99,
-              category: "grains-cereals",
-              isOrganic: true,
-              sustainabilityScore: 9,
-              image: "/placeholder.svg?height=200&width=200",
-              inStock: true,
-              certifications: ["USDA Organic", "Fair Trade"],
-              carbonFootprint: 2.1,
-            },
-            {
-              id: "2",
-              name: "Organic Avocados",
-              description: "Fresh organic avocados from sustainable farms",
-              price: 8.99,
-              category: "fruits-vegetables",
-              isOrganic: true,
-              sustainabilityScore: 8,
-              image: "/placeholder.svg?height=200&width=200",
-              inStock: true,
-              certifications: ["USDA Organic"],
-              carbonFootprint: 1.8,
-            },
-          ],
+          products,
         },
       }
     }
@@ -298,6 +659,7 @@ export default function RunAshChatPage() {
     }
   }
 
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
@@ -306,13 +668,9 @@ export default function RunAshChatPage() {
   }
 
   const handleVoiceInput = (transcript: string) => {
+    setVoiceTranscriptHistory((prev) => [transcript, ...prev].slice(0, 5))
     setInputValue(transcript)
     handleSendMessage(transcript)
-  }
-
-  const handleSpeakResponse = (text: string) => {
-    // This will be handled by the VoiceControls component
-    console.log("Speaking:", text)
   }
 
   return (
@@ -360,7 +718,13 @@ export default function RunAshChatPage() {
         {/* Sidebar */}
         {sidebarOpen && (
           <div className="w-80">
-            <ChatSidebar onSessionSelect={(session) => setCurrentSession(session)} currentSession={currentSession} />
+            <ChatSidebar
+              sessions={chatSessions}
+              onSessionSelect={loadSession}
+              currentSession={currentSession}
+              onNewChat={handleNewChatSession}
+              onDeleteSession={handleDeleteSession}
+            />
           </div>
         )}
 
@@ -403,11 +767,25 @@ export default function RunAshChatPage() {
 
             {/* Voice Controls */}
             {voiceEnabled && (
-              <div className="p-4 border-t">
+              <div className="p-4 border-t space-y-3">
+                {voiceTranscriptHistory.length > 0 && (
+                  <div className="rounded-md border bg-green-50/60 p-2 text-xs dark:bg-green-900/20">
+                    <div className="mb-1 flex items-center font-medium text-green-700 dark:text-green-400">
+                      <Search className="mr-1 h-3 w-3" /> Recent voice intents
+                    </div>
+                    <ul className="space-y-1 text-gray-700 dark:text-gray-300">
+                      {voiceTranscriptHistory.map((item, index) => (
+                        <li key={`${item}-${index}`} className="line-clamp-1">
+                          • {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <VoiceControls
                   onVoiceInput={handleVoiceInput}
-                  onSpeakResponse={handleSpeakResponse}
                   isEnabled={voiceEnabled}
+                  latestAssistantMessage={messages.filter((message) => message.role === "assistant").at(-1)?.content}
                 />
               </div>
             )}

@@ -10,15 +10,17 @@ import { Search, Plus, Trash2 } from "lucide-react"
 import type { ChatSession } from "@/types/runash-chat"
 
 interface ChatSidebarProps {
+  sessions: ChatSession[]
   onSessionSelect: (session: ChatSession) => void
   currentSession: ChatSession | null
+  onNewChat?: () => void
+  onDeleteSession?: (sessionId: string) => void
 }
 
-export default function ChatSidebar({ onSessionSelect, currentSession }: ChatSidebarProps) {
+export default function ChatSidebar({ sessions, onSessionSelect, currentSession, onNewChat, onDeleteSession }: ChatSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("")
 
-  // Mock chat sessions
-  const [sessions] = useState<ChatSession[]>([
+  const fallbackSessions: ChatSession[] = [
     {
       id: "1",
       title: "Organic Breakfast Ideas",
@@ -74,18 +76,19 @@ export default function ChatSidebar({ onSessionSelect, currentSession }: ChatSid
         recentSearches: ["zero waste", "renewable energy"],
       },
     },
-  ])
+  ]
 
-  const filteredSessions = sessions.filter((session) => session.title.toLowerCase().includes(searchQuery.toLowerCase()))
+  const availableSessions = sessions.length > 0 ? sessions : fallbackSessions
+  const filteredSessions = availableSessions.filter((session) =>
+    session.title.toLowerCase().includes(searchQuery.toLowerCase()),
+  )
 
   const handleNewChat = () => {
-    // Create new chat session
-    console.log("Create new chat")
+    onNewChat?.()
   }
 
   const handleDeleteSession = (sessionId: string) => {
-    // Delete session
-    console.log("Delete session:", sessionId)
+    onDeleteSession?.(sessionId)
   }
 
   const getSessionIcon = (session: ChatSession) => {

@@ -19,30 +19,35 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { toast } from "@/components/ui/use-toast"
+import type {
+  DashboardRecentStream,
+  DashboardRecentStreamsResponse,
+  DashboardScheduledStream,
+  DashboardScheduledStreamsResponse,
+  IntegrationKeyResponse,
+  ScheduleStreamResponse,
+  StartStreamResponse,
+} from "@/lib/types/dashboard-streams"
 
-type RecentStream = {
-  id: string
-  title: string
-  date: string
-  viewers?: number
-  duration?: string
-  url?: string
-}
+const getCanonicalStreamUrl = (id: string, url?: string) => url || `/stream/${id}`
 
-type ScheduledStream = {
-  id: string
-  title: string
-  dateTime: string
-  category: string
-  status: "scheduled" | "cancelled"
+const getAppHrefFromStreamUrl = (id: string, url?: string) => {
+  const canonicalUrl = getCanonicalStreamUrl(id, url)
+
+  try {
+    const parsed = new URL(canonicalUrl)
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`
+  } catch {
+    return canonicalUrl
+  }
 }
 
 export function StreamQuickAccess() {
   const router = useRouter()
   const [streamTitle, setStreamTitle] = useState("")
   const [streamCategory, setStreamCategory] = useState("gaming")
-  const [recentStreams, setRecentStreams] = useState<RecentStream[]>([])
-  const [scheduledStreams, setScheduledStreams] = useState<ScheduledStream[]>([])
+  const [recentStreams, setRecentStreams] = useState<DashboardRecentStream[]>([])
+  const [scheduledStreams, setScheduledStreams] = useState<DashboardScheduledStream[]>([])
   const [loading, setLoading] = useState(false)
 
   // Scheduling
@@ -70,11 +75,11 @@ export function StreamQuickAccess() {
         if (!recentRes.ok) throw new Error("Failed to fetch recent streams")
         if (!scheduledRes.ok) throw new Error("Failed to fetch scheduled streams")
 
-        const recentJson = await recentRes.json()
-        const scheduledJson = await scheduledRes.json()
+        const recentJson = (await recentRes.json()) as DashboardRecentStreamsResponse
+        const scheduledJson = (await scheduledRes.json()) as DashboardScheduledStreamsResponse
 
-        setRecentStreams(Array.isArray(recentJson) ? recentJson : [])
-        setScheduledStreams(Array.isArray(scheduledJson) ? scheduledJson : [])
+        setRecentStreams(Array.isArray(recentJson.streams) ? recentJson.streams : [])
+        setScheduledStreams(Array.isArray(scheduledJson.streams) ? scheduledJson.streams : [])
       } catch (err: any) {
         console.error(err)
         toast({ title: "Error", description: err?.message || "Could not load streams." })
@@ -105,17 +110,29 @@ export function StreamQuickAccess() {
         throw new Error(errText || "Failed to start stream")
       }
 
-      const data = await res.json()
+      const data = (await res.json()) as StartStreamResponse
       toast({
         title: "Stream Started",
         description: `Your stream "${streamTitle}" is now live.`,
       })
 
       // Update recent streams locally
-      setRecentStreams((r) => [{ id: data.id, title: streamTitle, date: "Live now", viewers: 0, url: data.url }, ...r])
+      setRecentStreams((r) => [
+        {
+          id: data.id,
+          title: data.title,
+          category: data.category,
+          date: data.startedAt,
+          viewers: 0,
+          duration: null,
+          status: data.status,
+          url: data.url,
+        },
+        ...r,
+      ])
       setStreamTitle("")
       // Navigate to stream detail/player page (adjust route to your app)
-      router.push(`/stream/${data.id}`)
+      router.push(getAppHrefFromStreamUrl(data.id, data.url))
     } catch (err: any) {
       console.error(err)
       toast({ title: "Error", description: err?.message || "Could not start stream." })
@@ -138,7 +155,7 @@ export function StreamQuickAccess() {
         body: JSON.stringify({
           title: scheduleTitle,
           category: scheduleCategory,
-          dateTime: scheduleDateTime,
+          startsAt: scheduleDateTime,
         }),
       })
 
@@ -147,8 +164,8 @@ export function StreamQuickAccess() {
         throw new Error(errText || "Failed to schedule stream")
       }
 
-      const newScheduled = await res.json()
-      toast({ title: "Scheduled", description: `${newScheduled.title} scheduled for ${newScheduled.dateTime}` })
+      const newScheduled = (await res.json()) as ScheduleStreamResponse
+      toast({ title: "Scheduled", description: `${newScheduled.title} scheduled for ${newScheduled.startsAt}` })
       setScheduledStreams((s) => [newScheduled, ...s])
       setScheduleTitle("")
       setScheduleDateTime("")
@@ -193,14 +210,14 @@ export function StreamQuickAccess() {
   const handleGetIntegration = async () => {
     try {
       setIntegrating(true)
-      const res = await fetch("/api/dashboard/streams/integrate", {
+      const res = await fetch("/api/dashboard/streams/integration-key", {
         method: "POST",
       })
       if (!res.ok) {
         const errText = await res.text()
         throw new Error(errText || "Failed to get integration")
       }
-      const data = await res.json()
+      const data = (await res.json()) as IntegrationKeyResponse
       setIntegrationKey(data.rtmpKey)
       toast({ title: "Integration Ready", description: "Received RTMP key (demo)." })
     } catch (err: any) {
@@ -332,7 +349,7 @@ export function StreamQuickAccess() {
               <option value="">Select a stream (scheduled or recent)</option>
               {scheduledStreams.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.title} — {new Date(s.dateTime).toLocaleString()}
+                  {s.title} — {new Date(s.startsAt).toLocaleString()}
                 </option>
               ))}
               {recentStreams.map((r) => (
@@ -401,7 +418,7 @@ export function StreamQuickAccess() {
                   <div className="min-w-0">
                     <h4 className="text-sm font-medium truncate">{stream.title}</h4>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>{new Date(stream.dateTime).toLocaleString()}</span>
+                      <span>{new Date(stream.startsAt).toLocaleString()}</span>
                       <Badge
                         variant="outline"
                         className="text-xs border-amber-200 text-amber-700 dark:border-amber-800 dark:text-amber-400"
@@ -412,8 +429,7 @@ export function StreamQuickAccess() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
-                      // Quick "copy link" for a scheduled stream
-                      const link = `${window.location.origin}/stream/${stream.id}`
+                      const link = getCanonicalStreamUrl(stream.id, stream.url)
                       navigator.clipboard.writeText(link)
                       toast({ title: "Link Copied", description: link })
                     }}>

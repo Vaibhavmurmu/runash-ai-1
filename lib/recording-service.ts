@@ -1,4 +1,11 @@
-import { BackgroundSync } from "./background-sync" // Assuming BackgroundSync is in a separate file
+import { BackgroundSync } from "./background-sync"
+import type {
+  CloudStorageProvider,
+  RecordedStream,
+  RecordingSettings,
+  StorageUsage,
+  StreamHighlight,
+} from "@/types/recording"
 
 export interface RecordingData {
   id: string
@@ -37,6 +44,16 @@ export interface UpdateRecordingData {
   thumbnailUrl?: string
 }
 
+interface SaveEditedVideoPayload {
+  originalId: string
+  title: string
+  startTime: string
+  endTime: string
+  filters: Record<string, unknown>
+  audioLevel: number
+  exportSettings: Record<string, unknown>
+}
+
 export class RecordingService {
   private static instance: RecordingService
   private recordingListeners: ((recordings: RecordingData[]) => void)[] = []
@@ -53,186 +70,188 @@ export class RecordingService {
     return RecordingService.instance
   }
 
-  // Create new recording
+  private static get service() {
+    return RecordingService.getInstance()
+  }
+
+  private async request<T>(input: string, init?: RequestInit): Promise<T> {
+    const response = await fetch(input, init)
+    if (!response.ok) {
+      let message = "Request failed"
+      try {
+        const data = await response.json()
+        message = data?.error || message
+      } catch {
+        // ignore json parse failures and use generic fallback
+      }
+      throw new Error(message)
+    }
+
+    if (response.status === 204) {
+      return undefined as T
+    }
+
+    return response.json() as Promise<T>
+  }
+
+  private toRecordedStream(recording: RecordingData): RecordedStream {
+    return {
+      id: recording.id,
+      title: recording.title,
+      description: recording.description,
+      thumbnailUrl: recording.thumbnailUrl,
+      recordingUrl: recording.playbackUrl || recording.recordingUrl || "",
+      duration: recording.duration,
+      fileSize: recording.fileSize,
+      createdAt: recording.createdAt,
+      platforms: [],
+      viewCount: recording.viewCount,
+      downloadCount: 0,
+      isProcessing: recording.isProcessing,
+      isPublic: recording.isPublic,
+      tags: recording.tags || [],
+      highlights: [],
+      chapters: [],
+      quality: recording.quality as "low" | "medium" | "high" | "source",
+      format: "mp4",
+    }
+  }
+
   public async createRecording(data: CreateRecordingData): Promise<RecordingData> {
-    try {
-      const response = await fetch("/api/recordings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(data),
-      })
+    const { recording } = await this.request<{ recording: RecordingData }>("/api/recordings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
 
-      if (!response.ok) {
-        throw new Error("Failed to create recording")
-      }
+    this.backgroundSync.addToSyncQueue({
+      type: "recording",
+      action: "create",
+      data: recording,
+    })
 
-      const { recording } = await response.json()
-
-      this.backgroundSync.addToSyncQueue({
-        type: "recording",
-        action: "create",
-        data: recording,
-      })
-
-      this.notifyRecordingListeners()
-      return recording
-    } catch (error) {
-      console.error("Failed to create recording:", error)
-      throw error
-    }
+    this.notifyRecordingListeners()
+    return recording
   }
 
-  // Get all user recordings
   public async getUserRecordings(): Promise<RecordingData[]> {
-    try {
-      const response = await fetch("/api/recordings")
-      if (!response.ok) {
-        throw new Error("Failed to fetch recordings")
-      }
-
-      const { recordings } = await response.json()
-      return recordings
-    } catch (error) {
-      console.error("Failed to fetch recordings:", error)
-      return []
-    }
+    const { recordings } = await this.request<{ recordings: RecordingData[] }>("/api/recordings")
+    return recordings
   }
 
-  // Get recordings for specific stream
   public async getStreamRecordings(streamId: string): Promise<RecordingData[]> {
-    try {
-      const response = await fetch(`/api/recordings?streamId=${streamId}`)
-      if (!response.ok) {
-        throw new Error("Failed to fetch stream recordings")
-      }
-
-      const { recordings } = await response.json()
-      return recordings
-    } catch (error) {
-      console.error("Failed to fetch stream recordings:", error)
-      return []
-    }
+    const { recordings } = await this.request<{ recordings: RecordingData[] }>(`/api/recordings?streamId=${streamId}`)
+    return recordings
   }
 
-  // Get single recording
   public async getRecording(id: string): Promise<RecordingData | null> {
     try {
-      const response = await fetch(`/api/recordings/${id}`)
-      if (!response.ok) {
-        if (response.status === 404) {
-          return null
-        }
-        throw new Error("Failed to fetch recording")
-      }
-
-      const { recording } = await response.json()
+      const { recording } = await this.request<{ recording: RecordingData }>(`/api/recordings/${id}`)
       return recording
-    } catch (error) {
-      console.error("Failed to fetch recording:", error)
+    } catch {
       return null
     }
   }
 
-  // Update recording
   public async updateRecording(id: string, data: UpdateRecordingData): Promise<RecordingData> {
-    try {
-      const response = await fetch(`/api/recordings/${id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(data),
-      })
-
-      if (!response.ok) {
-        throw new Error("Failed to update recording")
-      }
-
-      const { recording } = await response.json()
-
-      this.backgroundSync.addToSyncQueue({
-        type: "recording",
-        action: "update",
-        data: recording,
-      })
-
-      this.notifyRecordingListeners()
-      return recording
-    } catch (error) {
-      console.error("Failed to update recording:", error)
-      throw error
-    }
-  }
-
-  // Delete recording
-  public async deleteRecording(id: string): Promise<void> {
-    try {
-      const response = await fetch(`/api/recordings/${id}`, {
-        method: "DELETE",
-      })
-
-      if (!response.ok) {
-        throw new Error("Failed to delete recording")
-      }
-
-      this.notifyRecordingListeners()
-    } catch (error) {
-      console.error("Failed to delete recording:", error)
-      throw error
-    }
-  }
-
-  // Upload recording file
-  public async uploadRecording(
-    streamId: string,
-    file: File,
-    duration: number,
-    onProgress?: (progress: number) => void,
-  ): Promise<RecordingData> {
-    try {
-      const formData = new FormData()
-      formData.append("file", file)
-      formData.append("streamId", streamId)
-      formData.append("duration", duration.toString())
-
-      const response = await fetch("/api/recordings/upload", {
-        method: "POST",
-        body: formData,
-      })
-
-      if (!response.ok) {
-        throw new Error("Failed to upload recording")
-      }
-
-      const { recording } = await response.json()
-      this.notifyRecordingListeners()
-      return recording
-    } catch (error) {
-      console.error("Failed to upload recording:", error)
-      throw error
-    }
-  }
-
-  // Start recording for a stream
-  public async startRecording(streamId: string, title: string): Promise<RecordingData> {
-    const recording = await this.createRecording({
-      title,
-      streamId,
-      quality: "1080p",
+    const { recording } = await this.request<{ recording: RecordingData }>(`/api/recordings/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
     })
 
-    // Update status to recording
-    return await this.updateRecording(recording.id, { title })
+    this.backgroundSync.addToSyncQueue({
+      type: "recording",
+      action: "update",
+      data: recording,
+    })
+
+    this.notifyRecordingListeners()
+    return recording
   }
 
-  // Stop recording
-  public async stopRecording(recordingId: string, duration: number): Promise<RecordingData> {
-    return await this.updateRecording(recordingId, {})
+  public async deleteRecording(id: string): Promise<void> {
+    await this.request<{ success: boolean }>(`/api/recordings/${id}`, {
+      method: "DELETE",
+    })
+
+    this.notifyRecordingListeners()
   }
 
-  // Event listeners
+  public async uploadRecording(streamId: string, file: File, duration: number): Promise<RecordingData> {
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("streamId", streamId)
+    formData.append("duration", duration.toString())
+
+    const { recording } = await this.request<{ recording: RecordingData }>("/api/recordings/upload", {
+      method: "POST",
+      body: formData,
+    })
+
+    this.notifyRecordingListeners()
+    return recording
+  }
+
+  public async getRecordings(): Promise<RecordedStream[]> {
+    const recordings = await this.getUserRecordings()
+    return recordings.map((recording) => this.toRecordedStream(recording))
+  }
+
+  public async getStorageUsage(): Promise<StorageUsage> {
+    const { usage } = await this.request<{ usage: StorageUsage }>("/api/recordings/storage")
+    return usage
+  }
+
+  public async downloadRecording(recordingId: string): Promise<void> {
+    const { downloadUrl } = await this.request<{ downloadUrl: string }>(`/api/recordings/${recordingId}/download`)
+    window.open(downloadUrl, "_blank", "noopener,noreferrer")
+  }
+
+  public async shareRecording(recordingId: string): Promise<string> {
+    const { shareUrl } = await this.request<{ shareUrl: string }>(`/api/recordings/${recordingId}/share`, {
+      method: "POST",
+    })
+    return shareUrl
+  }
+
+  public async createClip(recordingId: string, clip: StreamHighlight): Promise<void> {
+    await this.request<{ success: boolean }>("/api/recordings/clips", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recordingId, clip }),
+    })
+  }
+
+  public async saveEditedVideo(editedVideo: SaveEditedVideoPayload): Promise<void> {
+    await this.request<{ success: boolean }>("/api/recordings/edit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(editedVideo),
+    })
+  }
+
+  public async updateSettings(settings: RecordingSettings): Promise<RecordingSettings> {
+    const { settings: updatedSettings } = await this.request<{ settings: RecordingSettings }>("/api/recordings/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(settings),
+    })
+
+    this.backgroundSync.addToSyncQueue({
+      type: "settings",
+      action: "update",
+      data: updatedSettings,
+    })
+
+    return updatedSettings
+  }
+
+  public async getSettings(): Promise<RecordingSettings> {
+    const { settings } = await this.request<{ settings: RecordingSettings }>("/api/recordings/settings")
+    return settings
+  }
+
   public onRecordingsChange(callback: (recordings: RecordingData[]) => void): () => void {
     this.recordingListeners.push(callback)
     return () => {
@@ -241,9 +260,49 @@ export class RecordingService {
   }
 
   private notifyRecordingListeners(): void {
-    // Fetch updated recordings and notify listeners
     this.getUserRecordings().then((recordings) => {
       this.recordingListeners.forEach((listener) => listener(recordings))
     })
   }
+
+  public static getRecordings() {
+    return RecordingService.service.getRecordings()
+  }
+
+  public static getStorageUsage() {
+    return RecordingService.service.getStorageUsage()
+  }
+
+  public static deleteRecording(id: string) {
+    return RecordingService.service.deleteRecording(id)
+  }
+
+  public static downloadRecording(id: string) {
+    return RecordingService.service.downloadRecording(id)
+  }
+
+  public static shareRecording(id: string) {
+    return RecordingService.service.shareRecording(id)
+  }
+
+  public static createClip(recordingId: string, clip: StreamHighlight) {
+    return RecordingService.service.createClip(recordingId, clip)
+  }
+
+  public static saveEditedVideo(payload: SaveEditedVideoPayload) {
+    return RecordingService.service.saveEditedVideo(payload)
+  }
+
+  public static updateSettings(settings: RecordingSettings) {
+    return RecordingService.service.updateSettings(settings)
+  }
+
+  public static getSettings() {
+    return RecordingService.service.getSettings()
+  }
 }
+
+export const DEFAULT_CLOUD_PROVIDERS: CloudStorageProvider[] = [
+  { id: "s3", name: "AWS S3", icon: "cloud", isConnected: false, usedSpace: 0, totalSpace: 0 },
+  { id: "gcs", name: "Google Cloud Storage", icon: "cloud", isConnected: false, usedSpace: 0, totalSpace: 0 },
+]

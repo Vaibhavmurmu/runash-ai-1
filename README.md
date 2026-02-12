@@ -62,6 +62,9 @@ Open `http://localhost:3000`.
 - **Service and integration layer**
   - `services/` and `lib/services/` contain orchestration and business logic.
   - `lib/auth/`, `lib/workflow/`, and integration-specific modules support platform capabilities.
+- **Background sync API (frontend developer note)**
+  - `BackgroundSync.forceSync()` is the canonical method to manually flush pending sync queue items.
+  - `BackgroundSync.forcSync()` remains as a temporary deprecated alias for backward compatibility and will be removed in a future cleanup.
 - **Data and model layer**
   - `lib/db/`, `lib/repositories/`, and `lib/data/` contain database access and domain modeling.
   - See `DRIZZLE_ORM.md` for ORM and schema conventions.
@@ -106,6 +109,18 @@ Open `http://localhost:3000`.
 ## Overview
 RunAsh AI combines live streaming, AI-assisted creation tooling, seller operations, and commerce enablement into a unified platform.
 
+## Seller operations modules
+- Seller dashboard now uses live summary metrics from `/api/seller/dashboard/summary`.
+- Orders and inventory tabs are integrated with backend CRUD endpoints (`/api/orders`, `/api/products`, `/api/products/:id`).
+- Seller business configuration is now API-backed (`GET/PUT /api/seller/settings`) for persisted operations.
+- Payout tab is API-backed (`GET /api/seller/payouts`) with settlement summaries and weekly history.
+- Inventory supports inline stock edits and guarded deletes for production workflows.
+- RunAsh Chat landing (`/runash-chat`) includes an enhanced mini preview with quick agentic commerce/payment prompts, with session continuity dependent on `GET /api/sessions/recent` and `GET /api/messages/session/:id` being available.
+
+### Current limitations (RunAsh Chat preview)
+- If either preview dependency endpoint (`/api/sessions/recent` or `/api/messages/session/:id`) is unavailable in a target deployment, the mini preview falls back to an error or empty state while users can still continue into `/chat`.
+- Preview reliability and roadmap milestones are tracked in [`docs/PRODUCTION_READINESS_AND_AGENTIC_PLAN.md`](docs/PRODUCTION_READINESS_AND_AGENTIC_PLAN.md).
+
 ## Quickstart
 1. Clone repository.
 2. Install dependencies:
@@ -118,6 +133,29 @@ RunAsh AI combines live streaming, AI-assisted creation tooling, seller operatio
    npm run dev
    ```
 5. Open `http://localhost:3000`.
+
+## Chat API (`/api/chat`)
+
+### `GET /api/chat`
+
+Query parameters:
+- `streamId` (required): stream identifier.
+- `limit` (optional): page size, integer between `1` and `100` (default `50`).
+- `offset` (optional): row offset, integer between `0` and `10000` (default `0`).
+- `cursor` (optional): ISO timestamp for cursor pagination; returns messages older than this timestamp.
+
+Response payload includes:
+- `messages`: chat messages sorted by `timestamp DESC`.
+- `pagination`: `{ limit, offset, nextOffset, hasMore, cursor, nextCursor }`.
+
+`GET /api/chat` requires an authenticated session and only returns chat history for streams owned by the current user.
+
+
+### Optional search integrations
+Set these environment variables to enable live product web search providers:
+- `EXA_API_KEY` for Exa neural web search
+- `RUNASH_MCP_SEARCH_ENDPOINT` for custom MCP-compatible search endpoint
+- `RUNASH_MCP_SEARCH_TOKEN` optional bearer token for MCP endpoint auth
 
 ## Validation commands
 ```bash
@@ -142,6 +180,7 @@ npm run build
 - [DRIZZLE_ORM.md](DRIZZLE_ORM.md)
 - [RunAsh_AI_Pay.md](RunAsh_AI_Pay.md)
 - [RUNASH_PAY_BUSINESS_IMPLEMENTATION.md](RUNASH_PAY_BUSINESS_IMPLEMENTATION.md)
+- [docs/PRODUCTION_READINESS_AND_AGENTIC_PLAN.md](docs/PRODUCTION_READINESS_AND_AGENTIC_PLAN.md)
 
 ## Contribution
 1. Create a focused branch.
@@ -175,4 +214,3 @@ We welcome contributions to the RunAsh AI live streaming platform. To contribute
 - [Team Guide](./TEAM_GUIDE.md)
 
 MIT and Apache-2.0.
-
