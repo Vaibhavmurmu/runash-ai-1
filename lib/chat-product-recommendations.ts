@@ -1,4 +1,4 @@
-import { groceryProducts, type Product as GroceryCatalogProduct } from "@/lib/grocery-products"
+import { groceryProducts, type RawGroceryProduct as GroceryCatalogProduct } from "@/lib/grocery-products"
 import type { Product, ProductCategory, UserPreferences } from "@/types/runash-chat"
 
 const preferredCategoryToCatalogCategory: Record<ProductCategory, string[]> = {

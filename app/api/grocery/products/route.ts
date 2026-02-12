@@ -1,6 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { groceryProducts } from "@/lib/grocery-products"
+import { groceryProducts, normalizedGroceryProducts } from "@/lib/grocery-products"
 import { mapGroceryProductToChatProduct } from "@/lib/chat-product-recommendations"
+
+const sortFieldMap = {
+  name: "name",
+  price: "price",
+  rating: "averageRating",
+} as const
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,7 +23,11 @@ export async function GET(request: NextRequest) {
     const page = Number.parseInt(searchParams.get("page") || "1")
     const limit = Number.parseInt(searchParams.get("limit") || "20")
 
-    let filteredProducts = [...groceryProducts]
+    const normalizedOrganic = searchParams.get("isOrganic") ?? organic
+    const normalizedFreshProduce = searchParams.get("isFreshProduce") ?? locallySourced
+    const normalizedSortBy = sortBy in sortFieldMap ? sortFieldMap[sortBy as keyof typeof sortFieldMap] : sortFieldMap.name
+
+    let filteredProducts = [...normalizedGroceryProducts]
 
     // Apply filters
     if (category && category !== "all") {
@@ -34,12 +44,12 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    if (organic === "true") {
-      filteredProducts = filteredProducts.filter((product) => product.organic)
+    if (normalizedOrganic === "true") {
+      filteredProducts = filteredProducts.filter((product) => product.isOrganic)
     }
 
-    if (locallySourced === "true") {
-      filteredProducts = filteredProducts.filter((product) => product.locallySourced)
+    if (normalizedFreshProduce === "true") {
+      filteredProducts = filteredProducts.filter((product) => product.isFreshProduce)
     }
 
     if (minPrice) {
@@ -52,19 +62,8 @@ export async function GET(request: NextRequest) {
 
     // Apply sorting
     filteredProducts.sort((a, b) => {
-      let aValue: any = a[sortBy as keyof typeof a]
-      let bValue: any = b[sortBy as keyof typeof b]
-
-      if (sortBy === "price") {
-        aValue = a.price
-        bValue = b.price
-      } else if (sortBy === "rating") {
-        aValue = a.rating
-        bValue = b.rating
-      } else if (sortBy === "name") {
-        aValue = a.name.toLowerCase()
-        bValue = b.name.toLowerCase()
-      }
+      const aValue = normalizedSortBy === "name" ? a.name.toLowerCase() : a[normalizedSortBy]
+      const bValue = normalizedSortBy === "name" ? b.name.toLowerCase() : b[normalizedSortBy]
 
       if (sortOrder === "desc") {
         return aValue > bValue ? -1 : aValue < bValue ? 1 : 0
@@ -81,7 +80,13 @@ export async function GET(request: NextRequest) {
     // Get categories for filter options
     const categories = [...new Set(groceryProducts.map((product) => product.category))]
 
-    const products = format === "chat" ? paginatedProducts.map(mapGroceryProductToChatProduct) : paginatedProducts
+    const products =
+      format === "chat"
+        ? paginatedProducts
+            .map((product) => groceryProducts.find((rawProduct) => rawProduct.id === product.id))
+            .filter((product): product is (typeof groceryProducts)[number] => Boolean(product))
+            .map(mapGroceryProductToChatProduct)
+        : paginatedProducts
 
     return NextResponse.json({
       products,
@@ -92,11 +97,13 @@ export async function GET(request: NextRequest) {
       filters: {
         category,
         search,
-        organic,
-        locallySourced,
+        organic: normalizedOrganic,
+        isOrganic: normalizedOrganic,
+        locallySourced: normalizedFreshProduce,
+        isFreshProduce: normalizedFreshProduce,
         minPrice,
         maxPrice,
-        sortBy,
+        sortBy: normalizedSortBy,
         sortOrder,
       },
     })
