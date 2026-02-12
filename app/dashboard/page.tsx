@@ -25,19 +25,14 @@ export default function DashboardPage() {
       </div>
 
       <div className="mt-6">
- 
         <AnalyticsDashboard />
       </div>
-
       <div className="mt-6">
         <AIAgentsDashboard />
       </div>
-
+      <div>
         <AIAgentsDashboard />
       </div>
- 
-
-
       <div className="mt-6">
         <AutomationDashboard />
       </div>
