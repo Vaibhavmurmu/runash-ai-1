@@ -3,8 +3,14 @@
 import { EnhancedDashboard } from "@/components/dashboard/enhanced-dashboard"
 import { StreamQuickAccess } from "@/components/dashboard/stream-quick-access"
 import { AIAgentsDashboard } from "@/components/ai-agents/ai-agents-dashboard"
+ 
 import { AutomationDashboard } from "@/components/automation/automation-dashboard"
 import { AnalyticsDashboard } from "@/components/analytics/analytics-dashboard"
+
+ 
+import { AutomationDashboard } from "@/components/automation/automation-dashboard"
+
+
 
 export default function DashboardPage() {
   return (
@@ -19,6 +25,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="mt-6">
+ 
         <AnalyticsDashboard />
       </div>
 
@@ -26,9 +33,15 @@ export default function DashboardPage() {
         <AIAgentsDashboard />
       </div>
 
+        <AIAgentsDashboard />
+      </div>
+ 
+
+
       <div className="mt-6">
         <AutomationDashboard />
       </div>
+
     </div>
   )
 }
