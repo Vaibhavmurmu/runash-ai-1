@@ -7,7 +7,11 @@ import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+ 
+import { Search as SearchIcon, Filter as FilterIcon, Leaf as LeafIcon, Truck as TruckIcon, Clock as ClockIcon, MapPin as MapPinIcon, PlayCircle as PlayCircleIcon, Video as VideoIcon, History as HistoryIcon, Globe as GlobeIcon } from "lucide-react"
+
 import { Search, Filter, Leaf, Truck, Clock, MapPin, PlayCircle, Video, History } from "lucide-react"
+
 import { CurrencyProvider, useCurrency } from "@/contexts/currency-context"
 import CurrencySelector from "@/components/grocery/currency-selector"
 import ProductGrid from "@/components/grocery/product-grid"
@@ -20,6 +24,10 @@ import FloatingLiveShoppingButton from "@/components/grocery/floating-live-shopp
 import { getActiveLiveStreams } from "@/lib/live-streaming"
 import { getFeaturedVods } from "@/lib/video-on-demand"
 import { getRecentRecordings } from "@/lib/previous-live-recording"
+ 
+import { PWASupport } from "@/components/pwa/pwa-support"
+
+
 
 type SortBy = "name" | "price" | "rating"
 type SortOrder = "asc" | "desc"
@@ -160,6 +168,7 @@ function GroceryStoreContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
+  const [locale, setLocale] = useState<"en" | "hi">("en")
 
   useEffect(() => {
     const params = new URLSearchParams()
@@ -230,7 +239,7 @@ function GroceryStoreContent() {
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-3">
                 <div className="rounded-lg bg-gradient-to-r from-green-600 to-emerald-500 p-2">
-                  <Leaf className="h-6 w-6 text-white" />
+                  <LeafIcon className="h-6 w-6 text-white" />
                 </div>
                 <div>
                   <h1 className="text-xl font-bold bg-gradient-to-r from-green-600 to-emerald-500 text-transparent bg-clip-text">
@@ -241,7 +250,19 @@ function GroceryStoreContent() {
               </div>
             </div>
 
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <div className="flex items-center gap-2 rounded-md border px-2 py-1">
+                <GlobeIcon className="h-4 w-4 text-muted-foreground" />
+                <select
+                  aria-label="Language"
+                  value={locale}
+                  onChange={(e) => setLocale(e.target.value as "en" | "hi")}
+                  className="bg-transparent text-sm outline-none"
+                >
+                  <option value="en">EN</option>
+                  <option value="hi">हिं</option>
+                </select>
+              </div>
               <CurrencySelector />
               <CartDrawer />
             </div>
@@ -250,7 +271,7 @@ function GroceryStoreContent() {
           {/* Search Bar */}
           <div className="mt-4 flex items-center space-x-4">
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search for organic products..."
                 value={searchQuery}
@@ -266,7 +287,7 @@ function GroceryStoreContent() {
               onClick={() => setShowFilters(!showFilters)}
               className="flex items-center space-x-2"
             >
-              <Filter className="h-4 w-4" />
+              <FilterIcon className="h-4 w-4" />
               <span>Filters</span>
             </Button>
           </div>
@@ -279,7 +300,7 @@ function GroceryStoreContent() {
           <Card>
             <CardContent className="p-4 text-center">
               <div className="flex items-center justify-center mb-2">
-                <Truck className="h-5 w-5 text-green-600" />
+                <TruckIcon className="h-5 w-5 text-green-600" />
               </div>
               <div className="text-sm font-medium">Free Delivery</div>
               <div className="text-xs text-muted-foreground">Orders over {formatPrice(50)}</div>
@@ -289,7 +310,7 @@ function GroceryStoreContent() {
           <Card>
             <CardContent className="p-4 text-center">
               <div className="flex items-center justify-center mb-2">
-                <Clock className="h-5 w-5 text-blue-600" />
+                <ClockIcon className="h-5 w-5 text-blue-600" />
               </div>
               <div className="text-sm font-medium">Same Day</div>
               <div className="text-xs text-muted-foreground">Delivery available</div>
@@ -299,7 +320,7 @@ function GroceryStoreContent() {
           <Card>
             <CardContent className="p-4 text-center">
               <div className="flex items-center justify-center mb-2">
-                <Leaf className="h-5 w-5 text-green-600" />
+                <LeafIcon className="h-5 w-5 text-green-600" />
               </div>
               <div className="text-sm font-medium">100% Organic</div>
               <div className="text-xs text-muted-foreground">Certified products</div>
@@ -309,7 +330,7 @@ function GroceryStoreContent() {
           <Card>
             <CardContent className="p-4 text-center">
               <div className="flex items-center justify-center mb-2">
-                <MapPin className="h-5 w-5 text-orange-600" />
+                <MapPinIcon className="h-5 w-5 text-orange-600" />
               </div>
               <div className="text-sm font-medium">Local Farms</div>
               <div className="text-xs text-muted-foreground">Direct sourcing</div>
@@ -447,7 +468,7 @@ function GroceryStoreContent() {
                     </Card>
                   )}
 
-                  {!error && !hasNoResults && <ProductGrid products={products} loading={loading} />}
+                  {!error && !hasNoResults && <ProductGrid products={products} loading={loading} locale={locale} />}
 
                   {!loading && !error && totalPages > 1 && (
                     <div className="flex items-center justify-between border rounded-lg p-4">
@@ -474,9 +495,66 @@ function GroceryStoreContent() {
               <TabsContent value="deals">
                 <div className="space-y-4">
                   <h2 className="text-lg font-semibold">Special Deals</h2>
-                  <ProductGrid products={products.filter((p) => p.isOnSale)} loading={loading} />
+                  <ProductGrid products={products.filter((p) => p.isOnSale)} loading={loading} locale={locale} />
                 </div>
               </TabsContent>
+
+              <TabsContent value="live">
+                <div className="space-y-4">
+                  <h2 className="text-lg font-semibold">Live Shopping & Recordings</h2>
+                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                    <Card>
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <PlayCircleIcon className="h-4 w-4 text-emerald-600" /> Live now
+                        </div>
+                        {activeStreams.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No active stream right now.</p>
+                        ) : (
+                          activeStreams.map((stream) => (
+                            <div key={stream.id} className="rounded-md border p-3">
+                              <div className="font-medium text-sm">{stream.title}</div>
+                              <p className="text-xs text-muted-foreground">{stream.hostName} • {stream.viewerCount.toLocaleString()} viewers</p>
+                            </div>
+                          ))
+                        )}
+                        <Button variant="outline" onClick={() => router.push("/grocery/live")}>Watch live</Button>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <VideoIcon className="h-4 w-4 text-purple-600" /> Video on demand
+                        </div>
+                        {featuredVods.map((vod) => (
+                          <div key={vod.id} className="rounded-md border p-3">
+                            <div className="font-medium text-sm">{vod.title}</div>
+                            <p className="text-xs text-muted-foreground">{Math.ceil(vod.durationSeconds / 60)} min • {vod.views.toLocaleString()} views</p>
+                          </div>
+                        ))}
+                        <Button variant="outline" onClick={() => router.push("/grocery/live/recordings")}>Open VOD library</Button>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <HistoryIcon className="h-4 w-4 text-orange-600" /> Previous live recordings
+                        </div>
+                        {recentRecordings.map((recording) => (
+                          <div key={recording.id} className="rounded-md border p-3">
+                            <div className="font-medium text-sm">{recording.title}</div>
+                            <p className="text-xs text-muted-foreground">{recording.totalPurchases} purchases • {recording.clipCount} clips</p>
+                          </div>
+                        ))}
+                        <Button variant="outline" onClick={() => router.push("/recordings")}>Manage recordings</Button>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+              </TabsContent>
+
 
               <TabsContent value="live">
                 <div className="space-y-4">
@@ -534,12 +612,14 @@ function GroceryStoreContent() {
                 </div>
               </TabsContent>
 
+
             </Tabs>
           </div>
         </div>
       </div>
       {/* Floating Live Shopping Button */}
       <FloatingLiveShoppingButton />
+      <PWASupport />
     </div>
   )
 }
