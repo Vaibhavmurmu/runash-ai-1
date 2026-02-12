@@ -3,6 +3,13 @@ Better Auth & Drizzle ORM Auth Integration Setup Guide
 
 Complete implementation guide for migrating to Better Auth with Drizzle ORM and feature flags for gradual rollout.
 
+## Recent Updates
+
+### Dashboard access gate (current release)
+- `app/dashboard/page.tsx` now enforces an auth gate before rendering dashboard shell/content.
+- Unauthenticated users are shown `LoginForm`; authenticated users continue into the sidebar/header/dashboard layout.
+- The page is wrapped with `AuthProvider` and `CartProvider` to keep auth and cart context available for dashboard components.
+
 ## Quick Start
 
 ### 1. Install Dependencies
