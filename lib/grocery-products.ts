@@ -1,6 +1,6 @@
 import type { GroceryProduct } from "@/types/grocery-store"
 
-export interface Product {
+export interface RawGroceryProduct {
   id: string
   name: string
   category: string
@@ -29,7 +29,7 @@ export interface Product {
   discount?: number
 }
 
-export const groceryProducts: Product[] = [
+export const groceryProducts: RawGroceryProduct[] = [
   // FRUITS (25 products)
   {
     id: "fruit-001",
@@ -3977,7 +3977,74 @@ export const groceryProducts: Product[] = [
 ]
 
 export async function fetchGroceryProducts(delay = 1000): Promise<GroceryProduct[]> {
-  return new Promise((resolve) => setTimeout(() => resolve(GroceryProducts), delay))
+  return new Promise((resolve) => setTimeout(() => resolve(normalizedGroceryProducts), delay))
 }
 
-export default GroceryProducts
+const categoryMap: Record<string, GroceryProduct["category"]> = {
+  Fruits: "fruits",
+  Vegetables: "vegetables",
+  "Grains & Rice": "grains-cereals",
+  "Flour & Baking": "grains-cereals",
+  "Dairy & Eggs": "dairy-alternatives",
+  "Meat & Seafood": "meat-alternatives",
+  "Plant-based": "meat-alternatives",
+  "Oil & Ghee": "oils-vinegars",
+  "Spices & Seasonings": "spices-herbs",
+  "Pulses & Lentils": "pantry-staples",
+  Beverages: "beverages",
+  "Snacks & Namkeen": "snacks",
+  "Health & Wellness": "superfoods",
+}
+
+const normalizeProduct = (product: RawGroceryProduct): GroceryProduct => {
+  const mappedProduct: GroceryProduct = {
+    id: product.id,
+    name: product.name,
+    description: product.description,
+    price: product.price,
+    category: categoryMap[product.category] ?? "pantry-staples",
+    subcategory: product.subcategory,
+    brand: "RunAsh Fresh",
+    images: [product.image, product.imageHd, product.imageThumb],
+    inStock: product.inStock,
+    stockQuantity: product.inStock ? 100 : 0,
+    unit: product.unit,
+    minOrderQuantity: 1,
+    maxOrderQuantity: 10,
+    isOrganic: product.organic,
+    isFreshProduce: product.locallySourced,
+    origin: product.locallySourced ? "Local Farm Network" : "Regional Supplier",
+    certifications: product.organic ? ["Organic"] : ["Quality Checked"],
+    nutritionalInfo: product.nutritionInfo
+      ? {
+          ...product.nutritionInfo,
+          sugar: 0,
+          sodium: 0,
+        }
+      : undefined,
+    sustainabilityScore: product.locallySourced ? 9 : 7,
+    carbonFootprint: product.locallySourced ? 1.1 : 2.4,
+    farmInfo: product.locallySourced
+      ? {
+          farmName: "Local Farm Collective",
+          location: "Regional Hub",
+          farmerName: "Community Growers",
+          farmingMethod: product.organic ? "Organic" : "Conventional",
+          certifications: product.organic ? ["Organic"] : ["Quality Checked"],
+          distance: 45,
+        }
+      : undefined,
+    reviews: [],
+    averageRating: product.rating,
+    totalReviews: product.reviewCount,
+    tags: product.tags,
+    isOnSale: Boolean(product.discount),
+    salePrice: product.originalPrice,
+  }
+
+  return mappedProduct
+}
+
+export const normalizedGroceryProducts = groceryProducts.map(normalizeProduct)
+
+export default groceryProducts
