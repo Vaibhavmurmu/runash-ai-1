@@ -10,113 +10,123 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Send, MessageCircle, ShoppingCart, Heart, Gift, Crown, Settings } from "lucide-react"
-import type { LiveStreamMessage } from "@/types/live-shopping"
+
+type ChatMessage = {
+  id: string
+  streamId: string
+  userId: string
+  username: string
+  userAvatar?: string
+  message: string
+  timestamp: Date
+  type: "message" | "purchase" | "product_highlight" | "system"
+  metadata?: {
+    productId?: string
+    productName?: string
+    price?: number
+  }
+}
 
 interface LiveStreamChatProps {
   streamId: string
 }
 
 export default function LiveStreamChat({ streamId }: LiveStreamChatProps) {
-  const [messages, setMessages] = useState<LiveStreamMessage[]>([])
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [newMessage, setNewMessage] = useState("")
-  const [isConnected, setIsConnected] = useState(true)
-  const [chatSettings, setChatSettings] = useState({
-    showPurchases: true,
-    showSystemMessages: true,
-    slowMode: false,
-  })
+  const [connectionStatus, setConnectionStatus] = useState<"connecting" | "connected" | "offline">("connecting")
+  const [connectionError, setConnectionError] = useState<string | null>(null)
 
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const eventSourceRef = useRef<EventSource | null>(null)
 
-  // Mock messages for demonstration
-  const mockMessages: LiveStreamMessage[] = [
-    {
-      id: "1",
+  const parseMessage = (raw: Record<string, unknown>): ChatMessage | null => {
+    const id = String(raw.id ?? "")
+    const text = typeof raw.text === "string" ? raw.text : typeof raw.message === "string" ? raw.message : ""
+
+    if (!id || !text) {
+      return null
+    }
+
+    return {
+      id,
       streamId,
-      userId: "user1",
-      username: "OrganicFoodie",
-      userAvatar: "/placeholder.svg?height=32&width=32",
-      message: "These mangoes look amazing! 🥭",
-      timestamp: new Date(Date.now() - 5 * 60 * 1000),
-      type: "message",
-    },
-    {
-      id: "2",
-      streamId,
-      userId: "user2",
-      username: "HealthyEater",
-      userAvatar: "/placeholder.svg?height=32&width=32",
-      message: "Just ordered the quinoa! Thanks for the demo Sarah! 🌾",
-      timestamp: new Date(Date.now() - 4 * 60 * 1000),
-      type: "purchase",
-      metadata: {
-        productId: "3",
-        productName: "Organic Quinoa",
-        price: 15.99,
-      },
-    },
-    {
-      id: "3",
-      streamId,
-      userId: "system",
-      username: "System",
-      message: "🎉 Flash Sale Alert: 20% off all organic fruits for the next 10 minutes!",
-      timestamp: new Date(Date.now() - 3 * 60 * 1000),
-      type: "system",
-    },
-    {
-      id: "4",
-      streamId,
-      userId: "user3",
-      username: "VeggieLover",
-      userAvatar: "/placeholder.svg?height=32&width=32",
-      message: "How long do the avocados stay fresh?",
-      timestamp: new Date(Date.now() - 2 * 60 * 1000),
-      type: "message",
-    },
-    {
-      id: "5",
-      streamId,
-      userId: "host",
-      username: "Sarah Chen",
-      userAvatar: "/placeholder.svg?height=32&width=32",
-      message: "@VeggieLover They stay fresh for 5-7 days when stored properly! 🥑",
-      timestamp: new Date(Date.now() - 1 * 60 * 1000),
-      type: "message",
-    },
-  ]
+      userId: String(raw.userId ?? raw.user_id ?? "viewer"),
+      username: String(raw.username ?? "Viewer"),
+      message: text,
+      timestamp: new Date(Number(raw.createdAt) || Date.parse(String(raw.created_at ?? "")) || Date.now()),
+      type: (raw.type as ChatMessage["type"]) ?? "message",
+    }
+  }
 
   useEffect(() => {
-    setMessages(mockMessages)
+    let retryAttempt = 0
 
-    // Simulate real-time messages
-    const interval = setInterval(() => {
-      const randomMessages = [
-        "Love this stream! 💚",
-        "When will you showcase the berries?",
-        "Just placed my order! 🛒",
-        "These prices are amazing!",
-        "Can you show the nutrition facts?",
-        "Is this available for delivery today?",
-        "❤️❤️❤️",
-      ]
+    const connect = async () => {
+      setConnectionStatus("connecting")
 
-      const randomMessage = randomMessages[Math.floor(Math.random() * randomMessages.length)]
-      const newMsg: LiveStreamMessage = {
-        id: Date.now().toString(),
-        streamId,
-        userId: `user${Math.floor(Math.random() * 1000)}`,
-        username: `Viewer${Math.floor(Math.random() * 1000)}`,
-        message: randomMessage,
-        timestamp: new Date(),
-        type: "message",
+      try {
+        const response = await fetch(`/api/streams/${streamId}/chat?limit=100`, { cache: "no-store" })
+        if (response.ok) {
+          const payload = await response.json()
+          const nextMessages = (payload.messages ?? [])
+            .map((message: Record<string, unknown>) => parseMessage(message))
+            .filter((message: ChatMessage | null): message is ChatMessage => Boolean(message))
+          setMessages(nextMessages)
+        }
+      } catch {
+        setConnectionError("Unable to load chat history")
       }
 
-      setMessages((prev) => [...prev, newMsg])
-    }, 8000)
+      const eventSource = new EventSource(`/api/streams/${streamId}/chat/sse`)
+      eventSourceRef.current = eventSource
 
-    return () => clearInterval(interval)
+      eventSource.onopen = () => {
+        retryAttempt = 0
+        setConnectionStatus("connected")
+        setConnectionError(null)
+      }
+
+      eventSource.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data)
+          if (payload?.type === "messages" && Array.isArray(payload.data)) {
+            const incoming = payload.data
+              .map((message: Record<string, unknown>) => parseMessage(message))
+              .filter((message: ChatMessage | null): message is ChatMessage => Boolean(message))
+
+            setMessages((previous) => {
+              const seen = new Set(previous.map((message) => message.id))
+              const deduped = incoming.filter((message) => !seen.has(message.id))
+              return [...previous, ...deduped]
+            })
+          }
+        } catch {
+          setConnectionError("Received malformed chat update")
+        }
+      }
+
+      eventSource.onerror = () => {
+        eventSource.close()
+        setConnectionStatus("offline")
+        setConnectionError("Chat connection lost. Reconnecting…")
+
+        const backoff = Math.min(1000 * 2 ** retryAttempt, 30000)
+        retryAttempt += 1
+        reconnectTimeoutRef.current = setTimeout(connect, backoff)
+      }
+    }
+
+    void connect()
+
+    return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+      }
+      eventSourceRef.current?.close()
+    }
   }, [streamId])
 
   useEffect(() => {
@@ -126,18 +136,16 @@ export default function LiveStreamChat({ streamId }: LiveStreamChatProps) {
   const sendMessage = () => {
     if (!newMessage.trim()) return
 
-    const message: LiveStreamMessage = {
-      id: Date.now().toString(),
-      streamId,
-      userId: "current-user",
-      username: "You",
-      message: newMessage,
-      timestamp: new Date(),
-      type: "message",
-    }
-
-    setMessages((prev) => [...prev, message])
+    const pendingMessage = newMessage
     setNewMessage("")
+
+    void fetch(`/api/streams/${streamId}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: pendingMessage, username: "You" }),
+    }).catch(() => {
+      setConnectionError("Could not send message. Please retry.")
+    })
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -147,7 +155,7 @@ export default function LiveStreamChat({ streamId }: LiveStreamChatProps) {
     }
   }
 
-  const getMessageIcon = (type: LiveStreamMessage["type"]) => {
+  const getMessageIcon = (type: ChatMessage["type"]) => {
     switch (type) {
       case "purchase":
         return <ShoppingCart className="h-3 w-3 text-green-500" />
@@ -160,7 +168,7 @@ export default function LiveStreamChat({ streamId }: LiveStreamChatProps) {
     }
   }
 
-  const formatMessage = (message: LiveStreamMessage) => {
+  const formatMessage = (message: ChatMessage) => {
     if (message.type === "purchase" && message.metadata) {
       return (
         <div className="space-y-1">
@@ -186,7 +194,15 @@ export default function LiveStreamChat({ streamId }: LiveStreamChatProps) {
             </Badge>
           </CardTitle>
           <div className="flex items-center space-x-2">
-            <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"}`}></div>
+            <div
+              className={`w-2 h-2 rounded-full ${
+                connectionStatus === "connected"
+                  ? "bg-green-500"
+                  : connectionStatus === "connecting"
+                    ? "bg-yellow-500"
+                    : "bg-red-500"
+              }`}
+            ></div>
             <Button variant="ghost" size="sm">
               <Settings className="h-4 w-4" />
             </Button>
@@ -197,6 +213,11 @@ export default function LiveStreamChat({ streamId }: LiveStreamChatProps) {
       <CardContent className="flex-1 flex flex-col p-0">
         <ScrollArea className="flex-1 px-4" ref={scrollAreaRef}>
           <div className="space-y-3 pb-4">
+            {connectionError && (
+              <div className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700">
+                {connectionError}
+              </div>
+            )}
             {messages.map((message) => (
               <div key={message.id} className="flex items-start space-x-2 text-sm">
                 <div className="flex-shrink-0 mt-1">{getMessageIcon(message.type)}</div>
