@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,7 +13,8 @@ import StreamPlayback from "@/components/streaming/recording/stream-playback"
 import ShareDialog from "@/components/streaming/recording/share-dialog"
 import ClipEditor from "@/components/streaming/recording/clip-editor"
 import VideoEditor from "@/components/streaming/recording/video-editor"
-import { RecordingService } from "@/lib/recording-service"
+import { RecordingService, DEFAULT_CLOUD_PROVIDERS } from "@/lib/recording-service"
+import { toast } from "@/components/ui/use-toast"
 import type {
   RecordedStream,
   RecordingSettings,
@@ -35,7 +36,7 @@ export default function RecordingsPage() {
     total: 0,
     recordings: 0,
   })
-  const [cloudProviders, setCloudProviders] = useState<CloudStorageProvider[]>([])
+  const [cloudProviders, setCloudProviders] = useState<CloudStorageProvider[]>(DEFAULT_CLOUD_PROVIDERS)
   const [recordingSettings, setRecordingSettings] = useState<RecordingSettings>({
     autoRecord: true,
     recordAudio: true,
@@ -50,27 +51,36 @@ export default function RecordingsPage() {
     createHighlights: true,
   })
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true)
+      setLoadError(null)
+      const [recordingsData, storageData, settingsData] = await Promise.all([
+        RecordingService.getRecordings(),
+        RecordingService.getStorageUsage(),
+        RecordingService.getSettings(),
+      ])
+
+      setRecordings(recordingsData)
+      setStorageUsage(storageData)
+      setRecordingSettings(settingsData)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load recordings"
+      setLoadError(message)
+      toast({
+        title: "Unable to load recordings",
+        description: message,
+      })
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true)
-        const [recordingsData, storageData] = await Promise.all([
-          RecordingService.getRecordings(),
-          RecordingService.getStorageUsage(),
-        ])
-
-        setRecordings(recordingsData)
-        setStorageUsage(storageData)
-      } catch (error) {
-        console.error("Failed to load recordings:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadData()
-  }, [])
+    void loadData()
+  }, [loadData])
 
   const handlePlayRecording = (stream: RecordedStream) => {
     setSelectedStream(stream)
@@ -85,23 +95,59 @@ export default function RecordingsPage() {
   const handleDeleteRecording = async (streamId: string) => {
     try {
       await RecordingService.deleteRecording(streamId)
-      setRecordings((prev) => prev.filter((rec) => rec.id !== streamId))
+      await loadData()
+      toast({ title: "Recording deleted" })
     } catch (error) {
-      console.error("Failed to delete recording:", error)
+      const message = error instanceof Error ? error.message : "Failed to delete recording"
+      toast({
+        title: "Delete failed",
+        description: message,
+        action: (
+          <Button variant="outline" size="sm" onClick={() => handleDeleteRecording(streamId)}>
+            Retry
+          </Button>
+        ),
+      })
     }
   }
 
   const handleDownloadRecording = async (stream: RecordedStream) => {
     try {
       await RecordingService.downloadRecording(stream.id)
+      toast({ title: "Download started", description: `Preparing ${stream.title}` })
     } catch (error) {
-      console.error("Failed to download recording:", error)
+      const message = error instanceof Error ? error.message : "Failed to download recording"
+      toast({
+        title: "Download failed",
+        description: message,
+        action: (
+          <Button variant="outline" size="sm" onClick={() => handleDownloadRecording(stream)}>
+            Retry
+          </Button>
+        ),
+      })
     }
   }
 
-  const handleShareRecording = (stream: RecordedStream) => {
-    setSelectedStream(stream)
-    setIsShareOpen(true)
+  const handleShareRecording = async (stream: RecordedStream) => {
+    try {
+      const shareUrl = await RecordingService.shareRecording(stream.id)
+      await navigator.clipboard.writeText(shareUrl)
+      setSelectedStream(stream)
+      setIsShareOpen(true)
+      toast({ title: "Share link copied", description: "The recording is now shareable." })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to share recording"
+      toast({
+        title: "Share failed",
+        description: message,
+        action: (
+          <Button variant="outline" size="sm" onClick={() => handleShareRecording(stream)}>
+            Retry
+          </Button>
+        ),
+      })
+    }
   }
 
   const handleCreateClip = (stream: RecordedStream) => {
@@ -110,23 +156,55 @@ export default function RecordingsPage() {
   }
 
   const handleSaveClip = async (clip: StreamHighlight) => {
+    if (!selectedStream) {
+      return
+    }
+
     try {
-      await RecordingService.createClip(clip)
-      const updatedRecordings = await RecordingService.getRecordings()
-      setRecordings(updatedRecordings)
+      await RecordingService.createClip(selectedStream.id, clip)
+      setIsClipEditorOpen(false)
+      await loadData()
+      toast({ title: "Clip created", description: `Saved clip "${clip.title}"` })
     } catch (error) {
-      console.error("Failed to save clip:", error)
+      const message = error instanceof Error ? error.message : "Failed to save clip"
+      toast({
+        title: "Clip creation failed",
+        description: message,
+        action: (
+          <Button variant="outline" size="sm" onClick={() => handleSaveClip(clip)}>
+            Retry
+          </Button>
+        ),
+      })
     }
   }
 
   const handleSaveEditedVideo = async (editedVideo: any) => {
+    if (!selectedStream) {
+      return
+    }
+
     try {
-      await RecordingService.saveEditedVideo(editedVideo)
+      await RecordingService.saveEditedVideo({
+        ...editedVideo,
+        originalId: selectedStream.id,
+        startTime: new Date((editedVideo.startTime ?? 0) * 1000).toISOString(),
+        endTime: new Date((editedVideo.endTime ?? 0) * 1000).toISOString(),
+      })
       setIsVideoEditorOpen(false)
-      const updatedRecordings = await RecordingService.getRecordings()
-      setRecordings(updatedRecordings)
+      await loadData()
+      toast({ title: "Edit queued", description: "Your edited video is being processed." })
     } catch (error) {
-      console.error("Failed to save edited video:", error)
+      const message = error instanceof Error ? error.message : "Failed to save edited video"
+      toast({
+        title: "Save failed",
+        description: message,
+        action: (
+          <Button variant="outline" size="sm" onClick={() => handleSaveEditedVideo(editedVideo)}>
+            Retry
+          </Button>
+        ),
+      })
     }
   }
 
@@ -158,10 +236,20 @@ export default function RecordingsPage() {
 
   const handleSaveSettings = async (settings: RecordingSettings) => {
     try {
-      await RecordingService.updateSettings(settings)
-      setRecordingSettings(settings)
+      const updatedSettings = await RecordingService.updateSettings(settings)
+      setRecordingSettings(updatedSettings)
+      toast({ title: "Settings updated" })
     } catch (error) {
-      console.error("Failed to save settings:", error)
+      const message = error instanceof Error ? error.message : "Failed to save settings"
+      toast({
+        title: "Settings save failed",
+        description: message,
+        action: (
+          <Button variant="outline" size="sm" onClick={() => handleSaveSettings(settings)}>
+            Retry
+          </Button>
+        ),
+      })
     }
   }
 
@@ -179,6 +267,18 @@ export default function RecordingsPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-orange-50 dark:from-gray-950 dark:to-gray-900">
       <div className="container mx-auto py-8">
+        {loadError ? (
+          <Card className="mb-4 border-red-300">
+            <CardHeader>
+              <CardTitle>Could not refresh recordings</CardTitle>
+              <CardDescription>{loadError}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button onClick={loadData}>Retry</Button>
+            </CardContent>
+          </Card>
+        ) : null}
+
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">Recordings</h1>
           <Button className="bg-gradient-to-r from-orange-600 to-yellow-500 hover:opacity-90">
