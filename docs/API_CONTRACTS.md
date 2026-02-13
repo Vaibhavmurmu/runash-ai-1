@@ -107,6 +107,29 @@ Response:
 | `INVALID_LIMIT` | 400 | `GET /api/messages/session/:id` | `limit` query parameter is invalid. |
 | `SESSION_MESSAGES_FETCH_FAILED` | 500 | `GET /api/messages/session/:id` | Session messages query failed unexpectedly. |
 
+
+## Upload API (`/api/upload`)
+
+### `POST /api/upload`
+- Auth required (NextAuth session).
+- Multipart fields:
+  - `file` (required)
+  - `projectId` (optional, defaults to `default`)
+  - `privacy` (`private` default, `public` optional)
+- Validation:
+  - Content-Type allowlist: `image/jpeg`, `image/png`, `image/gif`, `image/webp`, `video/mp4`, `video/webm`
+  - Max file size: 25 MB
+- Storage behavior:
+  - Files are stored in cloud storage under user+project namespace.
+  - Metadata is persisted in `uploaded_files` for later list/delete/share workflows.
+- Response:
+  - `file`: persisted metadata (`id`, `ownerId`, `projectId`, `mimeType`, `size`, `privacy`, `createdAt`)
+  - `access`: signed URL and TTL based on privacy policy (private short-lived, public longer-lived)
+
+### Upload migration note
+
+- Apply DB migration script: `scripts/013-uploaded-files-schema.sql` before using `/api/upload` in production.
+
 ## Logging & Redaction
 
 Structured API logs include:
