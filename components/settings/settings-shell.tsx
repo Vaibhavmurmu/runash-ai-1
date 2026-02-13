@@ -15,6 +15,8 @@ import { cn } from "@/lib/utils"
 
 interface SettingsShellProps {
   compact?: boolean
+  initialSection?: SettingsCategory
+  initialPanel?: string
 }
 
 type RailItem = {
@@ -68,6 +70,7 @@ const railItems: RailItem[] = [
     panels: [
       { key: "usage-meters", label: "Usage meters" },
       { key: "credits-balance", label: "Credits balance" },
+      { key: "refer-earn", label: "Refer & earn" },
     ],
   },
   {
@@ -158,6 +161,15 @@ const normalizeSection = (section: string | null): SettingsCategory | null => {
 }
 
 const normalizePanel = (panel: string | null) => (panel ? panelAliasMap[panel] ?? panel : panel)
+
+const getPanelForSection = (section: SettingsCategory, panel?: string | null) => {
+  const panels = railItems.find((item) => item.key === section)?.panels ?? []
+  if (panel && panels.some((item) => item.key === panel)) {
+    return panel
+  }
+
+  return panels[0]?.key ?? ""
+}
 
 type BillingAction =
   | "upgradePlan"
@@ -258,12 +270,12 @@ const billingActionConfig: Record<BillingAction, BillingActionConfig> = {
   },
 }
 
-export function SettingsShell({ compact = false }: SettingsShellProps) {
+export function SettingsShell({ compact = false, initialSection = "account", initialPanel }: SettingsShellProps) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
-  const [activeSection, setActiveSection] = useState<SettingsCategory>("account")
-  const [activePanel, setActivePanel] = useState<string>("profile")
+  const [activeSection, setActiveSection] = useState<SettingsCategory>(initialSection)
+  const [activePanel, setActivePanel] = useState<string>(() => getPanelForSection(initialSection, initialPanel))
   const [settingsData, setSettingsData] = useState<SettingsData>(defaultSettingsData)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -290,8 +302,7 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
   }
 
   const setSectionAndPanel = (section: SettingsCategory, panel?: string) => {
-    const firstPanel = railItems.find((item) => item.key === section)?.panels[0]?.key ?? ""
-    const nextPanel = panel && railItems.find((item) => item.key === section)?.panels.some((item) => item.key === panel) ? panel : firstPanel
+    const nextPanel = getPanelForSection(section, panel)
     setActiveSection(section)
     setActivePanel(nextPanel)
   }
