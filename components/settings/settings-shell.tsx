@@ -71,6 +71,8 @@ const defaultSettingsData: SettingsData = {
   profile: {
     displayName: "",
     bio: "",
+    avatarAttachment: null,
+    bannerAttachment: null,
   },
   security: {
     newPassword: "",
@@ -86,6 +88,7 @@ const defaultSettingsData: SettingsData = {
     theme: "system",
     language: "en",
     feedbackNotes: "",
+    feedbackAttachments: [],
   },
   billing: {
     invoiceEmail: "",

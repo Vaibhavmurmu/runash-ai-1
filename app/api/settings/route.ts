@@ -6,6 +6,14 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { authOptions } from "@/lib/auth"
 import { getSql } from "@/lib/db/neon"
 
+type AttachmentMetadata = {
+  url: string
+  filename: string
+  mimeType: string
+  size: number
+  uploadedAt: string
+}
+
 type UserSettings = {
   account: {
     email: string
@@ -14,6 +22,8 @@ type UserSettings = {
   profile: {
     displayName: string
     bio: string
+    avatarAttachment: AttachmentMetadata | null
+    bannerAttachment: AttachmentMetadata | null
   }
   security: {
     newPassword: string
@@ -27,6 +37,9 @@ type UserSettings = {
   }
   preferences: {
     theme: "light" | "dark" | "system"
+    language: "en" | "es" | "fr"
+    feedbackNotes: string
+    feedbackAttachments: AttachmentMetadata[]
   }
   billing: {
     invoiceEmail: string
@@ -40,6 +53,16 @@ type PersistedUserSettings = Omit<UserSettings, "security"> & {
   }
 }
 
+const attachmentMetadataSchema = z
+  .object({
+    url: z.string().max(2048),
+    filename: z.string().min(1).max(255),
+    mimeType: z.string().min(1).max(128),
+    size: z.number().int().nonnegative().max(25 * 1024 * 1024),
+    uploadedAt: z.string().datetime(),
+  })
+  .strict()
+
 const securityPatchSchema = z.object({
   security: z
     .object({
@@ -51,6 +74,29 @@ const securityPatchSchema = z.object({
     .strict(),
 })
 
+const profileAttachmentSchema = z
+  .object({
+    profile: z
+      .object({
+        avatarAttachment: attachmentMetadataSchema.nullable().optional(),
+        bannerAttachment: attachmentMetadataSchema.nullable().optional(),
+      })
+      .partial()
+      .strict(),
+  })
+  .strict()
+
+const preferencesAttachmentSchema = z
+  .object({
+    preferences: z
+      .object({
+        feedbackAttachments: z.array(attachmentMetadataSchema).max(8).optional(),
+      })
+      .partial()
+      .strict(),
+  })
+  .strict()
+
 const defaultSettings: UserSettings = {
   account: {
     email: "",
@@ -59,6 +105,8 @@ const defaultSettings: UserSettings = {
   profile: {
     displayName: "",
     bio: "",
+    avatarAttachment: null,
+    bannerAttachment: null,
   },
   security: {
     newPassword: "",
@@ -72,6 +120,9 @@ const defaultSettings: UserSettings = {
   },
   preferences: {
     theme: "system",
+    language: "en",
+    feedbackNotes: "",
+    feedbackAttachments: [],
   },
   billing: {
     invoiceEmail: "",
@@ -99,6 +150,23 @@ function parseBio(rawBio: unknown): Record<string, unknown> {
   return {}
 }
 
+function sanitizeAttachment(input: unknown): AttachmentMetadata | null {
+  const result = attachmentMetadataSchema.safeParse(input)
+  if (!result.success) {
+    return null
+  }
+
+  return result.data
+}
+
+function sanitizeAttachmentList(input: unknown): AttachmentMetadata[] {
+  if (!Array.isArray(input)) {
+    return []
+  }
+
+  return input.map((item) => sanitizeAttachment(item)).filter((item): item is AttachmentMetadata => Boolean(item)).slice(0, 8)
+}
+
 function normalizeSettings(raw: unknown, accountEmail: string): UserSettings {
   const input = raw && typeof raw === "object" ? (raw as Partial<PersistedUserSettings>) : {}
 
@@ -113,6 +181,8 @@ function normalizeSettings(raw: unknown, accountEmail: string): UserSettings {
     profile: {
       ...defaultSettings.profile,
       ...(input.profile ?? {}),
+      avatarAttachment: sanitizeAttachment(input.profile?.avatarAttachment),
+      bannerAttachment: sanitizeAttachment(input.profile?.bannerAttachment),
     },
     security: {
       ...defaultSettings.security,
@@ -126,6 +196,7 @@ function normalizeSettings(raw: unknown, accountEmail: string): UserSettings {
     preferences: {
       ...defaultSettings.preferences,
       ...(input.preferences ?? {}),
+      feedbackAttachments: sanitizeAttachmentList(input.preferences?.feedbackAttachments),
     },
     billing: {
       ...defaultSettings.billing,
@@ -139,7 +210,11 @@ function normalizeSettings(raw: unknown, accountEmail: string): UserSettings {
 function toPersistedSettings(settings: UserSettings, apiKeyHash?: string): PersistedUserSettings {
   return {
     account: settings.account,
-    profile: settings.profile,
+    profile: {
+      ...settings.profile,
+      avatarAttachment: sanitizeAttachment(settings.profile.avatarAttachment),
+      bannerAttachment: sanitizeAttachment(settings.profile.bannerAttachment),
+    },
     security: {
       twoFactorEnabled: settings.security.twoFactorEnabled,
       apiKeyMasked: settings.security.apiKeyMasked || "Not generated",
@@ -147,7 +222,10 @@ function toPersistedSettings(settings: UserSettings, apiKeyHash?: string): Persi
       ...(apiKeyHash ? { apiKeyHash } : {}),
     },
     notifications: settings.notifications,
-    preferences: settings.preferences,
+    preferences: {
+      ...settings.preferences,
+      feedbackAttachments: sanitizeAttachmentList(settings.preferences.feedbackAttachments),
+    },
     billing: settings.billing,
   }
 }
@@ -204,12 +282,11 @@ export async function GET(request: NextRequest) {
     const userSettings = normalizeSettings(parsedBio.userSettings, row.email ?? "")
 
     return respondSuccess(request, withLegacyFields(userSettings), { legacy: withLegacyFields(userSettings) })
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Failed to load settings"
+  } catch {
     return respondError(
       request,
-      { code: "SETTINGS_READ_FAILED", message },
-      { status: 500, legacy: { error: message } },
+      { code: "SETTINGS_READ_FAILED", message: "Failed to load settings" },
+      { status: 500, legacy: { error: "Failed to load settings" } },
     )
   }
 }
@@ -227,6 +304,39 @@ async function updateSettings(request: NextRequest) {
           request,
           { code: "INVALID_SECURITY_PAYLOAD", message: "Invalid security settings payload" },
           { status: 400, legacy: { error: "Invalid security settings payload" } },
+        )
+      }
+    }
+
+    if (payload.profile) {
+      const profileAttachmentValidation = profileAttachmentSchema.safeParse({
+        profile: {
+          avatarAttachment: payload.profile.avatarAttachment,
+          bannerAttachment: payload.profile.bannerAttachment,
+        },
+      })
+
+      if (!profileAttachmentValidation.success) {
+        return respondError(
+          request,
+          { code: "INVALID_PROFILE_ATTACHMENT_PAYLOAD", message: "Invalid profile attachment metadata" },
+          { status: 400, legacy: { error: "Invalid profile attachment metadata" } },
+        )
+      }
+    }
+
+    if (payload.preferences?.feedbackAttachments) {
+      const preferencesAttachmentValidation = preferencesAttachmentSchema.safeParse({
+        preferences: {
+          feedbackAttachments: payload.preferences.feedbackAttachments,
+        },
+      })
+
+      if (!preferencesAttachmentValidation.success) {
+        return respondError(
+          request,
+          { code: "INVALID_FEEDBACK_ATTACHMENT_PAYLOAD", message: "Invalid feedback attachment metadata" },
+          { status: 400, legacy: { error: "Invalid feedback attachment metadata" } },
         )
       }
     }
@@ -264,6 +374,14 @@ async function updateSettings(request: NextRequest) {
         profile: {
           ...existingSettings.profile,
           ...(payload.profile ?? {}),
+          avatarAttachment:
+            payload.profile?.avatarAttachment !== undefined
+              ? sanitizeAttachment(payload.profile.avatarAttachment)
+              : existingSettings.profile.avatarAttachment,
+          bannerAttachment:
+            payload.profile?.bannerAttachment !== undefined
+              ? sanitizeAttachment(payload.profile.bannerAttachment)
+              : existingSettings.profile.bannerAttachment,
         },
         security: {
           ...existingSettings.security,
@@ -279,6 +397,10 @@ async function updateSettings(request: NextRequest) {
         preferences: {
           ...existingSettings.preferences,
           ...(payload.preferences ?? {}),
+          feedbackAttachments:
+            payload.preferences?.feedbackAttachments !== undefined
+              ? sanitizeAttachmentList(payload.preferences.feedbackAttachments)
+              : existingSettings.preferences.feedbackAttachments,
         },
         billing: {
           ...existingSettings.billing,
@@ -309,12 +431,11 @@ async function updateSettings(request: NextRequest) {
     }
 
     return respondSuccess(request, withLegacyFields(mergedSettings), { legacy: withLegacyFields(mergedSettings) })
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Failed to update settings"
+  } catch {
     return respondError(
       request,
-      { code: "SETTINGS_UPDATE_FAILED", message },
-      { status: 500, legacy: { error: message } },
+      { code: "SETTINGS_UPDATE_FAILED", message: "Failed to update settings" },
+      { status: 500, legacy: { error: "Failed to update settings" } },
     )
   }
 }
