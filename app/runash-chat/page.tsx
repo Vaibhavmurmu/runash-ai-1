@@ -37,6 +37,7 @@ import {
   ShoppingCart,
   Sparkles,
   User,
+  X,
 } from "lucide-react"
 
 type ChatPreviewMessage = {
@@ -77,6 +78,7 @@ const sidebarNavItems = [
 ]
 
 export default function RunashChatPage() {
+  const updatesBannerDismissedKey = "runash_updates_banner_dismissed"
   const router = useRouter()
   const { data: session } = useSession()
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -92,6 +94,7 @@ export default function RunashChatPage() {
   const [mobileSearchValue, setMobileSearchValue] = useState("")
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
+  const [showUpdatesBanner, setShowUpdatesBanner] = useState(false)
 
   const headerActions: HeaderAction[] = [
     {
@@ -147,6 +150,9 @@ export default function RunashChatPage() {
   useEffect(() => {
     const savedValue = localStorage.getItem("runash_sidebar_collapsed")
     setIsSidebarCollapsed(savedValue === "true")
+
+    const isBannerDismissed = localStorage.getItem(updatesBannerDismissedKey) === "true"
+    setShowUpdatesBanner(!isBannerDismissed)
   }, [])
 
   useEffect(() => {
@@ -287,6 +293,11 @@ export default function RunashChatPage() {
   }
 
   const mobileRecentMatches = recentItems.filter((item) => item.title.toLowerCase().includes(mobileSearchValue.trim().toLowerCase()))
+
+  const dismissUpdatesBanner = () => {
+    localStorage.setItem(updatesBannerDismissedKey, "true")
+    setShowUpdatesBanner(false)
+  }
 
   function renderSidebarContent(collapsed: boolean, isMobileDrawer = false) {
     return (
@@ -617,6 +628,33 @@ export default function RunashChatPage() {
             {startChatError && (
               <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
                 {startChatError}
+              </div>
+            )}
+
+            {showUpdatesBanner && (
+              <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2.5 text-sm text-cyan-100">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-cyan-300/50 bg-cyan-300/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-100">
+                    New
+                  </span>
+                  <p className="text-xs text-cyan-50 sm:text-sm">Introducing improved workspace flows for faster launches.</p>
+                  <Button
+                    variant="link"
+                    className="h-auto p-0 text-xs text-cyan-100 underline-offset-2 hover:text-cyan-50 sm:text-sm"
+                    onClick={() => router.push("/changelog")}
+                  >
+                    Learn more
+                  </Button>
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6 shrink-0 text-cyan-100 hover:bg-cyan-400/20 hover:text-cyan-50"
+                  onClick={dismissUpdatesBanner}
+                  aria-label="Dismiss updates banner"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
               </div>
             )}
 
