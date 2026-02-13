@@ -25,6 +25,8 @@ const defaultSettingsData: SettingsData = {
   security: {
     newPassword: "",
     twoFactorEnabled: false,
+    apiKeyMasked: "Not generated",
+    apiKeyLastRotatedAt: "",
   },
   notifications: {
     marketingEmailsEnabled: true,
@@ -47,6 +49,7 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [errors, setErrors] = useState<Partial<Record<SettingsSection, string>>>({})
+  const [oneTimeApiKey, setOneTimeApiKey] = useState<string | null>(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -94,6 +97,19 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
     }))
   }
 
+  const buildSectionPayload = (section: SettingsSection) => {
+    if (section !== "security") {
+      return { [section]: settingsData[section] }
+    }
+
+    return {
+      security: {
+        newPassword: settingsData.security.newPassword,
+        twoFactorEnabled: settingsData.security.twoFactorEnabled,
+      },
+    }
+  }
+
   const saveSection = async (section: SettingsSection) => {
     setIsSaving(true)
     setErrors((prev) => ({ ...prev, [section]: "" }))
@@ -102,7 +118,7 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
       const response = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [section]: settingsData[section] }),
+        body: JSON.stringify(buildSectionPayload(section)),
       })
 
       if (!response.ok) {
@@ -122,6 +138,10 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
       setErrors((prev) => ({ ...prev, [section]: "Failed to save changes. Please retry." }))
       toast({ title: "Save failed", description: `Could not save ${section} settings.`, variant: "destructive" })
     } finally {
+      setSettingsData((prev) => ({
+        ...prev,
+        security: { ...prev.security, newPassword: "" },
+      }))
       setIsSaving(false)
     }
   }
@@ -130,15 +150,24 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
     endpoint: string,
     successTitle: string,
     successDescription: string,
-    method: "POST" | "DELETE" = "POST"
+    method: "POST" | "DELETE" = "POST",
+    body?: Record<string, unknown>
   ) => {
-    const response = await fetch(endpoint, { method, headers: { "Content-Type": "application/json" } })
+    const response = await fetch(endpoint, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    })
     if (!response.ok) {
       toast({ title: "Action failed", description: "Please retry.", variant: "destructive" })
-      return
+      return null
     }
 
+    const payload = (await response.json().catch(() => ({}))) as { data?: Record<string, unknown>; apiKey?: string }
+    const data = payload?.data ?? payload
+
     toast({ title: successTitle, description: successDescription })
+    return data
   }
 
   const isDisabled = isLoading || isSaving
@@ -172,7 +201,7 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
             onSave={saveSection}
             onAction={(action) => {
               if (action === "revokeSessions") {
-                void executeAction("/api/settings/actions/revoke-sessions", "Sessions revoked", "All sessions were revoked.")
+                void executeAction("/api/settings/actions/revoke-sessions", "Sessions revoked", "All sessions were revoked.", "POST", { confirm: true })
               }
             }}
           />
@@ -181,25 +210,74 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
         <TabsContent value="security">
           <SecuritySettings
             data={settingsData}
+            oneTimeApiKey={oneTimeApiKey}
             isDisabled={isDisabled}
             isSaving={isSaving}
             errors={errors}
             onFieldChange={onFieldChange}
             onSave={saveSection}
+            onOneTimeApiKeyDismiss={() => setOneTimeApiKey(null)}
             onAction={(action) => {
               if (action === "regenerateApiKey") {
                 void executeAction(
                   "/api/settings/actions/regenerate-api-key",
                   "API key regenerated",
-                  "A new API key is now active."
-                )
+                  "A new API key is now active.",
+                  "POST",
+                  { confirm: true }
+                ).then((data) => {
+                  if (!data) {
+                    return
+                  }
+
+                  setSettingsData((prev) => ({
+                    ...prev,
+                    security: {
+                      ...prev.security,
+                      apiKeyMasked: String(data.apiKeyMasked ?? prev.security.apiKeyMasked),
+                      apiKeyLastRotatedAt: String(data.apiKeyLastRotatedAt ?? prev.security.apiKeyLastRotatedAt),
+                    },
+                  }))
+                  setOneTimeApiKey(typeof data.apiKey === "string" ? data.apiKey : null)
+                })
               }
               if (action === "deleteApiKey") {
-                void executeAction("/api/settings/actions/delete-api-key", "API key deleted", "API key access removed.", "DELETE")
+                void executeAction(
+                  "/api/settings/actions/delete-api-key",
+                  "API key deleted",
+                  "API key access removed.",
+                  "DELETE",
+                  { confirm: true }
+                ).then((data) => {
+                  if (!data) {
+                    return
+                  }
+
+                  setOneTimeApiKey(null)
+                  setSettingsData((prev) => ({
+                    ...prev,
+                    security: {
+                      ...prev.security,
+                      apiKeyMasked: String(data.apiKeyMasked ?? "Not generated"),
+                      apiKeyLastRotatedAt: String(data.apiKeyLastRotatedAt ?? ""),
+                    },
+                  }))
+                })
               }
               if (action === "disable2FA") {
-                void executeAction("/api/settings/actions/disable-2fa", "2FA disabled", "Two-factor authentication disabled.")
-                onFieldChange("security", "twoFactorEnabled", false)
+                void executeAction(
+                  "/api/settings/actions/disable-2fa",
+                  "2FA disabled",
+                  "Two-factor authentication disabled.",
+                  "POST",
+                  { confirm: true }
+                ).then((data) => {
+                  if (!data) {
+                    return
+                  }
+
+                  onFieldChange("security", "twoFactorEnabled", false)
+                })
               }
             }}
           />

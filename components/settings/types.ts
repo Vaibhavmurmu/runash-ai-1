@@ -14,6 +14,8 @@ export type SettingsData = {
   security: {
     newPassword: string
     twoFactorEnabled: boolean
+    apiKeyMasked: string
+    apiKeyLastRotatedAt: string
   }
   notifications: {
     marketingEmailsEnabled: boolean

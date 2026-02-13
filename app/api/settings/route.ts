@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server"
 import { getServerSession } from "next-auth"
+import { z } from "zod"
 
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { authOptions } from "@/lib/auth"
@@ -17,6 +18,8 @@ type UserSettings = {
   security: {
     newPassword: string
     twoFactorEnabled: boolean
+    apiKeyMasked: string
+    apiKeyLastRotatedAt: string
   }
   notifications: {
     marketingEmailsEnabled: boolean
@@ -32,8 +35,21 @@ type UserSettings = {
 }
 
 type PersistedUserSettings = Omit<UserSettings, "security"> & {
-  security: Omit<UserSettings["security"], "newPassword">
+  security: Omit<UserSettings["security"], "newPassword"> & {
+    apiKeyHash?: string
+  }
 }
+
+const securityPatchSchema = z.object({
+  security: z
+    .object({
+      newPassword: z.string().max(256).optional(),
+      twoFactorEnabled: z.boolean().optional(),
+      apiKeyMasked: z.string().optional(),
+      apiKeyLastRotatedAt: z.string().optional(),
+    })
+    .strict(),
+})
 
 const defaultSettings: UserSettings = {
   account: {
@@ -47,6 +63,8 @@ const defaultSettings: UserSettings = {
   security: {
     newPassword: "",
     twoFactorEnabled: false,
+    apiKeyMasked: "Not generated",
+    apiKeyLastRotatedAt: "",
   },
   notifications: {
     marketingEmailsEnabled: true,
@@ -118,12 +136,15 @@ function normalizeSettings(raw: unknown, accountEmail: string): UserSettings {
   return merged
 }
 
-function toPersistedSettings(settings: UserSettings): PersistedUserSettings {
+function toPersistedSettings(settings: UserSettings, apiKeyHash?: string): PersistedUserSettings {
   return {
     account: settings.account,
     profile: settings.profile,
     security: {
       twoFactorEnabled: settings.security.twoFactorEnabled,
+      apiKeyMasked: settings.security.apiKeyMasked || "Not generated",
+      apiKeyLastRotatedAt: settings.security.apiKeyLastRotatedAt || "",
+      ...(apiKeyHash ? { apiKeyHash } : {}),
     },
     notifications: settings.notifications,
     preferences: settings.preferences,
@@ -199,6 +220,17 @@ async function updateSettings(request: NextRequest) {
     const payload = (await request.json()) as Partial<UserSettings>
     const sql = getSql()
 
+    if (payload.security) {
+      const securityValidation = securityPatchSchema.safeParse({ security: payload.security })
+      if (!securityValidation.success) {
+        return respondError(
+          request,
+          { code: "INVALID_SECURITY_PAYLOAD", message: "Invalid security settings payload" },
+          { status: 400, legacy: { error: "Invalid security settings payload" } },
+        )
+      }
+    }
+
     const [row] = await sql/* sql */`
       SELECT id, email, bio
       FROM public.users
@@ -215,10 +247,15 @@ async function updateSettings(request: NextRequest) {
     }
 
     const parsedBio = parseBio(row.bio)
+    const persistedSecurity =
+      parsedBio.userSettings && typeof parsedBio.userSettings === "object"
+        ? ((parsedBio.userSettings as Record<string, unknown>).security as { apiKeyHash?: string } | undefined)
+        : undefined
+    const existingApiKeyHash = typeof persistedSecurity?.apiKeyHash === "string" ? persistedSecurity.apiKeyHash : undefined
     const existingSettings = normalizeSettings(parsedBio.userSettings, row.email ?? "")
     const mergedSettings = normalizeSettings(
       {
-        ...toPersistedSettings(existingSettings),
+        ...toPersistedSettings(existingSettings, existingApiKeyHash),
         ...payload,
         account: {
           ...existingSettings.account,
@@ -230,7 +267,10 @@ async function updateSettings(request: NextRequest) {
         },
         security: {
           ...existingSettings.security,
-          ...(payload.security ?? {}),
+          newPassword: payload.security?.newPassword ?? existingSettings.security.newPassword,
+          twoFactorEnabled: payload.security?.twoFactorEnabled ?? existingSettings.security.twoFactorEnabled,
+          apiKeyMasked: existingSettings.security.apiKeyMasked,
+          apiKeyLastRotatedAt: existingSettings.security.apiKeyLastRotatedAt,
         },
         notifications: {
           ...existingSettings.notifications,
@@ -250,7 +290,7 @@ async function updateSettings(request: NextRequest) {
 
     const mergedBio = {
       ...parsedBio,
-      userSettings: toPersistedSettings(mergedSettings),
+      userSettings: toPersistedSettings(mergedSettings, existingApiKeyHash),
     }
 
     const [updated] = await sql/* sql */`
