@@ -39,12 +39,20 @@ type ChatQuickPrompt = {
   icon: React.ComponentType<{ className?: string }>
 }
 
+type RecentItem = {
+  id: string
+  title: string
+}
+
 export default function RunashChatPage() {
   const router = useRouter()
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [messagesPreview, setMessagesPreview] = useState<ChatPreviewMessage[]>([])
   const [loadingSession, setLoadingSession] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
+  const [recentItems, setRecentItems] = useState<RecentItem[]>([])
+  const [loadingRecents, setLoadingRecents] = useState(false)
+  const [recentItemsError, setRecentItemsError] = useState<string | null>(null)
   const [prompt, setPrompt] = useState("")
 
   const quickPrompts: ChatQuickPrompt[] = [
@@ -73,8 +81,38 @@ export default function RunashChatPage() {
 
   useEffect(() => {
     ;(async () => {
+      setLoadingRecents(true)
+      setRecentItemsError(null)
       setLoadingSession(true)
       setPreviewError(null)
+      try {
+        const sessionsResponse = await fetch("/api/sessions")
+        const sessionsPayload = await sessionsResponse.json().catch(() => null)
+
+        if (!sessionsResponse.ok || !sessionsPayload?.success || !Array.isArray(sessionsPayload?.data)) {
+          throw new Error(sessionsPayload?.error?.message || "Unable to load recent chats")
+        }
+
+        const normalizedRecentItems = sessionsPayload.data
+          .map((session: { id?: string | number; title?: string }) => {
+            const id = session?.id != null ? String(session.id) : ""
+            const title = typeof session?.title === "string" ? session.title.trim() : ""
+            if (!id) return null
+            return {
+              id,
+              title: title || `Session #${id}`,
+            }
+          })
+          .filter((item: RecentItem | null): item is RecentItem => item !== null)
+
+        setRecentItems(normalizedRecentItems.slice(0, 8))
+      } catch (error) {
+        setRecentItemsError(error instanceof Error ? error.message : "Unable to load recent chats")
+        setRecentItems([])
+      } finally {
+        setLoadingRecents(false)
+      }
+
       try {
         const res = await fetch("/api/sessions/recent")
         const payload = await res.json()
@@ -130,8 +168,6 @@ export default function RunashChatPage() {
     })()
   }
 
-  const recentLinks = ["runashchat", "rammurru/runash.in", "rammurru/runash.in copy", "organic-bundle-lab"]
-
   return (
     <div className="min-h-screen bg-[#030405] text-zinc-100">
       <div className="mx-auto flex w-full max-w-[1400px] gap-4 px-3 py-3">
@@ -162,10 +198,20 @@ export default function RunashChatPage() {
           <div className="mt-5 border-t border-zinc-800 pt-4">
             <div className="mb-2 text-xs font-medium text-zinc-500">Recents</div>
             <div className="space-y-1">
-              {recentLinks.map((item) => (
-                <div key={item} className="truncate rounded-md px-2 py-1.5 text-xs text-zinc-400 hover:bg-zinc-900">
-                  {item}
-                </div>
+              {loadingRecents && <div className="px-2 py-1.5 text-xs text-zinc-500">Loading recent chats…</div>}
+              {!loadingRecents && recentItemsError && <div className="px-2 py-1.5 text-xs text-amber-400">{recentItemsError}</div>}
+              {!loadingRecents && !recentItemsError && recentItems.length === 0 && (
+                <div className="px-2 py-1.5 text-xs text-zinc-500">No recent chats yet</div>
+              )}
+              {recentItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => router.push(`/chat?sessionId=${item.id}`)}
+                  className="w-full truncate rounded-md px-2 py-1.5 text-left text-xs text-zinc-400 hover:bg-zinc-900"
+                >
+                  {item.title}
+                </button>
               ))}
             </div>
           </div>
