@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { WorkflowBuilder } from "@/components/workflow/workflow-builder"
 import { WorkflowMarketplace } from "@/components/workflow/workflow-marketplace"
 import { WorkflowMonitor } from "@/components/workflow/workflow-monitor"
@@ -36,6 +36,60 @@ const initialExecution: WorkflowExecution = {
 export default function WorkflowPage() {
   const [workflow, setWorkflow] = useState<Workflow>(initialWorkflow)
   const [execution, setExecution] = useState<WorkflowExecution>(initialExecution)
+  const executionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const clearExecutionInterval = () => {
+    if (!executionIntervalRef.current) {
+      return
+    }
+
+    clearInterval(executionIntervalRef.current)
+    executionIntervalRef.current = null
+  }
+
+  useEffect(() => {
+    if (execution.status !== "running") {
+      return
+    }
+
+    clearExecutionInterval()
+
+    executionIntervalRef.current = setInterval(() => {
+      setExecution((currentExecution) => {
+        if (currentExecution.status !== "running") {
+          return currentExecution
+        }
+
+        const nextProgress = Math.min(currentExecution.progress + 10, 100)
+
+        if (nextProgress >= 100) {
+          clearExecutionInterval()
+
+          return {
+            ...currentExecution,
+            status: "completed",
+            progress: 100,
+            endTime: new Date(),
+          }
+        }
+
+        return {
+          ...currentExecution,
+          progress: nextProgress,
+        }
+      })
+    }, 700)
+
+    return () => {
+      clearExecutionInterval()
+    }
+  }, [execution.status])
+
+  useEffect(() => {
+    return () => {
+      clearExecutionInterval()
+    }
+  }, [])
 
   return (
     <main className="container mx-auto space-y-6 p-6">
@@ -74,6 +128,7 @@ export default function WorkflowPage() {
                 workflow={workflow}
                 onSave={(nextWorkflow) => setWorkflow(nextWorkflow)}
                 onExecute={(nextWorkflow) => {
+                  clearExecutionInterval()
                   setWorkflow(nextWorkflow)
                   setExecution({
                     id: `execution-${Date.now()}`,
