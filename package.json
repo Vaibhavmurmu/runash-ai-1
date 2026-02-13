@@ -87,6 +87,7 @@
     "react-resizable": "latest",
     "react-resizable-panels": "latest",
     "react-rnd": "latest",
+    "reactflow": "^11.11.4",
     "recharts": "latest",
     "sonner": "latest",
     "speakeasy": "latest",
@@ -115,7 +116,9 @@
       "@vercel/speed-insights"
     ],
     "ignoredBuiltDependencies": [
-      "@vercel/speed-insights"
+      "@vercel/speed-insights",
+      "esbuild",
+      "sharp"
     ]
   }
 }
