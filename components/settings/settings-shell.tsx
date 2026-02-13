@@ -7,6 +7,7 @@ import { BillingSettings } from "@/components/settings/sections/billing-settings
 import { PreferencesSettings } from "@/components/settings/sections/preferences-settings"
 import { SecuritySettings } from "@/components/settings/sections/security-settings"
 import type { SettingsCategory, SettingsData, SettingsSection } from "@/components/settings/types"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
@@ -46,10 +47,13 @@ const railItems: RailItem[] = [
     key: "billing",
     label: "Billing",
     panels: [
+      { key: "upgrade", label: "Upgrade" },
       { key: "subscription", label: "Subscription" },
-      { key: "invoice", label: "Invoice" },
-      { key: "billing-controls", label: "Auto Recharge" },
-      { key: "usage", label: "Usage" },
+      { key: "invoice-delivery", label: "Invoice delivery" },
+      { key: "billing-method", label: "Billing method" },
+      { key: "usage-meters", label: "Usage meters" },
+      { key: "credits-balance", label: "Credits balance" },
+      { key: "refer-earn", label: "Refer & earn" },
     ],
   },
   {
@@ -93,11 +97,84 @@ const defaultSettingsData: SettingsData = {
   billing: {
     invoiceEmail: "",
     autoRechargeEnabled: false,
+    planName: "Starter",
+    subscriptionStatus: "trial",
+    billingMethodSummary: "No default payment method on file.",
+    usageThisCycle: 0,
+    usageLimit: 1000,
+    creditsBalance: 0,
+    referralCode: "",
   },
 }
 
 const isSettingsCategory = (value: string | null): value is SettingsCategory =>
   value === "account" || value === "security" || value === "billing" || value === "preferences"
+
+type BillingAction =
+  | "upgradePlan"
+  | "manageSubscription"
+  | "saveInvoiceDelivery"
+  | "billingMethodSummary"
+  | "usageMeters"
+  | "creditsBalance"
+  | "referAndEarn"
+
+type BillingActionConfig = {
+  endpoint: string
+  successTitle: string
+  successDescription: string
+  method?: "POST" | "DELETE"
+  body?: Record<string, unknown>
+  requiresConfirmation?: boolean
+  confirmationTitle?: string
+  confirmationDescription?: string
+}
+
+const billingActionConfig: Record<BillingAction, BillingActionConfig> = {
+  upgradePlan: {
+    endpoint: "/api/settings/actions/upgrade-plan",
+    successTitle: "Upgrade initialized",
+    successDescription: "Upgrade flow is ready.",
+    requiresConfirmation: true,
+    confirmationTitle: "Confirm plan upgrade",
+    confirmationDescription: "This can start a billing change. Continue?",
+    body: { confirm: true },
+  },
+  manageSubscription: {
+    endpoint: "/api/settings/actions/manage-subscription",
+    successTitle: "Subscription status loaded",
+    successDescription: "Latest subscription contract data refreshed.",
+  },
+  saveInvoiceDelivery: {
+    endpoint: "/api/settings/actions/invoice-delivery",
+    successTitle: "Invoice delivery synced",
+    successDescription: "Invoice delivery contract data refreshed.",
+    requiresConfirmation: true,
+    confirmationTitle: "Confirm invoice delivery update",
+    confirmationDescription: "Save invoice delivery details for upcoming invoices?",
+    body: { confirm: true },
+  },
+  billingMethodSummary: {
+    endpoint: "/api/settings/actions/billing-method-summary",
+    successTitle: "Billing method refreshed",
+    successDescription: "Latest billing method summary loaded.",
+  },
+  usageMeters: {
+    endpoint: "/api/settings/actions/usage-meters",
+    successTitle: "Usage refreshed",
+    successDescription: "Latest usage meter values loaded.",
+  },
+  creditsBalance: {
+    endpoint: "/api/settings/actions/credits-balance",
+    successTitle: "Credits refreshed",
+    successDescription: "Latest credits balance loaded.",
+  },
+  referAndEarn: {
+    endpoint: "/api/settings/actions/refer-earn",
+    successTitle: "Referral details loaded",
+    successDescription: "Refer & earn contract data refreshed.",
+  },
+}
 
 export function SettingsShell({ compact = false }: SettingsShellProps) {
   const searchParams = useSearchParams()
@@ -110,6 +187,7 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [errors, setErrors] = useState<Partial<Record<SettingsSection, string>>>({})
   const [oneTimeApiKey, setOneTimeApiKey] = useState<string | null>(null)
+  const [pendingBillingAction, setPendingBillingAction] = useState<BillingAction | null>(null)
   const sectionContainerRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
 
@@ -322,6 +400,46 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
     return data
   }
 
+  const runBillingAction = async (action: BillingAction) => {
+    const config = billingActionConfig[action]
+    const data = await executeAction(config.endpoint, config.successTitle, config.successDescription, config.method ?? "POST", config.body)
+
+    if (action === "saveInvoiceDelivery") {
+      await saveSection("billing")
+    }
+    if (!data || typeof data !== "object") {
+      return
+    }
+
+    setSettingsData((prev) => ({
+      ...prev,
+      billing: {
+        ...prev.billing,
+        ...(data as Partial<SettingsData["billing"]>),
+      },
+    }))
+  }
+
+  const handleBillingAction = (action: BillingAction) => {
+    const config = billingActionConfig[action]
+    if (config.requiresConfirmation) {
+      setPendingBillingAction(action)
+      return
+    }
+
+    void runBillingAction(action)
+  }
+
+  const confirmPendingBillingAction = () => {
+    if (!pendingBillingAction) {
+      return
+    }
+
+    const action = pendingBillingAction
+    setPendingBillingAction(null)
+    void runBillingAction(action)
+  }
+
   const isDisabled = isLoading || isSaving
 
   return (
@@ -483,23 +601,7 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
               isSaving={isSaving}
               errors={errors}
               onFieldChange={onFieldChange}
-              onSave={saveSection}
-              onAction={(action) => {
-                if (action === "cancelSubscription") {
-                  void executeAction(
-                    "/api/settings/actions/cancel-subscription",
-                    "Subscription canceled",
-                    "Your subscription will end at period close."
-                  )
-                }
-                if (action === "downgradePlan") {
-                  void executeAction(
-                    "/api/settings/actions/downgrade-plan",
-                    "Downgrade scheduled",
-                    "Downgrade scheduled for next cycle."
-                  )
-                }
-              }}
+              onAction={handleBillingAction}
             />
           ) : null}
 
@@ -515,6 +617,25 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
           ) : null}
         </main>
       </div>
+
+      <AlertDialog open={Boolean(pendingBillingAction)} onOpenChange={(open) => (!open ? setPendingBillingAction(null) : undefined)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingBillingAction ? billingActionConfig[pendingBillingAction].confirmationTitle ?? "Confirm action" : "Confirm action"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingBillingAction
+                ? billingActionConfig[pendingBillingAction].confirmationDescription ?? "Please confirm to continue."
+                : "Please confirm to continue."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmPendingBillingAction}>Continue</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

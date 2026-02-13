@@ -7,7 +7,7 @@ interface SectionFeatureCardProps {
   panelId?: string
   title: string
   description: string
-  status: "Ready" | "Configured" | "Recommended" | "Review"
+  status: "Ready" | "Configured" | "Recommended" | "Review" | "Active" | "Trial" | "At risk" | "Past due" | "Available credits"
   actionLabel: string
   disabled?: boolean
   onAction: () => void
@@ -31,7 +31,7 @@ export function SectionFeatureCard({
           <CardTitle className="text-base">{title}</CardTitle>
           <CardDescription>{description}</CardDescription>
         </div>
-        <Badge variant={status === "Review" ? "secondary" : "outline"}>{status}</Badge>
+        <Badge variant={status === "Review" || status === "At risk" || status === "Past due" ? "secondary" : "outline"}>{status}</Badge>
       </CardHeader>
       <CardContent className="space-y-4">
         {children}

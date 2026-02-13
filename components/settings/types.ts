@@ -40,5 +40,12 @@ export type SettingsData = {
   billing: {
     invoiceEmail: string
     autoRechargeEnabled: boolean
+    planName: string
+    subscriptionStatus: "active" | "trial" | "at_risk" | "past_due"
+    billingMethodSummary: string
+    usageThisCycle: number
+    usageLimit: number
+    creditsBalance: number
+    referralCode: string
   }
 }
