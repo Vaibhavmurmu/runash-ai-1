@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   ArrowRight,
@@ -20,9 +21,12 @@ import {
   LayoutTemplate,
   Library,
   Menu,
+  MessageSquare,
+  MoreVertical,
   PackageSearch,
   PanelsTopLeft,
   Plus,
+  Rocket,
   Search,
   ShieldCheck,
   ShoppingCart,
@@ -49,6 +53,15 @@ type RecentItem = {
   title: string
 }
 
+type HeaderAction = {
+  id: "upgrade" | "feedback" | "refer"
+  label: string
+  tooltip: string
+  icon: React.ComponentType<{ className?: string }>
+  href?: string
+  onClick?: () => void
+}
+
 const sidebarNavItems = [
   { label: "Home", icon: Home },
   { label: "Library", icon: Library },
@@ -72,6 +85,41 @@ export default function RunashChatPage() {
   const [mobileSearchValue, setMobileSearchValue] = useState("")
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
+
+  const headerActions: HeaderAction[] = [
+    {
+      id: "upgrade",
+      label: "Upgrade",
+      tooltip: "View upgrade plans",
+      icon: Rocket,
+      href: "/pricing",
+    },
+    {
+      id: "feedback",
+      label: "Feedback",
+      tooltip: "Share product feedback",
+      icon: MessageSquare,
+      href: "/contact?topic=feedback",
+    },
+    {
+      id: "refer",
+      label: "Refer",
+      tooltip: "Refer a friend or team",
+      icon: Sparkles,
+      href: "/contact?topic=referral",
+    },
+  ]
+
+  const primaryMobileHeaderActions = headerActions.slice(0, 2)
+  const overflowMobileHeaderActions = headerActions.slice(2)
+
+  const handleHeaderActionClick = (action: HeaderAction) => {
+    if (action.href) {
+      router.push(action.href)
+      return
+    }
+    action.onClick?.()
+  }
 
   useEffect(() => {
     const savedValue = localStorage.getItem("runash_sidebar_collapsed")
@@ -422,7 +470,81 @@ export default function RunashChatPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" className="border-zinc-700 bg-zinc-950 text-zinc-100" onClick={() => router.push("/pricing")}>Upgrade</Button>
+                <div className="hidden items-center gap-1 sm:flex">
+                  {headerActions.map((action) => {
+                    const Icon = action.icon
+
+                    return (
+                      <Button
+                        key={action.id}
+                        size="sm"
+                        variant="outline"
+                        className="border-zinc-700 bg-zinc-950 text-zinc-100"
+                        onClick={() => handleHeaderActionClick(action)}
+                        aria-label={action.label}
+                      >
+                        <Icon className="mr-2 h-4 w-4" />
+                        {action.label}
+                      </Button>
+                    )
+                  })}
+                </div>
+
+                <TooltipProvider delayDuration={150}>
+                  <div className="flex items-center gap-1 sm:hidden">
+                    {primaryMobileHeaderActions.map((action) => {
+                      const Icon = action.icon
+                      return (
+                        <Tooltip key={action.id}>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="h-8 w-8 border-zinc-700 bg-zinc-950 text-zinc-100"
+                              onClick={() => handleHeaderActionClick(action)}
+                              aria-label={action.label}
+                            >
+                              <Icon className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent className="border-zinc-800 bg-zinc-900 text-zinc-100">{action.tooltip}</TooltipContent>
+                        </Tooltip>
+                      )
+                    })}
+
+                    {overflowMobileHeaderActions.length > 0 && (
+                      <DropdownMenu>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                className="h-8 w-8 border-zinc-700 bg-zinc-950 text-zinc-100"
+                                aria-label="More actions"
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                          </TooltipTrigger>
+                          <TooltipContent className="border-zinc-800 bg-zinc-900 text-zinc-100">More actions</TooltipContent>
+                        </Tooltip>
+                        <DropdownMenuContent align="end" className="border-zinc-800 bg-zinc-900 text-zinc-100">
+                          {overflowMobileHeaderActions.map((action) => (
+                            <DropdownMenuItem
+                              key={action.id}
+                              onClick={() => handleHeaderActionClick(action)}
+                              className="focus:bg-zinc-800 focus:text-zinc-100"
+                            >
+                              {action.label}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </div>
+                </TooltipProvider>
+
                 <Badge variant="secondary" className="bg-zinc-800 text-zinc-200">{sessionId ? `Session #${sessionId}` : "No session"}</Badge>
               </div>
             </header>
