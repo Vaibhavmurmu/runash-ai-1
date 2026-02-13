@@ -76,6 +76,7 @@ export async function POST(request: NextRequest) {
         id: metadata.id,
         ownerId: metadata.owner_id,
         projectId: metadata.project_id,
+        storageKey: metadata.storage_key,
         mimeType: metadata.mime_type,
         size: metadata.size_bytes,
         privacy: metadata.is_public ? "public" : "private",
