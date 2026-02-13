@@ -1062,3 +1062,8 @@ For agent-assisted workflows:
 - Payment-impacting actions are not auto-executed.
 - Actions enter an auditable approval path in `/api/agents/actions`.
 - Rollback path: disable `RUNASH_AGENT_CHAT_ENABLED` to immediately stop new agent actions while preserving existing payment APIs.
+
+## UI Safeguard Update (Settings High-Risk Actions)
+
+Business and Startup plan-management surfaces now require explicit confirmation before cancellation or downgrade requests execute. This improves auditability and reduces accidental billing mutations while preserving existing API contracts.
+

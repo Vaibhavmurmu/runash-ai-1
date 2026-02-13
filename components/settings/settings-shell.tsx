@@ -8,6 +8,16 @@ import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
 
 type SettingsTab = "account" | "profile" | "security" | "notifications" | "preferences" | "billing"
@@ -42,6 +52,17 @@ interface SettingsShellProps {
   compact?: boolean
 }
 
+interface ConfirmActionDialogProps {
+  triggerLabel: string
+  title: string
+  description: string
+  consequenceText: string
+  confirmLabel: string
+  destructive?: boolean
+  disabled?: boolean
+  onConfirm: () => Promise<void>
+}
+
 const defaultSettingsData: SettingsData = {
   account: {
     email: "",
@@ -66,6 +87,70 @@ const defaultSettingsData: SettingsData = {
     invoiceEmail: "",
     autoRechargeEnabled: false,
   },
+}
+
+function ConfirmActionDialog({
+  triggerLabel,
+  title,
+  description,
+  consequenceText,
+  confirmLabel,
+  destructive = false,
+  disabled = false,
+  onConfirm,
+}: ConfirmActionDialogProps) {
+  const [open, setOpen] = useState(false)
+  const [isPending, setIsPending] = useState(false)
+  const [error, setError] = useState("")
+
+  const handleConfirm = async () => {
+    setIsPending(true)
+    setError("")
+
+    try {
+      await onConfirm()
+      setOpen(false)
+    } catch (confirmError) {
+      setError(confirmError instanceof Error ? confirmError.message : "Action failed. Please retry.")
+    } finally {
+      setIsPending(false)
+    }
+  }
+
+  return (
+    <AlertDialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!isPending) {
+          setOpen(nextOpen)
+          if (!nextOpen) {
+            setError("")
+          }
+        }
+      }}
+    >
+      <AlertDialogTrigger asChild>
+        <Button variant={destructive ? "destructive" : "outline"} disabled={disabled || isPending}>
+          {triggerLabel}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <p className="text-sm text-destructive">{consequenceText}</p>
+        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {isPending ? <p className="text-xs text-muted-foreground">Processing request...</p> : null}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+          <Button variant={destructive ? "destructive" : "default"} onClick={handleConfirm} disabled={isPending}>
+            {isPending ? "Working..." : confirmLabel}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
 }
 
 export function SettingsShell({ compact = false }: SettingsShellProps) {
@@ -184,6 +269,36 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
 
   const isDisabled = isLoading || isSaving
 
+  const executeSensitiveAction = async (
+    endpoint: string,
+    successTitle: string,
+    successDescription: string,
+    method: "POST" | "DELETE" = "POST"
+  ) => {
+    const response = await fetch(endpoint, {
+      method,
+      headers: { "Content-Type": "application/json" },
+    })
+
+    if (!response.ok) {
+      let errorMessage = "Action failed. Please retry."
+
+      try {
+        const payload = await response.json()
+        errorMessage = payload?.error ?? payload?.message ?? errorMessage
+      } catch {
+        // Keep fallback message when error payload is not JSON.
+      }
+
+      throw new Error(errorMessage)
+    }
+
+    toast({
+      title: successTitle,
+      description: successDescription,
+    })
+  }
+
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 p-4 md:p-6 lg:p-8">
       <div>
@@ -247,6 +362,29 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
               <Button onClick={() => saveSection("account")} disabled={isDisabled}>
                 {isSaving && activeTab === "account" ? "Saving..." : "Save account changes"}
               </Button>
+              <div className="space-y-3 rounded-md border border-destructive/40 bg-destructive/5 p-4">
+                <div>
+                  <p className="text-sm font-medium">Danger zone</p>
+                  <p className="text-xs text-muted-foreground">Permanent account actions require explicit confirmation.</p>
+                </div>
+                <ConfirmActionDialog
+                  triggerLabel="Delete account"
+                  title="Delete your account?"
+                  description="This will immediately remove access to your workspace and account settings."
+                  consequenceText="This action cannot be undone. All personal settings and profile data are permanently deleted."
+                  confirmLabel="Yes, delete account"
+                  destructive
+                  disabled={isDisabled}
+                  onConfirm={() =>
+                    executeSensitiveAction(
+                      "/api/settings/actions/delete-account",
+                      "Account deletion requested",
+                      "Your account deletion request has been submitted.",
+                      "DELETE"
+                    )
+                  }
+                />
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -338,6 +476,82 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
               <Button onClick={() => saveSection("security")} disabled={isDisabled}>
                 {isSaving && activeTab === "security" ? "Saving..." : "Update security settings"}
               </Button>
+              <div className="space-y-3 rounded-md border p-4">
+                <p className="text-sm font-medium">Sensitive security actions</p>
+                <div className="flex flex-wrap gap-2">
+                  <ConfirmActionDialog
+                    triggerLabel="Revoke all sessions"
+                    title="Revoke all active sessions?"
+                    description="Sign out all active devices and require new authentication on next request."
+                    consequenceText="All active tokens are revoked immediately, including trusted sessions on other devices."
+                    confirmLabel="Revoke sessions"
+                    destructive
+                    disabled={isDisabled}
+                    onConfirm={() =>
+                      executeSensitiveAction(
+                        "/api/settings/actions/revoke-sessions",
+                        "Sessions revoked",
+                        "All active sessions have been invalidated."
+                      )
+                    }
+                  />
+                  <ConfirmActionDialog
+                    triggerLabel="Regenerate API key"
+                    title="Regenerate API key?"
+                    description="Create a new API key and rotate credentials used by automations and integrations."
+                    consequenceText="The current API key is invalidated immediately. Integrations must be updated to avoid failures."
+                    confirmLabel="Regenerate key"
+                    disabled={isDisabled}
+                    onConfirm={() =>
+                      executeSensitiveAction(
+                        "/api/settings/actions/regenerate-api-key",
+                        "API key regenerated",
+                        "A new API key is ready. Update your integrations now."
+                      )
+                    }
+                  />
+                  <ConfirmActionDialog
+                    triggerLabel="Delete API key"
+                    title="Delete API key?"
+                    description="Remove all API key access for external tools and integrations."
+                    consequenceText="This action cannot be undone. Existing API clients will stop working until a new key is generated."
+                    confirmLabel="Delete API key"
+                    destructive
+                    disabled={isDisabled}
+                    onConfirm={() =>
+                      executeSensitiveAction(
+                        "/api/settings/actions/delete-api-key",
+                        "API key deleted",
+                        "API key access has been removed.",
+                        "DELETE"
+                      )
+                    }
+                  />
+                  <ConfirmActionDialog
+                    triggerLabel="Disable 2FA"
+                    title="Disable two-factor authentication?"
+                    description="Turn off your second verification factor for future sign-ins."
+                    consequenceText="Your account security is reduced immediately and sign-ins will no longer require a second factor."
+                    confirmLabel="Disable 2FA"
+                    destructive
+                    disabled={isDisabled || !settingsData.security.twoFactorEnabled}
+                    onConfirm={async () => {
+                      await executeSensitiveAction(
+                        "/api/settings/actions/disable-2fa",
+                        "Two-factor disabled",
+                        "2FA has been disabled for this account."
+                      )
+                      setSettingsData((prev) => ({
+                        ...prev,
+                        security: {
+                          ...prev.security,
+                          twoFactorEnabled: false,
+                        },
+                      }))
+                    }}
+                  />
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -468,6 +682,42 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
               <Button onClick={() => saveSection("billing")} disabled={isDisabled}>
                 {isSaving && activeTab === "billing" ? "Saving..." : "Save billing settings"}
               </Button>
+              <div className="space-y-3 rounded-md border p-4">
+                <p className="text-sm font-medium">Plan management</p>
+                <div className="flex flex-wrap gap-2">
+                  <ConfirmActionDialog
+                    triggerLabel="Cancel subscription"
+                    title="Cancel subscription renewal?"
+                    description="Stop automatic renewal for your current paid subscription."
+                    consequenceText="Paid features remain until period end, then billing stops and access may be limited."
+                    confirmLabel="Cancel subscription"
+                    destructive
+                    disabled={isDisabled}
+                    onConfirm={() =>
+                      executeSensitiveAction(
+                        "/api/settings/actions/cancel-subscription",
+                        "Subscription canceled",
+                        "Your subscription will end at the current billing period."
+                      )
+                    }
+                  />
+                  <ConfirmActionDialog
+                    triggerLabel="Downgrade plan"
+                    title="Downgrade to a lower plan?"
+                    description="Move your workspace to a plan with fewer included capabilities."
+                    consequenceText="Some premium features are removed at the next renewal and usage limits are reduced."
+                    confirmLabel="Downgrade plan"
+                    disabled={isDisabled}
+                    onConfirm={() =>
+                      executeSensitiveAction(
+                        "/api/settings/actions/downgrade-plan",
+                        "Downgrade scheduled",
+                        "Plan downgrade is scheduled for the next billing cycle."
+                      )
+                    }
+                  />
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

@@ -44,3 +44,13 @@ Reference: `docs/API_CONTRACTS.md`.
 - Tool/audit payloads redact secrets and payment-like identifiers before persistence/logging.
 - High-risk actions (payment/account-impacting operations) require explicit user confirmation via `/api/agents/actions`.
 - Agent transcript/tool records use retention pruning (`RUNASH_AGENT_RETENTION_DAYS`, default 30 days) for PII minimization.
+
+## Settings mutation confirmation policy
+
+High-risk settings mutations are protected by mandatory user-intent confirmations in UI flows. The dialog gate applies to account deletion, session revocation, API key regeneration/deletion, 2FA disablement, and subscription cancellation/downgrade operations.
+
+Operational requirements:
+- No sensitive token/key values are displayed in confirmation dialogs.
+- Mutation requests execute only after explicit user confirmation.
+- Dialogs surface pending/error states to prevent repeated unsafe retries.
+
