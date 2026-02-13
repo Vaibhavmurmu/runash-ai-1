@@ -1,14 +1,18 @@
 import { NextResponse } from "next/server";
-import { getCanonicalStreamUrl, readData } from "../utils";
+import { listDashboardScheduledStreams } from "@/lib/repositories/streams";
+import { getCanonicalStreamUrl, requireStreamDashboardUserId } from "../utils";
 import type {
   DashboardScheduledStream,
   DashboardScheduledStreamsResponse,
 } from "@/lib/types/dashboard-streams";
 
-export async function GET() {
-  const data = await readData();
+export async function GET(request: Request) {
+  const scopedUserId = requireStreamDashboardUserId(request);
+  if (scopedUserId instanceof NextResponse) return scopedUserId;
+
+  const streams = await listDashboardScheduledStreams(scopedUserId);
   const payload: DashboardScheduledStreamsResponse = {
-    streams: data.scheduled.map((stream) => {
+    streams: streams.map((stream) => {
       const startsAt =
         stream.startsAt ??
         (stream as DashboardScheduledStream & { dateTime?: string }).dateTime;

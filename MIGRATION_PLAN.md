@@ -997,3 +997,20 @@ Now let me create the database migration scripts and enhanced authentication ser
   - **Mitigation:** use feature flag rollback and keep contracts unchanged.
 - **Risk:** session ordering regressions.
   - **Mitigation:** indexed sort paths on `(user_id, updated_at)` and `(session_id, created_at)`.
+
+## Dashboard Streams Repository Migration (2026-02-13)
+
+### Scope
+- Stream dashboard APIs now persist/retrieve `recent`, `scheduled`, and `invite` data from database repositories instead of direct filesystem reads/writes.
+- Added SQL migration: `scripts/sql/2026-02-13_create_stream_invites.sql`.
+
+### Legacy development bootstrap
+- Existing `data/streams.json` is auto-bootstrapped into database-backed records in non-production only.
+- Controls:
+  - `RUNASH_STREAMS_DEV_BOOTSTRAP` (default enabled outside production; set `0` to disable)
+  - `RUNASH_STREAMS_DEV_FALLBACK` (explicitly set `1` to allow filesystem fallback outside production)
+
+### Rollback
+1. Keep migration table in place (non-destructive change).
+2. Disable DB fallback path by unsetting `RUNASH_STREAMS_DEV_FALLBACK`.
+3. Revert repository-backed route changes if needed.

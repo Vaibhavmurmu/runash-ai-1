@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
-import { getCanonicalStreamUrl, readData, writeData } from "../utils";
+import { createDashboardScheduledStream } from "@/lib/repositories/streams";
+import { getCanonicalStreamUrl, requireStreamDashboardUserId } from "../utils";
 import type {
   DashboardScheduledStream,
   ScheduleStreamRequest,
@@ -20,6 +21,9 @@ type ExtendedScheduleRequest = ScheduleStreamRequest & {
 };
 
 export async function POST(request: Request) {
+  const scopedUserId = requireStreamDashboardUserId(request);
+  if (scopedUserId instanceof NextResponse) return scopedUserId;
+
   const body = (await request
     .json()
     .catch(() => null)) as ExtendedScheduleRequest | null;
@@ -37,7 +41,6 @@ export async function POST(request: Request) {
   }
 
   const now = new Date().toISOString();
-  const data = await readData();
   const id = uuidv4();
   const scheduled: DashboardScheduledStream = {
     id,
@@ -60,8 +63,7 @@ export async function POST(request: Request) {
     updatedAt: now,
   };
 
-  data.scheduled = [scheduled, ...data.scheduled];
-  await writeData(data);
+  await createDashboardScheduledStream(scopedUserId, scheduled);
 
   const payload: ScheduleStreamResponse = scheduled;
   return NextResponse.json(payload, { status: 201 });
