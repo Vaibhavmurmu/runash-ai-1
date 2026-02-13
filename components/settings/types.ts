@@ -1,4 +1,4 @@
-export type SettingsCategory = "account" | "security" | "billing" | "preferences"
+export type SettingsCategory = "account" | "workspace" | "security" | "billing" | "usage" | "api-keys" | "data-controls"
 
 export type SettingsSection = "account" | "profile" | "security" | "notifications" | "preferences" | "billing"
 
