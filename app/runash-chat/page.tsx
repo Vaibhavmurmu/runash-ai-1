@@ -78,6 +78,46 @@ type HeaderAction = {
   onClick?: () => void
 }
 
+type PlaceholderCollectionItem = {
+  id: string
+  title: string
+  subtitle: string
+}
+
+type PlaceholderCollectionSectionProps = {
+  title: string
+  actionLabel?: string
+  items: PlaceholderCollectionItem[]
+}
+
+function PlaceholderCollectionSection({ title, actionLabel = "View all", items }: PlaceholderCollectionSectionProps) {
+  return (
+    <Card className="border-zinc-800 bg-zinc-950 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-medium text-zinc-100">{title}</h2>
+        <button type="button" className="text-xs text-zinc-500 transition hover:text-zinc-300">
+          {actionLabel}
+        </button>
+      </div>
+
+      <ul className="space-y-2" aria-label={`${title} placeholder list`}>
+        {items.map((item) => (
+          <li key={item.id} className="rounded-md border border-zinc-800 bg-zinc-900/70 p-3">
+            <div className="mb-2 h-3 w-2/3 animate-pulse rounded bg-zinc-700/70" />
+            <div className="mb-2 h-2.5 w-1/2 animate-pulse rounded bg-zinc-800/80" />
+            <div className="h-2 w-full animate-pulse rounded bg-zinc-800/60" />
+
+            <div className="mt-2 space-y-0.5">
+              <p className="text-xs font-medium text-zinc-300">{item.title}</p>
+              <p className="text-[11px] text-zinc-500">{item.subtitle}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  )
+}
+
 const sidebarNavItems = [
   { label: "Home", icon: Home },
   { label: "Library", icon: Library },
@@ -360,6 +400,18 @@ export default function RunashChatPage() {
   }
 
   const mobileRecentMatches = recentItems.filter((item) => item.title.toLowerCase().includes(mobileSearchValue.trim().toLowerCase()))
+
+  const recentProjectPlaceholders: PlaceholderCollectionItem[] = [
+    { id: "proj-launch", title: "Launch planning workspace", subtitle: "Campaign strategy · Drafting assets" },
+    { id: "proj-ops", title: "Operations dashboard", subtitle: "Orders · Fulfillment checks" },
+    { id: "proj-retention", title: "Retention flow", subtitle: "Post-purchase journeys · Offers" },
+  ]
+
+  const myChatPlaceholders: PlaceholderCollectionItem[] = [
+    { id: "chat-checkout", title: "Checkout support thread", subtitle: "Last active: just now" },
+    { id: "chat-bundle", title: "Bundle optimization", subtitle: "Last active: 2h ago" },
+    { id: "chat-assistant", title: "Assistant mode setup", subtitle: "Last active: yesterday" },
+  ]
 
   const dismissUpdatesBanner = () => {
     localStorage.setItem(updatesBannerDismissedKey, "true")
@@ -916,6 +968,11 @@ export default function RunashChatPage() {
                   <Button className="bg-zinc-100 text-zinc-900 hover:bg-white" onClick={() => startChatWithPrompt("Help me complete checkout with best payment option and order confirmation steps.")}>Launch flow</Button>
                 </div>
               </Card>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <PlaceholderCollectionSection title="Recent Projects" items={recentProjectPlaceholders} />
+              <PlaceholderCollectionSection title="My Chats" items={myChatPlaceholders} />
             </div>
           </div>
         </main>
