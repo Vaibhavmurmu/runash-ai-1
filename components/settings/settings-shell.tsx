@@ -142,6 +142,27 @@ type PendingSettingsActionDialog = {
   onConfirm: () => Promise<void>
 }
 
+
+
+type ValidationErrorResponse = {
+  error?: {
+    message?: string
+    details?: {
+      validationErrors?: Partial<Record<SettingsSection, Record<string, string>>>
+    }
+  }
+}
+
+function toSectionErrorMap(errors: Partial<Record<SettingsSection, Partial<Record<string, string>>>>): Partial<Record<SettingsSection, string>> {
+  return Object.entries(errors).reduce<Partial<Record<SettingsSection, string>>>((acc, [section, fieldErrors]) => {
+    const message = fieldErrors && typeof fieldErrors === "object" ? Object.values(fieldErrors)[0] : undefined
+    if (message) {
+      acc[section as SettingsSection] = message
+    }
+    return acc
+  }, {})
+}
+
 const billingActionConfig: Record<BillingAction, BillingActionConfig> = {
   upgradePlan: {
     endpoint: "/api/settings/actions/upgrade-plan",
@@ -197,7 +218,8 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
   const [settingsData, setSettingsData] = useState<SettingsData>(defaultSettingsData)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [errors, setErrors] = useState<Partial<Record<SettingsSection, string>>>({})
+  const [errors, setErrors] = useState<Partial<Record<SettingsSection, Partial<Record<string, string>>>>>({})
+  const [settingsVersion, setSettingsVersion] = useState<number | null>(null)
   const [oneTimeApiKey, setOneTimeApiKey] = useState<string | null>(null)
   const [pendingBillingAction, setPendingBillingAction] = useState<BillingAction | null>(null)
   const [pendingSettingsDialog, setPendingSettingsDialog] = useState<PendingSettingsActionDialog | null>(null)
@@ -205,6 +227,7 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
   const { toast } = useToast()
 
   const activeRailItem = useMemo(() => railItems.find((item) => item.key === activeSection) ?? railItems[0], [activeSection])
+  const sectionErrors = useMemo(() => toSectionErrorMap(errors), [errors])
 
   const scrollToPanel = (panelKey: string, behavior: ScrollBehavior = "smooth") => {
     window.requestAnimationFrame(() => {
@@ -234,6 +257,8 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
 
         const payload = await response.json()
         const data = payload?.data ?? payload
+        const nextVersion = typeof payload?.meta?.settingsVersion === "number" ? payload.meta.settingsVersion : null
+        setSettingsVersion(nextVersion)
         setSettingsData((prev) => ({
           ...prev,
           ...data,
@@ -355,21 +380,41 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
 
   const saveSection = async (section: SettingsSection) => {
     setIsSaving(true)
-    setErrors((prev) => ({ ...prev, [section]: "" }))
+    setErrors((prev) => ({ ...prev, [section]: {} }))
 
     try {
       const response = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildSectionPayload(section)),
+        body: JSON.stringify({
+          ...buildSectionPayload(section),
+          ...(typeof settingsVersion === "number" ? { meta: { settingsVersion } } : {}),
+        }),
       })
 
-      if (!response.ok) {
-        throw new Error("Failed to save settings")
+      const payload = (await response.json().catch(() => ({}))) as ValidationErrorResponse & {
+        data?: SettingsData
+        meta?: { settingsVersion?: number }
       }
 
-      const payload = await response.json()
+      if (!response.ok) {
+        const validationErrors = payload?.error?.details?.validationErrors ?? {}
+        const fallbackMessage = payload?.error?.message ?? "Failed to save changes. Please retry."
+        setErrors((prev) => ({
+          ...prev,
+          [section]: Object.keys(validationErrors?.[section] ?? {}).length > 0
+            ? validationErrors[section]
+            : { _section: fallbackMessage },
+          ...validationErrors,
+        }))
+        throw new Error(fallbackMessage)
+      }
+
       const data = payload?.data ?? payload
+      if (typeof payload?.meta?.settingsVersion === "number") {
+        setSettingsVersion(payload.meta.settingsVersion)
+      }
+      setErrors((prev) => ({ ...prev, [section]: {} }))
       setSettingsData((prev) => ({
         ...prev,
         ...data,
@@ -378,7 +423,6 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
 
       toast({ title: "Settings saved", description: `${section} settings updated successfully.` })
     } catch {
-      setErrors((prev) => ({ ...prev, [section]: "Failed to save changes. Please retry." }))
       toast({ title: "Save failed", description: `Could not save ${section} settings.`, variant: "destructive" })
     } finally {
       setSettingsData((prev) => ({
@@ -522,7 +566,7 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
               data={settingsData}
               isDisabled={isDisabled}
               isSaving={isSaving}
-              errors={errors}
+              errors={sectionErrors}
               onFieldChange={onFieldChange}
               onSave={saveSection}
               onAction={(action) => {
@@ -558,7 +602,7 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
               oneTimeApiKey={oneTimeApiKey}
               isDisabled={isDisabled}
               isSaving={isSaving}
-              errors={errors}
+              errors={sectionErrors}
               onFieldChange={onFieldChange}
               onSave={saveSection}
               onOneTimeApiKeyDismiss={() => setOneTimeApiKey(null)}
@@ -662,7 +706,7 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
               data={settingsData}
               isDisabled={isDisabled}
               isSaving={isSaving}
-              errors={errors}
+              errors={sectionErrors}
               onFieldChange={onFieldChange}
               onAction={handleBillingAction}
             />
@@ -673,7 +717,7 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
               data={settingsData}
               isDisabled={isDisabled}
               isSaving={isSaving}
-              errors={errors}
+              errors={sectionErrors}
               onFieldChange={onFieldChange}
               onSave={saveSection}
             />

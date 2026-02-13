@@ -60,6 +60,19 @@ type PersistedUserSettings = Omit<UserSettings, "security"> & {
   }
 }
 
+type SettingsVersionMeta = {
+  version: number
+  updatedAt: string
+}
+
+type ValidationFieldErrors = Partial<Record<keyof UserSettings, Record<string, string>>>
+
+type SettingsPatchPayload = Partial<UserSettings> & {
+  meta?: {
+    settingsVersion?: number
+  }
+}
+
 const attachmentMetadataSchema = z
   .object({
     url: z.string().max(2048),
@@ -98,6 +111,25 @@ const preferencesAttachmentSchema = z
     preferences: z
       .object({
         feedbackAttachments: z.array(attachmentMetadataSchema).max(8).optional(),
+      })
+      .partial()
+      .strict(),
+  })
+  .strict()
+
+const billingPatchSchema = z
+  .object({
+    billing: z
+      .object({
+        invoiceEmail: z.string().email().max(320).optional(),
+        autoRechargeEnabled: z.boolean().optional(),
+        planName: z.string().trim().min(1).max(120).optional(),
+        subscriptionStatus: z.enum(["active", "trial", "at_risk", "past_due"]).optional(),
+        billingMethodSummary: z.string().trim().max(512).optional(),
+        usageThisCycle: z.number().nonnegative().max(1_000_000_000).optional(),
+        usageLimit: z.number().nonnegative().max(1_000_000_000).optional(),
+        creditsBalance: z.number().nonnegative().max(1_000_000_000).optional(),
+        referralCode: z.string().trim().max(64).optional(),
       })
       .partial()
       .strict(),
@@ -170,7 +202,13 @@ function sanitizeAttachment(input: unknown): AttachmentMetadata | null {
     return null
   }
 
-  return result.data
+  return {
+    url: result.data.url.trim(),
+    filename: result.data.filename.trim(),
+    mimeType: result.data.mimeType.trim().toLowerCase(),
+    size: result.data.size,
+    uploadedAt: result.data.uploadedAt,
+  }
 }
 
 function sanitizeAttachmentList(input: unknown): AttachmentMetadata[] {
@@ -179,6 +217,68 @@ function sanitizeAttachmentList(input: unknown): AttachmentMetadata[] {
   }
 
   return input.map((item) => sanitizeAttachment(item)).filter((item): item is AttachmentMetadata => Boolean(item)).slice(0, 8)
+}
+
+function normalizeBilling(input: Partial<UserSettings["billing"]> | undefined): UserSettings["billing"] {
+  return {
+    invoiceEmail: typeof input?.invoiceEmail === "string" ? input.invoiceEmail.trim() : defaultSettings.billing.invoiceEmail,
+    autoRechargeEnabled:
+      typeof input?.autoRechargeEnabled === "boolean" ? input.autoRechargeEnabled : defaultSettings.billing.autoRechargeEnabled,
+    planName:
+      typeof input?.planName === "string" && input.planName.trim().length > 0
+        ? input.planName.trim().slice(0, 120)
+        : defaultSettings.billing.planName,
+    subscriptionStatus:
+      input?.subscriptionStatus === "active" ||
+      input?.subscriptionStatus === "trial" ||
+      input?.subscriptionStatus === "at_risk" ||
+      input?.subscriptionStatus === "past_due"
+        ? input.subscriptionStatus
+        : defaultSettings.billing.subscriptionStatus,
+    billingMethodSummary:
+      typeof input?.billingMethodSummary === "string"
+        ? input.billingMethodSummary.trim().slice(0, 512)
+        : defaultSettings.billing.billingMethodSummary,
+    usageThisCycle:
+      typeof input?.usageThisCycle === "number" && Number.isFinite(input.usageThisCycle)
+        ? Math.max(0, Math.min(input.usageThisCycle, 1_000_000_000))
+        : defaultSettings.billing.usageThisCycle,
+    usageLimit:
+      typeof input?.usageLimit === "number" && Number.isFinite(input.usageLimit)
+        ? Math.max(0, Math.min(input.usageLimit, 1_000_000_000))
+        : defaultSettings.billing.usageLimit,
+    creditsBalance:
+      typeof input?.creditsBalance === "number" && Number.isFinite(input.creditsBalance)
+        ? Math.max(0, Math.min(input.creditsBalance, 1_000_000_000))
+        : defaultSettings.billing.creditsBalance,
+    referralCode:
+      typeof input?.referralCode === "string" ? input.referralCode.trim().slice(0, 64) : defaultSettings.billing.referralCode,
+  }
+}
+
+function normalizeVersionMeta(raw: unknown, fallbackUpdatedAt: string): SettingsVersionMeta {
+  const input = raw && typeof raw === "object" ? (raw as Partial<SettingsVersionMeta>) : {}
+  return {
+    version: typeof input.version === "number" && Number.isFinite(input.version) && input.version >= 1 ? input.version : 1,
+    updatedAt:
+      typeof input.updatedAt === "string" && input.updatedAt.length > 0
+        ? input.updatedAt
+        : fallbackUpdatedAt,
+  }
+}
+
+function mapZodErrorsToFieldMap(section: keyof UserSettings, issues: z.ZodIssue[]): ValidationFieldErrors {
+  const fieldErrors: Record<string, string> = {}
+
+  for (const issue of issues) {
+    const path = issue.path.filter((part) => typeof part === "string") as string[]
+    const leafField = path[path.length - 1] ?? "_section"
+    if (!fieldErrors[leafField]) {
+      fieldErrors[leafField] = issue.message
+    }
+  }
+
+  return { [section]: fieldErrors }
 }
 
 function normalizeSettings(raw: unknown, accountEmail: string): UserSettings {
@@ -213,8 +313,10 @@ function normalizeSettings(raw: unknown, accountEmail: string): UserSettings {
       feedbackAttachments: sanitizeAttachmentList(input.preferences?.feedbackAttachments),
     },
     billing: {
-      ...defaultSettings.billing,
-      ...(input.billing ?? {}),
+      ...normalizeBilling({
+        ...defaultSettings.billing,
+        ...(input.billing ?? {}),
+      }),
     },
   }
 
@@ -278,7 +380,7 @@ export async function GET(request: NextRequest) {
     const sql = getSql()
 
     const [row] = await sql/* sql */`
-      SELECT id, email, bio
+      SELECT id, email, bio, updated_at
       FROM public.users
       WHERE id = ${userId}
       LIMIT 1
@@ -294,8 +396,12 @@ export async function GET(request: NextRequest) {
 
     const parsedBio = parseBio(row.bio)
     const userSettings = normalizeSettings(parsedBio.userSettings, row.email ?? "")
+    const versionMeta = normalizeVersionMeta(parsedBio.userSettingsMeta, new Date(row.updated_at ?? Date.now()).toISOString())
 
-    return respondSuccess(request, withLegacyFields(userSettings), { legacy: withLegacyFields(userSettings) })
+    return respondSuccess(request, withLegacyFields(userSettings), {
+      meta: { settingsVersion: versionMeta.version, settingsUpdatedAt: versionMeta.updatedAt },
+      legacy: withLegacyFields(userSettings),
+    })
   } catch {
     return respondError(
       request,
@@ -308,7 +414,7 @@ export async function GET(request: NextRequest) {
 async function updateSettings(request: NextRequest) {
   try {
     const userId = await resolveUserId(request)
-    const payload = (await request.json()) as Partial<UserSettings>
+    const payload = (await request.json()) as SettingsPatchPayload
     const sql = getSql()
 
     if (payload.security) {
@@ -316,7 +422,11 @@ async function updateSettings(request: NextRequest) {
       if (!securityValidation.success) {
         return respondError(
           request,
-          { code: "INVALID_SECURITY_PAYLOAD", message: "Invalid security settings payload" },
+          {
+            code: "INVALID_SECURITY_PAYLOAD",
+            message: "Invalid security settings payload",
+            details: { validationErrors: mapZodErrorsToFieldMap("security", securityValidation.error.issues) },
+          },
           { status: 400, legacy: { error: "Invalid security settings payload" } },
         )
       }
@@ -333,7 +443,11 @@ async function updateSettings(request: NextRequest) {
       if (!profileAttachmentValidation.success) {
         return respondError(
           request,
-          { code: "INVALID_PROFILE_ATTACHMENT_PAYLOAD", message: "Invalid profile attachment metadata" },
+          {
+            code: "INVALID_PROFILE_ATTACHMENT_PAYLOAD",
+            message: "Invalid profile attachment metadata",
+            details: { validationErrors: mapZodErrorsToFieldMap("profile", profileAttachmentValidation.error.issues) },
+          },
           { status: 400, legacy: { error: "Invalid profile attachment metadata" } },
         )
       }
@@ -349,14 +463,33 @@ async function updateSettings(request: NextRequest) {
       if (!preferencesAttachmentValidation.success) {
         return respondError(
           request,
-          { code: "INVALID_FEEDBACK_ATTACHMENT_PAYLOAD", message: "Invalid feedback attachment metadata" },
+          {
+            code: "INVALID_FEEDBACK_ATTACHMENT_PAYLOAD",
+            message: "Invalid feedback attachment metadata",
+            details: { validationErrors: mapZodErrorsToFieldMap("preferences", preferencesAttachmentValidation.error.issues) },
+          },
           { status: 400, legacy: { error: "Invalid feedback attachment metadata" } },
         )
       }
     }
 
+    if (payload.billing) {
+      const billingValidation = billingPatchSchema.safeParse({ billing: payload.billing })
+      if (!billingValidation.success) {
+        return respondError(
+          request,
+          {
+            code: "INVALID_BILLING_PAYLOAD",
+            message: "Invalid billing metadata payload",
+            details: { validationErrors: mapZodErrorsToFieldMap("billing", billingValidation.error.issues) },
+          },
+          { status: 400, legacy: { error: "Invalid billing metadata payload" } },
+        )
+      }
+    }
+
     const [row] = await sql/* sql */`
-      SELECT id, email, bio
+      SELECT id, email, bio, updated_at
       FROM public.users
       WHERE id = ${userId}
       LIMIT 1
@@ -371,6 +504,27 @@ async function updateSettings(request: NextRequest) {
     }
 
     const parsedBio = parseBio(row.bio)
+    const currentMeta = normalizeVersionMeta(parsedBio.userSettingsMeta, new Date(row.updated_at ?? Date.now()).toISOString())
+    const requestVersion = payload.meta?.settingsVersion
+    if (typeof requestVersion === "number" && requestVersion !== currentMeta.version) {
+      return respondError(
+        request,
+        {
+          code: "SETTINGS_VERSION_CONFLICT",
+          message: "Settings were updated by another request. Refresh and retry.",
+          details: {
+            validationErrors: {
+              account: {
+                _section: "Settings are out of date. Please refresh before saving.",
+              },
+            },
+            expectedVersion: currentMeta.version,
+          },
+        },
+        { status: 409, legacy: { error: "Settings conflict detected. Please refresh and retry." } },
+      )
+    }
+
     const persistedSecurity =
       parsedBio.userSettings && typeof parsedBio.userSettings === "object"
         ? ((parsedBio.userSettings as Record<string, unknown>).security as { apiKeyHash?: string } | undefined)
@@ -417,16 +571,24 @@ async function updateSettings(request: NextRequest) {
               : existingSettings.preferences.feedbackAttachments,
         },
         billing: {
-          ...existingSettings.billing,
-          ...(payload.billing ?? {}),
+          ...normalizeBilling({
+            ...existingSettings.billing,
+            ...(payload.billing ?? {}),
+          }),
         },
       },
       row.email ?? "",
     )
 
+    const nextMeta: SettingsVersionMeta = {
+      version: currentMeta.version + 1,
+      updatedAt: new Date().toISOString(),
+    }
+
     const mergedBio = {
       ...parsedBio,
       userSettings: toPersistedSettings(mergedSettings, existingApiKeyHash),
+      userSettingsMeta: nextMeta,
     }
 
     const [updated] = await sql/* sql */`
@@ -444,7 +606,10 @@ async function updateSettings(request: NextRequest) {
       )
     }
 
-    return respondSuccess(request, withLegacyFields(mergedSettings), { legacy: withLegacyFields(mergedSettings) })
+    return respondSuccess(request, withLegacyFields(mergedSettings), {
+      meta: { settingsVersion: nextMeta.version, settingsUpdatedAt: nextMeta.updatedAt },
+      legacy: withLegacyFields(mergedSettings),
+    })
   } catch {
     return respondError(
       request,
