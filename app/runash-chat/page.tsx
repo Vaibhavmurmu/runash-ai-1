@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { signOut, useSession } from "next-auth/react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -147,6 +147,7 @@ export default function RunashChatPage() {
   const [showUpdatesBanner, setShowUpdatesBanner] = useState(false)
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
   const [activeOnboardingStep, setActiveOnboardingStep] = useState(0)
+  const mobileSidebarTriggerRef = useRef<HTMLButtonElement | null>(null)
 
   const onboardingSlides: OnboardingSlide[] = [
     {
@@ -418,6 +419,16 @@ export default function RunashChatPage() {
     setShowUpdatesBanner(false)
   }
 
+  const handleMobileSidebarOpenChange = (open: boolean) => {
+    setIsMobileSidebarOpen(open)
+
+    if (!open) {
+      window.requestAnimationFrame(() => {
+        mobileSidebarTriggerRef.current?.focus()
+      })
+    }
+  }
+
   function renderSidebarContent(collapsed: boolean, isMobileDrawer = false) {
     return (
       <>
@@ -593,9 +604,10 @@ export default function RunashChatPage() {
                     <Home className="h-4 w-4" />
                   </Button>
 
-                  <Sheet open={isMobileSidebarOpen} onOpenChange={setIsMobileSidebarOpen}>
+                  <Sheet open={isMobileSidebarOpen} onOpenChange={handleMobileSidebarOpenChange}>
                     <SheetTrigger asChild>
                       <Button
+                        ref={mobileSidebarTriggerRef}
                         type="button"
                         size="icon"
                         variant="outline"
@@ -612,6 +624,10 @@ export default function RunashChatPage() {
                       side="left"
                       id="runash-chat-mobile-sidebar"
                       className="w-[280px] border-zinc-800 bg-[#050607] p-3 text-zinc-100"
+                      onCloseAutoFocus={(event) => {
+                        event.preventDefault()
+                        mobileSidebarTriggerRef.current?.focus()
+                      }}
                     >
                       <SheetTitle className="sr-only">Chat navigation</SheetTitle>
                       {renderSidebarContent(false, true)}
