@@ -7,14 +7,19 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   ArrowRight,
   Bot,
+  ChevronsLeft,
+  ChevronsRight,
   CreditCard,
   FolderKanban,
   Home,
   LayoutTemplate,
   Library,
+  Menu,
   PackageSearch,
   PanelsTopLeft,
   Plus,
@@ -44,6 +49,14 @@ type RecentItem = {
   title: string
 }
 
+const sidebarNavItems = [
+  { label: "Home", icon: Home },
+  { label: "Library", icon: Library },
+  { label: "Projects", icon: FolderKanban },
+  { label: "Design Systems", icon: PanelsTopLeft },
+  { label: "Templates", icon: LayoutTemplate },
+]
+
 export default function RunashChatPage() {
   const router = useRouter()
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -57,6 +70,17 @@ export default function RunashChatPage() {
   const [startChatError, setStartChatError] = useState<string | null>(null)
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
   const [mobileSearchValue, setMobileSearchValue] = useState("")
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
+
+  useEffect(() => {
+    const savedValue = localStorage.getItem("runash_sidebar_collapsed")
+    setIsSidebarCollapsed(savedValue === "true")
+  }, [])
+
+  useEffect(() => {
+    localStorage.setItem("runash_sidebar_collapsed", String(isSidebarCollapsed))
+  }, [isSidebarCollapsed])
 
   useEffect(() => {
     if (!startChatError) return
@@ -193,59 +217,147 @@ export default function RunashChatPage() {
 
   const mobileRecentMatches = recentItems.filter((item) => item.title.toLowerCase().includes(mobileSearchValue.trim().toLowerCase()))
 
-  return (
-    <div className="min-h-screen bg-[#030405] text-zinc-100">
-      <div className="mx-auto flex w-full max-w-[1400px] gap-4 px-3 py-3">
-        <aside className="hidden h-[calc(100vh-24px)] w-[250px] shrink-0 rounded-xl border border-zinc-800 bg-black/70 p-3 lg:flex lg:flex-col">
-          <Button className="mb-3 justify-start bg-zinc-900 hover:bg-zinc-800" onClick={() => startChatWithPrompt()}>
-            <Plus className="mr-2 h-4 w-4" /> New Chat
-          </Button>
+  function renderSidebarContent(collapsed: boolean, isMobileDrawer = false) {
+    return (
+      <>
+        <Button
+          className={`mb-3 ${collapsed ? "justify-center px-0" : "justify-start"} bg-zinc-900 hover:bg-zinc-800`}
+          onClick={() => {
+            startChatWithPrompt()
+            if (isMobileDrawer) setIsMobileSidebarOpen(false)
+          }}
+          aria-label="Start a new chat"
+        >
+          <Plus className={`h-4 w-4 ${collapsed ? "mr-0" : "mr-2"}`} />
+          {!collapsed && "New Chat"}
+        </Button>
+
+        {!collapsed && (
           <div className="relative mb-3">
             <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-zinc-500" />
             <Input className="border-zinc-800 bg-zinc-950 pl-8 text-zinc-200" placeholder="Search" />
           </div>
+        )}
 
-          <nav className="space-y-1 text-sm">
-            {[
-              { label: "Home", icon: Home },
-              { label: "Library", icon: Library },
-              { label: "Projects", icon: FolderKanban },
-              { label: "Design Systems", icon: PanelsTopLeft },
-              { label: "Templates", icon: LayoutTemplate },
-            ].map((item) => (
-              <button key={item.label} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-zinc-300 hover:bg-zinc-900">
-                <item.icon className="h-4 w-4" />
-                {item.label}
+        <TooltipProvider delayDuration={150}>
+          <nav className="space-y-1 text-sm" aria-label="Primary">
+            {sidebarNavItems.map((item) => {
+              const Icon = item.icon
+
+              const navButton = (
+                <button
+                  key={item.label}
+                  className={`flex w-full items-center rounded-md py-2 text-left text-zinc-300 hover:bg-zinc-900 ${
+                    collapsed ? "justify-center px-0" : "gap-2 px-2"
+                  }`}
+                  aria-label={collapsed ? item.label : undefined}
+                  type="button"
+                >
+                  <Icon className="h-4 w-4" />
+                  {!collapsed && item.label}
+                </button>
+              )
+
+              if (!collapsed) {
+                return navButton
+              }
+
+              return (
+                <Tooltip key={item.label}>
+                  <TooltipTrigger asChild>{navButton}</TooltipTrigger>
+                  <TooltipContent side="right" className="border-zinc-800 bg-zinc-900 text-zinc-100">
+                    {item.label}
+                  </TooltipContent>
+                </Tooltip>
+              )
+            })}
+          </nav>
+        </TooltipProvider>
+
+        <div className="mt-5 border-t border-zinc-800 pt-4">
+          {!collapsed && <div className="mb-2 text-xs font-medium text-zinc-500">Recents</div>}
+          <div className="space-y-1">
+            {loadingRecents && <div className={`py-1.5 text-xs text-zinc-500 ${collapsed ? "text-center" : "px-2"}`}>Loading recent chats…</div>}
+            {!loadingRecents && recentItemsError && (
+              <div className={`py-1.5 text-xs text-amber-400 ${collapsed ? "text-center" : "px-2"}`}>{recentItemsError}</div>
+            )}
+            {!loadingRecents && !recentItemsError && recentItems.length === 0 && (
+              <div className={`py-1.5 text-xs text-zinc-500 ${collapsed ? "text-center" : "px-2"}`}>No recent chats yet</div>
+            )}
+            {recentItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  router.push(`/chat?sessionId=${item.id}`)
+                  if (isMobileDrawer) setIsMobileSidebarOpen(false)
+                }}
+                className={`w-full truncate rounded-md py-1.5 text-xs text-zinc-400 hover:bg-zinc-900 ${collapsed ? "px-1 text-center" : "px-2 text-left"}`}
+                title={collapsed ? item.title : undefined}
+              >
+                {collapsed ? item.title.slice(0, 1).toUpperCase() : item.title}
               </button>
             ))}
-          </nav>
-
-          <div className="mt-5 border-t border-zinc-800 pt-4">
-            <div className="mb-2 text-xs font-medium text-zinc-500">Recents</div>
-            <div className="space-y-1">
-              {loadingRecents && <div className="px-2 py-1.5 text-xs text-zinc-500">Loading recent chats…</div>}
-              {!loadingRecents && recentItemsError && <div className="px-2 py-1.5 text-xs text-amber-400">{recentItemsError}</div>}
-              {!loadingRecents && !recentItemsError && recentItems.length === 0 && (
-                <div className="px-2 py-1.5 text-xs text-zinc-500">No recent chats yet</div>
-              )}
-              {recentItems.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => router.push(`/chat?sessionId=${item.id}`)}
-                  className="w-full truncate rounded-md px-2 py-1.5 text-left text-xs text-zinc-400 hover:bg-zinc-900"
-                >
-                  {item.title}
-                </button>
-              ))}
-            </div>
           </div>
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-[#030405] text-zinc-100">
+      <div className="mx-auto flex w-full max-w-[1400px] gap-4 px-3 py-3">
+        <aside
+          id="runash-chat-sidebar"
+          className={`hidden h-[calc(100vh-24px)] shrink-0 rounded-xl border border-zinc-800 bg-black/70 p-3 lg:flex lg:flex-col ${
+            isSidebarCollapsed ? "w-[80px]" : "w-[250px]"
+          }`}
+          aria-label="Sidebar"
+        >
+          <div className={`mb-2 flex ${isSidebarCollapsed ? "justify-center" : "justify-end"}`}>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
+              onClick={() => setIsSidebarCollapsed((prev) => !prev)}
+              aria-expanded={!isSidebarCollapsed}
+              aria-controls="runash-chat-sidebar"
+              aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {isSidebarCollapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
+            </Button>
+          </div>
+          {renderSidebarContent(isSidebarCollapsed)}
         </aside>
 
         <main className="h-[calc(100vh-24px)] flex-1 rounded-xl border border-zinc-800 bg-[#050607] p-4 sm:p-6">
           <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
             <div className="mb-4 space-y-2 lg:hidden">
               <div className="flex flex-wrap items-center gap-2">
+                <Sheet open={isMobileSidebarOpen} onOpenChange={setIsMobileSidebarOpen}>
+                  <SheetTrigger asChild>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className="border-zinc-700 bg-zinc-950 text-zinc-100"
+                      aria-expanded={isMobileSidebarOpen}
+                      aria-controls="runash-chat-mobile-sidebar"
+                      aria-label="Open navigation menu"
+                    >
+                      <Menu className="h-4 w-4" />
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent
+                    side="left"
+                    id="runash-chat-mobile-sidebar"
+                    className="w-[280px] border-zinc-800 bg-[#050607] p-3 text-zinc-100"
+                  >
+                    <SheetTitle className="sr-only">Chat navigation</SheetTitle>
+                    {renderSidebarContent(false, true)}
+                  </SheetContent>
+                </Sheet>
                 <Button type="button" size="sm" className="bg-zinc-900 text-zinc-100 hover:bg-zinc-800" onClick={() => startChatWithPrompt()}>
                   <Plus className="mr-2 h-4 w-4" /> New Chat
                 </Button>
