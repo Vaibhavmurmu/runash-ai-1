@@ -997,3 +997,27 @@ Now let me create the database migration scripts and enhanced authentication ser
   - **Mitigation:** use feature flag rollback and keep contracts unchanged.
 - **Risk:** session ordering regressions.
   - **Mitigation:** indexed sort paths on `(user_id, updated_at)` and `(session_id, created_at)`.
+
+---
+
+## 2026-02 User Settings Persistence Transition
+
+### Goal
+Move user settings persistence from `users.bio.userSettings` to dedicated relational tables while preserving backward compatibility during rollout.
+
+### Delivered artifacts
+- `scripts/sql/2026-02-13_create_user_settings_storage.sql`
+  - `user_settings`
+  - `user_setting_attachments`
+  - `user_settings_audit`
+- `scripts/sql/2026-02-13_backfill_user_settings.sql`
+  - one-time backfill from legacy JSON settings payloads.
+
+### Runtime migration mode
+- API reads first from `user_settings`.
+- If absent, API falls back to `users.bio.userSettings` and lazily persists into `user_settings` + audit.
+- API writes continue to preserve legacy `users.bio` data for rollback compatibility during transition.
+
+### Rollback
+- Revert application reads to legacy `users.bio.userSettings`.
+- Keep `user_settings*` tables intact for forensic audit and replay if needed.
