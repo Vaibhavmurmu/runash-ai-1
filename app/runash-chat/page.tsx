@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   ArrowRight,
@@ -60,6 +61,13 @@ type RecentItem = {
   title: string
 }
 
+type OnboardingSlide = {
+  title: string
+  description: string
+  image: string
+  cta: string
+}
+
 type HeaderAction = {
   id: "upgrade" | "feedback" | "refer"
   label: string
@@ -79,6 +87,7 @@ const sidebarNavItems = [
 
 export default function RunashChatPage() {
   const updatesBannerDismissedKey = "runash_updates_banner_dismissed"
+  const onboardingSeenStorageKey = "runash_onboarding_seen"
   const router = useRouter()
   const { data: session } = useSession()
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -95,6 +104,32 @@ export default function RunashChatPage() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
   const [showUpdatesBanner, setShowUpdatesBanner] = useState(false)
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
+  const [activeOnboardingStep, setActiveOnboardingStep] = useState(0)
+
+  const onboardingSlides: OnboardingSlide[] = [
+    {
+      title: "Welcome to RunAsh Chat",
+      description: "Plan campaigns, build bundles, and launch storefront workflows from one assistant workspace.",
+      image: "✨",
+      cta: "Next",
+    },
+    {
+      title: "Use guided prompts",
+      description: "Start with quick actions for checkout, bundles, and post-purchase support to move faster.",
+      image: "🧭",
+      cta: "Next",
+    },
+    {
+      title: "Stay in control",
+      description: "Track recents, jump back into sessions, and use the sidebar to keep launches organized.",
+      image: "🚀",
+      cta: "Get started",
+    },
+  ]
+
+  const isLastOnboardingStep = activeOnboardingStep === onboardingSlides.length - 1
+  const currentOnboardingSlide = onboardingSlides[activeOnboardingStep]
 
   const headerActions: HeaderAction[] = [
     {
@@ -153,7 +188,31 @@ export default function RunashChatPage() {
 
     const isBannerDismissed = localStorage.getItem(updatesBannerDismissedKey) === "true"
     setShowUpdatesBanner(!isBannerDismissed)
+
+    const hasSeenOnboarding = localStorage.getItem(onboardingSeenStorageKey) === "true"
+    setIsOnboardingOpen(!hasSeenOnboarding)
   }, [])
+
+  const markOnboardingSeen = () => {
+    localStorage.setItem(onboardingSeenStorageKey, "true")
+  }
+
+  const handleOnboardingOpenChange = (open: boolean) => {
+    setIsOnboardingOpen(open)
+    if (!open) {
+      markOnboardingSeen()
+    }
+  }
+
+  const handleOnboardingNext = () => {
+    if (isLastOnboardingStep) {
+      markOnboardingSeen()
+      setIsOnboardingOpen(false)
+      return
+    }
+
+    setActiveOnboardingStep((previousStep) => Math.min(previousStep + 1, onboardingSlides.length - 1))
+  }
 
   useEffect(() => {
     localStorage.setItem("runash_sidebar_collapsed", String(isSidebarCollapsed))
@@ -388,6 +447,50 @@ export default function RunashChatPage() {
 
   return (
     <div className="min-h-screen bg-[#030405] text-zinc-100">
+      <Dialog open={isOnboardingOpen} onOpenChange={handleOnboardingOpenChange}>
+        <DialogContent className="max-w-md border-zinc-800 bg-zinc-950 p-0 text-zinc-100 motion-reduce:duration-0">
+          <div className="overflow-hidden rounded-lg">
+            <div className="h-44 bg-gradient-to-br from-cyan-500/30 via-blue-500/20 to-zinc-900 p-6">
+              <div
+                className="flex h-full items-center justify-center rounded-lg border border-white/10 bg-black/20 text-6xl transition-transform duration-300 motion-reduce:transition-none"
+                key={currentOnboardingSlide.title}
+              >
+                <span aria-hidden>{currentOnboardingSlide.image}</span>
+              </div>
+            </div>
+
+            <div className="space-y-5 p-6">
+              <DialogHeader className="space-y-2 text-left">
+                <DialogTitle>{currentOnboardingSlide.title}</DialogTitle>
+                <DialogDescription className="text-zinc-300">{currentOnboardingSlide.description}</DialogDescription>
+              </DialogHeader>
+
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2" aria-label="Onboarding progress">
+                  {onboardingSlides.map((slide, index) => (
+                    <button
+                      key={slide.title}
+                      type="button"
+                      onClick={() => setActiveOnboardingStep(index)}
+                      className={`h-2.5 w-2.5 rounded-full transition-colors duration-200 motion-reduce:transition-none ${
+                        index === activeOnboardingStep ? "bg-cyan-400" : "bg-zinc-600 hover:bg-zinc-500"
+                      }`}
+                      aria-label={`Go to onboarding step ${index + 1}`}
+                      aria-current={index === activeOnboardingStep ? "step" : undefined}
+                    />
+                  ))}
+                </div>
+
+                <Button className="bg-cyan-600 text-white hover:bg-cyan-500" onClick={handleOnboardingNext}>
+                  {currentOnboardingSlide.cta}
+                  {!isLastOnboardingStep ? <ArrowRight className="ml-1 h-4 w-4" /> : null}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="mx-auto flex w-full max-w-[1400px] gap-4 px-3 py-3">
         <aside
           id="runash-chat-sidebar"
