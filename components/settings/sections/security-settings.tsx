@@ -7,6 +7,7 @@ import type { SettingsData, SettingsSection } from "@/components/settings/types"
 
 interface SecuritySettingsProps {
   data: SettingsData
+  oneTimeApiKey: string | null
   isDisabled: boolean
   isSaving: boolean
   errors: Partial<Record<SettingsSection, string>>
@@ -16,10 +17,21 @@ interface SecuritySettingsProps {
     value: SettingsData[TSection][TField]
   ) => void
   onSave: (section: SettingsSection) => void
+  onOneTimeApiKeyDismiss: () => void
   onAction: (action: "regenerateApiKey" | "deleteApiKey" | "disable2FA") => void
 }
 
-export function SecuritySettings({ data, isDisabled, isSaving, errors, onFieldChange, onSave, onAction }: SecuritySettingsProps) {
+export function SecuritySettings({
+  data,
+  oneTimeApiKey,
+  isDisabled,
+  isSaving,
+  errors,
+  onFieldChange,
+  onSave,
+  onOneTimeApiKeyDismiss,
+  onAction,
+}: SecuritySettingsProps) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <SectionFeatureCard
@@ -81,6 +93,34 @@ export function SecuritySettings({ data, isDisabled, isSaving, errors, onFieldCh
         disabled={isDisabled}
         onAction={() => onAction("regenerateApiKey")}
       >
+        <div className="space-y-3 rounded-md border p-3">
+          <div>
+            <p className="text-xs font-medium text-muted-foreground">Current key</p>
+            <p className="font-mono text-sm">{data.security.apiKeyMasked || "Not generated"}</p>
+          </div>
+          {data.security.apiKeyLastRotatedAt ? (
+            <p className="text-xs text-muted-foreground">Last rotated: {new Date(data.security.apiKeyLastRotatedAt).toLocaleString()}</p>
+          ) : null}
+          {oneTimeApiKey ? (
+            <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3">
+              <p className="text-xs font-medium text-amber-900">Copy this new key now. It will not be shown again.</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="max-w-full truncate font-mono text-sm text-amber-950">{oneTimeApiKey}</p>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => navigator.clipboard.writeText(oneTimeApiKey)}
+                  disabled={isDisabled}
+                >
+                  Copy
+                </Button>
+                <Button size="sm" variant="ghost" onClick={onOneTimeApiKeyDismiss} disabled={isDisabled}>
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
         <div className="flex gap-2">
           <Button variant="destructive" onClick={() => onAction("deleteApiKey")} disabled={isDisabled}>
             Delete API key

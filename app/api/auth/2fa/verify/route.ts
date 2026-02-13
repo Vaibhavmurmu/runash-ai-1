@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result, { status: result.success ? 200 : 400 })
   } catch (error) {
-    console.error("2FA verify error:", error)
+    console.error("2FA verify error")
 
     if (error instanceof z.ZodError) {
       return NextResponse.json({ success: false, message: "Invalid request data" }, { status: 400 })
@@ -51,7 +51,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json(result, { status: result.success ? 200 : 400 })
   } catch (error) {
-    console.error("2FA send error:", error)
+    console.error("2FA send error")
 
     if (error instanceof z.ZodError) {
       return NextResponse.json({ success: false, message: "Invalid request data" }, { status: 400 })

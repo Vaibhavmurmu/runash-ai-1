@@ -52,7 +52,7 @@ export async function generateTOTPSecret(
       qrCodeUrl,
       manualEntryKey: secret.base32,
     }
-  } catch (error) {
+  } catch {
     console.error("Error generating TOTP secret:", error)
     throw new Error("Failed to generate TOTP secret")
   }
@@ -67,7 +67,7 @@ export function verifyTOTPCode(secret: string, token: string, window = 1): boole
       token,
       window, // Allow 1 step before/after for clock drift
     })
-  } catch (error) {
+  } catch {
     console.error("Error verifying TOTP code:", error)
     return false
   }
@@ -110,8 +110,8 @@ export async function setup2FA(
     `
 
     return true
-  } catch (error) {
-    console.error("Error setting up 2FA:", error)
+  } catch {
+    console.error("Error setting up 2FA")
     return false
   }
 }
@@ -124,8 +124,8 @@ export async function get2FASettings(userId: number): Promise<User2FASettings | 
     `
 
     return result.length > 0 ? (result[0] as User2FASettings) : null
-  } catch (error) {
-    console.error("Error getting 2FA settings:", error)
+  } catch {
+    console.error("Error getting 2FA settings")
     return null
   }
 }
@@ -167,7 +167,7 @@ export async function generateBackupCodes(userId: number): Promise<string[]> {
     `
 
     return backupCodes
-  } catch (error) {
+  } catch {
     console.error("Error generating backup codes:", error)
     throw new Error("Failed to generate backup codes")
   }
@@ -200,7 +200,7 @@ export async function verifyBackupCode(userId: number, code: string): Promise<bo
     `
 
     return true
-  } catch (error) {
+  } catch {
     console.error("Error verifying backup code:", error)
     return false
   }
@@ -262,8 +262,8 @@ export async function verify2FACode(
       default:
         return { success: false, message: "Invalid 2FA method" }
     }
-  } catch (error) {
-    console.error("Error verifying 2FA code:", error)
+  } catch {
+    console.error("Error verifying 2FA code")
     return { success: false, message: "Failed to verify 2FA code" }
   }
 }
@@ -294,8 +294,8 @@ export async function send2FACode(
     } else {
       return await createEmailOTP(identifier, "2fa_login", userId)
     }
-  } catch (error) {
-    console.error("Error sending 2FA code:", error)
+  } catch {
+    console.error("Error sending 2FA code")
     return { success: false, message: "Failed to send 2FA code" }
   }
 }
@@ -325,8 +325,8 @@ export async function disable2FA(userId: number): Promise<boolean> {
     `
 
     return true
-  } catch (error) {
-    console.error("Error disabling 2FA:", error)
+  } catch {
+    console.error("Error disabling 2FA")
     return false
   }
 }
@@ -355,7 +355,7 @@ export async function getBackupCodesStatus(userId: number): Promise<{
       remaining: (Number.parseInt(stats.total) || 0) - (Number.parseInt(stats.used) || 0),
       lastGenerated: stats.last_generated ? new Date(stats.last_generated) : undefined,
     }
-  } catch (error) {
+  } catch {
     console.error("Error getting backup codes status:", error)
     return { total: 0, used: 0, remaining: 0 }
   }
@@ -374,7 +374,7 @@ export async function logRecoveryAttempt(
       INSERT INTO user_2fa_recovery_attempts (user_id, attempt_type, success, ip_address, user_agent)
       VALUES (${userId}, ${attemptType}, ${success}, ${ipAddress || null}, ${userAgent || null})
     `
-  } catch (error) {
+  } catch {
     console.error("Error logging recovery attempt:", error)
   }
 }
@@ -387,8 +387,8 @@ export async function requiresTwoFactor(userId: number): Promise<boolean> {
     `
 
     return result.length > 0 && result[0].two_factor_enabled
-  } catch (error) {
-    console.error("Error checking 2FA requirement:", error)
+  } catch {
+    console.error("Error checking 2FA requirement")
     return false
   }
 }
