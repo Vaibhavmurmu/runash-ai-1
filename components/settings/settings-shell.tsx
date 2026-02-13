@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { AccountSettings } from "@/components/settings/sections/account-settings"
-import { BillingSettings } from "@/components/settings/sections/billing-settings"
+import { AccountSectionPanel } from "@/components/settings/sections/account-section-panel"
+import { BillingSectionPanel } from "@/components/settings/sections/billing-section-panel"
 import { ConfirmSettingsActionDialog } from "@/components/settings/confirm-settings-action-dialog"
-import { PreferencesSettings } from "@/components/settings/sections/preferences-settings"
-import { SecuritySettings } from "@/components/settings/sections/security-settings"
+import { SecuritySectionPanel } from "@/components/settings/sections/security-section-panel"
+import { WorkspaceSectionPanel } from "@/components/settings/sections/workspace-section-panel"
 import type { SettingsCategory, SettingsData, SettingsSection } from "@/components/settings/types"
 import { Button } from "@/components/ui/button"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 
@@ -34,13 +35,21 @@ const railItems: RailItem[] = [
     ],
   },
   {
+    key: "workspace",
+    label: "Workspace",
+    panels: [
+      { key: "notifications", label: "Notifications" },
+      { key: "appearance", label: "Theme & language" },
+      { key: "feedback", label: "Feedback" },
+    ],
+  },
+  {
     key: "security",
     label: "Security",
     panels: [
       { key: "password", label: "Password" },
       { key: "two-factor", label: "2FA" },
       { key: "privacy", label: "Privacy" },
-      { key: "api-security", label: "API Keys" },
     ],
   },
   {
@@ -49,20 +58,29 @@ const railItems: RailItem[] = [
     panels: [
       { key: "upgrade", label: "Upgrade" },
       { key: "subscription", label: "Subscription" },
-      { key: "invoice-delivery", label: "Invoice delivery" },
+      { key: "invoice-delivery", label: "Invoices" },
       { key: "billing-method", label: "Billing method" },
-      { key: "usage-meters", label: "Usage meters" },
-      { key: "credits-balance", label: "Credits balance" },
-      { key: "refer-earn", label: "Refer & earn" },
     ],
   },
   {
-    key: "preferences",
-    label: "Preferences",
+    key: "usage",
+    label: "Usage",
     panels: [
-      { key: "notifications", label: "Notifications" },
-      { key: "appearance", label: "Theme & Language" },
-      { key: "feedback", label: "Feedback" },
+      { key: "usage-meters", label: "Usage meters" },
+      { key: "credits-balance", label: "Credits balance" },
+    ],
+  },
+  {
+    key: "api-keys",
+    label: "API Keys",
+    panels: [{ key: "api-security", label: "Manage keys" }],
+  },
+  {
+    key: "data-controls",
+    label: "Data Controls",
+    panels: [
+      { key: "privacy", label: "Privacy" },
+      { key: "api-security", label: "API access" },
     ],
   },
 ]
@@ -108,7 +126,38 @@ const defaultSettingsData: SettingsData = {
 }
 
 const isSettingsCategory = (value: string | null): value is SettingsCategory =>
-  value === "account" || value === "security" || value === "billing" || value === "preferences"
+  value === "account" ||
+  value === "workspace" ||
+  value === "security" ||
+  value === "billing" ||
+  value === "usage" ||
+  value === "api-keys" ||
+  value === "data-controls"
+
+const sectionAliasMap: Record<string, SettingsCategory> = {
+  preferences: "workspace",
+  apikeys: "api-keys",
+  apiKeys: "api-keys",
+  data: "data-controls",
+}
+
+const panelAliasMap: Record<string, string> = {
+  invoices: "invoice-delivery",
+}
+
+const normalizeSection = (section: string | null): SettingsCategory | null => {
+  if (!section) {
+    return null
+  }
+
+  if (isSettingsCategory(section)) {
+    return section
+  }
+
+  return sectionAliasMap[section] ?? null
+}
+
+const normalizePanel = (panel: string | null) => (panel ? panelAliasMap[panel] ?? panel : panel)
 
 type BillingAction =
   | "upgradePlan"
@@ -223,6 +272,7 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
   const [oneTimeApiKey, setOneTimeApiKey] = useState<string | null>(null)
   const [pendingBillingAction, setPendingBillingAction] = useState<BillingAction | null>(null)
   const [pendingSettingsDialog, setPendingSettingsDialog] = useState<PendingSettingsActionDialog | null>(null)
+  const [isMobileRailOpen, setIsMobileRailOpen] = useState(false)
   const sectionContainerRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
 
@@ -280,10 +330,10 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
   }, [toast])
 
   useEffect(() => {
-    const sectionParam = searchParams.get("section")
-    const panelParam = searchParams.get("panel")
+    const sectionParam = normalizeSection(searchParams.get("section"))
+    const panelParam = normalizePanel(searchParams.get("panel"))
 
-    if (!isSettingsCategory(sectionParam)) {
+    if (!sectionParam) {
       return
     }
 
@@ -505,15 +555,50 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6 lg:p-8">
-      <div>
+      <div className="space-y-1">
         <h1 className="text-2xl font-semibold md:text-3xl">Settings</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Manage grouped settings by Account, Security, Billing, and Preferences.
+          Manage grouped settings by account, workspace, security, billing, usage, API keys, and data controls.
         </p>
       </div>
 
+      {!compact ? (
+        <div className="lg:hidden">
+          <Sheet open={isMobileRailOpen} onOpenChange={setIsMobileRailOpen}>
+            <SheetTrigger asChild>
+              <Button type="button" variant="outline" className="w-full justify-start">
+                {activeRailItem.label}
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-[300px]">
+              <SheetHeader>
+                <SheetTitle>Settings sections</SheetTitle>
+                <SheetDescription>Choose a settings group and panel.</SheetDescription>
+              </SheetHeader>
+              <div className="mt-6 space-y-4">
+                {railItems.map((item) => (
+                  <Button
+                    key={item.key}
+                    type="button"
+                    variant={item.key === activeSection ? "default" : "outline"}
+                    className="w-full justify-start"
+                    onClick={() => {
+                      const panelKey = item.panels[0]?.key
+                      setSectionAndPanel(item.key, panelKey)
+                      setIsMobileRailOpen(false)
+                    }}
+                  >
+                    {item.label}
+                  </Button>
+                ))}
+              </div>
+            </SheetContent>
+          </Sheet>
+        </div>
+      ) : null}
+
       <div className={cn("grid gap-6", compact ? "grid-cols-1" : "lg:grid-cols-[260px_minmax(0,1fr)]")}>
-        <aside className="space-y-3">
+        <aside className={cn("space-y-3", !compact && "hidden lg:block")}>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sections</p>
           <div className={cn("gap-2", compact ? "flex overflow-x-auto pb-1" : "flex flex-col") }>
             {railItems.map((item) => (
@@ -562,7 +647,7 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
 
         <main ref={sectionContainerRef} className="space-y-6">
           {activeSection === "account" ? (
-            <AccountSettings
+            <AccountSectionPanel
               data={settingsData}
               isDisabled={isDisabled}
               isSaving={isSaving}
@@ -596,8 +681,19 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
             />
           ) : null}
 
-          {activeSection === "security" ? (
-            <SecuritySettings
+          {activeSection === "workspace" ? (
+            <WorkspaceSectionPanel
+              data={settingsData}
+              isDisabled={isDisabled}
+              isSaving={isSaving}
+              errors={sectionErrors}
+              onFieldChange={onFieldChange}
+              onSave={saveSection}
+            />
+          ) : null}
+
+          {activeSection === "security" || activeSection === "api-keys" || activeSection === "data-controls" ? (
+            <SecuritySectionPanel
               data={settingsData}
               oneTimeApiKey={oneTimeApiKey}
               isDisabled={isDisabled}
@@ -701,8 +797,8 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
             />
           ) : null}
 
-          {activeSection === "billing" ? (
-            <BillingSettings
+          {activeSection === "billing" || activeSection === "usage" ? (
+            <BillingSectionPanel
               data={settingsData}
               isDisabled={isDisabled}
               isSaving={isSaving}
@@ -712,16 +808,6 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
             />
           ) : null}
 
-          {activeSection === "preferences" ? (
-            <PreferencesSettings
-              data={settingsData}
-              isDisabled={isDisabled}
-              isSaving={isSaving}
-              errors={sectionErrors}
-              onFieldChange={onFieldChange}
-              onSave={saveSection}
-            />
-          ) : null}
         </main>
       </div>
 
