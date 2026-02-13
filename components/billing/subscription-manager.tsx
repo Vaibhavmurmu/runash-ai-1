@@ -7,14 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { ConfirmSettingsActionDialog } from "@/components/settings/confirm-settings-action-dialog"
 import {
   Crown,
   CreditCard,
@@ -41,9 +34,8 @@ export function SubscriptionManager() {
   const [usage, setUsage] = useState<{ [key: string]: number }>({})
   const [loading, setLoading] = useState(true)
   const [changingPlan, setChangingPlan] = useState(false)
-  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null)
+  const [pendingPlanChange, setPendingPlanChange] = useState<SubscriptionPlan | null>(null)
   const [showCancelDialog, setShowCancelDialog] = useState(false)
-  const [canceling, setCanceling] = useState(false)
 
   const subscriptionService = SubscriptionService.getInstance()
   const { toast } = useToast()
@@ -85,7 +77,7 @@ export function SubscriptionManager() {
       setChangingPlan(true)
       await subscriptionService.updateSubscription(plan.id)
       await loadData()
-      setSelectedPlan(null)
+      setPendingPlanChange(null)
 
       toast({
         title: "Plan Updated",
@@ -98,6 +90,7 @@ export function SubscriptionManager() {
         description: "Failed to change subscription plan",
         variant: "destructive",
       })
+      throw new Error("Failed to change subscription plan")
     } finally {
       setChangingPlan(false)
     }
@@ -107,7 +100,6 @@ export function SubscriptionManager() {
     if (!subscription) return
 
     try {
-      setCanceling(true)
       await subscriptionService.cancelSubscription()
       await loadData()
       setShowCancelDialog(false)
@@ -123,8 +115,9 @@ export function SubscriptionManager() {
         description: "Failed to cancel subscription",
         variant: "destructive",
       })
+      throw new Error("Failed to cancel subscription")
     } finally {
-      setCanceling(false)
+      // loading state handled by confirmation dialog
     }
   }
 
@@ -280,7 +273,7 @@ export function SubscriptionManager() {
             <div className="flex gap-2">
               <Button
                 variant="outline"
-                onClick={() => setSelectedPlan(subscription.plan)}
+                onClick={() => setPendingPlanChange(subscription.plan)}
                 disabled={subscription.status !== "active"}
               >
                 Change Plan
@@ -386,7 +379,19 @@ export function SubscriptionManager() {
                     className="w-full"
                     variant={subscription?.plan_id === plan.id ? "outline" : "default"}
                     disabled={subscription?.plan_id === plan.id || changingPlan}
-                    onClick={() => (subscription ? handlePlanChange(plan) : {})}
+                    onClick={() => {
+                      if (!subscription) {
+                        return
+                      }
+
+                      const isDowngrade = plan.price < subscription.plan.price
+                      if (isDowngrade) {
+                        setPendingPlanChange(plan)
+                        return
+                      }
+
+                      void handlePlanChange(plan)
+                    }}
                   >
                     {subscription?.plan_id === plan.id
                       ? "Current Plan"
@@ -512,25 +517,36 @@ export function SubscriptionManager() {
       </Tabs>
 
       {/* Cancel Subscription Dialog */}
-      <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Cancel Subscription</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to cancel your subscription? You'll continue to have access until the end of your
-              current billing period.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCancelDialog(false)}>
-              Keep Subscription
-            </Button>
-            <Button variant="destructive" onClick={handleCancelSubscription} disabled={canceling}>
-              {canceling ? "Canceling..." : "Cancel Subscription"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmSettingsActionDialog
+        open={showCancelDialog}
+        onOpenChange={setShowCancelDialog}
+        title="Cancel subscription?"
+        description="This stops renewal at the end of your current billing period."
+        consequence="You keep access until period end, then premium features are removed."
+        confirmLabel="Cancel subscription"
+        loadingLabel="Canceling subscription..."
+        successMessage="Subscription cancellation scheduled for period end."
+        onConfirm={handleCancelSubscription}
+      />
+
+      <ConfirmSettingsActionDialog
+        open={Boolean(subscription && pendingPlanChange && pendingPlanChange.id !== subscription.plan.id)}
+        onOpenChange={(open) => (!open ? setPendingPlanChange(null) : undefined)}
+        title="Downgrade plan?"
+        description="You are switching to a lower plan tier."
+        consequence="Lower limits and removed features apply immediately after the plan change."
+        irreversibleWarning="Downgrade effects can impact active workflows and may not be reversible for the current billing cycle."
+        confirmLabel="Downgrade plan"
+        loadingLabel="Applying downgrade..."
+        successMessage="Plan change completed."
+        onConfirm={async () => {
+          if (!pendingPlanChange) {
+            return
+          }
+
+          await handlePlanChange(pendingPlanChange)
+        }}
+      />
     </div>
   )
 }

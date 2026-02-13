@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { AccountSettings } from "@/components/settings/sections/account-settings"
 import { BillingSettings } from "@/components/settings/sections/billing-settings"
+import { ConfirmSettingsActionDialog } from "@/components/settings/confirm-settings-action-dialog"
 import { PreferencesSettings } from "@/components/settings/sections/preferences-settings"
 import { SecuritySettings } from "@/components/settings/sections/security-settings"
 import type { SettingsCategory, SettingsData, SettingsSection } from "@/components/settings/types"
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
@@ -130,6 +130,18 @@ type BillingActionConfig = {
   confirmationDescription?: string
 }
 
+type PendingSettingsActionDialog = {
+  title: string
+  description: string
+  consequence: string
+  irreversibleWarning?: string
+  confirmLabel: string
+  loadingLabel: string
+  successMessage: string
+  destructive?: boolean
+  onConfirm: () => Promise<void>
+}
+
 const billingActionConfig: Record<BillingAction, BillingActionConfig> = {
   upgradePlan: {
     endpoint: "/api/settings/actions/upgrade-plan",
@@ -188,6 +200,7 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
   const [errors, setErrors] = useState<Partial<Record<SettingsSection, string>>>({})
   const [oneTimeApiKey, setOneTimeApiKey] = useState<string | null>(null)
   const [pendingBillingAction, setPendingBillingAction] = useState<BillingAction | null>(null)
+  const [pendingSettingsDialog, setPendingSettingsDialog] = useState<PendingSettingsActionDialog | null>(null)
   const sectionContainerRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
 
@@ -408,7 +421,7 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
       await saveSection("billing")
     }
     if (!data || typeof data !== "object") {
-      return
+      throw new Error("Unable to complete billing action.")
     }
 
     setSettingsData((prev) => ({
@@ -430,14 +443,18 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
     void runBillingAction(action)
   }
 
-  const confirmPendingBillingAction = () => {
+  const confirmPendingBillingAction = async () => {
     if (!pendingBillingAction) {
       return
     }
 
     const action = pendingBillingAction
+    await runBillingAction(action)
     setPendingBillingAction(null)
-    void runBillingAction(action)
+  }
+
+  const openSettingsActionDialog = (dialog: PendingSettingsActionDialog) => {
+    setPendingSettingsDialog(dialog)
   }
 
   const isDisabled = isLoading || isSaving
@@ -510,8 +527,25 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
               onSave={saveSection}
               onAction={(action) => {
                 if (action === "revokeSessions") {
-                  void executeAction("/api/settings/actions/revoke-sessions", "Sessions revoked", "All sessions were revoked.", "POST", {
-                    confirm: true,
+                  openSettingsActionDialog({
+                    title: "Revoke all active sessions?",
+                    description: "This signs out every active session on all devices.",
+                    consequence: "You will be signed out everywhere and must sign in again on each device.",
+                    confirmLabel: "Revoke sessions",
+                    loadingLabel: "Revoking sessions...",
+                    successMessage: "All sessions were revoked.",
+                    onConfirm: async () => {
+                      const data = await executeAction(
+                        "/api/settings/actions/revoke-sessions",
+                        "Sessions revoked",
+                        "All sessions were revoked.",
+                        "POST",
+                        { confirm: true }
+                      )
+                      if (!data) {
+                        throw new Error("Unable to revoke sessions.")
+                      }
+                    },
                   })
                 }
               }}
@@ -530,64 +564,93 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
               onOneTimeApiKeyDismiss={() => setOneTimeApiKey(null)}
               onAction={(action) => {
                 if (action === "regenerateApiKey") {
-                  void executeAction(
-                    "/api/settings/actions/regenerate-api-key",
-                    "API key regenerated",
-                    "A new API key is now active.",
-                    "POST",
-                    { confirm: true }
-                  ).then((data) => {
-                    if (!data) {
-                      return
-                    }
+                  openSettingsActionDialog({
+                    title: "Regenerate API key?",
+                    description: "A new key will immediately replace the current key.",
+                    consequence: "Any services using the existing API key will stop working until updated.",
+                    confirmLabel: "Regenerate key",
+                    loadingLabel: "Regenerating key...",
+                    successMessage: "A new API key is now active.",
+                    irreversibleWarning: "This cannot be undone. The previous API key will no longer be valid.",
+                    onConfirm: async () => {
+                      const data = await executeAction(
+                        "/api/settings/actions/regenerate-api-key",
+                        "API key regenerated",
+                        "A new API key is now active.",
+                        "POST",
+                        { confirm: true }
+                      )
+                      if (!data) {
+                        throw new Error("Unable to regenerate API key.")
+                      }
 
-                    setSettingsData((prev) => ({
-                      ...prev,
-                      security: {
-                        ...prev.security,
-                        apiKeyMasked: String(data.apiKeyMasked ?? prev.security.apiKeyMasked),
-                        apiKeyLastRotatedAt: String(data.apiKeyLastRotatedAt ?? prev.security.apiKeyLastRotatedAt),
-                      },
-                    }))
-                    setOneTimeApiKey(typeof data.apiKey === "string" ? data.apiKey : null)
+                      setSettingsData((prev) => ({
+                        ...prev,
+                        security: {
+                          ...prev.security,
+                          apiKeyMasked: String(data.apiKeyMasked ?? prev.security.apiKeyMasked),
+                          apiKeyLastRotatedAt: String(data.apiKeyLastRotatedAt ?? prev.security.apiKeyLastRotatedAt),
+                        },
+                      }))
+                      setOneTimeApiKey(typeof data.apiKey === "string" ? data.apiKey : null)
+                    },
                   })
                 }
                 if (action === "deleteApiKey") {
-                  void executeAction(
-                    "/api/settings/actions/delete-api-key",
-                    "API key deleted",
-                    "API key access removed.",
-                    "DELETE",
-                    { confirm: true }
-                  ).then((data) => {
-                    if (!data) {
-                      return
-                    }
+                  openSettingsActionDialog({
+                    title: "Delete API key?",
+                    description: "This removes API access for your account until a new key is generated.",
+                    consequence: "Integrations and automations using this key will fail immediately.",
+                    confirmLabel: "Delete key",
+                    loadingLabel: "Deleting key...",
+                    successMessage: "API key access removed.",
+                    irreversibleWarning: "This is irreversible for the current key material.",
+                    onConfirm: async () => {
+                      const data = await executeAction(
+                        "/api/settings/actions/delete-api-key",
+                        "API key deleted",
+                        "API key access removed.",
+                        "DELETE",
+                        { confirm: true }
+                      )
+                      if (!data) {
+                        throw new Error("Unable to delete API key.")
+                      }
 
-                    setOneTimeApiKey(null)
-                    setSettingsData((prev) => ({
-                      ...prev,
-                      security: {
-                        ...prev.security,
-                        apiKeyMasked: String(data.apiKeyMasked ?? "Not generated"),
-                        apiKeyLastRotatedAt: String(data.apiKeyLastRotatedAt ?? ""),
-                      },
-                    }))
+                      setOneTimeApiKey(null)
+                      setSettingsData((prev) => ({
+                        ...prev,
+                        security: {
+                          ...prev.security,
+                          apiKeyMasked: String(data.apiKeyMasked ?? "Not generated"),
+                          apiKeyLastRotatedAt: String(data.apiKeyLastRotatedAt ?? ""),
+                        },
+                      }))
+                    },
                   })
                 }
                 if (action === "disable2FA") {
-                  void executeAction(
-                    "/api/settings/actions/disable-2fa",
-                    "2FA disabled",
-                    "Two-factor authentication disabled.",
-                    "POST",
-                    { confirm: true }
-                  ).then((data) => {
-                    if (!data) {
-                      return
-                    }
+                  openSettingsActionDialog({
+                    title: "Disable 2FA?",
+                    description: "Turning off 2FA lowers account protection.",
+                    consequence: "Future sign-ins will only require your password.",
+                    confirmLabel: "Disable 2FA",
+                    loadingLabel: "Disabling 2FA...",
+                    successMessage: "Two-factor authentication disabled.",
+                    onConfirm: async () => {
+                      const data = await executeAction(
+                        "/api/settings/actions/disable-2fa",
+                        "2FA disabled",
+                        "Two-factor authentication disabled.",
+                        "POST",
+                        { confirm: true }
+                      )
+                      if (!data) {
+                        throw new Error("Unable to disable 2FA.")
+                      }
 
-                    onFieldChange("security", "twoFactorEnabled", false)
+                      onFieldChange("security", "twoFactorEnabled", false)
+                    },
                   })
                 }
               }}
@@ -618,24 +681,43 @@ export function SettingsShell({ compact = false }: SettingsShellProps) {
         </main>
       </div>
 
-      <AlertDialog open={Boolean(pendingBillingAction)} onOpenChange={(open) => (!open ? setPendingBillingAction(null) : undefined)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {pendingBillingAction ? billingActionConfig[pendingBillingAction].confirmationTitle ?? "Confirm action" : "Confirm action"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingBillingAction
-                ? billingActionConfig[pendingBillingAction].confirmationDescription ?? "Please confirm to continue."
-                : "Please confirm to continue."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmPendingBillingAction}>Continue</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmSettingsActionDialog
+        open={Boolean(pendingBillingAction)}
+        onOpenChange={(open) => (!open ? setPendingBillingAction(null) : undefined)}
+        title={pendingBillingAction ? billingActionConfig[pendingBillingAction].confirmationTitle ?? "Confirm action" : "Confirm action"}
+        description={
+          pendingBillingAction
+            ? billingActionConfig[pendingBillingAction].confirmationDescription ?? "Please confirm to continue."
+            : "Please confirm to continue."
+        }
+        consequence="This action applies account billing changes and may affect the next invoice."
+        confirmLabel="Continue"
+        loadingLabel="Applying update..."
+        successMessage="Billing action completed."
+        destructive={false}
+        onConfirm={async () => {
+          await confirmPendingBillingAction()
+        }}
+      />
+
+      <ConfirmSettingsActionDialog
+        open={Boolean(pendingSettingsDialog)}
+        onOpenChange={(open) => (!open ? setPendingSettingsDialog(null) : undefined)}
+        title={pendingSettingsDialog?.title ?? "Confirm action"}
+        description={pendingSettingsDialog?.description ?? "Please confirm to continue."}
+        consequence={pendingSettingsDialog?.consequence ?? "This action changes account settings."}
+        confirmLabel={pendingSettingsDialog?.confirmLabel ?? "Continue"}
+        loadingLabel={pendingSettingsDialog?.loadingLabel ?? "Processing..."}
+        successMessage={pendingSettingsDialog?.successMessage ?? "Action completed successfully."}
+        irreversibleWarning={pendingSettingsDialog?.irreversibleWarning}
+        destructive={pendingSettingsDialog?.destructive}
+        onConfirm={async () => {
+          if (!pendingSettingsDialog) {
+            return
+          }
+          await pendingSettingsDialog.onConfirm()
+        }}
+      />
     </div>
   )
 }
