@@ -16,6 +16,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   ArrowRight,
   Bot,
+  Bell,
   ChevronsLeft,
   ChevronsRight,
   CreditCard,
@@ -217,6 +218,13 @@ export default function RunashChatPage() {
   useEffect(() => {
     localStorage.setItem("runash_sidebar_collapsed", String(isSidebarCollapsed))
   }, [isSidebarCollapsed])
+
+  useEffect(() => {
+    if (!isOnboardingOpen) return
+
+    setIsMobileSidebarOpen(false)
+    setIsMobileSearchOpen(false)
+  }, [isOnboardingOpen])
 
   useEffect(() => {
     if (!startChatError) return
@@ -518,48 +526,129 @@ export default function RunashChatPage() {
 
         <main className="h-[calc(100vh-24px)] flex-1 rounded-xl border border-zinc-800 bg-[#050607] p-4 sm:p-6">
           <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
-            <div className="mb-4 space-y-2 lg:hidden">
-              <div className="flex flex-wrap items-center gap-2">
-                <Sheet open={isMobileSidebarOpen} onOpenChange={setIsMobileSidebarOpen}>
-                  <SheetTrigger asChild>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="outline"
-                      className="border-zinc-700 bg-zinc-950 text-zinc-100"
-                      aria-expanded={isMobileSidebarOpen}
-                      aria-controls="runash-chat-mobile-sidebar"
-                      aria-label="Open navigation menu"
-                    >
-                      <Menu className="h-4 w-4" />
-                    </Button>
-                  </SheetTrigger>
-                  <SheetContent
-                    side="left"
-                    id="runash-chat-mobile-sidebar"
-                    className="w-[280px] border-zinc-800 bg-[#050607] p-3 text-zinc-100"
+            <div className="mb-4 space-y-3 lg:hidden">
+              <div className="grid grid-cols-[auto,1fr,auto] items-center gap-2">
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="h-10 w-10 border-zinc-700 bg-zinc-950 text-zinc-100"
+                    onClick={() => router.push("/")}
+                    aria-label="Go to home"
+                    disabled={isOnboardingOpen}
                   >
-                    <SheetTitle className="sr-only">Chat navigation</SheetTitle>
-                    {renderSidebarContent(false, true)}
-                  </SheetContent>
-                </Sheet>
-                <Button type="button" size="sm" className="bg-zinc-900 text-zinc-100 hover:bg-zinc-800" onClick={() => startChatWithPrompt()}>
-                  <Plus className="mr-2 h-4 w-4" /> New Chat
-                </Button>
-                <Button
+                    <Home className="h-4 w-4" />
+                  </Button>
+
+                  <Sheet open={isMobileSidebarOpen} onOpenChange={setIsMobileSidebarOpen}>
+                    <SheetTrigger asChild>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        className="h-10 w-10 border-zinc-700 bg-zinc-950 text-zinc-100"
+                        aria-expanded={isMobileSidebarOpen}
+                        aria-controls="runash-chat-mobile-sidebar"
+                        aria-label="Open navigation menu"
+                        disabled={isOnboardingOpen}
+                      >
+                        <Menu className="h-4 w-4" />
+                      </Button>
+                    </SheetTrigger>
+                    <SheetContent
+                      side="left"
+                      id="runash-chat-mobile-sidebar"
+                      className="w-[280px] border-zinc-800 bg-[#050607] p-3 text-zinc-100"
+                    >
+                      <SheetTitle className="sr-only">Chat navigation</SheetTitle>
+                      {renderSidebarContent(false, true)}
+                    </SheetContent>
+                  </Sheet>
+                </div>
+
+                <button
                   type="button"
-                  size="sm"
-                  variant="outline"
-                  className="border-zinc-700 bg-zinc-950 text-zinc-100"
                   onClick={() => setIsMobileSearchOpen((open) => !open)}
                   aria-expanded={isMobileSearchOpen}
                   aria-controls="mobile-chat-search"
+                  className="flex h-10 min-w-0 items-center justify-between rounded-full border border-zinc-700 bg-zinc-950 px-3 text-left"
+                  disabled={isOnboardingOpen}
                 >
-                  <Search className="mr-2 h-4 w-4" /> Search
-                </Button>
-                <Button type="button" size="sm" variant="outline" className="border-zinc-700 bg-zinc-950 text-zinc-100" onClick={() => router.push("/")}>
-                  <Home className="mr-2 h-4 w-4" /> Home
-                </Button>
+                  <span className="truncate text-sm font-medium text-zinc-100">RunAsh</span>
+                  <span className="ml-2 flex items-center gap-1 rounded-full bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300">
+                    <Search className="h-3.5 w-3.5" />
+                    Search
+                  </span>
+                </button>
+
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    size="icon"
+                    className="h-10 w-10 bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
+                    onClick={() => startChatWithPrompt()}
+                    aria-label="Start a new chat"
+                    disabled={isOnboardingOpen}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="h-10 w-10 border-zinc-700 bg-zinc-950 text-zinc-100"
+                    onClick={() => router.push("/changelog")}
+                    aria-label="Open notifications"
+                    disabled={isOnboardingOpen}
+                  >
+                    <Bell className="h-4 w-4" />
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="h-10 w-10 border-zinc-700 bg-zinc-950 text-zinc-100"
+                        aria-label="More quick actions"
+                        disabled={isOnboardingOpen}
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56 border-zinc-800 bg-zinc-900 text-zinc-100">
+                      {headerActions.map((action) => (
+                        <DropdownMenuItem
+                          key={action.id}
+                          onClick={() => handleHeaderActionClick(action)}
+                          className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+                        >
+                          {action.label}
+                        </DropdownMenuItem>
+                      ))}
+                      {userMenuItems.map((item) => (
+                        <DropdownMenuItem
+                          key={item.label}
+                          onClick={item.action}
+                          className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+                        >
+                          {item.label}
+                        </DropdownMenuItem>
+                      ))}
+                      <DropdownMenuItem
+                        onClick={() => signOut({ callbackUrl: "/" })}
+                        className="cursor-pointer text-rose-300 focus:bg-rose-500/20 focus:text-rose-200"
+                      >
+                        Sign out
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-400">
+                <span>{sessionId ? `Session #${sessionId}` : "No session"}</span>
+                <span className="truncate">{userDisplayName}</span>
               </div>
 
               {isMobileSearchOpen && (
@@ -606,7 +695,7 @@ export default function RunashChatPage() {
                   <h1 className="text-xl font-semibold">What do you want to create?</h1>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="hidden items-center gap-2 lg:flex">
                 <div className="hidden items-center gap-1 sm:flex">
                   {headerActions.map((action) => {
                     const Icon = action.icon
