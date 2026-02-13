@@ -63,6 +63,7 @@ type PersistedUserSettings = Omit<UserSettings, "security"> & {
 type SettingsVersionMeta = {
   version: number
   updatedAt: string
+  updatedBy: number
 }
 
 type ValidationFieldErrors = Partial<Record<keyof UserSettings, Record<string, string>>>
@@ -256,7 +257,7 @@ function normalizeBilling(input: Partial<UserSettings["billing"]> | undefined): 
   }
 }
 
-function normalizeVersionMeta(raw: unknown, fallbackUpdatedAt: string): SettingsVersionMeta {
+function normalizeVersionMeta(raw: unknown, fallbackUpdatedAt: string, fallbackUpdatedBy = 0): SettingsVersionMeta {
   const input = raw && typeof raw === "object" ? (raw as Partial<SettingsVersionMeta>) : {}
   return {
     version: typeof input.version === "number" && Number.isFinite(input.version) && input.version >= 1 ? input.version : 1,
@@ -264,7 +265,186 @@ function normalizeVersionMeta(raw: unknown, fallbackUpdatedAt: string): Settings
       typeof input.updatedAt === "string" && input.updatedAt.length > 0
         ? input.updatedAt
         : fallbackUpdatedAt,
+    updatedBy:
+      typeof input.updatedBy === "number" && Number.isFinite(input.updatedBy) && input.updatedBy > 0
+        ? input.updatedBy
+        : fallbackUpdatedBy,
   }
+}
+
+type SettingsReadResult = {
+  settings: UserSettings
+  meta: SettingsVersionMeta
+  source: "new" | "legacy"
+}
+
+async function writeSettingsToNewStore(
+  sql: ReturnType<typeof getSql>,
+  userId: number,
+  settings: UserSettings,
+  meta: SettingsVersionMeta,
+  options?: { source?: "api" | "lazy_migration" | "backfill" },
+) {
+  const persisted = toPersistedSettings(settings)
+  const source = options?.source ?? "api"
+
+  await sql/* sql */`
+    INSERT INTO public.user_settings (user_id, settings, version, updated_by, updated_at, migrated_from_legacy)
+    VALUES (
+      ${userId},
+      ${JSON.stringify(persisted)}::jsonb,
+      ${meta.version},
+      ${meta.updatedBy || userId},
+      ${meta.updatedAt}::timestamptz,
+      ${source !== "api"}
+    )
+    ON CONFLICT (user_id)
+    DO UPDATE SET
+      settings = EXCLUDED.settings,
+      version = EXCLUDED.version,
+      updated_by = EXCLUDED.updated_by,
+      updated_at = EXCLUDED.updated_at,
+      migrated_from_legacy = public.user_settings.migrated_from_legacy OR EXCLUDED.migrated_from_legacy
+  `
+
+  await sql/* sql */`DELETE FROM public.user_setting_attachments WHERE user_id = ${userId}`
+
+  const attachments: Array<{ slot: string; ordinal: number; value: AttachmentMetadata }> = []
+  if (settings.profile.avatarAttachment) {
+    attachments.push({ slot: "avatar", ordinal: 0, value: settings.profile.avatarAttachment })
+  }
+  if (settings.profile.bannerAttachment) {
+    attachments.push({ slot: "banner", ordinal: 0, value: settings.profile.bannerAttachment })
+  }
+
+  settings.preferences.feedbackAttachments.forEach((attachment, index) => {
+    attachments.push({ slot: "feedback", ordinal: index, value: attachment })
+  })
+
+  for (const attachment of attachments) {
+    await sql/* sql */`
+      INSERT INTO public.user_setting_attachments (
+        user_id,
+        attachment_slot,
+        attachment_order,
+        url,
+        filename,
+        mime_type,
+        size,
+        uploaded_at
+      )
+      VALUES (
+        ${userId},
+        ${attachment.slot},
+        ${attachment.ordinal},
+        ${attachment.value.url},
+        ${attachment.value.filename},
+        ${attachment.value.mimeType},
+        ${attachment.value.size},
+        ${attachment.value.uploadedAt}::timestamptz
+      )
+    `
+  }
+
+  await sql/* sql */`
+    INSERT INTO public.user_settings_audit (
+      user_id,
+      version,
+      updated_by,
+      updated_at,
+      source,
+      settings,
+      notes
+    )
+    VALUES (
+      ${userId},
+      ${meta.version},
+      ${meta.updatedBy || userId},
+      ${meta.updatedAt}::timestamptz,
+      ${source},
+      ${JSON.stringify(persisted)}::jsonb,
+      ${source === "api" ? "settings api write" : "legacy-to-db migration"}
+    )
+  `
+}
+
+async function readSettings(sql: ReturnType<typeof getSql>, userId: number): Promise<SettingsReadResult | null> {
+  const [storedRow] = await sql/* sql */`
+    SELECT us.user_id, us.settings, us.version, us.updated_at, us.updated_by, u.email
+    FROM public.user_settings us
+    JOIN public.users u ON u.id = us.user_id
+    WHERE us.user_id = ${userId}
+    LIMIT 1
+  `
+
+  if (storedRow) {
+    const attachmentRows = await sql/* sql */`
+      SELECT attachment_slot, attachment_order, url, filename, mime_type, size, uploaded_at
+      FROM public.user_setting_attachments
+      WHERE user_id = ${userId}
+      ORDER BY attachment_slot, attachment_order
+    `
+
+    const normalized = normalizeSettings(storedRow.settings, storedRow.email ?? "")
+    const feedbackAttachments: AttachmentMetadata[] = []
+
+    for (const row of attachmentRows) {
+      const hydrated = sanitizeAttachment({
+        url: row.url,
+        filename: row.filename,
+        mimeType: row.mime_type,
+        size: Number(row.size),
+        uploadedAt: new Date(row.uploaded_at ?? Date.now()).toISOString(),
+      })
+
+      if (!hydrated) {
+        continue
+      }
+
+      if (row.attachment_slot === "avatar") {
+        normalized.profile.avatarAttachment = hydrated
+      } else if (row.attachment_slot === "banner") {
+        normalized.profile.bannerAttachment = hydrated
+      } else if (row.attachment_slot === "feedback") {
+        feedbackAttachments.push(hydrated)
+      }
+    }
+
+    if (feedbackAttachments.length > 0) {
+      normalized.preferences.feedbackAttachments = feedbackAttachments
+    }
+
+    return {
+      settings: normalized,
+      meta: {
+        version: Number(storedRow.version) || 1,
+        updatedAt: new Date(storedRow.updated_at ?? Date.now()).toISOString(),
+        updatedBy: Number(storedRow.updated_by) || userId,
+      },
+      source: "new",
+    }
+  }
+
+  const [legacyRow] = await sql/* sql */`
+    SELECT id, email, bio, updated_at
+    FROM public.users
+    WHERE id = ${userId}
+    LIMIT 1
+  `
+
+  if (!legacyRow) {
+    return null
+  }
+
+  const parsedBio = parseBio(legacyRow.bio)
+  const settings = normalizeSettings(parsedBio.userSettings, legacyRow.email ?? "")
+  const meta = normalizeVersionMeta(parsedBio.userSettingsMeta, new Date(legacyRow.updated_at ?? Date.now()).toISOString(), userId)
+
+  await writeSettingsToNewStore(sql, userId, settings, meta, {
+    source: "lazy_migration"
+  })
+
+  return { settings, meta, source: "legacy" }
 }
 
 function mapZodErrorsToFieldMap(section: keyof UserSettings, issues: z.ZodIssue[]): ValidationFieldErrors {
@@ -379,14 +559,9 @@ export async function GET(request: NextRequest) {
     const userId = await resolveUserId(request)
     const sql = getSql()
 
-    const [row] = await sql/* sql */`
-      SELECT id, email, bio, updated_at
-      FROM public.users
-      WHERE id = ${userId}
-      LIMIT 1
-    `
+    const result = await readSettings(sql, userId)
 
-    if (!row) {
+    if (!result) {
       return respondError(
         request,
         { code: "USER_NOT_FOUND", message: "User not found" },
@@ -394,13 +569,14 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const parsedBio = parseBio(row.bio)
-    const userSettings = normalizeSettings(parsedBio.userSettings, row.email ?? "")
-    const versionMeta = normalizeVersionMeta(parsedBio.userSettingsMeta, new Date(row.updated_at ?? Date.now()).toISOString())
-
-    return respondSuccess(request, withLegacyFields(userSettings), {
-      meta: { settingsVersion: versionMeta.version, settingsUpdatedAt: versionMeta.updatedAt },
-      legacy: withLegacyFields(userSettings),
+    return respondSuccess(request, withLegacyFields(result.settings), {
+      meta: {
+        settingsVersion: result.meta.version,
+        settingsUpdatedAt: result.meta.updatedAt,
+        settingsUpdatedBy: result.meta.updatedBy,
+        settingsSource: result.source,
+      },
+      legacy: withLegacyFields(result.settings),
     })
   } catch {
     return respondError(
@@ -503,8 +679,17 @@ async function updateSettings(request: NextRequest) {
       )
     }
 
+    const currentState = await readSettings(sql, userId)
+    if (!currentState) {
+      return respondError(
+        request,
+        { code: "USER_NOT_FOUND", message: "User not found" },
+        { status: 404, legacy: { error: "User not found" } },
+      )
+    }
+
     const parsedBio = parseBio(row.bio)
-    const currentMeta = normalizeVersionMeta(parsedBio.userSettingsMeta, new Date(row.updated_at ?? Date.now()).toISOString())
+    const currentMeta = currentState.meta
     const requestVersion = payload.meta?.settingsVersion
     if (typeof requestVersion === "number" && requestVersion !== currentMeta.version) {
       return respondError(
@@ -530,7 +715,7 @@ async function updateSettings(request: NextRequest) {
         ? ((parsedBio.userSettings as Record<string, unknown>).security as { apiKeyHash?: string } | undefined)
         : undefined
     const existingApiKeyHash = typeof persistedSecurity?.apiKeyHash === "string" ? persistedSecurity.apiKeyHash : undefined
-    const existingSettings = normalizeSettings(parsedBio.userSettings, row.email ?? "")
+    const existingSettings = currentState.settings
     const mergedSettings = normalizeSettings(
       {
         ...toPersistedSettings(existingSettings, existingApiKeyHash),
@@ -583,6 +768,7 @@ async function updateSettings(request: NextRequest) {
     const nextMeta: SettingsVersionMeta = {
       version: currentMeta.version + 1,
       updatedAt: new Date().toISOString(),
+      updatedBy: userId,
     }
 
     const mergedBio = {
@@ -606,8 +792,15 @@ async function updateSettings(request: NextRequest) {
       )
     }
 
+    await writeSettingsToNewStore(sql, userId, mergedSettings, nextMeta, { source: "api" })
+
     return respondSuccess(request, withLegacyFields(mergedSettings), {
-      meta: { settingsVersion: nextMeta.version, settingsUpdatedAt: nextMeta.updatedAt },
+      meta: {
+        settingsVersion: nextMeta.version,
+        settingsUpdatedAt: nextMeta.updatedAt,
+        settingsUpdatedBy: nextMeta.updatedBy,
+        settingsSource: "new",
+      },
       legacy: withLegacyFields(mergedSettings),
     })
   } catch {
