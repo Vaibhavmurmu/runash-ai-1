@@ -4,7 +4,6 @@ import React, { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { signOut, useSession } from "next-auth/react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -212,7 +211,7 @@ export default function RunashChatPage() {
   const userMenuItems = [
     { label: "Profile", icon: User, action: () => router.push("/ecommerce/profile") },
     { label: "Settings", icon: Settings, action: () => router.push("/settings") },
-    { label: "Billing", icon: CreditCard, action: () => router.push("/pricing") },
+    { label: "Billing", icon: CreditCard, action: () => router.push("/payment/subscription") },
     { label: "Help", icon: LifeBuoy, action: () => router.push("/support") },
   ]
 
@@ -838,8 +837,6 @@ export default function RunashChatPage() {
                     )}
                   </div>
                 </TooltipProvider>
-
-                <Badge variant="secondary" className="hidden bg-zinc-800 text-zinc-200 lg:inline-flex">{sessionId ? `Session #${sessionId}` : "No session"}</Badge>
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
