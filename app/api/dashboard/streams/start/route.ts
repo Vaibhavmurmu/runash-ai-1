@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server"
 import { v4 as uuidv4 } from "uuid"
-import { getCanonicalStreamUrl, readData, writeData } from "../utils"
+import { createDashboardLiveStream } from "@/lib/repositories/streams"
+import { getCanonicalStreamUrl, requireStreamDashboardUserId } from "../utils"
 import type { DashboardRecentStream, StartStreamRequest, StartStreamResponse } from "@/lib/types/dashboard-streams"
 
 export async function POST(request: Request) {
+  const scopedUserId = requireStreamDashboardUserId(request)
+  if (scopedUserId instanceof NextResponse) return scopedUserId
+
   const body = (await request.json().catch(() => null)) as StartStreamRequest | null
 
   if (!body?.title?.trim()) {
     return NextResponse.json({ error: "Missing title" }, { status: 400 })
   }
 
-  const data = await readData()
   const id = uuidv4()
   const startedAt = new Date().toISOString()
   const url = getCanonicalStreamUrl(id)
@@ -26,8 +29,7 @@ export async function POST(request: Request) {
     status: "live",
   }
 
-  data.recent = [newStream, ...data.recent].slice(0, 20)
-  await writeData(data)
+  await createDashboardLiveStream(scopedUserId, newStream)
 
   const payload: StartStreamResponse = {
     id,
