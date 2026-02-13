@@ -35,6 +35,7 @@ export function SecuritySettings({
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <SectionFeatureCard
+        panelId="password"
         title="Data Encryption"
         description="Protect sensitive data at rest and in transit."
         status="Configured"
@@ -56,6 +57,7 @@ export function SecuritySettings({
       </SectionFeatureCard>
 
       <SectionFeatureCard
+        panelId="two-factor"
         title="2FA"
         description="Add additional verification to sign-ins."
         status={data.security.twoFactorEnabled ? "Configured" : "Recommended"}
@@ -77,6 +79,7 @@ export function SecuritySettings({
       </SectionFeatureCard>
 
       <SectionFeatureCard
+        panelId="privacy"
         title="Privacy Controls"
         description="Manage communication and profile visibility defaults."
         status="Review"
@@ -86,6 +89,7 @@ export function SecuritySettings({
       />
 
       <SectionFeatureCard
+        panelId="api-security"
         title="API Security"
         description="Rotate and revoke integration credentials."
         status="Ready"

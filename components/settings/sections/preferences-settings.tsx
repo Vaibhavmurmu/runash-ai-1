@@ -21,6 +21,7 @@ export function PreferencesSettings({ data, isDisabled, isSaving, errors, onFiel
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <SectionFeatureCard
+        panelId="notifications"
         title="Notifications"
         description="Choose which updates and announcements are sent to you."
         status="Configured"
@@ -54,6 +55,7 @@ export function PreferencesSettings({ data, isDisabled, isSaving, errors, onFiel
       </SectionFeatureCard>
 
       <SectionFeatureCard
+        panelId="appearance"
         title="Theme / Language"
         description="Set your interface defaults across devices."
         status="Configured"
@@ -96,6 +98,7 @@ export function PreferencesSettings({ data, isDisabled, isSaving, errors, onFiel
       </SectionFeatureCard>
 
       <SectionFeatureCard
+        panelId="feedback"
         title="Feedback"
         description="Share workflow feedback to improve the product."
         status="Review"
