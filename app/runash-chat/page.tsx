@@ -55,6 +55,8 @@ export default function RunashChatPage() {
   const [recentItemsError, setRecentItemsError] = useState<string | null>(null)
   const [prompt, setPrompt] = useState("")
   const [startChatError, setStartChatError] = useState<string | null>(null)
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
+  const [mobileSearchValue, setMobileSearchValue] = useState("")
 
   useEffect(() => {
     if (!startChatError) return
@@ -189,6 +191,8 @@ export default function RunashChatPage() {
     })()
   }
 
+  const mobileRecentMatches = recentItems.filter((item) => item.title.toLowerCase().includes(mobileSearchValue.trim().toLowerCase()))
+
   return (
     <div className="min-h-screen bg-[#030405] text-zinc-100">
       <div className="mx-auto flex w-full max-w-[1400px] gap-4 px-3 py-3">
@@ -240,6 +244,61 @@ export default function RunashChatPage() {
 
         <main className="h-[calc(100vh-24px)] flex-1 rounded-xl border border-zinc-800 bg-[#050607] p-4 sm:p-6">
           <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
+            <div className="mb-4 space-y-2 lg:hidden">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" size="sm" className="bg-zinc-900 text-zinc-100 hover:bg-zinc-800" onClick={() => startChatWithPrompt()}>
+                  <Plus className="mr-2 h-4 w-4" /> New Chat
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="border-zinc-700 bg-zinc-950 text-zinc-100"
+                  onClick={() => setIsMobileSearchOpen((open) => !open)}
+                  aria-expanded={isMobileSearchOpen}
+                  aria-controls="mobile-chat-search"
+                >
+                  <Search className="mr-2 h-4 w-4" /> Search
+                </Button>
+                <Button type="button" size="sm" variant="outline" className="border-zinc-700 bg-zinc-950 text-zinc-100" onClick={() => router.push("/")}>
+                  <Home className="mr-2 h-4 w-4" /> Home
+                </Button>
+              </div>
+
+              {isMobileSearchOpen && (
+                <div id="mobile-chat-search" className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                  <label htmlFor="mobile-search-input" className="text-xs font-medium text-zinc-300">
+                    Search recent chats
+                  </label>
+                  <Input
+                    id="mobile-search-input"
+                    value={mobileSearchValue}
+                    onChange={(e) => setMobileSearchValue(e.target.value)}
+                    className="border-zinc-700 bg-zinc-900 text-zinc-200"
+                    placeholder="Search"
+                  />
+                  {mobileSearchValue.trim() && (
+                    <div className="max-h-28 space-y-1 overflow-y-auto">
+                      {mobileRecentMatches.length > 0 ? (
+                        mobileRecentMatches.slice(0, 4).map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => router.push(`/chat?sessionId=${item.id}`)}
+                            className="w-full truncate rounded-md px-2 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-900"
+                          >
+                            {item.title}
+                          </button>
+                        ))
+                      ) : (
+                        <p className="px-1 text-xs text-zinc-500">No matches found.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <header className="mb-6 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="rounded-md bg-gradient-to-r from-cyan-500 to-blue-500 p-2">
