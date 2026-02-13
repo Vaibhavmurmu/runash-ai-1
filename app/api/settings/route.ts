@@ -44,6 +44,13 @@ type UserSettings = {
   billing: {
     invoiceEmail: string
     autoRechargeEnabled: boolean
+    planName: string
+    subscriptionStatus: "active" | "trial" | "at_risk" | "past_due"
+    billingMethodSummary: string
+    usageThisCycle: number
+    usageLimit: number
+    creditsBalance: number
+    referralCode: string
   }
 }
 
@@ -127,6 +134,13 @@ const defaultSettings: UserSettings = {
   billing: {
     invoiceEmail: "",
     autoRechargeEnabled: false,
+    planName: "Starter",
+    subscriptionStatus: "trial",
+    billingMethodSummary: "No default payment method on file.",
+    usageThisCycle: 0,
+    usageLimit: 1000,
+    creditsBalance: 0,
+    referralCode: "",
   },
 }
 

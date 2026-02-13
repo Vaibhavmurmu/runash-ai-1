@@ -147,3 +147,21 @@ This preserves backward-compatible payment contracts while adding an approval ga
 
 Billing-impacting settings actions now use explicit confirmation dialogs for cancel-subscription and downgrade-plan mutations. Each dialog describes financial consequences (renewal stop, feature downgrades) and requires a primary confirm action before requests are sent.
 
+
+## Billing settings contract-first rollout (Settings UI)
+
+The Settings billing experience now ships seven contract-first cards with read-only defaults before mutation paths:
+- Upgrade
+- Subscription
+- Invoice delivery
+- Billing method summary
+- Usage meters
+- Credits balance
+- Refer & earn
+
+Status badges now explicitly use: `Active`, `Trial`, `At risk`, `Past due`, and `Available credits` to reflect payment health without changing legacy payload keys (`invoiceEmail`, `autoRechargeEnabled`).
+
+Mutation-capable actions (upgrade and invoice delivery updates) are now gated behind explicit confirmation dialogs in the client before server calls are made.
+
+Server endpoint mapping for billing card actions lives under:
+`/api/settings/actions/{upgrade-plan|manage-subscription|invoice-delivery|billing-method-summary|usage-meters|credits-balance|refer-earn}`.

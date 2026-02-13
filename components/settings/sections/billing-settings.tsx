@@ -4,6 +4,15 @@ import { Switch } from "@/components/ui/switch"
 import { SectionFeatureCard } from "@/components/settings/sections/section-feature-card"
 import type { SettingsData, SettingsSection } from "@/components/settings/types"
 
+type BillingAction =
+  | "upgradePlan"
+  | "manageSubscription"
+  | "saveInvoiceDelivery"
+  | "billingMethodSummary"
+  | "usageMeters"
+  | "creditsBalance"
+  | "referAndEarn"
+
 interface BillingSettingsProps {
   data: SettingsData
   isDisabled: boolean
@@ -14,39 +23,53 @@ interface BillingSettingsProps {
     field: TField,
     value: SettingsData[TSection][TField]
   ) => void
-  onSave: (section: SettingsSection) => void
-  onAction: (action: "cancelSubscription" | "downgradePlan") => void
+  onAction: (action: BillingAction) => void
 }
 
-export function BillingSettings({ data, isDisabled, isSaving, errors, onFieldChange, onSave, onAction }: BillingSettingsProps) {
+const statusLabelMap: Record<SettingsData["billing"]["subscriptionStatus"], "Active" | "Trial" | "At risk" | "Past due"> = {
+  active: "Active",
+  trial: "Trial",
+  at_risk: "At risk",
+  past_due: "Past due",
+}
+
+export function BillingSettings({ data, isDisabled, isSaving, errors, onFieldChange, onAction }: BillingSettingsProps) {
+  const usageRemaining = Math.max(data.billing.usageLimit - data.billing.usageThisCycle, 0)
+
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <SectionFeatureCard
         panelId="upgrade"
         title="Upgrade"
-        description="Move to a higher plan for more capacity and AI credits."
-        status="Ready"
-        actionLabel="View upgrade options"
+        description="Read-only contract: current plan and trial status before upgrade changes."
+        status="Trial"
+        actionLabel="Upgrade plan"
         disabled={isDisabled}
-        onAction={() => onSave("billing")}
-      />
+        onAction={() => onAction("upgradePlan")}
+      >
+        <p className="text-sm text-muted-foreground">Current plan: {data.billing.planName || "Starter"}</p>
+      </SectionFeatureCard>
+
       <SectionFeatureCard
         panelId="subscription"
         title="Subscription"
-        description="Control renewal and plan lifecycle."
-        status="Configured"
-        actionLabel="Cancel subscription"
+        description="Read-only contract status and lifecycle signals."
+        status={statusLabelMap[data.billing.subscriptionStatus]}
+        actionLabel="Manage subscription"
         disabled={isDisabled}
-        onAction={() => onAction("cancelSubscription")}
-      />
+        onAction={() => onAction("manageSubscription")}
+      >
+        <p className="text-sm text-muted-foreground">Status key: {data.billing.subscriptionStatus}</p>
+      </SectionFeatureCard>
+
       <SectionFeatureCard
-        panelId="invoice"
-        title="Invoice"
-        description="Set where invoices are delivered."
-        status="Configured"
-        actionLabel={isSaving ? "Saving..." : "Save invoice settings"}
+        panelId="invoice-delivery"
+        title="Invoice delivery"
+        description="Set where invoices are delivered. Existing keys remain unchanged."
+        status="Active"
+        actionLabel={isSaving ? "Saving..." : "Save invoice delivery"}
         disabled={isDisabled}
-        onAction={() => onSave("billing")}
+        onAction={() => onAction("saveInvoiceDelivery")}
       >
         <div className="grid gap-2">
           <Label htmlFor="settings-invoice-email">Invoice email</Label>
@@ -60,14 +83,41 @@ export function BillingSettings({ data, isDisabled, isSaving, errors, onFieldCha
         </div>
         {errors.billing ? <p className="text-sm text-destructive">{errors.billing}</p> : null}
       </SectionFeatureCard>
+
       <SectionFeatureCard
-        panelId="billing-controls"
-        title="Billing"
-        description="Configure auto recharge behavior for uninterrupted service."
-        status={data.billing.autoRechargeEnabled ? "Configured" : "Review"}
-        actionLabel={isSaving ? "Saving..." : "Save billing settings"}
+        panelId="billing-method"
+        title="Billing method summary"
+        description="Read-only payment method summary with safe defaults."
+        status="At risk"
+        actionLabel="Review billing method"
         disabled={isDisabled}
-        onAction={() => onSave("billing")}
+        onAction={() => onAction("billingMethodSummary")}
+      >
+        <p className="text-sm text-muted-foreground">{data.billing.billingMethodSummary || "No default payment method on file."}</p>
+      </SectionFeatureCard>
+
+      <SectionFeatureCard
+        panelId="usage-meters"
+        title="Usage meters"
+        description="Contract usage values before any mutating operations."
+        status="Active"
+        actionLabel="Refresh usage"
+        disabled={isDisabled}
+        onAction={() => onAction("usageMeters")}
+      >
+        <p className="text-sm text-muted-foreground">
+          {data.billing.usageThisCycle} / {data.billing.usageLimit} used ({usageRemaining} remaining)
+        </p>
+      </SectionFeatureCard>
+
+      <SectionFeatureCard
+        panelId="credits-balance"
+        title="Credits balance"
+        description="Available credit balance (read-only contract snapshot)."
+        status="Available credits"
+        actionLabel="Refresh credits"
+        disabled={isDisabled}
+        onAction={() => onAction("creditsBalance")}
       >
         <div className="flex items-center justify-between rounded-md border p-3">
           <div>
@@ -80,34 +130,20 @@ export function BillingSettings({ data, isDisabled, isSaving, errors, onFieldCha
             disabled={isDisabled}
           />
         </div>
+        <p className="text-sm text-muted-foreground">Balance: {data.billing.creditsBalance}</p>
       </SectionFeatureCard>
+
       <SectionFeatureCard
-        panelId="usage"
-        title="Usage"
-        description="Track current cycle consumption and limits."
-        status="Review"
-        actionLabel="Refresh usage"
+        panelId="refer-earn"
+        title="Refer & earn"
+        description="Share referral code and monitor earned rewards."
+        status="Past due"
+        actionLabel="Open referral details"
         disabled={isDisabled}
-        onAction={() => onSave("billing")}
-      />
-      <SectionFeatureCard
-        panelId="credits"
-        title="Credits"
-        description="Monitor available credits and top-up strategy."
-        status="Recommended"
-        actionLabel="Review credits"
-        disabled={isDisabled}
-        onAction={() => onSave("billing")}
-      />
-      <SectionFeatureCard
-        panelId="referrals"
-        title="Refer"
-        description="Share referral links and track earned rewards."
-        status="Ready"
-        actionLabel="Downgrade plan"
-        disabled={isDisabled}
-        onAction={() => onAction("downgradePlan")}
-      />
+        onAction={() => onAction("referAndEarn")}
+      >
+        <p className="text-sm text-muted-foreground">Referral code: {data.billing.referralCode || "Not generated"}</p>
+      </SectionFeatureCard>
     </div>
   )
 }
