@@ -22,6 +22,7 @@ export function AccountSettings({ data, isDisabled, isSaving, errors, onFieldCha
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <SectionFeatureCard
+        panelId="profile"
         title="Profile"
         description="Control public profile details across RunAsh."
         status="Configured"
@@ -51,6 +52,7 @@ export function AccountSettings({ data, isDisabled, isSaving, errors, onFieldCha
       </SectionFeatureCard>
 
       <SectionFeatureCard
+        panelId="authentication"
         title="Authentication"
         description="Manage login and identity details."
         status="Ready"
@@ -81,6 +83,7 @@ export function AccountSettings({ data, isDisabled, isSaving, errors, onFieldCha
       </SectionFeatureCard>
 
       <SectionFeatureCard
+        panelId="authorization"
         title="Authorization"
         description="Review role and permission mapping for your workspace."
         status="Review"
@@ -90,6 +93,7 @@ export function AccountSettings({ data, isDisabled, isSaving, errors, onFieldCha
       />
 
       <SectionFeatureCard
+        panelId="sessions"
         title="Sessions"
         description="Revoke active sessions across all browsers and devices."
         status="Recommended"
@@ -99,6 +103,7 @@ export function AccountSettings({ data, isDisabled, isSaving, errors, onFieldCha
       />
 
       <SectionFeatureCard
+        panelId="devices"
         title="Devices"
         description="Track trusted devices and sign out stale devices quickly."
         status="Review"

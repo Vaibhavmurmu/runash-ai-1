@@ -22,6 +22,7 @@ export function BillingSettings({ data, isDisabled, isSaving, errors, onFieldCha
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <SectionFeatureCard
+        panelId="upgrade"
         title="Upgrade"
         description="Move to a higher plan for more capacity and AI credits."
         status="Ready"
@@ -30,6 +31,7 @@ export function BillingSettings({ data, isDisabled, isSaving, errors, onFieldCha
         onAction={() => onSave("billing")}
       />
       <SectionFeatureCard
+        panelId="subscription"
         title="Subscription"
         description="Control renewal and plan lifecycle."
         status="Configured"
@@ -38,6 +40,7 @@ export function BillingSettings({ data, isDisabled, isSaving, errors, onFieldCha
         onAction={() => onAction("cancelSubscription")}
       />
       <SectionFeatureCard
+        panelId="invoice"
         title="Invoice"
         description="Set where invoices are delivered."
         status="Configured"
@@ -58,6 +61,7 @@ export function BillingSettings({ data, isDisabled, isSaving, errors, onFieldCha
         {errors.billing ? <p className="text-sm text-destructive">{errors.billing}</p> : null}
       </SectionFeatureCard>
       <SectionFeatureCard
+        panelId="billing-controls"
         title="Billing"
         description="Configure auto recharge behavior for uninterrupted service."
         status={data.billing.autoRechargeEnabled ? "Configured" : "Review"}
@@ -78,6 +82,7 @@ export function BillingSettings({ data, isDisabled, isSaving, errors, onFieldCha
         </div>
       </SectionFeatureCard>
       <SectionFeatureCard
+        panelId="usage"
         title="Usage"
         description="Track current cycle consumption and limits."
         status="Review"
@@ -86,6 +91,7 @@ export function BillingSettings({ data, isDisabled, isSaving, errors, onFieldCha
         onAction={() => onSave("billing")}
       />
       <SectionFeatureCard
+        panelId="credits"
         title="Credits"
         description="Monitor available credits and top-up strategy."
         status="Recommended"
@@ -94,6 +100,7 @@ export function BillingSettings({ data, isDisabled, isSaving, errors, onFieldCha
         onAction={() => onSave("billing")}
       />
       <SectionFeatureCard
+        panelId="referrals"
         title="Refer"
         description="Share referral links and track earned rewards."
         status="Ready"
