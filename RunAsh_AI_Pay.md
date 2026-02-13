@@ -165,3 +165,13 @@ Mutation-capable actions (upgrade and invoice delivery updates) are now gated be
 
 Server endpoint mapping for billing card actions lives under:
 `/api/settings/actions/{upgrade-plan|manage-subscription|invoice-delivery|billing-method-summary|usage-meters|credits-balance|refer-earn}`.
+
+## Settings safety confirmation requirements (2026-02)
+
+To reduce accidental destructive billing/security mutations, RunAsh now enforces an explicit confirmation contract for sensitive settings actions:
+
+- Client requests must include `{ "confirm": true }` for mutation endpoints that disable security controls, revoke access, rotate/delete API credentials, downgrade plans, or cancel subscriptions.
+- Server handlers reject requests missing the explicit confirmation flag before running any mutation.
+- UI confirmation dialogs now present consequence copy and irreversible warnings for destructive operations so users can complete or retry from the same dialog context.
+
+This preserves backward-compatible response field shapes while hardening mutation intent validation.

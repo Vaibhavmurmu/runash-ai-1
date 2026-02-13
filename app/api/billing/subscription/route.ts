@@ -3,10 +3,20 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { Database } from "@/lib/database"
 import Stripe from "stripe"
+import { z } from "zod"
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2023-10-16",
 })
+
+
+const updateSubscriptionSchema = z
+  .object({
+    plan_id: z.string().min(1),
+    prorate: z.boolean().optional().default(true),
+    confirm: z.literal(true),
+  })
+  .strict()
 
 export async function GET(req: NextRequest) {
   try {
@@ -157,7 +167,14 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { plan_id, prorate = true } = await req.json()
+    const payload = await req.json().catch(() => ({}))
+    const validation = updateSubscriptionSchema.safeParse(payload)
+
+    if (!validation.success) {
+      return NextResponse.json({ error: "Explicit confirmation required" }, { status: 400 })
+    }
+
+    const { plan_id, prorate } = validation.data
 
     // Get current subscription
     const currentSub = await Database.query(
