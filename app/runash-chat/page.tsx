@@ -54,6 +54,19 @@ export default function RunashChatPage() {
   const [loadingRecents, setLoadingRecents] = useState(false)
   const [recentItemsError, setRecentItemsError] = useState<string | null>(null)
   const [prompt, setPrompt] = useState("")
+  const [startChatError, setStartChatError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!startChatError) return
+
+    const timeoutId = window.setTimeout(() => {
+      setStartChatError(null)
+    }, 3500)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [startChatError])
 
   const quickPrompts: ChatQuickPrompt[] = [
     {
@@ -143,6 +156,7 @@ export default function RunashChatPage() {
 
   function startChatWithPrompt(initialPrompt?: string) {
     ;(async () => {
+      const cleanPrompt = initialPrompt?.trim()
       try {
         let sid = sessionId
         if (!sid) {
@@ -156,13 +170,20 @@ export default function RunashChatPage() {
           setSessionId(sid ?? null)
         }
 
-        const cleanPrompt = initialPrompt?.trim()
         if (cleanPrompt) {
           localStorage.setItem("runash_initial_prompt", cleanPrompt)
         }
 
+        setStartChatError(null)
+
         router.push(sid ? `/chat?sessionId=${sid}` : "/chat")
-      } catch {
+      } catch (error) {
+        setStartChatError("Couldn’t resume session, opening chat directly.")
+        console.warn("Failed to start chat session; using direct chat fallback", {
+          hasSessionId: Boolean(sessionId),
+          hasInitialPrompt: Boolean(cleanPrompt),
+          errorType: error instanceof Error ? error.name : "unknown",
+        })
         router.push("/chat")
       }
     })()
@@ -234,6 +255,12 @@ export default function RunashChatPage() {
                 <Badge variant="secondary" className="bg-zinc-800 text-zinc-200">{sessionId ? `Session #${sessionId}` : "No session"}</Badge>
               </div>
             </header>
+
+            {startChatError && (
+              <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                {startChatError}
+              </div>
+            )}
 
             <Card className="mb-5 border-zinc-800 bg-zinc-950 p-4">
               <Input
