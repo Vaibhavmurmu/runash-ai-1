@@ -186,14 +186,14 @@ export default function RunashChatPage() {
       label: "Feedback",
       tooltip: "Share product feedback",
       icon: MessageSquare,
-      href: "/contact?topic=feedback",
+      onClick: () => router.push("/contact?topic=feedback&entry=runash-chat"),
     },
     {
       id: "refer",
       label: "Refer",
       tooltip: "Refer a friend or team",
       icon: Sparkles,
-      href: "/contact?topic=referral",
+      onClick: () => router.push("/partners?program=referral"),
     },
   ]
 
@@ -763,8 +763,8 @@ export default function RunashChatPage() {
                   <h1 className="text-xl font-semibold">What do you want to create?</h1>
                 </div>
               </div>
-              <div className="hidden items-center gap-2 lg:flex">
-                <div className="hidden items-center gap-1 sm:flex">
+              <div className="flex items-center gap-2">
+                <div className="hidden items-center gap-1 md:flex">
                   {headerActions.map((action) => {
                     const Icon = action.icon
 
@@ -785,7 +785,7 @@ export default function RunashChatPage() {
                 </div>
 
                 <TooltipProvider delayDuration={150}>
-                  <div className="flex items-center gap-1 sm:hidden">
+                  <div className="flex items-center gap-1 md:hidden">
                     {primaryMobileHeaderActions.map((action) => {
                       const Icon = action.icon
                       return (
@@ -839,7 +839,7 @@ export default function RunashChatPage() {
                   </div>
                 </TooltipProvider>
 
-                <Badge variant="secondary" className="bg-zinc-800 text-zinc-200">{sessionId ? `Session #${sessionId}` : "No session"}</Badge>
+                <Badge variant="secondary" className="hidden bg-zinc-800 text-zinc-200 lg:inline-flex">{sessionId ? `Session #${sessionId}` : "No session"}</Badge>
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
