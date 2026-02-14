@@ -1062,3 +1062,32 @@ For agent-assisted workflows:
 - Payment-impacting actions are not auto-executed.
 - Actions enter an auditable approval path in `/api/agents/actions`.
 - Rollback path: disable `RUNASH_AGENT_CHAT_ENABLED` to immediately stop new agent actions while preserving existing payment APIs.
+
+## Frontend Route Mapping (Implemented)
+
+The feature matrix is now represented by concrete App Router pages:
+
+| Segment / Flow | Route | Notes |
+|---|---|---|
+| RunAsh Pay primary shell | `/payment/runash-pay` | Unified entry for startup + business flows |
+| Startup payment surface | `/payment/startup` | Core startup actions aligned to baseline feature set |
+| Business payment surface | `/payment/business` | Advanced business actions and onboarding pathway |
+| Payment links + methods | `/ecommerce/payments` | Link creation and connected methods |
+| Payment intent creation | `/payment/runash-pay#create-intent` | Uses `/api/v1/payment/create-intent` |
+| Transactions and analytics | `/payment/dashboard` | Real-time/basic reporting entry |
+| Subscription management | `/payment/subscription` | Recurring billing and plan management |
+
+### Journey alignment to Feature Matrix
+
+- **Startup journey:** `/payment/startup` → create payment link (`/ecommerce/payments`) → create intent (`/payment/runash-pay#create-intent`) → view transactions (`/payment/dashboard`).
+- **Business journey:** `/payment/business` → create link/intent → view transactions (`/payment/dashboard`) → manage subscription (`/payment/subscription`) → onboarding support (`/contact-team`).
+
+### Navigation updates
+
+- `/payment/dashboard` includes direct links to `/payment/runash-pay`, `/payment/startup`, and `/payment/business`.
+- `/ecommerce/payments` includes direct links to `/payment/runash-pay`, `/payment/startup`, and `/payment/business`.
+
+### Risks and rollback
+
+- **Risk level:** low (route and navigation additions only; no payment contract changes).
+- **Rollback:** revert new payment route pages and link additions in dashboard/ecommerce surfaces; legacy routes continue to function.

@@ -1,15 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { Copy, Plus, ArrowRight, Link2, Zap } from 'lucide-react';
+import Link from 'next/link';
+import { Copy, Plus, Link2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 export default function PaymentsPage() {
-  const [paymentMethod, setPaymentMethod] = useState<string>('card');
   const [showNewLinkForm, setShowNewLinkForm] = useState(false);
-  const [paymentLinks, setPaymentLinks] = useState([
+  const [paymentLinks] = useState([
     {
       id: '1',
       name: 'Summer Collection Link',
@@ -76,6 +76,17 @@ export default function PaymentsPage() {
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Payment Integration</h1>
           <p className="text-slate-400">Manage payment methods and create custom payment links</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link href="/payment/runash-pay">
+              <Button className="bg-slate-800 hover:bg-slate-700 text-white">Open RunAsh Pay hub</Button>
+            </Link>
+            <Link href="/payment/startup">
+              <Button className="bg-slate-800 hover:bg-slate-700 text-white">Startup journey</Button>
+            </Link>
+            <Link href="/payment/business">
+              <Button className="bg-slate-800 hover:bg-slate-700 text-white">Business journey</Button>
+            </Link>
+          </div>
         </div>
 
         {/* Payment Methods */}

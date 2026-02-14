@@ -142,3 +142,24 @@ The stabilized payment contract is exposed under `/api/v1/payment/*` where suppo
 RunAsh agent orchestration now treats payment/account-impacting intents as high-risk actions. These actions are recorded in action audit records and require explicit user confirmation (`confirmedByUser=true`) before approval.
 
 This preserves backward-compatible payment contracts while adding an approval gate at the orchestration layer.
+
+## Payment Surface Routes (Current)
+
+RunAsh Pay now exposes a dedicated route map for product navigation:
+
+- `/payment/runash-pay` — primary RunAsh Pay landing/dashboard shell.
+- `/payment/startup` — Startup segment journey and quick actions.
+- `/payment/business` — Business segment journey and onboarding/support actions.
+- `/payment/dashboard` — transaction monitoring and analytics dashboard.
+- `/ecommerce/payments` — payment link creation and method management.
+- `/payment/subscription` — subscription and billing management.
+
+### User journey references
+
+1. **Create payment link:** `/payment/runash-pay` → `/ecommerce/payments`.
+2. **Create payment intent:** `/payment/runash-pay#create-intent` (calls `/api/v1/payment/create-intent`).
+3. **View transactions:** `/payment/runash-pay` → `/payment/dashboard`.
+4. **Manage subscription:** `/payment/runash-pay` → `/payment/subscription`.
+5. **Onboarding:** `/payment/runash-pay` → `/payment/startup` or `/payment/business`.
+
+Existing entry points (`/payment/dashboard` and `/ecommerce/payments`) include navigation to the new RunAsh Pay route hierarchy.
