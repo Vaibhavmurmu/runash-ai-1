@@ -347,3 +347,23 @@ To support durable AI usage billing and reconciliation, usage ingestion now supp
 - Legacy `/api/payment/*` and `/api/billing/*` routes are maintained as compatibility aliases to avoid integration breakage.
 - Customer-scoped resources enforce auth-backed ownership checks.
 - Payment intents, transactions, subscriptions, invoices, and usage are persisted in DB-backed storage (no in-memory simulation path).
+
+## Tax computation and compliance boundary update (2026-02)
+
+RunAsh AI Pay now includes first-party tax domain persistence and reporting for business-grade reconciliation.
+
+### What changed
+- Added tax domain models: `tax_registrations`, `tax_rates`, `tax_calculations`, `tax_line_items`.
+- Billing checkout and subscription creation now computes region-aware tax for:
+  - **US**: sales tax model (state-aware fallback + configured rates)
+  - **India**: GST model (IGST / CGST+SGST fallback + configured rates)
+- Invoice webhook ingestion stores tax breakdown with jurisdiction details and links tax records to invoice/payment identifiers.
+- Added reporting endpoint `GET /api/v1/payment/reporting` (also available via `/api/payment/reporting`) with:
+  - `revenue_summary`
+  - `payouts_summary`
+  - `tax_liability_by_jurisdiction`
+
+### MOR and compliance boundaries
+- RunAsh Pay provides calculation, storage, and reporting capabilities, but does not replace statutory tax filing obligations.
+- Merchants retain responsibility for registration validity, return filing, exemptions, and final legal treatment.
+- Platform logs and reporting intentionally avoid sensitive auth/payment secrets while preserving tax audit metadata.

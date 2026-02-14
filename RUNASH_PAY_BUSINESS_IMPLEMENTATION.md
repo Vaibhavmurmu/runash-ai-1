@@ -1213,3 +1213,25 @@ For payment-operational reliability and auditability:
   - `/api/v1/billing/invoices`
 - Legacy endpoint aliases are retained for backward compatibility under `/api/payment/*` and `/api/billing/*`.
 - Usage metering now persists in database storage for durable reconciliation.
+
+## 2026-02 Tax and Reporting Reliability Update
+
+### Merchant of Record (MOR) behavior
+- RunAsh Pay remains the platform MOR for supported hosted billing flows, while sellers remain responsible for business registration and filing obligations in their operating jurisdictions.
+- Checkout/session and subscription creation now calculate tax with jurisdiction context for US sales tax and India GST defaults, with support for configured rates from `tax_rates`.
+- Tax computation artifacts are persisted as auditable records (`tax_calculations`, `tax_line_items`) linked to checkout sessions, subscriptions, invoices, and payment intents when available.
+
+### Compliance boundary and responsibilities
+- **RunAsh platform responsibilities**
+  - Compute and store tax breakdown metadata for billing events.
+  - Preserve audit traceability by jurisdiction (`country_code`, `state_code`, rule source, and line-item rate details).
+  - Expose reporting APIs for finance operations (revenue summary, payouts summary, tax liability by jurisdiction).
+- **Merchant responsibilities**
+  - Maintain valid tax registrations and filing records per country/state.
+  - Validate business-specific exemptions/zero-rated cases and submit returns.
+  - Reconcile platform tax summaries with statutory filings and accounting books.
+
+### Risk and rollback guidance
+- Risk level: **medium** (adds tax computation and persistence paths in checkout/subscription/webhook flows).
+- Rollback: disable tax persistence calls and revert reporting endpoint routing while retaining existing payment contracts.
+- Backward compatibility: existing checkout/subscription API fields are preserved; tax payloads are additive.

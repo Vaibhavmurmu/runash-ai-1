@@ -361,3 +361,51 @@ export async function getPaymentTransactionMonthlyTrends(monthCount = 6): Promis
 
   return rows
 }
+
+
+export async function getRevenueSummary(input: { from?: Date; to?: Date }) {
+  await ensurePaymentTransactionTable()
+  const row = await queryOne<{
+    grossRevenue: number
+    netRevenue: number
+    processingFees: number
+    transactions: number
+  }>(
+    `
+      SELECT
+        COALESCE(SUM(amount), 0)::float8 AS "grossRevenue",
+        COALESCE(SUM(net_amount), 0)::float8 AS "netRevenue",
+        COALESCE(SUM(processing_fee), 0)::float8 AS "processingFees",
+        COUNT(*)::int AS transactions
+      FROM payment_transactions_v2
+      WHERE status IN ('completed', 'refunded')
+        AND ($1::timestamptz IS NULL OR created_at >= $1)
+        AND ($2::timestamptz IS NULL OR created_at <= $2)
+    `,
+    [input.from ?? null, input.to ?? null],
+  )
+
+  return row ?? { grossRevenue: 0, netRevenue: 0, processingFees: 0, transactions: 0 }
+}
+
+export async function getPayoutsSummary(input: { from?: Date; to?: Date }) {
+  await ensurePaymentTransactionTable()
+  const row = await queryOne<{
+    totalPayoutEligible: number
+    payoutCount: number
+    refundedAmount: number
+  }>(
+    `
+      SELECT
+        COALESCE(SUM(CASE WHEN status = 'completed' THEN net_amount ELSE 0 END), 0)::float8 AS "totalPayoutEligible",
+        COUNT(*) FILTER (WHERE status = 'completed')::int AS "payoutCount",
+        COALESCE(SUM(CASE WHEN status = 'refunded' THEN refund_amount ELSE 0 END), 0)::float8 AS "refundedAmount"
+      FROM payment_transactions_v2
+      WHERE ($1::timestamptz IS NULL OR created_at >= $1)
+        AND ($2::timestamptz IS NULL OR created_at <= $2)
+    `,
+    [input.from ?? null, input.to ?? null],
+  )
+
+  return row ?? { totalPayoutEligible: 0, payoutCount: 0, refundedAmount: 0 }
+}
