@@ -1180,6 +1180,24 @@ To improve payment reliability and compliance posture for both startup and busin
 
 
 
+## Usage ingestion and reconciliation hardening (2026-02)
+
+### Impacted payment/business flows
+- AI usage metering ingestion for billable token/time events.
+- Usage reconciliation and delayed event catch-up processing.
+
+### Implementation updates
+- Added authenticated single-event ingestion and batch ingestion under `/api/v1/billing/usage`.
+- Added durable event storage (`usage_events`) with `event_id` idempotency, resolver attribution (`resolver_id`, `resolver_type`), and extensible metadata (`JSONB`).
+- Added rollup storage (`usage_aggregates`) for daily/monthly customer/subscription usage accounting.
+- Added delayed ingestion queue/reconciliation processing for retry-safe eventual consistency.
+- Added pricing calculator coverage for token-based, execution-time, and hybrid charging models.
+
+### Risk and rollback
+- Risk: medium (new billing ingestion persistence path and aggregation writes).
+- Rollback: route handlers can be reverted to legacy increment-only behavior; new tables are additive and can be left in place without impacting existing reads.
+- Backward compatibility: legacy `metric` + `amount` usage updates remain supported.
+
 ## API Contract Standardization (v1)
 
 For payment-operational reliability and auditability:

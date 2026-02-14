@@ -317,6 +317,22 @@ RunAsh Pay now introduces protocol-level orchestration records for payment execu
 
 
 
+## Billing usage ingestion reliability update (2026-02)
+
+To support durable AI usage billing and reconciliation, usage ingestion now supports authenticated single and batch event ingestion with idempotency safeguards.
+
+### What changed
+- `POST /api/v1/billing/usage` now supports event-style ingestion with `eventId`, token usage, execution time (`deltaMs`), and pricing model payloads.
+- `PUT /api/v1/billing/usage` adds authenticated batch ingestion with per-event ingestion/duplicate reporting.
+- Usage events persist to `usage_events` with `resolver_id`, `resolver_type`, and arbitrary `metadata` JSON payloads for bring-your-own-resolver attribution.
+- Daily and monthly rollups persist in `usage_aggregates` keyed by customer/subscription.
+- Delayed ingestion reconciliation is supported through queue-backed retry processing and `eventId` idempotency uniqueness.
+
+### Compatibility and security notes
+- Existing legacy usage increment payloads (`metric`/`amount`) remain supported for backward compatibility.
+- No payment/auth secrets are logged as part of ingestion handling.
+- New ingestion behavior is additive and does not change existing billing route identity requirements.
+
 ## Payment API observability update (2026 reliability hardening)
 
 - Billing and payment endpoints now emit correlation headers (`x-request-id`, `x-correlation-id`) and include `requestId` in key response payloads for traceability.

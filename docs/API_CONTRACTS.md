@@ -403,6 +403,42 @@ Response `data` is either `null` (no active subscription) or the customer-owned 
 
 Returns customer-owned usage totals, limits, and utilization for the requested period.
 
+### `POST /api/v1/billing/usage` (authenticated ingestion)
+
+Supports both:
+- legacy metric increment payloads (`metric`, `amount`, optional `period`), and
+- single usage-event ingestion payloads (`eventId`, token counts, `deltaMs`, `pricingModel`, optional resolver fields/metadata).
+
+Usage-event ingestion is idempotent by `eventId` and returns duplicate-safe outcomes.
+
+### `PUT /api/v1/billing/usage` (authenticated batch ingestion)
+
+```json
+{
+  "events": [
+    {
+      "eventId": "evt_123",
+      "customerId": "cus_123",
+      "subscriptionId": "sub_123",
+      "promptTokens": 100,
+      "completionTokens": 240,
+      "deltaMs": 950,
+      "resolverId": "res_1",
+      "resolverType": "custom",
+      "metadata": { "tenant": "alpha" },
+      "pricingModel": {
+        "strategy": "hybrid",
+        "promptTokenRate": 0.000001,
+        "completionTokenRate": 0.000002,
+        "millisecondRate": 0.0000005
+      }
+    }
+  ]
+}
+```
+
+Batch ingestion applies the same idempotency guarantees as single ingestion and returns per-event duplicate/ingested status details.
+
 ### `GET /api/v1/billing/invoices?limit=10&offset=0`
 
 Returns paginated, customer-owned invoices and aggregated line items.
