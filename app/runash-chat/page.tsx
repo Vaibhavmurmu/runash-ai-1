@@ -64,9 +64,31 @@ type RecentItem = {
 type OnboardingSlide = {
   title: string
   description: string
-  image: string
+  image?: string
   cta: string
 }
+
+const runashChatOnboardingStorageKey = "runash_chat_onboarding_seen"
+
+const onboardingSlides: OnboardingSlide[] = [
+  {
+    title: "Welcome to RunAsh Chat",
+    description: "Plan campaigns, build bundles, and launch storefront workflows from one assistant workspace.",
+    image: "✨",
+    cta: "Next",
+  },
+  {
+    title: "Use guided prompts",
+    description: "Start with quick actions for checkout, bundles, and post-purchase support to move faster.",
+    image: "🧭",
+    cta: "Next",
+  },
+  {
+    title: "Stay in control",
+    description: "Track recents, jump back into sessions, and use the sidebar to keep launches organized.",
+    cta: "Get started",
+  },
+]
 
 type HeaderAction = {
   id: "upgrade" | "feedback" | "refer"
@@ -127,7 +149,6 @@ const sidebarNavItems = [
 
 export default function RunashChatPage() {
   const updatesBannerHiddenKey = "runash_updates_banner_hidden"
-  const onboardingSeenStorageKey = "runash_onboarding_seen"
   const router = useRouter()
   const { data: session } = useSession()
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -147,27 +168,6 @@ export default function RunashChatPage() {
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
   const [activeOnboardingStep, setActiveOnboardingStep] = useState(0)
   const mobileSidebarTriggerRef = useRef<HTMLButtonElement | null>(null)
-
-  const onboardingSlides: OnboardingSlide[] = [
-    {
-      title: "Welcome to RunAsh Chat",
-      description: "Plan campaigns, build bundles, and launch storefront workflows from one assistant workspace.",
-      image: "✨",
-      cta: "Next",
-    },
-    {
-      title: "Use guided prompts",
-      description: "Start with quick actions for checkout, bundles, and post-purchase support to move faster.",
-      image: "🧭",
-      cta: "Next",
-    },
-    {
-      title: "Stay in control",
-      description: "Track recents, jump back into sessions, and use the sidebar to keep launches organized.",
-      image: "🚀",
-      cta: "Get started",
-    },
-  ]
 
   const isLastOnboardingStep = activeOnboardingStep === onboardingSlides.length - 1
   const currentOnboardingSlide = onboardingSlides[activeOnboardingStep]
@@ -230,12 +230,12 @@ export default function RunashChatPage() {
     const isBannerHidden = localStorage.getItem(updatesBannerHiddenKey) === "true"
     setShowUpdatesBanner(!isBannerHidden)
 
-    const hasSeenOnboarding = localStorage.getItem(onboardingSeenStorageKey) === "true"
+    const hasSeenOnboarding = localStorage.getItem(runashChatOnboardingStorageKey) === "true"
     setIsOnboardingOpen(!hasSeenOnboarding)
   }, [])
 
   const markOnboardingSeen = () => {
-    localStorage.setItem(onboardingSeenStorageKey, "true")
+    localStorage.setItem(runashChatOnboardingStorageKey, "true")
   }
 
   const handleOnboardingOpenChange = (open: boolean) => {
@@ -525,7 +525,7 @@ export default function RunashChatPage() {
                 className="flex h-full items-center justify-center rounded-lg border border-white/10 bg-black/20 text-6xl transition-transform duration-300 motion-reduce:transition-none"
                 key={currentOnboardingSlide.title}
               >
-                <span aria-hidden>{currentOnboardingSlide.image}</span>
+                <span aria-hidden>{currentOnboardingSlide.image ?? "🚀"}</span>
               </div>
             </div>
 
