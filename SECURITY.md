@@ -45,6 +45,8 @@ Reference: `docs/API_CONTRACTS.md`.
 - High-risk actions (payment/account-impacting operations) require explicit user confirmation via `/api/agents/actions`.
 - Agent transcript/tool records use retention pruning (`RUNASH_AGENT_RETENTION_DAYS`, default 30 days) for PII minimization.
 
+
+
 ## Settings mutation confirmation policy
 
 High-risk settings mutations are protected by mandatory user-intent confirmations in UI flows. The dialog gate applies to account deletion, session revocation, API key regeneration/deletion, 2FA disablement, and subscription cancellation/downgrade operations.
@@ -66,3 +68,45 @@ The settings UI/API contract includes hardening controls for sensitive security 
 - 2FA disable operations execute against backend 2FA state, not only UI preference state.
 
 Cross-reference: `RUNASH-AUTH.md`, `docs/DOC_GOVERNANCE.md`.
+
+## Payment and billing session hardening
+
+Payment and billing APIs now enforce server-side session authentication and ownership authorization checks against the user and organization context from JWT-backed NextAuth sessions.
+
+### Security controls added
+- Canonical server session extraction for billing/payment routes via `getServerSession` wrapper utilities.
+- Route-level ownership checks to prevent cross-user and cross-organization billing access.
+- Privileged action audit logging for payment intent creation/confirmation, subscription mutations, analytics access, and billing session creation.
+- Audit payload sanitization to avoid persisting sensitive auth/payment secrets.
+
+### Explicit exception
+- `POST /api/billing/webhook` remains non-session authenticated because it is provider-originated and validated with Stripe webhook signatures.
+
+
+
+### Correlation and audit requirements
+- Payment, billing, and auth routes must return both `x-request-id` and `x-correlation-id` headers (same value), and include `requestId` in error/success JSON payloads where supported.
+- Route failures must be logged through structured API logging helpers (no raw `console.error` in auth/payment/billing handlers).
+- Logs must include event name, route, method, and request ID only, with sensitive fields redacted by key and value patterns.
+- Provider payload internals, raw emails, tokens, and payment method identifiers must not be logged directly.
+
+## Observability log redaction standard (auth + payment)
+
+All auth/payment route logs must go through `lib/api/logging.ts` and emit structured fields only:
+
+- `event`
+- `requestId`
+- `route`
+- `method`
+- `details.errorCode` (and non-sensitive operational metadata only)
+
+Redaction policy:
+- Redact sensitive key names and nested values (for example `password`, `token`, `authorization`, `cookie`, `email`, `otp`, `payment`, `card`, `cvv`, `auth`, `session`, `credential`).
+- Redact token-like and email-like raw string values when encountered in nested payloads.
+- Never include direct user identifiers (email, raw auth token, card/account data) in logs; use `requestId` for traceability.
+
+Operational guidance:
+- Incident triage and cross-system correlation must use `x-request-id` / `requestId`.
+- Avoid logging full request bodies for auth/payment flows.
+
+

@@ -1063,7 +1063,119 @@ For agent-assisted workflows:
 - Actions enter an auditable approval path in `/api/agents/actions`.
 - Rollback path: disable `RUNASH_AGENT_CHAT_ENABLED` to immediately stop new agent actions while preserving existing payment APIs.
 
+
 ## UI Safeguard Update (Settings High-Risk Actions)
 
 Business and Startup plan-management surfaces now require explicit confirmation before cancellation or downgrade requests execute. This improves auditability and reduces accidental billing mutations while preserving existing API contracts.
+
+## Frontend Route Mapping (Implemented)
+
+The feature matrix is now represented by concrete App Router pages:
+
+| Segment / Flow | Route | Notes |
+|---|---|---|
+| RunAsh Pay primary shell | `/payment/runash-pay` | Unified entry for startup + business flows |
+| Startup payment surface | `/payment/startup` | Core startup actions aligned to baseline feature set |
+| Business payment surface | `/payment/business` | Advanced business actions and onboarding pathway |
+| Payment links + methods | `/ecommerce/payments` | Link creation and connected methods |
+| Payment intent creation | `/payment/runash-pay#create-intent` | Uses `/api/v1/payment/create-intent` |
+| Transactions and analytics | `/payment/dashboard#analytics` | Real-time/basic reporting entry and analytics anchor |
+| Subscription management | `/payment/subscription` | Recurring billing and plan management |
+
+### Journey alignment to Feature Matrix
+
+- **Startup journey:** `/payment/startup` → create payment link (`/ecommerce/payments`) → collect payment (`/payment/runash-pay#create-intent`) → view analytics (`/payment/dashboard#analytics`).
+- **Business journey:** `/payment/business` → create link/collect payment → manage payout/subscription (`/payment/subscription`) → view analytics (`/payment/dashboard#analytics`) → onboarding support (`/contact-team`).
+
+### Navigation updates
+
+- `/payment/dashboard` includes direct links to `/payment/runash-pay`, `/payment/startup`, `/payment/business`, `/ecommerce/payments`, and `/payment/subscription`.
+- `/ecommerce/payments` includes direct links to `/payment/runash-pay`, `/payment/startup`, `/payment/business`, `/payment/subscription`, and `/payment/dashboard#analytics`.
+
+### Risks and rollback
+
+- **Risk level:** low (route and navigation additions only; no payment contract changes).
+- **Rollback:** revert new payment route pages and link additions in dashboard/ecommerce surfaces; legacy routes continue to function.
+
+---
+
+## Implementation Update: Auditable Intent + Transaction Persistence
+
+To improve payment reliability for startup and business segments, backend payment execution now uses persistent repositories and idempotent operations.
+
+### Backend updates
+- Introduced DB-backed repositories for:
+  - payment intents,
+  - payment transactions,
+  - refunds,
+  - payment links.
+- Added provider gateway boundary for payment providers (Stripe/Razorpay-compatible adapters).
+- Stored provider identifiers and provider event records for each intent/transaction lifecycle.
+- Enforced idempotency uniqueness for create/confirm via unique key constraints.
+- Added deterministic route-level idempotency key derivation (user/org scoped) when clients do not send explicit idempotency headers/fields.
+
+
+### Risk and rollback
+- **Risk level:** Medium (new persistence tables + provider-driven status transitions).
+- **Backward compatibility:** Existing API response fields and route shapes preserved.
+- **Rollback plan:** Route traffic can be reverted to legacy in-memory processing by restoring previous `lib/payment-service.ts` implementation while leaving new tables unused.
+
+## API Reliability Update: Billing Lifecycle Coverage
+
+The billing stack now includes end-to-end route coverage for plans, subscription cancellation/reactivation, and invoice retrieval to support production-grade business reconciliation.
+
+### Added billing endpoints
+
+- `GET /api/billing/plans`
+- `GET /api/billing/plans/:id`
+- `GET /api/billing/invoices`
+- `GET /api/billing/invoices/:id`
+- `GET /api/billing/invoices/:id/download`
+- `POST /api/billing/subscription/cancel`
+- `POST /api/billing/subscription/reactivate`
+
+### Stable alias contract
+
+For versioned integrations, equivalent aliases are available under `/api/v1/billing/*` to reduce client migration risk across future internal refactors.
+
+### Rollback plan
+
+If any billing behavior regression is detected, rollback can be performed by restoring previous route handlers while keeping `/api/v1` aliases mapped to known-good implementations.
+
+## Session and authorization hardening (implementation note)
+
+To improve payment reliability and compliance posture for both startup and business flows:
+- Billing/payment interactive routes now require authenticated server sessions.
+- Route authorization now validates user/org ownership boundaries.
+- Business-vs-startup operator actions are gated by scoped RBAC checks.
+- Privileged actions are audit logged with sensitive-field sanitization.
+
+### Risk and rollback
+- **Risk:** low to medium (access control tightening can surface previously hidden unauthorized usage patterns).
+- **Rollback:** revert route-level authz helper adoption while preserving payment contract payloads and endpoint paths.
+
+## Security hardening update (2026-02)
+- Standardized server-side route guards for billing/payment routes to use authenticated session identity and scoped RBAC checks.
+- Added ownership-aware persistence rules for payment links and payment methods to prevent cross-tenant data access.
+- Mock auth pathways are no longer used in production runtime paths (test-only).
+
+
+
+## Reliability campaign note: payment/auth logging hardening
+
+### Impacted flows
+- Subscription read/create/update
+- Subscription cancel/reactivate
+- Invoice list/detail/download
+- Admin auth analytics/event endpoints
+
+### Behavior changes
+- Added correlation ID propagation in headers and payload metadata for billing/auth observability.
+- Replaced raw error logging with structured log events and centralized redaction safeguards.
+- Removed direct logging of sensitive identifiers (email/token/provider payload internals/payment method identifiers).
+
+### Risk and rollback
+- Risk: low (additive response metadata and logging-path changes only).
+- Rollback: revert route-level response/requestId header additions and route logger wiring; payment business logic remains unchanged.
+
 

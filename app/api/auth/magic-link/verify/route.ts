@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { verifyMagicLinkToken } from "@/lib/magic-link"
 import { z } from "zod"
 import { SignJWT } from "jose"
+import { logApiRouteError } from "@/lib/api/logging"
 
 const verifySchema = z.object({
   token: z.string().min(1, "Token is required"),
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
 
     return response
   } catch (error) {
-    console.error("Magic link verification error:", error)
+    logApiRouteError(request, "auth.magic_link.verify_failed", error, { errorCode: "AUTH_MAGIC_LINK_VERIFY_FAILED" })
 
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "Invalid token format" }, { status: 400 })

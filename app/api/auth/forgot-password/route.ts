@@ -4,6 +4,7 @@ import { sendPasswordResetEmail } from "@/lib/email"
 import { rateLimit } from "@/lib/rate-limit"
 import { neon } from "@neondatabase/serverless"
 import { z } from "zod"
+import { logApiRouteError } from "@/lib/api/logging"
 
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
       }),
     })
   } catch (error) {
-    console.error("Forgot password error:", error)
+    logApiRouteError(request, "auth.forgot_password.failed", error, { errorCode: "AUTH_FORGOT_PASSWORD_FAILED" })
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }

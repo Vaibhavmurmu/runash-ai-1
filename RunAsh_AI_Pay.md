@@ -143,6 +143,7 @@ RunAsh agent orchestration now treats payment/account-impacting intents as high-
 
 This preserves backward-compatible payment contracts while adding an approval gate at the orchestration layer.
 
+
 ## Settings billing confirmation controls
 
 Billing-impacting settings actions now use explicit confirmation dialogs for cancel-subscription and downgrade-plan mutations. Each dialog describes financial consequences (renewal stop, feature downgrades) and requires a primary confirm action before requests are sent.
@@ -175,3 +176,129 @@ To reduce accidental destructive billing/security mutations, RunAsh now enforces
 - UI confirmation dialogs now present consequence copy and irreversible warnings for destructive operations so users can complete or retry from the same dialog context.
 
 This preserves backward-compatible response field shapes while hardening mutation intent validation.
+
+## Payment Surface Routes (Current)
+
+RunAsh Pay now exposes a dedicated route map for product navigation:
+
+- `/payment/runash-pay` — primary RunAsh Pay landing/dashboard shell.
+- `/payment/startup` — Startup segment journey and quick actions.
+- `/payment/business` — Business segment journey and onboarding/support actions.
+- `/payment/dashboard` — transaction monitoring and analytics dashboard.
+- `/ecommerce/payments` — payment link creation and method management.
+- `/payment/subscription` — subscription and billing management.
+
+### User journey references
+
+1. **Create payment link:** `/payment/runash-pay` → `/ecommerce/payments`.
+2. **Collect payment:** `/payment/runash-pay#create-intent` (calls `/api/v1/payment/create-intent`).
+3. **Manage payout/subscription:** `/payment/runash-pay` or `/payment/business` → `/payment/subscription`.
+4. **View analytics:** `/payment/runash-pay` or segment pages → `/payment/dashboard#analytics`.
+5. **Onboarding:** `/payment/runash-pay` → `/payment/startup` or `/payment/business`.
+
+Existing entry points (`/payment/dashboard` and `/ecommerce/payments`) include navigation to RunAsh Pay plus key actions (collect payment, manage payout/subscription, and view analytics).
+
+## 🧾 E-commerce Payment Link API (v1)
+
+The e-commerce payments dashboard now reads and writes payment links/methods through server APIs under `/api/v1`.
+
+- `GET /api/v1/payment-links` - list links with analytics (`clicks`, `conversions`, `status`).
+- `POST /api/v1/payment-links` - create a payment link.
+- `GET /api/v1/payment-links/:id` - fetch a single payment link by id.
+- `PUT /api/v1/payment-links/:id` and `PATCH /api/v1/payment-links/:id` - update link details/status/analytics fields.
+- `DELETE /api/v1/payment-links/:id` - remove a payment link.
+- `GET /api/v1/payment-methods` - list available payment methods.
+- `PUT /api/v1/payment-methods/:id` - update method connection state.
+- `DELETE /api/v1/payment-methods/:id` - remove a payment method.
+
+Persistence is backed by database tables `ecommerce_payment_links` and `ecommerce_payment_methods` (see `scripts/014-ecommerce-payment-links-methods.sql`).
+
+Compatibility aliases are also available at `/api/payment-links` and `/api/payment-links/:id` so legacy clients can migrate without contract breaks.
+
+Dashboard UX now uses optimistic create/update/delete behavior with rollback on failure, plus 15-second/background visibility refresh so conversions and revenue counters stay in sync with backend analytics.
+
+## Payment backend reliability hardening (implementation update)
+
+RunAsh Pay payment intent/confirmation execution now runs on DB-backed repositories and provider adapters while keeping the existing API response payload shape.
+
+### What changed
+- Payment intents are persisted in `payment_intents` with provider IDs, provider event trail, and create idempotency keys.
+- Payment confirmations persist transactions in `payment_transactions_v2` with unique `intent_id` and unique confirm idempotency keys.
+- Refund records are persisted in `payment_refunds` and linked to transaction IDs for auditability.
+- Payment link persistence support is available through `payment_links_v2` repository primitives for payment-flow linkage.
+- Provider integration is handled behind a gateway boundary (`lib/services/payment-provider-gateway.ts`) so Stripe/Razorpay-class adapters can be swapped/expanded without changing API contracts.
+
+### Reliability and safety notes
+- Transaction amount now comes from the persisted intent amount (no runtime randomization).
+- Transaction status transitions are provider-result-driven and appended to provider event history for audit trails.
+- Existing `success/data` response shape remains unchanged for `/api/payment/create-intent` and `/api/payment/confirm`.
+- Idempotency keys are accepted from body `idempotencyKey` or `x-idempotency-key` header for create/confirm operations.
+- When idempotency keys are omitted, create/confirm routes now derive deterministic keys from authenticated scope + request payload to guarantee replay-safe behavior.
+
+
+## Billing API Contract Stabilization (2026-02)
+
+To improve contract stability for subscription and invoice workflows, RunAsh Pay now includes explicit billing API coverage for:
+
+- `GET /api/billing/plans`
+- `GET /api/billing/plans/:id`
+- `GET /api/billing/invoices`
+- `GET /api/billing/invoices/:id`
+- `GET /api/billing/invoices/:id/download`
+- `POST /api/billing/subscription/cancel`
+- `POST /api/billing/subscription/reactivate`
+
+Long-term aliases are also exposed under `/api/v1/billing/*` for the same flows.
+
+### Compatibility and audit notes
+
+- Existing field names are preserved (`plan_id`, `cancel_at_period_end`, `line_items`, etc.).
+- Subscription payloads remain backward compatible while supporting a normalized envelope (`{ subscription: ... }`) for mutating actions.
+- Invoice listing returns deterministic pagination metadata (`limit`, `offset`, `total`) for reliable reconciliation.
+- Invoice download now resolves via `GET /api/billing/invoices/:id/download`, redirecting to the stored PDF/hosted URL without changing invoice field contracts.
+- No sensitive payment method or auth secrets are logged as part of this rollout.
+
+## Auth, authorization, and auditability updates (server routes)
+
+The payment/billing API surface now uses session-based server identity as the canonical auth layer.
+
+### What changed
+- `/api/billing/usage` no longer accepts placeholder header identity and now derives user identity from authenticated server session claims.
+- Billing and payment routes require authenticated sessions and enforce ownership checks against user/organization context.
+- Business vs startup operator/admin route scope checks are enforced through RBAC helper logic.
+- Privileged payment/billing actions emit audit records with redacted/sanitized details.
+
+### Backward compatibility notes
+- API path and payload contracts remain unchanged for existing billing/payment clients.
+- `/api/v1/*` aliases continue to re-export the same handlers.
+- Webhook route behavior is unchanged except for continued signature-based verification.
+
+
+## Payment observability hardening (logging contract)
+
+Payment route error logging is standardized on `lib/api/logging.ts` with structured, redacted events.
+
+### Logging contract (payment flows)
+- Emit `event`, `requestId`, `route`, `method`, and safe `details.errorCode`.
+- Do not emit raw provider tokens, payer email, card metadata, or authorization credentials.
+- Use `requestId` for payment support reconciliation and trace stitching.
+
+### Backward compatibility
+- API response fields and payment route signatures remain unchanged.
+- This update affects observability output only (sanitized internal logs).
+
+## API Auth & Ownership Enforcement (2026-02)
+- Billing and payment APIs now require canonical NextAuth server session identity (JWT/session) and no longer accept header-based placeholder identities for protected operations.
+- Payment link and payment method CRUD endpoints now enforce owner/tenant scoping (`owner_user_id` / `owner_organization_id`) before reads or writes.
+- Operator APIs require role checks for startup/business/admin scopes via `lib/rbac.ts` role constants.
+
+
+
+## Payment API observability update (2026 reliability hardening)
+
+- Billing and payment endpoints now emit correlation headers (`x-request-id`, `x-correlation-id`) and include `requestId` in key response payloads for traceability.
+- Error paths were migrated from raw `console.error` statements to structured sanitized logs for payment/billing/auth-adjacent routes.
+- Logging redaction now explicitly covers provider/payload/customer key patterns in addition to token/email/payment key detection.
+- No payment contract fields were removed; response additions are backward-compatible metadata for auditability.
+
+

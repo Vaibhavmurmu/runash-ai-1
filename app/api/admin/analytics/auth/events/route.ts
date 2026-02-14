@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { AuthAnalytics } from "@/lib/auth-analytics"
 import { z } from "zod"
+import { logApiRouteError } from "@/lib/api/logging"
 
 const eventsSchema = z.object({
   limit: z
@@ -11,11 +12,22 @@ const eventsSchema = z.object({
     .transform((val) => (val ? Number.parseInt(val) : 50)),
 })
 
+function withRequestHeaders(requestId: string) {
+  return {
+    headers: {
+      "x-request-id": requestId,
+      "x-correlation-id": requestId,
+    },
+  }
+}
+
 export async function GET(request: NextRequest) {
+  const requestId = request.headers.get("x-request-id") ?? request.headers.get("x-correlation-id") ?? crypto.randomUUID()
+
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return NextResponse.json({ error: "Unauthorized", requestId }, { status: 401, ...withRequestHeaders(requestId) })
     }
 
     const { searchParams } = new URL(request.url)
@@ -24,9 +36,9 @@ export async function GET(request: NextRequest) {
 
     const events = await AuthAnalytics.getRecentAuthEvents(limit)
 
-    return NextResponse.json(events)
+    return NextResponse.json({ requestId, events }, withRequestHeaders(requestId))
   } catch (error) {
-    console.error("Error fetching auth events:", error)
-    return NextResponse.json({ error: "Failed to fetch events" }, { status: 500 })
+    logApiRouteError(request, "admin.auth.events.fetch_failed", error, { errorCode: "AUTH_EVENTS_FETCH_FAILED", requestId })
+    return NextResponse.json({ error: "Failed to fetch events", requestId }, { status: 500, ...withRequestHeaders(requestId) })
   }
 }

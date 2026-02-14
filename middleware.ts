@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { getToken } from "next-auth/jwt"
+import { logApiEvent } from "@/lib/api/logging"
 import { RBACManager } from "@/lib/rbac"
 
 // Security headers
@@ -240,7 +241,15 @@ export async function middleware(request: NextRequest) {
 
   // Log security events for audit
   if (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) {
-    console.log(`Admin access: ${token.email} accessed ${pathname} at ${new Date().toISOString()}`)
+    logApiEvent("info", "security.admin_access", {
+      requestId: request.headers.get("x-request-id") ?? crypto.randomUUID(),
+      route: pathname,
+      method: request.method,
+      details: {
+        actorRole: token.role,
+        accessScope: pathname.startsWith("/api/") ? "api" : "ui",
+      },
+    })
   }
 
   return response

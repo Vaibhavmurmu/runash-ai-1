@@ -362,6 +362,7 @@ All `/api/agents/*` routes require an authenticated NextAuth session. Unauthenti
 
 Agent feedback, actions, and session history APIs are scoped to the authenticated user context to avoid cross-tenant access.
 
+ 
 ## Settings security confirmations
 
 Settings UI now requires explicit confirmation dialogs for high-risk account-security actions before mutation execution (revoke sessions, regenerate/delete API keys, disable 2FA, delete account). Dialogs show in-flight progress and inline failures so users can verify intent before irreversible auth-impacting changes.
@@ -378,3 +379,54 @@ The settings surface now enforces additional guardrails for account security mut
 - 2FA disable actions are applied both in settings state and in auth 2FA persistence.
 
 Cross-reference: `SECURITY.md`, `docs/DOC_GOVERNANCE.md`.
+
+## Billing and payment route authentication standardization
+
+Billing and payment server routes now use a canonical NextAuth server-session identity layer (`lib/auth/session.ts`) instead of header placeholders.
+
+### Enforcement rules
+- All interactive billing/payment API routes require an authenticated server session.
+- Request authorization is scoped to the authenticated user and (when present) their SSO organization claim.
+- Legacy placeholder identity headers (for example `x-user-id`) are not used in billing usage routes.
+- Mock auth services are isolated from production by disabling `mockAuth` export usage in production runtime.
+
+### Role scope policy
+- Startup-operator scope endpoints (usage tracking, payment intent create/confirm) require startup/admin-compatible roles.
+- Business-operator scope endpoints (subscription mutations, billing portal, analytics) require business/admin-compatible roles.
+- Super admin and admin remain globally authorized through RBAC hierarchy checks.
+
+
+## Logging and traceability policy (auth routes)
+
+Auth route failures should use structured API logging via `lib/api/logging.ts` (for example, `logApiRouteError`) instead of raw `console.error` output.
+
+Required fields for auth error events:
+- `requestId`
+- `route`
+- `method`
+- safe `details.errorCode`
+
+Forbidden in auth logs:
+- raw email addresses
+- verification/magic-link tokens
+- OTP values
+- session tokens, cookies, or authorization headers
+
+Traceability standard:
+- Use `requestId` / `x-request-id` for support and incident timelines.
+- Do not use user email or token-derived identifiers for request tracing.
+
+## Runtime policy update
+- Mock authentication service is test-only (`NODE_ENV === "test"`) and is not available in production runtime.
+- Protected billing/payment APIs must derive identity from server session (NextAuth), not request headers.
+
+
+
+## Auth logging and audit redaction policy
+
+- Use structured route logging (`lib/api/logging.ts`) for auth APIs and admin auth analytics routes.
+- Do not log raw emails, tokens, session cookies, provider payload dumps, or credential artifacts.
+- Include request correlation in auth responses/logs using `x-request-id` / `x-correlation-id` and `requestId` payload fields where implemented.
+- Audit/auth events should capture non-sensitive metadata only (event code, status, actor scope, requestId).
+
+

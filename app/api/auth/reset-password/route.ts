@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { resetPassword } from "@/lib/auth-utils"
 import { rateLimit } from "@/lib/rate-limit"
 import { z } from "zod"
+import { logApiRouteError } from "@/lib/api/logging"
 
 const resetPasswordSchema = z.object({
   token: z.string().min(1, "Token is required"),
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ message: "Password reset successfully" })
   } catch (error) {
-    console.error("Reset password error:", error)
+    logApiRouteError(request, "auth.reset_password.failed", error, { errorCode: "AUTH_RESET_PASSWORD_FAILED" })
 
     if (error instanceof Error && error.message === "Invalid or expired token") {
       return NextResponse.json({ message: "Invalid or expired reset token" }, { status: 400 })
