@@ -170,13 +170,18 @@ The e-commerce payments dashboard now reads and writes payment links/methods thr
 
 - `GET /api/v1/payment-links` - list links with analytics (`clicks`, `conversions`, `status`).
 - `POST /api/v1/payment-links` - create a payment link.
-- `PUT /api/v1/payment-links/:id` - update link details/status/analytics fields.
+- `GET /api/v1/payment-links/:id` - fetch a single payment link by id.
+- `PUT /api/v1/payment-links/:id` and `PATCH /api/v1/payment-links/:id` - update link details/status/analytics fields.
 - `DELETE /api/v1/payment-links/:id` - remove a payment link.
 - `GET /api/v1/payment-methods` - list available payment methods.
 - `PUT /api/v1/payment-methods/:id` - update method connection state.
 - `DELETE /api/v1/payment-methods/:id` - remove a payment method.
 
 Persistence is backed by database tables `ecommerce_payment_links` and `ecommerce_payment_methods` (see `scripts/014-ecommerce-payment-links-methods.sql`).
+
+Compatibility aliases are also available at `/api/payment-links` and `/api/payment-links/:id` so legacy clients can migrate without contract breaks.
+
+Dashboard UX now uses optimistic create/update/delete behavior with rollback on failure, plus 15-second/background visibility refresh so conversions and revenue counters stay in sync with backend analytics.
 
 ## Payment backend reliability hardening (implementation update)
 

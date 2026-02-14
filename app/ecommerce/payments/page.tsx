@@ -59,12 +59,11 @@ const paymentApi = {
   createLink: (body: { name: string; amount: number; currency: string; description?: string }) =>
     apiRequest<PaymentLink>('/api/v1/payment-links', { method: 'POST', body: JSON.stringify(body) }),
   updateLink: (id: string, body: Partial<PaymentLink>) =>
-    apiRequest<PaymentLink>(`/api/v1/payment-links/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    apiRequest<PaymentLink>(`/api/v1/payment-links/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteLink: (id: string) => apiRequest<true>(`/api/v1/payment-links/${id}`, { method: 'DELETE' }),
   listMethods: () => apiRequest<PaymentMethod[]>('/api/v1/payment-methods'),
   updateMethod: (id: string, body: Partial<PaymentMethod>) =>
     apiRequest<PaymentMethod>(`/api/v1/payment-methods/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  deleteMethod: (id: string) => apiRequest<true>(`/api/v1/payment-methods/${id}`, { method: 'DELETE' }),
 };
 
 export default function PaymentsPage() {
@@ -76,6 +75,9 @@ export default function PaymentsPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [workingLinkId, setWorkingLinkId] = useState<string | null>(null);
+  const [workingMethodId, setWorkingMethodId] = useState<string | null>(null);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
 
   const [newLink, setNewLink] = useState({
     name: '',
@@ -84,26 +86,35 @@ export default function PaymentsPage() {
     description: '',
   });
 
-  const fetchData = useCallback(async (background = false) => {
-    if (!background) {
-      setLoading(true);
-      setError(null);
-    } else {
-      setIsRefreshing(true);
-    }
+  const fetchData = useCallback(
+    async (background = false) => {
+      if (!background) {
+        setLoading(true);
+        setError(null);
+      } else {
+        setIsRefreshing(true);
+      }
 
-    try {
-      const [links, methods] = await Promise.all([paymentApi.listLinks(), paymentApi.listMethods()]);
-      setPaymentLinks(links);
-      setPaymentMethods(methods);
-    } catch (fetchError) {
-      const message = fetchError instanceof Error ? fetchError.message : 'Failed to load payment data';
-      setError(message);
-    } finally {
-      setLoading(false);
-      setIsRefreshing(false);
-    }
-  }, []);
+      try {
+        const [links, methods] = await Promise.all([paymentApi.listLinks(), paymentApi.listMethods()]);
+        setPaymentLinks(links);
+        setPaymentMethods(methods);
+        setLastSyncAt(new Date().toISOString());
+      } catch (fetchError) {
+        const message = fetchError instanceof Error ? fetchError.message : 'Failed to load payment data';
+
+        if (background) {
+          toast({ title: 'Refresh failed', description: message, variant: 'destructive' });
+        } else {
+          setError(message);
+        }
+      } finally {
+        setLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [toast],
+  );
 
   useEffect(() => {
     fetchData(false);
@@ -114,7 +125,22 @@ export default function PaymentsPage() {
       fetchData(true);
     }, 15000);
 
-    return () => clearInterval(interval);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        fetchData(true);
+      }
+    };
+
+    const onFocus = () => fetchData(true);
+
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [fetchData]);
 
   const copyToClipboard = async (text: string) => {
@@ -124,11 +150,12 @@ export default function PaymentsPage() {
 
   const handleCreateLink = async () => {
     const parsedAmount = Number(newLink.amount);
+    const trimmedName = newLink.name.trim();
 
-    if (!newLink.name || Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+    if (!trimmedName || Number.isNaN(parsedAmount) || parsedAmount <= 0 || !newLink.currency) {
       toast({
         title: 'Invalid details',
-        description: 'Please add a valid name and amount greater than zero.',
+        description: 'Please add a valid name, currency, and amount greater than zero.',
         variant: 'destructive',
       });
       return;
@@ -138,9 +165,9 @@ export default function PaymentsPage() {
 
     const optimisticLink: PaymentLink = {
       id: `temp_${Date.now()}`,
-      name: newLink.name,
+      name: trimmedName,
       amount: parsedAmount,
-      description: newLink.description || null,
+      description: newLink.description.trim() || null,
       currency: newLink.currency,
       link: 'Generating payment URL...',
       clicks: 0,
@@ -154,10 +181,10 @@ export default function PaymentsPage() {
 
     try {
       const created = await paymentApi.createLink({
-        name: newLink.name,
+        name: trimmedName,
         amount: parsedAmount,
         currency: newLink.currency,
-        description: newLink.description || undefined,
+        description: newLink.description.trim() || undefined,
       });
 
       setPaymentLinks((current) => current.map((link) => (link.id === optimisticLink.id ? created : link)));
@@ -179,6 +206,7 @@ export default function PaymentsPage() {
   const handleToggleStatus = async (link: PaymentLink) => {
     const nextStatus: PaymentLink['status'] = link.status === 'active' ? 'paused' : 'active';
     const previousLinks = paymentLinks;
+    setWorkingLinkId(link.id);
 
     setPaymentLinks((current) => current.map((item) => (item.id === link.id ? { ...item, status: nextStatus } : item)));
 
@@ -188,11 +216,14 @@ export default function PaymentsPage() {
     } catch {
       setPaymentLinks(previousLinks);
       toast({ title: 'Update failed', description: 'Could not update link status.', variant: 'destructive' });
+    } finally {
+      setWorkingLinkId(null);
     }
   };
 
   const handleDeleteLink = async (linkId: string) => {
     const previousLinks = paymentLinks;
+    setWorkingLinkId(linkId);
     setPaymentLinks((current) => current.filter((link) => link.id !== linkId));
 
     try {
@@ -201,11 +232,14 @@ export default function PaymentsPage() {
     } catch {
       setPaymentLinks(previousLinks);
       toast({ title: 'Delete failed', description: 'Could not delete payment link.', variant: 'destructive' });
+    } finally {
+      setWorkingLinkId(null);
     }
   };
 
   const toggleMethodConnection = async (method: PaymentMethod) => {
     const previous = paymentMethods;
+    setWorkingMethodId(method.id);
     setPaymentMethods((current) =>
       current.map((item) => (item.id === method.id ? { ...item, connected: !item.connected } : item)),
     );
@@ -216,6 +250,8 @@ export default function PaymentsPage() {
     } catch {
       setPaymentMethods(previous);
       toast({ title: 'Update failed', description: 'Could not update payment method.', variant: 'destructive' });
+    } finally {
+      setWorkingMethodId(null);
     }
   };
 
@@ -227,6 +263,7 @@ export default function PaymentsPage() {
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Payment Integration</h1>
           <p className="text-slate-400">Manage payment methods and create custom payment links</p>
+          {lastSyncAt && <p className="text-xs text-slate-500 mt-1">Last synced: {new Date(lastSyncAt).toLocaleTimeString()}</p>}
           <div className="mt-4 flex flex-wrap gap-2">
             <Link href="/payment/runash-pay">
               <Button className="bg-slate-800 hover:bg-slate-700 text-white">Open RunAsh Pay hub</Button>
@@ -272,6 +309,11 @@ export default function PaymentsPage() {
         {error && (
           <Card className="bg-red-950 border-red-800 text-red-100 p-4 mb-6">
             Failed to load data: {error}
+            <div className="mt-3">
+              <Button onClick={() => fetchData(false)} className="bg-red-800 hover:bg-red-700 text-white">
+                Retry
+              </Button>
+            </div>
           </Card>
         )}
 
@@ -287,13 +329,17 @@ export default function PaymentsPage() {
                   className={`bg-slate-900 border-slate-800 p-6 cursor-pointer transition-all ${
                     method.connected ? 'hover:border-orange-500' : 'opacity-80 hover:border-slate-700'
                   }`}
-                  onClick={() => toggleMethodConnection(method)}
+                  onClick={() => (workingMethodId ? undefined : toggleMethodConnection(method))}
                 >
                   <div className="text-4xl mb-3">{method.icon}</div>
                   <h3 className="font-bold text-white mb-1">{method.name}</h3>
                   <p className="text-sm text-slate-400 mb-4">{method.provider}</p>
                   <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${method.connected ? 'bg-green-500' : 'bg-slate-600'}`} />
+                    {workingMethodId === method.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-orange-400" />
+                    ) : (
+                      <div className={`w-2 h-2 rounded-full ${method.connected ? 'bg-green-500' : 'bg-slate-600'}`} />
+                    )}
                     <span className="text-sm font-medium">{method.connected ? 'Connected' : 'Not Connected'}</span>
                   </div>
                 </Card>
@@ -450,15 +496,23 @@ export default function PaymentsPage() {
                 <div className="flex gap-2">
                   <Button
                     onClick={() => handleToggleStatus(link)}
+                    disabled={workingLinkId === link.id}
                     className="bg-slate-800 hover:bg-slate-700 text-white"
                   >
-                    {link.status === 'active' ? 'Pause Link' : 'Resume Link'}
+                    {workingLinkId === link.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : link.status === 'active' ? (
+                      'Pause Link'
+                    ) : (
+                      'Resume Link'
+                    )}
                   </Button>
                   <Button
                     onClick={() => handleDeleteLink(link.id)}
+                    disabled={workingLinkId === link.id}
                     className="bg-red-700 hover:bg-red-800 text-white"
                   >
-                    <Trash2 className="w-4 h-4 mr-1" /> Delete
+                    {workingLinkId === link.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />} Delete
                   </Button>
                 </div>
               </Card>

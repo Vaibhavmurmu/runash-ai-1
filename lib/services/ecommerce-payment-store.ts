@@ -96,6 +96,30 @@ export async function listPaymentLinks(): Promise<EcommercePaymentLink[]> {
   `)
 }
 
+export async function getPaymentLinkById(id: string): Promise<EcommercePaymentLink | null> {
+  await ensureTables()
+
+  return queryOne<EcommercePaymentLink>(
+    `
+      SELECT
+        id,
+        name,
+        amount::float AS amount,
+        description,
+        link,
+        currency,
+        clicks,
+        conversions,
+        status,
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+      FROM ecommerce_payment_links
+      WHERE id = $1
+    `,
+    [id],
+  )
+}
+
 export async function createPaymentLink(input: {
   name: string
   amount: number
