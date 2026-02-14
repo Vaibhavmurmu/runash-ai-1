@@ -1,7 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { PaymentService } from "@/lib/payment-service"
+import { requireBillingSession } from "@/lib/billing-auth"
 
 export async function GET(request: NextRequest) {
+  const auth = await requireBillingSession()
+  if (auth.unauthorizedResponse) {
+    return auth.unauthorizedResponse
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const currency = searchParams.get("currency") || "INR"

@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server"
 import { Database } from "@/lib/database"
+import { requireBillingSession } from "@/lib/billing-auth"
 
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
+  const auth = await requireBillingSession()
+  if (auth.unauthorizedResponse) {
+    return auth.unauthorizedResponse
+  }
+
   try {
     const { id } = await context.params
     const plans = await Database.query(`SELECT * FROM subscription_plans WHERE id = $1 AND is_active = true LIMIT 1`, [id])

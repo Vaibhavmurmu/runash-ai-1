@@ -361,3 +361,18 @@ The versioned backend route `POST /api/v1/agents/chat` enforces authentication f
 All `/api/agents/*` routes require an authenticated NextAuth session. Unauthenticated requests return `401`.
 
 Agent feedback, actions, and session history APIs are scoped to the authenticated user context to avoid cross-tenant access.
+
+## Billing and payment route authentication standardization
+
+Billing and payment server routes now use a canonical NextAuth server-session identity layer (`lib/auth/session.ts`) instead of header placeholders.
+
+### Enforcement rules
+- All interactive billing/payment API routes require an authenticated server session.
+- Request authorization is scoped to the authenticated user and (when present) their SSO organization claim.
+- Legacy placeholder identity headers (for example `x-user-id`) are not used in billing usage routes.
+- Mock auth services are isolated from production by disabling `mockAuth` export usage in production runtime.
+
+### Role scope policy
+- Startup-operator scope endpoints (usage tracking, payment intent create/confirm) require startup/admin-compatible roles.
+- Business-operator scope endpoints (subscription mutations, billing portal, analytics) require business/admin-compatible roles.
+- Super admin and admin remain globally authorized through RBAC hierarchy checks.

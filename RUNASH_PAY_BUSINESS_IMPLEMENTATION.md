@@ -1133,3 +1133,15 @@ For versioned integrations, equivalent aliases are available under `/api/v1/bill
 ### Rollback plan
 
 If any billing behavior regression is detected, rollback can be performed by restoring previous route handlers while keeping `/api/v1` aliases mapped to known-good implementations.
+
+## Session and authorization hardening (implementation note)
+
+To improve payment reliability and compliance posture for both startup and business flows:
+- Billing/payment interactive routes now require authenticated server sessions.
+- Route authorization now validates user/org ownership boundaries.
+- Business-vs-startup operator actions are gated by scoped RBAC checks.
+- Privileged actions are audit logged with sensitive-field sanitization.
+
+### Risk and rollback
+- **Risk:** low to medium (access control tightening can surface previously hidden unauthorized usage patterns).
+- **Rollback:** revert route-level authz helper adoption while preserving payment contract payloads and endpoint paths.

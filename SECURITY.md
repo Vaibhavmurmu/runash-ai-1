@@ -44,3 +44,16 @@ Reference: `docs/API_CONTRACTS.md`.
 - Tool/audit payloads redact secrets and payment-like identifiers before persistence/logging.
 - High-risk actions (payment/account-impacting operations) require explicit user confirmation via `/api/agents/actions`.
 - Agent transcript/tool records use retention pruning (`RUNASH_AGENT_RETENTION_DAYS`, default 30 days) for PII minimization.
+
+## Payment and billing session hardening
+
+Payment and billing APIs now enforce server-side session authentication and ownership authorization checks against the user and organization context from JWT-backed NextAuth sessions.
+
+### Security controls added
+- Canonical server session extraction for billing/payment routes via `getServerSession` wrapper utilities.
+- Route-level ownership checks to prevent cross-user and cross-organization billing access.
+- Privileged action audit logging for payment intent creation/confirmation, subscription mutations, analytics access, and billing session creation.
+- Audit payload sanitization to avoid persisting sensitive auth/payment secrets.
+
+### Explicit exception
+- `POST /api/billing/webhook` remains non-session authenticated because it is provider-originated and validated with Stripe webhook signatures.

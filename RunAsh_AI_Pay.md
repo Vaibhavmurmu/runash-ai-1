@@ -214,3 +214,18 @@ Long-term aliases are also exposed under `/api/v1/billing/*` for the same flows.
 - Subscription payloads remain backward compatible while supporting a normalized envelope (`{ subscription: ... }`) for mutating actions.
 - Invoice listing returns deterministic pagination metadata (`limit`, `offset`, `total`) for reliable reconciliation.
 - No sensitive payment method or auth secrets are logged as part of this rollout.
+
+## Auth, authorization, and auditability updates (server routes)
+
+The payment/billing API surface now uses session-based server identity as the canonical auth layer.
+
+### What changed
+- `/api/billing/usage` no longer accepts placeholder header identity and now derives user identity from authenticated server session claims.
+- Billing and payment routes require authenticated sessions and enforce ownership checks against user/organization context.
+- Business vs startup operator/admin route scope checks are enforced through RBAC helper logic.
+- Privileged payment/billing actions emit audit records with redacted/sanitized details.
+
+### Backward compatibility notes
+- API path and payload contracts remain unchanged for existing billing/payment clients.
+- `/api/v1/*` aliases continue to re-export the same handlers.
+- Webhook route behavior is unchanged except for continued signature-based verification.

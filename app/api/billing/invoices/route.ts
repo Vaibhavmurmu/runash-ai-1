@@ -1,14 +1,16 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { requireBillingSession, requireScopedRole } from "@/lib/billing-auth"
 import { Database } from "@/lib/database"
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const auth = await requireBillingSession()
+    if (auth.unauthorizedResponse || !auth.sessionUser) {
+      return auth.unauthorizedResponse
     }
+
+    const roleResponse = requireScopedRole(auth.sessionUser, "startup")
+    if (roleResponse) return roleResponse
 
     const limitParam = Number.parseInt(req.nextUrl.searchParams.get("limit") || "10", 10)
     const offsetParam = Number.parseInt(req.nextUrl.searchParams.get("offset") || "0", 10)
@@ -39,11 +41,11 @@ export async function GET(req: NextRequest) {
       ORDER BY i.created_at DESC
       LIMIT $2 OFFSET $3
       `,
-      [session.user.id, limit, offset],
+      [auth.sessionUser.userId, limit, offset],
     )
 
     const totalRows = await Database.query<{ total: string }>(`SELECT COUNT(*)::text AS total FROM invoices WHERE user_id = $1`, [
-      session.user.id,
+      auth.sessionUser.userId,
     ])
 
     return NextResponse.json({
