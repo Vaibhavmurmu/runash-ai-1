@@ -32,10 +32,42 @@ export async function GET(request: NextRequest) {
         ) FILTER (WHERE ili.id IS NOT NULL),
         '[]'::json
       ) AS line_items
+      , COALESCE(
+        json_build_object(
+          'country_code', tc.country_code,
+          'state_code', tc.state_code,
+          'currency', tc.currency,
+          'taxable_amount', tc.taxable_amount,
+          'total_tax_amount', tc.total_tax_amount,
+          'total_amount', tc.total_amount,
+          'jurisdiction_details', tc.jurisdiction_details,
+          'line_items', COALESCE(
+            (
+              SELECT json_agg(
+                json_build_object(
+                  'id', tli.id,
+                  'jurisdiction_level', tli.jurisdiction_level,
+                  'jurisdiction_code', tli.jurisdiction_code,
+                  'tax_type', tli.tax_type,
+                  'tax_name', tli.tax_name,
+                  'rate_percent', tli.rate_percent,
+                  'taxable_amount', tli.taxable_amount,
+                  'tax_amount', tli.tax_amount
+                )
+              )
+              FROM tax_line_items tli
+              WHERE tli.tax_calculation_id = tc.id
+            ),
+            '[]'::json
+          )
+        ),
+        '{}'::json
+      ) AS tax_breakdown
       FROM invoices i
       LEFT JOIN invoice_line_items ili ON ili.invoice_id = i.id
+      LEFT JOIN tax_calculations tc ON tc.source_type = 'invoice' AND tc.source_id = i.id::text
       WHERE i.user_id = $1
-      GROUP BY i.id
+      GROUP BY i.id, tc.id
       ORDER BY i.created_at DESC
       LIMIT $2 OFFSET $3
       `,

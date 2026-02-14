@@ -7,6 +7,7 @@ import { logApiRouteError } from "@/lib/api/logging"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 import { getAuthorizedBillingIdentity, requireScopedBillingAccess } from "@/lib/billing-auth"
 import { Database } from "@/lib/database"
+import { computeTaxForRegion, persistTaxComputation } from "@/lib/services/tax-service"
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2023-10-16",
@@ -69,12 +70,32 @@ export async function POST(request: NextRequest) {
   const { sessionUser } = access
 
   try {
-    const { plan_id, payment_method_id } = await request.json()
+    const payload = await request.json().catch(() => ({}))
+    const { plan_id, payment_method_id, billing_address } = payload as {
+      plan_id?: string
+      payment_method_id?: string
+      billing_address?: { country?: string; state?: string; city?: string; postal_code?: string }
+    }
+
+    if (!plan_id) {
+      return respondError(request, { code: "MISSING_REQUIRED_FIELDS", message: "Missing required field: plan_id" }, { status: 400 })
+    }
 
     const plan = await Database.query(`SELECT * FROM subscription_plans WHERE id = $1 AND is_active = true`, [plan_id])
     if (!plan[0]) {
       return respondError(request, { code: "PLAN_NOT_FOUND", message: "Plan not found" }, { status: 404 })
     }
+
+    const taxComputation = await computeTaxForRegion({
+      amount: Number(plan[0].price) / 100,
+      currency: String(plan[0].currency || "USD").toUpperCase(),
+      address: {
+        country: billing_address?.country,
+        state: billing_address?.state,
+        city: billing_address?.city,
+        postalCode: billing_address?.postal_code,
+      },
+    })
 
     const identity = await getAuthorizedBillingIdentity(sessionUser)
     if ("errorResponse" in identity) return identity.errorResponse
@@ -96,7 +117,13 @@ export async function POST(request: NextRequest) {
       payment_behavior: "default_incomplete",
       payment_settings: { save_default_payment_method: "on_subscription" },
       expand: ["latest_invoice.payment_intent"],
-      metadata: { user_id: sessionUser.userId, plan_id },
+      metadata: {
+        user_id: sessionUser.userId,
+        plan_id,
+        tax_country_code: taxComputation.countryCode,
+        tax_state_code: taxComputation.stateCode ?? "",
+        tax_total_amount: String(taxComputation.totalTaxAmount),
+      },
     }
 
     if (payment_method_id) subscriptionData.default_payment_method = payment_method_id
@@ -124,8 +151,25 @@ export async function POST(request: NextRequest) {
       ],
     )
 
+    await persistTaxComputation({
+      sourceType: "subscription",
+      sourceId: stripeSubscription.id,
+      userId: Number(sessionUser.userId),
+      currency: String(plan[0].currency || "USD").toUpperCase(),
+      computation: taxComputation,
+    })
+
     const response: Record<string, unknown> = {
       subscription: { ...dbSubscription[0], plan: plan[0] },
+      tax: {
+        country_code: taxComputation.countryCode,
+        state_code: taxComputation.stateCode,
+        taxable_amount: taxComputation.taxableAmount,
+        total_tax_amount: taxComputation.totalTaxAmount,
+        total_amount: taxComputation.totalAmount,
+        jurisdiction_details: taxComputation.jurisdictionDetails,
+        line_items: taxComputation.lineItems,
+      },
     }
 
     if (stripeSubscription.latest_invoice && typeof stripeSubscription.latest_invoice === "object") {
@@ -144,7 +188,12 @@ export async function POST(request: NextRequest) {
       action: "billing.subscription.created",
       resource: "billing.subscription",
       request,
-      details: { planId: plan_id, hasPaymentMethod: Boolean(payment_method_id) },
+      details: {
+        planId: plan_id,
+        hasPaymentMethod: Boolean(payment_method_id),
+        taxCountryCode: taxComputation.countryCode,
+        taxStateCode: taxComputation.stateCode,
+      },
     })
 
     return respondSuccess(request, response)
