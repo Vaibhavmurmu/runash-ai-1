@@ -126,7 +126,7 @@ const sidebarNavItems = [
 ]
 
 export default function RunashChatPage() {
-  const updatesBannerDismissedKey = "runash_updates_banner_dismissed"
+  const updatesBannerHiddenKey = "runash_updates_banner_hidden"
   const onboardingSeenStorageKey = "runash_onboarding_seen"
   const router = useRouter()
   const { data: session } = useSession()
@@ -227,8 +227,8 @@ export default function RunashChatPage() {
     const savedValue = localStorage.getItem("runash_sidebar_collapsed")
     setIsSidebarCollapsed(savedValue === "true")
 
-    const isBannerDismissed = localStorage.getItem(updatesBannerDismissedKey) === "true"
-    setShowUpdatesBanner(!isBannerDismissed)
+    const isBannerHidden = localStorage.getItem(updatesBannerHiddenKey) === "true"
+    setShowUpdatesBanner(!isBannerHidden)
 
     const hasSeenOnboarding = localStorage.getItem(onboardingSeenStorageKey) === "true"
     setIsOnboardingOpen(!hasSeenOnboarding)
@@ -414,7 +414,7 @@ export default function RunashChatPage() {
   ]
 
   const dismissUpdatesBanner = () => {
-    localStorage.setItem(updatesBannerDismissedKey, "true")
+    localStorage.setItem(updatesBannerHiddenKey, "true")
     setShowUpdatesBanner(false)
   }
 
@@ -889,15 +889,15 @@ export default function RunashChatPage() {
             )}
 
             {showUpdatesBanner && (
-              <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2.5 text-sm text-cyan-100">
-                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-cyan-300/50 bg-cyan-300/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-100">
+              <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-cyan-300/50 bg-cyan-300/10 px-2.5 py-2 text-xs text-cyan-50 sm:mb-3 sm:px-3 sm:py-2.5">
+                <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
+                  <span className="rounded-full border border-cyan-200/60 bg-cyan-200/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-50">
                     New
                   </span>
-                  <p className="text-xs text-cyan-50 sm:text-sm">Introducing improved workspace flows for faster launches.</p>
+                  <p className="text-cyan-50">Faster workspace flows are now live.</p>
                   <Button
                     variant="link"
-                    className="h-auto p-0 text-xs text-cyan-100 underline-offset-2 hover:text-cyan-50 sm:text-sm"
+                    className="h-auto p-0 text-xs text-cyan-100 underline-offset-2 hover:text-cyan-50"
                     onClick={() => router.push("/changelog")}
                   >
                     Learn more
@@ -906,11 +906,11 @@ export default function RunashChatPage() {
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-6 w-6 shrink-0 text-cyan-100 hover:bg-cyan-400/20 hover:text-cyan-50"
+                  className="h-5 w-5 shrink-0 text-cyan-100 hover:bg-cyan-400/20 hover:text-cyan-50"
                   onClick={dismissUpdatesBanner}
                   aria-label="Dismiss updates banner"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <X className="h-3 w-3" />
                 </Button>
               </div>
             )}
