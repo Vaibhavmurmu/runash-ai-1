@@ -1,16 +1,12 @@
 // Create a Stripe Billing Portal Session
 import { type NextRequest, NextResponse } from "next/server"
-import { getAuthorizedBillingIdentity, requireBillingSession, requireScopedRole } from "@/lib/billing-auth"
+import { getAuthorizedBillingIdentity, requireScopedBillingAccess } from "@/lib/billing-auth"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 
 export async function POST(req: NextRequest) {
-  const auth = await requireBillingSession()
-  if (auth.unauthorizedResponse || !auth.sessionUser) {
-    return auth.unauthorizedResponse
-  }
-
-  const roleResponse = requireScopedRole(auth.sessionUser, "business")
-  if (roleResponse) return roleResponse
+  const access = await requireScopedBillingAccess("business")
+  if ("response" in access) return access.response
+  const { sessionUser } = access
 
   try {
     const { return_url } = await req.json()
@@ -22,7 +18,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields: return_url" }, { status: 400 })
     }
 
-    const identity = await getAuthorizedBillingIdentity(auth.sessionUser)
+    const identity = await getAuthorizedBillingIdentity(sessionUser)
     if ("errorResponse" in identity) {
       return identity.errorResponse
     }
@@ -40,7 +36,7 @@ export async function POST(req: NextRequest) {
     })
 
     await logPrivilegedAction({
-      actorUserId: auth.sessionUser.userId,
+      actorUserId: sessionUser.userId,
       action: "billing.portal.session_created",
       resource: "billing.portal",
       request: req,

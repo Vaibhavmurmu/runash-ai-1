@@ -24,6 +24,11 @@ export interface EcommercePaymentMethod {
   updatedAt: string
 }
 
+export interface EcommercePaymentOwner {
+  userId: string
+  organizationId: number | null
+}
+
 let tablesReady = false
 
 async function ensureTables() {
@@ -32,6 +37,8 @@ async function ensureTables() {
   await (sql as any).unsafe(`
     CREATE TABLE IF NOT EXISTS ecommerce_payment_links (
       id TEXT PRIMARY KEY,
+      owner_user_id TEXT,
+      owner_organization_id INTEGER,
       name TEXT NOT NULL,
       amount NUMERIC(15,2) NOT NULL,
       description TEXT,
@@ -46,8 +53,20 @@ async function ensureTables() {
   `)
 
   await (sql as any).unsafe(`
+    ALTER TABLE ecommerce_payment_links
+    ADD COLUMN IF NOT EXISTS owner_user_id TEXT;
+  `)
+
+  await (sql as any).unsafe(`
+    ALTER TABLE ecommerce_payment_links
+    ADD COLUMN IF NOT EXISTS owner_organization_id INTEGER;
+  `)
+
+  await (sql as any).unsafe(`
     CREATE TABLE IF NOT EXISTS ecommerce_payment_methods (
       id TEXT PRIMARY KEY,
+      owner_user_id TEXT,
+      owner_organization_id INTEGER,
       name TEXT NOT NULL,
       provider TEXT NOT NULL,
       icon TEXT NOT NULL,
@@ -57,9 +76,17 @@ async function ensureTables() {
     );
   `)
 
-  const methodsCount = await queryOne<{ count: string }>(
-    "SELECT COUNT(*)::text AS count FROM ecommerce_payment_methods",
-  )
+  await (sql as any).unsafe(`
+    ALTER TABLE ecommerce_payment_methods
+    ADD COLUMN IF NOT EXISTS owner_user_id TEXT;
+  `)
+
+  await (sql as any).unsafe(`
+    ALTER TABLE ecommerce_payment_methods
+    ADD COLUMN IF NOT EXISTS owner_organization_id INTEGER;
+  `)
+
+  const methodsCount = await queryOne<{ count: string }>("SELECT COUNT(*)::text AS count FROM ecommerce_payment_methods")
 
   if ((methodsCount?.count ?? "0") === "0") {
     await (sql as any).unsafe(`
@@ -76,9 +103,10 @@ async function ensureTables() {
   tablesReady = true
 }
 
-export async function listPaymentLinks(): Promise<EcommercePaymentLink[]> {
+export async function listPaymentLinks(owner: EcommercePaymentOwner): Promise<EcommercePaymentLink[]> {
   await ensureTables()
-  return queryMany<EcommercePaymentLink>(`
+  return queryMany<EcommercePaymentLink>(
+    `
     SELECT
       id,
       name,
@@ -92,11 +120,14 @@ export async function listPaymentLinks(): Promise<EcommercePaymentLink[]> {
       created_at AS "createdAt",
       updated_at AS "updatedAt"
     FROM ecommerce_payment_links
+    WHERE owner_user_id = $1 OR ($2::int IS NOT NULL AND owner_organization_id = $2)
     ORDER BY created_at DESC
-  `)
+  `,
+    [owner.userId, owner.organizationId],
+  )
 }
 
-export async function getPaymentLinkById(id: string): Promise<EcommercePaymentLink | null> {
+export async function getPaymentLinkById(id: string, owner: EcommercePaymentOwner): Promise<EcommercePaymentLink | null> {
   await ensureTables()
 
   return queryOne<EcommercePaymentLink>(
@@ -115,17 +146,21 @@ export async function getPaymentLinkById(id: string): Promise<EcommercePaymentLi
         updated_at AS "updatedAt"
       FROM ecommerce_payment_links
       WHERE id = $1
+      AND (owner_user_id = $2 OR ($3::int IS NOT NULL AND owner_organization_id = $3))
     `,
-    [id],
+    [id, owner.userId, owner.organizationId],
   )
 }
 
-export async function createPaymentLink(input: {
-  name: string
-  amount: number
-  description?: string
-  currency: string
-}): Promise<EcommercePaymentLink> {
+export async function createPaymentLink(
+  input: {
+    name: string
+    amount: number
+    description?: string
+    currency: string
+  },
+  owner: EcommercePaymentOwner,
+): Promise<EcommercePaymentLink> {
   await ensureTables()
   const id = `plink_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
   const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "")
@@ -133,8 +168,8 @@ export async function createPaymentLink(input: {
   const row = await queryOne<EcommercePaymentLink>(
     `
       INSERT INTO ecommerce_payment_links
-      (id, name, amount, description, link, currency, status)
-      VALUES ($1, $2, $3, $4, $5, $6, 'active')
+      (id, owner_user_id, owner_organization_id, name, amount, description, link, currency, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
       RETURNING
         id,
         name,
@@ -148,7 +183,16 @@ export async function createPaymentLink(input: {
         created_at AS "createdAt",
         updated_at AS "updatedAt"
     `,
-    [safeId, input.name, input.amount, input.description ?? null, `https://shop.runash.in/pay/${safeId}`, input.currency],
+    [
+      safeId,
+      owner.userId,
+      owner.organizationId,
+      input.name,
+      input.amount,
+      input.description ?? null,
+      `https://shop.runash.in/pay/${safeId}`,
+      input.currency,
+    ],
   )
 
   if (!row) throw new Error("Failed to create payment link")
@@ -158,6 +202,7 @@ export async function createPaymentLink(input: {
 export async function updatePaymentLink(
   id: string,
   updates: Partial<Pick<EcommercePaymentLink, "name" | "amount" | "description" | "status" | "clicks" | "conversions" | "currency">>,
+  owner: EcommercePaymentOwner,
 ): Promise<EcommercePaymentLink | null> {
   await ensureTables()
   const row = await queryOne<EcommercePaymentLink>(
@@ -173,6 +218,7 @@ export async function updatePaymentLink(
         currency = COALESCE($8, currency),
         updated_at = NOW()
       WHERE id = $1
+      AND (owner_user_id = $9 OR ($10::int IS NOT NULL AND owner_organization_id = $10))
       RETURNING
         id,
         name,
@@ -186,24 +232,41 @@ export async function updatePaymentLink(
         created_at AS "createdAt",
         updated_at AS "updatedAt"
     `,
-    [id, updates.name ?? null, updates.amount ?? null, updates.description ?? null, updates.status ?? null, updates.clicks ?? null, updates.conversions ?? null, updates.currency ?? null],
+    [
+      id,
+      updates.name ?? null,
+      updates.amount ?? null,
+      updates.description ?? null,
+      updates.status ?? null,
+      updates.clicks ?? null,
+      updates.conversions ?? null,
+      updates.currency ?? null,
+      owner.userId,
+      owner.organizationId,
+    ],
   )
 
   return row
 }
 
-export async function deletePaymentLink(id: string): Promise<boolean> {
+export async function deletePaymentLink(id: string, owner: EcommercePaymentOwner): Promise<boolean> {
   await ensureTables()
   const row = await queryOne<{ id: string }>(
-    `DELETE FROM ecommerce_payment_links WHERE id = $1 RETURNING id`,
-    [id],
+    `
+      DELETE FROM ecommerce_payment_links
+      WHERE id = $1
+      AND (owner_user_id = $2 OR ($3::int IS NOT NULL AND owner_organization_id = $3))
+      RETURNING id
+    `,
+    [id, owner.userId, owner.organizationId],
   )
   return !!row
 }
 
-export async function listPaymentMethods(): Promise<EcommercePaymentMethod[]> {
+export async function listPaymentMethods(owner: EcommercePaymentOwner): Promise<EcommercePaymentMethod[]> {
   await ensureTables()
-  return queryMany<EcommercePaymentMethod>(`
+  return queryMany<EcommercePaymentMethod>(
+    `
     SELECT
       id,
       name,
@@ -213,22 +276,30 @@ export async function listPaymentMethods(): Promise<EcommercePaymentMethod[]> {
       created_at AS "createdAt",
       updated_at AS "updatedAt"
     FROM ecommerce_payment_methods
+    WHERE owner_user_id = $1
+       OR ($2::int IS NOT NULL AND owner_organization_id = $2)
+       OR (owner_user_id IS NULL AND owner_organization_id IS NULL)
     ORDER BY created_at ASC
-  `)
+  `,
+    [owner.userId, owner.organizationId],
+  )
 }
 
-export async function createPaymentMethod(input: {
-  id: string
-  name: string
-  provider: string
-  icon: string
-  connected?: boolean
-}): Promise<EcommercePaymentMethod> {
+export async function createPaymentMethod(
+  input: {
+    id: string
+    name: string
+    provider: string
+    icon: string
+    connected?: boolean
+  },
+  owner: EcommercePaymentOwner,
+): Promise<EcommercePaymentMethod> {
   await ensureTables()
   const row = await queryOne<EcommercePaymentMethod>(
     `
-      INSERT INTO ecommerce_payment_methods (id, name, provider, icon, connected)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO ecommerce_payment_methods (id, owner_user_id, owner_organization_id, name, provider, icon, connected)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING
         id,
         name,
@@ -238,7 +309,7 @@ export async function createPaymentMethod(input: {
         created_at AS "createdAt",
         updated_at AS "updatedAt"
     `,
-    [input.id, input.name, input.provider, input.icon, input.connected ?? false],
+    [input.id, owner.userId, owner.organizationId, input.name, input.provider, input.icon, input.connected ?? false],
   )
 
   if (!row) throw new Error("Failed to create payment method")
@@ -248,6 +319,7 @@ export async function createPaymentMethod(input: {
 export async function updatePaymentMethod(
   id: string,
   updates: Partial<Pick<EcommercePaymentMethod, "name" | "provider" | "icon" | "connected">>,
+  owner: EcommercePaymentOwner,
 ): Promise<EcommercePaymentMethod | null> {
   await ensureTables()
   const row = await queryOne<EcommercePaymentMethod>(
@@ -260,6 +332,7 @@ export async function updatePaymentMethod(
         connected = COALESCE($5, connected),
         updated_at = NOW()
       WHERE id = $1
+      AND (owner_user_id = $6 OR ($7::int IS NOT NULL AND owner_organization_id = $7) OR (owner_user_id IS NULL AND owner_organization_id IS NULL))
       RETURNING
         id,
         name,
@@ -269,17 +342,22 @@ export async function updatePaymentMethod(
         created_at AS "createdAt",
         updated_at AS "updatedAt"
     `,
-    [id, updates.name ?? null, updates.provider ?? null, updates.icon ?? null, updates.connected ?? null],
+    [id, updates.name ?? null, updates.provider ?? null, updates.icon ?? null, updates.connected ?? null, owner.userId, owner.organizationId],
   )
 
   return row
 }
 
-export async function deletePaymentMethod(id: string): Promise<boolean> {
+export async function deletePaymentMethod(id: string, owner: EcommercePaymentOwner): Promise<boolean> {
   await ensureTables()
   const row = await queryOne<{ id: string }>(
-    `DELETE FROM ecommerce_payment_methods WHERE id = $1 RETURNING id`,
-    [id],
+    `
+      DELETE FROM ecommerce_payment_methods
+      WHERE id = $1
+      AND (owner_user_id = $2 OR ($3::int IS NOT NULL AND owner_organization_id = $3) OR (owner_user_id IS NULL AND owner_organization_id IS NULL))
+      RETURNING id
+    `,
+    [id, owner.userId, owner.organizationId],
   )
   return !!row
 }

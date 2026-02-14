@@ -1,13 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { PaymentService } from "@/lib/payment-service"
-import { requireBillingSession } from "@/lib/billing-auth"
+import { requireScopedBillingAccess } from "@/lib/billing-auth"
 import { logApiRouteError } from "@/lib/api/logging"
 
 export async function GET(request: NextRequest) {
-  const auth = await requireBillingSession()
-  if (auth.unauthorizedResponse) {
-    return auth.unauthorizedResponse
-  }
+  const access = await requireScopedBillingAccess("business")
+  if ("response" in access) return access.response
 
   try {
     const { searchParams } = new URL(request.url)

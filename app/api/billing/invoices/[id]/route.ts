@@ -1,16 +1,12 @@
 import { NextResponse } from "next/server"
-import { requireBillingSession, requireScopedRole } from "@/lib/billing-auth"
+import { requireScopedBillingAccess } from "@/lib/billing-auth"
 import { Database } from "@/lib/database"
 
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const auth = await requireBillingSession()
-    if (auth.unauthorizedResponse || !auth.sessionUser) {
-      return auth.unauthorizedResponse
-    }
-
-    const roleResponse = requireScopedRole(auth.sessionUser, "startup")
-    if (roleResponse) return roleResponse
+    const access = await requireScopedBillingAccess("startup")
+    if ("response" in access) return access.response
+    const { sessionUser } = access
 
     const { id } = await context.params
     const invoices = await Database.query(
@@ -36,7 +32,7 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
       GROUP BY i.id
       LIMIT 1
       `,
-      [auth.sessionUser.userId, id],
+      [sessionUser.userId, id],
     )
 
     if (!invoices[0]) {

@@ -1,16 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { requireBillingSession, requireScopedRole } from "@/lib/billing-auth"
+import { requireScopedBillingAccess } from "@/lib/billing-auth"
 import { Database } from "@/lib/database"
 
 export async function GET(req: NextRequest) {
   try {
-    const auth = await requireBillingSession()
-    if (auth.unauthorizedResponse || !auth.sessionUser) {
-      return auth.unauthorizedResponse
-    }
-
-    const roleResponse = requireScopedRole(auth.sessionUser, "startup")
-    if (roleResponse) return roleResponse
+    const access = await requireScopedBillingAccess("startup")
+    if ("response" in access) return access.response
+    const { sessionUser } = access
 
     const limitParam = Number.parseInt(req.nextUrl.searchParams.get("limit") || "10", 10)
     const offsetParam = Number.parseInt(req.nextUrl.searchParams.get("offset") || "0", 10)
@@ -41,11 +37,11 @@ export async function GET(req: NextRequest) {
       ORDER BY i.created_at DESC
       LIMIT $2 OFFSET $3
       `,
-      [auth.sessionUser.userId, limit, offset],
+      [sessionUser.userId, limit, offset],
     )
 
     const totalRows = await Database.query<{ total: string }>(`SELECT COUNT(*)::text AS total FROM invoices WHERE user_id = $1`, [
-      auth.sessionUser.userId,
+      sessionUser.userId,
     ])
 
     return NextResponse.json({

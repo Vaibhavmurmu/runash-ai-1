@@ -1,16 +1,12 @@
 // Create a Stripe Checkout Session for subscriptions
 import { type NextRequest, NextResponse } from "next/server"
-import { requireBillingSession, getAuthorizedBillingIdentity, requireScopedRole } from "@/lib/billing-auth"
+import { requireScopedBillingAccess, getAuthorizedBillingIdentity } from "@/lib/billing-auth"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 
 export async function POST(req: NextRequest) {
-  const auth = await requireBillingSession()
-  if (auth.unauthorizedResponse || !auth.sessionUser) {
-    return auth.unauthorizedResponse
-  }
-
-  const roleResponse = requireScopedRole(auth.sessionUser, "startup")
-  if (roleResponse) return roleResponse
+  const access = await requireScopedBillingAccess("startup")
+  if ("response" in access) return access.response
+  const { sessionUser } = access
 
   try {
     const { priceId, mode = "subscription", success_url, cancel_url } = await req.json()
@@ -22,7 +18,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields: priceId, success_url, cancel_url" }, { status: 400 })
     }
 
-    const identity = await getAuthorizedBillingIdentity(auth.sessionUser)
+    const identity = await getAuthorizedBillingIdentity(sessionUser)
     if ("errorResponse" in identity) {
       return identity.errorResponse
     }
@@ -35,17 +31,17 @@ export async function POST(req: NextRequest) {
       success_url,
       cancel_url,
       customer: identity.user.stripe_customer_id || undefined,
-      customer_email: auth.sessionUser.email || undefined,
+      customer_email: sessionUser.email || undefined,
       line_items: [{ price: priceId, quantity: 1 }],
       allow_promotion_codes: true,
       metadata: {
-        user_id: auth.sessionUser.userId,
-        organization_id: auth.sessionUser.organizationId ? String(auth.sessionUser.organizationId) : "",
+        user_id: sessionUser.userId,
+        organization_id: sessionUser.organizationId ? String(sessionUser.organizationId) : "",
       },
     })
 
     await logPrivilegedAction({
-      actorUserId: auth.sessionUser.userId,
+      actorUserId: sessionUser.userId,
       action: "billing.checkout.session_created",
       resource: "billing.checkout",
       request: req,

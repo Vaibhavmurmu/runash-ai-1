@@ -1,23 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { PaymentService } from "@/lib/payment-service"
-import { requireBillingSession, requireScopedRole } from "@/lib/billing-auth"
+import { requireScopedBillingAccess } from "@/lib/billing-auth"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 import { logApiRouteError } from "@/lib/api/logging"
 
 export async function GET(request: NextRequest) {
-  const auth = await requireBillingSession()
-  if (auth.unauthorizedResponse || !auth.sessionUser) {
-    return auth.unauthorizedResponse
-  }
-
-  const roleResponse = requireScopedRole(auth.sessionUser, "business")
-  if (roleResponse) return roleResponse
+  const access = await requireScopedBillingAccess("business")
+  if ("response" in access) return access.response
+  const { sessionUser } = access
 
   try {
     const analytics = await PaymentService.getAnalytics()
 
     await logPrivilegedAction({
-      actorUserId: auth.sessionUser.userId,
+      actorUserId: sessionUser.userId,
       action: "payment.analytics.viewed",
       resource: "payment.analytics",
       request,
