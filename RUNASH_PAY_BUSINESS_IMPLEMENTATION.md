@@ -1074,18 +1074,18 @@ The feature matrix is now represented by concrete App Router pages:
 | Business payment surface | `/payment/business` | Advanced business actions and onboarding pathway |
 | Payment links + methods | `/ecommerce/payments` | Link creation and connected methods |
 | Payment intent creation | `/payment/runash-pay#create-intent` | Uses `/api/v1/payment/create-intent` |
-| Transactions and analytics | `/payment/dashboard` | Real-time/basic reporting entry |
+| Transactions and analytics | `/payment/dashboard#analytics` | Real-time/basic reporting entry and analytics anchor |
 | Subscription management | `/payment/subscription` | Recurring billing and plan management |
 
 ### Journey alignment to Feature Matrix
 
-- **Startup journey:** `/payment/startup` → create payment link (`/ecommerce/payments`) → create intent (`/payment/runash-pay#create-intent`) → view transactions (`/payment/dashboard`).
-- **Business journey:** `/payment/business` → create link/intent → view transactions (`/payment/dashboard`) → manage subscription (`/payment/subscription`) → onboarding support (`/contact-team`).
+- **Startup journey:** `/payment/startup` → create payment link (`/ecommerce/payments`) → collect payment (`/payment/runash-pay#create-intent`) → view analytics (`/payment/dashboard#analytics`).
+- **Business journey:** `/payment/business` → create link/collect payment → manage payout/subscription (`/payment/subscription`) → view analytics (`/payment/dashboard#analytics`) → onboarding support (`/contact-team`).
 
 ### Navigation updates
 
-- `/payment/dashboard` includes direct links to `/payment/runash-pay`, `/payment/startup`, and `/payment/business`.
-- `/ecommerce/payments` includes direct links to `/payment/runash-pay`, `/payment/startup`, and `/payment/business`.
+- `/payment/dashboard` includes direct links to `/payment/runash-pay`, `/payment/startup`, `/payment/business`, `/ecommerce/payments`, and `/payment/subscription`.
+- `/ecommerce/payments` includes direct links to `/payment/runash-pay`, `/payment/startup`, `/payment/business`, `/payment/subscription`, and `/payment/dashboard#analytics`.
 
 ### Risks and rollback
 

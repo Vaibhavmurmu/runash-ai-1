@@ -157,12 +157,12 @@ RunAsh Pay now exposes a dedicated route map for product navigation:
 ### User journey references
 
 1. **Create payment link:** `/payment/runash-pay` → `/ecommerce/payments`.
-2. **Create payment intent:** `/payment/runash-pay#create-intent` (calls `/api/v1/payment/create-intent`).
-3. **View transactions:** `/payment/runash-pay` → `/payment/dashboard`.
-4. **Manage subscription:** `/payment/runash-pay` → `/payment/subscription`.
+2. **Collect payment:** `/payment/runash-pay#create-intent` (calls `/api/v1/payment/create-intent`).
+3. **Manage payout/subscription:** `/payment/runash-pay` or `/payment/business` → `/payment/subscription`.
+4. **View analytics:** `/payment/runash-pay` or segment pages → `/payment/dashboard#analytics`.
 5. **Onboarding:** `/payment/runash-pay` → `/payment/startup` or `/payment/business`.
 
-Existing entry points (`/payment/dashboard` and `/ecommerce/payments`) include navigation to the new RunAsh Pay route hierarchy.
+Existing entry points (`/payment/dashboard` and `/ecommerce/payments`) include navigation to RunAsh Pay plus key actions (collect payment, manage payout/subscription, and view analytics).
 
 ## 🧾 E-commerce Payment Link API (v1)
 

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Copy, Link2, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { BarChart3, Copy, Link2, Loader2, Plus, RefreshCw, Trash2, Wallet } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -236,6 +236,21 @@ export default function PaymentsPage() {
             </Link>
             <Link href="/payment/business">
               <Button className="bg-slate-800 hover:bg-slate-700 text-white">Business journey</Button>
+            </Link>
+            <Link href="/payment/runash-pay#create-intent">
+              <Button className="bg-slate-800 hover:bg-slate-700 text-white">
+                <Wallet className="w-4 h-4 mr-1" />
+                Collect payment
+              </Button>
+            </Link>
+            <Link href="/payment/subscription">
+              <Button className="bg-slate-800 hover:bg-slate-700 text-white">Manage payout/subscription</Button>
+            </Link>
+            <Link href="/payment/dashboard#analytics">
+              <Button className="bg-slate-800 hover:bg-slate-700 text-white">
+                <BarChart3 className="w-4 h-4 mr-1" />
+                View analytics
+              </Button>
             </Link>
             <Button
               onClick={() => fetchData(true)}
