@@ -402,3 +402,12 @@ Traceability standard:
 - Mock authentication service is test-only (`NODE_ENV === "test"`) and is not available in production runtime.
 - Protected billing/payment APIs must derive identity from server session (NextAuth), not request headers.
 
+
+
+## Auth logging and audit redaction policy
+
+- Use structured route logging (`lib/api/logging.ts`) for auth APIs and admin auth analytics routes.
+- Do not log raw emails, tokens, session cookies, provider payload dumps, or credential artifacts.
+- Include request correlation in auth responses/logs using `x-request-id` / `x-correlation-id` and `requestId` payload fields where implemented.
+- Audit/auth events should capture non-sensitive metadata only (event code, status, actor scope, requestId).
+

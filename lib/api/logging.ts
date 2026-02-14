@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server"
 import { resolveRequestId } from "@/lib/api/response"
 
 const SENSITIVE_KEY_PATTERN =
-  /(password|secret|token|authorization|cookie|api[-_]?key|card|cvv|expiry|payment|passcode|otp|email|auth|session|credential|private[-_]?key|access[-_]?key|refresh[-_]?token|magic[-_]?link|verification|message|content|prompt)/i
+  /(password|secret|token|authorization|cookie|api[-_]?key|card|cvv|expiry|payment|passcode|otp|email|auth|session|credential|private[-_]?key|access[-_]?key|refresh[-_]?token|magic[-_]?link|verification|message|content|prompt|payload|provider|customer)/i
 
 const TOKEN_VALUE_PATTERN = /\b(?:bearer\s+)?[a-z0-9_-]{24,}\.[a-z0-9._-]{12,}\.[a-z0-9._-]{12,}\b/i
 const EMAIL_VALUE_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i

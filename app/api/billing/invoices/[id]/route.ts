@@ -1,8 +1,20 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import { requireScopedBillingAccess } from "@/lib/billing-auth"
 import { Database } from "@/lib/database"
+import { logApiRouteError } from "@/lib/api/logging"
 
-export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
+function withRequestHeaders(requestId: string) {
+  return {
+    headers: {
+      "x-request-id": requestId,
+      "x-correlation-id": requestId,
+    },
+  }
+}
+
+export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const requestId = request.headers.get("x-request-id") ?? request.headers.get("x-correlation-id") ?? crypto.randomUUID()
+
   try {
     const access = await requireScopedBillingAccess("startup")
     if ("response" in access) return access.response
@@ -36,12 +48,12 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
     )
 
     if (!invoices[0]) {
-      return NextResponse.json({ error: "Invoice not found" }, { status: 404 })
+      return NextResponse.json({ error: "Invoice not found", requestId }, { status: 404, ...withRequestHeaders(requestId) })
     }
 
-    return NextResponse.json({ invoice: invoices[0] })
+    return NextResponse.json({ requestId, invoice: invoices[0] }, withRequestHeaders(requestId))
   } catch (error) {
-    console.error("Get invoice error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    logApiRouteError(request, "billing.invoice.get_failed", error, { errorCode: "BILLING_INVOICE_FETCH_FAILED", requestId })
+    return NextResponse.json({ error: "Internal server error", requestId }, { status: 500, ...withRequestHeaders(requestId) })
   }
 }

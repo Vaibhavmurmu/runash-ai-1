@@ -1154,3 +1154,22 @@ To improve payment reliability and compliance posture for both startup and busin
 - Added ownership-aware persistence rules for payment links and payment methods to prevent cross-tenant data access.
 - Mock auth pathways are no longer used in production runtime paths (test-only).
 
+
+
+## Reliability campaign note: payment/auth logging hardening
+
+### Impacted flows
+- Subscription read/create/update
+- Subscription cancel/reactivate
+- Invoice list/detail/download
+- Admin auth analytics/event endpoints
+
+### Behavior changes
+- Added correlation ID propagation in headers and payload metadata for billing/auth observability.
+- Replaced raw error logging with structured log events and centralized redaction safeguards.
+- Removed direct logging of sensitive identifiers (email/token/provider payload internals/payment method identifiers).
+
+### Risk and rollback
+- Risk: low (additive response metadata and logging-path changes only).
+- Rollback: revert route-level response/requestId header additions and route logger wiring; payment business logic remains unchanged.
+

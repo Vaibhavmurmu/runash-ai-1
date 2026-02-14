@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
       action: "payment.intent.created",
       resource: "payment.intent",
       request,
-      details: { amount, currency, paymentMethodId },
+      details: { amount, currency, hasPaymentMethodId: Boolean(paymentMethodId) },
     })
 
     return respondSuccess(request, intent, {

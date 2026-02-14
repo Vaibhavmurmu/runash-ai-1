@@ -37,6 +37,7 @@ function createResponseInit(status: number, requestId: string) {
     status,
     headers: {
       "x-request-id": requestId,
+      "x-correlation-id": requestId,
     },
   }
 }
