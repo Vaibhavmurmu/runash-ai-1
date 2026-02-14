@@ -253,3 +253,8 @@ Payment route error logging is standardized on `lib/api/logging.ts` with structu
 - API response fields and payment route signatures remain unchanged.
 - This update affects observability output only (sanitized internal logs).
 
+## API Auth & Ownership Enforcement (2026-02)
+- Billing and payment APIs now require canonical NextAuth server session identity (JWT/session) and no longer accept header-based placeholder identities for protected operations.
+- Payment link and payment method CRUD endpoints now enforce owner/tenant scoping (`owner_user_id` / `owner_organization_id`) before reads or writes.
+- Operator APIs require role checks for startup/business/admin scopes via `lib/rbac.ts` role constants.
+

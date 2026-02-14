@@ -1148,3 +1148,9 @@ To improve payment reliability and compliance posture for both startup and busin
 ### Risk and rollback
 - **Risk:** low to medium (access control tightening can surface previously hidden unauthorized usage patterns).
 - **Rollback:** revert route-level authz helper adoption while preserving payment contract payloads and endpoint paths.
+
+## Security hardening update (2026-02)
+- Standardized server-side route guards for billing/payment routes to use authenticated session identity and scoped RBAC checks.
+- Added ownership-aware persistence rules for payment links and payment methods to prevent cross-tenant data access.
+- Mock auth pathways are no longer used in production runtime paths (test-only).
+

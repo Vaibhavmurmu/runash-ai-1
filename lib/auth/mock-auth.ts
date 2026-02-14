@@ -201,4 +201,4 @@ class MockAuthService {
   }
 }
 
-export const mockAuth = process.env.NODE_ENV === "production" ? null : new MockAuthService()
+export const mockAuth = process.env.NODE_ENV === "test" ? new MockAuthService() : null

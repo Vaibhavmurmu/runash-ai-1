@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { Database } from "@/lib/database"
 import Stripe from "stripe"
-import { requireBillingSession, requireScopedRole } from "@/lib/billing-auth"
+import { requireScopedBillingAccess } from "@/lib/billing-auth"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -9,13 +9,9 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 })
 
 export async function POST(req: Request) {
-  const auth = await requireBillingSession()
-  if (auth.unauthorizedResponse || !auth.sessionUser) {
-    return auth.unauthorizedResponse
-  }
-
-  const roleResponse = requireScopedRole(auth.sessionUser, "business")
-  if (roleResponse) return roleResponse
+  const access = await requireScopedBillingAccess("business")
+  if ("response" in access) return access.response
+  const { sessionUser } = access
 
   try {
     const subscriptions = await Database.query(
@@ -26,7 +22,7 @@ export async function POST(req: Request) {
       ORDER BY created_at DESC
       LIMIT 1
       `,
-      [auth.sessionUser.userId],
+      [sessionUser.userId],
     )
 
     const currentSub = subscriptions[0]
@@ -53,7 +49,7 @@ export async function POST(req: Request) {
     const plans = await Database.query(`SELECT * FROM subscription_plans WHERE id = $1 LIMIT 1`, [updated[0].plan_id])
 
     await logPrivilegedAction({
-      actorUserId: auth.sessionUser.userId,
+      actorUserId: sessionUser.userId,
       action: "billing.subscription.reactivated",
       resource: "billing.subscription",
       details: { subscriptionId: currentSub.id },

@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { Database } from "@/lib/database"
 import Stripe from "stripe"
-import { getAuthorizedBillingIdentity, requireBillingSession, requireScopedRole } from "@/lib/billing-auth"
+import { getAuthorizedBillingIdentity, requireScopedBillingAccess } from "@/lib/billing-auth"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -9,13 +9,9 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 })
 
 export async function GET(req: NextRequest) {
-  const auth = await requireBillingSession()
-  if (auth.unauthorizedResponse || !auth.sessionUser) {
-    return auth.unauthorizedResponse
-  }
-
-  const roleResponse = requireScopedRole(auth.sessionUser, "startup")
-  if (roleResponse) return roleResponse
+  const access = await requireScopedBillingAccess("startup")
+  if ("response" in access) return access.response
+  const { sessionUser } = access
 
   try {
     const subscription = await Database.query(
@@ -27,7 +23,7 @@ export async function GET(req: NextRequest) {
       ORDER BY us.created_at DESC
       LIMIT 1
     `,
-      [auth.sessionUser.userId],
+      [sessionUser.userId],
     )
 
     if (!subscription[0]) {
@@ -53,13 +49,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireBillingSession()
-  if (auth.unauthorizedResponse || !auth.sessionUser) {
-    return auth.unauthorizedResponse
-  }
-
-  const roleResponse = requireScopedRole(auth.sessionUser, "startup")
-  if (roleResponse) return roleResponse
+  const access = await requireScopedBillingAccess("startup")
+  if ("response" in access) return access.response
+  const { sessionUser } = access
 
   try {
     const { plan_id, payment_method_id } = await req.json()
@@ -70,7 +62,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Plan not found" }, { status: 404 })
     }
 
-    const identity = await getAuthorizedBillingIdentity(auth.sessionUser)
+    const identity = await getAuthorizedBillingIdentity(sessionUser)
     if ("errorResponse" in identity) {
       return identity.errorResponse
     }
@@ -79,14 +71,14 @@ export async function POST(req: NextRequest) {
 
     if (!stripeCustomerId) {
       const stripeCustomer = await stripe.customers.create({
-        email: auth.sessionUser.email || undefined,
-        name: auth.sessionUser.name || undefined,
-        metadata: { user_id: auth.sessionUser.userId },
+        email: sessionUser.email || undefined,
+        name: sessionUser.name || undefined,
+        metadata: { user_id: sessionUser.userId },
       })
 
       stripeCustomerId = stripeCustomer.id
 
-      await Database.query(`UPDATE users SET stripe_customer_id = $1 WHERE id = $2`, [stripeCustomerId, auth.sessionUser.userId])
+      await Database.query(`UPDATE users SET stripe_customer_id = $1 WHERE id = $2`, [stripeCustomerId, sessionUser.userId])
     }
 
     const subscriptionData: any = {
@@ -95,7 +87,7 @@ export async function POST(req: NextRequest) {
       payment_behavior: "default_incomplete",
       payment_settings: { save_default_payment_method: "on_subscription" },
       expand: ["latest_invoice.payment_intent"],
-      metadata: { user_id: auth.sessionUser.userId, plan_id },
+      metadata: { user_id: sessionUser.userId, plan_id },
     }
 
     if (payment_method_id) {
@@ -117,7 +109,7 @@ export async function POST(req: NextRequest) {
       RETURNING *
     `,
       [
-        auth.sessionUser.userId,
+        sessionUser.userId,
         plan_id,
         stripeSubscription.id,
         stripeSubscription.status,
@@ -144,7 +136,7 @@ export async function POST(req: NextRequest) {
     }
 
     await logPrivilegedAction({
-      actorUserId: auth.sessionUser.userId,
+      actorUserId: sessionUser.userId,
       action: "billing.subscription.created",
       resource: "billing.subscription",
       request: req,
@@ -159,20 +151,16 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const auth = await requireBillingSession()
-  if (auth.unauthorizedResponse || !auth.sessionUser) {
-    return auth.unauthorizedResponse
-  }
-
-  const roleResponse = requireScopedRole(auth.sessionUser, "business")
-  if (roleResponse) return roleResponse
+  const access = await requireScopedBillingAccess("business")
+  if ("response" in access) return access.response
+  const { sessionUser } = access
 
   try {
     const { plan_id, prorate = true } = await req.json()
 
     const currentSub = await Database.query(
       `SELECT * FROM user_subscriptions WHERE user_id = $1 AND status IN ('active', 'trialing') ORDER BY created_at DESC LIMIT 1`,
-      [auth.sessionUser.userId],
+      [sessionUser.userId],
     )
 
     if (!currentSub[0]) {
@@ -201,7 +189,7 @@ export async function PATCH(req: NextRequest) {
     )
 
     await logPrivilegedAction({
-      actorUserId: auth.sessionUser.userId,
+      actorUserId: sessionUser.userId,
       action: "billing.subscription.updated",
       resource: "billing.subscription",
       request: req,

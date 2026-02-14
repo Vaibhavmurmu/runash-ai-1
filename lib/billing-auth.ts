@@ -3,6 +3,16 @@ import { Database } from "@/lib/database"
 import { RBACManager, type OperatorScope } from "@/lib/rbac"
 import { getAuthenticatedSessionUser, isSessionAuthorizedForScope, type AuthenticatedSessionUser } from "@/lib/auth/session"
 
+export interface RouteGuardSuccess {
+  sessionUser: AuthenticatedSessionUser
+}
+
+export interface RouteGuardFailure {
+  response: NextResponse
+}
+
+export type RouteGuardResult = RouteGuardSuccess | RouteGuardFailure
+
 export async function requireBillingSession(): Promise<
   { sessionUser: AuthenticatedSessionUser; unauthorizedResponse: null } | { sessionUser: null; unauthorizedResponse: NextResponse }
 > {
@@ -20,6 +30,33 @@ export function requireScopedRole(sessionUser: AuthenticatedSessionUser, scope: 
   }
 
   return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+}
+
+export async function requireScopedBillingAccess(scope: OperatorScope): Promise<RouteGuardResult> {
+  const auth = await requireBillingSession()
+  if (auth.unauthorizedResponse || !auth.sessionUser) {
+    return { response: auth.unauthorizedResponse }
+  }
+
+  const roleResponse = requireScopedRole(auth.sessionUser, scope)
+  if (roleResponse) {
+    return { response: roleResponse }
+  }
+
+  return { sessionUser: auth.sessionUser }
+}
+
+export async function requireRoleBillingAccess(roles: string[]): Promise<RouteGuardResult> {
+  const auth = await requireBillingSession()
+  if (auth.unauthorizedResponse || !auth.sessionUser) {
+    return { response: auth.unauthorizedResponse }
+  }
+
+  if (!roles.includes(auth.sessionUser.role)) {
+    return { response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) }
+  }
+
+  return { sessionUser: auth.sessionUser }
 }
 
 export async function getAuthorizedBillingIdentity(sessionUser: AuthenticatedSessionUser) {

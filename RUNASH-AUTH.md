@@ -398,3 +398,7 @@ Traceability standard:
 - Use `requestId` / `x-request-id` for support and incident timelines.
 - Do not use user email or token-derived identifiers for request tracing.
 
+## Runtime policy update
+- Mock authentication service is test-only (`NODE_ENV === "test"`) and is not available in production runtime.
+- Protected billing/payment APIs must derive identity from server session (NextAuth), not request headers.
+

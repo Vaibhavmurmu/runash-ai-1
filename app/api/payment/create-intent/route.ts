@@ -1,19 +1,15 @@
 import { type NextRequest } from "next/server"
 import { PaymentService } from "@/lib/payment-service"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
-import { requireBillingSession, requireScopedRole } from "@/lib/billing-auth"
+import { requireScopedBillingAccess } from "@/lib/billing-auth"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 import { logApiRouteError } from "@/lib/api/logging"
 import { resolveCreateIntentIdempotencyKey } from "@/lib/payment-idempotency"
 
 export async function POST(request: NextRequest) {
-  const auth = await requireBillingSession()
-  if (auth.unauthorizedResponse || !auth.sessionUser) {
-    return auth.unauthorizedResponse
-  }
-
-  const roleResponse = requireScopedRole(auth.sessionUser, "startup")
-  if (roleResponse) return roleResponse
+  const access = await requireScopedBillingAccess("startup")
+  if ("response" in access) return access.response
+  const { sessionUser } = access
 
   try {
     const body = await request.json()
@@ -64,8 +60,8 @@ export async function POST(request: NextRequest) {
 
     const requestIdempotencyKey = resolveCreateIntentIdempotencyKey({
       providedKey: idempotencyKey || request.headers.get("x-idempotency-key") || undefined,
-      userId: auth.sessionUser.userId,
-      organizationId: auth.sessionUser.organizationId,
+      userId: sessionUser.userId,
+      organizationId: sessionUser.organizationId,
       amount,
       currency,
       paymentMethodId,
@@ -73,8 +69,8 @@ export async function POST(request: NextRequest) {
     })
     const mergedMetadata = {
       ...(metadata || {}),
-      user_id: auth.sessionUser.userId,
-      organization_id: auth.sessionUser.organizationId,
+      user_id: sessionUser.userId,
+      organization_id: sessionUser.organizationId,
     }
 
     const intent = await PaymentService.createPaymentIntent(
@@ -86,7 +82,7 @@ export async function POST(request: NextRequest) {
     )
 
     await logPrivilegedAction({
-      actorUserId: auth.sessionUser.userId,
+      actorUserId: sessionUser.userId,
       action: "payment.intent.created",
       resource: "payment.intent",
       request,

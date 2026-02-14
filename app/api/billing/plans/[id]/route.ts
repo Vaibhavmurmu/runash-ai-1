@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server"
 import { Database } from "@/lib/database"
-import { requireBillingSession } from "@/lib/billing-auth"
+import { requireScopedBillingAccess } from "@/lib/billing-auth"
 
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
-  const auth = await requireBillingSession()
-  if (auth.unauthorizedResponse) {
-    return auth.unauthorizedResponse
-  }
+  const access = await requireScopedBillingAccess("startup")
+  if ("response" in access) return access.response
 
   try {
     const { id } = await context.params

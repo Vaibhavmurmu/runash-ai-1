@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { getSql } from "@/lib/db/neon"
+import { getAuthenticatedSessionUser } from "@/lib/auth/session"
 
 export async function handleApiError(error: unknown, statusCode = 500) {
   console.error("[API Error]", error)
@@ -18,11 +19,11 @@ export async function handleApiError(error: unknown, statusCode = 500) {
 export function withAuth(handler: Function) {
   return async (request: NextRequest) => {
     try {
-      const userId = request.headers.get("x-user-id")
-      if (!userId) {
+      const sessionUser = await getAuthenticatedSessionUser()
+      if (!sessionUser) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
       }
-      return await handler(request, userId)
+      return await handler(request, sessionUser.userId)
     } catch (error) {
       return handleApiError(error)
     }
