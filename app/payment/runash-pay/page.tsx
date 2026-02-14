@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { ArrowRight, BadgeCheck, Link2, Receipt, Rocket, ShieldCheck, Wallet } from "lucide-react"
+import { ArrowRight, BadgeCheck, BarChart3, Link2, Receipt, Rocket, ShieldCheck, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -87,10 +87,10 @@ export default function RunAshPayPage() {
             </Link>
           </Button>
           <Button asChild variant="secondary" className="justify-between">
-            <Link href="/payment/dashboard">
+            <Link href="/payment/runash-pay#create-intent">
               <span className="inline-flex items-center gap-2">
                 <Receipt className="h-4 w-4" />
-                View transactions
+                Collect payment
               </span>
               <ArrowRight className="h-4 w-4" />
             </Link>
@@ -100,6 +100,15 @@ export default function RunAshPayPage() {
               <span className="inline-flex items-center gap-2">
                 <Wallet className="h-4 w-4" />
                 Manage subscription
+              </span>
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+          <Button asChild variant="outline" className="justify-between">
+            <Link href="/payment/dashboard#analytics">
+              <span className="inline-flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" />
+                View analytics
               </span>
               <ArrowRight className="h-4 w-4" />
             </Link>
