@@ -203,6 +203,7 @@ To improve contract stability for subscription and invoice workflows, RunAsh Pay
 - `GET /api/billing/plans/:id`
 - `GET /api/billing/invoices`
 - `GET /api/billing/invoices/:id`
+- `GET /api/billing/invoices/:id/download`
 - `POST /api/billing/subscription/cancel`
 - `POST /api/billing/subscription/reactivate`
 
@@ -213,6 +214,7 @@ Long-term aliases are also exposed under `/api/v1/billing/*` for the same flows.
 - Existing field names are preserved (`plan_id`, `cancel_at_period_end`, `line_items`, etc.).
 - Subscription payloads remain backward compatible while supporting a normalized envelope (`{ subscription: ... }`) for mutating actions.
 - Invoice listing returns deterministic pagination metadata (`limit`, `offset`, `total`) for reliable reconciliation.
+- Invoice download now resolves via `GET /api/billing/invoices/:id/download`, redirecting to the stored PDF/hosted URL without changing invoice field contracts.
 - No sensitive payment method or auth secrets are logged as part of this rollout.
 
 ## Auth, authorization, and auditability updates (server routes)
