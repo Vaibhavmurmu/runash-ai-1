@@ -362,6 +362,24 @@ All `/api/agents/*` routes require an authenticated NextAuth session. Unauthenti
 
 Agent feedback, actions, and session history APIs are scoped to the authenticated user context to avoid cross-tenant access.
 
+ 
+## Settings security confirmations
+
+Settings UI now requires explicit confirmation dialogs for high-risk account-security actions before mutation execution (revoke sessions, regenerate/delete API keys, disable 2FA, delete account). Dialogs show in-flight progress and inline failures so users can verify intent before irreversible auth-impacting changes.
+
+
+## Settings Security Mutation Safeguards (2026 update)
+
+The settings surface now enforces additional guardrails for account security mutations:
+
+- API key rotation returns a full key only once, at creation time; subsequent settings reads expose only a masked value and rotation timestamp.
+- API key deletion, key rotation, session revocation, and 2FA disable mutations require explicit `confirm: true` intent payloads.
+- Security settings PATCH requests accept minimal security payloads and reject invalid security mutation bodies.
+- Sensitive security form state (for example, new password values) is cleared client-side after both success and failure paths.
+- 2FA disable actions are applied both in settings state and in auth 2FA persistence.
+
+Cross-reference: `SECURITY.md`, `docs/DOC_GOVERNANCE.md`.
+
 ## Billing and payment route authentication standardization
 
 Billing and payment server routes now use a canonical NextAuth server-session identity layer (`lib/auth/session.ts`) instead of header placeholders.
@@ -410,4 +428,5 @@ Traceability standard:
 - Do not log raw emails, tokens, session cookies, provider payload dumps, or credential artifacts.
 - Include request correlation in auth responses/logs using `x-request-id` / `x-correlation-id` and `requestId` payload fields where implemented.
 - Audit/auth events should capture non-sensitive metadata only (event code, status, actor scope, requestId).
+
 

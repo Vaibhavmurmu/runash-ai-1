@@ -30,7 +30,11 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ error: "Invalid method" }, { status: 400 })
   } catch (error) {
+
+    console.error("2FA setup GET error")
+
     logApiRouteError(request, "auth.2fa.setup.get_failed", error, { errorCode: "AUTH_2FA_SETUP_GET_FAILED" })
+
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -90,7 +94,11 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Invalid method" }, { status: 400 })
     }
   } catch (error) {
+
+    console.error("2FA setup POST error")
+
     logApiRouteError(request, "auth.2fa.setup.post_failed", error, { errorCode: "AUTH_2FA_SETUP_POST_FAILED" })
+
 
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "Invalid request data" }, { status: 400 })

@@ -163,7 +163,7 @@ export class SubscriptionService {
       const response = await fetch("/api/billing/subscription", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan_id: planId, prorate }),
+        body: JSON.stringify({ plan_id: planId, prorate, confirm: true }),
       })
       if (!response.ok) throw new Error("Failed to update subscription")
       const payload = await response.json()
@@ -179,7 +179,7 @@ export class SubscriptionService {
       const response = await fetch("/api/billing/subscription/cancel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ immediately }),
+        body: JSON.stringify({ immediately, confirm: true }),
       })
       if (!response.ok) throw new Error("Failed to cancel subscription")
       const payload = await response.json()

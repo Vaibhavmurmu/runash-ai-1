@@ -143,6 +143,40 @@ RunAsh agent orchestration now treats payment/account-impacting intents as high-
 
 This preserves backward-compatible payment contracts while adding an approval gate at the orchestration layer.
 
+
+## Settings billing confirmation controls
+
+Billing-impacting settings actions now use explicit confirmation dialogs for cancel-subscription and downgrade-plan mutations. Each dialog describes financial consequences (renewal stop, feature downgrades) and requires a primary confirm action before requests are sent.
+
+
+## Billing settings contract-first rollout (Settings UI)
+
+The Settings billing experience now ships seven contract-first cards with read-only defaults before mutation paths:
+- Upgrade
+- Subscription
+- Invoice delivery
+- Billing method summary
+- Usage meters
+- Credits balance
+- Refer & earn
+
+Status badges now explicitly use: `Active`, `Trial`, `At risk`, `Past due`, and `Available credits` to reflect payment health without changing legacy payload keys (`invoiceEmail`, `autoRechargeEnabled`).
+
+Mutation-capable actions (upgrade and invoice delivery updates) are now gated behind explicit confirmation dialogs in the client before server calls are made.
+
+Server endpoint mapping for billing card actions lives under:
+`/api/settings/actions/{upgrade-plan|manage-subscription|invoice-delivery|billing-method-summary|usage-meters|credits-balance|refer-earn}`.
+
+## Settings safety confirmation requirements (2026-02)
+
+To reduce accidental destructive billing/security mutations, RunAsh now enforces an explicit confirmation contract for sensitive settings actions:
+
+- Client requests must include `{ "confirm": true }` for mutation endpoints that disable security controls, revoke access, rotate/delete API credentials, downgrade plans, or cancel subscriptions.
+- Server handlers reject requests missing the explicit confirmation flag before running any mutation.
+- UI confirmation dialogs now present consequence copy and irreversible warnings for destructive operations so users can complete or retry from the same dialog context.
+
+This preserves backward-compatible response field shapes while hardening mutation intent validation.
+
 ## Payment Surface Routes (Current)
 
 RunAsh Pay now exposes a dedicated route map for product navigation:
@@ -289,3 +323,4 @@ RunAsh Pay now introduces protocol-level orchestration records for payment execu
 - Error paths were migrated from raw `console.error` statements to structured sanitized logs for payment/billing/auth-adjacent routes.
 - Logging redaction now explicitly covers provider/payload/customer key patterns in addition to token/email/payment key detection.
 - No payment contract fields were removed; response additions are backward-compatible metadata for auditability.
+
