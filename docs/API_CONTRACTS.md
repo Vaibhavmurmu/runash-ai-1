@@ -144,6 +144,117 @@ Sensitive payload fields in auth/payment/chat context are redacted before loggin
 
 ## Agent APIs (`/api/agents/*`)
 
+### Payment Protocol Orchestration (`v1`)
+
+`POST /api/v1/protocol/orchestrate`
+
+Request payload (`application/json`):
+
+```json
+{
+  "protocolVersion": "v1",
+  "intentId": "pi_123",
+  "actionType": "payment.capture",
+  "actionPayload": {
+    "amount": 999,
+    "currency": "USD"
+  },
+  "requestedBy": "user_456",
+  "userConfirmed": true,
+  "verifierSet": ["risk-engine", "policy-engine"],
+  "approvals": ["risk-engine", "policy-engine"]
+}
+```
+
+Success response (`decision=approved`):
+
+```json
+{
+  "success": true,
+  "data": {
+    "decision": "approved",
+    "intentLock": {
+      "protocolVersion": "v1",
+      "intentId": "pi_123",
+      "lockId": "lock_001",
+      "actionType": "payment.capture",
+      "riskLevel": "high",
+      "requiredConfirmations": 1,
+      "metadata": {
+        "requestedBy": "user_456"
+      },
+      "createdAt": "2026-02-14T04:20:00.000Z"
+    },
+    "consensusVerification": {
+      "protocolVersion": "v1",
+      "intentId": "pi_123",
+      "lockId": "lock_001",
+      "verifierSet": ["risk-engine", "policy-engine"],
+      "approvals": ["risk-engine", "policy-engine"],
+      "deterministicChecks": [
+        {
+          "checkId": "policy.no_prompt_injection",
+          "passed": true
+        }
+      ],
+      "verifiedAt": "2026-02-14T04:20:00.030Z"
+    },
+    "release": {
+      "protocolVersion": "v1",
+      "intentId": "pi_123",
+      "lockId": "lock_001",
+      "releasedBy": "user_456",
+      "releaseDecision": "approved",
+      "releaseReason": "All deterministic policy checks passed.",
+      "releasedAt": "2026-02-14T04:20:00.050Z"
+    }
+  },
+  "error": null,
+  "requestId": "req_abc"
+}
+```
+
+Blocked response (`decision=blocked`):
+
+```json
+{
+  "success": false,
+  "data": {
+    "decision": "blocked"
+  },
+  "error": {
+    "code": "POLICY_CHECK_FAILED",
+    "message": "Deterministic policy checks failed. Release is blocked.",
+    "details": {
+      "failedChecks": [
+        {
+          "checkId": "policy.min_consensus",
+          "passed": false,
+          "reason": "consensus approvals are invalid"
+        }
+      ]
+    }
+  },
+  "requestId": "req_abc"
+}
+```
+
+Confirmation-required response (`decision=requires_confirmation`):
+
+```json
+{
+  "success": false,
+  "data": {
+    "decision": "requires_confirmation"
+  },
+  "error": {
+    "code": "USER_CONFIRMATION_REQUIRED",
+    "message": "Explicit user confirmation is required for high-risk payment actions."
+  },
+  "requestId": "req_abc"
+}
+```
+
 ### `POST /api/agents/chat`
 - Auth required (NextAuth session).
 - Streams SSE events with event names:
