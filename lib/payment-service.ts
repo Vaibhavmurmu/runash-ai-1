@@ -1,3 +1,25 @@
+import {
+  createPaymentIntentRecord,
+  getPaymentIntentByCreateIdempotencyKey,
+  getPaymentIntentById,
+  type PaymentIntentStatus,
+  updatePaymentIntentStatus,
+} from "@/lib/repositories/payment-intents"
+import {
+  createPaymentRefundRecord,
+  listRefundsByTransactionId,
+} from "@/lib/repositories/payment-refunds"
+import {
+  createPaymentTransactionRecord,
+  getPaymentTransactionByConfirmIdempotencyKey,
+  getPaymentTransactionById,
+  getPaymentTransactionByIntentId,
+  getPaymentTransactionMonthlyTrends,
+  listRecentPaymentTransactions,
+  updatePaymentTransaction,
+} from "@/lib/repositories/payment-transactions"
+import { getProviderAdapter } from "@/lib/services/payment-provider-gateway"
+
 export interface PaymentMethod {
   id: string
   name: string
@@ -58,6 +80,76 @@ export interface PaymentAnalytics {
   recentTransactions: PaymentTransaction[]
 }
 
+function createEntityId(prefix: string) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+}
+
+function intentStatusFromTransactionStatus(status: PaymentTransaction["status"]): PaymentIntentStatus {
+  if (status === "completed" || status === "refunded") return "succeeded"
+  if (status === "failed") return "failed"
+  return "processing"
+}
+
+function toPublicIntent(record: {
+  id: string
+  amount: number
+  currency: string
+  status: PaymentIntentStatus
+  paymentMethodId: string
+  metadata: Record<string, unknown>
+  createdAt: Date
+  updatedAt: Date
+}): PaymentIntent {
+  return {
+    id: record.id,
+    amount: record.amount,
+    currency: record.currency,
+    status: record.status,
+    paymentMethod: record.paymentMethodId,
+    metadata: record.metadata,
+    createdAt: new Date(record.createdAt),
+    updatedAt: new Date(record.updatedAt),
+  }
+}
+
+function toPublicTransaction(record: {
+  id: string
+  intentId: string
+  amount: number
+  currency: string
+  status: PaymentTransaction["status"]
+  paymentMethod: string
+  provider: string
+  providerTransactionId: string | null
+  processingFee: number
+  netAmount: number
+  failureReason: string | null
+  refundAmount: number | null
+  refundReason: string | null
+  metadata: Record<string, unknown>
+  createdAt: Date
+  updatedAt: Date
+}): PaymentTransaction {
+  return {
+    id: record.id,
+    intentId: record.intentId,
+    amount: record.amount,
+    currency: record.currency,
+    status: record.status,
+    paymentMethod: record.paymentMethod,
+    provider: record.provider,
+    providerTransactionId: record.providerTransactionId ?? undefined,
+    processingFee: record.processingFee,
+    netAmount: record.netAmount,
+    failureReason: record.failureReason ?? undefined,
+    refundAmount: record.refundAmount ?? undefined,
+    refundReason: record.refundReason ?? undefined,
+    metadata: record.metadata,
+    createdAt: new Date(record.createdAt),
+    updatedAt: new Date(record.updatedAt),
+  }
+}
+
 export class PaymentService {
   private static paymentMethods: PaymentMethod[] = [
     {
@@ -100,7 +192,7 @@ export class PaymentService {
       provider: "paytm",
       icon: "💰",
       enabled: true,
-      processingFee: 1.0,
+      processingFee: 1,
       description: "Pay with Paytm balance",
       supportedCurrencies: ["INR"],
     },
@@ -144,13 +236,11 @@ export class PaymentService {
       provider: "simpl",
       icon: "⏰",
       enabled: true,
-      processingFee: 2.0,
+      processingFee: 2,
       description: "3 installments, no interest",
       supportedCurrencies: ["INR"],
     },
   ]
-
-  private static transactions: PaymentTransaction[] = []
 
   static async getPaymentMethods(currency = "INR"): Promise<PaymentMethod[]> {
     return this.paymentMethods.filter((method) => method.enabled && method.supportedCurrencies.includes(currency))
@@ -161,58 +251,106 @@ export class PaymentService {
     currency: string,
     paymentMethodId: string,
     metadata: Record<string, any> = {},
+    idempotencyKey?: string,
   ): Promise<PaymentIntent> {
-    const intent: PaymentIntent = {
-      id: `pi_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      amount,
-      currency,
-      status: "pending",
-      paymentMethod: paymentMethodId,
-      metadata,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }
+    const paymentMethod = this.paymentMethods.find((method) => method.id === paymentMethodId)
+    if (!paymentMethod) throw new Error("Payment method not found")
 
-    return intent
-  }
+    const createKey = idempotencyKey ?? `create:${paymentMethodId}:${currency}:${amount}:${JSON.stringify(metadata)}`
+    const existing = await getPaymentIntentByCreateIdempotencyKey(createKey)
+    if (existing) return toPublicIntent(existing)
 
-  static async processPayment(intentId: string): Promise<PaymentTransaction> {
-    // Simulate payment processing
-    const paymentMethod = this.paymentMethods.find((m) => m.id === intentId.split("_")[2])
-    const amount = Math.floor(Math.random() * 10000) + 100 // Random amount for demo
-    const processingFee = paymentMethod ? (amount * paymentMethod.processingFee) / 100 : 0
-    const netAmount = amount - processingFee
-
-    // Simulate success/failure (90% success rate)
-    const isSuccess = Math.random() > 0.1
-
-    const transaction: PaymentTransaction = {
-      id: `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    const intentId = createEntityId("pi")
+    const providerAdapter = getProviderAdapter(paymentMethod.provider)
+    const providerIntent = await providerAdapter.createIntent({
       intentId,
       amount,
-      currency: "INR",
-      status: isSuccess ? "completed" : "failed",
-      paymentMethod: paymentMethod?.name || "Unknown",
-      provider: paymentMethod?.provider || "unknown",
-      providerTransactionId: `${paymentMethod?.provider}_${Date.now()}`,
-      processingFee,
-      netAmount: isSuccess ? netAmount : 0,
-      failureReason: isSuccess ? undefined : "Insufficient funds",
-      metadata: {},
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      currency,
+      paymentMethod,
+      metadata,
+    })
+
+    const persisted = await createPaymentIntentRecord({
+      id: intentId,
+      amount,
+      currency,
+      paymentMethodId,
+      provider: paymentMethod.provider,
+      providerIntentId: providerIntent.providerIntentId,
+      createIdempotencyKey: createKey,
+      metadata,
+      providerEvents: [providerIntent.event],
+    })
+
+    return toPublicIntent(persisted)
+  }
+
+  static async processPayment(intentId: string, idempotencyKey?: string): Promise<PaymentTransaction> {
+    const persistedIntent = await getPaymentIntentById(intentId)
+    if (!persistedIntent) {
+      throw new Error("Payment intent not found")
     }
 
-    this.transactions.push(transaction)
-    return transaction
+    const paymentMethod = this.paymentMethods.find((method) => method.id === persistedIntent.paymentMethodId)
+    if (!paymentMethod) {
+      throw new Error("Payment method not found")
+    }
+
+    const confirmKey = idempotencyKey ?? `confirm:${intentId}`
+    const existingByKey = await getPaymentTransactionByConfirmIdempotencyKey(confirmKey)
+    if (existingByKey) return toPublicTransaction(existingByKey)
+
+    const existingByIntent = await getPaymentTransactionByIntentId(intentId)
+    if (existingByIntent) return toPublicTransaction(existingByIntent)
+
+    await updatePaymentIntentStatus({ id: intentId, status: "processing" })
+
+    const processingFee = (persistedIntent.amount * paymentMethod.processingFee) / 100
+    const providerAdapter = getProviderAdapter(paymentMethod.provider)
+    const providerResult = await providerAdapter.confirmPayment({
+      intentId,
+      providerIntentId: persistedIntent.providerIntentId ?? `${paymentMethod.provider}_pi_${intentId}`,
+      amount: persistedIntent.amount,
+      currency: persistedIntent.currency,
+      paymentMethod,
+      metadata: persistedIntent.metadata,
+    })
+
+    const status = providerResult.status
+    const transaction = await createPaymentTransactionRecord({
+      id: createEntityId("txn"),
+      intentId,
+      amount: persistedIntent.amount,
+      currency: persistedIntent.currency,
+      status,
+      paymentMethod: paymentMethod.name,
+      provider: paymentMethod.provider,
+      providerTransactionId: providerResult.providerTransactionId,
+      providerStatus: providerResult.providerStatus,
+      processingFee,
+      netAmount: status === "completed" ? persistedIntent.amount - processingFee : 0,
+      failureReason: providerResult.failureReason,
+      confirmIdempotencyKey: confirmKey,
+      metadata: persistedIntent.metadata,
+      providerEvents: [providerResult.event],
+    })
+
+    await updatePaymentIntentStatus({
+      id: intentId,
+      status: intentStatusFromTransactionStatus(status),
+      providerEvent: providerResult.event,
+    })
+
+    return toPublicTransaction(transaction)
   }
 
   static async getTransaction(transactionId: string): Promise<PaymentTransaction | null> {
-    return this.transactions.find((t) => t.id === transactionId) || null
+    const record = await getPaymentTransactionById(transactionId)
+    return record ? toPublicTransaction(record) : null
   }
 
   static async refundTransaction(transactionId: string, amount: number, reason: string): Promise<PaymentTransaction> {
-    const transaction = this.transactions.find((t) => t.id === transactionId)
+    const transaction = await getPaymentTransactionById(transactionId)
     if (!transaction) {
       throw new Error("Transaction not found")
     }
@@ -221,25 +359,52 @@ export class PaymentService {
       throw new Error("Cannot refund non-completed transaction")
     }
 
-    transaction.status = "refunded"
-    transaction.refundAmount = amount
-    transaction.refundReason = reason
-    transaction.updatedAt = new Date()
+    await createPaymentRefundRecord({
+      id: createEntityId("rfnd"),
+      transactionId,
+      amount,
+      reason,
+      status: "succeeded",
+      metadata: { provider: transaction.provider },
+    })
 
-    return transaction
+    const updated = await updatePaymentTransaction({
+      id: transactionId,
+      status: "refunded",
+      providerStatus: "refunded",
+      refundAmount: amount,
+      refundReason: reason,
+      providerEvent: {
+        provider: transaction.provider,
+        type: "refund.succeeded",
+        amount,
+      },
+    })
+
+    if (!updated) {
+      throw new Error("Failed to update refunded transaction")
+    }
+
+    await updatePaymentIntentStatus({
+      id: updated.intentId,
+      status: "succeeded",
+      providerEvent: { provider: updated.provider, type: "intent.refunded", amount },
+    })
+
+    return toPublicTransaction(updated)
   }
 
   static async getAnalytics(): Promise<PaymentAnalytics> {
-    const completedTransactions = this.transactions.filter((t) => t.status === "completed")
-    const totalRevenue = completedTransactions.reduce((sum, t) => sum + t.netAmount, 0)
-    const totalTransactions = this.transactions.length
+    const transactions = await listRecentPaymentTransactions(250)
+    const completedTransactions = transactions.filter((transaction) => transaction.status === "completed")
+    const totalRevenue = completedTransactions.reduce((sum, transaction) => sum + transaction.netAmount, 0)
+    const totalTransactions = transactions.length
     const successRate = totalTransactions > 0 ? (completedTransactions.length / totalTransactions) * 100 : 0
     const averageTransactionValue = completedTransactions.length > 0 ? totalRevenue / completedTransactions.length : 0
 
-    // Calculate top payment methods
     const methodCounts = completedTransactions.reduce(
-      (acc, t) => {
-        acc[t.paymentMethod] = (acc[t.paymentMethod] || 0) + 1
+      (acc, transaction) => {
+        acc[transaction.paymentMethod] = (acc[transaction.paymentMethod] || 0) + 1
         return acc
       },
       {} as Record<string, number>,
@@ -249,27 +414,12 @@ export class PaymentService {
       .map(([method, count]) => ({
         method,
         count,
-        percentage: (count / completedTransactions.length) * 100,
+        percentage: completedTransactions.length > 0 ? (count / completedTransactions.length) * 100 : 0,
       }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5)
 
-    // Generate monthly trends (last 6 months)
-    const monthlyTrends = Array.from({ length: 6 }, (_, i) => {
-      const date = new Date()
-      date.setMonth(date.getMonth() - i)
-      const monthName = date.toLocaleDateString("en-US", { month: "short", year: "numeric" })
-
-      // Simulate monthly data
-      const monthlyTransactions = Math.floor(Math.random() * 100) + 50
-      const monthlyRevenue = monthlyTransactions * (Math.random() * 1000 + 500)
-
-      return {
-        month: monthName,
-        revenue: monthlyRevenue,
-        transactions: monthlyTransactions,
-      }
-    }).reverse()
+    const monthlyTrends = await getPaymentTransactionMonthlyTrends(6)
 
     return {
       totalRevenue,
@@ -278,17 +428,21 @@ export class PaymentService {
       averageTransactionValue,
       topPaymentMethods,
       monthlyTrends,
-      recentTransactions: this.transactions.slice(-10).reverse(),
+      recentTransactions: transactions.slice(0, 10).map(toPublicTransaction),
     }
   }
 
   static calculateProcessingFee(amount: number, paymentMethodId: string): number {
-    const method = this.paymentMethods.find((m) => m.id === paymentMethodId)
+    const method = this.paymentMethods.find((method) => method.id === paymentMethodId)
     return method ? (amount * method.processingFee) / 100 : 0
   }
 
   static async validatePaymentMethod(paymentMethodId: string, currency: string): Promise<boolean> {
-    const method = this.paymentMethods.find((m) => m.id === paymentMethodId)
+    const method = this.paymentMethods.find((item) => item.id === paymentMethodId)
     return method ? method.enabled && method.supportedCurrencies.includes(currency) : false
+  }
+
+  static async getRefundsForTransaction(transactionId: string) {
+    return listRefundsByTransactionId(transactionId)
   }
 }

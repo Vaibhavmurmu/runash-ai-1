@@ -1091,3 +1091,24 @@ The feature matrix is now represented by concrete App Router pages:
 
 - **Risk level:** low (route and navigation additions only; no payment contract changes).
 - **Rollback:** revert new payment route pages and link additions in dashboard/ecommerce surfaces; legacy routes continue to function.
+
+---
+
+## Implementation Update: Auditable Intent + Transaction Persistence
+
+To improve payment reliability for startup and business segments, backend payment execution now uses persistent repositories and idempotent operations.
+
+### Backend updates
+- Introduced DB-backed repositories for:
+  - payment intents,
+  - payment transactions,
+  - refunds,
+  - payment links.
+- Added provider gateway boundary for payment providers (Stripe/Razorpay-compatible adapters).
+- Stored provider identifiers and provider event records for each intent/transaction lifecycle.
+- Enforced idempotency uniqueness for create/confirm via unique key constraints.
+
+### Risk and rollback
+- **Risk level:** Medium (new persistence tables + provider-driven status transitions).
+- **Backward compatibility:** Existing API response fields and route shapes preserved.
+- **Rollback plan:** Route traffic can be reverted to legacy in-memory processing by restoring previous `lib/payment-service.ts` implementation while leaving new tables unused.
