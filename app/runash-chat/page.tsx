@@ -1,40 +1,51 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import Hero from "@/components/home/hero"
-import ProductCarousel from "@/components/home/products-carousel"
-import AgentCard from "@/components/home/agent-card"
-import CTASection from "@/components/home/cta-section"
-import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { signOut, useSession } from "next-auth/react"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Bot, CreditCard, Leaf, PackageSearch, ShieldCheck, ShoppingCart, Sparkles } from "lucide-react"
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  ArrowRight,
+  Bot,
+  Bell,
+  ChevronsLeft,
+  ChevronsRight,
+  CreditCard,
+  FolderKanban,
+  Home,
+  LayoutTemplate,
+  Library,
+  Menu,
+  MessageSquare,
+  MoreVertical,
+  PackageSearch,
+  PanelsTopLeft,
+  LifeBuoy,
+  LogOut,
+  Plus,
+  Rocket,
+  Search,
+  Settings,
+  ShieldCheck,
+  ShoppingCart,
+  Sparkles,
+  User,
+  X,
+} from "lucide-react"
 
 type ChatPreviewMessage = {
   id: string | number
   role: "assistant" | "user"
   content: string
   created_at?: string
-  message_type?: "text" | "product" | "recipe" | "tip" | "automation"
-}
-
-type ChatProduct = {
-  id: string
-  name: string
-  price: number
-  image: string
-  sustainability_score: number
-}
-
-type LiveAgent = {
-  id: string
-  name: string
-  tagline: string
-  avatar: string
-  online: boolean
 }
 
 type ChatQuickPrompt = {
@@ -45,15 +56,227 @@ type ChatQuickPrompt = {
   icon: React.ComponentType<{ className?: string }>
 }
 
+type RecentItem = {
+  id: string
+  title: string
+}
+
+type OnboardingSlide = {
+  title: string
+  description: string
+  image?: string
+  cta: string
+}
+
+const runashChatOnboardingStorageKey = "runash_chat_onboarding_seen"
+
+const onboardingSlides: OnboardingSlide[] = [
+  {
+    title: "Welcome to RunAsh Chat",
+    description: "Plan campaigns, build bundles, and launch storefront workflows from one assistant workspace.",
+    image: "✨",
+    cta: "Next",
+  },
+  {
+    title: "Use guided prompts",
+    description: "Start with quick actions for checkout, bundles, and post-purchase support to move faster.",
+    image: "🧭",
+    cta: "Next",
+  },
+  {
+    title: "Stay in control",
+    description: "Track recents, jump back into sessions, and use the sidebar to keep launches organized.",
+    cta: "Get started",
+  },
+]
+
+type HeaderAction = {
+  id: "upgrade" | "feedback" | "refer"
+  label: string
+  tooltip: string
+  icon: React.ComponentType<{ className?: string }>
+  href?: string
+  onClick?: () => void
+}
+
+type PlaceholderCollectionItem = {
+  id: string
+  title: string
+  subtitle: string
+}
+
+type PlaceholderCollectionSectionProps = {
+  title: string
+  actionLabel?: string
+  items: PlaceholderCollectionItem[]
+}
+
+function PlaceholderCollectionSection({ title, actionLabel = "View all", items }: PlaceholderCollectionSectionProps) {
+  return (
+    <Card className="border-zinc-800 bg-zinc-950 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-medium text-zinc-100">{title}</h2>
+        <button type="button" className="text-xs text-zinc-500 transition hover:text-zinc-300">
+          {actionLabel}
+        </button>
+      </div>
+
+      <ul className="space-y-2" aria-label={`${title} placeholder list`}>
+        {items.map((item) => (
+          <li key={item.id} className="rounded-md border border-zinc-800 bg-zinc-900/70 p-3">
+            <div className="mb-2 h-3 w-2/3 animate-pulse rounded bg-zinc-700/70" />
+            <div className="mb-2 h-2.5 w-1/2 animate-pulse rounded bg-zinc-800/80" />
+            <div className="h-2 w-full animate-pulse rounded bg-zinc-800/60" />
+
+            <div className="mt-2 space-y-0.5">
+              <p className="text-xs font-medium text-zinc-300">{item.title}</p>
+              <p className="text-[11px] text-zinc-500">{item.subtitle}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  )
+}
+
+const sidebarNavItems = [
+  { label: "Home", icon: Home },
+  { label: "Library", icon: Library },
+  { label: "Projects", icon: FolderKanban },
+  { label: "Design Systems", icon: PanelsTopLeft },
+  { label: "Templates", icon: LayoutTemplate },
+]
+
 export default function RunashChatPage() {
+  const updatesBannerHiddenKey = "runash_updates_banner_hidden"
   const router = useRouter()
+  const { data: session } = useSession()
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [messagesPreview, setMessagesPreview] = useState<ChatPreviewMessage[]>([])
   const [loadingSession, setLoadingSession] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
+  const [recentItems, setRecentItems] = useState<RecentItem[]>([])
+  const [loadingRecents, setLoadingRecents] = useState(false)
+  const [recentItemsError, setRecentItemsError] = useState<string | null>(null)
   const [prompt, setPrompt] = useState("")
-  const [products, setProducts] = useState<ChatProduct[]>([])
-  const [agents, setAgents] = useState<LiveAgent[]>([])
+  const [startChatError, setStartChatError] = useState<string | null>(null)
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
+  const [mobileSearchValue, setMobileSearchValue] = useState("")
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
+  const [showUpdatesBanner, setShowUpdatesBanner] = useState(false)
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
+  const [activeOnboardingStep, setActiveOnboardingStep] = useState(0)
+  const mobileSidebarTriggerRef = useRef<HTMLButtonElement | null>(null)
+
+  const isLastOnboardingStep = activeOnboardingStep === onboardingSlides.length - 1
+  const currentOnboardingSlide = onboardingSlides[activeOnboardingStep]
+
+  const headerActions: HeaderAction[] = [
+    {
+      id: "upgrade",
+      label: "Upgrade",
+      tooltip: "View upgrade plans",
+      icon: Rocket,
+      href: "/pricing",
+    },
+    {
+      id: "feedback",
+      label: "Feedback",
+      tooltip: "Share product feedback",
+      icon: MessageSquare,
+      onClick: () => router.push("/contact?topic=feedback&entry=runash-chat"),
+    },
+    {
+      id: "refer",
+      label: "Refer",
+      tooltip: "Refer a friend or team",
+      icon: Sparkles,
+      onClick: () => router.push("/partners?program=referral"),
+    },
+  ]
+
+  const primaryMobileHeaderActions = headerActions.slice(0, 2)
+  const overflowMobileHeaderActions = headerActions.slice(2)
+
+  const userDisplayName = session?.user?.name?.trim() || "Guest User"
+  const userEmail = session?.user?.email?.trim() || ""
+  const userInitials = userDisplayName
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((namePart) => namePart[0]?.toUpperCase())
+    .join("") || "GU"
+
+  const userMenuItems = [
+    { label: "Profile", icon: User, action: () => router.push("/ecommerce/profile") },
+    { label: "Settings", icon: Settings, action: () => router.push("/settings") },
+    { label: "Billing", icon: CreditCard, action: () => router.push("/payment/subscription") },
+    { label: "Help", icon: LifeBuoy, action: () => router.push("/support") },
+  ]
+
+  const handleHeaderActionClick = (action: HeaderAction) => {
+    if (action.href) {
+      router.push(action.href)
+      return
+    }
+    action.onClick?.()
+  }
+
+  useEffect(() => {
+    const savedValue = localStorage.getItem("runash_sidebar_collapsed")
+    setIsSidebarCollapsed(savedValue === "true")
+
+    const isBannerHidden = localStorage.getItem(updatesBannerHiddenKey) === "true"
+    setShowUpdatesBanner(!isBannerHidden)
+
+    const hasSeenOnboarding = localStorage.getItem(runashChatOnboardingStorageKey) === "true"
+    setIsOnboardingOpen(!hasSeenOnboarding)
+  }, [])
+
+  const markOnboardingSeen = () => {
+    localStorage.setItem(runashChatOnboardingStorageKey, "true")
+  }
+
+  const handleOnboardingOpenChange = (open: boolean) => {
+    setIsOnboardingOpen(open)
+    if (!open) {
+      markOnboardingSeen()
+    }
+  }
+
+  const handleOnboardingNext = () => {
+    if (isLastOnboardingStep) {
+      markOnboardingSeen()
+      setIsOnboardingOpen(false)
+      return
+    }
+
+    setActiveOnboardingStep((previousStep) => Math.min(previousStep + 1, onboardingSlides.length - 1))
+  }
+
+  useEffect(() => {
+    localStorage.setItem("runash_sidebar_collapsed", String(isSidebarCollapsed))
+  }, [isSidebarCollapsed])
+
+  useEffect(() => {
+    if (!isOnboardingOpen) return
+
+    setIsMobileSidebarOpen(false)
+    setIsMobileSearchOpen(false)
+  }, [isOnboardingOpen])
+
+  useEffect(() => {
+    if (!startChatError) return
+
+    const timeoutId = window.setTimeout(() => {
+      setStartChatError(null)
+    }, 3500)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [startChatError])
 
   const quickPrompts: ChatQuickPrompt[] = [
     {
@@ -80,10 +303,39 @@ export default function RunashChatPage() {
   ]
 
   useEffect(() => {
-    // load recent session and preview messages
-    (async () => {
+    ;(async () => {
+      setLoadingRecents(true)
+      setRecentItemsError(null)
       setLoadingSession(true)
       setPreviewError(null)
+      try {
+        const sessionsResponse = await fetch("/api/sessions")
+        const sessionsPayload = await sessionsResponse.json().catch(() => null)
+
+        if (!sessionsResponse.ok || !sessionsPayload?.success || !Array.isArray(sessionsPayload?.data)) {
+          throw new Error(sessionsPayload?.error?.message || "Unable to load recent chats")
+        }
+
+        const normalizedRecentItems = sessionsPayload.data
+          .map((session: { id?: string | number; title?: string }) => {
+            const id = session?.id != null ? String(session.id) : ""
+            const title = typeof session?.title === "string" ? session.title.trim() : ""
+            if (!id) return null
+            return {
+              id,
+              title: title || `Session #${id}`,
+            }
+          })
+          .filter((item: RecentItem | null): item is RecentItem => item !== null)
+
+        setRecentItems(normalizedRecentItems.slice(0, 8))
+      } catch (error) {
+        setRecentItemsError(error instanceof Error ? error.message : "Unable to load recent chats")
+        setRecentItems([])
+      } finally {
+        setLoadingRecents(false)
+      }
+
       try {
         const res = await fetch("/api/sessions/recent")
         const payload = await res.json()
@@ -94,17 +346,15 @@ export default function RunashChatPage() {
         const recentSession = payload.data
         setSessionId(String(recentSession.id))
 
-        if (recentSession?.id) {
-          const msgs = await fetch(`/api/messages/session/${recentSession.id}?limit=4`)
-          if (msgs.ok) {
-            const messagePayload = await msgs.json()
-            const preview = Array.isArray(messagePayload?.data) ? (messagePayload.data as ChatPreviewMessage[]) : []
-            setMessagesPreview(preview)
-          } else {
-            const messagePayload = await msgs.json().catch(() => null)
-            setPreviewError(messagePayload?.error?.message || "Unable to load message preview")
-          }
+        const msgs = await fetch(`/api/messages/session/${recentSession.id}?limit=6`)
+        if (!msgs.ok) {
+          const messagePayload = await msgs.json().catch(() => null)
+          throw new Error(messagePayload?.error?.message || "Unable to load message preview")
         }
+
+        const messagePayload = await msgs.json()
+        const preview = Array.isArray(messagePayload?.data) ? (messagePayload.data as ChatPreviewMessage[]) : []
+        setMessagesPreview(preview)
       } catch (error) {
         setPreviewError(error instanceof Error ? error.message : "Unable to load chat preview")
         setMessagesPreview([])
@@ -112,210 +362,567 @@ export default function RunashChatPage() {
         setLoadingSession(false)
       }
     })()
-
-    // load sample products for carousel (fallback if no API)
-    ;(async () => {
-      try {
-        const res = await fetch("/api/products?limit=8")
-        if (!res.ok) throw new Error("no products")
-        const data = await res.json()
-        setProducts(Array.isArray(data) ? data : [])
-      } catch {
-        // fallback sample
-        setProducts([
-          {
-            id: "p-1",
-            name: "Organic Quinoa",
-            price: 12.99,
-            image: "/placeholder.svg?height=160&width=240",
-            sustainability_score: 9,
-          },
-          {
-            id: "p-2",
-            name: "Organic Avocado (2pcs)",
-            price: 8.99,
-            image: "/placeholder.svg?height=160&width=240",
-            sustainability_score: 8,
-          },
-          {
-            id: "p-3",
-            name: "Reusable Produce Bags (5-pack)",
-            price: 6.5,
-            image: "/placeholder.svg?height=160&width=240",
-            sustainability_score: 10,
-          },
-        ])
-      }
-    })()
-
-    // load sample agents (could come from /api/agents)
-    setAgents([
-      { id: "a1", name: "Runa — Live Commerce Host", tagline: "Product discovery, live demos & upsells", avatar: "/placeholder.svg?height=96&width=96", online: true },
-      { id: "a2", name: "Ash — Sustainability Expert", tagline: "Recipes, sourcing & carbon tips", avatar: "/placeholder.svg?height=96&width=96", online: false },
-      { id: "a3", name: "Murmur — Retail Ops", tagline: "Inventory, pricing & automation", avatar: "/placeholder.svg?height=96&width=96", online: true },
-    ])
   }, [])
 
   function startChatWithPrompt(initialPrompt?: string) {
-    // ensure there's a session and navigate into chat with the session id
-    (async () => {
+    ;(async () => {
+      const cleanPrompt = initialPrompt?.trim()
       try {
         let sid = sessionId
         if (!sid) {
-          const res = await fetch("/api/sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "Live Agent" }) })
+          const res = await fetch("/api/sessions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title: "RunAsh Chat" }),
+          })
           const created = await res.json()
           sid = created?.id ? String(created.id) : null
           setSessionId(sid ?? null)
         }
 
-        if (initialPrompt) {
-          // store in localStorage so chat page picks it up and sends immediately
-          const cleanPrompt = initialPrompt.trim()
-          if (cleanPrompt) {
-            localStorage.setItem("runash_initial_prompt", cleanPrompt)
-          }
+        if (cleanPrompt) {
+          localStorage.setItem("runash_initial_prompt", cleanPrompt)
         }
 
-        if (sid) {
-          router.push(`/chat?sessionId=${sid}`)
-        } else {
-          // fallback - open chat root
-          router.push("/chat")
-        }
-      } catch (err) {
-        console.error("Failed to start chat:", err)
+        setStartChatError(null)
+
+        router.push(sid ? `/chat?sessionId=${sid}` : "/chat")
+      } catch (error) {
+        setStartChatError("Couldn’t resume session, opening chat directly.")
+        console.warn("Failed to start chat session; using direct chat fallback", {
+          hasSessionId: Boolean(sessionId),
+          hasInitialPrompt: Boolean(cleanPrompt),
+          errorType: error instanceof Error ? error.name : "unknown",
+        })
         router.push("/chat")
       }
     })()
   }
 
-  const relativeTime = (timestamp?: string) => {
-    if (!timestamp) return "just now"
+  const mobileRecentMatches = recentItems.filter((item) => item.title.toLowerCase().includes(mobileSearchValue.trim().toLowerCase()))
 
-    const delta = Date.now() - new Date(timestamp).getTime()
-    if (Number.isNaN(delta)) return "just now"
+  const recentProjectPlaceholders: PlaceholderCollectionItem[] = [
+    { id: "proj-launch", title: "Launch planning workspace", subtitle: "Campaign strategy · Drafting assets" },
+    { id: "proj-ops", title: "Operations dashboard", subtitle: "Orders · Fulfillment checks" },
+    { id: "proj-retention", title: "Retention flow", subtitle: "Post-purchase journeys · Offers" },
+  ]
 
-    const minutes = Math.max(Math.round(delta / 60000), 0)
-    if (minutes < 1) return "now"
-    if (minutes < 60) return `${minutes}m ago`
+  const myChatPlaceholders: PlaceholderCollectionItem[] = [
+    { id: "chat-checkout", title: "Checkout support thread", subtitle: "Last active: just now" },
+    { id: "chat-bundle", title: "Bundle optimization", subtitle: "Last active: 2h ago" },
+    { id: "chat-assistant", title: "Assistant mode setup", subtitle: "Last active: yesterday" },
+  ]
 
-    const hours = Math.round(minutes / 60)
-    if (hours < 24) return `${hours}h ago`
+  const dismissUpdatesBanner = () => {
+    localStorage.setItem(updatesBannerHiddenKey, "true")
+    setShowUpdatesBanner(false)
+  }
 
-    const days = Math.round(hours / 24)
-    return `${days}d ago`
+  const handleMobileSidebarOpenChange = (open: boolean) => {
+    setIsMobileSidebarOpen(open)
+
+    if (!open) {
+      window.requestAnimationFrame(() => {
+        mobileSidebarTriggerRef.current?.focus()
+      })
+    }
+  }
+
+  function renderSidebarContent(collapsed: boolean, isMobileDrawer = false) {
+    return (
+      <>
+        <Button
+          className={`mb-3 ${collapsed ? "justify-center px-0" : "justify-start"} bg-zinc-900 hover:bg-zinc-800`}
+          onClick={() => {
+            startChatWithPrompt()
+            if (isMobileDrawer) setIsMobileSidebarOpen(false)
+          }}
+          aria-label="Start a new chat"
+        >
+          <Plus className={`h-4 w-4 ${collapsed ? "mr-0" : "mr-2"}`} />
+          {!collapsed && "New Chat"}
+        </Button>
+
+        {!collapsed && (
+          <div className="relative mb-3">
+            <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-zinc-500" />
+            <Input className="border-zinc-800 bg-zinc-950 pl-8 text-zinc-200" placeholder="Search" />
+          </div>
+        )}
+
+        <TooltipProvider delayDuration={150}>
+          <nav className="space-y-1 text-sm" aria-label="Primary">
+            {sidebarNavItems.map((item) => {
+              const Icon = item.icon
+
+              const navButton = (
+                <button
+                  key={item.label}
+                  className={`flex w-full items-center rounded-md py-2 text-left text-zinc-300 hover:bg-zinc-900 ${
+                    collapsed ? "justify-center px-0" : "gap-2 px-2"
+                  }`}
+                  aria-label={collapsed ? item.label : undefined}
+                  type="button"
+                >
+                  <Icon className="h-4 w-4" />
+                  {!collapsed && item.label}
+                </button>
+              )
+
+              if (!collapsed) {
+                return navButton
+              }
+
+              return (
+                <Tooltip key={item.label}>
+                  <TooltipTrigger asChild>{navButton}</TooltipTrigger>
+                  <TooltipContent side="right" className="border-zinc-800 bg-zinc-900 text-zinc-100">
+                    {item.label}
+                  </TooltipContent>
+                </Tooltip>
+              )
+            })}
+          </nav>
+        </TooltipProvider>
+
+        <div className="mt-5 border-t border-zinc-800 pt-4">
+          {!collapsed && <div className="mb-2 text-xs font-medium text-zinc-500">Recents</div>}
+          <div className="space-y-1">
+            {loadingRecents && <div className={`py-1.5 text-xs text-zinc-500 ${collapsed ? "text-center" : "px-2"}`}>Loading recent chats…</div>}
+            {!loadingRecents && recentItemsError && (
+              <div className={`py-1.5 text-xs text-amber-400 ${collapsed ? "text-center" : "px-2"}`}>{recentItemsError}</div>
+            )}
+            {!loadingRecents && !recentItemsError && recentItems.length === 0 && (
+              <div className={`py-1.5 text-xs text-zinc-500 ${collapsed ? "text-center" : "px-2"}`}>No recent chats yet</div>
+            )}
+            {recentItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  router.push(`/chat?sessionId=${item.id}`)
+                  if (isMobileDrawer) setIsMobileSidebarOpen(false)
+                }}
+                className={`w-full truncate rounded-md py-1.5 text-xs text-zinc-400 hover:bg-zinc-900 ${collapsed ? "px-1 text-center" : "px-2 text-left"}`}
+                title={collapsed ? item.title : undefined}
+              >
+                {collapsed ? item.title.slice(0, 1).toUpperCase() : item.title}
+              </button>
+            ))}
+          </div>
+        </div>
+      </>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-orange-50 dark:from-gray-950 dark:to-gray-900">
-      <header className="border-b bg-white/80 dark:bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-gradient-to-r from-orange-600 to-yellow-500 p-3">
-              <Bot className="h-6 w-6 text-white" />
+    <div className="min-h-screen bg-[#030405] text-zinc-100">
+      <Dialog open={isOnboardingOpen} onOpenChange={handleOnboardingOpenChange}>
+        <DialogContent className="max-w-md border-zinc-800 bg-zinc-950 p-0 text-zinc-100 motion-reduce:duration-0">
+          <div className="overflow-hidden rounded-lg">
+            <div className="h-44 bg-gradient-to-br from-cyan-500/30 via-blue-500/20 to-zinc-900 p-6">
+              <div
+                className="flex h-full items-center justify-center rounded-lg border border-white/10 bg-black/20 text-6xl transition-transform duration-300 motion-reduce:transition-none"
+                key={currentOnboardingSlide.title}
+              >
+                <span aria-hidden>{currentOnboardingSlide.image ?? "🚀"}</span>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-yellow-500 text-transparent bg-clip-text">
-                RunAsh Live Commerce
-              </h1>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Agentic shopping experiences — live demos, recommendations, and checkout assist</p>
+
+            <div className="space-y-5 p-6">
+              <DialogHeader className="space-y-2 text-left">
+                <DialogTitle>{currentOnboardingSlide.title}</DialogTitle>
+                <DialogDescription className="text-zinc-300">{currentOnboardingSlide.description}</DialogDescription>
+              </DialogHeader>
+
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2" aria-label="Onboarding progress">
+                  {onboardingSlides.map((slide, index) => (
+                    <button
+                      key={slide.title}
+                      type="button"
+                      onClick={() => setActiveOnboardingStep(index)}
+                      className={`h-2.5 w-2.5 rounded-full transition-colors duration-200 motion-reduce:transition-none ${
+                        index === activeOnboardingStep ? "bg-cyan-400" : "bg-zinc-600 hover:bg-zinc-500"
+                      }`}
+                      aria-label={`Go to onboarding step ${index + 1}`}
+                      aria-current={index === activeOnboardingStep ? "step" : undefined}
+                    />
+                  ))}
+                </div>
+
+                <Button className="bg-cyan-600 text-white hover:bg-cyan-500" onClick={handleOnboardingNext}>
+                  {currentOnboardingSlide.cta}
+                  {!isLastOnboardingStep ? <ArrowRight className="ml-1 h-4 w-4" /> : null}
+                </Button>
+              </div>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
 
-          <div className="flex items-center gap-3">
-            <Button onClick={() => startChatWithPrompt()} className="bg-gradient-to-r from-orange-600 to-yellow-500 text-white">
-              Continue Chat
-            </Button>
-            <Button variant="ghost" onClick={() => router.push("/pricing")}>
-              Upgrade
+      <div className="mx-auto flex w-full max-w-[1400px] gap-4 px-3 py-3">
+        <aside
+          id="runash-chat-sidebar"
+          className={`hidden h-[calc(100vh-24px)] shrink-0 rounded-xl border border-zinc-800 bg-black/70 p-3 lg:flex lg:flex-col ${
+            isSidebarCollapsed ? "w-[80px]" : "w-[250px]"
+          }`}
+          aria-label="Sidebar"
+        >
+          <div className={`mb-2 flex ${isSidebarCollapsed ? "justify-center" : "justify-end"}`}>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
+              onClick={() => setIsSidebarCollapsed((prev) => !prev)}
+              aria-expanded={!isSidebarCollapsed}
+              aria-controls="runash-chat-sidebar"
+              aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {isSidebarCollapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
             </Button>
           </div>
-        </div>
-      </header>
+          {renderSidebarContent(isSidebarCollapsed)}
+        </aside>
 
-      <main className="container mx-auto px-4 py-10 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <section className="lg:col-span-2 space-y-6">
-          <Hero
-            title="Turn browsers into buyers with human-like live agents"
-            subtitle="Host guided shopping sessions, demo products, recommend bundles, and convert with context-aware AI — all linked to your inventory."
-            primaryAction={() => startChatWithPrompt("Start a live commerce session: show popular organic breakfast bundles and recommend upsells")}
-            secondaryAction={() => startChatWithPrompt("Run a product demo for Organic Quinoa and show complementary items")}
-          />
+        <main className="h-[calc(100vh-24px)] flex-1 rounded-xl border border-zinc-800 bg-[#050607] p-4 sm:p-6">
+          <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
+            <div className="mb-4 space-y-3 lg:hidden">
+              <div className="grid grid-cols-[auto,1fr,auto] items-center gap-2">
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="h-10 w-10 border-zinc-700 bg-zinc-950 text-zinc-100"
+                    onClick={() => router.push("/")}
+                    aria-label="Go to home"
+                    disabled={isOnboardingOpen}
+                  >
+                    <Home className="h-4 w-4" />
+                  </Button>
 
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-3">Featured products</h3>
-            <ProductCarousel items={products} />
-          </Card>
+                  <Sheet open={isMobileSidebarOpen} onOpenChange={handleMobileSidebarOpenChange}>
+                    <SheetTrigger asChild>
+                      <Button
+                        ref={mobileSidebarTriggerRef}
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        className="h-10 w-10 border-zinc-700 bg-zinc-950 text-zinc-100"
+                        aria-expanded={isMobileSidebarOpen}
+                        aria-controls="runash-chat-mobile-sidebar"
+                        aria-label="Open navigation menu"
+                        disabled={isOnboardingOpen}
+                      >
+                        <Menu className="h-4 w-4" />
+                      </Button>
+                    </SheetTrigger>
+                    <SheetContent
+                      side="left"
+                      id="runash-chat-mobile-sidebar"
+                      className="w-[280px] border-zinc-800 bg-[#050607] p-3 text-zinc-100"
+                      onCloseAutoFocus={(event) => {
+                        event.preventDefault()
+                        mobileSidebarTriggerRef.current?.focus()
+                      }}
+                    >
+                      <SheetTitle className="sr-only">Chat navigation</SheetTitle>
+                      {renderSidebarContent(false, true)}
+                    </SheetContent>
+                  </Sheet>
+                </div>
 
-          <Card className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Live Agents</h3>
-              <div className="text-sm text-gray-500">Hosted & AI-assisted</div>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => setIsMobileSearchOpen((open) => !open)}
+                  aria-expanded={isMobileSearchOpen}
+                  aria-controls="mobile-chat-search"
+                  className="flex h-10 min-w-0 items-center justify-between rounded-full border border-zinc-700 bg-zinc-950 px-3 text-left"
+                  disabled={isOnboardingOpen}
+                >
+                  <span className="truncate text-sm font-medium text-zinc-100">RunAsh</span>
+                  <span className="ml-2 flex items-center gap-1 rounded-full bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300">
+                    <Search className="h-3.5 w-3.5" />
+                    Search
+                  </span>
+                </button>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {agents.map((a) => (
-                <AgentCard key={a.id} agent={a} onStart={() => startChatWithPrompt(`Connect me to ${a.name} for product recommendations and live demos`)} />
-              ))}
-            </div>
-          </Card>
-
-          <CTASection
-            title="Go agentic — scale live commerce"
-            bullets={[
-              "AI-powered live selling: product demos, recommendations, and checkout assistance",
-              "Seamless session continuity — switch from marketing to live support without losing context",
-              "Integrate with Neon DB inventory, OpenAI, and your payment provider",
-            ]}
-            onAction={() => router.push("/pricing")}
-          />
-        </section>
-
-        <aside className="space-y-6">
-          <Card className="p-4">
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <h4 className="font-semibold">Mini Chat Preview</h4>
-                <div className="text-xs text-gray-500">ChatGPT-style continuity for commerce and payment journeys.</div>
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    size="icon"
+                    className="h-10 w-10 bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
+                    onClick={() => startChatWithPrompt()}
+                    aria-label="Start a new chat"
+                    disabled={isOnboardingOpen}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="h-10 w-10 border-zinc-700 bg-zinc-950 text-zinc-100"
+                    onClick={() => router.push("/changelog")}
+                    aria-label="Open notifications"
+                    disabled={isOnboardingOpen}
+                  >
+                    <Bell className="h-4 w-4" />
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="h-10 w-10 border-zinc-700 bg-zinc-950 text-zinc-100"
+                        aria-label="More quick actions"
+                        disabled={isOnboardingOpen}
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56 border-zinc-800 bg-zinc-900 text-zinc-100">
+                      {headerActions.map((action) => (
+                        <DropdownMenuItem
+                          key={action.id}
+                          onClick={() => handleHeaderActionClick(action)}
+                          className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+                        >
+                          {action.label}
+                        </DropdownMenuItem>
+                      ))}
+                      {userMenuItems.map((item) => (
+                        <DropdownMenuItem
+                          key={item.label}
+                          onClick={item.action}
+                          className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+                        >
+                          {item.label}
+                        </DropdownMenuItem>
+                      ))}
+                      <DropdownMenuItem
+                        onClick={() => signOut({ callbackUrl: "/" })}
+                        className="cursor-pointer text-rose-300 focus:bg-rose-500/20 focus:text-rose-200"
+                      >
+                        Sign out
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
-              <Badge variant="secondary" className="whitespace-nowrap">
-                {sessionId ? `Session #${sessionId}` : "New session"}
-              </Badge>
-            </div>
 
-            <div className="mb-3 grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded-md border bg-orange-50 p-2 dark:bg-gray-900">
-                <div className="font-medium text-orange-700 dark:text-orange-400">Messages</div>
-                <div className="text-gray-600 dark:text-gray-400">{messagesPreview.length || 0} in preview</div>
+              <div className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-400">
+                <span>{sessionId ? `Session #${sessionId}` : "No session"}</span>
+                <span className="truncate">{userDisplayName}</span>
               </div>
-              <div className="rounded-md border bg-green-50 p-2 dark:bg-gray-900">
-                <div className="font-medium text-green-700 dark:text-green-400">Agent mode</div>
-                <div className="text-gray-600 dark:text-gray-400">Commerce + payment</div>
-              </div>
-            </div>
 
-            <ScrollArea className="max-h-64 rounded-md border p-3">
-              <div className="space-y-2">
-                {loadingSession && <div className="text-sm text-gray-500">Loading preview...</div>}
-                {!loadingSession && !previewError && messagesPreview.length === 0 && <div className="text-sm text-gray-600">No messages yet — start a session to see previews</div>}
-                {!loadingSession && previewError && <div className="text-sm text-amber-700 dark:text-amber-400">{previewError}</div>}
-                {messagesPreview.map((m) => (
-                  <div key={m.id} className={`rounded-md border p-2 text-xs ${m.role === "user" ? "bg-orange-50 dark:bg-gray-900" : "bg-white dark:bg-gray-900"}`}>
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className={`font-medium ${m.role === "assistant" ? "text-orange-700 dark:text-orange-400" : "text-gray-700 dark:text-gray-200"}`}>
-                        {m.role === "assistant" ? "RunAsh Agent" : "You"}
-                      </span>
-                      <span className="text-[11px] text-gray-500">{relativeTime(m.created_at)}</span>
+              {isMobileSearchOpen && (
+                <div id="mobile-chat-search" className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                  <label htmlFor="mobile-search-input" className="text-xs font-medium text-zinc-300">
+                    Search recent chats
+                  </label>
+                  <Input
+                    id="mobile-search-input"
+                    value={mobileSearchValue}
+                    onChange={(e) => setMobileSearchValue(e.target.value)}
+                    className="border-zinc-700 bg-zinc-900 text-zinc-200"
+                    placeholder="Search"
+                  />
+                  {mobileSearchValue.trim() && (
+                    <div className="max-h-28 space-y-1 overflow-y-auto">
+                      {mobileRecentMatches.length > 0 ? (
+                        mobileRecentMatches.slice(0, 4).map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => router.push(`/chat?sessionId=${item.id}`)}
+                            className="w-full truncate rounded-md px-2 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-900"
+                          >
+                            {item.title}
+                          </button>
+                        ))
+                      ) : (
+                        <p className="px-1 text-xs text-zinc-500">No matches found.</p>
+                      )}
                     </div>
-                    <p className="line-clamp-3 text-gray-700 dark:text-gray-300">{m.content}</p>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
+                  )}
+                </div>
+              )}
+            </div>
 
-            <div className="mt-3 space-y-2">
-              <div className="text-xs font-medium text-gray-600 dark:text-gray-300">Quick agent prompts</div>
-              <div className="grid grid-cols-1 gap-2">
+            <header className="mb-6 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="rounded-md bg-gradient-to-r from-cyan-500 to-blue-500 p-2">
+                  <Bot className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <p className="text-sm text-zinc-400">RunAsh Agent Workspace</p>
+                  <h1 className="text-xl font-semibold">What do you want to create?</h1>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="hidden items-center gap-1 md:flex">
+                  {headerActions.map((action) => {
+                    const Icon = action.icon
+
+                    return (
+                      <Button
+                        key={action.id}
+                        size="sm"
+                        variant="outline"
+                        className="border-zinc-700 bg-zinc-950 text-zinc-100"
+                        onClick={() => handleHeaderActionClick(action)}
+                        aria-label={action.label}
+                      >
+                        <Icon className="mr-2 h-4 w-4" />
+                        {action.label}
+                      </Button>
+                    )
+                  })}
+                </div>
+
+                <TooltipProvider delayDuration={150}>
+                  <div className="flex items-center gap-1 md:hidden">
+                    {primaryMobileHeaderActions.map((action) => {
+                      const Icon = action.icon
+                      return (
+                        <Tooltip key={action.id}>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="h-8 w-8 border-zinc-700 bg-zinc-950 text-zinc-100"
+                              onClick={() => handleHeaderActionClick(action)}
+                              aria-label={action.label}
+                            >
+                              <Icon className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent className="border-zinc-800 bg-zinc-900 text-zinc-100">{action.tooltip}</TooltipContent>
+                        </Tooltip>
+                      )
+                    })}
+
+                    {overflowMobileHeaderActions.length > 0 && (
+                      <DropdownMenu>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                className="h-8 w-8 border-zinc-700 bg-zinc-950 text-zinc-100"
+                                aria-label="More actions"
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                          </TooltipTrigger>
+                          <TooltipContent className="border-zinc-800 bg-zinc-900 text-zinc-100">More actions</TooltipContent>
+                        </Tooltip>
+                        <DropdownMenuContent align="end" className="border-zinc-800 bg-zinc-900 text-zinc-100">
+                          {overflowMobileHeaderActions.map((action) => (
+                            <DropdownMenuItem
+                              key={action.id}
+                              onClick={() => handleHeaderActionClick(action)}
+                              className="focus:bg-zinc-800 focus:text-zinc-100"
+                            >
+                              {action.label}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </div>
+                </TooltipProvider>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 w-9 rounded-full border-zinc-700 bg-zinc-950 p-0 text-zinc-100"
+                      aria-label="Open account menu"
+                    >
+                      <Avatar className="h-8 w-8">
+                        {session?.user?.image ? <AvatarImage src={session.user.image} alt={userDisplayName} /> : null}
+                        <AvatarFallback className="bg-zinc-800 text-xs text-zinc-100">{userInitials}</AvatarFallback>
+                      </Avatar>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56 border-zinc-800 bg-zinc-900 text-zinc-100">
+                    <div className="px-2 py-1.5">
+                      <p className="truncate text-sm font-medium text-zinc-100">{userDisplayName}</p>
+                      {userEmail ? <p className="truncate text-xs text-zinc-400">{userEmail}</p> : null}
+                    </div>
+                    {userMenuItems.map((item) => {
+                      const Icon = item.icon
+                      return (
+                        <DropdownMenuItem
+                          key={item.label}
+                          onClick={item.action}
+                          className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+                        >
+                          <Icon className="mr-2 h-4 w-4" />
+                          {item.label}
+                        </DropdownMenuItem>
+                      )
+                    })}
+                    <DropdownMenuItem
+                      onClick={() => signOut({ callbackUrl: "/" })}
+                      className="cursor-pointer text-rose-300 focus:bg-rose-500/20 focus:text-rose-200"
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Sign out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </header>
+
+            {startChatError && (
+              <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                {startChatError}
+              </div>
+            )}
+
+            {showUpdatesBanner && (
+              <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-cyan-300/50 bg-cyan-300/10 px-2.5 py-2 text-xs text-cyan-50 sm:mb-3 sm:px-3 sm:py-2.5">
+                <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
+                  <span className="rounded-full border border-cyan-200/60 bg-cyan-200/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-50">
+                    New
+                  </span>
+                  <p className="text-cyan-50">Faster workspace flows are now live.</p>
+                  <Button
+                    variant="link"
+                    className="h-auto p-0 text-xs text-cyan-100 underline-offset-2 hover:text-cyan-50"
+                    onClick={() => router.push("/changelog")}
+                  >
+                    Learn more
+                  </Button>
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-5 w-5 shrink-0 text-cyan-100 hover:bg-cyan-400/20 hover:text-cyan-50"
+                  onClick={dismissUpdatesBanner}
+                  aria-label="Dismiss updates banner"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
+
+            <Card className="mb-5 border-zinc-800 bg-zinc-950 p-4">
+              <Input
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="Ask RunAsh to plan a launch, bundle products, or assist checkout..."
+                className="mb-3 border-zinc-700 bg-zinc-900 text-zinc-200"
+              />
+              <div className="flex flex-wrap gap-2">
                 {quickPrompts.map((item) => {
                   const Icon = item.icon
                   return (
@@ -323,64 +930,66 @@ export default function RunashChatPage() {
                       key={item.id}
                       type="button"
                       onClick={() => startChatWithPrompt(item.prompt)}
-                      className="flex items-start gap-2 rounded-md border p-2 text-left transition-colors hover:bg-orange-50 dark:hover:bg-gray-900"
+                      className="flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 transition hover:bg-zinc-800"
                     >
-                      <Icon className="mt-0.5 h-4 w-4 text-orange-500" />
-                      <div>
-                        <div className="text-xs font-medium">{item.label}</div>
-                        <div className="text-[11px] text-gray-500">{item.description}</div>
-                      </div>
+                      <Icon className="h-3.5 w-3.5 text-cyan-400" />
+                      {item.label}
                     </button>
                   )
                 })}
               </div>
+              <div className="mt-4 flex justify-end">
+                <Button className="bg-cyan-600 text-white hover:bg-cyan-500" disabled={!prompt.trim()} onClick={() => startChatWithPrompt(prompt)}>
+                  Continue <ArrowRight className="ml-1 h-4 w-4" />
+                </Button>
+              </div>
+            </Card>
+
+            <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-2">
+              <Card className="border-zinc-800 bg-zinc-950 p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className="text-sm font-medium text-zinc-100">Recent chats</h2>
+                  <span className="text-xs text-zinc-500">View all</span>
+                </div>
+                <ScrollArea className="h-[260px]">
+                  <div className="space-y-2 pr-2">
+                    {loadingSession && <div className="text-sm text-zinc-500">Loading preview…</div>}
+                    {!loadingSession && previewError && <div className="text-sm text-amber-400">{previewError}</div>}
+                    {!loadingSession && !previewError && messagesPreview.length === 0 && (
+                      <div className="text-sm text-zinc-500">No messages yet. Start a chat to see history.</div>
+                    )}
+                    {messagesPreview.map((message) => (
+                      <div key={message.id} className="rounded-md border border-zinc-800 bg-zinc-900 p-2">
+                        <div className="mb-1 text-xs font-medium text-cyan-400">{message.role === "assistant" ? "RunAsh Agent" : "You"}</div>
+                        <p className="line-clamp-2 text-xs text-zinc-300">{message.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </Card>
+
+              <Card className="border-zinc-800 bg-zinc-950 p-4">
+                <h2 className="mb-3 text-sm font-medium text-zinc-100">Commerce assistant modes</h2>
+                <ul className="space-y-2 text-sm text-zinc-300">
+                  <li className="flex items-center gap-2"><ShoppingCart className="h-4 w-4 text-emerald-400" /> Product discovery & bundling</li>
+                  <li className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-blue-400" /> Checkout guidance</li>
+                  <li className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-green-400" /> Safe payment handoff</li>
+                  <li className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-orange-400" /> Personalized upsells</li>
+                </ul>
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <Button variant="outline" className="border-zinc-700 bg-zinc-900 text-zinc-100" onClick={() => router.push("/payment/runash-pay")}>RunAsh Pay</Button>
+                  <Button className="bg-zinc-100 text-zinc-900 hover:bg-white" onClick={() => startChatWithPrompt("Help me complete checkout with best payment option and order confirmation steps.")}>Launch flow</Button>
+                </div>
+              </Card>
             </div>
 
-            <div className="mt-4 flex gap-2">
-              <Input value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Ask the agent something..." />
-              <Button
-                onClick={() => {
-                  const cleanPrompt = prompt.trim()
-                  if (!cleanPrompt) return
-                  localStorage.setItem("runash_initial_prompt", cleanPrompt)
-                  startChatWithPrompt(cleanPrompt)
-                }}
-                disabled={!prompt.trim()}
-                className="bg-gradient-to-r from-orange-600 to-yellow-500 text-white"
-              >
-                Ask & Continue
-              </Button>
+            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <PlaceholderCollectionSection title="Recent Projects" items={recentProjectPlaceholders} />
+              <PlaceholderCollectionSection title="My Chats" items={myChatPlaceholders} />
             </div>
-
-            <div className="mt-3 text-xs text-gray-500 flex gap-3">
-              <span className="flex items-center"><Leaf className="h-3 w-3 mr-1 text-green-500" /> Organic Focus</span>
-              <span className="flex items-center"><Sparkles className="h-3 w-3 mr-1 text-orange-500" /> Agentic AI</span>
-            </div>
-          </Card>
-
-          <Card className="p-4">
-            <h4 className="mb-2 font-semibold">Commerce Agent Playbook</h4>
-            <ul className="mb-4 space-y-2 text-sm text-gray-700 dark:text-gray-300">
-              <li className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-green-500" /> Secure handoff for payment and order assistance</li>
-              <li className="flex items-center gap-2"><ShoppingCart className="h-4 w-4 text-orange-500" /> Context-aware product recommendations and bundles</li>
-              <li className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-blue-500" /> Checkout help with guided next actions</li>
-            </ul>
-            <div className="flex gap-2">
-              <Button variant="outline" className="w-full" onClick={() => router.push("/payment/runash-pay")}>Open RunAsh Pay</Button>
-              <Button className="w-full bg-gradient-to-r from-orange-600 to-yellow-500 text-white" onClick={() => startChatWithPrompt("Help me complete checkout with best payment option and order confirmation steps.")}>Launch Agent Flow</Button>
-            </div>
-          </Card>
-
-          <Card className="p-4">
-            <h4 className="font-semibold mb-2">Why RunAsh for Live Commerce?</h4>
-            <ul className="text-sm space-y-2 text-gray-700 dark:text-gray-300">
-              <li>Convert with guided shopping flows</li>
-              <li>Reduce returns with live product education</li>
-              <li>Boost AOV with context-aware upsells</li>
-            </ul>
-          </Card>
-        </aside>
-      </main>
+          </div>
+        </main>
+      </div>
     </div>
   )
 }

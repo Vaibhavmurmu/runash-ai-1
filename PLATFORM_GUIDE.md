@@ -450,3 +450,35 @@ For incident debugging and client consistency, chat/session APIs use a standard 
 - `requestId`
 
 See `docs/API_CONTRACTS.md` for request/response examples, streaming compatibility notes, and the endpoint error code catalog.
+
+---
+
+## Editor Domain APIs
+
+The editor now persists project state with first-class domain entities:
+- `project`
+- `timeline`
+- `track`
+- `segment`
+- `asset`
+- `render job`
+
+### API routes
+
+All routes are under `/api/editor/**` and are authenticated per user ownership.
+
+- `GET/POST /api/editor/projects`
+- `GET/PATCH/DELETE /api/editor/projects/:projectId`
+- `GET/PUT /api/editor/projects/:projectId/timeline`
+- `POST /api/editor/projects/:projectId/tracks`
+- `PATCH/DELETE /api/editor/projects/:projectId/tracks/:trackId`
+- `POST /api/editor/projects/:projectId/segments`
+- `PATCH/DELETE /api/editor/projects/:projectId/segments/:segmentId`
+- `GET/POST /api/editor/projects/:projectId/assets`
+- `PATCH/DELETE /api/editor/projects/:projectId/assets/:assetId`
+- `GET/POST /api/editor/render-jobs`
+- `GET/PATCH/DELETE /api/editor/render-jobs/:jobId`
+
+### Persistence
+
+SQL migrations for editor persistence are located in `scripts/sql/2026-02-13_create_editor_domain_tables.sql` and include ownership (`owner_id`) and timestamp tracking (`created_at`, `updated_at`) for all editor entities.

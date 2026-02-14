@@ -29,6 +29,22 @@ import type {
   StartStreamResponse,
 } from "@/lib/types/dashboard-streams"
 
+type ErrorEnvelope = {
+  error?: {
+    code?: string
+    message?: string
+  }
+}
+
+async function getSafeErrorMessage(response: Response, fallback: string) {
+  try {
+    const payload = (await response.json()) as ErrorEnvelope
+    return payload.error?.message || fallback
+  } catch {
+    return fallback
+  }
+}
+
 const getCanonicalStreamUrl = (id: string, url?: string) => url || `/stream/${id}`
 
 const getAppHrefFromStreamUrl = (id: string, url?: string) => {
@@ -72,17 +88,17 @@ export function StreamQuickAccess() {
           fetch("/api/dashboard/streams/scheduled"),
         ])
 
-        if (!recentRes.ok) throw new Error("Failed to fetch recent streams")
-        if (!scheduledRes.ok) throw new Error("Failed to fetch scheduled streams")
+        if (!recentRes.ok) throw new Error(await getSafeErrorMessage(recentRes, "Failed to fetch recent streams"))
+        if (!scheduledRes.ok) throw new Error(await getSafeErrorMessage(scheduledRes, "Failed to fetch scheduled streams"))
 
         const recentJson = (await recentRes.json()) as DashboardRecentStreamsResponse
         const scheduledJson = (await scheduledRes.json()) as DashboardScheduledStreamsResponse
 
         setRecentStreams(Array.isArray(recentJson.streams) ? recentJson.streams : [])
         setScheduledStreams(Array.isArray(scheduledJson.streams) ? scheduledJson.streams : [])
-      } catch (err: any) {
-        console.error(err)
-        toast({ title: "Error", description: err?.message || "Could not load streams." })
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Could not load streams."
+        toast({ title: "Error", description: message })
       } finally {
         setLoading(false)
       }
@@ -106,8 +122,7 @@ export function StreamQuickAccess() {
       })
 
       if (!res.ok) {
-        const errText = await res.text()
-        throw new Error(errText || "Failed to start stream")
+        throw new Error(await getSafeErrorMessage(res, "Failed to start stream"))
       }
 
       const data = (await res.json()) as StartStreamResponse
@@ -133,9 +148,9 @@ export function StreamQuickAccess() {
       setStreamTitle("")
       // Navigate to stream detail/player page (adjust route to your app)
       router.push(getAppHrefFromStreamUrl(data.id, data.url))
-    } catch (err: any) {
-      console.error(err)
-      toast({ title: "Error", description: err?.message || "Could not start stream." })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Could not start stream."
+      toast({ title: "Error", description: message })
     } finally {
       setLoading(false)
     }
@@ -160,8 +175,7 @@ export function StreamQuickAccess() {
       })
 
       if (!res.ok) {
-        const errText = await res.text()
-        throw new Error(errText || "Failed to schedule stream")
+        throw new Error(await getSafeErrorMessage(res, "Failed to schedule stream"))
       }
 
       const newScheduled = (await res.json()) as ScheduleStreamResponse
@@ -169,9 +183,9 @@ export function StreamQuickAccess() {
       setScheduledStreams((s) => [newScheduled, ...s])
       setScheduleTitle("")
       setScheduleDateTime("")
-    } catch (err: any) {
-      console.error(err)
-      toast({ title: "Error", description: err?.message || "Could not schedule stream." })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Could not schedule stream."
+      toast({ title: "Error", description: message })
     } finally {
       setLoading(false)
     }
@@ -192,16 +206,15 @@ export function StreamQuickAccess() {
       })
 
       if (!res.ok) {
-        const errText = await res.text()
-        throw new Error(errText || "Failed to send invite")
+        throw new Error(await getSafeErrorMessage(res, "Failed to send invite"))
       }
 
       toast({ title: "Invite Sent", description: `Invitation sent to ${inviteEmail}` })
       setInviteEmail("")
       setInviteStreamId(null)
-    } catch (err: any) {
-      console.error(err)
-      toast({ title: "Error", description: err?.message || "Could not send invite." })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Could not send invite."
+      toast({ title: "Error", description: message })
     } finally {
       setLoading(false)
     }
@@ -214,15 +227,14 @@ export function StreamQuickAccess() {
         method: "POST",
       })
       if (!res.ok) {
-        const errText = await res.text()
-        throw new Error(errText || "Failed to get integration")
+        throw new Error(await getSafeErrorMessage(res, "Failed to get integration"))
       }
       const data = (await res.json()) as IntegrationKeyResponse
       setIntegrationKey(data.rtmpKey)
       toast({ title: "Integration Ready", description: "Received RTMP key (demo)." })
-    } catch (err: any) {
-      console.error(err)
-      toast({ title: "Error", description: err?.message || "Could not get integration." })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Could not get integration."
+      toast({ title: "Error", description: message })
     } finally {
       setIntegrating(false)
     }

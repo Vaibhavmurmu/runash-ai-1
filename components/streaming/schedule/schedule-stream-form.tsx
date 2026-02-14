@@ -1,32 +1,52 @@
-"use client"
+"use client";
 
-import type React from "react"
+import type React from "react";
 
-import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { format } from "date-fns"
-import { CalendarIcon, Clock, Save, X } from "lucide-react"
-import { cn } from "@/lib/utils"
-import type { ScheduledStream, StreamFrequency } from "@/types/stream-scheduler"
+import { useState, useEffect } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { format } from "date-fns";
+import { CalendarIcon, Clock, Save, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type {
+  ScheduledStream,
+  StreamFrequency,
+  StreamTemplate,
+} from "@/types/stream-scheduler";
 
 interface ScheduleStreamFormProps {
-  isOpen: boolean
-  initialData?: Partial<ScheduledStream>
-  initialDate?: Date
-  platforms: { id: string; name: string; platform: string }[]
-  templates: { id: string; name: string }[]
-  onClose: () => void
-  onSave: (data: Partial<ScheduledStream>) => void
+  isOpen: boolean;
+  initialData?: Partial<ScheduledStream>;
+  initialDate?: Date;
+  platforms: { id: string; name: string; platform: string }[];
+  templates: StreamTemplate[];
+  onClose: () => void;
+  onSave: (data: Partial<ScheduledStream>) => void;
 }
 
 export default function ScheduleStreamForm({
@@ -41,7 +61,9 @@ export default function ScheduleStreamForm({
   const [formData, setFormData] = useState<Partial<ScheduledStream>>({
     title: "",
     description: "",
-    scheduledDate: initialDate ? initialDate.toISOString() : new Date().toISOString(),
+    scheduledDate: initialDate
+      ? initialDate.toISOString()
+      : new Date().toISOString(),
     duration: 60,
     platforms: [],
     isRecurring: false,
@@ -50,12 +72,20 @@ export default function ScheduleStreamForm({
     isPublic: true,
     notificationTime: 15,
     ...initialData,
-  })
+  });
 
   const [date, setDate] = useState<Date | undefined>(
-    initialDate || (initialData?.scheduledDate ? new Date(initialData.scheduledDate) : new Date()),
-  )
-  const [time, setTime] = useState("18:00")
+    initialDate ||
+      (initialData?.scheduledDate
+        ? new Date(initialData.scheduledDate)
+        : new Date()),
+  );
+  const [time, setTime] = useState(() => {
+    const source = initialData?.scheduledDate || initialDate?.toISOString();
+    if (!source) return "18:00";
+    const parsed = new Date(source);
+    return `${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}`;
+  });
   const [frequency, setFrequency] = useState<StreamFrequency>(
     initialData?.isRecurring
       ? initialData?.recurrencePattern?.frequency === "daily"
@@ -64,22 +94,24 @@ export default function ScheduleStreamForm({
           ? "weekly"
           : "monthly"
       : "once",
-  )
-  const [selectedDays, setSelectedDays] = useState<number[]>(initialData?.recurrencePattern?.daysOfWeek || [])
-  const [tagInput, setTagInput] = useState("")
+  );
+  const [selectedDays, setSelectedDays] = useState<number[]>(
+    initialData?.recurrencePattern?.daysOfWeek || [],
+  );
+  const [tagInput, setTagInput] = useState("");
 
   // Update scheduledDate when date or time changes
   useEffect(() => {
     if (date) {
-      const [hours, minutes] = time.split(":").map(Number)
-      const newDate = new Date(date)
-      newDate.setHours(hours, minutes, 0, 0)
+      const [hours, minutes] = time.split(":").map(Number);
+      const newDate = new Date(date);
+      newDate.setHours(hours, minutes, 0, 0);
       setFormData((prev) => ({
         ...prev,
         scheduledDate: newDate.toISOString(),
-      }))
+      }));
     }
-  }, [date, time])
+  }, [date, time]);
 
   // Update recurrence pattern when frequency or days change
   useEffect(() => {
@@ -88,41 +120,86 @@ export default function ScheduleStreamForm({
         ...prev,
         isRecurring: false,
         recurrencePattern: undefined,
-      }))
+      }));
     } else {
       setFormData((prev) => ({
         ...prev,
         isRecurring: true,
         recurrencePattern: {
-          frequency: frequency === "daily" ? "daily" : frequency === "weekly" ? "weekly" : "monthly",
+          frequency:
+            frequency === "daily"
+              ? "daily"
+              : frequency === "weekly"
+                ? "weekly"
+                : "monthly",
           interval: 1,
           daysOfWeek: frequency === "weekly" ? selectedDays : undefined,
         },
-      }))
+      }));
     }
-  }, [frequency, selectedDays])
+  }, [frequency, selectedDays]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const seedDate =
+      initialDate ||
+      (initialData?.scheduledDate
+        ? new Date(initialData.scheduledDate)
+        : new Date());
+    const seedTimeSource = initialData?.scheduledDate || seedDate.toISOString();
+    const seedTimeDate = new Date(seedTimeSource);
+
+    setFormData({
+      title: "",
+      description: "",
+      scheduledDate: seedDate.toISOString(),
+      duration: 60,
+      platforms: [],
+      isRecurring: false,
+      tags: [],
+      category: "Gaming",
+      isPublic: true,
+      notificationTime: 15,
+      ...initialData,
+    });
+    setDate(seedDate);
+    setTime(
+      `${String(seedTimeDate.getHours()).padStart(2, "0")}:${String(seedTimeDate.getMinutes()).padStart(2, "0")}`,
+    );
+    setFrequency(
+      initialData?.isRecurring
+        ? initialData?.recurrencePattern?.frequency === "daily"
+          ? "daily"
+          : initialData?.recurrencePattern?.frequency === "weekly"
+            ? "weekly"
+            : "monthly"
+        : "once",
+    );
+    setSelectedDays(initialData?.recurrencePattern?.daysOfWeek || []);
+  }, [initialData, initialDate, isOpen]);
 
   // Handle template selection
   const handleTemplateChange = (templateId: string) => {
     if (templateId === "none") {
-      return
+      return;
     }
 
-    // In a real app, we would fetch the template data
-    const template = templates.find((t) => t.id === templateId)
+    const template = templates.find((t) => t.id === templateId);
     if (template) {
-      // Simulate template data
       setFormData((prev) => ({
         ...prev,
-        title: `Template: ${template.name}`,
-        description: "This is a template description",
-        duration: 60,
-        category: "Gaming",
-        isPublic: true,
-        templateId: templateId,
-      }))
+        title: template.title,
+        description: template.description,
+        duration: template.duration,
+        category: template.category,
+        isPublic: template.isPublic,
+        platforms: template.platforms,
+        tags: template.tags,
+        templateId,
+      }));
     }
-  }
+  };
 
   // Handle tag input
   const handleAddTag = () => {
@@ -130,30 +207,32 @@ export default function ScheduleStreamForm({
       setFormData((prev) => ({
         ...prev,
         tags: [...(prev.tags || []), tagInput],
-      }))
-      setTagInput("")
+      }));
+      setTagInput("");
     }
-  }
+  };
 
   const handleRemoveTag = (tag: string) => {
     setFormData((prev) => ({
       ...prev,
       tags: prev.tags?.filter((t) => t !== tag),
-    }))
-  }
+    }));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    onSave(formData)
-  }
+    e.preventDefault();
+    onSave(formData);
+  };
 
-  const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+  const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{initialData?.id ? "Edit Scheduled Stream" : "Schedule New Stream"}</DialogTitle>
+          <DialogTitle>
+            {initialData?.id ? "Edit Scheduled Stream" : "Schedule New Stream"}
+          </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6 py-4">
@@ -161,7 +240,10 @@ export default function ScheduleStreamForm({
             {templates.length > 0 && (
               <div className="space-y-2">
                 <Label htmlFor="template">Use Template (Optional)</Label>
-                <Select onValueChange={handleTemplateChange} defaultValue="none">
+                <Select
+                  onValueChange={handleTemplateChange}
+                  defaultValue="none"
+                >
                   <SelectTrigger id="template">
                     <SelectValue placeholder="Select a template" />
                   </SelectTrigger>
@@ -182,7 +264,9 @@ export default function ScheduleStreamForm({
               <Input
                 id="title"
                 value={formData.title}
-                onChange={(e) => setFormData((prev) => ({ ...prev, title: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, title: e.target.value }))
+                }
                 placeholder="Enter a title for your stream"
                 required
               />
@@ -193,7 +277,12 @@ export default function ScheduleStreamForm({
               <Textarea
                 id="description"
                 value={formData.description}
-                onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    description: e.target.value,
+                  }))
+                }
                 placeholder="Describe your stream"
                 rows={3}
               />
@@ -206,14 +295,22 @@ export default function ScheduleStreamForm({
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className={cn("w-full justify-start text-left font-normal", !date && "text-muted-foreground")}
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !date && "text-muted-foreground",
+                      )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {date ? format(date, "PPP") : <span>Pick a date</span>}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0">
-                    <Calendar mode="single" selected={date} onSelect={setDate} initialFocus />
+                    <Calendar
+                      mode="single"
+                      selected={date}
+                      onSelect={setDate}
+                      initialFocus
+                    />
                   </PopoverContent>
                 </Popover>
               </div>
@@ -241,14 +338,24 @@ export default function ScheduleStreamForm({
                 min="5"
                 max="480"
                 value={formData.duration}
-                onChange={(e) => setFormData((prev) => ({ ...prev, duration: Number.parseInt(e.target.value) }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    duration: Number.parseInt(e.target.value),
+                  }))
+                }
                 required
               />
             </div>
 
             <div className="space-y-2">
               <Label>Frequency</Label>
-              <RadioGroup value={frequency} onValueChange={(value) => setFrequency(value as StreamFrequency)}>
+              <RadioGroup
+                value={frequency}
+                onValueChange={(value) =>
+                  setFrequency(value as StreamFrequency)
+                }
+              >
                 <div className="flex flex-wrap gap-4">
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="once" id="once" />
@@ -281,9 +388,11 @@ export default function ScheduleStreamForm({
                         checked={selectedDays.includes(index)}
                         onCheckedChange={(checked) => {
                           if (checked) {
-                            setSelectedDays([...selectedDays, index])
+                            setSelectedDays([...selectedDays, index]);
                           } else {
-                            setSelectedDays(selectedDays.filter((d) => d !== index))
+                            setSelectedDays(
+                              selectedDays.filter((d) => d !== index),
+                            );
                           }
                         }}
                         className="mr-1"
@@ -301,7 +410,10 @@ export default function ScheduleStreamForm({
               <Label>Platforms</Label>
               <div className="grid grid-cols-2 gap-2">
                 {platforms.map((platform) => (
-                  <div key={platform.id} className="flex items-center space-x-2">
+                  <div
+                    key={platform.id}
+                    className="flex items-center space-x-2"
+                  >
                     <Checkbox
                       id={`platform-${platform.id}`}
                       checked={(formData.platforms || []).includes(platform.id)}
@@ -310,16 +422,20 @@ export default function ScheduleStreamForm({
                           setFormData((prev) => ({
                             ...prev,
                             platforms: [...(prev.platforms || []), platform.id],
-                          }))
+                          }));
                         } else {
                           setFormData((prev) => ({
                             ...prev,
-                            platforms: (prev.platforms || []).filter((p) => p !== platform.id),
-                          }))
+                            platforms: (prev.platforms || []).filter(
+                              (p) => p !== platform.id,
+                            ),
+                          }));
                         }
                       }}
                     />
-                    <Label htmlFor={`platform-${platform.id}`}>{platform.name}</Label>
+                    <Label htmlFor={`platform-${platform.id}`}>
+                      {platform.name}
+                    </Label>
                   </div>
                 ))}
               </div>
@@ -329,7 +445,9 @@ export default function ScheduleStreamForm({
               <Label htmlFor="category">Category</Label>
               <Select
                 value={formData.category}
-                onValueChange={(value) => setFormData((prev) => ({ ...prev, category: value }))}
+                onValueChange={(value) =>
+                  setFormData((prev) => ({ ...prev, category: value }))
+                }
               >
                 <SelectTrigger id="category">
                   <SelectValue placeholder="Select category" />
@@ -340,7 +458,9 @@ export default function ScheduleStreamForm({
                   <SelectItem value="Music">Music</SelectItem>
                   <SelectItem value="Art">Art</SelectItem>
                   <SelectItem value="Education">Education</SelectItem>
-                  <SelectItem value="Science & Technology">Science & Technology</SelectItem>
+                  <SelectItem value="Science & Technology">
+                    Science & Technology
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -355,8 +475,8 @@ export default function ScheduleStreamForm({
                   className="flex-1"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
-                      e.preventDefault()
-                      handleAddTag()
+                      e.preventDefault();
+                      handleAddTag();
                     }
                   }}
                 />
@@ -388,11 +508,16 @@ export default function ScheduleStreamForm({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="notification">Notification (minutes before stream)</Label>
+              <Label htmlFor="notification">
+                Notification (minutes before stream)
+              </Label>
               <Select
                 value={formData.notificationTime.toString()}
                 onValueChange={(value) =>
-                  setFormData((prev) => ({ ...prev, notificationTime: Number.parseInt(value) }))
+                  setFormData((prev) => ({
+                    ...prev,
+                    notificationTime: Number.parseInt(value),
+                  }))
                 }
               >
                 <SelectTrigger id="notification">
@@ -416,7 +541,9 @@ export default function ScheduleStreamForm({
               <Switch
                 id="public"
                 checked={formData.isPublic}
-                onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, isPublic: checked }))}
+                onCheckedChange={(checked) =>
+                  setFormData((prev) => ({ ...prev, isPublic: checked }))
+                }
               />
             </div>
           </div>
@@ -426,7 +553,10 @@ export default function ScheduleStreamForm({
               <X className="h-4 w-4 mr-2" />
               Cancel
             </Button>
-            <Button type="submit" className="bg-gradient-to-r from-orange-600 to-yellow-500 hover:opacity-90">
+            <Button
+              type="submit"
+              className="bg-gradient-to-r from-orange-600 to-yellow-500 hover:opacity-90"
+            >
               <Save className="h-4 w-4 mr-2" />
               {initialData?.id ? "Update" : "Schedule"} Stream
             </Button>
@@ -434,5 +564,5 @@ export default function ScheduleStreamForm({
         </form>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
