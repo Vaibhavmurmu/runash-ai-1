@@ -1,4 +1,10 @@
-import type { PaymentMethod } from "@/lib/payment-service"
+export interface PaymentProviderMethod {
+  id: string
+  name: string
+  type: "card" | "upi" | "netbanking" | "wallet" | "bnpl"
+  provider: string
+  processingFee: number
+}
 
 export type ProviderPaymentStatus = "processing" | "completed" | "failed"
 
@@ -21,7 +27,7 @@ interface ProviderAdapter {
     intentId: string
     amount: number
     currency: string
-    paymentMethod: PaymentMethod
+    paymentMethod: PaymentProviderMethod
     metadata: Record<string, unknown>
   }): Promise<ProviderCreateIntentResult>
   confirmPayment(input: {
@@ -29,7 +35,7 @@ interface ProviderAdapter {
     providerIntentId: string
     amount: number
     currency: string
-    paymentMethod: PaymentMethod
+    paymentMethod: PaymentProviderMethod
     metadata: Record<string, unknown>
   }): Promise<ProviderConfirmPaymentResult>
 }
@@ -45,7 +51,7 @@ class DeterministicProviderAdapter implements ProviderAdapter {
     intentId: string
     amount: number
     currency: string
-    paymentMethod: PaymentMethod
+    paymentMethod: PaymentProviderMethod
     metadata: Record<string, unknown>
   }): Promise<ProviderCreateIntentResult> {
     return {
@@ -66,7 +72,7 @@ class DeterministicProviderAdapter implements ProviderAdapter {
     providerIntentId: string
     amount: number
     currency: string
-    paymentMethod: PaymentMethod
+    paymentMethod: PaymentProviderMethod
     metadata: Record<string, unknown>
   }): Promise<ProviderConfirmPaymentResult> {
     const forcedStatus = input.metadata.providerOutcome

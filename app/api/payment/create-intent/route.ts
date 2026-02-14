@@ -4,6 +4,7 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { requireBillingSession, requireScopedRole } from "@/lib/billing-auth"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 import { logApiRouteError } from "@/lib/api/logging"
+import { resolveCreateIntentIdempotencyKey } from "@/lib/payment-idempotency"
 
 export async function POST(request: NextRequest) {
   const auth = await requireBillingSession()
@@ -61,7 +62,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const requestIdempotencyKey = idempotencyKey || request.headers.get("x-idempotency-key") || undefined
+    const requestIdempotencyKey = resolveCreateIntentIdempotencyKey({
+      providedKey: idempotencyKey || request.headers.get("x-idempotency-key") || undefined,
+      userId: auth.sessionUser.userId,
+      organizationId: auth.sessionUser.organizationId,
+      amount,
+      currency,
+      paymentMethodId,
+      metadata: metadata || {},
+    })
     const mergedMetadata = {
       ...(metadata || {}),
       user_id: auth.sessionUser.userId,

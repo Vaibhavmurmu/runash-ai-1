@@ -1107,6 +1107,8 @@ To improve payment reliability for startup and business segments, backend paymen
 - Added provider gateway boundary for payment providers (Stripe/Razorpay-compatible adapters).
 - Stored provider identifiers and provider event records for each intent/transaction lifecycle.
 - Enforced idempotency uniqueness for create/confirm via unique key constraints.
+- Added deterministic route-level idempotency key derivation (user/org scoped) when clients do not send explicit idempotency headers/fields.
+
 
 ### Risk and rollback
 - **Risk level:** Medium (new persistence tables + provider-driven status transitions).

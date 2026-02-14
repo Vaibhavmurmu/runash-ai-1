@@ -1,23 +1,20 @@
+import { randomUUID } from "crypto"
 import {
   createPaymentIntentRecord,
+  createPaymentRefundRecord,
+  createPaymentTransactionRecord,
   getPaymentIntentByCreateIdempotencyKey,
   getPaymentIntentById,
-  type PaymentIntentStatus,
-  updatePaymentIntentStatus,
-} from "@/lib/repositories/payment-intents"
-import {
-  createPaymentRefundRecord,
-  listRefundsByTransactionId,
-} from "@/lib/repositories/payment-refunds"
-import {
-  createPaymentTransactionRecord,
   getPaymentTransactionByConfirmIdempotencyKey,
   getPaymentTransactionById,
   getPaymentTransactionByIntentId,
   getPaymentTransactionMonthlyTrends,
   listRecentPaymentTransactions,
+  listRefundsByTransactionId,
+  type PaymentIntentStatus,
+  updatePaymentIntentStatus,
   updatePaymentTransaction,
-} from "@/lib/repositories/payment-transactions"
+} from "@/lib/repositories/payment-entities"
 import { getProviderAdapter } from "@/lib/services/payment-provider-gateway"
 
 export interface PaymentMethod {
@@ -81,7 +78,24 @@ export interface PaymentAnalytics {
 }
 
 function createEntityId(prefix: string) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+  return `${prefix}_${randomUUID().replace(/-/g, "")}`
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`
+
+  const entries = Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right))
+  return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`).join(",")}}`
+}
+
+function buildCreateIdempotencyKey(input: {
+  paymentMethodId: string
+  currency: string
+  amount: number
+  metadata: Record<string, unknown>
+}): string {
+  return `create:${input.paymentMethodId}:${input.currency}:${input.amount}:${stableStringify(input.metadata)}`
 }
 
 function intentStatusFromTransactionStatus(status: PaymentTransaction["status"]): PaymentIntentStatus {
@@ -256,7 +270,7 @@ export class PaymentService {
     const paymentMethod = this.paymentMethods.find((method) => method.id === paymentMethodId)
     if (!paymentMethod) throw new Error("Payment method not found")
 
-    const createKey = idempotencyKey ?? `create:${paymentMethodId}:${currency}:${amount}:${JSON.stringify(metadata)}`
+    const createKey = idempotencyKey ?? buildCreateIdempotencyKey({ paymentMethodId, currency, amount, metadata })
     const existing = await getPaymentIntentByCreateIdempotencyKey(createKey)
     if (existing) return toPublicIntent(existing)
 

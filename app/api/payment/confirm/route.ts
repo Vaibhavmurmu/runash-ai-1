@@ -3,6 +3,7 @@ import { PaymentService } from "@/lib/payment-service"
 import { requireBillingSession, requireScopedRole } from "@/lib/billing-auth"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 import { logApiRouteError } from "@/lib/api/logging"
+import { resolveConfirmIntentIdempotencyKey } from "@/lib/payment-idempotency"
 
 export async function POST(request: NextRequest) {
   const auth = await requireBillingSession()
@@ -21,7 +22,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required field: intentId" }, { status: 400 })
     }
 
-    const requestIdempotencyKey = idempotencyKey || request.headers.get("x-idempotency-key") || undefined
+    const requestIdempotencyKey = resolveConfirmIntentIdempotencyKey({
+      providedKey: idempotencyKey || request.headers.get("x-idempotency-key") || undefined,
+      userId: auth.sessionUser.userId,
+      organizationId: auth.sessionUser.organizationId,
+      intentId,
+    })
     const transaction = await PaymentService.processPayment(intentId, requestIdempotencyKey)
 
     const transactionOwner = String(transaction.metadata?.user_id || "")
