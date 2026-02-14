@@ -194,6 +194,8 @@ RunAsh Pay payment intent/confirmation execution now runs on DB-backed repositor
 - Transaction status transitions are provider-result-driven and appended to provider event history for audit trails.
 - Existing `success/data` response shape remains unchanged for `/api/payment/create-intent` and `/api/payment/confirm`.
 - Idempotency keys are accepted from body `idempotencyKey` or `x-idempotency-key` header for create/confirm operations.
+- When idempotency keys are omitted, create/confirm routes now derive deterministic keys from authenticated scope + request payload to guarantee replay-safe behavior.
+
 
 ## Billing API Contract Stabilization (2026-02)
 
