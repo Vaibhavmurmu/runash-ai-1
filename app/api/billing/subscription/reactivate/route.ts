@@ -1,20 +1,23 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { Database } from "@/lib/database"
 import Stripe from "stripe"
+import { requireBillingSession, requireScopedRole } from "@/lib/billing-auth"
+import { logPrivilegedAction } from "@/lib/audit-logging"
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2023-10-16",
 })
 
-export async function POST() {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+export async function POST(req: Request) {
+  const auth = await requireBillingSession()
+  if (auth.unauthorizedResponse || !auth.sessionUser) {
+    return auth.unauthorizedResponse
+  }
 
+  const roleResponse = requireScopedRole(auth.sessionUser, "business")
+  if (roleResponse) return roleResponse
+
+  try {
     const subscriptions = await Database.query(
       `
       SELECT *
@@ -23,7 +26,7 @@ export async function POST() {
       ORDER BY created_at DESC
       LIMIT 1
       `,
-      [session.user.id],
+      [auth.sessionUser.userId],
     )
 
     const currentSub = subscriptions[0]
@@ -48,6 +51,13 @@ export async function POST() {
     )
 
     const plans = await Database.query(`SELECT * FROM subscription_plans WHERE id = $1 LIMIT 1`, [updated[0].plan_id])
+
+    await logPrivilegedAction({
+      actorUserId: auth.sessionUser.userId,
+      action: "billing.subscription.reactivated",
+      resource: "billing.subscription",
+      details: { subscriptionId: currentSub.id },
+    })
 
     return NextResponse.json({ subscription: { ...updated[0], plan: plans[0] || null } })
   } catch (error) {

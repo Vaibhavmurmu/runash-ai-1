@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { requireBillingSession, requireScopedRole } from "@/lib/billing-auth"
 import { Database } from "@/lib/database"
 
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const auth = await requireBillingSession()
+    if (auth.unauthorizedResponse || !auth.sessionUser) {
+      return auth.unauthorizedResponse
     }
+
+    const roleResponse = requireScopedRole(auth.sessionUser, "startup")
+    if (roleResponse) return roleResponse
 
     const { id } = await context.params
     const invoices = await Database.query(
@@ -34,7 +36,7 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
       GROUP BY i.id
       LIMIT 1
       `,
-      [session.user.id, id],
+      [auth.sessionUser.userId, id],
     )
 
     if (!invoices[0]) {

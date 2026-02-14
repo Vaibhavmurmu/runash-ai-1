@@ -9,7 +9,13 @@ export const DEFAULT_ROLES = {
   MODERATOR: "moderator",
   USER: "user",
   GUEST: "guest",
+  BUSINESS_ADMIN: "business_admin",
+  BUSINESS_OPERATOR: "business_operator",
+  STARTUP_ADMIN: "startup_admin",
+  STARTUP_OPERATOR: "startup_operator",
 } as const
+
+export type OperatorScope = "business" | "startup"
 
 export const DEFAULT_PERMISSIONS = {
   // User management
@@ -74,6 +80,16 @@ export const ROLE_PERMISSIONS = {
     "payments:write",
     "system:logs",
   ],
+  [DEFAULT_ROLES.BUSINESS_ADMIN]: [
+    "payments:read",
+    "payments:write",
+    "payments:refund",
+    "admin:analytics",
+    "admin:access",
+  ],
+  [DEFAULT_ROLES.BUSINESS_OPERATOR]: ["payments:read", "payments:write", "admin:access"],
+  [DEFAULT_ROLES.STARTUP_ADMIN]: ["payments:read", "payments:write", "streams:create", "admin:access"],
+  [DEFAULT_ROLES.STARTUP_OPERATOR]: ["payments:read", "payments:write", "streams:create"],
   [DEFAULT_ROLES.MODERATOR]: [
     "users:read",
     "content:read",
@@ -88,6 +104,18 @@ export const ROLE_PERMISSIONS = {
 } as const
 
 export class RBACManager {
+  static hasScopedOperatorAccess(role: string, scope: OperatorScope): boolean {
+    if (role === DEFAULT_ROLES.SUPER_ADMIN || role === DEFAULT_ROLES.ADMIN) {
+      return true
+    }
+
+    if (scope === "business") {
+      return role === DEFAULT_ROLES.BUSINESS_ADMIN || role === DEFAULT_ROLES.BUSINESS_OPERATOR
+    }
+
+    return role === DEFAULT_ROLES.STARTUP_ADMIN || role === DEFAULT_ROLES.STARTUP_OPERATOR
+  }
+
   /**
    * Check if a user has a specific permission
    */

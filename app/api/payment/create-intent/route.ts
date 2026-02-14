@@ -1,8 +1,18 @@
 import { type NextRequest } from "next/server"
 import { PaymentService } from "@/lib/payment-service"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
+import { requireBillingSession, requireScopedRole } from "@/lib/billing-auth"
+import { logPrivilegedAction } from "@/lib/audit-logging"
 
 export async function POST(request: NextRequest) {
+  const auth = await requireBillingSession()
+  if (auth.unauthorizedResponse || !auth.sessionUser) {
+    return auth.unauthorizedResponse
+  }
+
+  const roleResponse = requireScopedRole(auth.sessionUser, "startup")
+  if (roleResponse) return roleResponse
+
   try {
     const body = await request.json()
     const { amount, currency, paymentMethodId, metadata, idempotencyKey } = body
@@ -51,13 +61,27 @@ export async function POST(request: NextRequest) {
     }
 
     const requestIdempotencyKey = idempotencyKey || request.headers.get("x-idempotency-key") || undefined
+    const mergedMetadata = {
+      ...(metadata || {}),
+      user_id: auth.sessionUser.userId,
+      organization_id: auth.sessionUser.organizationId,
+    }
+
     const intent = await PaymentService.createPaymentIntent(
       amount,
       currency,
       paymentMethodId,
-      metadata || {},
+      mergedMetadata,
       requestIdempotencyKey,
     )
+
+    await logPrivilegedAction({
+      actorUserId: auth.sessionUser.userId,
+      action: "payment.intent.created",
+      resource: "payment.intent",
+      request,
+      details: { amount, currency, paymentMethodId },
+    })
 
     return respondSuccess(request, intent, {
       legacy: {
