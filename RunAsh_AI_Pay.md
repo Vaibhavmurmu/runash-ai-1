@@ -177,3 +177,20 @@ The e-commerce payments dashboard now reads and writes payment links/methods thr
 - `DELETE /api/v1/payment-methods/:id` - remove a payment method.
 
 Persistence is backed by database tables `ecommerce_payment_links` and `ecommerce_payment_methods` (see `scripts/014-ecommerce-payment-links-methods.sql`).
+
+## Payment backend reliability hardening (implementation update)
+
+RunAsh Pay payment intent/confirmation execution now runs on DB-backed repositories and provider adapters while keeping the existing API response payload shape.
+
+### What changed
+- Payment intents are persisted in `payment_intents` with provider IDs, provider event trail, and create idempotency keys.
+- Payment confirmations persist transactions in `payment_transactions_v2` with unique `intent_id` and unique confirm idempotency keys.
+- Refund records are persisted in `payment_refunds` and linked to transaction IDs for auditability.
+- Payment link persistence support is available through `payment_links_v2` repository primitives for payment-flow linkage.
+- Provider integration is handled behind a gateway boundary (`lib/services/payment-provider-gateway.ts`) so Stripe/Razorpay-class adapters can be swapped/expanded without changing API contracts.
+
+### Reliability and safety notes
+- Transaction amount now comes from the persisted intent amount (no runtime randomization).
+- Transaction status transitions are provider-result-driven and appended to provider event history for audit trails.
+- Existing `success/data` response shape remains unchanged for `/api/payment/create-intent` and `/api/payment/confirm`.
+- Idempotency keys are accepted from body `idempotencyKey` or `x-idempotency-key` header for create/confirm operations.

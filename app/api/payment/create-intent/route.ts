@@ -5,7 +5,7 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { amount, currency, paymentMethodId, metadata } = body
+    const { amount, currency, paymentMethodId, metadata, idempotencyKey } = body
 
     if (!amount || !currency || !paymentMethodId) {
       return respondError(
@@ -50,7 +50,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const intent = await PaymentService.createPaymentIntent(amount, currency, paymentMethodId, metadata || {})
+    const requestIdempotencyKey = idempotencyKey || request.headers.get("x-idempotency-key") || undefined
+    const intent = await PaymentService.createPaymentIntent(
+      amount,
+      currency,
+      paymentMethodId,
+      metadata || {},
+      requestIdempotencyKey,
+    )
 
     return respondSuccess(request, intent, {
       legacy: {
@@ -58,8 +65,8 @@ export async function POST(request: NextRequest) {
         data: intent,
       },
     })
-  } catch (error) {
-    console.error("Payment intent creation failed:", error)
+  } catch {
+    console.error("Payment intent creation failed")
     return respondError(
       request,
       {
