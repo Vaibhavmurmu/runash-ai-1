@@ -1,3 +1,52 @@
+export type ProtocolDecision = "approved" | "blocked" | "requires_confirmation"
+
+export type ProtocolErrorCode =
+  | "USER_CONFIRMATION_REQUIRED"
+  | "POLICY_CHECK_FAILED"
+  | "CONSENSUS_VERIFICATION_FAILED"
+  | "EXECUTION_RELEASE_BLOCKED"
+
+export interface ProtocolError {
+  code: ProtocolErrorCode
+  message: string
+  details?: Record<string, unknown>
+}
+
+export interface PaymentIntentLock {
+  protocolVersion: "v1"
+  intentId: string
+  lockId: string
+  actionType: string
+  riskLevel: "low" | "medium" | "high"
+  requiredConfirmations: number
+  metadata: Record<string, unknown>
+  createdAt: string
+}
+
+export interface ConsensusVerification {
+  protocolVersion: "v1"
+  intentId: string
+  lockId: string
+  verifierSet: string[]
+  approvals: string[]
+  deterministicChecks: Array<{
+    checkId: string
+    passed: boolean
+    reason?: string
+  }>
+  verifiedAt: string
+}
+
+export interface ExecutionRelease {
+  protocolVersion: "v1"
+  intentId: string
+  lockId: string
+  releasedBy: string
+  releaseDecision: Extract<ProtocolDecision, "approved" | "blocked">
+  releaseReason?: string
+  releasedAt: string
+}
+
 /**
  * Small helper to build the "Agentic Commerce Protocol" metadata payload.
  * This is attached as session.live_metadata when creating or updating sessions.

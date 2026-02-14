@@ -258,6 +258,29 @@ Payment route error logging is standardized on `lib/api/logging.ts` with structu
 - Payment link and payment method CRUD endpoints now enforce owner/tenant scoping (`owner_user_id` / `owner_organization_id`) before reads or writes.
 - Operator APIs require role checks for startup/business/admin scopes via `lib/rbac.ts` role constants.
 
+## Payment protocol orchestration migration notes (v1)
+
+RunAsh Pay now introduces protocol-level orchestration records for payment execution gating.
+
+### Backward compatibility
+- Existing create-intent and confirm endpoint payloads are unchanged.
+- The protocol contract is versioned under `v1` and additive: no existing field names are renamed.
+- High-risk actions (payment/refund/charge/payout/account destructive actions) now require explicit `userConfirmed=true` before execution release.
+
+### DB rollout plan
+1. Apply migration: `scripts/sql/2026-02-14_create_payment_protocol_tables.sql`.
+2. Deploy services that write protocol events and consensus records.
+3. Monitor new tables (`payment_protocol_events`, `payment_consensus_records`) for release/block decisions before enforcing dashboards or external dependencies.
+
+### Phased rollout
+- **Phase 1 (observe):** write protocol events while preserving existing execution behavior.
+- **Phase 2 (guard):** enforce deterministic policy checks before release for high-risk and consensus-required actions.
+- **Phase 3 (enforce):** fail closed when confirmation/consensus/policy checks are not satisfied.
+
+### Rollback
+- If incident risk appears, disable protocol enforcement path in service configuration and keep event writes enabled for audit continuity.
+- Existing payment APIs continue to function using current intent/transaction repositories.
+
 
 
 ## Payment API observability update (2026 reliability hardening)
@@ -266,4 +289,3 @@ Payment route error logging is standardized on `lib/api/logging.ts` with structu
 - Error paths were migrated from raw `console.error` statements to structured sanitized logs for payment/billing/auth-adjacent routes.
 - Logging redaction now explicitly covers provider/payload/customer key patterns in addition to token/email/payment key detection.
 - No payment contract fields were removed; response additions are backward-compatible metadata for auditability.
-
