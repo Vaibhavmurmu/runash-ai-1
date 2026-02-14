@@ -324,3 +324,10 @@ RunAsh Pay now introduces protocol-level orchestration records for payment execu
 - Logging redaction now explicitly covers provider/payload/customer key patterns in addition to token/email/payment key detection.
 - No payment contract fields were removed; response additions are backward-compatible metadata for auditability.
 
+
+## 2026 API Reliability hardening
+
+- Canonical payment/billing contracts now live under `/api/v1/payment/*` and `/api/v1/billing/*`.
+- Legacy `/api/payment/*` and `/api/billing/*` routes are maintained as compatibility aliases to avoid integration breakage.
+- Customer-scoped resources enforce auth-backed ownership checks.
+- Payment intents, transactions, subscriptions, invoices, and usage are persisted in DB-backed storage (no in-memory simulation path).
