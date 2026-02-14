@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { verify2FACode, send2FACode, logRecoveryAttempt } from "@/lib/2fa"
 import { z } from "zod"
+import { logApiRouteError } from "@/lib/api/logging"
 
 const verifySchema = z.object({
   userId: z.number(),
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result, { status: result.success ? 200 : 400 })
   } catch (error) {
-    console.error("2FA verify error:", error)
+    logApiRouteError(request, "auth.2fa.verify.failed", error, { errorCode: "AUTH_2FA_VERIFY_FAILED" })
 
     if (error instanceof z.ZodError) {
       return NextResponse.json({ success: false, message: "Invalid request data" }, { status: 400 })
@@ -51,7 +52,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json(result, { status: result.success ? 200 : 400 })
   } catch (error) {
-    console.error("2FA send error:", error)
+    logApiRouteError(request, "auth.2fa.send.failed", error, { errorCode: "AUTH_2FA_SEND_FAILED" })
 
     if (error instanceof z.ZodError) {
       return NextResponse.json({ success: false, message: "Invalid request data" }, { status: 400 })

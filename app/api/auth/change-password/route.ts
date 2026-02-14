@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { changePassword } from "@/lib/auth-utils"
 import { rateLimit } from "@/lib/rate-limit"
 import { z } from "zod"
+import { logApiRouteError } from "@/lib/api/logging"
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required"),
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ message: "Password changed successfully" })
   } catch (error) {
-    console.error("Change password error:", error)
+    logApiRouteError(request, "auth.change_password.failed", error, { errorCode: "AUTH_CHANGE_PASSWORD_FAILED" })
 
     if (error instanceof Error && error.message === "Invalid current password") {
       return NextResponse.json({ message: "Current password is incorrect" }, { status: 400 })

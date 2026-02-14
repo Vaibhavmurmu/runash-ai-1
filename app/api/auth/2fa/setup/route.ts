@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { generateTOTPSecret, setup2FA, verifyTOTPCode } from "@/lib/2fa"
 import { z } from "zod"
+import { logApiRouteError } from "@/lib/api/logging"
 
 const setupSchema = z.object({
   method: z.enum(["totp", "sms", "email"]),
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ error: "Invalid method" }, { status: 400 })
   } catch (error) {
-    console.error("2FA setup GET error:", error)
+    logApiRouteError(request, "auth.2fa.setup.get_failed", error, { errorCode: "AUTH_2FA_SETUP_GET_FAILED" })
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -89,7 +90,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Invalid method" }, { status: 400 })
     }
   } catch (error) {
-    console.error("2FA setup POST error:", error)
+    logApiRouteError(request, "auth.2fa.setup.post_failed", error, { errorCode: "AUTH_2FA_SETUP_POST_FAILED" })
 
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "Invalid request data" }, { status: 400 })

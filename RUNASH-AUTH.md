@@ -376,3 +376,25 @@ Billing and payment server routes now use a canonical NextAuth server-session id
 - Startup-operator scope endpoints (usage tracking, payment intent create/confirm) require startup/admin-compatible roles.
 - Business-operator scope endpoints (subscription mutations, billing portal, analytics) require business/admin-compatible roles.
 - Super admin and admin remain globally authorized through RBAC hierarchy checks.
+
+
+## Logging and traceability policy (auth routes)
+
+Auth route failures should use structured API logging via `lib/api/logging.ts` (for example, `logApiRouteError`) instead of raw `console.error` output.
+
+Required fields for auth error events:
+- `requestId`
+- `route`
+- `method`
+- safe `details.errorCode`
+
+Forbidden in auth logs:
+- raw email addresses
+- verification/magic-link tokens
+- OTP values
+- session tokens, cookies, or authorization headers
+
+Traceability standard:
+- Use `requestId` / `x-request-id` for support and incident timelines.
+- Do not use user email or token-derived identifiers for request tracing.
+

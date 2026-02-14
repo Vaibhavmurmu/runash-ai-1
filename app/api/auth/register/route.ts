@@ -5,6 +5,7 @@ import { registerSchema } from "@/lib/validations/auth"
 import { rateLimit } from "@/lib/rate-limit"
 import { sendVerificationEmail } from "@/lib/email"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
+import { logApiRouteError } from "@/lib/api/logging"
 
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -97,7 +98,7 @@ export async function POST(request: NextRequest) {
       },
     )
   } catch (error) {
-    console.error("Registration error:", error)
+    logApiRouteError(request, "auth.register.failed", error, { errorCode: "AUTH_REGISTER_FAILED" })
     return respondError(
       request,
       { code: "INTERNAL_ERROR", message: "Internal server error" },

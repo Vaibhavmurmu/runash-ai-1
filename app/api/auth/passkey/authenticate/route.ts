@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { generatePasskeyAuthenticationOptions, verifyPasskeyAuthentication } from "@/lib/passkey"
 import { SignJWT } from "jose"
 import { z } from "zod"
+import { logApiRouteError } from "@/lib/api/logging"
 
 const authenticationSchema = z.object({
   response: z.object({
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(options)
   } catch (error) {
-    console.error("Passkey authentication options error:", error)
+    logApiRouteError(request, "auth.passkey.authenticate.options_failed", error, { errorCode: "AUTH_PASSKEY_AUTH_OPTIONS_FAILED" })
     return NextResponse.json({ error: "Failed to generate authentication options" }, { status: 500 })
   }
 }
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: "Failed to verify passkey authentication" }, { status: 400 })
   } catch (error) {
-    console.error("Passkey authentication verification error:", error)
+    logApiRouteError(request, "auth.passkey.authenticate.verify_failed", error, { errorCode: "AUTH_PASSKEY_AUTH_VERIFY_FAILED" })
 
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "Invalid request data" }, { status: 400 })
