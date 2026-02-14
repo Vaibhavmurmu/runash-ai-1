@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ error: "Invalid method" }, { status: 400 })
   } catch (error) {
-    console.error("2FA setup GET error:", error)
+    console.error("2FA setup GET error")
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Invalid method" }, { status: 400 })
     }
   } catch (error) {
-    console.error("2FA setup POST error:", error)
+    console.error("2FA setup POST error")
 
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "Invalid request data" }, { status: 400 })
