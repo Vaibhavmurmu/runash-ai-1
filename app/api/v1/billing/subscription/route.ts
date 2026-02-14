@@ -1,1 +1,219 @@
-export { GET, PATCH, POST } from "@/app/api/billing/subscription/route"
+import { type NextRequest } from "next/server"
+import Stripe from "stripe"
+import { z } from "zod"
+
+import { respondError, respondSuccess } from "@/lib/api/envelope"
+import { logApiRouteError } from "@/lib/api/logging"
+import { logPrivilegedAction } from "@/lib/audit-logging"
+import { getAuthorizedBillingIdentity, requireScopedBillingAccess } from "@/lib/billing-auth"
+import { Database } from "@/lib/database"
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2023-10-16",
+})
+
+const updateSubscriptionSchema = z
+  .object({
+    plan_id: z.string().min(1),
+    prorate: z.boolean().optional().default(true),
+    confirm: z.literal(true),
+  })
+  .strict()
+
+export async function GET(request: NextRequest) {
+  const access = await requireScopedBillingAccess("startup")
+  if ("response" in access) return access.response
+  const { sessionUser } = access
+
+  try {
+    const subscription = await Database.query(
+      `
+      SELECT us.*, sp.name as plan_name, sp.price, sp.currency, sp.interval, sp.features, sp.limits
+      FROM user_subscriptions us
+      JOIN subscription_plans sp ON us.plan_id = sp.id
+      WHERE us.user_id = $1 AND us.status IN ('active', 'trialing', 'past_due')
+      ORDER BY us.created_at DESC
+      LIMIT 1
+    `,
+      [sessionUser.userId],
+    )
+
+    if (!subscription[0]) {
+      return respondSuccess(request, null)
+    }
+
+    return respondSuccess(request, {
+      ...subscription[0],
+      plan: {
+        id: subscription[0].plan_id,
+        name: subscription[0].plan_name,
+        price: subscription[0].price,
+        currency: subscription[0].currency,
+        interval: subscription[0].interval,
+        features: subscription[0].features,
+        limits: subscription[0].limits,
+      },
+    })
+  } catch (error) {
+    logApiRouteError(request, "billing.subscription.get_failed", error, {
+      errorCode: "BILLING_SUBSCRIPTION_GET_FAILED",
+      userId: sessionUser.userId,
+    })
+    return respondError(request, { code: "BILLING_SUBSCRIPTION_GET_FAILED", message: "Internal server error" }, { status: 500 })
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const access = await requireScopedBillingAccess("startup")
+  if ("response" in access) return access.response
+  const { sessionUser } = access
+
+  try {
+    const { plan_id, payment_method_id } = await request.json()
+
+    const plan = await Database.query(`SELECT * FROM subscription_plans WHERE id = $1 AND is_active = true`, [plan_id])
+    if (!plan[0]) {
+      return respondError(request, { code: "PLAN_NOT_FOUND", message: "Plan not found" }, { status: 404 })
+    }
+
+    const identity = await getAuthorizedBillingIdentity(sessionUser)
+    if ("errorResponse" in identity) return identity.errorResponse
+
+    let stripeCustomerId = identity.user.stripe_customer_id
+    if (!stripeCustomerId) {
+      const stripeCustomer = await stripe.customers.create({
+        email: sessionUser.email || undefined,
+        name: sessionUser.name || undefined,
+        metadata: { user_id: sessionUser.userId },
+      })
+      stripeCustomerId = stripeCustomer.id
+      await Database.query(`UPDATE users SET stripe_customer_id = $1 WHERE id = $2`, [stripeCustomerId, sessionUser.userId])
+    }
+
+    const subscriptionData: any = {
+      customer: stripeCustomerId,
+      items: [{ price: plan[0].stripe_price_id }],
+      payment_behavior: "default_incomplete",
+      payment_settings: { save_default_payment_method: "on_subscription" },
+      expand: ["latest_invoice.payment_intent"],
+      metadata: { user_id: sessionUser.userId, plan_id },
+    }
+
+    if (payment_method_id) subscriptionData.default_payment_method = payment_method_id
+    if (plan[0].trial_days > 0) subscriptionData.trial_period_days = plan[0].trial_days
+
+    const stripeSubscription = await stripe.subscriptions.create(subscriptionData)
+
+    const dbSubscription = await Database.query(
+      `
+      INSERT INTO user_subscriptions (
+        user_id, plan_id, stripe_subscription_id, status,
+        current_period_start, current_period_end, trial_start, trial_end
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING *
+    `,
+      [
+        sessionUser.userId,
+        plan_id,
+        stripeSubscription.id,
+        stripeSubscription.status,
+        new Date(stripeSubscription.current_period_start * 1000),
+        new Date(stripeSubscription.current_period_end * 1000),
+        stripeSubscription.trial_start ? new Date(stripeSubscription.trial_start * 1000) : null,
+        stripeSubscription.trial_end ? new Date(stripeSubscription.trial_end * 1000) : null,
+      ],
+    )
+
+    const response: Record<string, unknown> = {
+      subscription: { ...dbSubscription[0], plan: plan[0] },
+    }
+
+    if (stripeSubscription.latest_invoice && typeof stripeSubscription.latest_invoice === "object") {
+      const invoice = stripeSubscription.latest_invoice
+      if (invoice.payment_intent && typeof invoice.payment_intent === "object") {
+        const paymentIntent = invoice.payment_intent
+        if (paymentIntent.status === "requires_action") {
+          response.client_secret = paymentIntent.client_secret
+          response.requires_action = true
+        }
+      }
+    }
+
+    await logPrivilegedAction({
+      actorUserId: sessionUser.userId,
+      action: "billing.subscription.created",
+      resource: "billing.subscription",
+      request,
+      details: { planId: plan_id, hasPaymentMethod: Boolean(payment_method_id) },
+    })
+
+    return respondSuccess(request, response)
+  } catch (error) {
+    logApiRouteError(request, "billing.subscription.create_failed", error, {
+      errorCode: "BILLING_SUBSCRIPTION_CREATE_FAILED",
+      userId: sessionUser.userId,
+    })
+    return respondError(request, { code: "BILLING_SUBSCRIPTION_CREATE_FAILED", message: "Internal server error" }, { status: 500 })
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  const access = await requireScopedBillingAccess("business")
+  if ("response" in access) return access.response
+  const { sessionUser } = access
+
+  const payload = await request.json().catch(() => ({}))
+  const validation = updateSubscriptionSchema.safeParse(payload)
+  if (!validation.success) {
+    return respondError(request, { code: "EXPLICIT_CONFIRMATION_REQUIRED", message: "Explicit confirmation required" }, { status: 400 })
+  }
+
+  const { plan_id, prorate } = validation.data
+
+  try {
+    const currentSub = await Database.query(
+      `SELECT * FROM user_subscriptions WHERE user_id = $1 AND status IN ('active', 'trialing') ORDER BY created_at DESC LIMIT 1`,
+      [sessionUser.userId],
+    )
+
+    if (!currentSub[0]) {
+      return respondError(request, { code: "SUBSCRIPTION_NOT_FOUND", message: "No active subscription found" }, { status: 404 })
+    }
+
+    const newPlan = await Database.query(`SELECT * FROM subscription_plans WHERE id = $1 AND is_active = true`, [plan_id])
+    if (!newPlan[0]) {
+      return respondError(request, { code: "PLAN_NOT_FOUND", message: "Plan not found" }, { status: 404 })
+    }
+
+    await stripe.subscriptions.update(currentSub[0].stripe_subscription_id, {
+      items: [
+        {
+          id: (await stripe.subscriptions.retrieve(currentSub[0].stripe_subscription_id)).items.data[0].id,
+          price: newPlan[0].stripe_price_id,
+        },
+      ],
+      proration_behavior: prorate ? "create_prorations" : "none",
+    })
+
+    const updatedSub = await Database.query(
+      `UPDATE user_subscriptions SET plan_id = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [plan_id, currentSub[0].id],
+    )
+
+    await logPrivilegedAction({
+      actorUserId: sessionUser.userId,
+      action: "billing.subscription.updated",
+      resource: "billing.subscription",
+      request,
+      details: { oldPlanId: currentSub[0].plan_id, newPlanId: plan_id, prorate },
+    })
+
+    return respondSuccess(request, { ...updatedSub[0], plan: newPlan[0] })
+  } catch (error) {
+    logApiRouteError(request, "billing.subscription.update_failed", error, {
+      errorCode: "BILLING_SUBSCRIPTION_UPDATE_FAILED",
+      userId: sessionUser.userId,
+    })
+    return respondError(request, { code: "BILLING_SUBSCRIPTION_UPDATE_FAILED", message: "Internal server error" }, { status: 500 })
+  }
+}

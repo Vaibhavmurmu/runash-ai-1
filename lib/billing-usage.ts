@@ -1,22 +1,4 @@
-// Usage metering via Upstash Redis with in-memory fallback
-
-import { Redis } from "@upstash/redis"
-
-let _redis: Redis | null = null
-function redis() {
-  if (_redis) return _redis
-  if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
-    console.warn("[v0] Upstash KV env vars missing; usage metering will be in-memory only")
-    return null
-  }
-  _redis = new Redis({
-    url: process.env.KV_REST_API_URL!,
-    token: process.env.KV_REST_API_TOKEN!,
-  })
-  return _redis
-}
-
-const mem = new Map<string, number>()
+import { queryMany } from "@/lib/db"
 
 function ym() {
   const d = new Date()
@@ -34,6 +16,28 @@ export type UsageSummary = {
   utilization: Partial<Record<UsageMetric, number>>
 }
 
+let usageTableEnsured = false
+
+async function ensureUsageTable() {
+  if (usageTableEnsured) return
+
+  await queryMany(`
+    CREATE TABLE IF NOT EXISTS billing_usage (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      period TEXT NOT NULL,
+      metric TEXT NOT NULL,
+      amount NUMERIC NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(user_id, period, metric)
+    );
+  `)
+
+  await queryMany(`CREATE INDEX IF NOT EXISTS idx_billing_usage_user_period ON billing_usage(user_id, period);`)
+  usageTableEnsured = true
+}
+
 export function defaultPlanLimits(plan: Plan): Partial<Record<UsageMetric, number>> {
   switch (plan) {
     case "free":
@@ -49,10 +53,6 @@ export function defaultPlanLimits(plan: Plan): Partial<Record<UsageMetric, numbe
   }
 }
 
-function key(userId: string, metric: UsageMetric, period = ym()) {
-  return `usage:${userId}:${period}:${metric}`
-}
-
 export async function incrementUsage(params: {
   userId: string
   metric: UsageMetric
@@ -60,21 +60,29 @@ export async function incrementUsage(params: {
   period?: string
 }) {
   const { userId, metric, amount, period = ym() } = params
-  const r = redis()
-  const k = key(userId, metric, period)
-  if (r) {
-    await r.incrby(k, amount)
-    const ttl = 60 * 60 * 24 * 30 * 18 // ~18 months
-    await r.expire(k, ttl)
-  } else {
-    mem.set(k, (mem.get(k) ?? 0) + amount)
-  }
+  await ensureUsageTable()
+
+  await queryMany(
+    `
+    INSERT INTO billing_usage (id, user_id, period, metric, amount)
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (user_id, period, metric)
+    DO UPDATE SET amount = billing_usage.amount + EXCLUDED.amount, updated_at = NOW()
+  `,
+    [crypto.randomUUID(), userId, period, metric, amount],
+  )
+
   return true
 }
 
 export async function getUsageSummary(userId: string, plan: Plan = "free", period = ym()): Promise<UsageSummary> {
-  const metrics: UsageMetric[] = ["stream_minutes", "uploads_gb", "view_minutes", "credits"]
-  const r = redis()
+  await ensureUsageTable()
+
+  const rows = await queryMany<{ metric: UsageMetric; amount: number }>(
+    `SELECT metric, amount::float8 as amount FROM billing_usage WHERE user_id = $1 AND period = $2`,
+    [userId, period],
+  )
+
   const totals: Record<UsageMetric, number> = {
     stream_minutes: 0,
     uploads_gb: 0,
@@ -82,25 +90,23 @@ export async function getUsageSummary(userId: string, plan: Plan = "free", perio
     credits: 0,
   }
 
-  if (r) {
-    const keys = metrics.map((m) => key(userId, m, period))
-    const values = await r.mget<number[]>(...keys)
-    metrics.forEach((m, i) => (totals[m] = Number(values?.[i] ?? 0)))
-  } else {
-    metrics.forEach((m) => (totals[m] = Number(mem.get(key(userId, m, period)) ?? 0)))
+  for (const row of rows) {
+    if (row.metric in totals) totals[row.metric] = Number(row.amount ?? 0)
   }
 
   const limits = defaultPlanLimits(plan)
   const utilization: Partial<Record<UsageMetric, number>> = {}
-  for (const m of metrics) {
-    const lim = limits[m]
-    if (typeof lim === "number" && lim > 0) utilization[m] = Math.min(1, totals[m] / lim)
+  for (const metric of Object.keys(totals) as UsageMetric[]) {
+    const limit = limits[metric]
+    if (typeof limit === "number" && limit > 0) {
+      utilization[metric] = Math.min(1, totals[metric] / limit)
+    }
   }
 
   return { period, userId, totals, limits, utilization }
 }
 
 export function isNearLimit(summary: UsageSummary, metric: UsageMetric, threshold = 0.8) {
-  const u = summary.utilization[metric]
-  return typeof u === "number" && u >= threshold
+  const utilization = summary.utilization[metric]
+  return typeof utilization === "number" && utilization >= threshold
 }

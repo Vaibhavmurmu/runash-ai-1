@@ -1179,3 +1179,19 @@ To improve payment reliability and compliance posture for both startup and busin
 - Rollback: revert route-level response/requestId header additions and route logger wiring; payment business logic remains unchanged.
 
 
+
+## API Contract Standardization (v1)
+
+For payment-operational reliability and auditability:
+- Standard envelope is enforced for v1 payment/billing endpoints: `success`, `data`, `error`, `requestId`, optional `meta`.
+- Canonical endpoints:
+  - `/api/v1/payment/create-intent`
+  - `/api/v1/payment/confirm`
+  - `/api/v1/payment/methods`
+  - `/api/v1/billing/subscription`
+  - `/api/v1/billing/checkout`
+  - `/api/v1/billing/portal`
+  - `/api/v1/billing/usage`
+  - `/api/v1/billing/invoices`
+- Legacy endpoint aliases are retained for backward compatibility under `/api/payment/*` and `/api/billing/*`.
+- Usage metering now persists in database storage for durable reconciliation.

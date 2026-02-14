@@ -1,1 +1,59 @@
-export { GET } from "@/app/api/billing/invoices/route"
+import { type NextRequest } from "next/server"
+import { respondError, respondSuccess } from "@/lib/api/envelope"
+import { logApiRouteError } from "@/lib/api/logging"
+import { requireScopedBillingAccess } from "@/lib/billing-auth"
+import { Database } from "@/lib/database"
+
+export async function GET(request: NextRequest) {
+  try {
+    const access = await requireScopedBillingAccess("startup")
+    if ("response" in access) return access.response
+    const { sessionUser } = access
+
+    const limitParam = Number.parseInt(request.nextUrl.searchParams.get("limit") || "10", 10)
+    const offsetParam = Number.parseInt(request.nextUrl.searchParams.get("offset") || "0", 10)
+    const limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(limitParam, 100)) : 10
+    const offset = Number.isFinite(offsetParam) ? Math.max(0, offsetParam) : 0
+
+    const invoices = await Database.query(
+      `
+      SELECT i.*, COALESCE(
+        json_agg(
+          json_build_object(
+            'id', ili.id,
+            'description', ili.description,
+            'quantity', ili.quantity,
+            'unit_amount', ili.unit_amount,
+            'amount', ili.amount,
+            'period_start', ili.period_start,
+            'period_end', ili.period_end,
+            'proration', ili.proration
+          )
+        ) FILTER (WHERE ili.id IS NOT NULL),
+        '[]'::json
+      ) AS line_items
+      FROM invoices i
+      LEFT JOIN invoice_line_items ili ON ili.invoice_id = i.id
+      WHERE i.user_id = $1
+      GROUP BY i.id
+      ORDER BY i.created_at DESC
+      LIMIT $2 OFFSET $3
+      `,
+      [sessionUser.userId, limit, offset],
+    )
+
+    const totalRows = await Database.query<{ total: string }>(`SELECT COUNT(*)::text AS total FROM invoices WHERE user_id = $1`, [
+      sessionUser.userId,
+    ])
+
+    return respondSuccess(request, {
+      invoices,
+      total: Number.parseInt(totalRows[0]?.total || "0", 10),
+      limit,
+      offset,
+    })
+  } catch (error) {
+    logApiRouteError(request, "billing.invoices.list_failed", error, { errorCode: "BILLING_INVOICES_FETCH_FAILED" })
+    return respondError(request, { code: "BILLING_INVOICES_FETCH_FAILED", message: "Internal server error" }, { status: 500 })
+  }
+}

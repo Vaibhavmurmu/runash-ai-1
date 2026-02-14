@@ -329,3 +329,86 @@ Removes the product from the user cart.
 - Existing product list response shape is preserved.
 - Legacy `POST /api/grocery/products` add-to-cart payload is still accepted for backward compatibility.
 - Apply DB migration script: `scripts/012-grocery-cart-schema.sql` before using new cart endpoints in production.
+
+## Payment & Billing API (`/api/v1`) Contract Examples
+
+All payment and billing endpoints below return the standard envelope (`success`, `data`, `error`, `requestId`, optional `meta`).
+
+### `POST /api/v1/payment/create-intent`
+
+```json
+{
+  "amount": 499,
+  "currency": "INR",
+  "paymentMethodId": "stripe-card",
+  "metadata": {
+    "orderId": "ord_123"
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "pi_123",
+    "amount": 499,
+    "currency": "INR",
+    "status": "pending",
+    "paymentMethod": "stripe-card"
+  },
+  "error": null,
+  "requestId": "req_123"
+}
+```
+
+### `POST /api/v1/payment/confirm`
+
+```json
+{
+  "intentId": "pi_123"
+}
+```
+
+### `GET /api/v1/payment/methods?currency=INR`
+
+Response data is an array of enabled methods for the requested currency.
+
+### `GET /api/v1/billing/subscription`
+
+Response `data` is either `null` (no active subscription) or the customer-owned subscription record + `plan` object.
+
+### `POST /api/v1/billing/checkout`
+
+```json
+{
+  "priceId": "price_abc",
+  "mode": "subscription",
+  "success_url": "https://example.com/success",
+  "cancel_url": "https://example.com/cancel"
+}
+```
+
+### `POST /api/v1/billing/portal`
+
+```json
+{
+  "return_url": "https://example.com/settings/billing"
+}
+```
+
+### `GET /api/v1/billing/usage?plan=starter&period=2026-02`
+
+Returns customer-owned usage totals, limits, and utilization for the requested period.
+
+### `GET /api/v1/billing/invoices?limit=10&offset=0`
+
+Returns paginated, customer-owned invoices and aggregated line items.
+
+### Backward compatibility aliases
+
+Legacy paths remain active as aliases to v1 handlers:
+- `/api/payment/*` → `/api/v1/payment/*`
+- `/api/billing/*` → `/api/v1/billing/*`
