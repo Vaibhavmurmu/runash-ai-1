@@ -33,7 +33,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result, { status: result.success ? 200 : 400 })
   } catch (error) {
+
+    console.error("2FA verify error")
+
     logApiRouteError(request, "auth.2fa.verify.failed", error, { errorCode: "AUTH_2FA_VERIFY_FAILED" })
+
 
     if (error instanceof z.ZodError) {
       return NextResponse.json({ success: false, message: "Invalid request data" }, { status: 400 })
@@ -52,7 +56,11 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json(result, { status: result.success ? 200 : 400 })
   } catch (error) {
+
+    console.error("2FA send error")
+
     logApiRouteError(request, "auth.2fa.send.failed", error, { errorCode: "AUTH_2FA_SEND_FAILED" })
+
 
     if (error instanceof z.ZodError) {
       return NextResponse.json({ success: false, message: "Invalid request data" }, { status: 400 })

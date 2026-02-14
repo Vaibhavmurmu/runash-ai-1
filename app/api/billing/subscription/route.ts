@@ -1,13 +1,27 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { Database } from "@/lib/database"
 import Stripe from "stripe"
+
+import { z } from "zod"
+
 import { getAuthorizedBillingIdentity, requireScopedBillingAccess } from "@/lib/billing-auth"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 import { logApiRouteError } from "@/lib/api/logging"
 
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2023-10-16",
 })
+
+
+
+const updateSubscriptionSchema = z
+  .object({
+    plan_id: z.string().min(1),
+    prorate: z.boolean().optional().default(true),
+    confirm: z.literal(true),
+  })
+  .strict()
 
 function withRequestHeaders(requestId: string) {
   return {
@@ -17,6 +31,7 @@ function withRequestHeaders(requestId: string) {
     },
   }
 }
+
 
 export async function GET(req: NextRequest) {
   const requestId = req.headers.get("x-request-id") ?? req.headers.get("x-correlation-id") ?? crypto.randomUUID()
@@ -181,8 +196,19 @@ export async function PATCH(req: NextRequest) {
   if ("response" in access) return access.response
   const { sessionUser } = access
 
+
+    const payload = await req.json().catch(() => ({}))
+    const validation = updateSubscriptionSchema.safeParse(payload)
+
+    if (!validation.success) {
+      return NextResponse.json({ error: "Explicit confirmation required" }, { status: 400 })
+    }
+
+    const { plan_id, prorate } = validation.data
+
   try {
     const { plan_id, prorate = true } = await req.json()
+
 
     const currentSub = await Database.query(
       `SELECT * FROM user_subscriptions WHERE user_id = $1 AND status IN ('active', 'trialing') ORDER BY created_at DESC LIMIT 1`,

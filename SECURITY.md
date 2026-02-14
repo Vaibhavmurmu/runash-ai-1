@@ -45,6 +45,30 @@ Reference: `docs/API_CONTRACTS.md`.
 - High-risk actions (payment/account-impacting operations) require explicit user confirmation via `/api/agents/actions`.
 - Agent transcript/tool records use retention pruning (`RUNASH_AGENT_RETENTION_DAYS`, default 30 days) for PII minimization.
 
+
+
+## Settings mutation confirmation policy
+
+High-risk settings mutations are protected by mandatory user-intent confirmations in UI flows. The dialog gate applies to account deletion, session revocation, API key regeneration/deletion, 2FA disablement, and subscription cancellation/downgrade operations.
+
+Operational requirements:
+- No sensitive token/key values are displayed in confirmation dialogs.
+- Mutation requests execute only after explicit user confirmation.
+- Dialogs surface pending/error states to prevent repeated unsafe retries.
+
+
+## Settings security hardening updates
+
+The settings UI/API contract includes hardening controls for sensitive security operations:
+
+- API keys are never re-displayed in full after creation. Rotation returns a one-time copy value and stores only masked metadata for subsequent reads.
+- Security actions (`revoke-sessions`, `regenerate-api-key`, `delete-api-key`, `disable-2fa`) require strict server-side payload validation with explicit user intent confirmation.
+- Security settings updates reject invalid mutation payloads and preserve server-owned key metadata.
+- Client security forms send minimal payloads and clear sensitive fields after mutation completion.
+- 2FA disable operations execute against backend 2FA state, not only UI preference state.
+
+Cross-reference: `RUNASH-AUTH.md`, `docs/DOC_GOVERNANCE.md`.
+
 ## Payment and billing session hardening
 
 Payment and billing APIs now enforce server-side session authentication and ownership authorization checks against the user and organization context from JWT-backed NextAuth sessions.
@@ -84,4 +108,5 @@ Redaction policy:
 Operational guidance:
 - Incident triage and cross-system correlation must use `x-request-id` / `requestId`.
 - Avoid logging full request bodies for auth/payment flows.
+
 
