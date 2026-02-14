@@ -3,12 +3,23 @@ import { Database } from "@/lib/database"
 import Stripe from "stripe"
 import { getAuthorizedBillingIdentity, requireScopedBillingAccess } from "@/lib/billing-auth"
 import { logPrivilegedAction } from "@/lib/audit-logging"
+import { logApiRouteError } from "@/lib/api/logging"
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2023-10-16",
 })
 
+function withRequestHeaders(requestId: string) {
+  return {
+    headers: {
+      "x-request-id": requestId,
+      "x-correlation-id": requestId,
+    },
+  }
+}
+
 export async function GET(req: NextRequest) {
+  const requestId = req.headers.get("x-request-id") ?? req.headers.get("x-correlation-id") ?? crypto.randomUUID()
   const access = await requireScopedBillingAccess("startup")
   if ("response" in access) return access.response
   const { sessionUser } = access
@@ -27,28 +38,37 @@ export async function GET(req: NextRequest) {
     )
 
     if (!subscription[0]) {
-      return NextResponse.json(null)
+      return NextResponse.json(null, withRequestHeaders(requestId))
     }
 
-    return NextResponse.json({
-      ...subscription[0],
-      plan: {
-        id: subscription[0].plan_id,
-        name: subscription[0].plan_name,
-        price: subscription[0].price,
-        currency: subscription[0].currency,
-        interval: subscription[0].interval,
-        features: subscription[0].features,
-        limits: subscription[0].limits,
+    return NextResponse.json(
+      {
+        requestId,
+        ...subscription[0],
+        plan: {
+          id: subscription[0].plan_id,
+          name: subscription[0].plan_name,
+          price: subscription[0].price,
+          currency: subscription[0].currency,
+          interval: subscription[0].interval,
+          features: subscription[0].features,
+          limits: subscription[0].limits,
+        },
       },
-    })
+      withRequestHeaders(requestId),
+    )
   } catch (error) {
-    console.error("Get subscription error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    logApiRouteError(req, "billing.subscription.get_failed", error, {
+      errorCode: "BILLING_SUBSCRIPTION_GET_FAILED",
+      requestId,
+      userId: sessionUser.userId,
+    })
+    return NextResponse.json({ error: "Internal server error", requestId }, { status: 500, ...withRequestHeaders(requestId) })
   }
 }
 
 export async function POST(req: NextRequest) {
+  const requestId = req.headers.get("x-request-id") ?? req.headers.get("x-correlation-id") ?? crypto.randomUUID()
   const access = await requireScopedBillingAccess("startup")
   if ("response" in access) return access.response
   const { sessionUser } = access
@@ -59,7 +79,7 @@ export async function POST(req: NextRequest) {
     const plan = await Database.query(`SELECT * FROM subscription_plans WHERE id = $1 AND is_active = true`, [plan_id])
 
     if (!plan[0]) {
-      return NextResponse.json({ error: "Plan not found" }, { status: 404 })
+      return NextResponse.json({ error: "Plan not found", requestId }, { status: 404, ...withRequestHeaders(requestId) })
     }
 
     const identity = await getAuthorizedBillingIdentity(sessionUser)
@@ -121,6 +141,7 @@ export async function POST(req: NextRequest) {
     )
 
     const response: any = {
+      requestId,
       subscription: { ...dbSubscription[0], plan: plan[0] },
     }
 
@@ -143,14 +164,19 @@ export async function POST(req: NextRequest) {
       details: { planId: plan_id, hasPaymentMethod: Boolean(payment_method_id) },
     })
 
-    return NextResponse.json(response)
+    return NextResponse.json(response, withRequestHeaders(requestId))
   } catch (error) {
-    console.error("Create subscription error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    logApiRouteError(req, "billing.subscription.create_failed", error, {
+      errorCode: "BILLING_SUBSCRIPTION_CREATE_FAILED",
+      requestId,
+      userId: sessionUser.userId,
+    })
+    return NextResponse.json({ error: "Internal server error", requestId }, { status: 500, ...withRequestHeaders(requestId) })
   }
 }
 
 export async function PATCH(req: NextRequest) {
+  const requestId = req.headers.get("x-request-id") ?? req.headers.get("x-correlation-id") ?? crypto.randomUUID()
   const access = await requireScopedBillingAccess("business")
   if ("response" in access) return access.response
   const { sessionUser } = access
@@ -164,13 +190,13 @@ export async function PATCH(req: NextRequest) {
     )
 
     if (!currentSub[0]) {
-      return NextResponse.json({ error: "No active subscription found" }, { status: 404 })
+      return NextResponse.json({ error: "No active subscription found", requestId }, { status: 404, ...withRequestHeaders(requestId) })
     }
 
     const newPlan = await Database.query(`SELECT * FROM subscription_plans WHERE id = $1 AND is_active = true`, [plan_id])
 
     if (!newPlan[0]) {
-      return NextResponse.json({ error: "Plan not found" }, { status: 404 })
+      return NextResponse.json({ error: "Plan not found", requestId }, { status: 404, ...withRequestHeaders(requestId) })
     }
 
     await stripe.subscriptions.update(currentSub[0].stripe_subscription_id, {
@@ -196,9 +222,13 @@ export async function PATCH(req: NextRequest) {
       details: { oldPlanId: currentSub[0].plan_id, newPlanId: plan_id, prorate },
     })
 
-    return NextResponse.json({ ...updatedSub[0], plan: newPlan[0] })
+    return NextResponse.json({ requestId, ...updatedSub[0], plan: newPlan[0] }, withRequestHeaders(requestId))
   } catch (error) {
-    console.error("Update subscription error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    logApiRouteError(req, "billing.subscription.update_failed", error, {
+      errorCode: "BILLING_SUBSCRIPTION_UPDATE_FAILED",
+      requestId,
+      userId: sessionUser.userId,
+    })
+    return NextResponse.json({ error: "Internal server error", requestId }, { status: 500, ...withRequestHeaders(requestId) })
   }
 }

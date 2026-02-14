@@ -59,6 +59,13 @@ Payment and billing APIs now enforce server-side session authentication and owne
 - `POST /api/billing/webhook` remains non-session authenticated because it is provider-originated and validated with Stripe webhook signatures.
 
 
+
+### Correlation and audit requirements
+- Payment, billing, and auth routes must return both `x-request-id` and `x-correlation-id` headers (same value), and include `requestId` in error/success JSON payloads where supported.
+- Route failures must be logged through structured API logging helpers (no raw `console.error` in auth/payment/billing handlers).
+- Logs must include event name, route, method, and request ID only, with sensitive fields redacted by key and value patterns.
+- Provider payload internals, raw emails, tokens, and payment method identifiers must not be logged directly.
+
 ## Observability log redaction standard (auth + payment)
 
 All auth/payment route logs must go through `lib/api/logging.ts` and emit structured fields only:

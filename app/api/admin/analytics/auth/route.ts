@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { AuthAnalytics } from "@/lib/auth-analytics"
 import { z } from "zod"
+import { logApiRouteError } from "@/lib/api/logging"
 
 const analyticsSchema = z.object({
   start: z
@@ -21,15 +22,23 @@ const analyticsSchema = z.object({
     }),
 })
 
+function withRequestHeaders(requestId: string) {
+  return {
+    headers: {
+      "x-request-id": requestId,
+      "x-correlation-id": requestId,
+    },
+  }
+}
+
 export async function GET(request: NextRequest) {
+  const requestId = request.headers.get("x-request-id") ?? request.headers.get("x-correlation-id") ?? crypto.randomUUID()
+
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return NextResponse.json({ error: "Unauthorized", requestId }, { status: 401, ...withRequestHeaders(requestId) })
     }
-
-    // Check admin permissions
-    // This would typically check if user has admin role/permissions
 
     const { searchParams } = new URL(request.url)
     const params = Object.fromEntries(searchParams.entries())
@@ -37,9 +46,9 @@ export async function GET(request: NextRequest) {
 
     const analyticsData = await AuthAnalytics.getOverviewMetrics({ start, end })
 
-    return NextResponse.json(analyticsData)
+    return NextResponse.json({ requestId, ...analyticsData }, withRequestHeaders(requestId))
   } catch (error) {
-    console.error("Error fetching auth analytics:", error)
-    return NextResponse.json({ error: "Failed to fetch analytics" }, { status: 500 })
+    logApiRouteError(request, "admin.auth.analytics.fetch_failed", error, { errorCode: "AUTH_ANALYTICS_FETCH_FAILED", requestId })
+    return NextResponse.json({ error: "Failed to fetch analytics", requestId }, { status: 500, ...withRequestHeaders(requestId) })
   }
 }

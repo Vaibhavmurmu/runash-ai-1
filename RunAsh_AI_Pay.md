@@ -258,3 +258,12 @@ Payment route error logging is standardized on `lib/api/logging.ts` with structu
 - Payment link and payment method CRUD endpoints now enforce owner/tenant scoping (`owner_user_id` / `owner_organization_id`) before reads or writes.
 - Operator APIs require role checks for startup/business/admin scopes via `lib/rbac.ts` role constants.
 
+
+
+## Payment API observability update (2026 reliability hardening)
+
+- Billing and payment endpoints now emit correlation headers (`x-request-id`, `x-correlation-id`) and include `requestId` in key response payloads for traceability.
+- Error paths were migrated from raw `console.error` statements to structured sanitized logs for payment/billing/auth-adjacent routes.
+- Logging redaction now explicitly covers provider/payload/customer key patterns in addition to token/email/payment key detection.
+- No payment contract fields were removed; response additions are backward-compatible metadata for auditability.
+
