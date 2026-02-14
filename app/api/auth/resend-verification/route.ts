@@ -3,6 +3,7 @@ import { generateEmailVerificationToken } from "@/lib/auth-utils"
 import { sendVerificationEmail } from "@/lib/email"
 import { rateLimit } from "@/lib/rate-limit"
 import { neon } from "@neondatabase/serverless"
+import { logApiRouteError } from "@/lib/api/logging"
 
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
       message: "If an account with that email exists, we've sent a verification link.",
     })
   } catch (error) {
-    console.error("Resend verification error:", error)
+    logApiRouteError(request, "auth.resend_verification.failed", error, { errorCode: "AUTH_RESEND_VERIFICATION_FAILED" })
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }

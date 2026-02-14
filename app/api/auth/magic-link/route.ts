@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createMagicLinkToken, sendMagicLink } from "@/lib/magic-link"
 import { rateLimit } from "@/lib/rate-limit"
 import { z } from "zod"
+import { logApiRouteError } from "@/lib/api/logging"
 
 const magicLinkSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ message: "Magic link sent! Check your email to sign in." }, { status: 200 })
   } catch (error) {
-    console.error("Magic link request error:", error)
+    logApiRouteError(request, "auth.magic_link.request_failed", error, { errorCode: "AUTH_MAGIC_LINK_REQUEST_FAILED" })
 
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "Invalid email address" }, { status: 400 })

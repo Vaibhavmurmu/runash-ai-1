@@ -229,3 +229,18 @@ The payment/billing API surface now uses session-based server identity as the ca
 - API path and payload contracts remain unchanged for existing billing/payment clients.
 - `/api/v1/*` aliases continue to re-export the same handlers.
 - Webhook route behavior is unchanged except for continued signature-based verification.
+
+
+## Payment observability hardening (logging contract)
+
+Payment route error logging is standardized on `lib/api/logging.ts` with structured, redacted events.
+
+### Logging contract (payment flows)
+- Emit `event`, `requestId`, `route`, `method`, and safe `details.errorCode`.
+- Do not emit raw provider tokens, payer email, card metadata, or authorization credentials.
+- Use `requestId` for payment support reconciliation and trace stitching.
+
+### Backward compatibility
+- API response fields and payment route signatures remain unchanged.
+- This update affects observability output only (sanitized internal logs).
+

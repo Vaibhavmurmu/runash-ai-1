@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { verifyEmailToken } from "@/lib/auth-utils"
 import { neon } from "@neondatabase/serverless"
+import { logApiRouteError } from "@/lib/api/logging"
 
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
       message: "Email verified successfully",
     })
   } catch (error) {
-    console.error("Email verification error:", error)
+    logApiRouteError(request, "auth.verify_email.failed", error, { errorCode: "AUTH_VERIFY_EMAIL_FAILED" })
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }

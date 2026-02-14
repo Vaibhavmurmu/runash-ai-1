@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { PaymentService } from "@/lib/payment-service"
 import { requireBillingSession } from "@/lib/billing-auth"
+import { logApiRouteError } from "@/lib/api/logging"
 
 export async function GET(request: NextRequest) {
   const auth = await requireBillingSession()
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
       data: paymentMethods,
     })
   } catch (error) {
-    console.error("Failed to fetch payment methods:", error)
+    logApiRouteError(request, "payment.methods.fetch_failed", error, { errorCode: "PAYMENT_METHODS_FETCH_FAILED" })
     return NextResponse.json({ error: "Failed to fetch payment methods" }, { status: 500 })
   }
 }

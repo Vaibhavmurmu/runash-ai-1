@@ -57,3 +57,24 @@ Payment and billing APIs now enforce server-side session authentication and owne
 
 ### Explicit exception
 - `POST /api/billing/webhook` remains non-session authenticated because it is provider-originated and validated with Stripe webhook signatures.
+
+
+## Observability log redaction standard (auth + payment)
+
+All auth/payment route logs must go through `lib/api/logging.ts` and emit structured fields only:
+
+- `event`
+- `requestId`
+- `route`
+- `method`
+- `details.errorCode` (and non-sensitive operational metadata only)
+
+Redaction policy:
+- Redact sensitive key names and nested values (for example `password`, `token`, `authorization`, `cookie`, `email`, `otp`, `payment`, `card`, `cvv`, `auth`, `session`, `credential`).
+- Redact token-like and email-like raw string values when encountered in nested payloads.
+- Never include direct user identifiers (email, raw auth token, card/account data) in logs; use `requestId` for traceability.
+
+Operational guidance:
+- Incident triage and cross-system correlation must use `x-request-id` / `requestId`.
+- Avoid logging full request bodies for auth/payment flows.
+

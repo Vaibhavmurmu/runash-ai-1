@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { checkEmailDomainSSO } from "@/lib/sso"
 import { z } from "zod"
+import { logApiRouteError } from "@/lib/api/logging"
 
 const checkSSOSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
         : null,
     })
   } catch (error) {
-    console.error("SSO check error:", error)
+    logApiRouteError(request, "auth.sso.check_failed", error, { errorCode: "AUTH_SSO_CHECK_FAILED" })
 
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "Invalid email address" }, { status: 400 })

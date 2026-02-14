@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { PaymentService } from "@/lib/payment-service"
 import { requireBillingSession, requireScopedRole } from "@/lib/billing-auth"
 import { logPrivilegedAction } from "@/lib/audit-logging"
+import { logApiRouteError } from "@/lib/api/logging"
 
 export async function POST(request: NextRequest) {
   const auth = await requireBillingSession()
@@ -40,8 +41,8 @@ export async function POST(request: NextRequest) {
       success: true,
       data: transaction,
     })
-  } catch {
-    console.error("Payment confirmation failed")
+  } catch (error) {
+    logApiRouteError(request, "payment.intent.confirm_failed", error, { errorCode: "PAYMENT_CONFIRMATION_FAILED" })
     return NextResponse.json({ error: "Failed to confirm payment" }, { status: 500 })
   }
 }
