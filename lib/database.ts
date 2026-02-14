@@ -1,6 +1,4 @@
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { queryMany, sql } from "@/lib/db"
 
 export interface ChatMessage {
   id: string
@@ -363,8 +361,7 @@ export class DatabaseService {
 // Legacy Database class for backward compatibility
 export class Database {
   static async query<T = Record<string, unknown>>(query: string, params: unknown[] = []): Promise<T[]> {
-    const result = await sql.unsafe(query, params)
-    return result as T[]
+    return queryMany<T>(query, params)
   }
 
   static async createStream(data: Omit<Stream, "id" | "created_at">): Promise<Stream> {

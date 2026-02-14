@@ -1123,6 +1123,7 @@ The billing stack now includes end-to-end route coverage for plans, subscription
 - `GET /api/billing/plans/:id`
 - `GET /api/billing/invoices`
 - `GET /api/billing/invoices/:id`
+- `GET /api/billing/invoices/:id/download`
 - `POST /api/billing/subscription/cancel`
 - `POST /api/billing/subscription/reactivate`
 
