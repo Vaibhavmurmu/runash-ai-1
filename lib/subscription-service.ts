@@ -103,8 +103,8 @@ export class SubscriptionService {
     try {
       const response = await fetch("/api/billing/plans")
       if (!response.ok) throw new Error("Failed to fetch plans")
-      const { plans } = await response.json()
-      return plans
+      const payload = await response.json()
+      return Array.isArray(payload) ? payload : payload.plans || []
     } catch (error) {
       console.error("Failed to fetch plans:", error)
       return []
@@ -115,7 +115,8 @@ export class SubscriptionService {
     try {
       const response = await fetch(`/api/billing/plans/${planId}`)
       if (!response.ok) return null
-      return await response.json()
+      const payload = await response.json()
+      return payload?.plan || payload || null
     } catch (error) {
       console.error("Failed to fetch plan:", error)
       return null
@@ -127,7 +128,8 @@ export class SubscriptionService {
     try {
       const response = await fetch("/api/billing/subscription")
       if (!response.ok) return null
-      return await response.json()
+      const payload = await response.json()
+      return payload?.subscription ?? payload ?? null
     } catch (error) {
       console.error("Failed to fetch subscription:", error)
       return null
@@ -164,7 +166,8 @@ export class SubscriptionService {
         body: JSON.stringify({ plan_id: planId, prorate }),
       })
       if (!response.ok) throw new Error("Failed to update subscription")
-      return await response.json()
+      const payload = await response.json()
+      return payload?.subscription || payload
     } catch (error) {
       console.error("Failed to update subscription:", error)
       throw error
@@ -179,7 +182,8 @@ export class SubscriptionService {
         body: JSON.stringify({ immediately }),
       })
       if (!response.ok) throw new Error("Failed to cancel subscription")
-      return await response.json()
+      const payload = await response.json()
+      return payload?.subscription || payload
     } catch (error) {
       console.error("Failed to cancel subscription:", error)
       throw error
@@ -192,7 +196,8 @@ export class SubscriptionService {
         method: "POST",
       })
       if (!response.ok) throw new Error("Failed to reactivate subscription")
-      return await response.json()
+      const payload = await response.json()
+      return payload?.subscription || payload
     } catch (error) {
       console.error("Failed to reactivate subscription:", error)
       throw error
@@ -204,7 +209,11 @@ export class SubscriptionService {
     try {
       const response = await fetch(`/api/billing/invoices?limit=${limit}&offset=${offset}`)
       if (!response.ok) throw new Error("Failed to fetch invoices")
-      return await response.json()
+      const payload = await response.json()
+      if (Array.isArray(payload)) {
+        return { invoices: payload, total: payload.length }
+      }
+      return { invoices: payload?.invoices || [], total: payload?.total || 0 }
     } catch (error) {
       console.error("Failed to fetch invoices:", error)
       return { invoices: [], total: 0 }
@@ -215,7 +224,8 @@ export class SubscriptionService {
     try {
       const response = await fetch(`/api/billing/invoices/${invoiceId}`)
       if (!response.ok) return null
-      return await response.json()
+      const payload = await response.json()
+      return payload?.invoice || payload
     } catch (error) {
       console.error("Failed to fetch invoice:", error)
       return null

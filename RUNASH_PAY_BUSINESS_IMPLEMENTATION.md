@@ -1112,3 +1112,24 @@ To improve payment reliability for startup and business segments, backend paymen
 - **Risk level:** Medium (new persistence tables + provider-driven status transitions).
 - **Backward compatibility:** Existing API response fields and route shapes preserved.
 - **Rollback plan:** Route traffic can be reverted to legacy in-memory processing by restoring previous `lib/payment-service.ts` implementation while leaving new tables unused.
+
+## API Reliability Update: Billing Lifecycle Coverage
+
+The billing stack now includes end-to-end route coverage for plans, subscription cancellation/reactivation, and invoice retrieval to support production-grade business reconciliation.
+
+### Added billing endpoints
+
+- `GET /api/billing/plans`
+- `GET /api/billing/plans/:id`
+- `GET /api/billing/invoices`
+- `GET /api/billing/invoices/:id`
+- `POST /api/billing/subscription/cancel`
+- `POST /api/billing/subscription/reactivate`
+
+### Stable alias contract
+
+For versioned integrations, equivalent aliases are available under `/api/v1/billing/*` to reduce client migration risk across future internal refactors.
+
+### Rollback plan
+
+If any billing behavior regression is detected, rollback can be performed by restoring previous route handlers while keeping `/api/v1` aliases mapped to known-good implementations.

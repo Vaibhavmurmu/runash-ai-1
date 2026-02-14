@@ -194,3 +194,23 @@ RunAsh Pay payment intent/confirmation execution now runs on DB-backed repositor
 - Transaction status transitions are provider-result-driven and appended to provider event history for audit trails.
 - Existing `success/data` response shape remains unchanged for `/api/payment/create-intent` and `/api/payment/confirm`.
 - Idempotency keys are accepted from body `idempotencyKey` or `x-idempotency-key` header for create/confirm operations.
+
+## Billing API Contract Stabilization (2026-02)
+
+To improve contract stability for subscription and invoice workflows, RunAsh Pay now includes explicit billing API coverage for:
+
+- `GET /api/billing/plans`
+- `GET /api/billing/plans/:id`
+- `GET /api/billing/invoices`
+- `GET /api/billing/invoices/:id`
+- `POST /api/billing/subscription/cancel`
+- `POST /api/billing/subscription/reactivate`
+
+Long-term aliases are also exposed under `/api/v1/billing/*` for the same flows.
+
+### Compatibility and audit notes
+
+- Existing field names are preserved (`plan_id`, `cancel_at_period_end`, `line_items`, etc.).
+- Subscription payloads remain backward compatible while supporting a normalized envelope (`{ subscription: ... }`) for mutating actions.
+- Invoice listing returns deterministic pagination metadata (`limit`, `offset`, `total`) for reliable reconciliation.
+- No sensitive payment method or auth secrets are logged as part of this rollout.
