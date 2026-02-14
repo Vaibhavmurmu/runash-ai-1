@@ -163,3 +163,17 @@ RunAsh Pay now exposes a dedicated route map for product navigation:
 5. **Onboarding:** `/payment/runash-pay` → `/payment/startup` or `/payment/business`.
 
 Existing entry points (`/payment/dashboard` and `/ecommerce/payments`) include navigation to the new RunAsh Pay route hierarchy.
+
+## 🧾 E-commerce Payment Link API (v1)
+
+The e-commerce payments dashboard now reads and writes payment links/methods through server APIs under `/api/v1`.
+
+- `GET /api/v1/payment-links` - list links with analytics (`clicks`, `conversions`, `status`).
+- `POST /api/v1/payment-links` - create a payment link.
+- `PUT /api/v1/payment-links/:id` - update link details/status/analytics fields.
+- `DELETE /api/v1/payment-links/:id` - remove a payment link.
+- `GET /api/v1/payment-methods` - list available payment methods.
+- `PUT /api/v1/payment-methods/:id` - update method connection state.
+- `DELETE /api/v1/payment-methods/:id` - remove a payment method.
+
+Persistence is backed by database tables `ecommerce_payment_links` and `ecommerce_payment_methods` (see `scripts/014-ecommerce-payment-links-methods.sql`).
