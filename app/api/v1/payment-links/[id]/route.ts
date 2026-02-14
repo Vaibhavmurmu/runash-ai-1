@@ -1,5 +1,19 @@
 import { NextResponse } from "next/server"
-import { deletePaymentLink, updatePaymentLink } from "@/lib/services/ecommerce-payment-store"
+import { deletePaymentLink, getPaymentLinkById, updatePaymentLink } from "@/lib/services/ecommerce-payment-store"
+
+export async function GET(_: Request, { params }: { params: { id: string } }) {
+  try {
+    const link = await getPaymentLinkById(params.id)
+
+    if (!link) {
+      return NextResponse.json({ success: false, error: "Payment link not found" }, { status: 404 })
+    }
+
+    return NextResponse.json({ success: true, data: link })
+  } catch {
+    return NextResponse.json({ success: false, error: "Failed to fetch payment link" }, { status: 500 })
+  }
+}
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
@@ -14,6 +28,10 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   } catch {
     return NextResponse.json({ success: false, error: "Failed to update payment link" }, { status: 500 })
   }
+}
+
+export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+  return PUT(request, { params })
 }
 
 export async function DELETE(_: Request, { params }: { params: { id: string } }) {
