@@ -1,103 +1,71 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { persistTaxComputation, type TaxComputation } from "@/lib/services/tax-service"
+import { logApiEvent, createRequestLogContext } from "@/lib/api/logging"
+import { getWebhookEventByEventId, processWebhookEvent, recordWebhookEvent } from "@/lib/services/billing-webhook-service"
 
-function mapStripeInvoiceTax(invoice: Record<string, any>): TaxComputation {
-  const subtotal = Number(invoice.subtotal ?? 0) / 100
-  const total = Number(invoice.total ?? invoice.amount_paid ?? 0) / 100
-  const totalTaxAmount = Number(invoice.total_taxes?.[0]?.amount ?? invoice.tax ?? 0) / 100
-
-  const countryCode = String(invoice.customer_address?.country || invoice.account_country || "UN").toUpperCase()
-  const stateCode = invoice.customer_address?.state ? String(invoice.customer_address.state).toUpperCase() : null
-
-  const lineItems = Array.isArray(invoice.total_taxes)
-    ? invoice.total_taxes.map((tax: Record<string, any>) => ({
-        jurisdictionLevel: stateCode ? "state" as const : "country" as const,
-        jurisdictionCode: stateCode ?? countryCode,
-        taxType: String(tax.taxability_reason || "tax"),
-        taxName: String(tax.tax_rate_details?.display_name || tax.tax_rate_details?.tax_type || "Tax"),
-        ratePercent: Number(tax.tax_rate_details?.percentage_decimal ?? tax.tax_rate_details?.percentage ?? 0),
-        taxableAmount: subtotal,
-        taxAmount: Number(tax.amount ?? 0) / 100,
-        metadata: {
-          stripe_tax_rate: tax.tax_rate,
-          source: "stripe_invoice",
-        },
-      }))
-    : []
-
-  return {
-    countryCode,
-    stateCode,
-    taxableAmount: subtotal,
-    totalTaxAmount,
-    totalAmount: total,
-    lineItems,
-    jurisdictionDetails: {
-      source: "stripe_invoice",
-      city: invoice.customer_address?.city ?? null,
-      postalCode: invoice.customer_address?.postal_code ?? null,
-      taxAutomatic: Boolean(invoice.automatic_tax?.enabled),
-    },
-  }
-}
+const DEFAULT_SIGNATURE_TOLERANCE_SECONDS = 300
 
 export async function POST(req: NextRequest) {
+  const requestContext = createRequestLogContext(req)
   const secret = process.env.STRIPE_WEBHOOK_SECRET
-  if (!secret) return NextResponse.json({ ok: true, skipped: "No STRIPE_WEBHOOK_SECRET set" })
 
-  const sig = req.headers.get("stripe-signature") || ""
+  if (!secret) {
+    logApiEvent("error", "billing.webhook.secret_missing", {
+      ...requestContext,
+      details: { hasSecret: false },
+    })
+    return NextResponse.json({ error: "Webhook secret is not configured" }, { status: 500 })
+  }
+
+  const sig = req.headers.get("stripe-signature")
+  if (!sig) {
+    logApiEvent("warn", "billing.webhook.signature_missing", requestContext)
+    return NextResponse.json({ error: "Missing Stripe signature" }, { status: 400 })
+  }
+
   const raw = await req.text()
   const { default: Stripe } = await import("stripe")
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY || "", {
-    apiVersion: "2024-06-20",
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY || "sk_webhook_placeholder", {
+    apiVersion: "2026-01-28.clover",
   })
 
-  let event: any
+  let event: { id: string; type: string; created?: number; data?: { object?: any } }
   try {
-    event = stripe.webhooks.constructEvent(raw, sig, secret)
-  } catch (err: any) {
-    return NextResponse.json({ error: `Invalid signature: ${err?.message}` }, { status: 400 })
+    event = stripe.webhooks.constructEvent(raw, sig, secret, DEFAULT_SIGNATURE_TOLERANCE_SECONDS)
+  } catch (error) {
+    logApiEvent("warn", "billing.webhook.signature_invalid", {
+      ...requestContext,
+      error,
+      details: { signaturePresent: true },
+    })
+    return NextResponse.json({ error: "Invalid webhook signature" }, { status: 400 })
+  }
+
+  const eventRecord = await recordWebhookEvent(event)
+  if (eventRecord.duplicate) {
+    const existing = await getWebhookEventByEventId(event.id)
+    logApiEvent("info", "billing.webhook.duplicate_ignored", {
+      ...requestContext,
+      details: { eventId: event.id, eventType: event.type, status: existing?.status ?? "unknown" },
+    })
+    return NextResponse.json({ received: true, duplicate: true })
   }
 
   try {
-    switch (event.type) {
-      case "invoice.payment_succeeded": {
-        const invoice = event.data.object as Record<string, any>
-        const taxComputation = mapStripeInvoiceTax(invoice)
-        await persistTaxComputation({
-          sourceType: "invoice",
-          sourceId: String(invoice.id),
-          currency: String(invoice.currency || "usd").toUpperCase(),
-          computation: taxComputation,
-        })
+    const result = await processWebhookEvent(event)
+    logApiEvent("info", "billing.webhook.processed", {
+      ...requestContext,
+      details: { eventId: event.id, eventType: event.type, attempts: result.attempts },
+    })
+    return NextResponse.json({ received: true, processed: true })
+  } catch (error) {
+    logApiEvent("error", "billing.webhook.processing_failed", {
+      ...requestContext,
+      error,
+      details: { eventId: event.id, eventType: event.type },
+    })
 
-        const paymentIntentId = invoice.payment_intent ? String(invoice.payment_intent) : null
-        if (paymentIntentId) {
-          await persistTaxComputation({
-            sourceType: "transaction",
-            sourceId: paymentIntentId,
-            currency: String(invoice.currency || "usd").toUpperCase(),
-            computation: taxComputation,
-          })
-        }
-        break
-      }
-      case "invoice.payment_failed":
-        // TODO: dunning workflow, notify user
-        break
-      case "customer.subscription.created":
-      case "customer.subscription.updated":
-      case "customer.subscription.deleted":
-        // TODO: sync plan and limits to your DB
-        break
-      default:
-        break
-    }
-  } catch {
-    return NextResponse.json({ error: "Processing error" }, { status: 500 })
+    return NextResponse.json({ received: true, processed: false }, { status: 500 })
   }
-
-  return NextResponse.json({ received: true })
 }
 
 export const dynamic = "force-dynamic"
