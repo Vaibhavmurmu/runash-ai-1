@@ -1,0 +1,376 @@
+"use client"
+
+import { useMemo, useState, type FormEvent } from "react"
+import { Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+
+type ApiEnvelope<T> = {
+  success: boolean
+  data: T | null
+  error?: { code?: string; message?: string } | null
+  requestId?: string
+}
+
+type Status = { kind: "success" | "error"; message: string } | null
+
+function StatusMessage({ status }: { status: Status }) {
+  if (!status) return null
+
+  return (
+    <p
+      className={status.kind === "success" ? "text-sm text-emerald-600" : "text-sm text-destructive"}
+      role="status"
+      aria-live="polite"
+    >
+      {status.message}
+    </p>
+  )
+}
+
+function SubmitButton({ isLoading, label }: { isLoading: boolean; label: string }) {
+  return (
+    <Button type="submit" disabled={isLoading} className="inline-flex items-center gap-2">
+      {isLoading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+      {isLoading ? "Processing..." : label}
+    </Button>
+  )
+}
+
+export function PaymentMethodsSection() {
+  const [currency, setCurrency] = useState("INR")
+  const [methods, setMethods] = useState<unknown>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [status, setStatus] = useState<Status>(null)
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setStatus(null)
+    setIsLoading(true)
+
+    try {
+      const response = await fetch(`/api/v1/payment/methods?currency=${encodeURIComponent(currency.trim().toUpperCase())}`, {
+        method: "GET",
+      })
+      const payload = (await response.json()) as ApiEnvelope<unknown>
+      if (!response.ok || !payload.success) {
+        setStatus({ kind: "error", message: payload.error?.message ?? "Failed to fetch payment methods." })
+        return
+      }
+
+      setMethods(payload.data)
+      setStatus({ kind: "success", message: "Payment methods fetched successfully." })
+    } catch {
+      setStatus({ kind: "error", message: "Network error while fetching payment methods." })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Payment Methods</CardTitle>
+        <CardDescription>Fetch available methods from the live payment API.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="methods-currency">Currency</Label>
+            <Input id="methods-currency" value={currency} maxLength={3} onChange={(event) => setCurrency(event.target.value)} />
+          </div>
+          <SubmitButton isLoading={isLoading} label="Load methods" />
+        </form>
+        <StatusMessage status={status} />
+        {methods ? <pre className="rounded border bg-muted p-3 text-xs overflow-x-auto">{JSON.stringify(methods, null, 2)}</pre> : null}
+      </CardContent>
+    </Card>
+  )
+}
+
+export function CheckoutLinksSection() {
+  const [slug, setSlug] = useState("runash-link")
+  const [amount, setAmount] = useState("999")
+  const [currency, setCurrency] = useState("USD")
+  const [isLoading, setIsLoading] = useState(false)
+  const [status, setStatus] = useState<Status>(null)
+  const [result, setResult] = useState<unknown>(null)
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setStatus(null)
+    setIsLoading(true)
+
+    const parsedAmount = Number(amount)
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      setStatus({ kind: "error", message: "Provide a valid fixed amount greater than zero." })
+      setIsLoading(false)
+      return
+    }
+
+    try {
+      const response = await fetch("/api/v1/payment/checkout-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug: `${slug.trim().toLowerCase()}-${Date.now()}`,
+          fixedAmount: parsedAmount,
+          currency: currency.trim().toUpperCase(),
+          status: "active",
+        }),
+      })
+      const payload = (await response.json()) as ApiEnvelope<unknown>
+      if (!response.ok || !payload.success) {
+        setStatus({ kind: "error", message: payload.error?.message ?? "Failed to create checkout link." })
+        return
+      }
+
+      setResult(payload.data)
+      setStatus({ kind: "success", message: "Checkout link created successfully." })
+    } catch {
+      setStatus({ kind: "error", message: "Network error while creating checkout link." })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Checkout Links</CardTitle>
+        <CardDescription>Create hosted checkout links via the live API.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="checkout-slug">Link slug</Label>
+            <Input id="checkout-slug" value={slug} onChange={(event) => setSlug(event.target.value)} />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="checkout-amount">Fixed amount</Label>
+              <Input id="checkout-amount" type="number" min="1" value={amount} onChange={(event) => setAmount(event.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="checkout-currency">Currency</Label>
+              <Input id="checkout-currency" maxLength={3} value={currency} onChange={(event) => setCurrency(event.target.value)} />
+            </div>
+          </div>
+          <SubmitButton isLoading={isLoading} label="Create checkout link" />
+        </form>
+        <StatusMessage status={status} />
+        {result ? <pre className="rounded border bg-muted p-3 text-xs overflow-x-auto">{JSON.stringify(result, null, 2)}</pre> : null}
+      </CardContent>
+    </Card>
+  )
+}
+
+export function UsageBillingSection() {
+  const [metric, setMetric] = useState("api_calls")
+  const [amount, setAmount] = useState("1")
+  const [summary, setSummary] = useState<unknown>(null)
+  const [isSummaryLoading, setIsSummaryLoading] = useState(false)
+  const [isIncrementLoading, setIsIncrementLoading] = useState(false)
+  const [status, setStatus] = useState<Status>(null)
+
+  const loadSummary = async () => {
+    setStatus(null)
+    setIsSummaryLoading(true)
+    try {
+      const response = await fetch("/api/v1/billing/usage", { method: "GET", cache: "no-store" })
+      const payload = (await response.json()) as ApiEnvelope<unknown>
+      if (!response.ok || !payload.success) {
+        setStatus({ kind: "error", message: payload.error?.message ?? "Failed to fetch usage summary." })
+        return
+      }
+      setSummary(payload.data)
+      setStatus({ kind: "success", message: "Usage summary refreshed." })
+    } catch {
+      setStatus({ kind: "error", message: "Network error while fetching usage summary." })
+    } finally {
+      setIsSummaryLoading(false)
+    }
+  }
+
+  const handleIncrement = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setStatus(null)
+    setIsIncrementLoading(true)
+
+    const parsedAmount = Number(amount)
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      setStatus({ kind: "error", message: "Usage increment must be greater than zero." })
+      setIsIncrementLoading(false)
+      return
+    }
+
+    try {
+      const response = await fetch("/api/v1/billing/usage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ metric: metric.trim(), amount: parsedAmount }),
+      })
+      const payload = (await response.json()) as ApiEnvelope<unknown>
+      if (!response.ok || !payload.success) {
+        setStatus({ kind: "error", message: payload.error?.message ?? "Failed to increment usage." })
+        return
+      }
+
+      setStatus({ kind: "success", message: "Usage incremented successfully." })
+      await loadSummary()
+    } catch {
+      setStatus({ kind: "error", message: "Network error while incrementing usage." })
+    } finally {
+      setIsIncrementLoading(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Usage Billing</CardTitle>
+        <CardDescription>Read usage and submit metered updates through billing APIs.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form onSubmit={handleIncrement} className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="usage-metric">Metric</Label>
+              <Input id="usage-metric" value={metric} onChange={(event) => setMetric(event.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="usage-amount">Amount</Label>
+              <Input id="usage-amount" type="number" min="1" value={amount} onChange={(event) => setAmount(event.target.value)} />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <SubmitButton isLoading={isIncrementLoading} label="Increment usage" />
+            <Button type="button" variant="outline" disabled={isSummaryLoading} onClick={loadSummary}>
+              {isSummaryLoading ? "Refreshing..." : "Refresh usage summary"}
+            </Button>
+          </div>
+        </form>
+        <StatusMessage status={status} />
+        {summary ? <pre className="rounded border bg-muted p-3 text-xs overflow-x-auto">{JSON.stringify(summary, null, 2)}</pre> : null}
+      </CardContent>
+    </Card>
+  )
+}
+
+export function CustomerPortalSection() {
+  const [isLoading, setIsLoading] = useState(false)
+  const [status, setStatus] = useState<Status>(null)
+  const [portalUrl, setPortalUrl] = useState<string | null>(null)
+
+  const openPortal = async () => {
+    setStatus(null)
+    setIsLoading(true)
+
+    try {
+      const response = await fetch("/api/v1/billing/portal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ return_url: window.location.href }),
+      })
+
+      const payload = (await response.json()) as ApiEnvelope<{ url?: string }>
+      if (!response.ok || !payload.success || !payload.data?.url) {
+        setStatus({ kind: "error", message: payload.error?.message ?? "Failed to create portal session." })
+        return
+      }
+
+      setPortalUrl(payload.data.url)
+      setStatus({ kind: "success", message: "Customer portal session generated." })
+    } catch {
+      setStatus({ kind: "error", message: "Network error while creating portal session." })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Customer Portal</CardTitle>
+        <CardDescription>Create and open a billing portal session from the live API.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={openPortal} disabled={isLoading}>
+            {isLoading ? "Creating session..." : "Create portal session"}
+          </Button>
+          {portalUrl ? (
+            <Button asChild variant="outline">
+              <a href={portalUrl} target="_blank" rel="noreferrer">
+                Open portal
+              </a>
+            </Button>
+          ) : null}
+        </div>
+        <StatusMessage status={status} />
+      </CardContent>
+    </Card>
+  )
+}
+
+export function TaxPayoutReportsSection() {
+  const defaultFrom = useMemo(() => new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString().slice(0, 10), [])
+  const defaultTo = useMemo(() => new Date().toISOString().slice(0, 10), [])
+
+  const [fromDate, setFromDate] = useState(defaultFrom)
+  const [toDate, setToDate] = useState(defaultTo)
+  const [isLoading, setIsLoading] = useState(false)
+  const [status, setStatus] = useState<Status>(null)
+  const [reportData, setReportData] = useState<unknown>(null)
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setStatus(null)
+    setIsLoading(true)
+
+    try {
+      const params = new URLSearchParams({ from: fromDate, to: toDate })
+      const response = await fetch(`/api/v1/payment/reporting?${params.toString()}`, { method: "GET" })
+      const payload = (await response.json()) as ApiEnvelope<unknown>
+      if (!response.ok || !payload.success) {
+        setStatus({ kind: "error", message: payload.error?.message ?? "Failed to fetch payout/tax reports." })
+        return
+      }
+
+      setReportData(payload.data)
+      setStatus({ kind: "success", message: "Tax and payout reports loaded." })
+    } catch {
+      setStatus({ kind: "error", message: "Network error while fetching reports." })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Tax & Payout Reports</CardTitle>
+        <CardDescription>Load summarized payout and tax liabilities from reporting APIs.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="report-from">From</Label>
+              <Input id="report-from" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="report-to">To</Label>
+              <Input id="report-to" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+            </div>
+          </div>
+          <SubmitButton isLoading={isLoading} label="Load reports" />
+        </form>
+        <StatusMessage status={status} />
+        {reportData ? <pre className="rounded border bg-muted p-3 text-xs overflow-x-auto">{JSON.stringify(reportData, null, 2)}</pre> : null}
+      </CardContent>
+    </Card>
+  )
+}

@@ -1302,3 +1302,18 @@ For payment-operational reliability and auditability:
 - **Risk level:** medium (adds durable processing state and replay paths to webhook handling).
 - **Rollback:** revert webhook route/service wiring and disable replay endpoint; table is additive and can remain without impacting existing payment contracts.
 - **Backward compatibility:** preserved for existing billing/subscription API contracts and field names.
+
+## UI reliability update: unified payment workspace
+
+Business-facing payment pages now consume a shared section system used across startup/business/dashboard routes.
+
+### Backward compatibility
+- Existing `/api/v1/payment/*` and `/api/v1/billing/*` contracts are unchanged.
+- Field names and signatures remain stable.
+
+### Operational impact
+- Button actions in the payment workspace are wired to live API routes (no static placeholders).
+- Each section emits explicit loading/success/error UX states for operator clarity.
+
+### Rollback
+- Revert the unified payment page components and restore previous page components for each payment route.

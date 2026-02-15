@@ -415,3 +415,22 @@ RunAsh AI Pay now includes first-party checkout profile persistence for secure a
 - Domain routing is explicit for invoice paid/failed, subscription lifecycle updates, and payout status updates.
 - Failed events can be replayed in received-order via admin-protected internal endpoint `POST /api/internal/billing/webhook/replay`.
 - Webhook logs use centralized redaction and intentionally exclude raw auth/payment payload details.
+
+## Unified payment pages and live API wiring
+
+The payment routes below now share a unified responsive layout and reusable sections:
+
+- `/payment/runash-pay`
+- `/payment/business`
+- `/payment/startup`
+- `/payment/subscription`
+- `/payment/dashboard`
+
+Reusable sections:
+- Payment Methods (`GET /api/v1/payment/methods`)
+- Checkout Links (`POST /api/v1/payment/checkout-links`)
+- Usage Billing (`GET/POST /api/v1/billing/usage`)
+- Customer Portal (`POST /api/v1/billing/portal`)
+- Tax & Payout Reports (`GET /api/v1/payment/reporting`)
+
+All section actions now call live APIs and expose loading/success/error states with accessible labels and keyboard-friendly form submission.
