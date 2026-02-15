@@ -367,3 +367,27 @@ RunAsh AI Pay now includes first-party tax domain persistence and reporting for 
 - RunAsh Pay provides calculation, storage, and reporting capabilities, but does not replace statutory tax filing obligations.
 - Merchants retain responsibility for registration validity, return filing, exemptions, and final legal treatment.
 - Platform logs and reporting intentionally avoid sensitive auth/payment secrets while preserving tax audit metadata.
+
+## Checkout Link + Vaulted Customer Profile Enhancements (2026-02)
+
+RunAsh AI Pay now includes first-party checkout profile persistence for secure autofill and payment-method vault references:
+
+- Added `checkout_links` with slug-based routing, amount rules (`fixed_amount` or min/max range), product metadata, expiry, and status lifecycle.
+- Added `checkout_sessions` to capture customer, selected method reference, and device/browser context for auditability.
+- Added `customer_payment_method_vault_refs` to store tokenized provider identifiers only (`provider_token_id`) with zero raw PAN/CVV storage.
+- Added `customer_checkout_profiles` for encrypted-at-rest billing/shipping addresses plus default and backup payment method references.
+
+### New APIs
+
+- `GET|PUT /api/v1/payment/profile` → read/update customer billing + shipping profile (encrypted at rest).
+- `GET|POST /api/v1/payment/profile/methods` → list/add tokenized payment method references.
+- `PATCH|DELETE /api/v1/payment/profile/methods/:id` → switch default/backup method or remove method.
+- `POST /api/v1/payment/profile/autofill/authorize` → authorize checkout autofill by checkout link slug, with checkout session creation and context capture.
+- `POST /api/v1/payment/checkout-links` → create checkout links with amount-rule validation.
+
+### Security + compatibility notes
+
+- Backward compatibility preserved for existing payment-intent/transaction contracts.
+- Address payloads are encrypted before DB persistence (application-layer encryption-at-rest).
+- APIs continue using HTTPS-only transport expectations (encryption in transit).
+- Logging intentionally avoids sensitive payment/auth data.
