@@ -1,10 +1,14 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db/neon"
 import { DashboardService } from "@/lib/dashboard-service"
+import { requireScopedBillingAccess } from "@/lib/billing-auth"
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  const access = await requireScopedBillingAccess("startup")
+  if ("response" in access) return access.response
+
   try {
-    const userId = Number(request.headers.get("x-user-id") || 1)
+    const userId = Number(access.sessionUser.userId)
     const sql = getSql()
 
     const [orderMetrics] = await sql/* sql */`

@@ -160,6 +160,14 @@ function nowId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 }
 
+function buildSessionIntegrityFingerprint(input: { deviceContext?: Record<string, unknown>; browserContext?: Record<string, unknown> }) {
+  const raw = JSON.stringify({
+    d: input.deviceContext ?? {},
+    b: input.browserContext ?? {},
+  })
+  return createHash("sha256").update(raw).digest("hex")
+}
+
 function mapCheckoutLink(row: any): CheckoutLinkRecord {
   return {
     id: row.id,
@@ -558,6 +566,10 @@ export async function authorizeCheckoutAutofill(input: {
         )
 
   const sessionId = nowId("chk_sess")
+  const sessionIntegrityHash = buildSessionIntegrityFingerprint({
+    deviceContext: input.deviceContext,
+    browserContext: input.browserContext,
+  })
 
   await queryOne(
     `
@@ -567,7 +579,15 @@ export async function authorizeCheckoutAutofill(input: {
       )
       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, 'authorized')
     `,
-    [sessionId, link.id, input.customerId, method?.id ?? null, method?.methodType ?? null, JSON.stringify(input.deviceContext ?? {}), JSON.stringify(input.browserContext ?? {})],
+    [
+      sessionId,
+      link.id,
+      input.customerId,
+      method?.id ?? null,
+      method?.methodType ?? null,
+      JSON.stringify({ ...(input.deviceContext ?? {}), sessionIntegrityHash }),
+      JSON.stringify(input.browserContext ?? {}),
+    ],
   )
 
   const result: CheckoutAutofillAuthorization = {
@@ -586,4 +606,46 @@ export async function authorizeCheckoutAutofill(input: {
   }
 
   return result
+}
+
+
+export async function verifyPaymentMethodSessionIntegrity(input: {
+  customerId: string
+  deviceContext?: Record<string, unknown>
+  browserContext?: Record<string, unknown>
+}) {
+  await ensureTables()
+
+  const latestAuthorizedSession = await queryOne<{ deviceContext: Record<string, unknown> }>(
+    `
+      SELECT device_context AS "deviceContext"
+      FROM checkout_sessions
+      WHERE customer_id = $1
+        AND status = 'authorized'
+        AND payment_method_ref_id IS NOT NULL
+      ORDER BY created_at DESC
+      LIMIT 1
+    `,
+    [input.customerId],
+  )
+
+  if (!latestAuthorizedSession) {
+    return { ok: true }
+  }
+
+  const expectedHash =
+    latestAuthorizedSession.deviceContext && typeof latestAuthorizedSession.deviceContext.sessionIntegrityHash === "string"
+      ? String(latestAuthorizedSession.deviceContext.sessionIntegrityHash)
+      : null
+
+  if (!expectedHash) {
+    return { ok: false }
+  }
+
+  const currentHash = buildSessionIntegrityFingerprint({
+    deviceContext: input.deviceContext,
+    browserContext: input.browserContext,
+  })
+
+  return { ok: currentHash === expectedHash }
 }

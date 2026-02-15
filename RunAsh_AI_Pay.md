@@ -434,3 +434,10 @@ Reusable sections:
 - Tax & Payout Reports (`GET /api/v1/payment/reporting`)
 
 All section actions now call live APIs and expose loading/success/error states with accessible labels and keyboard-friendly form submission.
+
+## Auth & access reliability update (payment APIs)
+
+- Payment/billing endpoints now consistently use server-session-based auth guards.
+- Placeholder identity fallbacks (header-only user spoofing patterns) have been removed from billing usage flow ownership.
+- Payment operations now include customer-role RBAC support (`customer_admin`, `customer_operator`, `customer_finance`) with required org-scoped session context.
+- Payment-method mutation actions are protected with cross-device session integrity verification tied to checkout authorization fingerprints.

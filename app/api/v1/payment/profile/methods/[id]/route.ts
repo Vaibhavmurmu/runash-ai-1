@@ -2,7 +2,11 @@ import { type NextRequest } from "next/server"
 import { z } from "zod"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { requireScopedBillingAccess } from "@/lib/billing-auth"
-import { removeCustomerPaymentMethodReference, switchCustomerPaymentMethod } from "@/services/payment-checkout-profile-service"
+import {
+  removeCustomerPaymentMethodReference,
+  switchCustomerPaymentMethod,
+  verifyPaymentMethodSessionIntegrity,
+} from "@/services/payment-checkout-profile-service"
 
 const switchMethodSchema = z
   .object({
@@ -10,9 +14,39 @@ const switchMethodSchema = z
   })
   .strict()
 
+function resolveSessionContexts(request: NextRequest) {
+  return {
+    deviceContext: {
+      ipHint: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "",
+      acceptLanguage: request.headers.get("accept-language") ?? "",
+      secChUaPlatform: request.headers.get("sec-ch-ua-platform") ?? "",
+    },
+    browserContext: {
+      userAgent: request.headers.get("user-agent") ?? "",
+    },
+  }
+}
+
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   const access = await requireScopedBillingAccess("business")
   if ("response" in access) return access.response
+
+  const contexts = resolveSessionContexts(request)
+  const sessionIntegrity = await verifyPaymentMethodSessionIntegrity({
+    customerId: access.sessionUser.userId,
+    ...contexts,
+  })
+
+  if (!sessionIntegrity.ok) {
+    return respondError(
+      request,
+      {
+        code: "PAYMENT_METHOD_SESSION_REAUTH_REQUIRED",
+        message: "Payment method access requires re-authorization from this device.",
+      },
+      { status: 403 },
+    )
+  }
 
   const body = await request.json().catch(() => ({}))
   const parsed = switchMethodSchema.safeParse(body)
@@ -36,6 +70,23 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   const access = await requireScopedBillingAccess("business")
   if ("response" in access) return access.response
+
+  const contexts = resolveSessionContexts(request)
+  const sessionIntegrity = await verifyPaymentMethodSessionIntegrity({
+    customerId: access.sessionUser.userId,
+    ...contexts,
+  })
+
+  if (!sessionIntegrity.ok) {
+    return respondError(
+      request,
+      {
+        code: "PAYMENT_METHOD_SESSION_REAUTH_REQUIRED",
+        message: "Payment method access requires re-authorization from this device.",
+      },
+      { status: 403 },
+    )
+  }
 
   const removed = await removeCustomerPaymentMethodReference({
     customerId: access.sessionUser.userId,

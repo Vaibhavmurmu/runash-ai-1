@@ -3,7 +3,15 @@ import { deletePaymentMethod, updatePaymentMethod } from "@/lib/services/ecommer
 import { requireRoleBillingAccess } from "@/lib/billing-auth"
 import { DEFAULT_ROLES } from "@/lib/rbac"
 
-const OPERATOR_ROLES = [DEFAULT_ROLES.BUSINESS_OPERATOR, DEFAULT_ROLES.BUSINESS_ADMIN, DEFAULT_ROLES.ADMIN, DEFAULT_ROLES.SUPER_ADMIN]
+const OPERATOR_ROLES = [
+  DEFAULT_ROLES.BUSINESS_OPERATOR,
+  DEFAULT_ROLES.BUSINESS_ADMIN,
+  DEFAULT_ROLES.CUSTOMER_OPERATOR,
+  DEFAULT_ROLES.CUSTOMER_ADMIN,
+  DEFAULT_ROLES.CUSTOMER_FINANCE,
+  DEFAULT_ROLES.ADMIN,
+  DEFAULT_ROLES.SUPER_ADMIN,
+]
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   const access = await requireRoleBillingAccess(OPERATOR_ROLES)

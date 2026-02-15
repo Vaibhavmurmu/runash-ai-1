@@ -430,3 +430,14 @@ Traceability standard:
 - Audit/auth events should capture non-sensitive metadata only (event code, status, actor scope, requestId).
 
 
+
+## Payment/Billing auth controls (server-side standard)
+
+- All payment and billing API routes now resolve identity from the server session boundary (`requireScopedBillingAccess` / `requireRoleBillingAccess`) instead of request-provided user headers.
+- Usage ingestion APIs no longer accept caller-supplied `customerId` overrides; billing usage ownership is derived from the authenticated session user.
+- Customer payment roles are explicitly supported for payment surfaces:
+  - `customer_admin`
+  - `customer_operator`
+  - `customer_finance`
+- Customer roles are organization-scoped: access is denied when no `organizationId` is present in session claims.
+- Payment-method mutation access (`switch` / `delete`) requires session-integrity validation against the latest authorized checkout session fingerprint to mitigate cross-device misuse.
