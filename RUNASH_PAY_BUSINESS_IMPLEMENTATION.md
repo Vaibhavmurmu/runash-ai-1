@@ -1235,3 +1235,25 @@ For payment-operational reliability and auditability:
 - Risk level: **medium** (adds tax computation and persistence paths in checkout/subscription/webhook flows).
 - Rollback: disable tax persistence calls and revert reporting endpoint routing while retaining existing payment contracts.
 - Backward compatibility: existing checkout/subscription API fields are preserved; tax payloads are additive.
+
+## Release Note: Checkout Reliability + Customer Vault References (2026-02)
+
+### Impacted flows
+- Hosted checkout-link lifecycle (create/activate/expire).
+- Customer payment-method management (add/switch/remove).
+- Checkout autofill authorization (default/backup method selection + session tracking).
+
+### Implementation details
+- Introduced `checkout_links` and `checkout_sessions` entities for amount-rule aware link flows and session-level context/audit data.
+- Introduced secure payment method vault references via `customer_payment_method_vault_refs` (provider token IDs only).
+- Added `customer_checkout_profiles` with encrypted billing/shipping address fields and default/backup payment method pointers.
+- Added APIs for profile management, method management, and checkout autofill authorization.
+
+### Risk + rollback
+- **Risk level:** medium (new persistence tables and API surface in payment flows).
+- **Primary risk:** malformed profile/method payloads; mitigated with strict schema validation and tokenized-only constraints.
+- **Rollback:** disable/avoid new `/api/v1/payment/profile*` and `/api/v1/payment/checkout-links` endpoints and revert migration `2026-02-15_create_checkout_profile_tables.sql` if required.
+
+### Migration note
+- Existing payment intent/transaction schemas and field names remain unchanged.
+- New capability is additive and backward compatible.
