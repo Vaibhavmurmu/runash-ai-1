@@ -1,20 +1,27 @@
 import { randomUUID } from "crypto"
 import {
   createPaymentIntentRecord,
-  createPaymentRefundRecord,
-  createPaymentTransactionRecord,
   getPaymentIntentByCreateIdempotencyKey,
   getPaymentIntentById,
+  type PaymentIntentStatus,
+  updatePaymentIntentStatus,
+} from "@/lib/repositories/payment-intents"
+import {
+  createPaymentMethodRecord,
+  findPaymentMethodById,
+  listEnabledPaymentMethods,
+  type PaymentMethodRecord,
+} from "@/lib/repositories/payment-methods"
+import { createPaymentRefundRecord, listRefundsByTransactionId } from "@/lib/repositories/payment-refunds"
+import {
+  createPaymentTransactionRecord,
   getPaymentTransactionByConfirmIdempotencyKey,
   getPaymentTransactionById,
   getPaymentTransactionByIntentId,
   getPaymentTransactionMonthlyTrends,
   listRecentPaymentTransactions,
-  listRefundsByTransactionId,
-  type PaymentIntentStatus,
-  updatePaymentIntentStatus,
   updatePaymentTransaction,
-} from "@/lib/repositories/payment-entities"
+} from "@/lib/repositories/payment-transactions"
 import { getProviderAdapter } from "@/lib/services/payment-provider-gateway"
 import { getLifecycleSnapshot, type LifecycleSnapshot } from "@/lib/customer-lifecycle-analytics-service"
 
@@ -106,6 +113,41 @@ function intentStatusFromTransactionStatus(status: PaymentTransaction["status"])
   return "processing"
 }
 
+function statusFromProviderEvent(input: {
+  event?: Record<string, unknown>
+  providerStatus: string
+  fallbackStatus: PaymentTransaction["status"]
+}): PaymentTransaction["status"] {
+  const eventType = typeof input.event?.type === "string" ? input.event.type.toLowerCase() : ""
+  const normalizedProviderStatus = input.providerStatus.toLowerCase()
+
+  if (eventType.endsWith(".failed") || normalizedProviderStatus.includes("fail") || normalizedProviderStatus.includes("declin")) {
+    return "failed"
+  }
+
+  if (
+    eventType.endsWith(".succeeded") ||
+    eventType.endsWith(".completed") ||
+    eventType.endsWith(".captured") ||
+    normalizedProviderStatus.includes("captured") ||
+    normalizedProviderStatus.includes("success")
+  ) {
+    return "completed"
+  }
+
+  if (
+    eventType.endsWith(".processing") ||
+    eventType.includes("pending") ||
+    normalizedProviderStatus.includes("pending") ||
+    normalizedProviderStatus.includes("processing") ||
+    normalizedProviderStatus.includes("requires")
+  ) {
+    return "processing"
+  }
+
+  return input.fallbackStatus
+}
+
 function toPublicIntent(record: {
   id: string
   amount: number
@@ -166,100 +208,152 @@ function toPublicTransaction(record: {
   }
 }
 
+const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = [
+  {
+    id: "stripe-card",
+    name: "Credit/Debit Card",
+    type: "card",
+    provider: "stripe",
+    icon: "💳",
+    enabled: true,
+    processingFee: 2.9,
+    description: "Visa, Mastercard, American Express",
+    supportedCurrencies: ["INR", "USD", "EUR"],
+  },
+  {
+    id: "razorpay-upi",
+    name: "UPI",
+    type: "upi",
+    provider: "razorpay",
+    icon: "📱",
+    enabled: true,
+    processingFee: 0.5,
+    description: "GPay, PhonePe, Paytm, BHIM",
+    supportedCurrencies: ["INR"],
+  },
+  {
+    id: "razorpay-netbanking",
+    name: "Net Banking",
+    type: "netbanking",
+    provider: "razorpay",
+    icon: "🏦",
+    enabled: true,
+    processingFee: 1.5,
+    description: "All major Indian banks",
+    supportedCurrencies: ["INR"],
+  },
+  {
+    id: "paytm-wallet",
+    name: "Paytm Wallet",
+    type: "wallet",
+    provider: "paytm",
+    icon: "💰",
+    enabled: true,
+    processingFee: 1,
+    description: "Pay with Paytm balance",
+    supportedCurrencies: ["INR"],
+  },
+  {
+    id: "phonepe-upi",
+    name: "PhonePe",
+    type: "upi",
+    provider: "phonepe",
+    icon: "📞",
+    enabled: true,
+    processingFee: 0.5,
+    description: "PhonePe UPI payments",
+    supportedCurrencies: ["INR"],
+  },
+  {
+    id: "googlepay-upi",
+    name: "Google Pay",
+    type: "upi",
+    provider: "googlepay",
+    icon: "🔍",
+    enabled: true,
+    processingFee: 0.5,
+    description: "Google Pay UPI",
+    supportedCurrencies: ["INR"],
+  },
+  {
+    id: "amazonpay-wallet",
+    name: "Amazon Pay",
+    type: "wallet",
+    provider: "amazonpay",
+    icon: "📦",
+    enabled: true,
+    processingFee: 1.2,
+    description: "Amazon Pay wallet",
+    supportedCurrencies: ["INR"],
+  },
+  {
+    id: "simpl-bnpl",
+    name: "Buy Now Pay Later",
+    type: "bnpl",
+    provider: "simpl",
+    icon: "⏰",
+    enabled: true,
+    processingFee: 2,
+    description: "3 installments, no interest",
+    supportedCurrencies: ["INR"],
+  },
+]
+
+function toMethodRecord(method: PaymentMethod): Omit<PaymentMethodRecord, "createdAt" | "updatedAt"> {
+  return {
+    id: method.id,
+    name: method.name,
+    type: method.type,
+    provider: method.provider,
+    icon: method.icon,
+    enabled: method.enabled,
+    processingFee: method.processingFee,
+    description: method.description,
+    supportedCurrencies: method.supportedCurrencies,
+  }
+}
+
+function toPublicMethod(record: PaymentMethodRecord): PaymentMethod {
+  return {
+    id: record.id,
+    name: record.name,
+    type: record.type,
+    provider: record.provider,
+    icon: record.icon,
+    enabled: record.enabled,
+    processingFee: record.processingFee,
+    description: record.description,
+    supportedCurrencies: record.supportedCurrencies,
+  }
+}
+
 export class PaymentService {
-  private static paymentMethods: PaymentMethod[] = [
-    {
-      id: "stripe-card",
-      name: "Credit/Debit Card",
-      type: "card",
-      provider: "stripe",
-      icon: "💳",
-      enabled: true,
-      processingFee: 2.9,
-      description: "Visa, Mastercard, American Express",
-      supportedCurrencies: ["INR", "USD", "EUR"],
-    },
-    {
-      id: "razorpay-upi",
-      name: "UPI",
-      type: "upi",
-      provider: "razorpay",
-      icon: "📱",
-      enabled: true,
-      processingFee: 0.5,
-      description: "GPay, PhonePe, Paytm, BHIM",
-      supportedCurrencies: ["INR"],
-    },
-    {
-      id: "razorpay-netbanking",
-      name: "Net Banking",
-      type: "netbanking",
-      provider: "razorpay",
-      icon: "🏦",
-      enabled: true,
-      processingFee: 1.5,
-      description: "All major Indian banks",
-      supportedCurrencies: ["INR"],
-    },
-    {
-      id: "paytm-wallet",
-      name: "Paytm Wallet",
-      type: "wallet",
-      provider: "paytm",
-      icon: "💰",
-      enabled: true,
-      processingFee: 1,
-      description: "Pay with Paytm balance",
-      supportedCurrencies: ["INR"],
-    },
-    {
-      id: "phonepe-upi",
-      name: "PhonePe",
-      type: "upi",
-      provider: "phonepe",
-      icon: "📞",
-      enabled: true,
-      processingFee: 0.5,
-      description: "PhonePe UPI payments",
-      supportedCurrencies: ["INR"],
-    },
-    {
-      id: "googlepay-upi",
-      name: "Google Pay",
-      type: "upi",
-      provider: "googlepay",
-      icon: "🔍",
-      enabled: true,
-      processingFee: 0.5,
-      description: "Google Pay UPI",
-      supportedCurrencies: ["INR"],
-    },
-    {
-      id: "amazonpay-wallet",
-      name: "Amazon Pay",
-      type: "wallet",
-      provider: "amazonpay",
-      icon: "📦",
-      enabled: true,
-      processingFee: 1.2,
-      description: "Amazon Pay wallet",
-      supportedCurrencies: ["INR"],
-    },
-    {
-      id: "simpl-bnpl",
-      name: "Buy Now Pay Later",
-      type: "bnpl",
-      provider: "simpl",
-      icon: "⏰",
-      enabled: true,
-      processingFee: 2,
-      description: "3 installments, no interest",
-      supportedCurrencies: ["INR"],
-    },
-  ]
+  private static methodsSeeded = false
+
+  private static async ensurePaymentMethodsSeeded() {
+    if (this.methodsSeeded) return
+
+    for (const method of DEFAULT_PAYMENT_METHODS) {
+      await createPaymentMethodRecord(toMethodRecord(method))
+    }
+
+    this.methodsSeeded = true
+  }
+
+  private static async getPaymentMethodOrThrow(paymentMethodId: string) {
+    await this.ensurePaymentMethodsSeeded()
+    const paymentMethod = await findPaymentMethodById(paymentMethodId)
+    if (!paymentMethod || !paymentMethod.enabled) {
+      throw new Error("Payment method not found")
+    }
+
+    return paymentMethod
+  }
 
   static async getPaymentMethods(currency = "INR"): Promise<PaymentMethod[]> {
-    return this.paymentMethods.filter((method) => method.enabled && method.supportedCurrencies.includes(currency))
+    await this.ensurePaymentMethodsSeeded()
+    const methods = await listEnabledPaymentMethods(currency)
+    return methods.map(toPublicMethod)
   }
 
   static async createPaymentIntent(
@@ -269,8 +363,7 @@ export class PaymentService {
     metadata: Record<string, any> = {},
     idempotencyKey?: string,
   ): Promise<PaymentIntent> {
-    const paymentMethod = this.paymentMethods.find((method) => method.id === paymentMethodId)
-    if (!paymentMethod) throw new Error("Payment method not found")
+    const paymentMethod = await this.getPaymentMethodOrThrow(paymentMethodId)
 
     const createKey = idempotencyKey ?? buildCreateIdempotencyKey({ paymentMethodId, currency, amount, metadata })
     const existing = await getPaymentIntentByCreateIdempotencyKey(createKey)
@@ -307,10 +400,7 @@ export class PaymentService {
       throw new Error("Payment intent not found")
     }
 
-    const paymentMethod = this.paymentMethods.find((method) => method.id === persistedIntent.paymentMethodId)
-    if (!paymentMethod) {
-      throw new Error("Payment method not found")
-    }
+    const paymentMethod = await this.getPaymentMethodOrThrow(persistedIntent.paymentMethodId)
 
     const confirmKey = idempotencyKey ?? `confirm:${intentId}`
     const existingByKey = await getPaymentTransactionByConfirmIdempotencyKey(confirmKey)
@@ -332,7 +422,12 @@ export class PaymentService {
       metadata: persistedIntent.metadata,
     })
 
-    const status = providerResult.status
+    const status = statusFromProviderEvent({
+      event: providerResult.event,
+      providerStatus: providerResult.providerStatus,
+      fallbackStatus: providerResult.status,
+    })
+
     const transaction = await createPaymentTransactionRecord({
       id: createEntityId("txn"),
       intentId,
@@ -345,7 +440,7 @@ export class PaymentService {
       providerStatus: providerResult.providerStatus,
       processingFee,
       netAmount: status === "completed" ? persistedIntent.amount - processingFee : 0,
-      failureReason: providerResult.failureReason,
+      failureReason: status === "failed" ? providerResult.failureReason ?? "Provider declined payment" : null,
       confirmIdempotencyKey: confirmKey,
       metadata: persistedIntent.metadata,
       providerEvents: [providerResult.event],
@@ -452,12 +547,13 @@ export class PaymentService {
   }
 
   static calculateProcessingFee(amount: number, paymentMethodId: string): number {
-    const method = this.paymentMethods.find((method) => method.id === paymentMethodId)
+    const method = DEFAULT_PAYMENT_METHODS.find((item) => item.id === paymentMethodId)
     return method ? (amount * method.processingFee) / 100 : 0
   }
 
   static async validatePaymentMethod(paymentMethodId: string, currency: string): Promise<boolean> {
-    const method = this.paymentMethods.find((item) => item.id === paymentMethodId)
+    await this.ensurePaymentMethodsSeeded()
+    const method = await findPaymentMethodById(paymentMethodId)
     return method ? method.enabled && method.supportedCurrencies.includes(currency) : false
   }
 
