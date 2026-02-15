@@ -517,3 +517,20 @@ Backward compatibility notes:
 
 - Existing payment profile and checkout link APIs remain available.
 - New routes and entities are additive and do not break current field names.
+
+## Webhook durability + operator diagnostics upgrade (2026-02)
+
+- Billing webhook verification now performs strict Stripe signature header validation (`t` + `v1` checks) prior to cryptographic event construction, with configurable tolerance via `BILLING_WEBHOOK_SIGNATURE_TOLERANCE_SECONDS`.
+- Event processing remains idempotent by `(provider,event_id)` and now short-circuits already-processed duplicate deliveries.
+- Webhook lifecycle persistence continues to use durable event states: `received`, `processed`, `failed`, `dead_letter`.
+- Added domain persistence handlers for:
+  - Subscription lifecycle events (`customer.subscription.*`)
+  - Invoice events (`invoice.created`, `invoice.payment_succeeded`, `invoice.payment_failed`)
+  - Payment intent events (`payment_intent.succeeded`, `payment_intent.payment_failed`)
+  - Payout events (`payout.*`)
+- Operator tooling:
+  - `POST /api/internal/billing/webhook/replay` for failed/dead-letter replay
+  - `GET /api/internal/billing/webhook/events` for diagnostics listing
+  - `POST /api/internal/billing/webhook/events/:eventId/rollback` to reset eligible failed/dead-letter events and trigger replay.
+- Reporting enhancements in `GET /api/v1/payment/reporting` now include transaction-level revenue rows, payout visibility rows, and tax breakdown records in addition to existing summaries.
+- Security note: webhook and reporting paths continue to avoid logging sensitive payment/auth secrets.

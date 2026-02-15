@@ -249,3 +249,37 @@ export async function getTaxLiabilitySummary(input: { from?: Date; to?: Date }) 
     [input.from ?? null, input.to ?? null],
   )
 }
+
+export async function getTaxBreakdown(input: { from?: Date; to?: Date; limit?: number }) {
+  await ensureTaxTables()
+  return queryMany<{
+    sourceType: string
+    sourceId: string
+    countryCode: string
+    stateCode: string | null
+    currency: string
+    taxableAmount: number
+    taxAmount: number
+    totalAmount: number
+    createdAt: string
+  }>(
+    `
+      SELECT
+        source_type AS "sourceType",
+        source_id AS "sourceId",
+        country_code AS "countryCode",
+        state_code AS "stateCode",
+        currency,
+        taxable_amount::float8 AS "taxableAmount",
+        total_tax_amount::float8 AS "taxAmount",
+        total_amount::float8 AS "totalAmount",
+        created_at::text AS "createdAt"
+      FROM tax_calculations
+      WHERE ($1::timestamptz IS NULL OR created_at >= $1)
+        AND ($2::timestamptz IS NULL OR created_at <= $2)
+      ORDER BY created_at DESC
+      LIMIT $3
+    `,
+    [input.from ?? null, input.to ?? null, Math.max(1, Math.min(500, input.limit ?? 200))],
+  )
+}
