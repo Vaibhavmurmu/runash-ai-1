@@ -51,6 +51,24 @@ export interface CheckoutAutofillAuthorization {
   checkoutSessionId: string
 }
 
+export interface PortalLifecycleActionRecord {
+  id: string
+  customerId: string
+  actionType: "update_method" | "retry_failed_payment" | "subscription_state_change"
+  status: "queued" | "completed" | "failed"
+  metadata: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PortalMetricsSnapshot {
+  totalPayments: number
+  failedPayments: number
+  recoveredPayments: number
+  renewalAtRisk: number
+  renewalHealthy: number
+}
+
 let tablesReady = false
 
 function getEncryptionKey() {
@@ -151,6 +169,19 @@ async function ensureTables() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_checkout_sessions_customer_created ON checkout_sessions(customer_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS portal_lifecycle_actions (
+      id TEXT PRIMARY KEY,
+      customer_id TEXT NOT NULL,
+      action_type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued',
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_portal_lifecycle_actions_customer_created
+      ON portal_lifecycle_actions(customer_id, created_at DESC);
   `)
 
   tablesReady = true
@@ -284,6 +315,100 @@ export async function createCheckoutLink(input: {
 
   if (!row) throw new Error("Failed to create checkout link")
   return mapCheckoutLink(row)
+}
+
+export async function listCheckoutLinks(ownerUserId: string): Promise<CheckoutLinkRecord[]> {
+  await ensureTables()
+
+  const rows = await queryMany<any>(
+    `
+      SELECT
+        id,
+        slug,
+        owner_user_id AS "ownerUserId",
+        amount_min::float8 AS "amountMin",
+        amount_max::float8 AS "amountMax",
+        fixed_amount::float8 AS "fixedAmount",
+        currency,
+        product_metadata AS "productMetadata",
+        expires_at AS "expiresAt",
+        status,
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+      FROM checkout_links
+      WHERE owner_user_id = $1
+      ORDER BY created_at DESC
+    `,
+    [ownerUserId],
+  )
+
+  return rows.map(mapCheckoutLink)
+}
+
+export async function updateCheckoutLink(input: {
+  ownerUserId: string
+  id: string
+  amountMin?: number | null
+  amountMax?: number | null
+  fixedAmount?: number | null
+  currency?: string
+  productMetadata?: Record<string, unknown>
+  expiresAt?: string | null
+  status?: CheckoutLinkStatus
+}) {
+  await ensureTables()
+
+  const row = await queryOne<any>(
+    `
+      UPDATE checkout_links
+      SET
+        amount_min = COALESCE($3, amount_min),
+        amount_max = COALESCE($4, amount_max),
+        fixed_amount = COALESCE($5, fixed_amount),
+        currency = COALESCE($6, currency),
+        product_metadata = COALESCE($7::jsonb, product_metadata),
+        expires_at = COALESCE($8, expires_at),
+        status = COALESCE($9, status),
+        updated_at = NOW()
+      WHERE id = $1 AND owner_user_id = $2
+      RETURNING
+        id,
+        slug,
+        owner_user_id AS "ownerUserId",
+        amount_min::float8 AS "amountMin",
+        amount_max::float8 AS "amountMax",
+        fixed_amount::float8 AS "fixedAmount",
+        currency,
+        product_metadata AS "productMetadata",
+        expires_at AS "expiresAt",
+        status,
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+    `,
+    [
+      input.id,
+      input.ownerUserId,
+      input.amountMin,
+      input.amountMax,
+      input.fixedAmount,
+      input.currency,
+      input.productMetadata ? JSON.stringify(input.productMetadata) : null,
+      input.expiresAt,
+      input.status,
+    ],
+  )
+
+  return row ? mapCheckoutLink(row) : null
+}
+
+export async function transitionCheckoutLinkStatus(input: {
+  ownerUserId: string
+  id: string
+  action: "disable" | "expire"
+}) {
+  const nextStatus: CheckoutLinkStatus = input.action === "disable" ? "disabled" : "expired"
+  const expiresAt = input.action === "expire" ? new Date().toISOString() : undefined
+  return updateCheckoutLink({ ownerUserId: input.ownerUserId, id: input.id, status: nextStatus, expiresAt })
 }
 
 export async function addCustomerPaymentMethodReference(input: {
@@ -476,6 +601,14 @@ export async function switchCustomerPaymentMethod(input: {
   return getCustomerCheckoutProfile(input.customerId)
 }
 
+export async function updateCustomerPaymentMethodRole(input: {
+  customerId: string
+  role: "default" | "backup"
+  paymentMethodRefId: string
+}) {
+  return switchCustomerPaymentMethod({ customerId: input.customerId, role: input.role, paymentMethodRefId: input.paymentMethodRefId })
+}
+
 export async function removeCustomerPaymentMethodReference(input: { customerId: string; paymentMethodRefId: string }) {
   await ensureTables()
 
@@ -648,4 +781,108 @@ export async function verifyPaymentMethodSessionIntegrity(input: {
   })
 
   return { ok: currentHash === expectedHash }
+}
+
+function mapLifecycleAction(row: any): PortalLifecycleActionRecord {
+  return {
+    id: row.id,
+    customerId: row.customerId,
+    actionType: row.actionType,
+    status: row.status,
+    metadata: row.metadata ?? {},
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }
+}
+
+export async function createPortalLifecycleAction(input: {
+  customerId: string
+  actionType: PortalLifecycleActionRecord["actionType"]
+  metadata?: Record<string, unknown>
+}) {
+  await ensureTables()
+
+  const row = await queryOne<any>(
+    `
+      INSERT INTO portal_lifecycle_actions (id, customer_id, action_type, status, metadata)
+      VALUES ($1, $2, $3, 'completed', $4::jsonb)
+      RETURNING
+        id,
+        customer_id AS "customerId",
+        action_type AS "actionType",
+        status,
+        metadata,
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+    `,
+    [nowId("portal_action"), input.customerId, input.actionType, JSON.stringify(input.metadata ?? {})],
+  )
+
+  if (!row) throw new Error("Failed to persist portal lifecycle action")
+  return mapLifecycleAction(row)
+}
+
+export async function listPortalLifecycleActions(customerId: string): Promise<PortalLifecycleActionRecord[]> {
+  await ensureTables()
+  const rows = await queryMany<any>(
+    `
+      SELECT
+        id,
+        customer_id AS "customerId",
+        action_type AS "actionType",
+        status,
+        metadata,
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+      FROM portal_lifecycle_actions
+      WHERE customer_id = $1
+      ORDER BY created_at DESC
+      LIMIT 100
+    `,
+    [customerId],
+  )
+
+  return rows.map(mapLifecycleAction)
+}
+
+export async function getPortalMetricsSnapshot(customerId: string): Promise<PortalMetricsSnapshot> {
+  await ensureTables()
+
+  const [paymentRow] = await queryMany<{
+    totalPayments: number
+    failedPayments: number
+    recoveredPayments: number
+  }>(
+    `
+      SELECT
+        COUNT(*)::int AS "totalPayments",
+        COUNT(*) FILTER (WHERE status = 'failed')::int AS "failedPayments",
+        COUNT(*) FILTER (WHERE status IN ('completed', 'authorized'))::int AS "recoveredPayments"
+      FROM checkout_sessions
+      WHERE customer_id = $1
+    `,
+    [customerId],
+  )
+
+  const [renewalRow] = await queryMany<{
+    renewalAtRisk: number
+    renewalHealthy: number
+  }>(
+    `
+      SELECT
+        COUNT(*) FILTER (WHERE status IN ('past_due', 'unpaid', 'canceled'))::int AS "renewalAtRisk",
+        COUNT(*) FILTER (WHERE status IN ('active', 'trialing'))::int AS "renewalHealthy"
+      FROM user_subscriptions
+      WHERE user_id = $1
+    `,
+    [customerId],
+  )
+
+  return {
+    totalPayments: Number(paymentRow?.totalPayments ?? 0),
+    failedPayments: Number(paymentRow?.failedPayments ?? 0),
+    recoveredPayments: Number(paymentRow?.recoveredPayments ?? 0),
+    renewalAtRisk: Number(renewalRow?.renewalAtRisk ?? 0),
+    renewalHealthy: Number(renewalRow?.renewalHealthy ?? 0),
+  }
 }

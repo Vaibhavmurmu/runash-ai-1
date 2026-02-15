@@ -1330,3 +1330,22 @@ The payment processing path now uses repository-backed persistence for:
 - **Duplicate protection:** idempotency keys are now stored and reused for create-intent and confirm flows.
 - **Auditability:** transaction outcomes are derived from provider events/status and captured in persisted provider event trails.
 - **Compatibility:** existing external API response fields and route contracts are preserved.
+
+## 2026-02 Portal lifecycle + checkout-link operations hardening
+
+### What changed
+
+- Expanded checkout link domain with list/update/disable/expire behavior under `/api/v1/payment/checkout-links`.
+- Added portal-oriented profile management endpoints for default/backup method, billing, and shipping details.
+- Added lifecycle action endpoints for:
+  - payment method updates,
+  - failed payment retry workflows,
+  - subscription-state management intents.
+- Added dashboard component wiring to surface portal metrics and lifecycle actions in payment dashboard cards.
+- Added `portal_lifecycle_actions` table for action audit history.
+
+### Risks and rollback
+
+- **Risk:** lifecycle events may be created without downstream processor execution if external providers are unavailable.
+- **Mitigation:** actions are persisted for observability and replay workflows.
+- **Rollback:** remove new v1 portal/checkout-link routes and UI triggers while leaving additive tables intact; prior APIs continue functioning.

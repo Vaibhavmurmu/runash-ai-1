@@ -2,7 +2,7 @@ import { type NextRequest } from "next/server"
 import { z } from "zod"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { requireScopedBillingAccess } from "@/lib/billing-auth"
-import { createCheckoutLink } from "@/services/payment-checkout-profile-service"
+import { createCheckoutLink, listCheckoutLinks } from "@/services/payment-checkout-profile-service"
 
 const createCheckoutLinkSchema = z
   .object({
@@ -16,6 +16,14 @@ const createCheckoutLinkSchema = z
     status: z.enum(["draft", "active", "expired", "disabled"]).optional(),
   })
   .strict()
+
+export async function GET(request: NextRequest) {
+  const access = await requireScopedBillingAccess("business")
+  if ("response" in access) return access.response
+
+  const records = await listCheckoutLinks(access.sessionUser.userId)
+  return respondSuccess(request, records)
+}
 
 export async function POST(request: NextRequest) {
   const access = await requireScopedBillingAccess("business")
