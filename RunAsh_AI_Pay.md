@@ -441,3 +441,11 @@ All section actions now call live APIs and expose loading/success/error states w
 - Placeholder identity fallbacks (header-only user spoofing patterns) have been removed from billing usage flow ownership.
 - Payment operations now include customer-role RBAC support (`customer_admin`, `customer_operator`, `customer_finance`) with required org-scoped session context.
 - Payment-method mutation actions are protected with cross-device session integrity verification tied to checkout authorization fingerprints.
+
+## Billing API Reliability Notes (2026-02)
+
+To improve payment UX reliability and reduce client parsing ambiguity, billing contract responses now use a normalized API envelope with backward-compatible legacy fields for subscription and invoice routes.
+
+- Canonical billing contracts are documented in `docs/API_CONTRACTS.md` under **Billing APIs (`/api/billing/*`)**.
+- Compatibility fields (`plans`, `subscription`, `invoices`, `invoice`) remain available at the response top level during migration.
+- Invoice download supports redirect mode (default) and JSON compatibility mode via `?redirect=false`.

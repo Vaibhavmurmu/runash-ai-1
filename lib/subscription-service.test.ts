@@ -109,31 +109,35 @@ test("subscription lifecycle integration: plans -> create -> change -> cancel/re
     requests.push({ method, url: requestUrl, body })
 
     if (requestUrl.pathname === "/api/billing/plans" && method === "GET") {
-      return makeJsonResponse({ plans })
+      return makeJsonResponse({ success: true, data: { plans }, error: null, requestId: "req_1", plans })
     }
 
     if (requestUrl.pathname === "/api/billing/subscription" && method === "POST") {
       state.subscription = { ...state.subscription, plan_id: body.plan_id, plan: plans.find((p) => p.id === body.plan_id) }
-      return makeJsonResponse({ subscription: state.subscription })
+      return makeJsonResponse({ success: true, data: { subscription: state.subscription }, error: null, requestId: "req_2" })
     }
 
     if (requestUrl.pathname === "/api/billing/subscription" && method === "PATCH") {
       state.subscription = { ...state.subscription, plan_id: body.plan_id, plan: plans.find((p) => p.id === body.plan_id) }
-      return makeJsonResponse({ subscription: state.subscription })
+      return makeJsonResponse({ success: true, data: { subscription: state.subscription }, error: null, requestId: "req_3" })
     }
 
     if (requestUrl.pathname === "/api/billing/subscription/cancel" && method === "POST") {
       state.subscription = { ...state.subscription, cancel_at_period_end: true }
-      return makeJsonResponse({ subscription: state.subscription })
+      return makeJsonResponse({ success: true, data: { subscription: state.subscription }, error: null, requestId: "req_4" })
     }
 
     if (requestUrl.pathname === "/api/billing/subscription/reactivate" && method === "POST") {
       state.subscription = { ...state.subscription, cancel_at_period_end: false }
-      return makeJsonResponse({ subscription: state.subscription })
+      return makeJsonResponse({ success: true, data: { subscription: state.subscription }, error: null, requestId: "req_5" })
     }
 
     if (requestUrl.pathname === "/api/billing/invoices" && method === "GET") {
-      return makeJsonResponse({ invoices, total: invoices.length })
+      return makeJsonResponse({ success: true, data: { invoices, total: invoices.length }, error: null, requestId: "req_6" })
+    }
+
+    if (requestUrl.pathname === "/api/billing/invoices/inv_1" && method === "GET") {
+      return makeJsonResponse({ success: true, data: { invoice: invoices[0] }, error: null, requestId: "req_7" })
     }
 
     return makeJsonResponse({ error: "not found" }, 404)
@@ -159,6 +163,9 @@ test("subscription lifecycle integration: plans -> create -> change -> cancel/re
     assert.equal(result.invoices.length, 1)
     assert.equal(result.total, 1)
 
+    const invoice = await service.getInvoice("inv_1")
+    assert.equal(invoice?.id, "inv_1")
+
     const touchedPaths = requests.map((request) => `${request.method} ${request.url.pathname}`)
     assert.deepEqual(touchedPaths, [
       "GET /api/billing/plans",
@@ -167,6 +174,7 @@ test("subscription lifecycle integration: plans -> create -> change -> cancel/re
       "POST /api/billing/subscription/cancel",
       "POST /api/billing/subscription/reactivate",
       "GET /api/billing/invoices",
+      "GET /api/billing/invoices/inv_1",
     ])
   } finally {
     globalThis.fetch = originalFetch
