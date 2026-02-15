@@ -449,3 +449,10 @@ To improve payment UX reliability and reduce client parsing ambiguity, billing c
 - Canonical billing contracts are documented in `docs/API_CONTRACTS.md` under **Billing APIs (`/api/billing/*`)**.
 - Compatibility fields (`plans`, `subscription`, `invoices`, `invoice`) remain available at the response top level during migration.
 - Invoice download supports redirect mode (default) and JSON compatibility mode via `?redirect=false`.
+
+## Payment service persistence and idempotency hardening (2026 update)
+
+- Payment internals now persist and read **payment methods, intents, transactions, and refunds** from repository-backed tables under `lib/repositories/*`.
+- `create-intent` and `confirm` now enforce idempotent behavior through stored idempotency keys (`create_idempotency_key` and `confirm_idempotency_key`) to prevent duplicate charges.
+- Transaction status is derived from provider confirmation/callback event semantics (`event.type` + provider status), replacing synthetic/randomized status assignment.
+- Public response fields are unchanged for API compatibility; only internal persistence and status derivation paths were updated.

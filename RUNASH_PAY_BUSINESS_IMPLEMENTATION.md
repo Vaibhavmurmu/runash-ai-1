@@ -1317,3 +1317,16 @@ Business-facing payment pages now consume a shared section system used across st
 
 ### Rollback
 - Revert the unified payment page components and restore previous page components for each payment route.
+
+## Implementation note: repository-backed payment flow
+
+The payment processing path now uses repository-backed persistence for:
+- payment methods
+- payment intents
+- payment transactions
+- refunds
+
+### Operational impact
+- **Duplicate protection:** idempotency keys are now stored and reused for create-intent and confirm flows.
+- **Auditability:** transaction outcomes are derived from provider events/status and captured in persisted provider event trails.
+- **Compatibility:** existing external API response fields and route contracts are preserved.
