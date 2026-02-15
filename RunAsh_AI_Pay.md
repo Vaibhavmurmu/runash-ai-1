@@ -475,3 +475,25 @@ Billing usage ingestion now supports authenticated single-event and batch-event 
 ### Backward compatibility
 - Legacy usage metric writes (`metric` + `amount`) remain supported.
 - Existing API route shape is preserved; enhancements are additive.
+
+## Payment UI route modules (App Router)
+
+The payment hub now exposes a shared core entry plus audience-specific route modules:
+
+- `/payment/runash-pay` → Core entry surface (checkout links, payment methods, subscriptions, analytics, usage, portal, reporting)
+- `/payment/startup` → Startup-tailored module set (methods, checkout links, subscriptions, usage, portal)
+- `/payment/business` → Business-tailored module set (methods, checkout links, subscriptions, analytics, reporting, portal)
+
+### Live API CTA bindings
+
+All primary CTAs are wired to live contract-first endpoints:
+
+- Payment methods: `GET /api/v1/payment/methods`
+- Checkout links: `POST /api/v1/payment/checkout-links`
+- Subscription state: `GET /api/v1/billing/subscription`
+- Analytics snapshot: `GET /api/v1/analytics`
+- Usage billing: `GET/POST /api/v1/billing/usage`
+- Billing portal: `POST /api/v1/billing/portal`
+- Tax/reporting: `GET /api/v1/payment/reporting`
+
+Navigation links to these routes are exposed from existing payment/ecommerce UI surfaces to streamline onboarding and operations.

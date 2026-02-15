@@ -115,7 +115,7 @@ export default function CheckoutPage() {
     setProcessing(true)
     // Here you could call an API to create an order on the backend and get a payment session.
     // For now we navigate to the payment page and the payment page should read `pendingOrder` from sessionStorage.
-    router.push("/payment")
+    router.push("/payment/runash-pay")
   }
 
   // Show loading state during hydration
