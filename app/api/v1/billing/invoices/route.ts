@@ -78,12 +78,20 @@ export async function GET(request: NextRequest) {
       sessionUser.userId,
     ])
 
-    return respondSuccess(request, {
-      invoices,
-      total: Number.parseInt(totalRows[0]?.total || "0", 10),
-      limit,
-      offset,
-    })
+    const total = Number.parseInt(totalRows[0]?.total || "0", 10)
+
+    return respondSuccess(
+      request,
+      {
+        invoices,
+        total,
+        limit,
+        offset,
+      },
+      {
+        legacy: { invoices, total, limit, offset },
+      },
+    )
   } catch (error) {
     logApiRouteError(request, "billing.invoices.list_failed", error, { errorCode: "BILLING_INVOICES_FETCH_FAILED" })
     return respondError(request, { code: "BILLING_INVOICES_FETCH_FAILED", message: "Internal server error" }, { status: 500 })

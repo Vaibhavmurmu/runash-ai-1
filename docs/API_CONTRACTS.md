@@ -130,6 +130,59 @@ Response:
 
 - Apply DB migration script: `scripts/013-uploaded-files-schema.sql` before using `/api/upload` in production.
 
+
+## Billing APIs (`/api/billing/*`)
+
+The billing endpoints below support a normalized envelope and legacy compatibility fields to keep existing pages working during migration.
+
+### Envelope shape
+
+```json
+{
+  "success": true,
+  "data": { "...": "endpoint payload" },
+  "error": null,
+  "requestId": "req_123"
+}
+```
+
+For compatibility, selected top-level fields (for example `plans`, `subscription`, `invoices`, `invoice`) are also included outside `data`.
+
+### `GET /api/billing/plans`
+- `data`: `{ plans: SubscriptionPlan[] }`
+- legacy-compatible: top-level `plans`
+
+### `POST /api/billing/subscription/cancel`
+- Request body: `{ "immediately"?: boolean, "confirm"?: true }`
+- `data`: `{ subscription: UserSubscription }`
+- legacy-compatible: top-level `subscription`
+
+### `POST /api/billing/subscription/reactivate`
+- `data`: `{ subscription: UserSubscription }`
+- legacy-compatible: top-level `subscription`
+
+### `GET /api/billing/invoices?limit=<n>&offset=<n>`
+- `data`: `{ invoices: Invoice[], total: number, limit: number, offset: number }`
+- legacy-compatible: top-level `invoices`, `total`, `limit`, `offset`
+
+### `GET /api/billing/invoices/:id`
+- `data`: `{ invoice: Invoice }`
+- legacy-compatible: top-level `invoice`
+
+### `GET /api/billing/invoices/:id/download`
+- Default behavior: HTTP redirect to invoice PDF/hosted URL.
+- Optional compatibility mode: `?redirect=false` returns JSON envelope:
+  - `data`: `{ invoiceId: string, downloadUrl: string }`
+  - legacy-compatible: top-level `invoice_id`, `download_url`
+
+### Error codes
+- `PLAN_NOT_FOUND` (`404`)
+- `SUBSCRIPTION_NOT_FOUND` (`404`)
+- `SUBSCRIPTION_NOT_CANCELING` (`404`)
+- `INVOICE_NOT_FOUND` (`404`)
+- `INVOICE_DOWNLOAD_NOT_AVAILABLE` (`404`)
+- `BILLING_*_FAILED` (`500`) for unexpected failures
+
 ## Logging & Redaction
 
 Structured API logs include:
