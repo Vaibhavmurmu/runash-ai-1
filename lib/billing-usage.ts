@@ -1,4 +1,5 @@
 import { queryMany, queryOne } from "@/lib/db"
+import { createHash } from "crypto"
 
 function ym() {
   const d = new Date()
@@ -67,6 +68,29 @@ export type UsageChargeBreakdown = {
   totalCharge: number
 }
 
+export type CurrentPeriodUsageSummary = {
+  customerId: string
+  subscriptionId: string | null
+  periodStart: string
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  deltaMs: number
+  eventsCount: number
+  chargeAmount: number
+}
+
+export type UsageCostPreview = {
+  eventsCount: number
+  totals: {
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+    deltaMs: number
+  }
+  charge: UsageChargeBreakdown
+}
+
 let usageTableEnsured = false
 let usageEventsTablesEnsured = false
 
@@ -110,12 +134,17 @@ async function ensureUsageEventsTables() {
       resolver_id TEXT,
       resolver_type TEXT,
       metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      payload_hash TEXT NOT NULL,
       delayed_ingestion BOOLEAN NOT NULL DEFAULT FALSE,
       charge_amount NUMERIC(18, 6) NOT NULL DEFAULT 0,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `)
+
+  await queryMany(`ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS payload_hash TEXT`)
+  await queryMany(`UPDATE usage_events SET payload_hash = event_id WHERE payload_hash IS NULL`)
+  await queryMany(`ALTER TABLE usage_events ALTER COLUMN payload_hash SET NOT NULL`)
 
   await queryMany(`
     CREATE TABLE IF NOT EXISTS usage_aggregates (
@@ -151,6 +180,7 @@ async function ensureUsageEventsTables() {
   `)
 
   await queryMany(`CREATE INDEX IF NOT EXISTS idx_usage_events_customer_created ON usage_events(customer_id, created_at DESC);`)
+  await queryMany(`CREATE INDEX IF NOT EXISTS idx_usage_events_payload_hash ON usage_events(payload_hash);`)
   await queryMany(`CREATE INDEX IF NOT EXISTS idx_usage_aggregates_period ON usage_aggregates(customer_id, period_start, aggregate_type);`)
   await queryMany(`CREATE INDEX IF NOT EXISTS idx_usage_ingestion_queue_status ON usage_ingestion_queue(status, next_retry_at);`)
 
@@ -261,6 +291,25 @@ export async function ingestUsageEvent(input: UsageEventIngestionInput) {
     pricingModel: input.pricingModel,
   })
 
+  const payloadHash = createHash("sha256")
+    .update(
+      JSON.stringify({
+        customerId: input.customerId,
+        subscriptionId: input.subscriptionId ?? null,
+        userId: input.userId ?? null,
+        occurredAt: occurredAt.toISOString(),
+        promptTokens: Math.max(0, input.promptTokens),
+        completionTokens: Math.max(0, input.completionTokens),
+        totalTokens: Math.max(0, totalTokens),
+        deltaMs: Math.max(0, input.deltaMs),
+        model: input.model ?? null,
+        resolver: input.resolver ?? null,
+        resolverId: input.resolverId ?? null,
+        resolverType: input.resolverType ?? null,
+      }),
+    )
+    .digest("hex")
+
   const inserted = await queryOne<{ id: string }>(
     `
     INSERT INTO usage_events (
@@ -279,12 +328,13 @@ export async function ingestUsageEvent(input: UsageEventIngestionInput) {
       resolver_id,
       resolver_type,
       metadata,
+      payload_hash,
       delayed_ingestion,
       charge_amount
     )
     VALUES (
       $1, $2, $3, $4, $5, $6,
-      $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16, $17
+      $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16, $17, $18
     )
     ON CONFLICT (event_id)
     DO NOTHING
@@ -306,13 +356,20 @@ export async function ingestUsageEvent(input: UsageEventIngestionInput) {
       input.resolverId ?? null,
       input.resolverType ?? null,
       JSON.stringify(input.metadata ?? {}),
+      payloadHash,
       Boolean(input.delayed),
       charge.totalCharge,
     ],
   )
 
   if (!inserted) {
-    return { ingested: false, duplicate: true, charge }
+    const existing = await queryOne<{ payload_hash: string }>(`SELECT payload_hash FROM usage_events WHERE event_id = $1`, [input.eventId])
+    return {
+      ingested: false,
+      duplicate: true,
+      duplicateMismatch: existing ? existing.payload_hash !== payloadHash : false,
+      charge,
+    }
   }
 
   await updateUsageAggregates({
@@ -326,11 +383,17 @@ export async function ingestUsageEvent(input: UsageEventIngestionInput) {
     chargeAmount: charge.totalCharge,
   })
 
-  return { ingested: true, duplicate: false, charge }
+  return { ingested: true, duplicate: false, duplicateMismatch: false, charge }
 }
 
 export async function ingestUsageEventsBatch(events: UsageEventIngestionInput[]) {
-  const results = [] as Array<{ eventId: string; ingested: boolean; duplicate: boolean; charge: UsageChargeBreakdown }>
+  const results = [] as Array<{
+    eventId: string
+    ingested: boolean
+    duplicate: boolean
+    duplicateMismatch: boolean
+    charge: UsageChargeBreakdown
+  }>
 
   for (const event of events) {
     const result = await ingestUsageEvent(event)
@@ -341,7 +404,95 @@ export async function ingestUsageEventsBatch(events: UsageEventIngestionInput[])
     total: events.length,
     ingested: results.filter((item) => item.ingested).length,
     duplicates: results.filter((item) => item.duplicate).length,
+    duplicateMismatches: results.filter((item) => item.duplicateMismatch).length,
     results,
+  }
+}
+
+export async function getCurrentPeriodUsage(customerId: string, subscriptionId?: string | null): Promise<CurrentPeriodUsageSummary> {
+  await ensureUsageEventsTables()
+  const now = new Date()
+  const periodStart = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`
+
+  const row = await queryOne<{
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+    delta_ms: number
+    events_count: number
+    charge_amount: number
+  }>(
+    `
+    SELECT
+      COALESCE(prompt_tokens, 0)::float8 as prompt_tokens,
+      COALESCE(completion_tokens, 0)::float8 as completion_tokens,
+      COALESCE(total_tokens, 0)::float8 as total_tokens,
+      COALESCE(delta_ms, 0)::float8 as delta_ms,
+      COALESCE(events_count, 0)::float8 as events_count,
+      COALESCE(charge_amount, 0)::float8 as charge_amount
+    FROM usage_aggregates
+    WHERE customer_id = $1
+      AND aggregate_type = 'monthly'
+      AND period_start = $2::date
+      AND (($3::text IS NULL AND subscription_id IS NULL) OR subscription_id = $3::text)
+    LIMIT 1
+  `,
+    [customerId, periodStart, subscriptionId ?? null],
+  )
+
+  return {
+    customerId,
+    subscriptionId: subscriptionId ?? null,
+    periodStart,
+    promptTokens: Number(row?.prompt_tokens ?? 0),
+    completionTokens: Number(row?.completion_tokens ?? 0),
+    totalTokens: Number(row?.total_tokens ?? 0),
+    deltaMs: Number(row?.delta_ms ?? 0),
+    eventsCount: Number(row?.events_count ?? 0),
+    chargeAmount: Number(row?.charge_amount ?? 0),
+  }
+}
+
+export function previewUsageCosts(events: Array<Pick<UsageEventIngestionInput, "promptTokens" | "completionTokens" | "totalTokens" | "deltaMs" | "pricingModel">>): UsageCostPreview {
+  const totals = {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    deltaMs: 0,
+  }
+
+  const charge: UsageChargeBreakdown = {
+    promptTokenCharge: 0,
+    completionTokenCharge: 0,
+    executionTimeCharge: 0,
+    totalCharge: 0,
+  }
+
+  for (const event of events) {
+    const eventTotalTokens = event.totalTokens ?? event.promptTokens + event.completionTokens
+    const eventCharge = calculateUsageCharge({
+      promptTokens: event.promptTokens,
+      completionTokens: event.completionTokens,
+      totalTokens: eventTotalTokens,
+      deltaMs: event.deltaMs,
+      pricingModel: event.pricingModel,
+    })
+
+    totals.promptTokens += Math.max(0, event.promptTokens)
+    totals.completionTokens += Math.max(0, event.completionTokens)
+    totals.totalTokens += Math.max(0, eventTotalTokens)
+    totals.deltaMs += Math.max(0, event.deltaMs)
+
+    charge.promptTokenCharge += eventCharge.promptTokenCharge
+    charge.completionTokenCharge += eventCharge.completionTokenCharge
+    charge.executionTimeCharge += eventCharge.executionTimeCharge
+    charge.totalCharge += eventCharge.totalCharge
+  }
+
+  return {
+    eventsCount: events.length,
+    totals,
+    charge,
   }
 }
 
