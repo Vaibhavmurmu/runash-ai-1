@@ -497,3 +497,23 @@ All primary CTAs are wired to live contract-first endpoints:
 - Tax/reporting: `GET /api/v1/payment/reporting`
 
 Navigation links to these routes are exposed from existing payment/ecommerce UI surfaces to streamline onboarding and operations.
+
+## 2026-02 Checkout link + portal lifecycle APIs expansion
+
+Implemented additive APIs and entities for business checkout and portal management:
+
+- Checkout link management now supports full lifecycle actions:
+  - `GET /api/v1/payment/checkout-links` (list)
+  - `PATCH /api/v1/payment/checkout-links/:id` (update)
+  - `PATCH /api/v1/payment/checkout-links/:id` with `{ "action": "disable" | "expire" }`
+- Added customer-portal profile API surface:
+  - `GET|PUT /api/v1/payment/profile/portal` for billing/shipping details and default/backup method pointers.
+  - `GET /api/v1/payment/profile/portal/metrics` for payment/failure/recovery/renewal status metrics.
+  - `GET|POST /api/v1/payment/profile/portal/lifecycle` for lifecycle actions (`update_method`, `retry_failed_payment`, `subscription_state_change`).
+- Storage remains tokenized-reference only for cards (`provider_token_id`); raw PAN/CVV fields are blocked.
+- Added `portal_lifecycle_actions` persistence for auditability of portal actions.
+
+Backward compatibility notes:
+
+- Existing payment profile and checkout link APIs remain available.
+- New routes and entities are additive and do not break current field names.

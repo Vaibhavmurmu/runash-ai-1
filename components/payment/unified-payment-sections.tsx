@@ -104,6 +104,16 @@ export function CheckoutLinksSection() {
   const [isLoading, setIsLoading] = useState(false)
   const [status, setStatus] = useState<Status>(null)
   const [result, setResult] = useState<unknown>(null)
+  const [links, setLinks] = useState<Array<{ id: string; status: string; slug: string }>>([])
+
+  const refreshLinks = async () => {
+    const response = await fetch("/api/v1/payment/checkout-links", { method: "GET", cache: "no-store" })
+    const payload = (await response.json()) as ApiEnvelope<Array<{ id: string; status: string; slug: string }>>
+    if (response.ok && payload.success && payload.data) {
+      setLinks(payload.data)
+      setResult(payload.data)
+    }
+  }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -134,10 +144,33 @@ export function CheckoutLinksSection() {
         return
       }
 
-      setResult(payload.data)
+      await refreshLinks()
       setStatus({ kind: "success", message: "Checkout link created successfully." })
     } catch {
       setStatus({ kind: "error", message: "Network error while creating checkout link." })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const runAction = async (id: string, body: Record<string, unknown>, success: string) => {
+    setStatus(null)
+    setIsLoading(true)
+    try {
+      const response = await fetch(`/api/v1/payment/checkout-links/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      const payload = (await response.json()) as ApiEnvelope<unknown>
+      if (!response.ok || !payload.success) {
+        setStatus({ kind: "error", message: payload.error?.message ?? "Checkout link update failed." })
+        return
+      }
+      await refreshLinks()
+      setStatus({ kind: "success", message: success })
+    } catch {
+      setStatus({ kind: "error", message: "Network error while updating checkout link." })
     } finally {
       setIsLoading(false)
     }
@@ -147,7 +180,7 @@ export function CheckoutLinksSection() {
     <Card>
       <CardHeader>
         <CardTitle>Checkout Links</CardTitle>
-        <CardDescription>Create hosted checkout links via the live API.</CardDescription>
+        <CardDescription>Create, list, update, disable, and expire hosted checkout links.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -165,9 +198,28 @@ export function CheckoutLinksSection() {
               <Input id="checkout-currency" maxLength={3} value={currency} onChange={(event) => setCurrency(event.target.value)} />
             </div>
           </div>
-          <SubmitButton isLoading={isLoading} label="Create checkout link" />
+          <div className="flex flex-wrap gap-2">
+            <SubmitButton isLoading={isLoading} label="Create checkout link" />
+            <Button type="button" variant="outline" onClick={refreshLinks} disabled={isLoading}>
+              List links
+            </Button>
+          </div>
         </form>
         <StatusMessage status={status} />
+        {links.length > 0 ? (
+          <div className="space-y-2 rounded border p-3">
+            {links.slice(0, 5).map((link) => (
+              <div key={link.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span>{link.slug} · {link.status}</span>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => runAction(link.id, { status: "active" }, "Checkout link activated.")}>Activate</Button>
+                  <Button size="sm" variant="outline" onClick={() => runAction(link.id, { action: "disable" }, "Checkout link disabled.")}>Disable</Button>
+                  <Button size="sm" variant="outline" onClick={() => runAction(link.id, { action: "expire" }, "Checkout link expired.")}>Expire</Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
         <JsonPreview payload={result} />
       </CardContent>
     </Card>
@@ -362,6 +414,29 @@ export function CustomerPortalSection() {
   const [isLoading, setIsLoading] = useState(false)
   const [status, setStatus] = useState<Status>(null)
   const [portalUrl, setPortalUrl] = useState<string | null>(null)
+  const [metrics, setMetrics] = useState<unknown>(null)
+  const [profile, setProfile] = useState<unknown>(null)
+  const [actions, setActions] = useState<unknown>(null)
+
+  const loadPortalContext = async () => {
+    try {
+      const [metricsResponse, profileResponse, actionsResponse] = await Promise.all([
+        fetch("/api/v1/payment/profile/portal/metrics", { method: "GET", cache: "no-store" }),
+        fetch("/api/v1/payment/profile/portal", { method: "GET", cache: "no-store" }),
+        fetch("/api/v1/payment/profile/portal/lifecycle", { method: "GET", cache: "no-store" }),
+      ])
+
+      const metricsPayload = (await metricsResponse.json()) as ApiEnvelope<unknown>
+      const profilePayload = (await profileResponse.json()) as ApiEnvelope<unknown>
+      const actionsPayload = (await actionsResponse.json()) as ApiEnvelope<unknown>
+
+      if (metricsResponse.ok && metricsPayload.success) setMetrics(metricsPayload.data)
+      if (profileResponse.ok && profilePayload.success) setProfile(profilePayload.data)
+      if (actionsResponse.ok && actionsPayload.success) setActions(actionsPayload.data)
+    } catch {
+      setStatus({ kind: "error", message: "Unable to load portal metrics context." })
+    }
+  }
 
   const openPortal = async () => {
     setStatus(null)
@@ -381,9 +456,34 @@ export function CustomerPortalSection() {
       }
 
       setPortalUrl(payload.data.url)
+      await loadPortalContext()
       setStatus({ kind: "success", message: "Customer portal session generated." })
     } catch {
       setStatus({ kind: "error", message: "Network error while creating portal session." })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const triggerLifecycle = async (actionType: "retry_failed_payment" | "subscription_state_change") => {
+    setStatus(null)
+    setIsLoading(true)
+    try {
+      const response = await fetch("/api/v1/payment/profile/portal/lifecycle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actionType }),
+      })
+      const payload = (await response.json()) as ApiEnvelope<unknown>
+      if (!response.ok || !payload.success) {
+        setStatus({ kind: "error", message: payload.error?.message ?? "Failed to trigger lifecycle action." })
+        return
+      }
+
+      await loadPortalContext()
+      setStatus({ kind: "success", message: `Lifecycle action '${actionType}' recorded.` })
+    } catch {
+      setStatus({ kind: "error", message: "Network error while applying lifecycle action." })
     } finally {
       setIsLoading(false)
     }
@@ -393,12 +493,21 @@ export function CustomerPortalSection() {
     <Card>
       <CardHeader>
         <CardTitle>Customer Portal</CardTitle>
-        <CardDescription>Create and open a billing portal session from the live API.</CardDescription>
+        <CardDescription>Manage billing/shipping profile, method lifecycle actions, and renewal health metrics.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-2">
           <Button onClick={openPortal} disabled={isLoading}>
             {isLoading ? "Creating session..." : "Create portal session"}
+          </Button>
+          <Button variant="outline" onClick={loadPortalContext} disabled={isLoading}>
+            Refresh metrics
+          </Button>
+          <Button variant="outline" onClick={() => triggerLifecycle("retry_failed_payment")} disabled={isLoading}>
+            Retry failed payment
+          </Button>
+          <Button variant="outline" onClick={() => triggerLifecycle("subscription_state_change")} disabled={isLoading}>
+            Manage subscription state
           </Button>
           {portalUrl ? (
             <Button asChild variant="outline">
@@ -409,6 +518,20 @@ export function CustomerPortalSection() {
           ) : null}
         </div>
         <StatusMessage status={status} />
+        <div className="grid gap-3">
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">Portal metrics</p>
+            <JsonPreview payload={metrics} />
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">Billing/shipping profile</p>
+            <JsonPreview payload={profile} />
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">Recent lifecycle actions</p>
+            <JsonPreview payload={actions} />
+          </div>
+        </div>
       </CardContent>
     </Card>
   )
