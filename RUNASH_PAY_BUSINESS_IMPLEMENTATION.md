@@ -1349,3 +1349,35 @@ The payment processing path now uses repository-backed persistence for:
 - **Risk:** lifecycle events may be created without downstream processor execution if external providers are unavailable.
 - **Mitigation:** actions are persisted for observability and replay workflows.
 - **Rollback:** remove new v1 portal/checkout-link routes and UI triggers while leaving additive tables intact; prior APIs continue functioning.
+
+## 2026-02 reliability increment: webhook state machine, replay/rollback, and reporting depth
+
+### Impacted payment/auth flows
+- Stripe billing webhook intake and signature validation.
+- Subscription, invoice, payment intent, and payout domain state projection.
+- Finance/operator reporting visibility paths.
+
+### What changed
+- Hardened webhook signature gate with strict Stripe header parsing + tolerance enforcement before event construction.
+- Preserved backward-compatible webhook contract while strengthening idempotent duplicate handling for already processed events.
+- Extended durable webhook processing state handling (`received` → `processed` / `failed` / `dead_letter`).
+- Added domain tables populated by webhook handlers for subscription, invoice, payment, and payout lifecycle data.
+- Added operator endpoints for diagnostics and targeted rollback/replay:
+  - `GET /api/internal/billing/webhook/events`
+  - `POST /api/internal/billing/webhook/events/:eventId/rollback`
+- Expanded payment reporting API payloads with:
+  - `revenue_transactions`
+  - `payout_visibility`
+  - `tax_breakdown`
+
+### Risk + rollback
+- Risk level: **medium** (webhook/domain persistence path extension, no public contract removal).
+- Backward compatibility: existing payment/reporting response summary fields are preserved and additive fields were introduced.
+- Rollback strategy:
+  1. Revert webhook route/service changes to prior handler implementation.
+  2. Disable new diagnostics/rollback endpoints.
+  3. Keep additive tables in place (non-breaking) or archive if necessary.
+
+### Validation commands
+- `npm run lint`
+- `npm run build`

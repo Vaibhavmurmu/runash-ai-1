@@ -409,3 +409,68 @@ export async function getPayoutsSummary(input: { from?: Date; to?: Date }) {
 
   return row ?? { totalPayoutEligible: 0, payoutCount: 0, refundedAmount: 0 }
 }
+
+export async function getRevenueTransactions(input: { from?: Date; to?: Date; limit?: number }) {
+  await ensurePaymentTransactionTable()
+  return queryMany<{
+    id: string
+    intentId: string
+    amount: number
+    netAmount: number
+    processingFee: number
+    currency: string
+    status: string
+    createdAt: string
+  }>(
+    `
+      SELECT
+        id,
+        intent_id AS "intentId",
+        amount::float8 AS amount,
+        net_amount::float8 AS "netAmount",
+        processing_fee::float8 AS "processingFee",
+        currency,
+        status,
+        created_at::text AS "createdAt"
+      FROM payment_transactions_v2
+      WHERE status IN ('completed', 'refunded')
+        AND ($1::timestamptz IS NULL OR created_at >= $1)
+        AND ($2::timestamptz IS NULL OR created_at <= $2)
+      ORDER BY created_at DESC
+      LIMIT $3
+    `,
+    [input.from ?? null, input.to ?? null, Math.max(1, Math.min(500, input.limit ?? 200))],
+  )
+}
+
+export async function getPayoutVisibility(input: { from?: Date; to?: Date; limit?: number }) {
+  await ensurePaymentTransactionTable()
+  return queryMany<{
+    transactionId: string
+    intentId: string
+    status: string
+    grossAmount: number
+    netAmount: number
+    payoutEligible: boolean
+    refundedAmount: number | null
+    createdAt: string
+  }>(
+    `
+      SELECT
+        id AS "transactionId",
+        intent_id AS "intentId",
+        status,
+        amount::float8 AS "grossAmount",
+        net_amount::float8 AS "netAmount",
+        (status = 'completed') AS "payoutEligible",
+        refund_amount::float8 AS "refundedAmount",
+        created_at::text AS "createdAt"
+      FROM payment_transactions_v2
+      WHERE ($1::timestamptz IS NULL OR created_at >= $1)
+        AND ($2::timestamptz IS NULL OR created_at <= $2)
+      ORDER BY created_at DESC
+      LIMIT $3
+    `,
+    [input.from ?? null, input.to ?? null, Math.max(1, Math.min(500, input.limit ?? 200))],
+  )
+}
