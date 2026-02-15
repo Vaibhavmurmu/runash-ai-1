@@ -456,3 +456,22 @@ To improve payment UX reliability and reduce client parsing ambiguity, billing c
 - `create-intent` and `confirm` now enforce idempotent behavior through stored idempotency keys (`create_idempotency_key` and `confirm_idempotency_key`) to prevent duplicate charges.
 - Transaction status is derived from provider confirmation/callback event semantics (`event.type` + provider status), replacing synthetic/randomized status assignment.
 - Public response fields are unchanged for API compatibility; only internal persistence and status derivation paths were updated.
+
+## Billing usage ingestion reliability (API)
+
+Billing usage ingestion now supports authenticated single-event and batch-event submission under `/api/billing/usage` (backed by `/api/v1/billing/usage`).
+
+### Supported payloads
+- **Single ingestion**: accepts `event_id`/`eventId`, token metrics (`prompt_tokens`, `completion_tokens`, `total_tokens`), `delta_ms`, `resolver`, and `metadata`.
+- **Batch ingestion**: accepts `{ "events": [...] }` with the same schema.
+- **Cost preview**: accepts `{ "mode": "cost_preview", "events": [...] }` and returns charge projections without persisting events.
+- **Current period aggregate**: `GET /api/billing/usage?mode=current_period` returns current-month token/time/charge totals.
+
+### Idempotency and deduplication
+- `event_id` is treated as the idempotency key.
+- Duplicate ingestion attempts are ignored (`ON CONFLICT DO NOTHING`).
+- A deterministic payload hash is persisted to detect duplicate key reuse with mismatched event payload content.
+
+### Backward compatibility
+- Legacy usage metric writes (`metric` + `amount`) remain supported.
+- Existing API route shape is preserved; enhancements are additive.
