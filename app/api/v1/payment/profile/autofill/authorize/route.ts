@@ -13,6 +13,20 @@ const authorizeSchema = z
   })
   .strict()
 
+
+function resolveSessionContexts(request: NextRequest) {
+  return {
+    deviceContext: {
+      ipHint: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "",
+      acceptLanguage: request.headers.get("accept-language") ?? "",
+      secChUaPlatform: request.headers.get("sec-ch-ua-platform") ?? "",
+    },
+    browserContext: {
+      userAgent: request.headers.get("user-agent") ?? "",
+    },
+  }
+}
+
 export async function POST(request: NextRequest) {
   const access = await requireScopedBillingAccess("business")
   if ("response" in access) return access.response
@@ -23,12 +37,14 @@ export async function POST(request: NextRequest) {
     return respondError(request, { code: "INVALID_AUTOFILL_AUTH_PAYLOAD", message: "Invalid autofill authorization payload" }, { status: 400 })
   }
 
+  const contexts = resolveSessionContexts(request)
+
   const authorization = await authorizeCheckoutAutofill({
     customerId: access.sessionUser.userId,
     linkSlug: parsed.data.checkoutSlug,
     preferBackupMethod: parsed.data.preferBackupMethod,
-    deviceContext: parsed.data.deviceContext,
-    browserContext: parsed.data.browserContext,
+    deviceContext: { ...contexts.deviceContext, ...(parsed.data.deviceContext ?? {}) },
+    browserContext: { ...contexts.browserContext, ...(parsed.data.browserContext ?? {}) },
   })
 
   if (!authorization) {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { Database } from "@/lib/database"
-import { RBACManager, type OperatorScope } from "@/lib/rbac"
+import { DEFAULT_ROLES, RBACManager, type OperatorScope } from "@/lib/rbac"
 import { getAuthenticatedSessionUser, isSessionAuthorizedForScope, type AuthenticatedSessionUser } from "@/lib/auth/session"
 
 export interface RouteGuardSuccess {
@@ -24,8 +24,24 @@ export async function requireBillingSession(): Promise<
   return { sessionUser, unauthorizedResponse: null }
 }
 
+
+
+function isCustomerRole(role: string): boolean {
+  return role === DEFAULT_ROLES.CUSTOMER_ADMIN || role === DEFAULT_ROLES.CUSTOMER_OPERATOR || role === DEFAULT_ROLES.CUSTOMER_FINANCE
+}
+
+function requireCustomerOrganizationScope(sessionUser: AuthenticatedSessionUser): NextResponse | null {
+  if (isCustomerRole(sessionUser.role) && !sessionUser.organizationId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
+  return null
+}
+
 export function requireScopedRole(sessionUser: AuthenticatedSessionUser, scope: OperatorScope): NextResponse | null {
   if (RBACManager.hasScopedOperatorAccess(sessionUser.role, scope)) {
+    const customerOrgScopeError = requireCustomerOrganizationScope(sessionUser)
+    if (customerOrgScopeError) return customerOrgScopeError
     return null
   }
 
@@ -43,6 +59,11 @@ export async function requireScopedBillingAccess(scope: OperatorScope): Promise<
     return { response: roleResponse }
   }
 
+  const customerOrgScopeError = requireCustomerOrganizationScope(auth.sessionUser)
+  if (customerOrgScopeError) {
+    return { response: customerOrgScopeError }
+  }
+
   return { sessionUser: auth.sessionUser }
 }
 
@@ -54,6 +75,11 @@ export async function requireRoleBillingAccess(roles: string[]): Promise<RouteGu
 
   if (!roles.includes(auth.sessionUser.role)) {
     return { response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) }
+  }
+
+  const customerOrgScopeError = requireCustomerOrganizationScope(auth.sessionUser)
+  if (customerOrgScopeError) {
+    return { response: customerOrgScopeError }
   }
 
   return { sessionUser: auth.sessionUser }

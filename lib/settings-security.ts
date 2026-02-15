@@ -22,11 +22,6 @@ export async function resolveSettingsUserId(request: Request): Promise<number | 
     return sessionId
   }
 
-  const headerUserId = Number(request.headers.get("x-user-id"))
-  if (Number.isFinite(headerUserId) && headerUserId > 0) {
-    return headerUserId
-  }
-
   return null
 }
 

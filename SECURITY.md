@@ -110,3 +110,11 @@ Operational guidance:
 - Avoid logging full request bodies for auth/payment flows.
 
 
+
+## Payment-specific authentication hardening
+
+- **Single auth source for billing/payment APIs:** server-side session identity is required for payment/billing routes; header-only user identity patterns are rejected for these flows.
+- **Usage endpoint anti-spoofing:** billing usage ingestion binds `customerId` and `userId` to the authenticated session user.
+- **RBAC + organization scope:** `customer_admin`, `customer_operator`, and `customer_finance` roles are treated as payment operators only when organization scope is present.
+- **Session integrity for payment methods:** payment-method mutation endpoints enforce a session integrity check by comparing a hashed device/browser fingerprint with the most recent authorized checkout session.
+- **Sensitive data minimization:** payment controls avoid logging raw payment/auth payload material and continue requiring tokenized provider references.

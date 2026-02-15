@@ -74,11 +74,9 @@ function normalizeUsageEventPayload(
     return null
   }
 
-  const customerId = typeof record.customerId === "string" ? record.customerId : sessionUser.userId
-
   return {
     eventId: record.eventId,
-    customerId,
+    customerId: sessionUser.userId,
     subscriptionId: typeof record.subscriptionId === "string" ? record.subscriptionId : null,
     userId: sessionUser.userId,
     occurredAt: typeof record.occurredAt === "string" ? record.occurredAt : undefined,
