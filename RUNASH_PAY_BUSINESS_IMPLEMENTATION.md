@@ -1257,3 +1257,24 @@ For payment-operational reliability and auditability:
 ### Migration note
 - Existing payment intent/transaction schemas and field names remain unchanged.
 - New capability is additive and backward compatible.
+
+## 2026-02 Customer lifecycle analytics hardening
+
+### Impacted payment/business flows
+- Signup-to-checkout conversion tracking.
+- Failed payment recovery tracking and recovery effectiveness.
+- Plan-level churn/retention analysis and cohort conversion observability.
+
+### What changed
+- Added additive lifecycle persistence tables:
+  - `customer_profiles`
+  - `customer_events`
+  - `payment_recovery_events`
+- Added lifecycle analytics API for business dashboards (`/api/payment/lifecycle`).
+- Added lifecycle event ingestion API with provenance and actor attribution (`/api/payment/lifecycle`, `POST`).
+- Exposed lifecycle KPI cards in Payment Dashboard and Subscription/Billing portal surfaces.
+
+### Risk and rollback
+- **Risk level:** medium (new analytics queries and UI reads).
+- **Rollback:** remove lifecycle cards + API routes while keeping additive tables in place; existing payment contracts continue unchanged.
+- **Backward compatibility:** preserved; existing field names and billing endpoints are not removed or renamed.

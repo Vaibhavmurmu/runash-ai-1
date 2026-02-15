@@ -27,6 +27,16 @@ import {
 } from "@/lib/subscription-service"
 import { useToast } from "@/hooks/use-toast"
 
+interface BillingLifecycleSnapshot {
+  signupToCheckoutConversion: number
+  failedPaymentRecoveryRate: number
+  recoveryRate: number
+  churnRate: number
+  mrr: number
+  arpu: number
+  ltv: number | null
+}
+
 export function SubscriptionManager() {
   const [subscription, setSubscription] = useState<UserSubscription | null>(null)
   const [plans, setPlans] = useState<SubscriptionPlan[]>([])
@@ -36,6 +46,7 @@ export function SubscriptionManager() {
   const [changingPlan, setChangingPlan] = useState(false)
   const [pendingPlanChange, setPendingPlanChange] = useState<SubscriptionPlan | null>(null)
   const [showCancelDialog, setShowCancelDialog] = useState(false)
+  const [lifecycle, setLifecycle] = useState<BillingLifecycleSnapshot | null>(null)
 
   const subscriptionService = SubscriptionService.getInstance()
   const { toast } = useToast()
@@ -47,17 +58,23 @@ export function SubscriptionManager() {
   const loadData = async () => {
     try {
       setLoading(true)
-      const [userSub, allPlans, userInvoices, currentUsage] = await Promise.all([
+      const [userSub, allPlans, userInvoices, currentUsage, lifecycleResponse] = await Promise.all([
         subscriptionService.getUserSubscription(),
         subscriptionService.getPlans(),
         subscriptionService.getInvoices(5),
         subscriptionService.getUsage(),
+        fetch("/api/payment/lifecycle", { cache: "no-store" }),
       ])
+
+      const lifecyclePayload = lifecycleResponse.ok
+        ? ((await lifecycleResponse.json()) as { data?: BillingLifecycleSnapshot })
+        : null
 
       setSubscription(userSub)
       setPlans(allPlans)
       setInvoices(userInvoices.invoices)
       setUsage(currentUsage)
+      setLifecycle(lifecyclePayload?.data ?? null)
     } catch (error) {
       console.error("Failed to load subscription data:", error)
       toast({
@@ -175,6 +192,9 @@ export function SubscriptionManager() {
     return limit > 0 ? Math.min((used / limit) * 100, 100) : 0
   }
 
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(amount)
+
   // Minimal handler to route to subscription page when no active subscription
   const handleGetStarted = () => {
     // Navigate to subscription route that mounts this manager with full plan list context
@@ -209,6 +229,23 @@ export function SubscriptionManager() {
           Billing Portal
         </Button>
       </div>
+
+      {lifecycle ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Billing lifecycle insights</CardTitle>
+            <CardDescription>MRR, ARPU, LTV, churn, recovery, and signup conversion snapshots.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 md:grid-cols-3">
+            <div className="rounded border p-3 text-sm">MRR: <span className="font-semibold">{formatCurrency(lifecycle.mrr)}</span></div>
+            <div className="rounded border p-3 text-sm">ARPU: <span className="font-semibold">{formatCurrency(lifecycle.arpu)}</span></div>
+            <div className="rounded border p-3 text-sm">LTV: <span className="font-semibold">{lifecycle.ltv === null ? "N/A" : formatCurrency(lifecycle.ltv)}</span></div>
+            <div className="rounded border p-3 text-sm">Churn: <span className="font-semibold">{lifecycle.churnRate.toFixed(1)}%</span></div>
+            <div className="rounded border p-3 text-sm">Recovery: <span className="font-semibold">{lifecycle.recoveryRate.toFixed(1)}%</span></div>
+            <div className="rounded border p-3 text-sm">Signup → Checkout: <span className="font-semibold">{lifecycle.signupToCheckoutConversion.toFixed(1)}%</span></div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* Current Subscription Status */}
       {subscription ? (

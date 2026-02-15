@@ -391,3 +391,19 @@ RunAsh AI Pay now includes first-party checkout profile persistence for secure a
 - Address payloads are encrypted before DB persistence (application-layer encryption-at-rest).
 - APIs continue using HTTPS-only transport expectations (encryption in transit).
 - Logging intentionally avoids sensitive payment/auth data.
+
+## Customer lifecycle analytics and provenance update (2026-02)
+
+### Scope
+- Added lifecycle persistence tables: `customer_profiles`, `customer_events`, and `payment_recovery_events`.
+- Added dashboard-facing lifecycle aggregates for MRR, ARPU, LTV, churn, failed recovery rate, and cohort conversion.
+- Added provenance capture (`source`: `web` | `api` | `agent_action`) for lifecycle and recovery events.
+
+### Backward compatibility and safety
+- Existing payment intent, transaction, and billing contracts are preserved.
+- New lifecycle APIs and response fields are additive.
+- No sensitive payment/auth data is logged; provenance tracks only event origin and actor IDs.
+
+### Operational note
+- Lifecycle analytics endpoint: `GET /api/payment/lifecycle`.
+- Lifecycle event ingestion endpoint: `POST /api/payment/lifecycle`.
