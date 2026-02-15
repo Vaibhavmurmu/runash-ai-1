@@ -1278,3 +1278,27 @@ For payment-operational reliability and auditability:
 - **Risk level:** medium (new analytics queries and UI reads).
 - **Rollback:** remove lifecycle cards + API routes while keeping additive tables in place; existing payment contracts continue unchanged.
 - **Backward compatibility:** preserved; existing field names and billing endpoints are not removed or renamed.
+
+## 2026-02 Webhook idempotency + replay reliability update
+
+### Impacted flows
+- Stripe invoice payment webhooks (`invoice.payment_succeeded`, `invoice.payment_failed`).
+- Stripe subscription lifecycle webhooks (`customer.subscription.created|updated|deleted`).
+- Stripe payout status webhooks (`payout.*`).
+
+### Implementation details
+- Added durable webhook event storage in `webhook_events` with strict status lifecycle:
+  - `received` (accepted + pending processing)
+  - `processed` (domain handling completed)
+  - `failed` (processing exhausted and scheduled for retry)
+  - `dead_letter` (exceeded replay threshold)
+- Added idempotent ingestion keyed by `(provider, event_id)` to prevent duplicate side effects.
+- Added ordered replay of failed/dead-letter events by `received_at ASC` through admin-protected internal endpoint:
+  - `POST /api/internal/billing/webhook/replay`
+- Added bounded retry/backoff metadata (`processing_attempts`, `next_retry_at`, `last_error`) for auditability.
+- Logging path now uses redacted structured logs and omits raw payment/auth payloads.
+
+### Risk + rollback
+- **Risk level:** medium (adds durable processing state and replay paths to webhook handling).
+- **Rollback:** revert webhook route/service wiring and disable replay endpoint; table is additive and can remain without impacting existing payment contracts.
+- **Backward compatibility:** preserved for existing billing/subscription API contracts and field names.

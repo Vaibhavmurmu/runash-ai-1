@@ -407,3 +407,11 @@ RunAsh AI Pay now includes first-party checkout profile persistence for secure a
 ### Operational note
 - Lifecycle analytics endpoint: `GET /api/payment/lifecycle`.
 - Lifecycle event ingestion endpoint: `POST /api/payment/lifecycle`.
+
+## Stripe webhook reliability hardening (2026-02)
+
+- Billing webhook verification now requires a valid `stripe-signature` header and enforces strict signature tolerance checks before any processing.
+- Stripe webhook events are persisted in a durable `webhook_events` table with idempotency on `(provider, event_id)` and lifecycle states: `received`, `processed`, `failed`, `dead_letter`.
+- Domain routing is explicit for invoice paid/failed, subscription lifecycle updates, and payout status updates.
+- Failed events can be replayed in received-order via admin-protected internal endpoint `POST /api/internal/billing/webhook/replay`.
+- Webhook logs use centralized redaction and intentionally exclude raw auth/payment payload details.
