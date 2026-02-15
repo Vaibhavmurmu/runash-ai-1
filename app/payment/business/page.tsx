@@ -4,7 +4,8 @@ export default function BusinessPaymentPage() {
   return (
     <UnifiedPaymentPage
       title="Business Payments"
-      description="Enterprise payment workspace with reusable sections for operational controls and financial reporting."
+      description="Business-grade workspace for payment rails, high-volume checkout links, analytics snapshots, and compliance reporting."
+      sections={["methods", "checkoutLinks", "subscriptions", "analytics", "reporting", "portal"]}
     />
   )
 }

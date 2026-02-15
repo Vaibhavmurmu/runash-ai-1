@@ -299,12 +299,12 @@ export default function IntegrationHubPage() {
             </Card>
           </Link>
 
-          <Link href="/ecommerce/payments">
+          <Link href="/payment/runash-pay">
             <Card className="bg-gradient-to-br from-green-900/30 to-slate-900 border-green-600 p-6 cursor-pointer hover:border-green-500 transition-colors h-full">
               <CreditCard className="w-8 h-8 text-green-400 mb-4" />
               <h3 className="text-lg font-bold text-white mb-2">Payment Integration</h3>
               <p className="text-sm text-slate-400">
-                Manage multiple payment methods and custom payment links
+                Open RunAsh Pay routes for startup and business payment operations
               </p>
               <div className="mt-4 text-green-400 text-sm font-semibold">
                 Configure →

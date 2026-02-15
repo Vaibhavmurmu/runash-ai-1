@@ -4,7 +4,8 @@ export default function RunAshPayPage() {
   return (
     <UnifiedPaymentPage
       title="RunAsh Pay"
-      description="Unified payment surface with shared tooling for methods, checkout links, usage billing, customer portal, and reporting."
+      description="Core payment command center for checkout links, payment methods, subscription posture, analytics, usage billing, and reports."
+      sections={["methods", "checkoutLinks", "subscriptions", "analytics", "usage", "portal", "reporting"]}
     />
   )
 }

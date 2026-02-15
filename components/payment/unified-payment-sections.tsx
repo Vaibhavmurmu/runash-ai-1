@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
+export type PaymentSectionKey = "methods" | "checkoutLinks" | "subscriptions" | "analytics" | "usage" | "portal" | "reporting"
+
 type ApiEnvelope<T> = {
   success: boolean
   data: T | null
@@ -37,6 +39,11 @@ function SubmitButton({ isLoading, label }: { isLoading: boolean; label: string 
       {isLoading ? "Processing..." : label}
     </Button>
   )
+}
+
+function JsonPreview({ payload }: { payload: unknown }) {
+  if (!payload) return null
+  return <pre className="overflow-x-auto rounded border bg-muted p-3 text-xs">{JSON.stringify(payload, null, 2)}</pre>
 }
 
 export function PaymentMethodsSection() {
@@ -84,7 +91,7 @@ export function PaymentMethodsSection() {
           <SubmitButton isLoading={isLoading} label="Load methods" />
         </form>
         <StatusMessage status={status} />
-        {methods ? <pre className="rounded border bg-muted p-3 text-xs overflow-x-auto">{JSON.stringify(methods, null, 2)}</pre> : null}
+        <JsonPreview payload={methods} />
       </CardContent>
     </Card>
   )
@@ -161,7 +168,99 @@ export function CheckoutLinksSection() {
           <SubmitButton isLoading={isLoading} label="Create checkout link" />
         </form>
         <StatusMessage status={status} />
-        {result ? <pre className="rounded border bg-muted p-3 text-xs overflow-x-auto">{JSON.stringify(result, null, 2)}</pre> : null}
+        <JsonPreview payload={result} />
+      </CardContent>
+    </Card>
+  )
+}
+
+export function SubscriptionSection() {
+  const [isLoading, setIsLoading] = useState(false)
+  const [status, setStatus] = useState<Status>(null)
+  const [subscriptionData, setSubscriptionData] = useState<unknown>(null)
+
+  const handleLoad = async () => {
+    setStatus(null)
+    setIsLoading(true)
+
+    try {
+      const response = await fetch("/api/v1/billing/subscription", { method: "GET", cache: "no-store" })
+      const payload = (await response.json()) as ApiEnvelope<unknown>
+      if (!response.ok || !payload.success) {
+        setStatus({ kind: "error", message: payload.error?.message ?? "Failed to fetch subscription details." })
+        return
+      }
+
+      setSubscriptionData(payload.data)
+      setStatus({ kind: "success", message: "Subscription details loaded." })
+    } catch {
+      setStatus({ kind: "error", message: "Network error while fetching subscription details." })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Subscriptions</CardTitle>
+        <CardDescription>Load the active subscription state via billing APIs.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Button type="button" onClick={handleLoad} disabled={isLoading}>
+          {isLoading ? "Refreshing..." : "Load subscription"}
+        </Button>
+        <StatusMessage status={status} />
+        <JsonPreview payload={subscriptionData} />
+      </CardContent>
+    </Card>
+  )
+}
+
+export function AnalyticsSection() {
+  const [period, setPeriod] = useState("7d")
+  const [isLoading, setIsLoading] = useState(false)
+  const [status, setStatus] = useState<Status>(null)
+  const [analyticsData, setAnalyticsData] = useState<unknown>(null)
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setStatus(null)
+    setIsLoading(true)
+
+    try {
+      const response = await fetch(`/api/v1/analytics?period=${encodeURIComponent(period)}`, { method: "GET", cache: "no-store" })
+      const payload = (await response.json()) as ApiEnvelope<unknown>
+      if (!response.ok || !payload.success) {
+        setStatus({ kind: "error", message: payload.error?.message ?? "Failed to fetch analytics." })
+        return
+      }
+
+      setAnalyticsData(payload.data)
+      setStatus({ kind: "success", message: "Analytics loaded." })
+    } catch {
+      setStatus({ kind: "error", message: "Network error while fetching analytics." })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Analytics</CardTitle>
+        <CardDescription>Query live analytics snapshots for payment operations and growth tracking.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="analytics-period">Period (24h, 7d, 30d)</Label>
+            <Input id="analytics-period" value={period} onChange={(event) => setPeriod(event.target.value)} />
+          </div>
+          <SubmitButton isLoading={isLoading} label="Load analytics" />
+        </form>
+        <StatusMessage status={status} />
+        <JsonPreview payload={analyticsData} />
       </CardContent>
     </Card>
   )
@@ -253,7 +352,7 @@ export function UsageBillingSection() {
           </div>
         </form>
         <StatusMessage status={status} />
-        {summary ? <pre className="rounded border bg-muted p-3 text-xs overflow-x-auto">{JSON.stringify(summary, null, 2)}</pre> : null}
+        <JsonPreview payload={summary} />
       </CardContent>
     </Card>
   )
@@ -369,7 +468,7 @@ export function TaxPayoutReportsSection() {
           <SubmitButton isLoading={isLoading} label="Load reports" />
         </form>
         <StatusMessage status={status} />
-        {reportData ? <pre className="rounded border bg-muted p-3 text-xs overflow-x-auto">{JSON.stringify(reportData, null, 2)}</pre> : null}
+        <JsonPreview payload={reportData} />
       </CardContent>
     </Card>
   )
