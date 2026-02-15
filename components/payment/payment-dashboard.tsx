@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { type PaymentAnalytics, PaymentService } from "@/lib/payment-service"
+import type { PaymentAnalytics } from "@/lib/payment-service"
 import { TrendingUp, CreditCard, DollarSign, Activity, Download, RefreshCw, Eye, MoreHorizontal } from "lucide-react"
 import {
   LineChart,
@@ -28,8 +28,10 @@ export function PaymentDashboard() {
   const loadAnalytics = async () => {
     try {
       setRefreshing(true)
-      const data = await PaymentService.getAnalytics()
-      setAnalytics(data)
+      const response = await fetch("/api/payment/analytics", { cache: "no-store" })
+      if (!response.ok) throw new Error("Failed to load payment analytics")
+      const payload = (await response.json()) as { data?: PaymentAnalytics }
+      setAnalytics(payload.data ?? null)
     } catch (error) {
       console.error("Failed to load analytics:", error)
     } finally {
@@ -170,12 +172,68 @@ export function PaymentDashboard() {
         </Card>
       </div>
 
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">MRR</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(analytics.lifecycle.mrr)}</div>
+            <p className="text-xs text-muted-foreground">Monthly recurring revenue</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">ARPU / LTV</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(analytics.lifecycle.arpu)}</div>
+            <p className="text-xs text-muted-foreground">
+              LTV: {analytics.lifecycle.ltv === null ? "N/A" : formatCurrency(analytics.lifecycle.ltv)}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Churn / Recovery</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{analytics.lifecycle.churnRate.toFixed(1)}%</div>
+            <p className="text-xs text-muted-foreground">Recovery: {analytics.lifecycle.recoveryRate.toFixed(1)}%</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Lifecycle conversion & provenance</CardTitle>
+          <CardDescription>
+            Signup-to-checkout conversion and payment recovery outcomes with source provenance (web, API, agent action).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-3">
+          <div className="rounded border p-3">
+            <p className="text-sm text-muted-foreground">Signup → Checkout conversion</p>
+            <p className="text-xl font-semibold">{analytics.lifecycle.signupToCheckoutConversion.toFixed(1)}%</p>
+          </div>
+          <div className="rounded border p-3">
+            <p className="text-sm text-muted-foreground">Failed payment recovery rate</p>
+            <p className="text-xl font-semibold">{analytics.lifecycle.failedPaymentRecoveryRate.toFixed(1)}%</p>
+          </div>
+          <div className="rounded border p-3">
+            <p className="text-sm text-muted-foreground">Event provenance</p>
+            <p className="text-xs text-muted-foreground">Captured per lifecycle event via <code>source</code> field.</p>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Charts and Tables */}
       <Tabs defaultValue="overview" className="space-y-4">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
           <TabsTrigger value="methods">Payment Methods</TabsTrigger>
+          <TabsTrigger value="cohorts">Cohorts</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
@@ -291,6 +349,47 @@ export function PaymentDashboard() {
                       <p className="font-medium">{method.percentage.toFixed(1)}%</p>
                       <p className="text-sm text-gray-600">of total volume</p>
                     </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="cohorts" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Cohort conversion view</CardTitle>
+              <CardDescription>Monthly signup cohorts and checkout conversion rates</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {analytics.lifecycle.cohortView.map((cohort) => (
+                  <div key={cohort.cohortMonth} className="flex items-center justify-between rounded border p-3">
+                    <div>
+                      <p className="font-medium">{cohort.cohortMonth}</p>
+                      <p className="text-xs text-muted-foreground">{cohort.converted} / {cohort.signups} converted</p>
+                    </div>
+                    <Badge>{cohort.conversionRate.toFixed(1)}%</Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Churn and retention by plan</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {analytics.lifecycle.planBreakdown.map((plan) => (
+                  <div key={plan.planId} className="rounded border p-3">
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium">{plan.planName}</p>
+                      <Badge variant="outline">Retention {plan.retentionRate.toFixed(1)}%</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Active {plan.active} · Churned {plan.churned}</p>
                   </div>
                 ))}
               </div>

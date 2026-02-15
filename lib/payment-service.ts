@@ -16,6 +16,7 @@ import {
   updatePaymentTransaction,
 } from "@/lib/repositories/payment-entities"
 import { getProviderAdapter } from "@/lib/services/payment-provider-gateway"
+import { getLifecycleSnapshot, type LifecycleSnapshot } from "@/lib/customer-lifecycle-analytics-service"
 
 export interface PaymentMethod {
   id: string
@@ -60,6 +61,7 @@ export interface PaymentTransaction {
 }
 
 export interface PaymentAnalytics {
+  lifecycle: LifecycleSnapshot
   totalRevenue: number
   totalTransactions: number
   successRate: number
@@ -435,7 +437,10 @@ export class PaymentService {
 
     const monthlyTrends = await getPaymentTransactionMonthlyTrends(6)
 
+    const lifecycle = await getLifecycleSnapshot()
+
     return {
+      lifecycle,
       totalRevenue,
       totalTransactions,
       successRate,
