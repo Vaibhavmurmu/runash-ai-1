@@ -24,6 +24,22 @@ interface LinkQuickPayButtonProps {
   blockedReason?: string
 }
 
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message) {
+    if (error.message === "user_cancelled_confirmation") {
+      return "Confirmation was cancelled. Review totals and retry when ready."
+    }
+
+    if (error.message === "missing_confirmation_payload") {
+      return "Unable to prepare Link checkout details. Please retry from chat."
+    }
+
+    return "Link checkout failed. Please retry."
+  }
+
+  return "Link checkout failed. Please retry."
+}
+
 export default function LinkQuickPayButton({
   last4,
   eligibleForLink,
@@ -40,6 +56,7 @@ export default function LinkQuickPayButton({
   blockedReason,
 }: LinkQuickPayButtonProps) {
   const [status, setStatus] = useState<LinkQuickPayStatus>("idle")
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const statusLabel = useMemo(() => {
     if (status === "processing") return "Processing Link payment…"
@@ -55,6 +72,7 @@ export default function LinkQuickPayButton({
     if (!eligibleForLink || isLoading) return
 
     setStatus("processing")
+    setErrorMessage(null)
 
     try {
       if (status === "failed" && onRetry) {
@@ -63,7 +81,8 @@ export default function LinkQuickPayButton({
         await onPay()
       }
       setStatus("success")
-    } catch {
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
       setStatus("failed")
     }
   }
@@ -115,9 +134,11 @@ export default function LinkQuickPayButton({
               {statusLabel}
             </p>
           ) : null}
+
+          {errorMessage ? <p className="text-xs text-red-600 dark:text-red-400">{errorMessage}</p> : null}
         </div>
 
-        <div className="flex w-full md:justify-end">
+        <div className="flex w-full flex-col gap-2 md:items-end">
           <Button
             type="button"
             onClick={handlePay}
@@ -130,6 +151,12 @@ export default function LinkQuickPayButton({
             Pay with Link *{last4}
             {isLoading ? <span className="sr-only">Payment is processing</span> : null}
           </Button>
+
+          {status === "failed" ? (
+            <Button type="button" variant="outline" onClick={handlePay} disabled={isLoading} className="w-full md:w-auto">
+              Retry payment
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>

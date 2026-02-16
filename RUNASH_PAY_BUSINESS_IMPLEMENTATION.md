@@ -1621,3 +1621,23 @@ Hook ingestion is additive and does not break intent creation behavior.
 ### Risk + rollback
 - Risk: low (additive response field + doc clarifications).
 - Rollback: remove `validation_issues` from tool response mapping and revert doc section; payment API contracts remain intact.
+
+## 2026-02 RunAshChat Link Quick Pay Interaction Hardening
+
+### Scope
+- RunAshChat assistant checkout cards using the Relay tool `initiate_link_checkout`.
+
+### UX and flow behavior
+- Introduced a deterministic UI state machine for checkout progression: `idle -> processing -> success | failed`.
+- Added explicit retry affordance after failed confirmation/tool execution.
+- Preserved existing pre-charge confirmation gating for tax preview-based final charge consent.
+- Added `Sold through Link` eligibility badge for digital product merchandising clarity.
+
+### Compatibility and contract notes
+- No breaking API/tool changes: `initiate_link_checkout` payload shape and key names are unchanged.
+- Retry uses the same confirmation payload and confirmation flags as the primary attempt.
+- Client-side updates are additive and do not alter backend response contracts.
+
+### Risk and rollback
+- **Risk:** Low (UI-level state and retry handling only).
+- **Rollback:** Revert Link quick-pay button state/error handling and retry wiring from chat message renderer.
