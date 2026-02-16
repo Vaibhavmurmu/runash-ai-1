@@ -1,6 +1,10 @@
 import { randomUUID } from "crypto"
 
 import { z } from "zod"
+import {
+  evaluateValidatorSafetyGate,
+  type PaymentSafetyPolicyDecision,
+} from "@/lib/payments/validator-safety-gate"
 
 const LINK_CHECKOUT_API_URL = process.env.RUNASH_LINK_CHECKOUT_API_URL ?? "https://api.runash.in/v3/pay"
 
@@ -45,6 +49,14 @@ export const initiateLinkCheckoutToolParameters = {
         },
       },
     },
+    human_confirmed: {
+      type: "boolean",
+      description: "Indicates whether a human explicitly confirmed high-value checkout actions.",
+    },
+    mfa_verified: {
+      type: "boolean",
+      description: "Indicates whether the user passed MFA before checkout confirmation.",
+    },
   },
 } as const
 
@@ -67,6 +79,8 @@ const initiateLinkCheckoutInputSchema = z.object({
         })
       }
     }),
+  human_confirmed: z.boolean().optional(),
+  mfa_verified: z.boolean().optional(),
 })
 
 export type InitiateLinkCheckoutActivityPayload = {
@@ -74,6 +88,14 @@ export type InitiateLinkCheckoutActivityPayload = {
   checkout_session_id: string | null
   request_id: string
   next_action: "open_link_checkout" | "collect_valid_checkout_fields" | "retry_or_manual_review"
+  policy_decision: PaymentSafetyPolicyDecision
+}
+
+const defaultValidationFailureDecision: PaymentSafetyPolicyDecision = {
+  allowed: false,
+  requires_hitl: false,
+  requires_mfa: false,
+  reason_codes: ["INVALID_AMOUNT"],
 }
 
 export const initiateLinkCheckoutTool = {
@@ -90,10 +112,27 @@ export const initiateLinkCheckoutTool = {
         checkout_session_id: null,
         request_id: requestId,
         next_action: "collect_valid_checkout_fields",
+        policy_decision: defaultValidationFailureDecision,
       }
     }
 
     const payload = parsed.data
+    const policyDecision = evaluateValidatorSafetyGate({
+      amount_minor: payload.amount,
+      currency: payload.currency,
+      human_confirmed: payload.human_confirmed,
+      mfa_verified: payload.mfa_verified,
+    })
+
+    if (!policyDecision.allowed) {
+      return {
+        status: "validation_failed",
+        checkout_session_id: null,
+        request_id: requestId,
+        next_action: "collect_valid_checkout_fields",
+        policy_decision: policyDecision,
+      }
+    }
 
     try {
       const response = await fetch(LINK_CHECKOUT_API_URL, {
@@ -120,6 +159,7 @@ export const initiateLinkCheckoutTool = {
           checkout_session_id: null,
           request_id: requestId,
           next_action: "retry_or_manual_review",
+          policy_decision: policyDecision,
         }
       }
 
@@ -128,6 +168,7 @@ export const initiateLinkCheckoutTool = {
         checkout_session_id: checkoutSessionId,
         request_id: requestId,
         next_action: "open_link_checkout",
+        policy_decision: policyDecision,
       }
     } catch {
       return {
@@ -135,6 +176,7 @@ export const initiateLinkCheckoutTool = {
         checkout_session_id: null,
         request_id: requestId,
         next_action: "retry_or_manual_review",
+        policy_decision: policyDecision,
       }
     }
   },
