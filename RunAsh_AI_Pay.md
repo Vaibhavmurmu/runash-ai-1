@@ -731,3 +731,16 @@ RunAshChat now supports an in-thread Link instant-checkout CTA for eligible prod
 
 - No payment payload field names or API signatures are changed by this UI update.
 - This change is presentation/state-management only and remains compatible with existing `/api/payment/*` and `/api/v1/payment/*` flows.
+
+## Link Instant Checkout Reliability (Relay → Stripe Link)
+
+RunAshChat Link checkout now uses a reliability-first payment orchestration path for natural-language intents such as **"buy this"**:
+
+- Primary attempt always starts with `stripe_link` on `https://api.runash.in/v3/pay`.
+- If the first attempt fails with a retryable condition (network/timeout/rate-limit/upstream transient), the orchestrator automatically retries once with `backup_payment_method` when provided.
+- Both primary and fallback attempts reuse the same `idempotency_key` and are persisted with attempt metadata for reconciliation and auditability.
+- Unified response fields include:
+  - `fallback_used`
+  - `attempted_methods`
+  - `final_status`
+- Sensitive payment payload fields must remain redacted in logs; checkout orchestration avoids logging raw payment instrument details.

@@ -5,8 +5,7 @@ import {
   evaluateValidatorSafetyGate,
   type PaymentSafetyPolicyDecision,
 } from "@/lib/payments/validator-safety-gate"
-
-const LINK_CHECKOUT_API_URL = process.env.RUNASH_LINK_CHECKOUT_API_URL ?? "https://api.runash.in/v3/pay"
+import { runLinkCheckoutWithFallback } from "@/lib/services/link-checkout-service"
 
 export const initiateLinkCheckoutToolParameters = {
   type: "object",
@@ -57,6 +56,14 @@ export const initiateLinkCheckoutToolParameters = {
       type: "boolean",
       description: "Indicates whether the user passed MFA before checkout confirmation.",
     },
+    backup_payment_method: {
+      type: "string",
+      description: "Optional backup method automatically attempted on retryable failure (for example: card_ending_4242).",
+    },
+    idempotency_key: {
+      type: "string",
+      description: "Optional idempotency key reused across primary and fallback attempts.",
+    },
   },
 } as const
 
@@ -81,13 +88,28 @@ const initiateLinkCheckoutInputSchema = z.object({
     }),
   human_confirmed: z.boolean().optional(),
   mfa_verified: z.boolean().optional(),
+  backup_payment_method: z.string().trim().min(1).optional(),
+  idempotency_key: z.string().trim().min(1).optional(),
 })
 
 export type InitiateLinkCheckoutActivityPayload = {
   status: "initiated" | "validation_failed" | "failed"
   checkout_session_id: string | null
   request_id: string
+  idempotency_key?: string
   next_action: "open_link_checkout" | "collect_valid_checkout_fields" | "retry_or_manual_review"
+  fallback_used?: boolean
+  attempted_methods?: string[]
+  final_status?: "initiated" | "failed"
+  attempts?: Array<{
+    method: string
+    success: boolean
+    retryable_failure: boolean
+    status_code: number | null
+    provider_status: string | null
+    error_code: string | null
+    checkout_session_id: string | null
+  }>
   policy_decision: PaymentSafetyPolicyDecision
 }
 
@@ -135,39 +157,18 @@ export const initiateLinkCheckoutTool = {
     }
 
     try {
-      const response = await fetch(LINK_CHECKOUT_API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-RunAsh-Request-Id": requestId,
-        },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(10_000),
-      })
-
-      const responseBody = (await response.json().catch(() => ({}))) as Record<string, unknown>
-      const checkoutSessionId =
-        typeof responseBody.checkout_session_id === "string"
-          ? responseBody.checkout_session_id
-          : typeof responseBody.session_id === "string"
-            ? responseBody.session_id
-            : null
-
-      if (!response.ok || !checkoutSessionId) {
-        return {
-          status: "failed",
-          checkout_session_id: null,
-          request_id: requestId,
-          next_action: "retry_or_manual_review",
-          policy_decision: policyDecision,
-        }
-      }
+      const checkoutResult = await runLinkCheckoutWithFallback(payload, { requestId })
 
       return {
-        status: "initiated",
-        checkout_session_id: checkoutSessionId,
-        request_id: requestId,
-        next_action: "open_link_checkout",
+        status: checkoutResult.status,
+        checkout_session_id: checkoutResult.checkout_session_id,
+        request_id: checkoutResult.request_id,
+        idempotency_key: checkoutResult.idempotency_key,
+        next_action: checkoutResult.next_action,
+        fallback_used: checkoutResult.fallback_used,
+        attempted_methods: checkoutResult.attempted_methods,
+        final_status: checkoutResult.final_status,
+        attempts: checkoutResult.attempts,
         policy_decision: policyDecision,
       }
     } catch {
