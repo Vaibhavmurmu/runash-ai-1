@@ -5,6 +5,7 @@ import {
   evaluateValidatorSafetyGate,
   type PaymentSafetyPolicyDecision,
 } from "@/lib/payments/validator-safety-gate"
+import { estimateTaxPreview } from "@/lib/payments/tax-preview"
 import { runLinkCheckoutWithFallback } from "@/lib/services/link-checkout-service"
 
 export const initiateLinkCheckoutToolParameters = {
@@ -64,6 +65,24 @@ export const initiateLinkCheckoutToolParameters = {
       type: "string",
       description: "Optional idempotency key reused across primary and fallback attempts.",
     },
+    country: {
+      type: "string",
+      description: "Customer billing country for tax estimation.",
+    },
+    region: {
+      type: "string",
+      description: "Customer billing region/state code for tax estimation.",
+    },
+    preview_displayed: {
+      type: "boolean",
+      description: "Tax preview card was displayed in RunAshChat before charging.",
+      default: false,
+    },
+    user_confirmation_after_preview: {
+      type: "boolean",
+      description: "User confirmed checkout after seeing subtotal/tax/total preview.",
+      default: false,
+    },
   },
 } as const
 
@@ -90,6 +109,10 @@ const initiateLinkCheckoutInputSchema = z.object({
   mfa_verified: z.boolean().optional(),
   backup_payment_method: z.string().trim().min(1).optional(),
   idempotency_key: z.string().trim().min(1).optional(),
+  country: z.string().trim().min(2).max(3).optional(),
+  region: z.string().trim().min(1).max(30).optional(),
+  preview_displayed: z.boolean().default(false),
+  user_confirmation_after_preview: z.boolean().default(false),
 })
 
 export type InitiateLinkCheckoutActivityPayload = {
@@ -111,6 +134,26 @@ export type InitiateLinkCheckoutActivityPayload = {
     checkout_session_id: string | null
   }>
   policy_decision: PaymentSafetyPolicyDecision
+  blocked_reason?: "final_charge_blocked_until_user_confirms_after_tax_preview"
+  activity_summary?: {
+    subtotal: number
+    tax: number
+    total: number
+    currency: "INR" | "USD"
+    tax_label: "GST" | "VAT" | "Sales Tax"
+    tax_rate_percent: number
+    country: string
+    region: string | null
+  }
+  transaction_metadata?: {
+    tax_line_items: Array<{
+      type: "GST" | "VAT" | "SALES_TAX"
+      label: string
+      jurisdiction: string
+      rate_percent: number
+      amount: number
+    }>
+  }
 }
 
 const defaultValidationFailureDecision: PaymentSafetyPolicyDecision = {
@@ -139,6 +182,50 @@ export const initiateLinkCheckoutTool = {
     }
 
     const payload = parsed.data
+    const taxPreview = estimateTaxPreview({
+      country: payload.country ?? (payload.currency === "INR" ? "IN" : "US"),
+      region: payload.region,
+      amount: payload.amount,
+      currency: payload.currency,
+      lineItemMetadata: {
+        category: "chat_checkout",
+        tags: payload.product_metadata.tags,
+      },
+    })
+
+    const activitySummary = {
+      subtotal: taxPreview.subtotal,
+      tax: taxPreview.taxAmount,
+      total: taxPreview.total,
+      currency: payload.currency,
+      tax_label: taxPreview.taxLabel,
+      tax_rate_percent: taxPreview.taxRatePercent,
+      country: taxPreview.country,
+      region: taxPreview.region,
+    } as const
+    const transactionMetadata = {
+      tax_line_items: taxPreview.taxLineItems.map((item) => ({
+        type: item.type,
+        label: item.label,
+        jurisdiction: item.jurisdiction,
+        rate_percent: item.ratePercent,
+        amount: item.amount,
+      })),
+    }
+
+    if (!payload.preview_displayed || !payload.user_confirmation_after_preview) {
+      return {
+        status: "validation_failed",
+        checkout_session_id: null,
+        request_id: requestId,
+        next_action: "collect_valid_checkout_fields",
+        blocked_reason: "final_charge_blocked_until_user_confirms_after_tax_preview",
+        activity_summary: activitySummary,
+        transaction_metadata: transactionMetadata,
+        policy_decision: defaultValidationFailureDecision,
+      }
+    }
+
     const policyDecision = evaluateValidatorSafetyGate({
       amount_minor: payload.amount,
       currency: payload.currency,
@@ -153,11 +240,36 @@ export const initiateLinkCheckoutTool = {
         request_id: requestId,
         next_action: "collect_valid_checkout_fields",
         policy_decision: policyDecision,
+        activity_summary: activitySummary,
+        transaction_metadata: transactionMetadata,
       }
     }
 
     try {
-      const checkoutResult = await runLinkCheckoutWithFallback(payload, { requestId })
+      const checkoutResult = await runLinkCheckoutWithFallback(
+        {
+          merchant_id: payload.merchant_id,
+          amount: payload.amount,
+          currency: payload.currency,
+          product_metadata: payload.product_metadata,
+          human_confirmed: payload.human_confirmed,
+          mfa_verified: payload.mfa_verified,
+          backup_payment_method: payload.backup_payment_method,
+          idempotency_key: payload.idempotency_key,
+          tax_preview: {
+            subtotal: taxPreview.subtotal,
+            tax: taxPreview.taxAmount,
+            total: taxPreview.total,
+            tax_label: taxPreview.taxLabel,
+            tax_rate_percent: taxPreview.taxRatePercent,
+            country: taxPreview.country,
+            region: taxPreview.region,
+            currency: taxPreview.currency,
+          },
+          tax_line_items: transactionMetadata.tax_line_items,
+        },
+        { requestId },
+      )
 
       return {
         status: checkoutResult.status,
@@ -170,6 +282,8 @@ export const initiateLinkCheckoutTool = {
         final_status: checkoutResult.final_status,
         attempts: checkoutResult.attempts,
         policy_decision: policyDecision,
+        activity_summary: activitySummary,
+        transaction_metadata: transactionMetadata,
       }
     } catch {
       return {
@@ -178,6 +292,8 @@ export const initiateLinkCheckoutTool = {
         request_id: requestId,
         next_action: "retry_or_manual_review",
         policy_decision: policyDecision,
+        activity_summary: activitySummary,
+        transaction_metadata: transactionMetadata,
       }
     }
   },

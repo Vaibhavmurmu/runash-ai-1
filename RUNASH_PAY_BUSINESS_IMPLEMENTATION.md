@@ -1546,3 +1546,16 @@ Operational guarantees:
 Rollback strategy:
 - Disable fallback behavior by omitting `backup_payment_method` while preserving primary flow behavior.
 - Preserve persistence writes for visibility during rollback verification.
+
+## 2026-02 Instant Checkout Reliability Update (Tax Transparency)
+
+### What changed
+- Added region-aware tax preview utility supporting India GST and USD-region VAT/sales-tax estimates.
+- Added pre-charge confirmation gate requiring explicit post-preview user confirmation.
+- Added subtotal/tax/total surface in chat checkout card and activity summary payloads.
+- Added tax line-item metadata persistence for downstream reporting.
+
+### Risk and rollback
+- **Risk level:** Medium (touches payment initiation orchestration path).
+- **Rollback:** Revert `lib/agent-tools/initiate-link-checkout.ts` + `lib/services/link-checkout-service.ts` to prior behavior and redeploy.
+- **Compatibility:** Existing field names and payment API signatures are preserved; new tax metadata fields are additive.

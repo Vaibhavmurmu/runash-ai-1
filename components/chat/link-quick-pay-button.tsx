@@ -17,6 +17,11 @@ interface LinkQuickPayButtonProps {
   isDigitalProduct?: boolean
   itemName?: string
   amountLabel?: string
+  subtotal?: number
+  taxAmount?: number
+  totalAmount?: number
+  taxLabel?: "GST" | "VAT" | "Sales Tax"
+  blockedReason?: string
 }
 
 export default function LinkQuickPayButton({
@@ -28,6 +33,11 @@ export default function LinkQuickPayButton({
   isDigitalProduct = false,
   itemName = "RunAshChat Instant Checkout Item",
   amountLabel = "Proceed to payment",
+  subtotal,
+  taxAmount,
+  totalAmount,
+  taxLabel,
+  blockedReason,
 }: LinkQuickPayButtonProps) {
   const [status, setStatus] = useState<LinkQuickPayStatus>("idle")
 
@@ -73,6 +83,22 @@ export default function LinkQuickPayButton({
 
           {typeof taxPreview === "number" ? (
             <p className="text-xs text-gray-600 dark:text-gray-300">Estimated tax: {taxPreview.toFixed(2)}</p>
+          ) : null}
+
+          {typeof subtotal === "number" && typeof taxAmount === "number" && typeof totalAmount === "number" ? (
+            <div className="rounded-md border border-gray-200 bg-gray-50 p-2 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
+              <p>Subtotal: {subtotal.toFixed(2)}</p>
+              <p>
+                {taxLabel ?? "Tax"}: {taxAmount.toFixed(2)}
+              </p>
+              <p className="font-semibold">Total: {totalAmount.toFixed(2)}</p>
+            </div>
+          ) : null}
+
+          {blockedReason === "final_charge_blocked_until_user_confirms_after_tax_preview" ? (
+            <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+              Final charge is blocked until you confirm after reviewing subtotal, tax, and total.
+            </p>
           ) : null}
 
           {statusLabel ? (

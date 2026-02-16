@@ -113,9 +113,44 @@ export default function ChatMessageComponent({ message }: ChatMessageProps) {
                   isDigitalProduct={message.metadata.linkQuickPay.tags.includes("digital")}
                   itemName={message.metadata.linkQuickPay.itemName}
                   amountLabel={`${message.metadata.linkQuickPay.currency} ${(message.metadata.linkQuickPay.amountMinor / 100).toFixed(2)}`}
+                  subtotal={message.metadata.linkQuickPay.subtotal}
+                  taxAmount={message.metadata.linkQuickPay.taxAmount}
+                  totalAmount={message.metadata.linkQuickPay.totalAmount}
+                  taxLabel={message.metadata.linkQuickPay.taxLabel}
+                  blockedReason={message.metadata.linkQuickPay.blockedReason}
                   onPay={async () => {
-                    if (message.metadata?.linkQuickPay?.status && message.metadata.linkQuickPay.status !== "approved") {
-                      throw new Error("link_checkout_not_ready")
+                    const quickPay = message.metadata?.linkQuickPay
+                    if (!quickPay?.confirmationPayload) {
+                      throw new Error("missing_confirmation_payload")
+                    }
+
+                    const userConfirmed = window.confirm(
+                      `Confirm final charge of ${quickPay.currency} ${(quickPay.totalAmount ?? quickPay.amountMinor / 100).toFixed(2)} after tax preview?`,
+                    )
+                    if (!userConfirmed) {
+                      throw new Error("user_cancelled_confirmation")
+                    }
+
+                    const response = await fetch("/api/agents/chat", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        title: "RunAsh Agent Session",
+                        message: "confirm checkout",
+                        tools: ["initiate_link_checkout"],
+                        toolPayloads: {
+                          initiate_link_checkout: {
+                            ...quickPay.confirmationPayload,
+                            preview_displayed: true,
+                            user_confirmation_after_preview: true,
+                            human_confirmed: true,
+                          },
+                        },
+                      }),
+                    })
+
+                    if (!response.ok) {
+                      throw new Error("link_checkout_confirmation_failed")
                     }
                   }}
                 />

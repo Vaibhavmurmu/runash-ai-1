@@ -26,6 +26,23 @@ export interface LinkCheckoutRequest {
   mfa_verified?: boolean
   backup_payment_method?: string
   idempotency_key?: string
+  tax_preview?: {
+    subtotal: number
+    tax: number
+    total: number
+    tax_label: string
+    tax_rate_percent: number
+    country: string
+    region: string | null
+    currency: string
+  }
+  tax_line_items?: Array<{
+    type: string
+    label: string
+    jurisdiction: string
+    rate_percent: number
+    amount: number
+  }>
 }
 
 export interface LinkCheckoutAttemptResult {
@@ -117,6 +134,8 @@ async function persistAttempt(
     attemptNumber: number
     result: LinkCheckoutAttemptResult
     requestId: string
+    taxPreview?: LinkCheckoutRequest["tax_preview"]
+    taxLineItems?: LinkCheckoutRequest["tax_line_items"]
   },
 ) {
   await persist({
@@ -134,6 +153,8 @@ async function persistAttempt(
       status_code: input.result.status_code,
       provider_status: input.result.provider_status,
       final_status: input.result.success ? "initiated" : "failed",
+      tax_preview: input.taxPreview,
+      tax_line_items: input.taxLineItems,
     },
   })
 }
@@ -181,7 +202,13 @@ export async function runLinkCheckoutWithFallback(
           "Idempotency-Key": idempotencyKey,
         },
         body: JSON.stringify({
-          ...payload,
+          merchant_id: payload.merchant_id,
+          amount: payload.amount,
+          currency: payload.currency,
+          product_metadata: payload.product_metadata,
+          human_confirmed: payload.human_confirmed,
+          mfa_verified: payload.mfa_verified,
+          backup_payment_method: payload.backup_payment_method,
           payment_method: method,
           idempotency_key: idempotencyKey,
         }),
@@ -211,6 +238,8 @@ export async function runLinkCheckoutWithFallback(
           attemptNumber: index + 1,
           result: attemptResult,
           requestId,
+          taxPreview: payload.tax_preview,
+          taxLineItems: payload.tax_line_items,
         })
       } catch {
         // Persistence failures should not block checkout execution.
@@ -252,6 +281,8 @@ export async function runLinkCheckoutWithFallback(
           attemptNumber: index + 1,
           result: attemptResult,
           requestId,
+          taxPreview: payload.tax_preview,
+          taxLineItems: payload.tax_line_items,
         })
       } catch {
         // Persistence failures should not block checkout execution.
