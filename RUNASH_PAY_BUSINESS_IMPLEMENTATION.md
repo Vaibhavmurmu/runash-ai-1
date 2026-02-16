@@ -1554,8 +1554,10 @@ Rollback strategy:
 
 ### What changed
 - Added region-aware tax preview utility supporting India GST and USD-region VAT/sales-tax estimates.
+- Tax preview calculation now treats INR/USD checkout amounts as minor units and converts to display-ready subtotal/tax/total values for confirmation UX.
 - Added pre-charge confirmation gate requiring explicit post-preview user confirmation.
 - Added subtotal/tax/total surface in chat checkout card and activity summary payloads.
+- Final pay action remains blocked until an explicit in-card confirmation step is completed after preview render.
 - Added tax line-item metadata persistence for downstream reporting.
 
 ### Risk and rollback

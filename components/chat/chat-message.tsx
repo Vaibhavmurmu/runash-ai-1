@@ -125,13 +125,6 @@ export default function ChatMessageComponent({ message }: ChatMessageProps) {
                         throw new Error("missing_confirmation_payload")
                       }
 
-                      const userConfirmed = window.confirm(
-                        `Confirm final charge of ${quickPay.currency} ${(quickPay.totalAmount ?? quickPay.amountMinor / 100).toFixed(2)} after tax preview?`,
-                      )
-                      if (!userConfirmed) {
-                        throw new Error("user_cancelled_confirmation")
-                      }
-
                       const response = await fetch("/api/agents/chat", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -161,13 +154,6 @@ export default function ChatMessageComponent({ message }: ChatMessageProps) {
                     const quickPay = message.metadata?.linkQuickPay
                     if (!quickPay?.confirmationPayload) {
                       throw new Error("missing_confirmation_payload")
-                    }
-
-                    const userConfirmed = window.confirm(
-                      `Confirm final charge of ${quickPay.currency} ${(quickPay.totalAmount ?? quickPay.amountMinor / 100).toFixed(2)} after tax preview?`,
-                    )
-                    if (!userConfirmed) {
-                      throw new Error("user_cancelled_confirmation")
                     }
 
                     const response = await fetch("/api/agents/chat", {
