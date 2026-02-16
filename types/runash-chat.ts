@@ -32,6 +32,12 @@ export interface LinkQuickPayPreview {
   blockedReason?: string
   checkoutId?: string
   nextAction?: "open_link_checkout" | "collect_valid_checkout_fields" | "retry_or_manual_review"
+  attemptTimeline?: Array<{
+    method: string
+    reason: "primary" | "fallback_retry" | "no_retry"
+    status: "initiated" | "failed"
+    timestamp: string
+  }>
   confirmationPayload?: {
     merchant_id: string
     amount: number

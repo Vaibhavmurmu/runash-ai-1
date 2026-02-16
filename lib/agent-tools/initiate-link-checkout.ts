@@ -143,6 +143,12 @@ export type InitiateLinkCheckoutActivityPayload = {
     safe_error_code: string
     checkout_session_id: string | null
   }>
+  attempt_timeline?: Array<{
+    method: string
+    reason: "primary" | "fallback_retry" | "no_retry"
+    status: "initiated" | "failed"
+    timestamp: string
+  }>
   policy_decision: PaymentSafetyPolicyDecision
   blocked_reason?: "final_charge_blocked_until_user_confirms_after_tax_preview"
   activity_summary?: {
@@ -363,6 +369,7 @@ export const initiateLinkCheckoutTool = {
         attempted_methods: checkoutResult.attempted_methods,
         final_status: checkoutResult.final_status,
         attempts: checkoutResult.attempts,
+        attempt_timeline: checkoutResult.attempt_timeline,
         policy_decision: policyDecision,
         activity_summary: activitySummary,
         transaction_metadata: transactionMetadata,

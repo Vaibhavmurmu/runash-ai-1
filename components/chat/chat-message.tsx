@@ -118,6 +118,7 @@ export default function ChatMessageComponent({ message }: ChatMessageProps) {
                   totalAmount={message.metadata.linkQuickPay.totalAmount}
                   taxLabel={message.metadata.linkQuickPay.taxLabel}
                   blockedReason={message.metadata.linkQuickPay.blockedReason}
+                  attemptTimeline={message.metadata.linkQuickPay.attemptTimeline}
                   onPay={async () => {
                     const executeLinkCheckout = async () => {
                       const quickPay = message.metadata?.linkQuickPay
