@@ -21,16 +21,30 @@ export type AddBankAccountInput = {
   isPrimary?: boolean
 }
 
+export type UpdateBankAccountInput = {
+  accountId: string
+  userId: string
+  bankName?: string
+  ifscCode?: string | null
+  accountHolderName?: string
+  accountType?: string
+  currency?: string
+  isPrimary?: boolean
+  isActive?: boolean
+}
+
 export type BankAccountPublic = {
   id: string
   bankName: string
   accountNumberMasked: string
   accountLast4: string
   ifscCode: string | null
+  accountHolderName: string
   accountType: string
   currency: string
   isPrimary: boolean
   isActive: boolean
+  archivedAt: string | null
   createdAt: string
   updatedAt: string
 }
@@ -79,22 +93,40 @@ function toPublicBankAccount(account: BankAccount): BankAccountPublic {
     accountNumberMasked: maskAccountNumber(account.account_number),
     accountLast4: account.account_number.slice(-4),
     ifscCode: account.ifsc_code,
+    accountHolderName: account.account_holder_name,
     accountType: account.account_type,
     currency: account.currency,
     isPrimary: account.is_primary,
     isActive: account.is_active,
+    archivedAt: account.archived_at,
     createdAt: account.created_at,
     updatedAt: account.updated_at,
   }
 }
 
+async function ensurePrimaryAccountInvariant(userId: string) {
+  const { data, error } = await neon
+    .from("bank_accounts")
+    .select("id", { count: "exact", head: false })
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .eq("is_primary", true)
+
+  if (error) throw error
+
+  if (!data.length) {
+    throw new Error("At least one active primary bank account is required.")
+  }
+}
+
 export class BankService {
-  static async getBankAccounts(userId: string): Promise<{ data: BankAccountPublic[] | null; error: any }> {
+  static async getBankAccounts(userId: string): Promise<{ data: BankAccountPublic[] | null; error: unknown }> {
     try {
       const { data, error } = await neon
         .from("bank_accounts")
         .select("*")
         .eq("user_id", userId)
+        .order("is_active", { ascending: false })
         .order("is_primary", { ascending: false })
 
       if (error) throw error
@@ -104,7 +136,7 @@ export class BankService {
     }
   }
 
-  static async addBankAccount(input: AddBankAccountInput): Promise<{ data: BankAccountPublic | null; error: any }> {
+  static async addBankAccount(input: AddBankAccountInput): Promise<{ data: BankAccountPublic | null; error: unknown }> {
     try {
       const normalizedAccount = {
         bankName: input.bankName.trim(),
@@ -121,6 +153,16 @@ export class BankService {
         throw new Error(validation.message)
       }
 
+      const { data: existingActivePrimary, error: existingActivePrimaryError } = await neon
+        .from("bank_accounts")
+        .select("id")
+        .eq("user_id", input.userId)
+        .eq("is_primary", true)
+        .eq("is_active", true)
+
+      if (existingActivePrimaryError) throw existingActivePrimaryError
+
+      const shouldSetPrimary = normalizedAccount.isPrimary || existingActivePrimary.length === 0
       const account: BankAccountInsert = {
         user_id: input.userId,
         bank_name: normalizedAccount.bankName,
@@ -129,14 +171,18 @@ export class BankService {
         account_holder_name: normalizedAccount.accountHolderName,
         account_type: normalizedAccount.accountType,
         currency: normalizedAccount.currency,
-        is_primary: normalizedAccount.isPrimary,
+        is_primary: shouldSetPrimary,
         is_active: true,
+        archived_at: null,
         balance: 0,
       }
 
-      // If this is set as primary, update other accounts
       if (account.is_primary) {
-        await neon.from("bank_accounts").update({ is_primary: false }).eq("user_id", account.user_id)
+        await neon
+          .from("bank_accounts")
+          .update({ is_primary: false })
+          .eq("user_id", account.user_id)
+          .eq("is_active", true)
       }
 
       const { data, error } = await neon.from("bank_accounts").insert(account).select().single()
@@ -148,26 +194,144 @@ export class BankService {
     }
   }
 
-  static async updateBankAccount(accountId: string, updates: Partial<BankAccount>): Promise<{ error: any }> {
+  static async updateBankAccount(input: UpdateBankAccountInput): Promise<{ data: BankAccountPublic | null; error: unknown }> {
     try {
-      // If setting as primary, update other accounts
-      if (updates.is_primary) {
-        const { data: account } = await neon.from("bank_accounts").select("user_id").eq("id", accountId).single()
+      const { data: existing, error: existingError } = await neon
+        .from("bank_accounts")
+        .select("*")
+        .eq("id", input.accountId)
+        .eq("user_id", input.userId)
+        .single()
 
-        if (account) {
-          await neon.from("bank_accounts").update({ is_primary: false }).eq("user_id", account.user_id)
+      if (existingError || !existing) {
+        return { data: null, error: new Error("Bank account not found") }
+      }
+
+      const updates: Database["public"]["Tables"]["bank_accounts"]["Update"] = {}
+
+      if (input.bankName !== undefined) {
+        const bankName = input.bankName.trim()
+        if (!bankName) {
+          return { data: null, error: new Error("Bank name is required.") }
+        }
+        updates.bank_name = bankName
+      }
+
+      if (input.accountHolderName !== undefined) {
+        const normalizedName = normalizeAccountName(input.accountHolderName)
+        if (!ACCOUNT_HOLDER_NAME_REGEX.test(normalizedName)) {
+          return {
+            data: null,
+            error: new Error(
+              "Account holder name must be 3-100 characters and contain letters, spaces, apostrophes, periods, or hyphens.",
+            ),
+          }
+        }
+        updates.account_holder_name = normalizedName
+      }
+
+      if (input.ifscCode !== undefined) {
+        const normalizedIfsc = normalizeIfsc(input.ifscCode)
+        if (normalizedIfsc && !IFSC_REGEX.test(normalizedIfsc)) {
+          return { data: null, error: new Error("IFSC code format is invalid.") }
+        }
+        updates.ifsc_code = normalizedIfsc
+      }
+
+      if (input.accountType !== undefined) {
+        updates.account_type = input.accountType.trim() || "savings"
+      }
+
+      if (input.currency !== undefined) {
+        updates.currency = input.currency.trim().toUpperCase() || "INR"
+      }
+
+      const isActiveUpdateRequested = input.isActive !== undefined
+      if (isActiveUpdateRequested) {
+        updates.is_active = input.isActive
+        updates.archived_at = input.isActive ? null : new Date().toISOString()
+      }
+
+      if (input.isPrimary !== undefined) {
+        updates.is_primary = input.isPrimary
+      }
+
+      const resultingActive = updates.is_active ?? existing.is_active
+      const resultingPrimary = updates.is_primary ?? existing.is_primary
+
+      if (existing.is_active && existing.is_primary && (resultingActive === false || resultingPrimary === false)) {
+        const { data: alternatePrimary, error: alternatePrimaryError } = await neon
+          .from("bank_accounts")
+          .select("id")
+          .eq("user_id", input.userId)
+          .eq("is_active", true)
+          .eq("is_primary", true)
+          .neq("id", input.accountId)
+          .limit(1)
+
+        if (alternatePrimaryError) throw alternatePrimaryError
+
+        if (!alternatePrimary.length) {
+          if (resultingActive === false) {
+            const { data: fallbackActive, error: fallbackActiveError } = await neon
+              .from("bank_accounts")
+              .select("id")
+              .eq("user_id", input.userId)
+              .eq("is_active", true)
+              .neq("id", input.accountId)
+              .order("created_at", { ascending: true })
+              .limit(1)
+
+            if (fallbackActiveError) throw fallbackActiveError
+            if (!fallbackActive.length) {
+              return { data: null, error: new Error("Cannot archive the last active primary bank account.") }
+            }
+
+            await neon
+              .from("bank_accounts")
+              .update({ is_primary: true })
+              .eq("id", fallbackActive[0].id)
+              .eq("user_id", input.userId)
+          } else {
+            return { data: null, error: new Error("Cannot unset primary without assigning another active primary account.") }
+          }
         }
       }
 
-      const { error } = await neon.from("bank_accounts").update(updates).eq("id", accountId)
+      if (updates.is_primary) {
+        await neon
+          .from("bank_accounts")
+          .update({ is_primary: false })
+          .eq("user_id", input.userId)
+          .eq("is_active", true)
+          .neq("id", input.accountId)
+      }
 
-      return { error }
+      const { data, error } = await neon
+        .from("bank_accounts")
+        .update(updates)
+        .eq("id", input.accountId)
+        .eq("user_id", input.userId)
+        .select()
+        .single()
+
+      if (error || !data) throw error ?? new Error("Failed to update bank account")
+
+      if (data.is_active && data.is_primary) {
+        await ensurePrimaryAccountInvariant(input.userId)
+      }
+
+      return { data: toPublicBankAccount(data), error: null }
     } catch (error) {
-      return { error }
+      return { data: null, error }
     }
   }
 
-  static async getUpiIds(userId: string): Promise<{ data: UpiId[] | null; error: any }> {
+  static async archiveBankAccount(accountId: string, userId: string): Promise<{ data: BankAccountPublic | null; error: unknown }> {
+    return this.updateBankAccount({ accountId, userId, isActive: false, isPrimary: false })
+  }
+
+  static async getUpiIds(userId: string): Promise<{ data: UpiId[] | null; error: unknown }> {
     try {
       const { data, error } = await neon
         .from("upi_ids")
@@ -185,16 +349,14 @@ export class BankService {
     }
   }
 
-  static async addUpiId(upiId: UpiIdInsert): Promise<{ data: UpiId | null; error: any }> {
+  static async addUpiId(upiId: UpiIdInsert): Promise<{ data: UpiId | null; error: unknown }> {
     try {
-      // Check if UPI ID already exists
       const { data: existing } = await neon.from("upi_ids").select("id").eq("upi_id", upiId.upi_id).single()
 
       if (existing) {
         throw new Error("UPI ID already exists")
       }
 
-      // If this is set as primary, update other UPI IDs
       if (upiId.is_primary) {
         await neon.from("upi_ids").update({ is_primary: false }).eq("user_id", upiId.user_id)
       }
@@ -208,7 +370,7 @@ export class BankService {
     }
   }
 
-  static async checkBalance(accountId: string): Promise<{ data: number | null; error: any }> {
+  static async checkBalance(accountId: string): Promise<{ data: number | null; error: unknown }> {
     try {
       const { data, error } = await neon.from("bank_accounts").select("balance").eq("id", accountId).single()
 
@@ -219,7 +381,7 @@ export class BankService {
     }
   }
 
-  static async updateBalance(accountId: string, newBalance: number): Promise<{ error: any }> {
+  static async updateBalance(accountId: string, newBalance: number): Promise<{ error: unknown }> {
     try {
       const { error } = await neon.from("bank_accounts").update({ balance: newBalance }).eq("id", accountId)
 
