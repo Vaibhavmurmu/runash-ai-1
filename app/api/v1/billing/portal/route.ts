@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 import { getAuthorizedBillingIdentity, requireScopedBillingAccess } from "@/lib/billing-auth"
+import { createPaymentRoutingAuditEvent, resolveEdgeRoutingPolicy } from "@/lib/payments/edge-routing-policy"
 
 export async function POST(request: NextRequest) {
   const access = await requireScopedBillingAccess("business")
@@ -28,6 +29,26 @@ export async function POST(request: NextRequest) {
     const { default: Stripe } = await import("stripe")
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2024-06-20" })
 
+    const edgeRouting = resolveEdgeRoutingPolicy({
+      merchantRegion: process.env.RUNASH_MERCHANT_REGION,
+      customerRegion: undefined,
+    })
+    const routeAudit = createPaymentRoutingAuditEvent({
+      requestId: request.headers.get("x-request-id"),
+      decision: edgeRouting,
+      metadata: {
+        route_scope: "billing.portal",
+      },
+    })
+
+    await logPrivilegedAction({
+      actorUserId: sessionUser.userId,
+      action: "billing.portal.route_decision",
+      resource: "billing.portal",
+      request,
+      details: routeAudit,
+    })
+
     const portal = await stripe.billingPortal.sessions.create({
       customer: identity.user.stripe_customer_id,
       return_url,
@@ -38,7 +59,7 @@ export async function POST(request: NextRequest) {
       action: "billing.portal.session_created",
       resource: "billing.portal",
       request,
-      details: { hasCustomer: true },
+      details: { hasCustomer: true, requestId: routeAudit.requestId, routeDecision: routeAudit.routeDecision },
     })
 
     return respondSuccess(request, { url: portal.url })

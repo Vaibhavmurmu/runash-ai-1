@@ -6,6 +6,7 @@ import { logApiRouteError } from "@/lib/api/logging"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 import { requireScopedBillingAccess } from "@/lib/billing-auth"
 import { Database } from "@/lib/database"
+import { createPaymentRoutingAuditEvent, resolveEdgeRoutingPolicy } from "@/lib/payments/edge-routing-policy"
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2023-10-16",
@@ -17,6 +18,24 @@ export async function POST(request: NextRequest) {
   const { sessionUser } = access
 
   try {
+    const edgeRouting = resolveEdgeRoutingPolicy({
+      merchantRegion: process.env.RUNASH_MERCHANT_REGION,
+      customerRegion: undefined,
+    })
+    const routeAudit = createPaymentRoutingAuditEvent({
+      requestId: request.headers.get("x-request-id"),
+      decision: edgeRouting,
+      metadata: { route_scope: "billing.subscription.reactivate" },
+    })
+
+    await logPrivilegedAction({
+      actorUserId: sessionUser.userId,
+      action: "billing.subscription.route_decision",
+      resource: "billing.subscription",
+      request,
+      details: routeAudit,
+    })
+
     const subscriptions = await Database.query(
       `
       SELECT *
@@ -61,7 +80,7 @@ export async function POST(request: NextRequest) {
       action: "billing.subscription.reactivated",
       resource: "billing.subscription",
       request,
-      details: { subscriptionId: currentSub.id },
+      details: { subscriptionId: currentSub.id, requestId: routeAudit.requestId, routeDecision: routeAudit.routeDecision },
     })
 
     return respondSuccess(

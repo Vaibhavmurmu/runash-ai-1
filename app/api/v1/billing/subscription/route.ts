@@ -8,6 +8,11 @@ import { logPrivilegedAction } from "@/lib/audit-logging"
 import { getAuthorizedBillingIdentity, requireBillingActionAccess } from "@/lib/billing-auth"
 import { Database } from "@/lib/database"
 import { computeTaxForRegion, persistTaxComputation } from "@/lib/services/tax-service"
+import {
+  createPaymentRoutingAuditEvent,
+  resolveEdgeRoutingPolicy,
+  withRouteContextMetadata,
+} from "@/lib/payments/edge-routing-policy"
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2023-10-16",
@@ -20,6 +25,23 @@ const updateSubscriptionSchema = z
     confirm: z.literal(true),
   })
   .strict()
+
+function buildStripePolicyContext(request: NextRequest, customerRegion?: string) {
+  const edgeRouting = resolveEdgeRoutingPolicy({
+    merchantRegion: process.env.RUNASH_MERCHANT_REGION,
+    customerRegion,
+  })
+
+  const routeAudit = createPaymentRoutingAuditEvent({
+    requestId: request.headers.get("x-request-id"),
+    decision: edgeRouting,
+    metadata: {
+      route_scope: "billing.subscription",
+    },
+  })
+
+  return { edgeRouting, routeAudit }
+}
 
 export async function GET(request: NextRequest) {
   const access = await requireBillingActionAccess("billing:admin")
@@ -104,6 +126,16 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    const { edgeRouting, routeAudit } = buildStripePolicyContext(request, billing_address?.country)
+
+    await logPrivilegedAction({
+      actorUserId: sessionUser.userId,
+      action: "billing.subscription.route_decision",
+      resource: "billing.subscription",
+      request,
+      details: routeAudit,
+    })
+
     const identity = await getAuthorizedBillingIdentity(sessionUser)
     if ("errorResponse" in identity) return identity.errorResponse
 
@@ -112,7 +144,7 @@ export async function POST(request: NextRequest) {
       const stripeCustomer = await stripe.customers.create({
         email: sessionUser.email || undefined,
         name: sessionUser.name || undefined,
-        metadata: { user_id: sessionUser.userId },
+        metadata: withRouteContextMetadata({ user_id: sessionUser.userId }, edgeRouting),
       })
       stripeCustomerId = stripeCustomer.id
       await Database.query(`UPDATE users SET stripe_customer_id = $1 WHERE id = $2`, [stripeCustomerId, sessionUser.userId])
@@ -124,14 +156,17 @@ export async function POST(request: NextRequest) {
       payment_behavior: "default_incomplete",
       payment_settings: { save_default_payment_method: "on_subscription" },
       expand: ["latest_invoice.payment_intent"],
-      metadata: {
-        user_id: sessionUser.userId,
-        plan_id,
-        tax_country_code: taxComputation.countryCode,
-        tax_state_code: taxComputation.stateCode ?? "",
-        tax_total_amount: String(taxComputation.totalTaxAmount),
-        product_tax_code: productTaxCode,
-      },
+      metadata: withRouteContextMetadata(
+        {
+          user_id: sessionUser.userId,
+          plan_id,
+          tax_country_code: taxComputation.countryCode,
+          tax_state_code: taxComputation.stateCode ?? "",
+          tax_total_amount: String(taxComputation.totalTaxAmount),
+          product_tax_code: productTaxCode,
+        },
+        edgeRouting,
+      ),
     }
 
     if (payment_method_id) subscriptionData.default_payment_method = payment_method_id
@@ -202,6 +237,8 @@ export async function POST(request: NextRequest) {
         taxCountryCode: taxComputation.countryCode,
         taxStateCode: taxComputation.stateCode,
         productTaxCode,
+        requestId: routeAudit.requestId,
+        routeDecision: routeAudit.routeDecision,
       },
     })
 
@@ -243,6 +280,16 @@ export async function PATCH(request: NextRequest) {
       return respondError(request, { code: "PLAN_NOT_FOUND", message: "Plan not found" }, { status: 404 })
     }
 
+    const { routeAudit } = buildStripePolicyContext(request)
+
+    await logPrivilegedAction({
+      actorUserId: sessionUser.userId,
+      action: "billing.subscription.route_decision",
+      resource: "billing.subscription",
+      request,
+      details: routeAudit,
+    })
+
     await stripe.subscriptions.update(currentSub[0].stripe_subscription_id, {
       items: [
         {
@@ -263,7 +310,7 @@ export async function PATCH(request: NextRequest) {
       action: "billing.subscription.updated",
       resource: "billing.subscription",
       request,
-      details: { oldPlanId: currentSub[0].plan_id, newPlanId: plan_id, prorate },
+      details: { oldPlanId: currentSub[0].plan_id, newPlanId: plan_id, prorate, requestId: routeAudit.requestId, routeDecision: routeAudit.routeDecision },
     })
 
     return respondSuccess(request, { ...updatedSub[0], plan: newPlan[0] })

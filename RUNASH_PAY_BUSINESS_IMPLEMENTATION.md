@@ -1559,3 +1559,25 @@ Rollback strategy:
 - **Risk level:** Medium (touches payment initiation orchestration path).
 - **Rollback:** Revert `lib/agent-tools/initiate-link-checkout.ts` + `lib/services/link-checkout-service.ts` to prior behavior and redeploy.
 - **Compatibility:** Existing field names and payment API signatures are preserved; new tax metadata fields are additive.
+
+## Routing and compliance policy enforcement (2026-02)
+
+Business billing flows now apply a mandatory edge-routing policy layer before outbound Stripe operations.
+
+### Routing behavior
+- Merchant/customer region normalization determines route and profile:
+  - India path: `region_route=IN_EDGE`, `compliance_profile=IN_RBI_PROFILE`
+  - US/default path: `region_route=US_EDGE`, `compliance_profile=US_STRIPE_PROFILE`
+
+### Metadata and auditability
+- Route context is attached to outbound payment metadata as additive fields:
+  - `region_route`
+  - `compliance_profile`
+- Compliance/audit records now include:
+  - request ID
+  - route decision
+  - sanitized metadata only
+
+### Risk and rollback
+- Risk level: low-to-medium (policy misclassification could route traffic to default US edge).
+- Rollback: revert policy-layer wiring in billing routes and Relay link checkout skill; existing payment contracts remain intact because route fields are additive metadata.

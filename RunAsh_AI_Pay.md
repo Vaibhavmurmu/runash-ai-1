@@ -757,3 +757,23 @@ RunAshChat Instant Checkout now enforces a tax-preview confirmation step before 
 - Tax line items are persisted in transaction metadata for reporting and auditability.
 
 This rollout is backward compatible with existing checkout contracts and keeps sensitive payment/auth values out of logs.
+
+## Edge routing policy + compliance profile metadata (2026-02)
+
+RunAsh AI Pay now enforces a dedicated payment routing policy layer (`lib/payments/edge-routing-policy.ts`) for outbound checkout/subscription/portal Stripe requests.
+
+- Routing decision is deterministic by normalized merchant/customer region:
+  - India merchant/customer region (`IN`, `IND`, `IN-*`, `APAC_IN`) => `IN_EDGE` + `IN_RBI_PROFILE`
+  - Otherwise => `US_EDGE` + `US_STRIPE_PROFILE`
+- Payment metadata now includes route context keys:
+  - `region_route`
+  - `compliance_profile`
+- Route decisions are audit logged with:
+  - `requestId`
+  - route decision payload
+  - sanitized metadata only (no sensitive payment/auth values)
+- Outbound Stripe payment calls in billing flows now execute after policy resolution and route-audit capture.
+
+Backward compatibility:
+- Existing API signatures/response contracts are unchanged.
+- Route/compliance fields are additive metadata for compliance observability.
