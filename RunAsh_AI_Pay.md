@@ -830,3 +830,22 @@ RunAshChat instant checkout (`initiate_link_checkout`) now enforces explicit run
 
 ### Compatibility note
 This update is additive and preserves existing payment flow field names and Relay tool routing contracts.
+
+## 2026-02 RunAshChat AI Link Instant Checkout UX Update
+
+### What changed
+- Added a dedicated `LinkQuickPayButton` chat component for Link-powered instant checkout cards in RunAshChat.
+- CTA copy is now standardized as `Pay with Link *{last4}`.
+- Checkout UI now follows an explicit state machine: `idle -> processing -> success | failed`.
+- Eligible digital products now display a `Sold through Link` badge for clear merchandising context.
+- Added responsive checkout layout behavior (1-column on mobile, 2-column on desktop) to keep totals and actions readable.
+- Tool execution wiring now exposes failure details and a retry affordance without changing checkout API contracts.
+
+### Backward compatibility and safety
+- Existing relay tool name (`initiate_link_checkout`) and payload field names are preserved.
+- Added UX behavior is contract-safe and additive; no payment field was renamed or removed.
+- Error copy avoids sensitive payment/auth logging and only surfaces actionable, user-safe messages.
+
+### Risk and rollback
+- **Risk level:** Low to medium (client-side checkout experience + retry behavior).
+- **Rollback:** Revert chat Link quick-pay component wiring in `components/chat/chat-message.tsx` and `components/chat/link-quick-pay-button.tsx`.
