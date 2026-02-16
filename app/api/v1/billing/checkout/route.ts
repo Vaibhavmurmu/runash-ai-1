@@ -6,6 +6,11 @@ import { getAuthorizedBillingIdentity, requireScopedBillingAccess } from "@/lib/
 import { computeTaxForRegion, persistTaxComputation } from "@/lib/services/tax-service"
 import { evaluatePaymentValidatorGate } from "@/lib/payments/validator-gate"
 import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
+import {
+  createPaymentRoutingAuditEvent,
+  resolveEdgeRoutingPolicy,
+  withRouteContextMetadata,
+} from "@/lib/payments/edge-routing-policy"
 
 const createCheckoutSchema = z
   .object({
@@ -53,6 +58,28 @@ export async function POST(request: NextRequest) {
 
     const { default: Stripe } = await import("stripe")
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2024-06-20" })
+
+    const edgeRouting = resolveEdgeRoutingPolicy({
+      merchantRegion: process.env.RUNASH_MERCHANT_REGION,
+      customerRegion: billing_address?.country,
+    })
+    const routeAudit = createPaymentRoutingAuditEvent({
+      requestId: request.headers.get("x-request-id"),
+      decision: edgeRouting,
+      metadata: {
+        route_scope: "billing.checkout",
+        mode,
+        currency_hint: priceId,
+      },
+    })
+
+    await logPrivilegedAction({
+      actorUserId: sessionUser.userId,
+      action: "billing.checkout.route_decision",
+      resource: "billing.checkout",
+      request,
+      details: routeAudit,
+    })
 
     const price = await stripe.prices.retrieve(priceId)
     const amount = Number(price.unit_amount ?? 0) / 100
@@ -111,15 +138,18 @@ export async function POST(request: NextRequest) {
       customer_email: sessionUser.email || undefined,
       line_items: [{ price: priceId, quantity: 1 }],
       allow_promotion_codes: true,
-      metadata: {
-        user_id: sessionUser.userId,
-        organization_id: sessionUser.organizationId ? String(sessionUser.organizationId) : "",
-        tax_country_code: taxComputation.countryCode,
-        tax_state_code: taxComputation.stateCode ?? "",
-        tax_total_amount: String(taxComputation.totalTaxAmount),
-        product_tax_code: product_tax_code ?? "digital_services",
-        validator_decision: JSON.stringify(validatorDecision),
-      },
+      metadata: withRouteContextMetadata(
+        {
+          user_id: sessionUser.userId,
+          organization_id: sessionUser.organizationId ? String(sessionUser.organizationId) : "",
+          tax_country_code: taxComputation.countryCode,
+          tax_state_code: taxComputation.stateCode ?? "",
+          tax_total_amount: String(taxComputation.totalTaxAmount),
+          product_tax_code: product_tax_code ?? "digital_services",
+          validator_decision: JSON.stringify(validatorDecision),
+        },
+        edgeRouting,
+      ),
     })
 
     await persistTaxComputation({
@@ -140,6 +170,8 @@ export async function POST(request: NextRequest) {
         hasCustomer: Boolean(identity.user.stripe_customer_id),
         priceId,
         validatorDecision,
+        requestId: routeAudit.requestId,
+        routeDecision: routeAudit.routeDecision,
       }),
     })
 

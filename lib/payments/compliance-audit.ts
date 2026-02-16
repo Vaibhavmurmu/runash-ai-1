@@ -1,6 +1,6 @@
 import { createHash } from "crypto"
 
-import type { EdgeRoutingDecision } from "@/lib/payments/edge-routing"
+import type { EdgeRoutingPolicyDecision, PaymentRoutingAuditEvent } from "@/lib/payments/edge-routing-policy"
 
 export interface PaymentComplianceAuditEvent {
   event: "runash_pay_request"
@@ -8,8 +8,9 @@ export interface PaymentComplianceAuditEvent {
   amountMinor: number
   currency: string
   provider: "stripe_link"
-  edgeRouting: Pick<EdgeRoutingDecision, "regionRoute" | "residencyPolicy" | "merchantRegion" | "customerRegion">
+  edgeRouting: Pick<EdgeRoutingPolicyDecision, "regionRoute" | "complianceProfile" | "merchantRegion" | "customerRegion">
   validatorPassed: boolean
+  routeAudit: PaymentRoutingAuditEvent
 }
 
 function fingerprintMerchant(merchantId: string): string {
@@ -25,6 +26,9 @@ export function logPaymentComplianceAudit(event: PaymentComplianceAuditEvent): v
     provider: event.provider,
     validatorPassed: event.validatorPassed,
     edgeRouting: event.edgeRouting,
+    requestId: event.routeAudit.requestId,
+    routeDecision: event.routeAudit.routeDecision,
+    metadata: event.routeAudit.metadata,
     complianceSafe: true,
   }
 
