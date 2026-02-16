@@ -952,3 +952,41 @@ Backward-compatibility notes:
 - Existing payment API fields and signatures remain unchanged.
 - The preview/confirmation gate adds validation behavior without changing existing request field names.
 
+
+## 2026-02 Portal expansion: methods CRUD, subscriptions, invoices/receipts, and finance visibility
+
+### New customer portal pages
+- Added dedicated payment portal routes for:
+  - `/payment/portal`
+  - `/payment/methods`
+  - `/payment/billing-profile`
+  - `/payment/subscriptions`
+  - `/payment/invoices`
+- These pages surface method role controls (default/backup), billing profile updates, subscription recovery actions, and invoice visibility.
+
+### Payment/profile API additions
+- Extended method CRUD scope with single-resource operations:
+  - `GET /api/v1/payment/profile/methods/:id`
+  - `PUT /api/v1/payment/profile/methods/:id`
+  - existing `PATCH /api/v1/payment/profile/methods/:id` retained for role switching
+  - existing `DELETE /api/v1/payment/profile/methods/:id` retained
+- Added failed payment retry trigger endpoint:
+  - `POST /api/v1/payment/profile/portal/retry-failed-payment`
+- Added invoice receipt retrieval alias endpoint:
+  - `GET /api/v1/billing/invoices/:id/receipt`
+
+### Analytics endpoint coverage
+- Added churn-risk visibility endpoint:
+  - `GET /api/v1/payment/analytics/churn`
+- Added MRR/revenue trend endpoint:
+  - `GET /api/v1/payment/analytics/mrr-revenue`
+- Added payout and tax visibility endpoint:
+  - `GET /api/v1/payment/analytics/payout-tax-visibility`
+
+### Backward compatibility + security
+- Existing API field names and routes remain intact; new endpoints are additive.
+- No raw PAN/CVV logging or storage introduced; tokenized provider references remain enforced.
+
+### Risk + rollback
+- **Risk:** Medium (expanded portal/API surface).
+- **Rollback:** Revert newly added `payment/portal` pages and new `/api/v1/payment/analytics/*`, `/api/v1/payment/profile/portal/retry-failed-payment`, and `/api/v1/billing/invoices/:id/receipt` routes.

@@ -49,6 +49,21 @@ export function UnifiedPaymentPage({ title, description, sections = defaultSecti
             <Link className="rounded border px-3 py-1.5 hover:bg-muted" href="/payment/business">
               Business
             </Link>
+            <Link className="rounded border px-3 py-1.5 hover:bg-muted" href="/payment/portal">
+              Portal
+            </Link>
+            <Link className="rounded border px-3 py-1.5 hover:bg-muted" href="/payment/methods">
+              Methods
+            </Link>
+            <Link className="rounded border px-3 py-1.5 hover:bg-muted" href="/payment/billing-profile">
+              Billing profile
+            </Link>
+            <Link className="rounded border px-3 py-1.5 hover:bg-muted" href="/payment/subscriptions">
+              Subscriptions
+            </Link>
+            <Link className="rounded border px-3 py-1.5 hover:bg-muted" href="/payment/invoices">
+              Invoices & receipts
+            </Link>
           </nav>
         </CardHeader>
       </Card>

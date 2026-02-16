@@ -670,6 +670,98 @@ export async function listCustomerPaymentMethodReferences(customerId: string): P
   return rows.map(mapMethodRef)
 }
 
+export async function getCustomerPaymentMethodReference(input: { customerId: string; paymentMethodRefId: string }) {
+  await ensureTables()
+  const row = await queryOne<any>(
+    `
+      SELECT
+        id,
+        customer_id AS "customerId",
+        provider,
+        provider_token_id AS "providerTokenId",
+        method_type AS "methodType",
+        last4,
+        expiry_month AS "expiryMonth",
+        expiry_year AS "expiryYear",
+        status,
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+      FROM customer_payment_method_vault_refs
+      WHERE customer_id = $1 AND id = $2
+      LIMIT 1
+    `,
+    [input.customerId, input.paymentMethodRefId],
+  )
+
+  return row ? mapMethodRef(row) : null
+}
+
+export async function updateCustomerPaymentMethodReference(input: {
+  customerId: string
+  paymentMethodRefId: string
+  methodType?: string
+  expiryMonth?: number | null
+  expiryYear?: number | null
+  status?: PaymentMethodStatus
+  setAsDefault?: boolean
+  setAsBackup?: boolean
+}) {
+  await ensureTables()
+
+  const updated = await queryOne<any>(
+    `
+      UPDATE customer_payment_method_vault_refs
+      SET
+        method_type = COALESCE($3, method_type),
+        expiry_month = COALESCE($4, expiry_month),
+        expiry_year = COALESCE($5, expiry_year),
+        status = COALESCE($6, status),
+        updated_at = NOW()
+      WHERE customer_id = $1 AND id = $2
+      RETURNING
+        id,
+        customer_id AS "customerId",
+        provider,
+        provider_token_id AS "providerTokenId",
+        method_type AS "methodType",
+        last4,
+        expiry_month AS "expiryMonth",
+        expiry_year AS "expiryYear",
+        status,
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+    `,
+    [
+      input.customerId,
+      input.paymentMethodRefId,
+      input.methodType ?? null,
+      input.expiryMonth ?? null,
+      input.expiryYear ?? null,
+      input.status ?? null,
+    ],
+  )
+
+  if (!updated) return null
+
+  if (input.setAsDefault) {
+    await switchCustomerPaymentMethod({
+      customerId: input.customerId,
+      paymentMethodRefId: input.paymentMethodRefId,
+      role: "default",
+    })
+  }
+
+  if (input.setAsBackup) {
+    await switchCustomerPaymentMethod({
+      customerId: input.customerId,
+      paymentMethodRefId: input.paymentMethodRefId,
+      role: "backup",
+    })
+  }
+
+  return mapMethodRef(updated)
+}
+
 export async function switchCustomerPaymentMethod(input: {
   customerId: string
   paymentMethodRefId: string

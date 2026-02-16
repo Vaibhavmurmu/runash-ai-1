@@ -3,14 +3,27 @@ import { z } from "zod"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { ensureCustomerScopedAccess, requireBillingActionAccess } from "@/lib/billing-auth"
 import {
+  getCustomerPaymentMethodReference,
   removeCustomerPaymentMethodReference,
   switchCustomerPaymentMethod,
+  updateCustomerPaymentMethodReference,
   verifyPaymentMethodSessionIntegrity,
 } from "@/services/payment-checkout-profile-service"
 
 const switchMethodSchema = z
   .object({
     role: z.enum(["default", "backup"]),
+  })
+  .strict()
+
+const updateMethodSchema = z
+  .object({
+    methodType: z.string().min(1).optional(),
+    expiryMonth: z.number().int().min(1).max(12).nullable().optional(),
+    expiryYear: z.number().int().min(new Date().getUTCFullYear()).max(2200).nullable().optional(),
+    status: z.enum(["active", "disabled"]).optional(),
+    setAsDefault: z.boolean().optional(),
+    setAsBackup: z.boolean().optional(),
   })
   .strict()
 
@@ -25,6 +38,68 @@ function resolveSessionContexts(request: NextRequest) {
       userAgent: request.headers.get("user-agent") ?? "",
     },
   }
+}
+
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+  const access = await requireBillingActionAccess("billing:operate")
+  if ("response" in access) return access.response
+
+  const scopeError = ensureCustomerScopedAccess(access.sessionUser, { customerId: access.sessionUser.userId, organizationId: access.sessionUser.organizationId })
+  if (scopeError) return scopeError
+
+  const method = await getCustomerPaymentMethodReference({
+    customerId: access.sessionUser.userId,
+    paymentMethodRefId: params.id,
+  })
+
+  if (!method) {
+    return respondError(request, { code: "PAYMENT_METHOD_NOT_FOUND", message: "Payment method reference not found" }, { status: 404 })
+  }
+
+  return respondSuccess(request, method)
+}
+
+export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+  const access = await requireBillingActionAccess("billing:operate")
+  if ("response" in access) return access.response
+
+  const scopeError = ensureCustomerScopedAccess(access.sessionUser, { customerId: access.sessionUser.userId, organizationId: access.sessionUser.organizationId })
+  if (scopeError) return scopeError
+
+  const contexts = resolveSessionContexts(request)
+  const sessionIntegrity = await verifyPaymentMethodSessionIntegrity({
+    customerId: access.sessionUser.userId,
+    ...contexts,
+  })
+
+  if (!sessionIntegrity.ok) {
+    return respondError(
+      request,
+      {
+        code: "PAYMENT_METHOD_SESSION_REAUTH_REQUIRED",
+        message: "Payment method access requires re-authorization from this device.",
+      },
+      { status: 403 },
+    )
+  }
+
+  const body = await request.json().catch(() => ({}))
+  const parsed = updateMethodSchema.safeParse(body)
+  if (!parsed.success) {
+    return respondError(request, { code: "INVALID_PAYMENT_METHOD_UPDATE", message: "Invalid payment method update payload" }, { status: 400 })
+  }
+
+  const updated = await updateCustomerPaymentMethodReference({
+    customerId: access.sessionUser.userId,
+    paymentMethodRefId: params.id,
+    ...parsed.data,
+  })
+
+  if (!updated) {
+    return respondError(request, { code: "PAYMENT_METHOD_NOT_FOUND", message: "Payment method reference not found" }, { status: 404 })
+  }
+
+  return respondSuccess(request, updated)
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {

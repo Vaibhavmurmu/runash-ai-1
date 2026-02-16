@@ -1692,3 +1692,36 @@ Risk and rollback:
 - Risk: low-to-medium (validation hardening may block incomplete confirmation payloads).
 - Rollback: disable preview confirmation gating in the checkout tool payload path and redeploy, while preserving transaction metadata writes.
 
+
+## 2026-02 Business portal reliability release: portal surfaces + analytics visibility
+
+### Delivered capabilities
+- Portal UI surfaces now cover operational payment responsibilities end-to-end:
+  - payment methods (default + backup),
+  - billing profile,
+  - subscriptions,
+  - invoices and receipts.
+- Dashboard cards and badges are now directly backed by billing/profile/analytics APIs with explicit loading/error states.
+
+### Business API updates
+- Method CRUD expansion on profile routes:
+  - `GET|PUT|PATCH|DELETE /api/v1/payment/profile/methods/:id`
+- Failed payment recovery trigger:
+  - `POST /api/v1/payment/profile/portal/retry-failed-payment`
+- Invoice receipt retrieval:
+  - `GET /api/v1/billing/invoices/:id/receipt`
+- Analytics visibility additions:
+  - `GET /api/v1/payment/analytics/churn`
+  - `GET /api/v1/payment/analytics/mrr-revenue`
+  - `GET /api/v1/payment/analytics/payout-tax-visibility`
+
+### Flow impact and compatibility
+- Affected flows: customer billing portal, renewal recovery operations, finance visibility dashboards.
+- Compatibility: additive changes only; existing contracts preserved.
+
+### Risk and rollback
+- Risk level: Medium (new pages + additional analytics endpoints).
+- Rollback plan:
+  1. Revert newly added payment portal page routes.
+  2. Revert new analytics and retry/receipt API endpoints.
+  3. Keep existing subscription/payment/invoice contracts unchanged.
