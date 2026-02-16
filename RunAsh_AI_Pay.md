@@ -640,3 +640,30 @@ RunAshChat Instant Checkout now enforces a tax-preview-first payment sequence fo
 5. Final receipt payload now includes tax-aware totals (`subtotal`, `taxAmount`, `totalPayable`, `taxLabel`, `taxRatePercent`, `currency`).
 
 This change preserves existing checkout contracts while adding a mandatory audit-friendly confirmation step for payment reliability.
+
+## Data residency + edge routing policy for Instant Checkout
+
+RunAshChat Instant Checkout now applies a deterministic routing policy before invoking `POST https://api.runash.in/v3/pay`.
+
+### Routing decision model
+- A payment edge router resolves traffic to `IN_EDGE` or `US_EDGE`.
+- Routing uses merchant/customer regional hints (`merchant_region`, `country`) with India-first handling for India-linked flows.
+- The transaction context now includes:
+  - `regionRoute`: `IN_EDGE | US_EDGE`
+  - `residencyPolicy`: `IN_DATA_RESIDENCY | US_DATA_RESIDENCY`
+
+### Outbound contract safety
+- Outbound payment calls include only safe residency metadata:
+  - Header: `X-RunAsh-Region-Route`
+  - Header: `X-RunAsh-Residency-Policy`
+  - Body metadata: `routing_metadata` (`regionRoute`, `residencyPolicy`, normalized merchant/customer region codes)
+- No sensitive payment instrument data is added as part of routing metadata.
+
+### Compliance-safe audit behavior
+- Instant checkout emits compliance-safe audit records for routing and validator outcomes.
+- Logs include merchant fingerprint (hashed), route, policy, amount/currency, and validator status.
+- Raw sensitive payment/auth data is not logged.
+
+### Backward compatibility
+- Existing API signatures and payment flow contracts are preserved.
+- Routing and residency fields are additive in internal transaction context and agent activity summary.
