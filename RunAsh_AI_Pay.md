@@ -702,9 +702,12 @@ RunAshChat "Instant Checkout" now enforces a deterministic Relay safety middlewa
 - New middleware: `lib/payments/validator-safety-gate.ts`.
 - Policy decision contract returned by Relay tooling:
   - `allowed`
-  - `requires_hitl`
-  - `requires_mfa`
-  - `reason_codes`
+  - `requiresHitl`
+  - `requiresMfa`
+  - `reasonCodes`
+  - `requires_hitl` (backward-compatible alias)
+  - `requires_mfa` (backward-compatible alias)
+  - `reason_codes` (backward-compatible alias)
 - HITL rule: USD-equivalent amount above **$100.00** requires explicit human confirmation before checkout execution.
 - MFA rule: INR-equivalent amount above **₹8,000** (`800000` paise) requires MFA verification before confirmation.
 - Currency normalization is now applied for cross-currency threshold checks, so INR and USD amounts are evaluated consistently.
