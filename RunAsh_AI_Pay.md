@@ -904,3 +904,33 @@ It also includes mutation contracts for request and bill operations used by Inst
 - `PATCH /api/v1/payment/bill-payments/:id`
 
 Client behavior now uses optimistic UI updates with rollback on mutation failures for payment requests and bill payments, and refresh now performs real API refetch instead of timeout simulation.
+
+## 2026-02 RunAshChat Instant Checkout intent + activity payload update
+
+RunAshChat Relay integration now formalizes natural-language checkout intent mapping and structured activity payload delivery for Link checkout.
+
+### Relay tool contract updates
+- `initiate_link_checkout` parameter schema now explicitly requires:
+  - `merchant_id: string`
+  - `amount: number` (paise/cents)
+  - `currency: "INR" | "USD"`
+  - `product_metadata: { item_name, sku, tags }` where tags include `"via RunAshChat"`
+- Existing field names and tool name are preserved; this is additive/strictness alignment for safer invocation.
+
+### Intent phrase mapping
+- RunAshChat now maps buy-intent phrases to Link checkout tool invocation, including:
+  - `buy this`
+  - `confirm purchase`
+  - `pay now`
+
+### Structured chat activity summary
+- Relay checkout responses now include `activity_summary_payload` for deterministic chat UX rendering:
+  - `status`
+  - `checkoutId`
+  - `taxBreakdown`
+  - `nextAction`
+- Tax breakdown includes subtotal/tax/total, currency, label, rate, jurisdiction context, and line items for audit-friendly display.
+
+### Risk and rollback
+- **Risk level:** Low (contract additive + UI mapping updates).
+- **Rollback:** Revert `lib/agent-tools/initiate-link-checkout.ts`, `app/chat/page.tsx`, and `types/runash-chat.ts` to previous revision.

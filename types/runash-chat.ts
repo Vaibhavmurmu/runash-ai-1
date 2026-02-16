@@ -30,6 +30,8 @@ export interface LinkQuickPayPreview {
   taxLabel?: "GST" | "VAT" | "Sales Tax"
   taxRatePercent?: number
   blockedReason?: string
+  checkoutId?: string
+  nextAction?: "open_link_checkout" | "collect_valid_checkout_fields" | "retry_or_manual_review"
   confirmationPayload?: {
     merchant_id: string
     amount: number

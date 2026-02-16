@@ -417,7 +417,7 @@ export default function RunAshChatPage() {
     setIsTyping(true)
 
     try {
-      const isInstantCheckoutIntent = /\b(buy this|checkout|pay now|instant checkout|confirm)\b/i.test(content)
+      const isInstantCheckoutIntent = /\b(buy this|confirm purchase|pay now|instant checkout|checkout|confirm)\b/i.test(content)
       const requestedTools = isInstantCheckoutIntent
         ? ["catalog_lookup", "initiate_link_checkout"]
         : /search|find|best|compare|web/i.test(content)
@@ -523,6 +523,18 @@ export default function RunAshChatPage() {
                 : undefined
             const blockedReason =
               typeof payload.result?.blocked_reason === "string" ? payload.result.blocked_reason : undefined
+            const checkoutId =
+              typeof payload.result?.activity_summary_payload?.checkoutId === "string"
+                ? payload.result.activity_summary_payload.checkoutId
+                : typeof payload.result?.checkout_session_id === "string"
+                  ? payload.result.checkout_session_id
+                  : undefined
+            const nextAction =
+              typeof payload.result?.activity_summary_payload?.nextAction === "string"
+                ? payload.result.activity_summary_payload.nextAction
+                : typeof payload.result?.next_action === "string"
+                  ? payload.result.next_action
+                  : undefined
 
             updateAssistantMessage((existing) => ({
               ...existing,
@@ -544,6 +556,8 @@ export default function RunAshChatPage() {
                   taxRatePercent,
                   blockedReason,
                   status: typeof payload.result?.status === "string" ? payload.result.status : undefined,
+                  checkoutId,
+                  nextAction,
                   confirmationPayload: {
                     merchant_id: typeof linkPayload?.merchant_id === "string" ? linkPayload.merchant_id : "runash-default-merchant",
                     amount: amountMinor,

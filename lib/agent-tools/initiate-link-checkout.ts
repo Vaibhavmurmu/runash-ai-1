@@ -11,7 +11,7 @@ import { runLinkCheckoutWithFallback } from "@/lib/services/link-checkout-servic
 export const initiateLinkCheckoutToolParameters = {
   type: "object",
   additionalProperties: false,
-  required: ["merchant_id", "amount", "product_metadata"],
+  required: ["merchant_id", "amount", "currency", "product_metadata"],
   properties: {
     merchant_id: {
       type: "string",
@@ -164,6 +164,28 @@ export type InitiateLinkCheckoutActivityPayload = {
       amount: number
     }>
   }
+  activity_summary_payload: {
+    status: "initiated" | "validation_failed" | "failed"
+    checkoutId: string | null
+    taxBreakdown: {
+      subtotal: number
+      tax: number
+      total: number
+      currency: "INR" | "USD"
+      label: "GST" | "VAT" | "Sales Tax"
+      ratePercent: number
+      country: string
+      region: string | null
+      lineItems: Array<{
+        type: "GST" | "VAT" | "SALES_TAX"
+        label: string
+        jurisdiction: string
+        ratePercent: number
+        amount: number
+      }>
+    }
+    nextAction: "open_link_checkout" | "collect_valid_checkout_fields" | "retry_or_manual_review"
+  }
 }
 
 const defaultValidationFailureDecision: PaymentSafetyPolicyDecision = {
@@ -192,6 +214,22 @@ export const initiateLinkCheckoutTool = {
         })),
         next_action: "collect_valid_checkout_fields",
         policy_decision: defaultValidationFailureDecision,
+        activity_summary_payload: {
+          status: "validation_failed",
+          checkoutId: null,
+          taxBreakdown: {
+            subtotal: 0,
+            tax: 0,
+            total: 0,
+            currency: "USD",
+            label: "Sales Tax",
+            ratePercent: 0,
+            country: "US",
+            region: null,
+            lineItems: [],
+          },
+          nextAction: "collect_valid_checkout_fields",
+        },
       }
     }
 
@@ -226,6 +264,23 @@ export const initiateLinkCheckoutTool = {
         amount: item.amount,
       })),
     }
+    const taxBreakdown = {
+      subtotal: taxPreview.subtotal,
+      tax: taxPreview.taxAmount,
+      total: taxPreview.total,
+      currency: payload.currency,
+      label: taxPreview.taxLabel,
+      ratePercent: taxPreview.taxRatePercent,
+      country: taxPreview.country,
+      region: taxPreview.region,
+      lineItems: transactionMetadata.tax_line_items.map((lineItem) => ({
+        type: lineItem.type,
+        label: lineItem.label,
+        jurisdiction: lineItem.jurisdiction,
+        ratePercent: lineItem.rate_percent,
+        amount: lineItem.amount,
+      })),
+    } as const
 
     if (!payload.preview_displayed || !payload.user_confirmation_after_preview) {
       return {
@@ -237,6 +292,12 @@ export const initiateLinkCheckoutTool = {
         activity_summary: activitySummary,
         transaction_metadata: transactionMetadata,
         policy_decision: defaultValidationFailureDecision,
+        activity_summary_payload: {
+          status: "validation_failed",
+          checkoutId: null,
+          taxBreakdown,
+          nextAction: "collect_valid_checkout_fields",
+        },
       }
     }
 
@@ -256,6 +317,12 @@ export const initiateLinkCheckoutTool = {
         policy_decision: policyDecision,
         activity_summary: activitySummary,
         transaction_metadata: transactionMetadata,
+        activity_summary_payload: {
+          status: "validation_failed",
+          checkoutId: null,
+          taxBreakdown,
+          nextAction: "collect_valid_checkout_fields",
+        },
       }
     }
 
@@ -299,6 +366,12 @@ export const initiateLinkCheckoutTool = {
         policy_decision: policyDecision,
         activity_summary: activitySummary,
         transaction_metadata: transactionMetadata,
+        activity_summary_payload: {
+          status: checkoutResult.status,
+          checkoutId: checkoutResult.checkout_session_id,
+          taxBreakdown,
+          nextAction: checkoutResult.next_action,
+        },
       }
     } catch {
       return {
@@ -309,6 +382,12 @@ export const initiateLinkCheckoutTool = {
         policy_decision: policyDecision,
         activity_summary: activitySummary,
         transaction_metadata: transactionMetadata,
+        activity_summary_payload: {
+          status: "failed",
+          checkoutId: null,
+          taxBreakdown,
+          nextAction: "retry_or_manual_review",
+        },
       }
     }
   },
