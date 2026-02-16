@@ -16,6 +16,7 @@ import {
   pruneExpiredAgentRecords,
 } from "@/lib/repositories/agent-orchestration"
 import { relayAgentSkillModules, type RelayAgentTool } from "@/lib/skills/relay-tool-registry"
+import { estimateTaxPreview } from "@/lib/payments/tax-estimator"
 import { searchProductsWithProviders } from "@/services/web-search-service"
 
 export type SupportedTool = RelayAgentTool
@@ -104,9 +105,33 @@ async function executeInventoryHealth(payload: Record<string, unknown>) {
 async function executeCheckoutPreview(payload: Record<string, unknown>) {
   await wait(110)
   const lineItems = Array.isArray(payload.items) ? payload.items.length : 0
+  const amount = typeof payload.amount === "number" ? payload.amount : 42.5
+  const currency = typeof payload.currency === "string" ? payload.currency : "USD"
+  const taxPreview = estimateTaxPreview({
+    country: typeof payload.country === "string" ? payload.country : "US",
+    region: typeof payload.region === "string" ? payload.region : null,
+    amount,
+    currency,
+    lineItemMetadata:
+      payload.line_item_metadata && typeof payload.line_item_metadata === "object"
+        ? (payload.line_item_metadata as { taxCode?: string; category?: string; tags?: string[] })
+        : undefined,
+  })
+
   return {
     lineItems,
-    estimatedTotal: 42.5,
+    estimatedTotal: taxPreview.totalPayable,
+    preview: {
+      subtotal: taxPreview.subtotal,
+      gstVatAmount: taxPreview.gstVatAmount,
+      totalPayable: taxPreview.totalPayable,
+      taxLabel: taxPreview.taxLabel,
+      taxRatePercent: taxPreview.taxRatePercent,
+      country: taxPreview.country,
+      region: taxPreview.region,
+      currency: taxPreview.currency,
+      previewDisplayedAt: new Date().toISOString(),
+    },
     warnings: lineItems > 8 ? ["Large cart may require split shipment"] : [],
   }
 }
