@@ -7,6 +7,7 @@ import RecipeCard from "./recipe-card"
 import SustainabilityTip from "./sustainability-tip"
 import AutomationSuggestion from "./automation-suggestion"
 import SearchResults from "./search-results"
+import LinkQuickPayButton from "./link-quick-pay-button"
 
 interface ChatMessageProps {
   message: ChatMessage
@@ -102,6 +103,24 @@ export default function ChatMessageComponent({ message }: ChatMessageProps) {
               {message.metadata.searchResults && message.metadata.searchResults.length > 0 && (
                 <SearchResults results={message.metadata.searchResults} />
               )}
+
+
+              {message.metadata.linkQuickPay && (
+                <LinkQuickPayButton
+                  last4={message.metadata.linkQuickPay.last4}
+                  eligibleForLink={message.metadata.linkQuickPay.eligibleForLink}
+                  taxPreview={message.metadata.linkQuickPay.taxPreview}
+                  isDigitalProduct={message.metadata.linkQuickPay.tags.includes("digital")}
+                  itemName={message.metadata.linkQuickPay.itemName}
+                  amountLabel={`${message.metadata.linkQuickPay.currency} ${(message.metadata.linkQuickPay.amountMinor / 100).toFixed(2)}`}
+                  onPay={async () => {
+                    if (message.metadata?.linkQuickPay?.status && message.metadata.linkQuickPay.status !== "approved") {
+                      throw new Error("link_checkout_not_ready")
+                    }
+                  }}
+                />
+              )}
+
             </div>
           )}
 

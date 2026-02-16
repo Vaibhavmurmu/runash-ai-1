@@ -433,7 +433,7 @@ export default function RunAshChatPage() {
               product_metadata: {
                 item_name: "RunAshChat Instant Checkout Item",
                 sku: "runashchat-instant-checkout",
-                tags: ["via RunAshChat", "instant_checkout"],
+                tags: ["via RunAshChat", "instant_checkout", "digital"],
               },
             },
           }
@@ -491,6 +491,39 @@ export default function RunAshChatPage() {
 
           if (eventName === "tool_start") {
             updateAssistantMessage((existing) => ({ ...existing, status: "tool-running" }))
+          }
+
+          if (eventName === "tool_result" && payload.tool === "initiate_link_checkout") {
+            const linkPayload = toolPayloads?.initiate_link_checkout
+            const productMetadata =
+              linkPayload && typeof linkPayload.product_metadata === "object" && linkPayload.product_metadata !== null
+                ? (linkPayload.product_metadata as Record<string, unknown>)
+                : undefined
+            const tags = Array.isArray(productMetadata?.tags)
+              ? productMetadata.tags.filter((tag): tag is string => typeof tag === "string")
+              : []
+            const amountMinor = typeof linkPayload?.amount === "number" ? linkPayload.amount : 0
+            const taxPreview =
+              typeof payload.result?.tax === "number"
+                ? payload.result.tax
+                : Number(payload.result?.tax ?? Number.NaN)
+
+            updateAssistantMessage((existing) => ({
+              ...existing,
+              metadata: {
+                ...existing.metadata,
+                linkQuickPay: {
+                  itemName: typeof productMetadata?.item_name === "string" ? productMetadata.item_name : "RunAshChat Instant Checkout Item",
+                  amountMinor,
+                  currency: linkPayload?.currency === "INR" ? "INR" : "USD",
+                  eligibleForLink: true,
+                  last4: "4242",
+                  tags,
+                  taxPreview: Number.isFinite(taxPreview) ? taxPreview : undefined,
+                  status: typeof payload.result?.status === "string" ? payload.result.status : undefined,
+                },
+              },
+            }))
           }
 
           if (eventName === "final") {
