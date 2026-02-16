@@ -417,9 +417,27 @@ export default function RunAshChatPage() {
     setIsTyping(true)
 
     try {
-      const requestedTools = /search|find|best|compare|web/i.test(content)
-        ? ["catalog_lookup", "web_search"]
-        : ["catalog_lookup"]
+      const isInstantCheckoutIntent = /\b(buy this|checkout|pay now|instant checkout)\b/i.test(content)
+      const requestedTools = isInstantCheckoutIntent
+        ? ["catalog_lookup", "initiate_link_checkout"]
+        : /search|find|best|compare|web/i.test(content)
+          ? ["catalog_lookup", "web_search"]
+          : ["catalog_lookup"]
+
+      const toolPayloads = isInstantCheckoutIntent
+        ? {
+            initiate_link_checkout: {
+              merchant_id: "runash-default-merchant",
+              amount: 1000,
+              currency: "USD",
+              product_metadata: {
+                item_name: "RunAshChat Instant Checkout Item",
+                sku: "runashchat-instant-checkout",
+                tags: ["via RunAshChat", "instant_checkout"],
+              },
+            },
+          }
+        : undefined
 
       const response = await fetch("/api/agents/chat", {
         method: "POST",
@@ -429,6 +447,7 @@ export default function RunAshChatPage() {
           title: currentSession?.title ?? "RunAsh Agent Session",
           message: content,
           tools: requestedTools,
+          toolPayloads,
         }),
       })
 

@@ -320,7 +320,8 @@ Confirmation-required response (`decision=requires_confirmation`):
   - `sessionId?: string`
   - `title?: string`
   - `message: string`
-  - `tools?: ("catalog_lookup"|"inventory_health"|"checkout_preview")[]`
+  - `tools?: ("catalog_lookup"|"inventory_health"|"checkout_preview"|"web_search"|"initiate_link_checkout")[]`
+  - `toolPayloads?: Record<string, Record<string, unknown>>` (optional per-tool payload overrides; required for `initiate_link_checkout`)
 
 ### `GET /api/agents/sessions/:id`
 - Auth required.

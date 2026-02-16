@@ -561,3 +561,19 @@ RunAsh AI Pay now applies product-aware tax computation during checkout and subs
 
 ### Compliance responsibility reminder
 RunAsh provides tax estimation and reporting support. Customers and finance operators remain responsible for tax registration validation, filing decisions, and legal compliance in their operating jurisdictions.
+
+## Relay Agent Link Checkout Skill (Instant Checkout)
+
+- Added Relay skill `initiate_link_checkout` for RunAshChat "buy this"/instant-checkout flows.
+- Runtime contract requires:
+  - `merchant_id: string`
+  - `amount: number` in smallest unit (paise/cents)
+  - `currency: "USD" | "INR"` with default enum handling
+  - `product_metadata: { item_name, sku, tags }` with `"via RunAshChat"` tag enforced
+- Safety gates before external invocation:
+  - HITL threshold precheck
+  - MFA gate (env-controlled)
+  - PII-safe logging (merchant fingerprint hashing)
+- External payment API call: `POST https://api.runash.in/v3/pay`
+- Activity summary returned to Relay includes `status`, `tax`, `paymentMethodUsed`, and `fallbackPath`.
+- Backward compatibility preserved for existing agent tools and API signatures.

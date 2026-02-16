@@ -15,9 +15,10 @@ import {
   createToolResult,
   pruneExpiredAgentRecords,
 } from "@/lib/repositories/agent-orchestration"
+import { relayAgentSkillModules, type RelayAgentTool } from "@/lib/skills/relay-tool-registry"
 import { searchProductsWithProviders } from "@/services/web-search-service"
 
-export type SupportedTool = "catalog_lookup" | "inventory_health" | "checkout_preview" | "web_search"
+export type SupportedTool = RelayAgentTool
 
 export type ToolExecutionContext = {
   sessionId: string
@@ -120,6 +121,10 @@ async function executeWebSearch(payload: Record<string, unknown>) {
     provider: results[0]?.source ?? "fallback",
     generatedAt: new Date().toISOString(),
   }
+}
+
+async function executeInitiateLinkCheckout(payload: Record<string, unknown>) {
+  return relayAgentSkillModules.initiate_link_checkout.execute(payload)
 }
 
 function isHighRiskAction(actionType: string, actionPayload: Record<string, unknown>) {
@@ -339,6 +344,7 @@ export async function executeToolWithPolicy(
     inventory_health: () => executeInventoryHealth(payload),
     checkout_preview: () => executeCheckoutPreview(payload),
     web_search: () => executeWebSearch(payload),
+    initiate_link_checkout: () => executeInitiateLinkCheckout(payload),
   }
 
   let lastError: unknown
