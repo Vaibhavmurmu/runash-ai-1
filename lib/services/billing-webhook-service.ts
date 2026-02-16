@@ -2,10 +2,9 @@ import { queryMany, queryOne } from "@/lib/db"
 import { persistTaxComputation, type TaxComputation } from "@/lib/services/tax-service"
 
 const WEBHOOK_PROVIDER = "stripe"
-const MAX_PROCESSING_ATTEMPTS = Number(process.env.BILLING_WEBHOOK_MAX_ATTEMPTS ?? 5)
 const DEAD_LETTER_THRESHOLD = Number(process.env.BILLING_WEBHOOK_DEAD_LETTER_THRESHOLD ?? 10)
 
-type WebhookEventStatus = "received" | "processed" | "failed" | "dead_letter"
+type WebhookEventStatus = "received" | "processing" | "processed" | "failed" | "dead_letter"
 
 type WebhookEventRecord = {
   id: string
@@ -85,7 +84,7 @@ async function ensureWebhookEventsTable() {
       provider TEXT NOT NULL,
       event_id TEXT NOT NULL,
       event_type TEXT NOT NULL,
-      status TEXT NOT NULL CHECK (status IN ('received', 'processed', 'failed', 'dead_letter')),
+      status TEXT NOT NULL CHECK (status IN ('received', 'processing', 'processed', 'failed', 'dead_letter')),
       payload JSONB NOT NULL,
       processing_attempts INTEGER NOT NULL DEFAULT 0,
       last_error TEXT,
@@ -103,6 +102,22 @@ async function ensureWebhookEventsTable() {
   `)
 
   await queryMany(`
+
+
+    CREATE TABLE IF NOT EXISTS webhook_dead_letters (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      event_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      last_error TEXT NOT NULL,
+      payload JSONB NOT NULL,
+      attempts INTEGER NOT NULL,
+      first_received_at TIMESTAMPTZ,
+      dead_lettered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (provider, event_id)
+    );
+
     CREATE TABLE IF NOT EXISTS billing_webhook_subscriptions (
       subscription_id TEXT PRIMARY KEY,
       customer_id TEXT,
@@ -493,6 +508,50 @@ async function getWebhookEventState(eventId: string) {
   )
 }
 
+async function claimWebhookEventForProcessing(eventId: string) {
+  return queryOne<{ processing_attempts: number }>(
+    `
+      UPDATE webhook_events
+      SET status = 'processing',
+          updated_at = NOW()
+      WHERE provider = $1
+        AND event_id = $2
+        AND status IN ('received', 'failed', 'dead_letter')
+      RETURNING processing_attempts
+    `,
+    [WEBHOOK_PROVIDER, eventId],
+  )
+}
+
+async function upsertDeadLetterEvent(input: {
+  eventId: string
+  eventType: string
+  errorMessage: string
+  attempts: number
+  payload: StripeWebhookEvent
+}) {
+  await queryMany(
+    `
+      INSERT INTO webhook_dead_letters (
+        id, provider, event_id, event_type, last_error, payload, attempts, first_received_at, dead_lettered_at, updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7,
+        (SELECT received_at FROM webhook_events WHERE provider = $2 AND event_id = $3),
+        NOW(), NOW()
+      )
+      ON CONFLICT (provider, event_id)
+      DO UPDATE SET
+        event_type = EXCLUDED.event_type,
+        last_error = EXCLUDED.last_error,
+        payload = EXCLUDED.payload,
+        attempts = EXCLUDED.attempts,
+        dead_lettered_at = NOW(),
+        updated_at = NOW()
+    `,
+    [crypto.randomUUID(), WEBHOOK_PROVIDER, input.eventId, input.eventType, input.errorMessage, JSON.stringify(input.payload), input.attempts],
+  )
+}
+
 export async function processWebhookEvent(event: StripeWebhookEvent) {
   await ensureWebhookEventsTable()
 
@@ -502,31 +561,45 @@ export async function processWebhookEvent(event: StripeWebhookEvent) {
     return { processed: true, attempts: current.processing_attempts, duplicateProcessed: true }
   }
 
-  for (let attempt = 1; attempt <= Math.max(1, MAX_PROCESSING_ATTEMPTS); attempt += 1) {
-    try {
-      await runWebhookDomainHandler(event)
-      await updateWebhookEventStatus({ eventId: event.id, status: "processed", attemptsIncrement: 1, errorMessage: null })
-      return { processed: true, attempts: attempt, duplicateProcessed: false }
-    } catch (error) {
-      const message = error instanceof Error ? error.message.slice(0, 500) : "webhook_processing_failed"
-      const finalAttempt = attempt >= Math.max(1, MAX_PROCESSING_ATTEMPTS)
-      const nextStatus: WebhookEventStatus = finalAttempt ? "failed" : "received"
-
-      await updateWebhookEventStatus({
-        eventId: event.id,
-        status: nextStatus,
-        attemptsIncrement: 1,
-        errorMessage: message,
-        scheduleRetryMinutes: finalAttempt ? retryDelayMinutes(attempt) : null,
-      })
-
-      if (finalAttempt) {
-        throw new Error(message)
-      }
+  const claimed = await claimWebhookEventForProcessing(event.id)
+  if (!claimed) {
+    const state = await getWebhookEventState(event.id)
+    if (state?.status === "processed") {
+      return { processed: true, attempts: state.processing_attempts, duplicateProcessed: true }
     }
+
+    return { processed: false, attempts: state?.processing_attempts ?? 0, duplicateProcessed: true }
   }
 
-  throw new Error("unreachable_webhook_processing_state")
+  try {
+    await runWebhookDomainHandler(event)
+    await updateWebhookEventStatus({ eventId: event.id, status: "processed", attemptsIncrement: 1, errorMessage: null })
+    return { processed: true, attempts: claimed.processing_attempts + 1, duplicateProcessed: false }
+  } catch (error) {
+    const message = error instanceof Error ? error.message.slice(0, 500) : "webhook_processing_failed"
+    const nextAttempts = claimed.processing_attempts + 1
+    const deadLetter = nextAttempts >= DEAD_LETTER_THRESHOLD
+
+    await updateWebhookEventStatus({
+      eventId: event.id,
+      status: deadLetter ? "dead_letter" : "failed",
+      attemptsIncrement: 1,
+      errorMessage: message,
+      scheduleRetryMinutes: retryDelayMinutes(nextAttempts),
+    })
+
+    if (deadLetter) {
+      await upsertDeadLetterEvent({
+        eventId: event.id,
+        eventType: event.type,
+        errorMessage: message,
+        attempts: nextAttempts,
+        payload: event,
+      })
+    }
+
+    throw new Error(message)
+  }
 }
 
 export async function replayFailedWebhookEvents(limit = 25) {
@@ -570,6 +643,16 @@ export async function replayFailedWebhookEvents(limit = 25) {
         errorMessage: message,
         scheduleRetryMinutes: retryDelayMinutes(nextAttempts),
       })
+
+      if (deadLetter) {
+        await upsertDeadLetterEvent({
+          eventId: row.event_id,
+          eventType: row.payload.type,
+          errorMessage: message,
+          attempts: nextAttempts,
+          payload: row.payload,
+        })
+      }
     }
   }
 
