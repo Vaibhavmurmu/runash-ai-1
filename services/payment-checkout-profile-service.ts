@@ -36,11 +36,22 @@ export interface CustomerPaymentMethodRefRecord {
 
 export interface CustomerCheckoutProfile {
   customerId: string
+  billingDetails: Record<string, unknown> | null
   billingAddress: Record<string, unknown> | null
   shippingAddress: Record<string, unknown> | null
   defaultPaymentMethodId: string | null
   backupPaymentMethodId: string | null
   updatedAt: string
+}
+
+export interface CheckoutAttemptFinancialSummary {
+  attemptsTracked: number
+  grossAmount: number
+  netAmount: number
+  processingFeeAmount: number
+  taxAmount: number
+  payoutAmount: number
+  taxWithheldAmount: number
 }
 
 export interface CheckoutAutofillAuthorization {
@@ -212,6 +223,7 @@ async function ensureTables() {
 
     CREATE TABLE IF NOT EXISTS customer_checkout_profiles (
       customer_id TEXT PRIMARY KEY,
+      billing_details_encrypted TEXT,
       billing_address_encrypted TEXT,
       shipping_address_encrypted TEXT,
       default_payment_method_id TEXT REFERENCES customer_payment_method_vault_refs(id) ON DELETE SET NULL,
@@ -265,6 +277,9 @@ async function ensureTables() {
 
     CREATE INDEX IF NOT EXISTS idx_portal_lifecycle_actions_customer_created
       ON portal_lifecycle_actions(customer_id, created_at DESC);
+
+    ALTER TABLE customer_checkout_profiles
+    ADD COLUMN IF NOT EXISTS billing_details_encrypted TEXT;
   `)
 
   tablesReady = true
@@ -319,6 +334,7 @@ async function getProfileRow(customerId: string) {
   await ensureTables()
   return queryOne<{
     customerId: string
+    billingDetailsEncrypted: string | null
     billingAddressEncrypted: string | null
     shippingAddressEncrypted: string | null
     defaultPaymentMethodId: string | null
@@ -328,6 +344,7 @@ async function getProfileRow(customerId: string) {
     `
       SELECT
         customer_id AS "customerId",
+        billing_details_encrypted AS "billingDetailsEncrypted",
         billing_address_encrypted AS "billingAddressEncrypted",
         shipping_address_encrypted AS "shippingAddressEncrypted",
         default_payment_method_id AS "defaultPaymentMethodId",
@@ -565,6 +582,7 @@ export async function getCustomerCheckoutProfile(customerId: string): Promise<Cu
   if (!row) {
     return {
       customerId,
+      billingDetails: null,
       billingAddress: null,
       shippingAddress: null,
       defaultPaymentMethodId: null,
@@ -575,6 +593,7 @@ export async function getCustomerCheckoutProfile(customerId: string): Promise<Cu
 
   return {
     customerId: row.customerId,
+    billingDetails: decryptJson(row.billingDetailsEncrypted),
     billingAddress: decryptJson(row.billingAddressEncrypted),
     shippingAddress: decryptJson(row.shippingAddressEncrypted),
     defaultPaymentMethodId: row.defaultPaymentMethodId,
@@ -585,31 +604,41 @@ export async function getCustomerCheckoutProfile(customerId: string): Promise<Cu
 
 export async function upsertCustomerCheckoutProfile(input: {
   customerId: string
+  billingDetails?: Record<string, unknown> | null
   billingAddress?: Record<string, unknown> | null
   shippingAddress?: Record<string, unknown> | null
   defaultPaymentMethodId?: string | null
   backupPaymentMethodId?: string | null
 }) {
   await ensureTables()
+  const billingDetailsEncrypted = encryptJson(input.billingDetails)
   const billingEncrypted = encryptJson(input.billingAddress)
   const shippingEncrypted = encryptJson(input.shippingAddress)
 
   await queryOne(
     `
       INSERT INTO customer_checkout_profiles (
-        customer_id, billing_address_encrypted, shipping_address_encrypted,
-        default_payment_method_id, backup_payment_method_id
+        customer_id, billing_details_encrypted, billing_address_encrypted,
+        shipping_address_encrypted, default_payment_method_id, backup_payment_method_id
       )
-      VALUES ($1, $2, $3, $4, $5)
+      VALUES ($1, $2, $3, $4, $5, $6)
       ON CONFLICT (customer_id)
       DO UPDATE SET
-        billing_address_encrypted = COALESCE($2, customer_checkout_profiles.billing_address_encrypted),
-        shipping_address_encrypted = COALESCE($3, customer_checkout_profiles.shipping_address_encrypted),
-        default_payment_method_id = COALESCE($4, customer_checkout_profiles.default_payment_method_id),
-        backup_payment_method_id = COALESCE($5, customer_checkout_profiles.backup_payment_method_id),
+        billing_details_encrypted = COALESCE($2, customer_checkout_profiles.billing_details_encrypted),
+        billing_address_encrypted = COALESCE($3, customer_checkout_profiles.billing_address_encrypted),
+        shipping_address_encrypted = COALESCE($4, customer_checkout_profiles.shipping_address_encrypted),
+        default_payment_method_id = COALESCE($5, customer_checkout_profiles.default_payment_method_id),
+        backup_payment_method_id = COALESCE($6, customer_checkout_profiles.backup_payment_method_id),
         updated_at = NOW()
     `,
-    [input.customerId, billingEncrypted, shippingEncrypted, input.defaultPaymentMethodId ?? null, input.backupPaymentMethodId ?? null],
+    [
+      input.customerId,
+      billingDetailsEncrypted,
+      billingEncrypted,
+      shippingEncrypted,
+      input.defaultPaymentMethodId ?? null,
+      input.backupPaymentMethodId ?? null,
+    ],
   )
 
   return getCustomerCheckoutProfile(input.customerId)
@@ -1246,5 +1275,43 @@ export async function getPaymentAnalyticsSummary(customerId: string): Promise<Pa
       totalTransactions,
       fallbackUsageRatePercent: totalTransactions > 0 ? (transactionsWithFallback / totalTransactions) * 100 : 0,
     },
+  }
+}
+
+export async function getCheckoutAttemptFinancialSummary(customerId: string): Promise<CheckoutAttemptFinancialSummary> {
+  await ensureTables()
+
+  const [row] = await queryMany<{
+    attemptsTracked: number
+    grossAmount: number
+    netAmount: number
+    processingFeeAmount: number
+    taxAmount: number
+    payoutAmount: number
+    taxWithheldAmount: number
+  }>(
+    `
+      SELECT
+        COUNT(*) FILTER (WHERE metadata ? 'reporting')::int AS "attemptsTracked",
+        COALESCE(SUM((metadata->'reporting'->>'grossAmount')::numeric), 0)::float8 AS "grossAmount",
+        COALESCE(SUM((metadata->'reporting'->>'netAmount')::numeric), 0)::float8 AS "netAmount",
+        COALESCE(SUM((metadata->'reporting'->>'processingFeeAmount')::numeric), 0)::float8 AS "processingFeeAmount",
+        COALESCE(SUM((metadata->'reporting'->>'taxAmount')::numeric), 0)::float8 AS "taxAmount",
+        COALESCE(SUM((metadata->'reporting'->>'payoutAmount')::numeric), 0)::float8 AS "payoutAmount",
+        COALESCE(SUM((metadata->'reporting'->>'taxWithheldAmount')::numeric), 0)::float8 AS "taxWithheldAmount"
+      FROM checkout_attempt_results
+      WHERE customer_id = $1
+    `,
+    [customerId],
+  )
+
+  return {
+    attemptsTracked: Number(row?.attemptsTracked ?? 0),
+    grossAmount: Number(row?.grossAmount ?? 0),
+    netAmount: Number(row?.netAmount ?? 0),
+    processingFeeAmount: Number(row?.processingFeeAmount ?? 0),
+    taxAmount: Number(row?.taxAmount ?? 0),
+    payoutAmount: Number(row?.payoutAmount ?? 0),
+    taxWithheldAmount: Number(row?.taxWithheldAmount ?? 0),
   }
 }

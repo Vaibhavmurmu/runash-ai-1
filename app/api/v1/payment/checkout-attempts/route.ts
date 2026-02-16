@@ -11,7 +11,30 @@ const checkoutAttemptSchema = z
     attemptStatus: z.enum(["authorized", "completed", "failed", "expired"]),
     attemptResultCode: z.string().min(1).nullable().optional(),
     attemptResultMessage: z.string().min(1).nullable().optional(),
-    metadata: z.record(z.unknown()).optional(),
+    metadata: z
+      .record(z.unknown())
+      .optional()
+      .transform((value) => {
+        const metadata = (value ?? {}) as Record<string, unknown>
+        const reporting = (metadata.reporting ?? {}) as Record<string, unknown>
+        const normalizedReporting = {
+          grossAmount: Number(reporting.grossAmount ?? 0),
+          netAmount: Number(reporting.netAmount ?? 0),
+          processingFeeAmount: Number(reporting.processingFeeAmount ?? 0),
+          taxAmount: Number(reporting.taxAmount ?? 0),
+          payoutAmount: Number(reporting.payoutAmount ?? 0),
+          taxWithheldAmount: Number(reporting.taxWithheldAmount ?? 0),
+          exchangeRate: Number(reporting.exchangeRate ?? 1),
+          settlementCurrency: typeof reporting.settlementCurrency === "string" ? reporting.settlementCurrency : null,
+          taxJurisdiction: typeof reporting.taxJurisdiction === "string" ? reporting.taxJurisdiction : null,
+          payoutSchedule: typeof reporting.payoutSchedule === "string" ? reporting.payoutSchedule : null,
+        }
+
+        return {
+          ...metadata,
+          reporting: normalizedReporting,
+        }
+      }),
     occurredAt: z.string().datetime().optional(),
   })
   .strict()

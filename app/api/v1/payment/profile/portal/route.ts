@@ -6,6 +6,7 @@ import { getCustomerCheckoutProfile, upsertCustomerCheckoutProfile } from "@/ser
 
 const portalProfileSchema = z
   .object({
+    billingDetails: z.record(z.unknown()).nullable().optional(),
     billingAddress: z.record(z.unknown()).nullable().optional(),
     shippingAddress: z.record(z.unknown()).nullable().optional(),
     defaultPaymentMethodId: z.string().min(1).nullable().optional(),

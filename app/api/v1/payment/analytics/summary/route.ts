@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server"
 import { respondSuccess } from "@/lib/api/envelope"
 import { ensureCustomerScopedAccess, requireBillingActionAccess } from "@/lib/billing-auth"
 import {
+  getCheckoutAttemptFinancialSummary,
   getPaymentAnalyticsSummary,
   getPortalMetricsSnapshot,
 } from "@/services/payment-checkout-profile-service"
@@ -23,9 +24,10 @@ export async function GET(request: NextRequest) {
   const from = parseDateParam(request.nextUrl.searchParams.get("from"))
   const to = parseDateParam(request.nextUrl.searchParams.get("to"))
 
-  const [checkoutAndRecovery, portalMetrics, revenueTaxSummary, payoutSummary, operationsSummary] = await Promise.all([
+  const [checkoutAndRecovery, portalMetrics, financialAttemptSummary, revenueTaxSummary, payoutSummary, operationsSummary] = await Promise.all([
     getPaymentAnalyticsSummary(access.sessionUser.userId),
     getPortalMetricsSnapshot(access.sessionUser.userId),
+    getCheckoutAttemptFinancialSummary(access.sessionUser.userId),
     getRevenueTaxSummary({ from, to }),
     getPayoutsSummary({ from, to }),
     getOperationsFinanceSummary({ from, to }),
@@ -35,6 +37,7 @@ export async function GET(request: NextRequest) {
     checkoutConversion: checkoutAndRecovery.checkoutConversion,
     failedPaymentRecovery: checkoutAndRecovery.failedPaymentRecovery,
     fallbackUsage: checkoutAndRecovery.fallbackUsage,
+    checkoutAttemptFinancialSummary: financialAttemptSummary,
     revenueTaxSummary,
     payoutSummary,
     operationsSummary,

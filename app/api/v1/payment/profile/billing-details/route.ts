@@ -4,13 +4,10 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { ensureCustomerScopedAccess, requireBillingActionAccess } from "@/lib/billing-auth"
 import { getCustomerCheckoutProfile, upsertCustomerCheckoutProfile } from "@/services/payment-checkout-profile-service"
 
-const profileUpsertSchema = z
+const billingDetailsSchema = z
   .object({
-    billingDetails: z.record(z.unknown()).nullable().optional(),
+    billingDetails: z.record(z.unknown()).nullable(),
     billingAddress: z.record(z.unknown()).nullable().optional(),
-    shippingAddress: z.record(z.unknown()).nullable().optional(),
-    defaultPaymentMethodId: z.string().min(1).nullable().optional(),
-    backupPaymentMethodId: z.string().min(1).nullable().optional(),
   })
   .strict()
 
@@ -22,7 +19,10 @@ export async function GET(request: NextRequest) {
   if (scopeError) return scopeError
 
   const profile = await getCustomerCheckoutProfile(access.sessionUser.userId)
-  return respondSuccess(request, profile)
+  return respondSuccess(request, {
+    billingDetails: profile.billingDetails,
+    billingAddress: profile.billingAddress,
+  })
 }
 
 export async function PUT(request: NextRequest) {
@@ -33,16 +33,17 @@ export async function PUT(request: NextRequest) {
   if (scopeError) return scopeError
 
   const body = await request.json().catch(() => ({}))
-  const parsed = profileUpsertSchema.safeParse(body)
+  const parsed = billingDetailsSchema.safeParse(body)
 
   if (!parsed.success) {
-    return respondError(request, { code: "INVALID_PROFILE_PAYLOAD", message: "Invalid customer profile payload" }, { status: 400 })
+    return respondError(request, { code: "INVALID_BILLING_DETAILS_PAYLOAD", message: "Invalid billing details payload" }, { status: 400 })
   }
 
-  const profile = await upsertCustomerCheckoutProfile({
-    customerId: access.sessionUser.userId,
-    ...parsed.data,
-  })
+  const profile = await upsertCustomerCheckoutProfile({ customerId: access.sessionUser.userId, ...parsed.data })
 
-  return respondSuccess(request, profile)
+  return respondSuccess(request, {
+    billingDetails: profile.billingDetails,
+    billingAddress: profile.billingAddress,
+    updatedAt: profile.updatedAt,
+  })
 }
