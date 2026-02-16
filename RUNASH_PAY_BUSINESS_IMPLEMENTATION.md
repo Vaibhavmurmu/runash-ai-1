@@ -1503,9 +1503,12 @@ Relay now runs a payment safety middleware before calling Link checkout executio
 - Middleware: `lib/payments/validator-safety-gate.ts`
 - Enforced output policy decision object:
   - `allowed`
-  - `requires_hitl`
-  - `requires_mfa`
-  - `reason_codes`
+  - `requiresHitl`
+  - `requiresMfa`
+  - `reasonCodes`
+  - `requires_hitl` (backward-compatible alias)
+  - `requires_mfa` (backward-compatible alias)
+  - `reason_codes` (backward-compatible alias)
 - Currency normalization utility usage ensures USD/INR thresholds are compared on normalized equivalents.
 
 ### Enforced thresholds

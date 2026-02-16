@@ -12,6 +12,9 @@ export type PaymentSafetyReasonCode =
 
 export type PaymentSafetyPolicyDecision = {
   allowed: boolean
+  requiresHitl: boolean
+  requiresMfa: boolean
+  reasonCodes: PaymentSafetyReasonCode[]
   requires_hitl: boolean
   requires_mfa: boolean
   reason_codes: PaymentSafetyReasonCode[]
@@ -43,6 +46,9 @@ export function evaluateValidatorSafetyGate(input: PaymentSafetyGateInput): Paym
   if (!Number.isFinite(input.amount_minor) || input.amount_minor <= 0) {
     return {
       allowed: false,
+      requiresHitl: false,
+      requiresMfa: false,
+      reasonCodes: ["INVALID_AMOUNT"],
       requires_hitl: false,
       requires_mfa: false,
       reason_codes: ["INVALID_AMOUNT"],
@@ -53,6 +59,9 @@ export function evaluateValidatorSafetyGate(input: PaymentSafetyGateInput): Paym
   if (!SUPPORTED_POLICY_CURRENCIES.has(currency)) {
     return {
       allowed: false,
+      requiresHitl: false,
+      requiresMfa: false,
+      reasonCodes: ["UNSUPPORTED_CURRENCY"],
       requires_hitl: false,
       requires_mfa: false,
       reason_codes: ["UNSUPPORTED_CURRENCY"],
@@ -93,6 +102,9 @@ export function evaluateValidatorSafetyGate(input: PaymentSafetyGateInput): Paym
 
   return {
     allowed: reasonCodes.every((reasonCode) => reasonCode !== "HITL_CONFIRMATION_REQUIRED" && reasonCode !== "MFA_REQUIRED"),
+    requiresHitl,
+    requiresMfa,
+    reasonCodes,
     requires_hitl: requiresHitl,
     requires_mfa: requiresMfa,
     reason_codes: reasonCodes,
