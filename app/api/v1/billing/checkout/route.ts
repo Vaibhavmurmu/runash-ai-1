@@ -4,6 +4,8 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 import { getAuthorizedBillingIdentity, requireScopedBillingAccess } from "@/lib/billing-auth"
 import { computeTaxForRegion, persistTaxComputation } from "@/lib/services/tax-service"
+import { evaluatePaymentValidatorGate } from "@/lib/payments/validator-gate"
+import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
 
 const createCheckoutSchema = z
   .object({
@@ -11,6 +13,8 @@ const createCheckoutSchema = z
     mode: z.enum(["payment", "subscription"]).default("subscription"),
     success_url: z.string().url(),
     cancel_url: z.string().url(),
+    humanConfirmed: z.boolean().optional(),
+    mfaVerified: z.boolean().optional(),
     product_tax_code: z.enum(["physical_goods", "digital_services", "professional_services"]).optional(),
     billing_address: z
       .object({
@@ -35,7 +39,8 @@ export async function POST(request: NextRequest) {
       return respondError(request, { code: "INVALID_CHECKOUT_PAYLOAD", message: "Invalid checkout payload" }, { status: 400 })
     }
 
-    const { priceId, mode, success_url, cancel_url, product_tax_code, billing_address } = validation.data
+    const { priceId, mode, success_url, cancel_url, product_tax_code, billing_address, humanConfirmed, mfaVerified } =
+      validation.data
 
     if (!process.env.STRIPE_SECRET_KEY) {
       return respondError(request, { code: "STRIPE_NOT_CONFIGURED", message: "Stripe not configured" }, { status: 500 })
@@ -51,6 +56,41 @@ export async function POST(request: NextRequest) {
 
     const price = await stripe.prices.retrieve(priceId)
     const amount = Number(price.unit_amount ?? 0) / 100
+    const validatorDecision = evaluatePaymentValidatorGate({
+      amountMinor: Number(price.unit_amount ?? 0),
+      currency: String(price.currency || "usd").toUpperCase(),
+      humanConfirmed,
+      mfaVerified,
+    })
+
+    if (!validatorDecision.allowed) {
+      await logPrivilegedAction({
+        actorUserId: sessionUser.userId,
+        action: "billing.checkout.validator_blocked",
+        resource: "billing.checkout",
+        request,
+        details: sanitizePaymentActivityDetails({
+          priceId,
+          mode,
+          currency: String(price.currency || "usd").toUpperCase(),
+          unitAmount: Number(price.unit_amount ?? 0),
+          validatorDecision,
+        }),
+      })
+
+      return respondError(
+        request,
+        {
+          code: "BILLING_CHECKOUT_VALIDATOR_BLOCKED",
+          message: "Checkout blocked pending additional verification",
+        },
+        {
+          status: 403,
+          meta: { validatorDecision },
+        },
+      )
+    }
+
     const taxComputation = await computeTaxForRegion({
       amount,
       currency: String(price.currency || "usd").toUpperCase(),
@@ -78,6 +118,7 @@ export async function POST(request: NextRequest) {
         tax_state_code: taxComputation.stateCode ?? "",
         tax_total_amount: String(taxComputation.totalTaxAmount),
         product_tax_code: product_tax_code ?? "digital_services",
+        validator_decision: JSON.stringify(validatorDecision),
       },
     })
 
@@ -94,11 +135,17 @@ export async function POST(request: NextRequest) {
       action: "billing.checkout.session_created",
       resource: "billing.checkout",
       request,
-      details: { mode, hasCustomer: Boolean(identity.user.stripe_customer_id), priceId },
+      details: sanitizePaymentActivityDetails({
+        mode,
+        hasCustomer: Boolean(identity.user.stripe_customer_id),
+        priceId,
+        validatorDecision,
+      }),
     })
 
     return respondSuccess(request, {
       url: session.url,
+      validatorDecision,
       tax: {
         country_code: taxComputation.countryCode,
         state_code: taxComputation.stateCode,

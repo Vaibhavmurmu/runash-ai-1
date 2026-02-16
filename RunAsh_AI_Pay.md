@@ -577,3 +577,17 @@ RunAsh provides tax estimation and reporting support. Customers and finance oper
 - External payment API call: `POST https://api.runash.in/v3/pay`
 - Activity summary returned to Relay includes `status`, `tax`, `paymentMethodUsed`, and `fallbackPath`.
 - Backward compatibility preserved for existing agent tools and API signatures.
+
+
+## Validator Gate for Instant Checkout (RunAshChat + Stripe Link)
+
+RunAsh AI Link checkout now enforces a middleware validator gate before payment intent/session creation.
+
+- `requiresHitl`: `true` when amount is above **$100 USD-equivalent** (currency-aware via INR/USD normalization) or configured threshold override.
+- `requiresMfa`: `true` when INR amount exceeds `800000` paise (₹8,000) or configured override.
+- `allowed`: only `true` when required HITL confirmation and MFA checks are satisfied.
+- `reasonCodes`: structured machine-readable reasons such as `HITL_CONFIRMATION_REQUIRED` and `MFA_REQUIRED_FOR_HIGH_VALUE_INR`.
+
+Security hardening for payment activity logs:
+- Raw PAN/card number/CVV are never persisted.
+- Activity/audit logs store only masked card form, e.g. `*4242`.
