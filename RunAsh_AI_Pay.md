@@ -776,11 +776,14 @@ RunAsh AI Pay now enforces a dedicated payment routing policy layer (`lib/paymen
   - Otherwise => `US_EDGE` + `US_STRIPE_PROFILE`
 - Payment metadata now includes route context keys:
   - `region_route`
+  - `residency_policy`
   - `compliance_profile`
-- Route decisions are audit logged with:
+- Intent metadata also carries a `payment_context` object with `{ regionRoute, residencyPolicy }` for downstream orchestration and analytics.
+- Route decisions are audit logged with a structured envelope containing:
   - `requestId`
-  - route decision payload
+  - route decision payload (`regionRoute`, `residencyPolicy`, `complianceProfile`, `reason`)
   - sanitized metadata only (no sensitive payment/auth values)
+- Outbound Stripe/provider payment calls now receive only sanitized metadata fields; raw payment instruments/auth artifacts are excluded from provider-bound metadata.
 - Outbound Stripe payment calls in billing flows now execute after policy resolution and route-audit capture.
 
 Backward compatibility:

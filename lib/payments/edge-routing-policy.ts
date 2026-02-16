@@ -4,6 +4,8 @@ import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer
 
 export type PaymentRegionRoute = "IN_EDGE" | "US_EDGE"
 
+export type ResidencyPolicy = "IN_DATA_RESIDENCY" | "US_DATA_RESIDENCY"
+
 export type ComplianceProfile = "IN_RBI_PROFILE" | "US_STRIPE_PROFILE"
 
 export interface EdgeRoutingPolicyInput {
@@ -13,6 +15,7 @@ export interface EdgeRoutingPolicyInput {
 
 export interface EdgeRoutingPolicyDecision {
   regionRoute: PaymentRegionRoute
+  residencyPolicy: ResidencyPolicy
   complianceProfile: ComplianceProfile
   merchantRegion: string
   customerRegion: string
@@ -21,7 +24,7 @@ export interface EdgeRoutingPolicyDecision {
 
 export interface PaymentRoutingAuditEvent {
   requestId: string
-  routeDecision: Pick<EdgeRoutingPolicyDecision, "regionRoute" | "complianceProfile" | "reason">
+  routeDecision: Pick<EdgeRoutingPolicyDecision, "regionRoute" | "residencyPolicy" | "complianceProfile" | "reason">
   metadata: Record<string, unknown>
 }
 
@@ -58,6 +61,7 @@ export function resolveEdgeRoutingPolicy(input: EdgeRoutingPolicyInput): EdgeRou
   if (useIndiaRouting) {
     return {
       regionRoute: "IN_EDGE",
+      residencyPolicy: "IN_DATA_RESIDENCY",
       complianceProfile: "IN_RBI_PROFILE",
       merchantRegion,
       customerRegion,
@@ -67,6 +71,7 @@ export function resolveEdgeRoutingPolicy(input: EdgeRoutingPolicyInput): EdgeRou
 
   return {
     regionRoute: "US_EDGE",
+    residencyPolicy: "US_DATA_RESIDENCY",
     complianceProfile: "US_STRIPE_PROFILE",
     merchantRegion,
     customerRegion,
@@ -76,13 +81,14 @@ export function resolveEdgeRoutingPolicy(input: EdgeRoutingPolicyInput): EdgeRou
 
 export function withRouteContextMetadata(
   metadata: Record<string, unknown>,
-  routeDecision: Pick<EdgeRoutingPolicyDecision, "regionRoute" | "complianceProfile">,
+  routeDecision: Pick<EdgeRoutingPolicyDecision, "regionRoute" | "residencyPolicy" | "complianceProfile">,
 ): Record<string, string> {
-  const mergedMetadata = {
+  const mergedMetadata = sanitizePaymentActivityDetails({
     ...metadata,
     region_route: routeDecision.regionRoute,
+    residency_policy: routeDecision.residencyPolicy,
     compliance_profile: routeDecision.complianceProfile,
-  }
+  })
 
   return Object.fromEntries(Object.entries(mergedMetadata).map(([key, value]) => [key, String(value ?? "")]))
 }
@@ -96,6 +102,7 @@ export function createPaymentRoutingAuditEvent(input: {
     requestId: getPaymentRoutingRequestId(input.requestId),
     routeDecision: {
       regionRoute: input.decision.regionRoute,
+      residencyPolicy: input.decision.residencyPolicy,
       complianceProfile: input.decision.complianceProfile,
       reason: input.decision.reason,
     },

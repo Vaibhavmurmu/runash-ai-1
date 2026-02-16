@@ -144,6 +144,7 @@ type CheckoutActivitySummary = {
     }
     transactionContext: {
       regionRoute: "IN_EDGE" | "US_EDGE"
+      residencyPolicy: "IN_DATA_RESIDENCY" | "US_DATA_RESIDENCY"
       complianceProfile: "IN_RBI_PROFILE" | "US_STRIPE_PROFILE"
     }
   }
@@ -190,6 +191,7 @@ function buildActivitySummary(
   taxPreview: TaxPreview,
   transactionContext: {
     regionRoute: "IN_EDGE" | "US_EDGE"
+    residencyPolicy: "IN_DATA_RESIDENCY" | "US_DATA_RESIDENCY"
     complianceProfile: "IN_RBI_PROFILE" | "US_STRIPE_PROFILE"
   },
   result: {
@@ -276,6 +278,7 @@ export const linkCheckoutSkill = {
     const requestId = getPaymentRoutingRequestId()
     const transactionContext = {
       regionRoute: edgeRouting.regionRoute,
+      residencyPolicy: edgeRouting.residencyPolicy,
       complianceProfile: edgeRouting.complianceProfile,
     } as const
     const routeAudit = createPaymentRoutingAuditEvent({

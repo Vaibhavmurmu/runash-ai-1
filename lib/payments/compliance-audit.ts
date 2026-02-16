@@ -8,7 +8,10 @@ export interface PaymentComplianceAuditEvent {
   amountMinor: number
   currency: string
   provider: "stripe_link"
-  edgeRouting: Pick<EdgeRoutingPolicyDecision, "regionRoute" | "complianceProfile" | "merchantRegion" | "customerRegion">
+  edgeRouting: Pick<
+    EdgeRoutingPolicyDecision,
+    "regionRoute" | "residencyPolicy" | "complianceProfile" | "merchantRegion" | "customerRegion"
+  >
   validatorPassed: boolean
   routeAudit: PaymentRoutingAuditEvent
 }
