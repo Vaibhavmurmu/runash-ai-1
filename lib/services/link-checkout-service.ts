@@ -13,6 +13,29 @@ const RETRYABLE_ERROR_CODES = new Set([
   "network_error",
 ])
 
+const SAFE_ERROR_CODE_BY_PROVIDER_CODE: Record<string, LinkCheckoutSafeErrorCode> = {
+  rate_limited: "rate_limited",
+  timeout: "timeout",
+  upstream_unavailable: "temporarily_unavailable",
+  temporarily_unavailable: "temporarily_unavailable",
+  network_error: "network_error",
+  card_declined: "payment_declined",
+  insufficient_funds: "payment_declined",
+  authentication_required: "authentication_required",
+  invalid_request: "invalid_request",
+}
+
+export type LinkCheckoutSafeErrorCode =
+  | "none"
+  | "rate_limited"
+  | "timeout"
+  | "temporarily_unavailable"
+  | "network_error"
+  | "payment_declined"
+  | "authentication_required"
+  | "invalid_request"
+  | "checkout_failed"
+
 export interface LinkCheckoutRequest {
   merchant_id: string
   amount: number
@@ -24,6 +47,7 @@ export interface LinkCheckoutRequest {
   }
   human_confirmed?: boolean
   mfa_verified?: boolean
+  default_payment_method?: string
   backup_payment_method?: string
   idempotency_key?: string
   tax_preview?: {
@@ -52,6 +76,7 @@ export interface LinkCheckoutAttemptResult {
   status_code: number | null
   provider_status: string | null
   error_code: string | null
+  safe_error_code: LinkCheckoutSafeErrorCode
   checkout_session_id: string | null
 }
 
@@ -62,7 +87,9 @@ export interface LinkCheckoutFinalResult {
   idempotency_key: string
   next_action: "open_link_checkout" | "retry_or_manual_review"
   fallback_used: boolean
+  fallbackUsed: boolean
   attempted_methods: string[]
+  attemptedMethods: string[]
   final_status: "initiated" | "failed"
   attempts: LinkCheckoutAttemptResult[]
 }
@@ -109,6 +136,23 @@ function resolveProviderStatus(responseBody: Record<string, unknown>): string | 
 
 function resolveErrorCode(responseBody: Record<string, unknown>): string | null {
   return normalizeString(responseBody.error_code) ?? normalizeString(responseBody.code)
+}
+
+function resolveSafeErrorCode(status: number | null, responseBody: Record<string, unknown>): LinkCheckoutSafeErrorCode {
+  const providerCode = resolveErrorCode(responseBody)
+
+  if (providerCode != null && SAFE_ERROR_CODE_BY_PROVIDER_CODE[providerCode]) {
+    return SAFE_ERROR_CODE_BY_PROVIDER_CODE[providerCode]
+  }
+
+  if (status === null) return "network_error"
+  if (status === 408) return "timeout"
+  if (status === 429) return "rate_limited"
+  if (status === 400 || status === 422) return "invalid_request"
+  if (status === 401 || status === 403) return "authentication_required"
+  if (status >= 500) return "temporarily_unavailable"
+
+  return "checkout_failed"
 }
 
 function isRetryableFailure(status: number | null, responseBody: Record<string, unknown>): boolean {
@@ -171,8 +215,9 @@ export async function runLinkCheckoutWithFallback(
   const requestId = deps?.requestId ?? randomUUID()
   const idempotencyKey = buildIdempotencyKey(payload)
 
+  const primaryMethod = normalizeString(payload.default_payment_method) ?? "stripe_link"
   const fallbackMethod = normalizeString(payload.backup_payment_method)
-  const attemptedMethodsPlan = ["stripe_link", ...(fallbackMethod ? [fallbackMethod] : [])]
+  const attemptedMethodsPlan = [primaryMethod, ...(fallbackMethod ? [fallbackMethod] : [])]
   const methods = attemptedMethodsPlan.filter((method, index, all) => all.indexOf(method) === index)
 
   const attempts: LinkCheckoutAttemptResult[] = []
@@ -208,6 +253,7 @@ export async function runLinkCheckoutWithFallback(
           product_metadata: payload.product_metadata,
           human_confirmed: payload.human_confirmed,
           mfa_verified: payload.mfa_verified,
+          default_payment_method: primaryMethod,
           backup_payment_method: payload.backup_payment_method,
           payment_method: method,
           idempotency_key: idempotencyKey,
@@ -224,7 +270,8 @@ export async function runLinkCheckoutWithFallback(
         retryable_failure: !success && isRetryableFailure(response.status, responseBody),
         status_code: response.status,
         provider_status: resolveProviderStatus(responseBody),
-        error_code: resolveErrorCode(responseBody),
+        error_code: resolveSafeErrorCode(response.status, responseBody),
+        safe_error_code: resolveSafeErrorCode(response.status, responseBody),
         checkout_session_id: checkoutSessionId,
       }
 
@@ -253,7 +300,9 @@ export async function runLinkCheckoutWithFallback(
           idempotency_key: idempotencyKey,
           next_action: "open_link_checkout",
           fallback_used: index > 0,
+          fallbackUsed: index > 0,
           attempted_methods: attempts.map((attempt) => attempt.method),
+          attemptedMethods: attempts.map((attempt) => attempt.method),
           final_status: "initiated",
           attempts,
         }
@@ -268,6 +317,7 @@ export async function runLinkCheckoutWithFallback(
         status_code: null,
         provider_status: null,
         error_code: "network_error",
+        safe_error_code: "network_error",
         checkout_session_id: null,
       }
 
@@ -296,8 +346,10 @@ export async function runLinkCheckoutWithFallback(
     request_id: requestId,
     idempotency_key: idempotencyKey,
     next_action: "retry_or_manual_review",
-    fallback_used: attempts.some((attempt, index) => index > 0 && attempt.success),
+    fallback_used: attempts.some((_, index) => index > 0),
+    fallbackUsed: attempts.some((_, index) => index > 0),
     attempted_methods: attempts.map((attempt) => attempt.method),
+    attemptedMethods: attempts.map((attempt) => attempt.method),
     final_status: "failed",
     attempts,
   }

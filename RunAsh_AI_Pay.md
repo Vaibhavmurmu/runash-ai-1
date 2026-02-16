@@ -746,6 +746,10 @@ RunAshChat Link checkout now uses a reliability-first payment orchestration path
   - `fallback_used`
   - `attempted_methods`
   - `final_status`
+  - additive aliases `fallbackUsed` and `attemptedMethods` for Relay/client compatibility
+- Primary attempt selection now honors optional `default_payment_method` (falls back to `stripe_link` if omitted); retryable failures automatically attempt `backup_payment_method` once.
+- One idempotency key is reused for all attempts in a single checkout action (`Idempotency-Key` header + `idempotency_key` body) to prevent duplicate charges.
+- Attempt-level failures now expose only safe error codes (`rate_limited`, `timeout`, `temporarily_unavailable`, `network_error`, `payment_declined`, `authentication_required`, `invalid_request`, `checkout_failed`) to avoid leaking provider-internal details.
 - Sensitive payment payload fields must remain redacted in logs; checkout orchestration avoids logging raw payment instrument details.
 
 ## Instant Checkout Tax Preview and Confirmation Gate
