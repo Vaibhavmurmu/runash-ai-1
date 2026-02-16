@@ -1,6 +1,8 @@
 import { createHash } from "crypto"
 
 import { z } from "zod"
+import { logPaymentComplianceAudit } from "@/lib/payments/compliance-audit"
+import { resolvePaymentEdgeRouting } from "@/lib/payments/edge-routing"
 import { evaluatePaymentValidatorGate, type ValidatorDecision } from "@/lib/payments/validator-gate"
 import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
 import { estimateTaxPreview, type TaxPreview } from "@/lib/payments/tax-estimator"
@@ -56,6 +58,10 @@ export const initiateLinkCheckoutParameters = {
       type: "string",
       description: "State/region code used to estimate GST/VAT for preview",
     },
+    merchant_region: {
+      type: "string",
+      description: "Merchant operating region/country code for residency-aware edge routing",
+    },
     preview_displayed: {
       type: "boolean",
       description: "Must be true only after tax preview is shown to user",
@@ -75,6 +81,7 @@ const initiateLinkCheckoutArgsSchema = z.object({
   currency: z.enum(["USD", "INR"]).default("USD"),
   country: z.string().trim().min(2).max(3).optional(),
   region: z.string().trim().min(1).max(30).optional(),
+  merchant_region: z.string().trim().min(2).max(20).optional(),
   preview_displayed: z.boolean().default(false),
   user_confirmation_after_preview: z.boolean().default(false),
   product_metadata: z
@@ -130,6 +137,10 @@ type CheckoutActivitySummary = {
       country: string
       region: string | null
     }
+    transactionContext: {
+      regionRoute: "IN_EDGE" | "US_EDGE"
+      residencyPolicy: "IN_DATA_RESIDENCY" | "US_DATA_RESIDENCY"
+    }
   }
 }
 
@@ -172,6 +183,10 @@ function buildActivitySummary(
   payload: InitiateLinkCheckoutArgs,
   gate: Awaited<ReturnType<typeof runValidatorGate>>,
   taxPreview: TaxPreview,
+  transactionContext: {
+    regionRoute: "IN_EDGE" | "US_EDGE"
+    residencyPolicy: "IN_DATA_RESIDENCY" | "US_DATA_RESIDENCY"
+  },
   result: {
     status?: unknown
     tax?: unknown
@@ -225,6 +240,7 @@ function buildActivitySummary(
         country: taxPreview.country,
         region: taxPreview.region,
       },
+      transactionContext,
     },
     validatorDecision: gate.validatorDecision,
   }
@@ -248,10 +264,18 @@ export const linkCheckoutSkill = {
         tags: payload.product_metadata.tags,
       },
     })
+    const edgeRouting = resolvePaymentEdgeRouting({
+      merchantRegion: payload.merchant_region,
+      customerRegion: payload.country,
+    })
+    const transactionContext = {
+      regionRoute: edgeRouting.regionRoute,
+      residencyPolicy: edgeRouting.residencyPolicy,
+    } as const
 
     if (!payload.preview_displayed || !payload.user_confirmation_after_preview) {
       return {
-        ...buildActivitySummary(payload, gate, taxPreview, {
+        ...buildActivitySummary(payload, gate, taxPreview, transactionContext, {
           status: "awaiting_post_preview_confirmation",
           tax: taxPreview.gstVatAmount,
           payment_method_used: "stripe_link",
@@ -262,26 +286,60 @@ export const linkCheckoutSkill = {
     }
 
     if (!gate.passed) {
-      return buildActivitySummary(payload, gate, taxPreview, {
+      logPaymentComplianceAudit({
+        event: "runash_pay_request",
+        merchantId: payload.merchant_id,
+        amountMinor: payload.amount,
+        currency: payload.currency,
+        provider: "stripe_link",
+        validatorPassed: gate.passed,
+        edgeRouting,
+      })
+
+      return buildActivitySummary(payload, gate, taxPreview, transactionContext, {
         status: "requires_manual_review",
         tax: taxPreview.gstVatAmount,
         fallback_path: gate.fallbackPath,
       })
     }
 
+    logPaymentComplianceAudit({
+      event: "runash_pay_request",
+      merchantId: payload.merchant_id,
+      amountMinor: payload.amount,
+      currency: payload.currency,
+      provider: "stripe_link",
+      validatorPassed: gate.passed,
+      edgeRouting,
+    })
+
+    const safeRoutingMetadata = {
+      regionRoute: edgeRouting.regionRoute,
+      residencyPolicy: edgeRouting.residencyPolicy,
+      merchantRegion: edgeRouting.merchantRegion,
+      customerRegion: edgeRouting.customerRegion,
+    }
+
     const response = await fetch(LINK_CHECKOUT_API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "X-RunAsh-Region-Route": edgeRouting.regionRoute,
+        "X-RunAsh-Residency-Policy": edgeRouting.residencyPolicy,
       },
-      body: JSON.stringify(sanitizePaymentActivityDetails(payload as unknown as Record<string, unknown>)),
+      body: JSON.stringify(
+        sanitizePaymentActivityDetails({
+          ...payload,
+          routing_metadata: safeRoutingMetadata,
+        } as unknown as Record<string, unknown>),
+      ),
       signal: AbortSignal.timeout(10_000),
     })
 
     const responseBody = (await response.json().catch(() => ({}))) as Record<string, unknown>
 
     if (!response.ok) {
-      return buildActivitySummary(payload, gate, taxPreview, {
+      return buildActivitySummary(payload, gate, taxPreview, transactionContext, {
         status: "fallback_initiated",
         tax: responseBody.tax,
         payment_method_used: responseBody.payment_method_used,
@@ -289,6 +347,6 @@ export const linkCheckoutSkill = {
       })
     }
 
-    return buildActivitySummary(payload, gate, taxPreview, responseBody)
+    return buildActivitySummary(payload, gate, taxPreview, transactionContext, responseBody)
   },
 }
