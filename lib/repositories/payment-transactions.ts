@@ -342,6 +342,78 @@ export async function listRecentPaymentTransactions(limit = 10): Promise<Payment
   return rows.map(mapRow)
 }
 
+export async function listPaymentTransactions(input: {
+  limit?: number
+  offset?: number
+  status?: PaymentTransactionStatus
+  query?: string
+}): Promise<{ records: PaymentTransactionRecord[]; total: number }> {
+  await ensurePaymentTransactionTable()
+
+  const limit = Math.max(1, Math.min(100, input.limit ?? 20))
+  const offset = Math.max(0, input.offset ?? 0)
+  const status = input.status ?? null
+  const query = input.query?.trim() ? `%${input.query.trim()}%` : null
+
+  const totalRow = await queryOne<{ count: number }>(
+    `
+      SELECT COUNT(*)::int AS count
+      FROM payment_transactions_v2
+      WHERE ($1::text IS NULL OR status = $1)
+        AND (
+          $2::text IS NULL
+          OR id ILIKE $2
+          OR intent_id ILIKE $2
+          OR payment_method ILIKE $2
+          OR provider ILIKE $2
+          OR provider_status ILIKE $2
+        )
+    `,
+    [status, query],
+  )
+
+  const rows = await queryMany<PaymentTransactionRecord>(
+    `
+      SELECT
+        id,
+        intent_id AS "intentId",
+        amount::float8 AS amount,
+        currency,
+        status,
+        payment_method AS "paymentMethod",
+        provider,
+        provider_transaction_id AS "providerTransactionId",
+        provider_status AS "providerStatus",
+        processing_fee::float8 AS "processingFee",
+        net_amount::float8 AS "netAmount",
+        failure_reason AS "failureReason",
+        refund_amount::float8 AS "refundAmount",
+        refund_reason AS "refundReason",
+        confirm_idempotency_key AS "confirmIdempotencyKey",
+        metadata,
+        provider_events AS "providerEvents",
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+      FROM payment_transactions_v2
+      WHERE ($1::text IS NULL OR status = $1)
+        AND (
+          $2::text IS NULL
+          OR id ILIKE $2
+          OR intent_id ILIKE $2
+          OR payment_method ILIKE $2
+          OR provider ILIKE $2
+          OR provider_status ILIKE $2
+        )
+      ORDER BY created_at DESC
+      LIMIT $3
+      OFFSET $4
+    `,
+    [status, query, limit, offset],
+  )
+
+  return { records: rows.map(mapRow), total: totalRow?.count ?? 0 }
+}
+
 export async function getPaymentTransactionMonthlyTrends(monthCount = 6): Promise<Array<{ month: string; revenue: number; transactions: number }>> {
   await ensurePaymentTransactionTable()
   const rows = await queryMany<{ month: string; revenue: number; transactions: number }>(

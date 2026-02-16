@@ -1,11 +1,5 @@
-import { UnifiedPaymentPage } from "@/components/payment/unified-payment-page"
+import { RunAshPayDashboard } from "@/components/payment/runash-pay-dashboard"
 
 export default function RunAshPayPage() {
-  return (
-    <UnifiedPaymentPage
-      title="RunAsh Pay"
-      description="Core payment command center for checkout links, payment methods, subscription posture, analytics, usage billing, and reports."
-      sections={["methods", "checkoutLinks", "subscriptions", "analytics", "usage", "portal", "reporting"]}
-    />
-  )
+  return <RunAshPayDashboard />
 }
