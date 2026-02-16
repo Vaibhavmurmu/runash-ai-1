@@ -11,7 +11,19 @@ export interface ChatMessage {
     tips?: SustainabilityTip[]
     automationSuggestions?: AutomationSuggestion[]
     searchResults?: SearchResult[]
+    linkQuickPay?: LinkQuickPayPreview
   }
+}
+
+export interface LinkQuickPayPreview {
+  itemName: string
+  amountMinor: number
+  currency: "USD" | "INR"
+  eligibleForLink: boolean
+  last4: string
+  tags: string[]
+  taxPreview?: number
+  status?: string
 }
 
 export interface SearchResult {

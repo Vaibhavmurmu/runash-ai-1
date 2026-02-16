@@ -1443,3 +1443,18 @@ Operational notes:
 - Validator executes **before** Stripe payment intent/session creation.
 - Threshold checks are currency-normalized across INR/USD using configurable conversion rate.
 - Audit payloads sanitize sensitive card fields and only persist masked last4 formats.
+
+## RunAshChat Link Quick Pay rollout notes
+
+### Flow impact
+- Buy-intent chats can surface a Link quick-pay action card from Relay tool output.
+- Existing payment APIs and field contracts remain unchanged.
+
+### UX details
+- Primary CTA: `Pay with Link *{last4}`.
+- Lifecycle states: `idle` → `processing` → `success | failed`.
+- Badge condition: show `Sold through Link` when the item is Link-eligible and tagged as digital.
+
+### Risk and rollback
+- Risk: low (UI + metadata rendering layer only).
+- Rollback: remove `metadata.linkQuickPay` rendering path; existing checkout flow remains available.

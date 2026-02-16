@@ -591,3 +591,15 @@ RunAsh AI Link checkout now enforces a middleware validator gate before payment 
 Security hardening for payment activity logs:
 - Raw PAN/card number/CVV are never persisted.
 - Activity/audit logs store only masked card form, e.g. `*4242`.
+
+## RunAshChat Instant Checkout (Link Quick Pay)
+
+RunAshChat buy-intent messages now support an in-chat Link quick-pay experience for instant checkout.
+
+- Renderer integration: assistant messages can include a `metadata.linkQuickPay` payload.
+- UI label: `Pay with Link *{last4}` for continuity with saved Link instruments.
+- Status lifecycle: `idle` → `processing` → `success | failed`.
+- Eligibility signal: digital products tagged with `digital` and marked as Link-eligible show a `Sold through Link` badge.
+- Safety posture: no sensitive payment/auth fields are logged in the UI flow.
+
+This preserves existing checkout contracts and only augments chat rendering/metadata for backward-compatible payment UX.
