@@ -1725,3 +1725,16 @@ Risk and rollback:
   1. Revert newly added payment portal page routes.
   2. Revert new analytics and retry/receipt API endpoints.
   3. Keep existing subscription/payment/invoice contracts unchanged.
+
+## Reliability Sprint Update — Deterministic Payment & Usage Core
+
+### Implemented controls
+- Migrated payment-critical flows to deterministic persisted records (no random outcome simulation in payment execution paths).
+- Enforced idempotent webhook lifecycle with retry-safe processing and dead-letter tracking.
+- Confirmed persistent entities for intents, transactions, checkout links, usage events, webhook events, and tax line items.
+- Enabled token/time usage ingestion in single-event and batch modes with custom metadata support.
+- Strengthened encryption-key policy for sensitive billing profile fields to require explicit secure key material in production.
+
+### Risk and rollback
+- **Risk:** Medium (webhook lifecycle state machine changed to include processing claim and dead-letter materialization).
+- **Rollback:** Revert webhook state transition changes and dead-letter table writes; retain event uniqueness for duplicate safety.

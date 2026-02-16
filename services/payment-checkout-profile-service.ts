@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto"
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "crypto"
 import { queryMany, queryOne, sql } from "@/lib/db"
 
 export type CheckoutLinkStatus = "draft" | "active" | "expired" | "disabled"
@@ -148,8 +148,15 @@ export interface CheckoutAnalyticsSnapshot {
 let tablesReady = false
 
 function getEncryptionKey() {
-  const input =
-    process.env.CHECKOUT_PROFILE_ENCRYPTION_KEY || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "runash-local-dev-key"
+  const input = process.env.CHECKOUT_PROFILE_ENCRYPTION_KEY || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET
+
+  if (!input) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("Missing checkout profile encryption key")
+    }
+
+    return createHash("sha256").update("runash-local-dev-key").digest()
+  }
 
   return createHash("sha256").update(input).digest()
 }
@@ -286,7 +293,7 @@ async function ensureTables() {
 }
 
 function nowId(prefix: string) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  return `${prefix}_${randomUUID().replace(/-/g, "")}`
 }
 
 function buildSessionIntegrityFingerprint(input: { deviceContext?: Record<string, unknown>; browserContext?: Record<string, unknown> }) {

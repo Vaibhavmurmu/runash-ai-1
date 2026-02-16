@@ -126,3 +126,10 @@ Operational guidance:
 - Do not trust caller-supplied customer/user identifiers in billing/payment route bodies for authorization decisions.
 - Continue structured logging only; redact payment/auth sensitive fields and avoid raw credential/payment payload logging in all payment/billing handlers.
 
+
+## Billing encryption policy update (2026-02)
+
+- Sensitive billing profile fields must remain encrypted at rest.
+- Production deployments must provide explicit encryption key material through `CHECKOUT_PROFILE_ENCRYPTION_KEY` (or approved auth-secret fallback).
+- Weak implicit defaults are not permitted in production environments.
+- Payment/auth logs must avoid sensitive payload fields and raw credentials/card data.

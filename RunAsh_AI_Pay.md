@@ -990,3 +990,27 @@ Backward-compatibility notes:
 ### Risk + rollback
 - **Risk:** Medium (expanded portal/API surface).
 - **Rollback:** Revert newly added `payment/portal` pages and new `/api/v1/payment/analytics/*`, `/api/v1/payment/profile/portal/retry-failed-payment`, and `/api/v1/billing/invoices/:id/receipt` routes.
+
+## 2026-02 Reliability & Compliance Hardening Update
+
+### DB-backed billing entities (authoritative storage)
+RunAsh AI Pay now relies on persistent database-backed entities for all critical billing workflow objects:
+- payment intents
+- transactions
+- checkout links
+- usage events (single + batch ingestion)
+- webhook events (including dead-letter records)
+- tax line items
+
+### Deterministic checkout/payment execution
+Payment execution and checkout-link flows were hardened to remove random/in-memory outcomes. All attempt outcomes are now persisted and replay-safe so retries and reconciliation produce deterministic states.
+
+### Webhook idempotency, retries, and dead-lettering
+Billing webhook processing now uses:
+- provider+event id uniqueness for idempotency,
+- signature verification and tolerance checks,
+- retry-safe claim/processing semantics,
+- dead-letter tracking for repeatedly failing events.
+
+### Sensitive billing/profile data policy
+Billing profile details remain encrypted at rest. Production now requires an explicit encryption key via environment configuration (`CHECKOUT_PROFILE_ENCRYPTION_KEY` or approved auth secret fallback) and disallows weak implicit defaults.

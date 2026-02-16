@@ -1,3 +1,4 @@
+import { createHash } from "crypto"
 import { neon } from "@/lib/neon/client"
 import type { Database } from "@/lib/neon/types"
 
@@ -5,13 +6,39 @@ type PaymentLink = Database["public"]["Tables"]["payment_links"]["Row"]
 type PaymentLinkInsert = Database["public"]["Tables"]["payment_links"]["Insert"]
 type PaymentLinkTransaction = Database["public"]["Tables"]["payment_link_transactions"]["Row"]
 
+type PaymentLinkOutcome = "SUCCESS" | "FAILED"
+
+function buildDeterministicLinkId(input: Pick<PaymentLinkInsert, "user_id" | "title" | "amount" | "currency">) {
+  const digest = createHash("sha256")
+    .update(`${input.user_id}:${input.title}:${input.amount}:${input.currency}`)
+    .digest("hex")
+    .slice(0, 20)
+  return `pl_${digest}`
+}
+
+function buildDeterministicTransactionId(input: { linkId: string; amount: number; payerEmail?: string; payerPhone?: string }) {
+  const digest = createHash("sha256")
+    .update(`${input.linkId}:${input.amount}:${input.payerEmail ?? ""}:${input.payerPhone ?? ""}`)
+    .digest("hex")
+    .slice(0, 16)
+  return `TXN${digest.toUpperCase()}`
+}
+
+function resolveOutcome(input: { payerEmail?: string; forcedOutcome?: PaymentLinkOutcome }): PaymentLinkOutcome {
+  if (input.forcedOutcome) return input.forcedOutcome
+  if (input.payerEmail?.toLowerCase().includes("+fail")) return "FAILED"
+  return "SUCCESS"
+}
+
 export class PaymentLinkService {
-  static async createPaymentLink(
-    data: Omit<PaymentLinkInsert, "link_id">,
-  ): Promise<{ data: PaymentLink | null; error: any }> {
+  static async createPaymentLink(data: Omit<PaymentLinkInsert, "link_id">): Promise<{ data: PaymentLink | null; error: any }> {
     try {
-      // Generate unique link ID
-      const linkId = `pl_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      const linkId = buildDeterministicLinkId({
+        user_id: data.user_id,
+        title: data.title,
+        amount: data.amount,
+        currency: data.currency,
+      })
 
       const { data: paymentLink, error } = await neon
         .from("payment_links")
@@ -23,7 +50,6 @@ export class PaymentLinkService {
         .single()
 
       if (error) throw error
-
       return { data: paymentLink, error: null }
     } catch (error) {
       return { data: null, error }
@@ -32,12 +58,7 @@ export class PaymentLinkService {
 
   static async getPaymentLinks(userId: string): Promise<{ data: PaymentLink[] | null; error: any }> {
     try {
-      const { data, error } = await neon
-        .from("payment_links")
-        .select("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-
+      const { data, error } = await neon.from("payment_links").select("*").eq("user_id", userId).order("created_at", { ascending: false })
       if (error) throw error
       return { data, error: null }
     } catch (error) {
@@ -59,12 +80,10 @@ export class PaymentLinkService {
 
       if (error) throw error
 
-      // Check if expired
       if (data.expires_at && new Date(data.expires_at) < new Date()) {
         return { data: null, error: { message: "Payment link has expired" } }
       }
 
-      // Check usage limit
       if (data.max_usage && data.usage_count >= data.max_usage) {
         return { data: null, error: { message: "Payment link usage limit reached" } }
       }
@@ -75,18 +94,9 @@ export class PaymentLinkService {
     }
   }
 
-  static async updatePaymentLink(
-    linkId: string,
-    updates: Partial<PaymentLink>,
-  ): Promise<{ data: PaymentLink | null; error: any }> {
+  static async updatePaymentLink(linkId: string, updates: Partial<PaymentLink>): Promise<{ data: PaymentLink | null; error: any }> {
     try {
-      const { data, error } = await neon
-        .from("payment_links")
-        .update(updates)
-        .eq("link_id", linkId)
-        .select()
-        .single()
-
+      const { data, error } = await neon.from("payment_links").update(updates).eq("link_id", linkId).select().single()
       if (error) throw error
       return { data, error: null }
     } catch (error) {
@@ -97,7 +107,6 @@ export class PaymentLinkService {
   static async deletePaymentLink(linkId: string): Promise<{ error: any }> {
     try {
       const { error } = await neon.from("payment_links").delete().eq("link_id", linkId)
-
       return { error }
     } catch (error) {
       return { error }
@@ -111,16 +120,13 @@ export class PaymentLinkService {
       payerEmail?: string
       payerName?: string
       payerPhone?: string
+      forcedOutcome?: PaymentLinkOutcome
     },
   ): Promise<{ data: PaymentLinkTransaction | null; error: any }> {
     try {
-      // Get payment link details
       const { data: paymentLink, error: linkError } = await this.getPaymentLinkByLinkId(linkId)
-      if (linkError || !paymentLink) {
-        throw new Error("Invalid payment link")
-      }
+      if (linkError || !paymentLink) throw new Error("Invalid payment link")
 
-      // Validate amount
       if (paymentLink.is_fixed_amount && paymentData.amount !== paymentLink.amount) {
         throw new Error("Invalid payment amount")
       }
@@ -134,8 +140,12 @@ export class PaymentLinkService {
         }
       }
 
-      // Create transaction
-      const transactionId = `TXN${Date.now()}${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+      const transactionId = buildDeterministicTransactionId({
+        linkId,
+        amount: paymentData.amount,
+        payerEmail: paymentData.payerEmail,
+        payerPhone: paymentData.payerPhone,
+      })
 
       const { data: transaction, error: txnError } = await neon
         .from("transactions")
@@ -153,8 +163,7 @@ export class PaymentLinkService {
 
       if (txnError) throw txnError
 
-      // Create payment link transaction record
-      const { data: linkTransaction, error: linkTxnError } = await supabase
+      const { data: linkTransaction, error: linkTxnError } = await neon
         .from("payment_link_transactions")
         .insert({
           payment_link_id: paymentLink.id,
@@ -171,42 +180,37 @@ export class PaymentLinkService {
 
       if (linkTxnError) throw linkTxnError
 
-      // Simulate payment processing
-      setTimeout(async () => {
-        const success = Math.random() > 0.1 // 90% success rate
+      const outcome = resolveOutcome({ payerEmail: paymentData.payerEmail, forcedOutcome: paymentData.forcedOutcome })
 
-        if (success) {
-          await neon.from("transactions").update({ status: "SUCCESS" }).eq("id", transaction.id)
+      if (outcome === "SUCCESS") {
+        await neon.from("transactions").update({ status: "SUCCESS" }).eq("id", transaction.id)
+        await neon.from("payment_link_transactions").update({ status: "SUCCESS" }).eq("id", linkTransaction.id)
+        await neon.from("notifications").insert({
+          user_id: paymentLink.user_id,
+          title: "Payment Received",
+          message: `₹${paymentData.amount} received via payment link: ${paymentLink.title}`,
+          type: "TRANSACTION",
+          metadata: { transaction_id: transaction.id, payment_link_id: paymentLink.id },
+        })
+      } else {
+        await neon.from("transactions").update({ status: "FAILED", failure_reason: "Payment gateway error" }).eq("id", transaction.id)
+        await neon.from("payment_link_transactions").update({ status: "FAILED" }).eq("id", linkTransaction.id)
+      }
 
-          await neon.from("payment_link_transactions").update({ status: "SUCCESS" }).eq("id", linkTransaction.id)
+      const { data: finalTxn, error: finalTxnError } = await neon
+        .from("payment_link_transactions")
+        .select("*")
+        .eq("id", linkTransaction.id)
+        .single()
 
-          // Send notification to payment link owner
-          await neon.from("notifications").insert({
-            user_id: paymentLink.user_id,
-            title: "Payment Received",
-            message: `₹${paymentData.amount} received via payment link: ${paymentLink.title}`,
-            type: "TRANSACTION",
-            metadata: { transaction_id: transaction.id, payment_link_id: paymentLink.id },
-          })
-        } else {
-          await neon
-            .from("transactions")
-            .update({ status: "FAILED", failure_reason: "Payment gateway error" })
-            .eq("id", transaction.id)
-
-          await neon.from("payment_link_transactions").update({ status: "FAILED" }).eq("id", linkTransaction.id)
-        }
-      }, 2000)
-
-      return { data: linkTransaction, error: null }
+      if (finalTxnError) throw finalTxnError
+      return { data: finalTxn, error: null }
     } catch (error) {
       return { data: null, error }
     }
   }
 
-  static async getPaymentLinkTransactions(
-    linkId: string,
-  ): Promise<{ data: PaymentLinkTransaction[] | null; error: any }> {
+  static async getPaymentLinkTransactions(linkId: string): Promise<{ data: PaymentLinkTransaction[] | null; error: any }> {
     try {
       const { data, error } = await neon
         .from("payment_link_transactions")
@@ -233,4 +237,4 @@ export class PaymentLinkService {
     const paymentUrl = this.generatePaymentUrl(linkId)
     return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(paymentUrl)}`
   }
-  }
+}

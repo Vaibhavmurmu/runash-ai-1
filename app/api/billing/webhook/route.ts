@@ -107,8 +107,16 @@ export async function POST(req: NextRequest) {
     const result = await processWebhookEvent(event)
     logApiEvent("info", "billing.webhook.processed", {
       ...requestContext,
-      details: { eventId: event.id, eventType: event.type, attempts: result.attempts },
+      details: { eventId: event.id, eventType: event.type, attempts: result.attempts, processed: result.processed },
     })
+
+    if (!result.processed) {
+      return NextResponse.json(
+        { received: true, processed: false, duplicate: true, inFlight: true },
+        { status: 202 },
+      )
+    }
+
     return NextResponse.json({ received: true, processed: true, duplicate: eventRecord.duplicate })
   } catch (error) {
     logApiEvent("error", "billing.webhook.processing_failed", {
