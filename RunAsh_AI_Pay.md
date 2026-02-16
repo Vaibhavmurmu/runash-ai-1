@@ -1014,3 +1014,21 @@ Billing webhook processing now uses:
 
 ### Sensitive billing/profile data policy
 Billing profile details remain encrypted at rest. Production now requires an explicit encryption key via environment configuration (`CHECKOUT_PROFILE_ENCRYPTION_KEY` or approved auth secret fallback) and disallows weak implicit defaults.
+
+## RunAsh Pay Dashboard UI reliability baseline (2026-02)
+
+To support Instant Checkout operations in RunAshChat and Stripe Link relay monitoring, the dashboard now follows a reusable UI primitive system:
+
+- **Reusable primitives:** shared header, dashboard card shell, quick actions, transaction row, and bottom navigation components.
+- **Responsive standards:** mobile-first single-column stack, with desktop two-column sections for payment request and bill workflows.
+- **Consistency layer:** unified spacing and typography, empty states for no-data results, and skeleton rows for loading transaction history.
+- **Accessibility hardening:** keyboard-focusable rows, explicit ARIA labels on key controls, focus-visible states, and contrast-safe muted/foreground pairings.
+
+### Visual QA checklist (payment-critical components)
+
+- [ ] Header balance card updates correctly on refresh and announces loading/value changes.
+- [ ] Quick action buttons are keyboard reachable in tab order and route to the expected flows.
+- [ ] Transaction list shows skeleton rows while loading and empty state messaging when no records are returned.
+- [ ] Transaction rows show amount, timestamp, status badge, and visible focus ring when tabbed.
+- [ ] Payment request and bill payment forms preserve legibility, spacing, and action contrast on mobile and desktop.
+- [ ] Bottom navigation remains reachable and readable on narrow screens without clipping.
