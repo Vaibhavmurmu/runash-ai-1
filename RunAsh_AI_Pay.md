@@ -714,3 +714,20 @@ RunAshChat "Instant Checkout" now enforces a deterministic Relay safety middlewa
 
 - **Risk level:** medium (may block high-value checkout attempts that previously proceeded without HITL/MFA flags).
 - **Rollback:** revert Relay validator middleware integration in `lib/agent-tools/initiate-link-checkout.ts` and `services/agent-orchestration-service.ts`, then redeploy.
+
+## RunAshChat Instant Checkout (Stripe Link bridge)
+
+RunAshChat now supports an in-thread Link instant-checkout CTA for eligible product cards so users can complete "buy this" style intents without leaving chat context.
+
+### UI/UX behavior contract
+
+- Primary action label remains `Pay with Link *{last4}` for backward-compatible recognition in payment QA and support playbooks.
+- Button lifecycle is explicit: `idle` → `processing` → (`success` | `failed`).
+- Failed attempts stay recoverable in place (retry from the same control) so the Relay Agent can re-attempt Link checkout once authorization becomes available.
+- Eligible digital products render a `Sold through Link` badge to indicate Link-supported fulfillment.
+- Accessibility hardening: disabled state during processing/success, live status messaging, and loading affordances for screen-reader users.
+
+### Reliability notes
+
+- No payment payload field names or API signatures are changed by this UI update.
+- This change is presentation/state-management only and remains compatible with existing `/api/payment/*` and `/api/v1/payment/*` flows.
