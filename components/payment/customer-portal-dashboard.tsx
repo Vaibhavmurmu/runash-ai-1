@@ -22,6 +22,20 @@ type MethodRef = {
   status: "active" | "disabled"
 }
 
+type BankAccount = {
+  id: string
+  bankName: string
+  accountNumberMasked: string
+  accountLast4: string
+  ifscCode: string | null
+  accountType: string
+  currency: string
+  isPrimary: boolean
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 type Profile = {
   billingDetails: Record<string, unknown> | null
   billingAddress: Record<string, unknown> | null
@@ -50,6 +64,7 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 
 export function CustomerPortalDashboard() {
   const [methods, setMethods] = useState<MethodRef[]>([])
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [profile, setProfile] = useState<Profile | null>(null)
   const [subscription, setSubscription] = useState<Subscription>(null)
   const [invoices, setInvoices] = useState<InvoiceRecord[]>([])
@@ -59,13 +74,23 @@ export function CustomerPortalDashboard() {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [billingName, setBillingName] = useState("")
+  const [bankAccountForm, setBankAccountForm] = useState({
+    bankName: "",
+    accountNumber: "",
+    ifscCode: "",
+    accountHolderName: "",
+    accountType: "savings",
+    currency: "INR",
+    isPrimary: false,
+  })
 
   const loadAll = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [methodData, profileData, subscriptionData, invoiceData, analyticsData] = await Promise.all([
+      const [methodData, bankAccountData, profileData, subscriptionData, invoiceData, analyticsData] = await Promise.all([
         fetchJson<MethodRef[]>("/api/v1/payment/profile/methods"),
+        fetchJson<BankAccount[]>("/api/v1/payment/profile/bank-accounts"),
         fetchJson<Profile>("/api/v1/payment/profile/portal"),
         fetchJson<Subscription>("/api/v1/billing/subscription"),
         fetchJson<{ invoices: InvoiceRecord[] }>("/api/v1/billing/invoices?limit=5"),
@@ -73,6 +98,7 @@ export function CustomerPortalDashboard() {
       ])
 
       setMethods(methodData)
+      setBankAccounts(bankAccountData)
       setProfile(profileData)
       setSubscription(subscriptionData)
       setInvoices(invoiceData.invoices ?? [])
@@ -123,6 +149,42 @@ export function CustomerPortalDashboard() {
       await loadAll()
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Failed to update billing profile")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const addBankAccount = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      await fetchJson<BankAccount>("/api/v1/payment/profile/bank-accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bankName: bankAccountForm.bankName,
+          accountNumber: bankAccountForm.accountNumber,
+          ifscCode: bankAccountForm.ifscCode,
+          accountHolderName: bankAccountForm.accountHolderName,
+          accountType: bankAccountForm.accountType,
+          currency: bankAccountForm.currency,
+          isPrimary: bankAccountForm.isPrimary,
+        }),
+      })
+
+      setBankAccountForm({
+        bankName: "",
+        accountNumber: "",
+        ifscCode: "",
+        accountHolderName: "",
+        accountType: "savings",
+        currency: "INR",
+        isPrimary: false,
+      })
+
+      await loadAll()
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Failed to add bank account")
     } finally {
       setSaving(false)
     }
@@ -195,6 +257,51 @@ export function CustomerPortalDashboard() {
             </div>
             <Button onClick={() => void saveBillingProfile()} disabled={saving}>Save billing profile</Button>
             <p className="text-xs text-muted-foreground">Shipping profile is retained securely and reused for checkout autofill authorization.</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Bank Accounts</CardTitle>
+            <CardDescription>Add settlement bank accounts with server-validated details.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-1 gap-2">
+              <Input
+                value={bankAccountForm.bankName}
+                onChange={(event) => setBankAccountForm((value) => ({ ...value, bankName: event.target.value }))}
+                placeholder="Bank name"
+              />
+              <Input
+                value={bankAccountForm.accountHolderName}
+                onChange={(event) => setBankAccountForm((value) => ({ ...value, accountHolderName: event.target.value }))}
+                placeholder="Account holder name"
+              />
+              <Input
+                value={bankAccountForm.accountNumber}
+                onChange={(event) => setBankAccountForm((value) => ({ ...value, accountNumber: event.target.value.replace(/\D/g, "") }))}
+                placeholder="Account number (9-18 digits)"
+              />
+              <Input
+                value={bankAccountForm.ifscCode}
+                onChange={(event) => setBankAccountForm((value) => ({ ...value, ifscCode: event.target.value.toUpperCase() }))}
+                placeholder="IFSC (e.g., HDFC0ABC123)"
+              />
+            </div>
+            <Button onClick={() => void addBankAccount()} disabled={saving}>Add bank account</Button>
+            {bankAccounts.length === 0 ? <p className="text-sm text-muted-foreground">No bank accounts added yet.</p> : null}
+            <div className="space-y-2">
+              {bankAccounts.map((account) => (
+                <div key={account.id} className="rounded border p-3 text-sm">
+                  <p className="font-medium">{account.bankName} • {account.accountNumberMasked}</p>
+                  <p className="text-muted-foreground">Type: {account.accountType} · IFSC: {account.ifscCode ?? "N/A"} · {account.currency}</p>
+                  <div className="mt-2 flex gap-2">
+                    {account.isPrimary ? <Badge variant="secondary">Primary</Badge> : null}
+                    {account.isActive ? <Badge variant="outline">Active</Badge> : <Badge variant="destructive">Inactive</Badge>}
+                  </div>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
 

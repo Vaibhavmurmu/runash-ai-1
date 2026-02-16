@@ -1032,3 +1032,19 @@ To support Instant Checkout operations in RunAshChat and Stripe Link relay monit
 - [ ] Transaction rows show amount, timestamp, status badge, and visible focus ring when tabbed.
 - [ ] Payment request and bill payment forms preserve legibility, spacing, and action contrast on mobile and desktop.
 - [ ] Bottom navigation remains reachable and readable on narrow screens without clipping.
+
+## Bank account intake hardening (masked profile flow)
+
+Updated customer billing profile bank-account handling for safer payout onboarding:
+
+- Added `GET|POST /api/v1/payment/profile/bank-accounts` for customer-scoped bank account listing and creation.
+- Enforced server-side validation before persistence:
+  - account number must be 9-18 digits,
+  - IFSC format must match `^[A-Z]{4}0[A-Z0-9]{6}$`,
+  - account-holder name supports 3-100 chars with restricted safe characters.
+- `BankService.addBankAccount` now accepts only user-entered fields and applies server defaults (`balance=0`, `is_active=true`, default `account_type`, default `currency`).
+- API responses now return masked account metadata only (e.g., `accountNumberMasked`, `accountLast4`) and avoid returning raw account numbers.
+
+Compatibility and rollout notes:
+- Existing persistence fields and table contracts are preserved.
+- No migration is required; this is an additive API surface and stricter validation gate.
