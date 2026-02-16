@@ -886,3 +886,21 @@ This update is additive and preserves existing payment flow field names and Rela
 ### Compatibility + security
 - All changes are additive and backward compatible; existing field names/contracts remain valid.
 - Sensitive card/auth data remains prohibited from logs/storage; tokenized references only.
+
+## RunAsh Pay dashboard data and action APIs (latest)
+
+The `/payment/runash-pay` surface now uses real server-backed APIs for wallet summary and transaction history:
+
+- `GET /api/v1/payment/summary` – returns current balance + headline payment totals.
+- `GET /api/v1/payment/transactions?limit=<n>&page=<n>&status=<...>&query=<...>` – paginated, filterable transaction list.
+
+It also includes mutation contracts for request and bill operations used by Instant Checkout support flows:
+
+- `GET /api/v1/payment/requests`
+- `POST /api/v1/payment/requests`
+- `PATCH /api/v1/payment/requests/:id`
+- `GET /api/v1/payment/bill-payments`
+- `POST /api/v1/payment/bill-payments`
+- `PATCH /api/v1/payment/bill-payments/:id`
+
+Client behavior now uses optimistic UI updates with rollback on mutation failures for payment requests and bill payments, and refresh now performs real API refetch instead of timeout simulation.
