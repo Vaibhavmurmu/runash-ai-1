@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server"
 import { z } from "zod"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
-import { requireScopedBillingAccess } from "@/lib/billing-auth"
+import { requireBillingActionAccess } from "@/lib/billing-auth"
 import { getCustomerCheckoutProfile, upsertCustomerCheckoutProfile } from "@/services/payment-checkout-profile-service"
 
 const profileUpsertSchema = z
@@ -14,7 +14,7 @@ const profileUpsertSchema = z
   .strict()
 
 export async function GET(request: NextRequest) {
-  const access = await requireScopedBillingAccess("business")
+  const access = await requireBillingActionAccess("billing:operate")
   if ("response" in access) return access.response
 
   const profile = await getCustomerCheckoutProfile(access.sessionUser.userId)
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const access = await requireScopedBillingAccess("business")
+  const access = await requireBillingActionAccess("billing:operate")
   if ("response" in access) return access.response
 
   const body = await request.json().catch(() => ({}))

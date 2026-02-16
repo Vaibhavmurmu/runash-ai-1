@@ -441,3 +441,15 @@ Traceability standard:
   - `customer_finance`
 - Customer roles are organization-scoped: access is denied when no `organizationId` is present in session claims.
 - Payment-method mutation access (`switch` / `delete`) requires session-integrity validation against the latest authorized checkout session fingerprint to mitigate cross-device misuse.
+
+
+## Payment RBAC action policy (finance/admin/operator)
+
+For payment and billing routes, role checks are enforced with explicit action classes via `RBACManager.hasBillingActionAccess` and server route guards:
+
+- `finance:read` — reporting/analytics visibility for finance and admin roles.
+- `billing:admin` — administrative billing mutations (plan/subscription administration).
+- `billing:operate` — operational payment actions scoped to authorized customer/operator roles.
+
+All customer-scoped payment resources must pass an ownership check (`ensureCustomerScopedAccess`) that validates user and organization claims from the authenticated server session.
+

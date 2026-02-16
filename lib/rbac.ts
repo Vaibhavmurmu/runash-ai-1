@@ -19,6 +19,7 @@ export const DEFAULT_ROLES = {
 } as const
 
 export type OperatorScope = "business" | "startup"
+export type BillingAction = "finance:read" | "billing:admin" | "billing:operate"
 
 export const DEFAULT_PERMISSIONS = {
   // User management
@@ -126,6 +127,34 @@ export class RBACManager {
     }
 
     return role === DEFAULT_ROLES.STARTUP_ADMIN || role === DEFAULT_ROLES.STARTUP_OPERATOR
+  }
+
+  static hasBillingActionAccess(role: string, action: BillingAction): boolean {
+    if (role === DEFAULT_ROLES.SUPER_ADMIN || role === DEFAULT_ROLES.ADMIN) {
+      return true
+    }
+
+    if (action === "finance:read") {
+      return (
+        role === DEFAULT_ROLES.BUSINESS_ADMIN ||
+        role === DEFAULT_ROLES.CUSTOMER_ADMIN ||
+        role === DEFAULT_ROLES.CUSTOMER_FINANCE ||
+        role === DEFAULT_ROLES.STARTUP_ADMIN
+      )
+    }
+
+    if (action === "billing:admin") {
+      return role === DEFAULT_ROLES.BUSINESS_ADMIN || role === DEFAULT_ROLES.CUSTOMER_ADMIN || role === DEFAULT_ROLES.STARTUP_ADMIN
+    }
+
+    return (
+      role === DEFAULT_ROLES.BUSINESS_ADMIN ||
+      role === DEFAULT_ROLES.BUSINESS_OPERATOR ||
+      role === DEFAULT_ROLES.CUSTOMER_ADMIN ||
+      role === DEFAULT_ROLES.CUSTOMER_OPERATOR ||
+      role === DEFAULT_ROLES.STARTUP_ADMIN ||
+      role === DEFAULT_ROLES.STARTUP_OPERATOR
+    )
   }
 
   /**

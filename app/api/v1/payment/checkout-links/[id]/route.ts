@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server"
 import { z } from "zod"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
-import { requireScopedBillingAccess } from "@/lib/billing-auth"
+import { requireBillingActionAccess } from "@/lib/billing-auth"
 import { transitionCheckoutLinkStatus, updateCheckoutLink } from "@/services/payment-checkout-profile-service"
 
 const updateCheckoutLinkSchema = z
@@ -23,7 +23,7 @@ const actionSchema = z
   .strict()
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
-  const access = await requireScopedBillingAccess("business")
+  const access = await requireBillingActionAccess("billing:operate")
   if ("response" in access) return access.response
 
   const body = await request.json().catch(() => ({}))

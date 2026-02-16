@@ -118,3 +118,11 @@ Operational guidance:
 - **RBAC + organization scope:** `customer_admin`, `customer_operator`, and `customer_finance` roles are treated as payment operators only when organization scope is present.
 - **Session integrity for payment methods:** payment-method mutation endpoints enforce a session integrity check by comparing a hashed device/browser fingerprint with the most recent authorized checkout session.
 - **Sensitive data minimization:** payment controls avoid logging raw payment/auth payload material and continue requiring tokenized provider references.
+
+
+## Payment authz ownership + redaction requirements
+
+- Customer-scoped payment resources must enforce both RBAC action permissions and session ownership checks before read/write operations.
+- Do not trust caller-supplied customer/user identifiers in billing/payment route bodies for authorization decisions.
+- Continue structured logging only; redact payment/auth sensitive fields and avoid raw credential/payment payload logging in all payment/billing handlers.
+
