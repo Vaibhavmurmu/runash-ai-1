@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server"
 import { z } from "zod"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
-import { requireBillingActionAccess } from "@/lib/billing-auth"
+import { ensureCustomerScopedAccess, requireBillingActionAccess } from "@/lib/billing-auth"
 import {
   removeCustomerPaymentMethodReference,
   switchCustomerPaymentMethod,
@@ -30,6 +30,9 @@ function resolveSessionContexts(request: NextRequest) {
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   const access = await requireBillingActionAccess("billing:operate")
   if ("response" in access) return access.response
+
+  const scopeError = ensureCustomerScopedAccess(access.sessionUser, { customerId: access.sessionUser.userId, organizationId: access.sessionUser.organizationId })
+  if (scopeError) return scopeError
 
   const contexts = resolveSessionContexts(request)
   const sessionIntegrity = await verifyPaymentMethodSessionIntegrity({
@@ -70,6 +73,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   const access = await requireBillingActionAccess("billing:operate")
   if ("response" in access) return access.response
+
+  const scopeError = ensureCustomerScopedAccess(access.sessionUser, { customerId: access.sessionUser.userId, organizationId: access.sessionUser.organizationId })
+  if (scopeError) return scopeError
 
   const contexts = resolveSessionContexts(request)
   const sessionIntegrity = await verifyPaymentMethodSessionIntegrity({
