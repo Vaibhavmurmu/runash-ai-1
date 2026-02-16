@@ -1454,6 +1454,7 @@ Operational notes:
 - Primary CTA: `Pay with Link *{last4}`.
 - Lifecycle states: `idle` → `processing` → `success | failed`.
 - Badge condition: show `Sold through Link` when the item is Link-eligible and tagged as digital.
+- In-chat quick-pay now displays the payment attempt timeline for primary/fallback transparency.
 
 ### Risk and rollback
 - Risk: low (UI + metadata rendering layer only).
@@ -1466,8 +1467,8 @@ For checkout execution reliability, payment confirmation now uses a two-step det
 2. On retryable/default-method failure codes, automatically retry using `backup_payment_method`.
 
 ### Audit and response contract
-- Every execution attempt is written to transaction timeline metadata with `attemptIndex` and `reason`.
-- Confirm responses include additive fields: `attemptedMethods`, `fallbackUsed`, and `finalStatus`.
+- Every execution attempt is written to transaction timeline metadata as `attempt_timeline[]` entries (`method`, `reason`, `status`, `timestamp`).
+- Confirm responses include additive fields: `attemptedMethods`, `fallbackUsed`, `finalStatus`, and `attemptTimeline`.
 - Confirm idempotency remains single-key per checkout action across retries.
 
 ### Risk and rollback

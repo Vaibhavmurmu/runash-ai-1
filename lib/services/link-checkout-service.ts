@@ -80,6 +80,13 @@ export interface LinkCheckoutAttemptResult {
   checkout_session_id: string | null
 }
 
+export interface LinkCheckoutAttemptTimelineEntry {
+  method: string
+  reason: "primary" | "fallback_retry" | "no_retry"
+  status: "initiated" | "failed"
+  timestamp: string
+}
+
 export interface LinkCheckoutFinalResult {
   status: "initiated" | "failed"
   checkout_session_id: string | null
@@ -92,6 +99,8 @@ export interface LinkCheckoutFinalResult {
   attemptedMethods: string[]
   final_status: "initiated" | "failed"
   attempts: LinkCheckoutAttemptResult[]
+  attempt_timeline: LinkCheckoutAttemptTimelineEntry[]
+  attemptTimeline: LinkCheckoutAttemptTimelineEntry[]
 }
 
 type PersistAttemptFn = (input: {
@@ -180,6 +189,7 @@ async function persistAttempt(
     requestId: string
     taxPreview?: LinkCheckoutRequest["tax_preview"]
     taxLineItems?: LinkCheckoutRequest["tax_line_items"]
+    timeline: LinkCheckoutAttemptTimelineEntry[]
   },
 ) {
   await persist({
@@ -206,6 +216,7 @@ async function persistAttempt(
         tax_label: input.taxPreview?.tax_label ?? null,
         line_items: input.taxLineItems ?? [],
       },
+      attempt_timeline: input.timeline,
     },
   })
 }
@@ -228,6 +239,7 @@ export async function runLinkCheckoutWithFallback(
   const methods = attemptedMethodsPlan.filter((method, index, all) => all.indexOf(method) === index)
 
   const attempts: LinkCheckoutAttemptResult[] = []
+  const attemptTimeline: LinkCheckoutAttemptTimelineEntry[] = []
 
   const persistAttemptFn: PersistAttemptFn =
     deps?.persistAttemptFn ??
@@ -283,6 +295,12 @@ export async function runLinkCheckoutWithFallback(
       }
 
       attempts.push(attemptResult)
+      attemptTimeline.push({
+        method,
+        reason: index === 0 ? "primary" : "fallback_retry",
+        status: success ? "initiated" : "failed",
+        timestamp: new Date().toISOString(),
+      })
 
       try {
         await persistAttempt(persistAttemptFn, {
@@ -294,6 +312,7 @@ export async function runLinkCheckoutWithFallback(
           requestId,
           taxPreview: payload.tax_preview,
           taxLineItems: payload.tax_line_items,
+          timeline: attemptTimeline,
         })
       } catch {
         // Persistence failures should not block checkout execution.
@@ -312,6 +331,8 @@ export async function runLinkCheckoutWithFallback(
           attemptedMethods: attempts.map((attempt) => attempt.method),
           final_status: "initiated",
           attempts,
+          attempt_timeline: attemptTimeline,
+          attemptTimeline,
         }
       }
 
@@ -329,6 +350,12 @@ export async function runLinkCheckoutWithFallback(
       }
 
       attempts.push(attemptResult)
+      attemptTimeline.push({
+        method,
+        reason: index === 0 ? "primary" : "fallback_retry",
+        status: "failed",
+        timestamp: new Date().toISOString(),
+      })
 
       try {
         await persistAttempt(persistAttemptFn, {
@@ -340,6 +367,7 @@ export async function runLinkCheckoutWithFallback(
           requestId,
           taxPreview: payload.tax_preview,
           taxLineItems: payload.tax_line_items,
+          timeline: attemptTimeline,
         })
       } catch {
         // Persistence failures should not block checkout execution.
@@ -359,5 +387,7 @@ export async function runLinkCheckoutWithFallback(
     attemptedMethods: attempts.map((attempt) => attempt.method),
     final_status: "failed",
     attempts,
+    attempt_timeline: attemptTimeline,
+    attemptTimeline,
   }
 }

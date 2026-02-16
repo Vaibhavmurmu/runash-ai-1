@@ -22,6 +22,12 @@ interface LinkQuickPayButtonProps {
   totalAmount?: number
   taxLabel?: "GST" | "VAT" | "Sales Tax"
   blockedReason?: string
+  attemptTimeline?: Array<{
+    method: string
+    reason: "primary" | "fallback_retry" | "no_retry"
+    status: "initiated" | "failed"
+    timestamp: string
+  }>
 }
 
 const getErrorMessage = (error: unknown) => {
@@ -54,6 +60,7 @@ export default function LinkQuickPayButton({
   totalAmount,
   taxLabel,
   blockedReason,
+  attemptTimeline,
 }: LinkQuickPayButtonProps) {
   const [status, setStatus] = useState<LinkQuickPayStatus>("idle")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -131,6 +138,19 @@ export default function LinkQuickPayButton({
             <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
               Final charge is blocked until you confirm after reviewing subtotal, tax, and total.
             </p>
+          ) : null}
+
+          {Array.isArray(attemptTimeline) && attemptTimeline.length > 0 ? (
+            <div className="rounded-md border border-gray-200 bg-gray-50 p-2 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
+              <p className="mb-1 font-semibold">Attempt timeline</p>
+              <ul className="space-y-1">
+                {attemptTimeline.map((attempt, index) => (
+                  <li key={`${attempt.method}-${attempt.timestamp}-${index}`}>
+                    {attempt.reason === "primary" ? "Primary" : "Fallback retry"}: {attempt.method} → {attempt.status} at {new Date(attempt.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </li>
+                ))}
+              </ul>
+            </div>
           ) : null}
 
           {requiresPostPreviewConfirmation ? (

@@ -535,6 +535,23 @@ export default function RunAshChatPage() {
                 : typeof payload.result?.next_action === "string"
                   ? payload.result.next_action
                   : undefined
+            const attemptTimeline = Array.isArray(payload.result?.attempt_timeline)
+              ? payload.result.attempt_timeline
+                  .map((entry: unknown) => {
+                    const timelineEntry = entry as Record<string, unknown>
+                    const method = typeof timelineEntry.method === "string" ? timelineEntry.method : null
+                    const reason =
+                      timelineEntry.reason === "primary" || timelineEntry.reason === "fallback_retry" || timelineEntry.reason === "no_retry"
+                        ? timelineEntry.reason
+                        : null
+                    const status = timelineEntry.status === "initiated" || timelineEntry.status === "failed" ? timelineEntry.status : null
+                    const timestamp = typeof timelineEntry.timestamp === "string" ? timelineEntry.timestamp : null
+
+                    if (!method || !reason || !status || !timestamp) return null
+                    return { method, reason, status, timestamp }
+                  })
+                  .filter((entry): entry is { method: string; reason: "primary" | "fallback_retry" | "no_retry"; status: "initiated" | "failed"; timestamp: string } => entry !== null)
+              : undefined
 
             updateAssistantMessage((existing) => ({
               ...existing,
@@ -558,6 +575,7 @@ export default function RunAshChatPage() {
                   status: typeof payload.result?.status === "string" ? payload.result.status : undefined,
                   checkoutId,
                   nextAction,
+                  attemptTimeline,
                   confirmationPayload: {
                     merchant_id: typeof linkPayload?.merchant_id === "string" ? linkPayload.merchant_id : "runash-default-merchant",
                     amount: amountMinor,
