@@ -24,6 +24,24 @@ export interface LinkQuickPayPreview {
   tags: string[]
   taxPreview?: number
   status?: string
+  subtotal?: number
+  taxAmount?: number
+  totalAmount?: number
+  taxLabel?: "GST" | "VAT" | "Sales Tax"
+  taxRatePercent?: number
+  blockedReason?: string
+  confirmationPayload?: {
+    merchant_id: string
+    amount: number
+    currency: "USD" | "INR"
+    product_metadata: {
+      item_name: string
+      sku: string
+      tags: string[]
+    }
+    country?: string
+    region?: string
+  }
 }
 
 export interface SearchResult {

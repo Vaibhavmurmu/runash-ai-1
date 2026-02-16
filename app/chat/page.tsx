@@ -504,23 +504,61 @@ export default function RunAshChatPage() {
               : []
             const amountMinor = typeof linkPayload?.amount === "number" ? linkPayload.amount : 0
             const taxPreview =
-              typeof payload.result?.tax === "number"
-                ? payload.result.tax
+              typeof payload.result?.activity_summary?.tax === "number"
+                ? payload.result.activity_summary.tax
                 : Number(payload.result?.tax ?? Number.NaN)
+            const subtotal =
+              typeof payload.result?.activity_summary?.subtotal === "number"
+                ? payload.result.activity_summary.subtotal
+                : Number.NaN
+            const total =
+              typeof payload.result?.activity_summary?.total === "number"
+                ? payload.result.activity_summary.total
+                : Number.NaN
+            const taxLabel =
+              typeof payload.result?.activity_summary?.tax_label === "string" ? payload.result.activity_summary.tax_label : undefined
+            const taxRatePercent =
+              typeof payload.result?.activity_summary?.tax_rate_percent === "number"
+                ? payload.result.activity_summary.tax_rate_percent
+                : undefined
+            const blockedReason =
+              typeof payload.result?.blocked_reason === "string" ? payload.result.blocked_reason : undefined
 
             updateAssistantMessage((existing) => ({
               ...existing,
               metadata: {
                 ...existing.metadata,
                 linkQuickPay: {
-                  itemName: typeof productMetadata?.item_name === "string" ? productMetadata.item_name : "RunAshChat Instant Checkout Item",
+                  itemName:
+                    typeof productMetadata?.item_name === "string" ? productMetadata.item_name : "RunAshChat Instant Checkout Item",
                   amountMinor,
                   currency: linkPayload?.currency === "INR" ? "INR" : "USD",
                   eligibleForLink: true,
                   last4: "4242",
                   tags,
                   taxPreview: Number.isFinite(taxPreview) ? taxPreview : undefined,
+                  subtotal: Number.isFinite(subtotal) ? subtotal : undefined,
+                  taxAmount: Number.isFinite(taxPreview) ? taxPreview : undefined,
+                  totalAmount: Number.isFinite(total) ? total : undefined,
+                  taxLabel: taxLabel === "GST" || taxLabel === "VAT" || taxLabel === "Sales Tax" ? taxLabel : undefined,
+                  taxRatePercent,
+                  blockedReason,
                   status: typeof payload.result?.status === "string" ? payload.result.status : undefined,
+                  confirmationPayload: {
+                    merchant_id: typeof linkPayload?.merchant_id === "string" ? linkPayload.merchant_id : "runash-default-merchant",
+                    amount: amountMinor,
+                    currency: linkPayload?.currency === "INR" ? "INR" : "USD",
+                    product_metadata: {
+                      item_name:
+                        typeof productMetadata?.item_name === "string"
+                          ? productMetadata.item_name
+                          : "RunAshChat Instant Checkout Item",
+                      sku: typeof productMetadata?.sku === "string" ? productMetadata.sku : "runashchat-instant-checkout",
+                      tags,
+                    },
+                    country: typeof linkPayload?.country === "string" ? linkPayload.country : undefined,
+                    region: typeof linkPayload?.region === "string" ? linkPayload.region : undefined,
+                  },
                 },
               },
             }))
