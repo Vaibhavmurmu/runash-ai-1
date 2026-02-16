@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server"
 import { z } from "zod"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
-import { requireBillingActionAccess } from "@/lib/billing-auth"
+import { ensureCustomerScopedAccess, requireBillingActionAccess } from "@/lib/billing-auth"
 import {
   addCustomerPaymentMethodReference,
   listCustomerPaymentMethodReferences,
@@ -24,6 +24,9 @@ export async function GET(request: NextRequest) {
   const access = await requireBillingActionAccess("billing:operate")
   if ("response" in access) return access.response
 
+  const scopeError = ensureCustomerScopedAccess(access.sessionUser, { customerId: access.sessionUser.userId, organizationId: access.sessionUser.organizationId })
+  if (scopeError) return scopeError
+
   const refs = await listCustomerPaymentMethodReferences(access.sessionUser.userId)
   return respondSuccess(request, refs)
 }
@@ -31,6 +34,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const access = await requireBillingActionAccess("billing:operate")
   if ("response" in access) return access.response
+
+  const scopeError = ensureCustomerScopedAccess(access.sessionUser, { customerId: access.sessionUser.userId, organizationId: access.sessionUser.organizationId })
+  if (scopeError) return scopeError
 
   const body = await request.json().catch(() => ({}))
   const parsed = addMethodSchema.safeParse(body)

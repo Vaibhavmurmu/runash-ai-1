@@ -1581,3 +1581,26 @@ Business billing flows now apply a mandatory edge-routing policy layer before ou
 ### Risk and rollback
 - Risk level: low-to-medium (policy misclassification could route traffic to default US edge).
 - Rollback: revert policy-layer wiring in billing routes and Relay link checkout skill; existing payment contracts remain intact because route fields are additive metadata.
+
+## Reliability Execution Addendum (AI Link / Relay / Stripe Link)
+
+### Backward-compatible API additions
+- Added profile controls endpoint set for default/backup method management and billing history/retry inspection.
+- Added analytics summary endpoint for checkout conversion, failed recovery, fallback usage, and finance summaries.
+- Added compatibility mirror route under `/api/payment/analytics/summary`.
+
+No existing payment contract was removed or renamed.
+
+### Usage-based billing hook contract
+`POST /api/v1/payment/create-intent` supports optional `usageHook` object:
+- prompt/completion token counts,
+- delta processing time,
+- metadata,
+- pricing model.
+
+Hook ingestion is additive and does not break intent creation behavior.
+
+### Risk and rollback notes
+- **Risk:** Low-to-medium (new read/write API surfaces + additive metadata/hook ingestion).
+- **Mitigation:** Existing routes and fields retained; failures in optional hooks do not alter core contract shape.
+- **Rollback:** Revert new routes and keep existing `/api/v1/payment/*` and `/api/payment/*` behavior unchanged.

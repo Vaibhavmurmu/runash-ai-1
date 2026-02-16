@@ -777,3 +777,37 @@ RunAsh AI Pay now enforces a dedicated payment routing policy layer (`lib/paymen
 Backward compatibility:
 - Existing API signatures/response contracts are unchanged.
 - Route/compliance fields are additive metadata for compliance observability.
+
+## 2026-02 Reliability Update: Instant Checkout Controls & Analytics
+
+RunAsh AI Link + Relay-to-Stripe Link flows now expose customer profile controls and reliability analytics APIs for safe natural-language checkout actions (e.g., "buy this").
+
+### New profile controls APIs
+- `GET /api/v1/payment/profile/controls`
+  - Returns `defaultPaymentMethodId`, `backupPaymentMethodId`, plus billing history and retry summaries.
+- `PUT /api/v1/payment/profile/controls`
+  - Updates default/backup payment method assignments.
+
+### New analytics summary APIs
+- `GET /api/v1/payment/analytics/summary`
+- `GET /api/payment/analytics/summary` (compat mirror)
+
+Summary payload includes:
+- checkout conversion (`attempted`, `completed`, `conversionRatePercent`)
+- failed payment recovery (`failedAttempts`, `recoveredAfterRetry`, `recoveryRatePercent`)
+- fallback usage (`transactionsWithFallback`, `fallbackUsageRatePercent`)
+- revenue/tax/payout summaries (`revenueTaxSummary`, `payoutSummary`, `operationsSummary`)
+
+### Usage-based billing hooks
+`POST /api/v1/payment/create-intent` now accepts optional `usageHook` payload with:
+- `eventId`
+- `promptTokens`
+- `completionTokens`
+- `deltaMs`
+- `metadata`
+- `pricingModel`
+
+When supplied, usage is ingested alongside payment intent creation for auditability.
+
+### Security and authorization
+Profile and analytics endpoints enforce billing-role checks and customer organization scope checks. Sensitive payment/auth data remains tokenized only (no PAN/CVV logging).

@@ -319,6 +319,14 @@ export function AnalyticsSection() {
             <p>Success rate: {Number(analyticsData.checkoutAnalytics.successRatePercent ?? 0).toFixed(1)}%</p>
           </div>
         ) : null}
+        {analyticsData?.paymentAnalyticsSummary ? (
+          <div className="grid gap-2 rounded border p-3 text-xs sm:grid-cols-2">
+            <p>Checkout conversion: {Number(analyticsData.paymentAnalyticsSummary.checkoutConversion?.conversionRatePercent ?? 0).toFixed(1)}%</p>
+            <p>Failed payment recovery: {Number(analyticsData.paymentAnalyticsSummary.failedPaymentRecovery?.recoveryRatePercent ?? 0).toFixed(1)}%</p>
+            <p>Fallback usage rate: {Number(analyticsData.paymentAnalyticsSummary.fallbackUsage?.fallbackUsageRatePercent ?? 0).toFixed(1)}%</p>
+            <p>Fallback txns: {analyticsData.paymentAnalyticsSummary.fallbackUsage?.transactionsWithFallback ?? 0}</p>
+          </div>
+        ) : null}
         <JsonPreview payload={analyticsData} />
       </CardContent>
     </Card>
@@ -490,22 +498,30 @@ export function CustomerPortalSection() {
   const [portalUrl, setPortalUrl] = useState<string | null>(null)
   const [metrics, setMetrics] = useState<unknown>(null)
   const [profile, setProfile] = useState<unknown>(null)
+  const [controls, setControls] = useState<unknown>(null)
+  const [analyticsSummary, setAnalyticsSummary] = useState<unknown>(null)
   const [actions, setActions] = useState<unknown>(null)
 
   const loadPortalContext = async () => {
     try {
-      const [metricsResponse, profileResponse, actionsResponse] = await Promise.all([
+      const [metricsResponse, profileResponse, controlsResponse, analyticsSummaryResponse, actionsResponse] = await Promise.all([
         fetch("/api/v1/payment/profile/portal/metrics", { method: "GET", cache: "no-store" }),
         fetch("/api/v1/payment/profile/portal", { method: "GET", cache: "no-store" }),
+        fetch("/api/v1/payment/profile/controls", { method: "GET", cache: "no-store" }),
+        fetch("/api/v1/payment/analytics/summary", { method: "GET", cache: "no-store" }),
         fetch("/api/v1/payment/profile/portal/lifecycle", { method: "GET", cache: "no-store" }),
       ])
 
       const metricsPayload = (await metricsResponse.json()) as ApiEnvelope<unknown>
       const profilePayload = (await profileResponse.json()) as ApiEnvelope<unknown>
+      const controlsPayload = (await controlsResponse.json()) as ApiEnvelope<unknown>
+      const analyticsSummaryPayload = (await analyticsSummaryResponse.json()) as ApiEnvelope<unknown>
       const actionsPayload = (await actionsResponse.json()) as ApiEnvelope<unknown>
 
       if (metricsResponse.ok && metricsPayload.success) setMetrics(metricsPayload.data)
       if (profileResponse.ok && profilePayload.success) setProfile(profilePayload.data)
+      if (controlsResponse.ok && controlsPayload.success) setControls(controlsPayload.data)
+      if (analyticsSummaryResponse.ok && analyticsSummaryPayload.success) setAnalyticsSummary(analyticsSummaryPayload.data)
       if (actionsResponse.ok && actionsPayload.success) setActions(actionsPayload.data)
     } catch {
       setStatus({ kind: "error", message: "Unable to load portal metrics context." })
@@ -593,6 +609,14 @@ export function CustomerPortalSection() {
         </div>
         <StatusMessage status={status} />
         <div className="grid gap-3">
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">Profile controls (default/backup + history)</p>
+            <JsonPreview payload={controls} />
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">Checkout/recovery/fallback analytics</p>
+            <JsonPreview payload={analyticsSummary} />
+          </div>
           <div>
             <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">Portal metrics</p>
             <JsonPreview payload={metrics} />

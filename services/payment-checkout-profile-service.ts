@@ -69,6 +69,47 @@ export interface PortalMetricsSnapshot {
   renewalHealthy: number
 }
 
+export interface BillingHistoryEntry {
+  attemptId: string
+  checkoutSessionId: string
+  paymentMethodRefId: string | null
+  methodType: string | null
+  provider: string | null
+  status: CheckoutAttemptResultRecord["attemptStatus"]
+  resultCode: string | null
+  resultMessage: string | null
+  retryNumber: number
+  occurredAt: string
+  metadata: Record<string, unknown>
+}
+
+export interface BillingHistoryWithRetries {
+  entries: BillingHistoryEntry[]
+  retrySummary: {
+    retryEligibleFailures: number
+    retriedSessions: number
+    retriesRecovered: number
+  }
+}
+
+export interface PaymentAnalyticsSummary {
+  checkoutConversion: {
+    attempted: number
+    completed: number
+    conversionRatePercent: number
+  }
+  failedPaymentRecovery: {
+    failedAttempts: number
+    recoveredAfterRetry: number
+    recoveryRatePercent: number
+  }
+  fallbackUsage: {
+    transactionsWithFallback: number
+    totalTransactions: number
+    fallbackUsageRatePercent: number
+  }
+}
+
 export interface CheckoutAttemptResultRecord {
   id: string
   checkoutSessionId: string
@@ -1063,5 +1104,147 @@ export async function getPortalMetricsSnapshot(customerId: string): Promise<Port
     recoveredPayments: Number(paymentRow?.recoveredPayments ?? 0),
     renewalAtRisk: Number(renewalRow?.renewalAtRisk ?? 0),
     renewalHealthy: Number(renewalRow?.renewalHealthy ?? 0),
+  }
+}
+
+export async function getCustomerBillingHistoryWithRetries(customerId: string, limit = 50): Promise<BillingHistoryWithRetries> {
+  await ensureTables()
+
+  const entries = await queryMany<BillingHistoryEntry>(
+    `
+      WITH ranked_attempts AS (
+        SELECT
+          ar.id AS "attemptId",
+          ar.checkout_session_id AS "checkoutSessionId",
+          ar.payment_method_ref_id AS "paymentMethodRefId",
+          pm.method_type AS "methodType",
+          pm.provider AS "provider",
+          ar.attempt_status AS status,
+          ar.attempt_result_code AS "resultCode",
+          ar.attempt_result_message AS "resultMessage",
+          ROW_NUMBER() OVER (PARTITION BY ar.checkout_session_id ORDER BY ar.occurred_at ASC) AS "retryNumber",
+          ar.occurred_at AS "occurredAt",
+          ar.metadata
+        FROM checkout_attempt_results ar
+        LEFT JOIN customer_payment_method_vault_refs pm ON pm.id = ar.payment_method_ref_id
+        WHERE ar.customer_id = $1
+      )
+      SELECT *
+      FROM ranked_attempts
+      ORDER BY "occurredAt" DESC
+      LIMIT $2
+    `,
+    [customerId, Math.max(1, Math.min(250, limit))],
+  )
+
+  const [summary] = await queryMany<{
+    retryEligibleFailures: number
+    retriedSessions: number
+    retriesRecovered: number
+  }>(
+    `
+      WITH sessions AS (
+        SELECT
+          checkout_session_id,
+          COUNT(*) FILTER (WHERE attempt_status = 'failed')::int AS failed_attempts,
+          COUNT(*)::int AS attempts,
+          BOOL_OR(attempt_status = 'completed') AS recovered
+        FROM checkout_attempt_results
+        WHERE customer_id = $1
+        GROUP BY checkout_session_id
+      )
+      SELECT
+        COUNT(*) FILTER (WHERE failed_attempts > 0)::int AS "retryEligibleFailures",
+        COUNT(*) FILTER (WHERE attempts > 1)::int AS "retriedSessions",
+        COUNT(*) FILTER (WHERE failed_attempts > 0 AND recovered IS TRUE)::int AS "retriesRecovered"
+      FROM sessions
+    `,
+    [customerId],
+  )
+
+  return {
+    entries: entries.map((entry) => ({ ...entry, metadata: entry.metadata ?? {} })),
+    retrySummary: {
+      retryEligibleFailures: Number(summary?.retryEligibleFailures ?? 0),
+      retriedSessions: Number(summary?.retriedSessions ?? 0),
+      retriesRecovered: Number(summary?.retriesRecovered ?? 0),
+    },
+  }
+}
+
+export async function getPaymentAnalyticsSummary(customerId: string): Promise<PaymentAnalyticsSummary> {
+  await ensureTables()
+
+  const [checkoutRow] = await queryMany<{
+    attempted: number
+    completed: number
+    failedAttempts: number
+    recoveredAfterRetry: number
+  }>(
+    `
+      WITH session_rollup AS (
+        SELECT
+          checkout_session_id,
+          BOOL_OR(attempt_status = 'completed') AS has_completed,
+          BOOL_OR(attempt_status = 'failed') AS has_failed,
+          COUNT(*)::int AS attempts
+        FROM checkout_attempt_results
+        WHERE customer_id = $1
+        GROUP BY checkout_session_id
+      )
+      SELECT
+        COUNT(*)::int AS attempted,
+        COUNT(*) FILTER (WHERE has_completed)::int AS completed,
+        COUNT(*) FILTER (WHERE has_failed)::int AS "failedAttempts",
+        COUNT(*) FILTER (WHERE has_failed AND has_completed AND attempts > 1)::int AS "recoveredAfterRetry"
+      FROM session_rollup
+    `,
+    [customerId],
+  )
+
+  const [paymentTransactionsTable] = await queryMany<{ exists: boolean }>(
+    `SELECT to_regclass('payment_transactions_v2') IS NOT NULL AS exists`,
+  )
+
+  const fallbackRows = paymentTransactionsTable?.exists
+    ? await queryMany<{
+        totalTransactions: number
+        transactionsWithFallback: number
+      }>(
+        `
+          SELECT
+            COUNT(*)::int AS "totalTransactions",
+            COUNT(*) FILTER (WHERE COALESCE((metadata->>'fallbackUsed')::boolean, FALSE))::int AS "transactionsWithFallback"
+          FROM payment_transactions_v2
+          WHERE COALESCE(metadata->>'user_id', '') = $1
+        `,
+        [customerId],
+      )
+    : [{ totalTransactions: 0, transactionsWithFallback: 0 }]
+  const [fallbackRow] = fallbackRows
+
+  const attempted = Number(checkoutRow?.attempted ?? 0)
+  const completed = Number(checkoutRow?.completed ?? 0)
+  const failedAttempts = Number(checkoutRow?.failedAttempts ?? 0)
+  const recoveredAfterRetry = Number(checkoutRow?.recoveredAfterRetry ?? 0)
+  const totalTransactions = Number(fallbackRow?.totalTransactions ?? 0)
+  const transactionsWithFallback = Number(fallbackRow?.transactionsWithFallback ?? 0)
+
+  return {
+    checkoutConversion: {
+      attempted,
+      completed,
+      conversionRatePercent: attempted > 0 ? (completed / attempted) * 100 : 0,
+    },
+    failedPaymentRecovery: {
+      failedAttempts,
+      recoveredAfterRetry,
+      recoveryRatePercent: failedAttempts > 0 ? (recoveredAfterRetry / failedAttempts) * 100 : 0,
+    },
+    fallbackUsage: {
+      transactionsWithFallback,
+      totalTransactions,
+      fallbackUsageRatePercent: totalTransactions > 0 ? (transactionsWithFallback / totalTransactions) * 100 : 0,
+    },
   }
 }
