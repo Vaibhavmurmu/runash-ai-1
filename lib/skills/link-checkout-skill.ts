@@ -3,6 +3,7 @@ import { createHash } from "crypto"
 import { z } from "zod"
 import { evaluatePaymentValidatorGate, type ValidatorDecision } from "@/lib/payments/validator-gate"
 import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
+import { estimateTaxPreview, type TaxPreview } from "@/lib/payments/tax-estimator"
 
 const LINK_CHECKOUT_API_URL = "https://api.runash.in/v3/pay"
 
@@ -47,6 +48,24 @@ export const initiateLinkCheckoutParameters = {
         },
       },
     },
+    country: {
+      type: "string",
+      description: "Country code used to estimate GST/VAT for preview",
+    },
+    region: {
+      type: "string",
+      description: "State/region code used to estimate GST/VAT for preview",
+    },
+    preview_displayed: {
+      type: "boolean",
+      description: "Must be true only after tax preview is shown to user",
+      default: false,
+    },
+    user_confirmation_after_preview: {
+      type: "boolean",
+      description: "Must be true only when user confirms after preview is displayed",
+      default: false,
+    },
   },
 } as const
 
@@ -54,6 +73,10 @@ const initiateLinkCheckoutArgsSchema = z.object({
   merchant_id: z.string().trim().min(1),
   amount: z.number().finite().int().positive(),
   currency: z.enum(["USD", "INR"]).default("USD"),
+  country: z.string().trim().min(2).max(3).optional(),
+  region: z.string().trim().min(1).max(30).optional(),
+  preview_displayed: z.boolean().default(false),
+  user_confirmation_after_preview: z.boolean().default(false),
   product_metadata: z
     .object({
       item_name: z.string().trim().min(1),
@@ -76,9 +99,19 @@ type InitiateLinkCheckoutArgs = z.infer<typeof initiateLinkCheckoutArgsSchema>
 type CheckoutActivitySummary = {
   status: string
   tax: number
+  taxPreview: TaxPreview
   paymentMethodUsed: string
   fallbackPath: string | null
+  blockedReason: string | null
   validatorDecision: ValidatorDecision
+  receiptPayload: {
+    subtotal: number
+    taxAmount: number
+    totalPayable: number
+    currency: string
+    taxLabel: "GST" | "VAT"
+    taxRatePercent: number
+  }
   activity: {
     validatorGate: {
       passed: boolean
@@ -89,6 +122,14 @@ type CheckoutActivitySummary = {
     provider: "stripe_link"
     currency: "USD" | "INR"
     amount: number
+    tax: {
+      label: "GST" | "VAT"
+      ratePercent: number
+      amount: number
+      totalPayable: number
+      country: string
+      region: string | null
+    }
   }
 }
 
@@ -130,6 +171,7 @@ async function runValidatorGate(input: InitiateLinkCheckoutArgs) {
 function buildActivitySummary(
   payload: InitiateLinkCheckoutArgs,
   gate: Awaited<ReturnType<typeof runValidatorGate>>,
+  taxPreview: TaxPreview,
   result: {
     status?: unknown
     tax?: unknown
@@ -138,11 +180,12 @@ function buildActivitySummary(
     fallback_path?: unknown
   },
 ): CheckoutActivitySummary {
-  const rawTax = typeof result.tax === "number" ? result.tax : Number(result.tax ?? 0)
+  const rawTax = typeof result.tax === "number" ? result.tax : Number(result.tax ?? taxPreview.gstVatAmount)
 
   return {
     status: typeof result.status === "string" ? result.status : gate.passed ? "approved" : "requires_manual_review",
     tax: Number.isFinite(rawTax) ? rawTax : 0,
+    taxPreview,
     paymentMethodUsed:
       typeof result.payment_method_used === "string"
         ? result.payment_method_used
@@ -155,6 +198,15 @@ function buildActivitySummary(
         : gate.passed
           ? null
           : gate.fallbackPath,
+    blockedReason: null,
+    receiptPayload: {
+      subtotal: taxPreview.subtotal,
+      taxAmount: taxPreview.gstVatAmount,
+      totalPayable: taxPreview.totalPayable,
+      currency: payload.currency,
+      taxLabel: taxPreview.taxLabel,
+      taxRatePercent: taxPreview.taxRatePercent,
+    },
     activity: {
       validatorGate: {
         passed: gate.passed,
@@ -165,6 +217,14 @@ function buildActivitySummary(
       provider: "stripe_link",
       currency: payload.currency,
       amount: payload.amount,
+      tax: {
+        label: taxPreview.taxLabel,
+        ratePercent: taxPreview.taxRatePercent,
+        amount: taxPreview.gstVatAmount,
+        totalPayable: taxPreview.totalPayable,
+        country: taxPreview.country,
+        region: taxPreview.region,
+      },
     },
     validatorDecision: gate.validatorDecision,
   }
@@ -178,10 +238,33 @@ export const linkCheckoutSkill = {
   async execute(args: unknown): Promise<CheckoutActivitySummary> {
     const payload = initiateLinkCheckoutArgsSchema.parse(args)
     const gate = await runValidatorGate(payload)
+    const taxPreview = estimateTaxPreview({
+      country: payload.country ?? (payload.currency === "INR" ? "IN" : "US"),
+      region: payload.region,
+      amount: payload.amount,
+      currency: payload.currency,
+      lineItemMetadata: {
+        category: "chat_checkout",
+        tags: payload.product_metadata.tags,
+      },
+    })
+
+    if (!payload.preview_displayed || !payload.user_confirmation_after_preview) {
+      return {
+        ...buildActivitySummary(payload, gate, taxPreview, {
+          status: "awaiting_post_preview_confirmation",
+          tax: taxPreview.gstVatAmount,
+          payment_method_used: "stripe_link",
+          fallback_path: null,
+        }),
+        blockedReason: "final_charge_blocked_until_user_confirms_after_tax_preview",
+      }
+    }
 
     if (!gate.passed) {
-      return buildActivitySummary(payload, gate, {
+      return buildActivitySummary(payload, gate, taxPreview, {
         status: "requires_manual_review",
+        tax: taxPreview.gstVatAmount,
         fallback_path: gate.fallbackPath,
       })
     }
@@ -198,7 +281,7 @@ export const linkCheckoutSkill = {
     const responseBody = (await response.json().catch(() => ({}))) as Record<string, unknown>
 
     if (!response.ok) {
-      return buildActivitySummary(payload, gate, {
+      return buildActivitySummary(payload, gate, taxPreview, {
         status: "fallback_initiated",
         tax: responseBody.tax,
         payment_method_used: responseBody.payment_method_used,
@@ -206,6 +289,6 @@ export const linkCheckoutSkill = {
       })
     }
 
-    return buildActivitySummary(payload, gate, responseBody)
+    return buildActivitySummary(payload, gate, taxPreview, responseBody)
   },
 }

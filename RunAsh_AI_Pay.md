@@ -623,3 +623,20 @@ The confirm response now includes additive fields:
 ### Rollback and compatibility
 - Existing transaction fields and endpoint paths are unchanged.
 - This rollout is additive and backward compatible; clients can ignore the new fields.
+
+## Tax preview + confirmation gate for RunAshChat Instant Checkout
+
+RunAshChat Instant Checkout now enforces a tax-preview-first payment sequence for Relay → Stripe Link flows:
+
+1. `checkout_preview` computes and returns a tax preview object before final confirmation is accepted.
+2. Preview includes:
+   - `subtotal`
+   - `gstVatAmount`
+   - `totalPayable`
+3. Final charge is blocked unless both conditions are true:
+   - `preview_displayed=true`
+   - `user_confirmation_after_preview=true`
+4. Activity summaries include tax details (`label`, `ratePercent`, `amount`, `country/region`, `totalPayable`).
+5. Final receipt payload now includes tax-aware totals (`subtotal`, `taxAmount`, `totalPayable`, `taxLabel`, `taxRatePercent`, `currency`).
+
+This change preserves existing checkout contracts while adding a mandatory audit-friendly confirmation step for payment reliability.
