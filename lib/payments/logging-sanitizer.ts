@@ -1,6 +1,7 @@
 const CARD_LIKE_KEY_PATTERN = /(pan|card|cardnumber|fullcardnumber|rawpan|primaryaccountnumber)/i
 const CVV_KEY_PATTERN = /(cvv|securitycode|cvc)/i
 const DIGITS_ONLY_PATTERN = /\D/g
+const RAW_CARD_VALUE_PATTERN = /^(?:\d[ -]*?){13,19}$/
 
 function maskLast4(raw: string): string {
   const digits = raw.replace(DIGITS_ONLY_PATTERN, "")
@@ -16,6 +17,10 @@ export function sanitizePaymentActivityValue(key: string, value: unknown): unkno
     }
 
     if (CARD_LIKE_KEY_PATTERN.test(key)) {
+      return maskLast4(value)
+    }
+
+    if (RAW_CARD_VALUE_PATTERN.test(value.trim())) {
       return maskLast4(value)
     }
 

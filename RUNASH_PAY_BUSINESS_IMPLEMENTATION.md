@@ -1491,3 +1491,41 @@ For checkout execution reliability, payment confirmation now uses a two-step det
 ### Risk + rollback
 - Risk: low-medium (additive schema/API/UI only).
 - Rollback: revert API and UI additions; keep additive DB table as inert if unused.
+
+---
+
+## 9) Relay checkout safety policy (implementation update - 2026-02)
+
+### What changed
+
+Relay now runs a payment safety middleware before calling Link checkout execution:
+
+- Middleware: `lib/payments/validator-safety-gate.ts`
+- Enforced output policy decision object:
+  - `allowed`
+  - `requires_hitl`
+  - `requires_mfa`
+  - `reason_codes`
+- Currency normalization utility usage ensures USD/INR thresholds are compared on normalized equivalents.
+
+### Enforced thresholds
+
+1. **HITL threshold**
+   - Trigger when USD-equivalent amount exceeds `10000` cents ($100).
+   - Requires `human_confirmed=true`.
+2. **MFA threshold**
+   - Trigger when INR-equivalent amount exceeds `800000` paise (₹8,000).
+   - Requires `mfa_verified=true`.
+
+### Auditability and security hardening
+
+- Relay tool lineage inputs for checkout payloads are now sanitized before persistence.
+- Card-like values are stored only in masked form (`*4242` style).
+- CVV/security code fields are redacted.
+- No payment flow contract fields were removed; new policy fields are additive for backward compatibility.
+
+### Operational risk and rollback
+
+- **Primary risk:** stricter policy may increase `validation_failed` outcomes for high-value payments without explicit confirmations.
+- **Mitigation:** clients must include HITL and MFA flags for qualifying transactions.
+- **Rollback path:** revert validator-safety-gate integration in Relay tool execution path and redeploy.

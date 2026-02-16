@@ -54,3 +54,21 @@ export function isAmountAboveUsdEquivalentThreshold(input: {
 
   return normalized > input.usdThresholdCents
 }
+
+export function toUsdEquivalentCents(input: { amountMinor: number; currency: string; usdToInrRate?: number }): number {
+  return convertMinorAmount({
+    amountMinor: input.amountMinor,
+    fromCurrency: input.currency,
+    toCurrency: "USD",
+    usdToInrRate: input.usdToInrRate,
+  })
+}
+
+export function toInrEquivalentPaise(input: { amountMinor: number; currency: string; usdToInrRate?: number }): number {
+  return convertMinorAmount({
+    amountMinor: input.amountMinor,
+    fromCurrency: input.currency,
+    toCurrency: "INR",
+    usdToInrRate: input.usdToInrRate,
+  })
+}

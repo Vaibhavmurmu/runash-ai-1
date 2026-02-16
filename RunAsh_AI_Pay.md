@@ -694,3 +694,23 @@ Backward compatibility notes:
 Rollback notes:
 - Revert service/API/UI changes in this PR and keep previous reporting payload shape.
 - Keep database additive tables; they are isolated and non-breaking.
+
+## Relay Instant Checkout safety gate (2026-02)
+
+RunAshChat "Instant Checkout" now enforces a deterministic Relay safety middleware before Link checkout execution:
+
+- New middleware: `lib/payments/validator-safety-gate.ts`.
+- Policy decision contract returned by Relay tooling:
+  - `allowed`
+  - `requires_hitl`
+  - `requires_mfa`
+  - `reason_codes`
+- HITL rule: USD-equivalent amount above **$100.00** requires explicit human confirmation before checkout execution.
+- MFA rule: INR-equivalent amount above **₹8,000** (`800000` paise) requires MFA verification before confirmation.
+- Currency normalization is now applied for cross-currency threshold checks, so INR and USD amounts are evaluated consistently.
+- Payment activity/tool lineage logging now sanitizes card-like values to masked format (for example `*4242`) and redacts CVV/security codes.
+
+### Risk + rollback notes
+
+- **Risk level:** medium (may block high-value checkout attempts that previously proceeded without HITL/MFA flags).
+- **Rollback:** revert Relay validator middleware integration in `lib/agent-tools/initiate-link-checkout.ts` and `services/agent-orchestration-service.ts`, then redeploy.

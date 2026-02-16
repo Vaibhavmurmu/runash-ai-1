@@ -17,6 +17,7 @@ import {
 } from "@/lib/repositories/agent-orchestration"
 import { relayAgentSkillModules, type RelayAgentTool } from "@/lib/skills/relay-tool-registry"
 import { estimateTaxPreview } from "@/lib/payments/tax-estimator"
+import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
 import { searchProductsWithProviders } from "@/services/web-search-service"
 
 export type SupportedTool = RelayAgentTool
@@ -150,6 +151,14 @@ async function executeWebSearch(payload: Record<string, unknown>) {
 
 async function executeInitiateLinkCheckout(payload: Record<string, unknown>) {
   return relayAgentSkillModules.initiate_link_checkout.execute(payload)
+}
+
+function sanitizeToolPayloadForLineage(tool: SupportedTool, payload: Record<string, unknown>) {
+  if (tool === "initiate_link_checkout") {
+    return sanitizePaymentActivityDetails(payload)
+  }
+
+  return payload
 }
 
 function isHighRiskAction(actionType: string, actionPayload: Record<string, unknown>) {
@@ -360,7 +369,7 @@ export async function executeToolWithPolicy(
     session_id: context.sessionId,
     message_id: context.messageId,
     tool_name: tool,
-    input: payload,
+    input: sanitizeToolPayloadForLineage(tool, payload),
     status: "started",
   })
 
