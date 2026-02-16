@@ -4,9 +4,11 @@ import { logApiRouteError } from "@/lib/api/logging"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 import { requireBillingActionAccess } from "@/lib/billing-auth"
 import {
+  getOperationsFinanceSummary,
   getPayoutsSummary,
   getPayoutVisibility,
   getRevenueSummary,
+  getRevenueTaxSummary,
   getRevenueTransactions,
 } from "@/lib/repositories/payment-transactions"
 import { getTaxBreakdown, getTaxLiabilitySummary } from "@/lib/repositories/tax"
@@ -28,8 +30,10 @@ export async function GET(request: NextRequest) {
     const limitParam = Number(request.nextUrl.searchParams.get("limit") ?? 200)
     const limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(500, limitParam)) : 200
 
-    const [revenueSummary, payoutsSummary, taxLiability, revenueTransactions, payoutVisibility, taxBreakdown] = await Promise.all([
+    const [revenueSummary, revenueTaxSummary, operationsFinanceSummary, payoutsSummary, taxLiability, revenueTransactions, payoutVisibility, taxBreakdown] = await Promise.all([
       getRevenueSummary({ from, to }),
+      getRevenueTaxSummary({ from, to }),
+      getOperationsFinanceSummary({ from, to }),
       getPayoutsSummary({ from, to }),
       getTaxLiabilitySummary({ from, to }),
       getRevenueTransactions({ from, to, limit }),
@@ -47,6 +51,8 @@ export async function GET(request: NextRequest) {
 
     return respondSuccess(request, {
       revenue_summary: revenueSummary,
+      revenue_tax_summary: revenueTaxSummary,
+      operations_finance_summary: operationsFinanceSummary,
       payouts_summary: payoutsSummary,
       tax_liability_by_jurisdiction: taxLiability,
       revenue_transactions: revenueTransactions,

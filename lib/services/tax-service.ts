@@ -17,6 +17,8 @@ export interface TaxComputation {
   jurisdictionDetails: Record<string, unknown>
 }
 
+export type ProductTaxClassification = "physical_goods" | "digital_services" | "professional_services"
+
 const US_DEFAULT_STATE_RATES: Record<string, number> = {
   CA: 7.25,
   NY: 4,
@@ -34,11 +36,24 @@ function normalizeState(state?: string | null) {
   return value || null
 }
 
+function normalizeProductTaxCode(productTaxCode?: string | null): ProductTaxClassification {
+  const value = (productTaxCode || "digital_services").trim().toLowerCase()
+  if (value === "physical_goods" || value === "professional_services" || value === "digital_services") {
+    return value
+  }
+  return "digital_services"
+}
+
 function round2(value: number) {
   return Math.round(value * 100) / 100
 }
 
-function computeFallbackTax(taxableAmount: number, countryCode: string, stateCode: string | null): TaxComputation {
+function computeFallbackTax(
+  taxableAmount: number,
+  countryCode: string,
+  stateCode: string | null,
+  productTaxCode: ProductTaxClassification,
+): TaxComputation {
   if (countryCode === "US") {
     const rate = stateCode && US_DEFAULT_STATE_RATES[stateCode] ? US_DEFAULT_STATE_RATES[stateCode] : 5
     const taxAmount = round2((taxableAmount * rate) / 100)
@@ -48,24 +63,24 @@ function computeFallbackTax(taxableAmount: number, countryCode: string, stateCod
       taxableAmount,
       totalTaxAmount: taxAmount,
       totalAmount: round2(taxableAmount + taxAmount),
-      jurisdictionDetails: { model: "US_SALES_TAX", defaulted: true, stateCode },
+      jurisdictionDetails: { model: "US_SALES_TAX", defaulted: true, stateCode, productTaxCode },
       lineItems: [
         {
           jurisdictionLevel: stateCode ? "state" : "country",
           jurisdictionCode: stateCode ?? "US",
-          taxType: "sales_tax",
+          taxType: productTaxCode === "professional_services" ? "service_tax" : "sales_tax",
           taxName: `US Sales Tax${stateCode ? ` (${stateCode})` : ""}`,
           ratePercent: rate,
           taxableAmount,
           taxAmount,
-          metadata: { source: "fallback" },
+          metadata: { source: "fallback", productTaxCode },
         },
       ],
     }
   }
 
   if (countryCode === "IN") {
-    const gstRate = 18
+    const gstRate = productTaxCode === "professional_services" ? 18 : 18
     const taxAmount = round2((taxableAmount * gstRate) / 100)
     if (stateCode) {
       const halfRate = gstRate / 2
@@ -76,7 +91,7 @@ function computeFallbackTax(taxableAmount: number, countryCode: string, stateCod
         taxableAmount,
         totalTaxAmount: taxAmount,
         totalAmount: round2(taxableAmount + taxAmount),
-        jurisdictionDetails: { model: "IN_GST", intraState: true, stateCode },
+        jurisdictionDetails: { model: "IN_GST", intraState: true, stateCode, productTaxCode },
         lineItems: [
           {
             jurisdictionLevel: "state",
@@ -86,7 +101,7 @@ function computeFallbackTax(taxableAmount: number, countryCode: string, stateCod
             ratePercent: halfRate,
             taxableAmount,
             taxAmount: halfTax,
-            metadata: { source: "fallback" },
+            metadata: { source: "fallback", productTaxCode },
           },
           {
             jurisdictionLevel: "state",
@@ -96,7 +111,7 @@ function computeFallbackTax(taxableAmount: number, countryCode: string, stateCod
             ratePercent: halfRate,
             taxableAmount,
             taxAmount: round2(taxAmount - halfTax),
-            metadata: { source: "fallback" },
+            metadata: { source: "fallback", productTaxCode },
           },
         ],
       }
@@ -108,7 +123,7 @@ function computeFallbackTax(taxableAmount: number, countryCode: string, stateCod
       taxableAmount,
       totalTaxAmount: taxAmount,
       totalAmount: round2(taxableAmount + taxAmount),
-      jurisdictionDetails: { model: "IN_GST", intraState: false },
+      jurisdictionDetails: { model: "IN_GST", intraState: false, productTaxCode },
       lineItems: [
         {
           jurisdictionLevel: "country",
@@ -118,7 +133,7 @@ function computeFallbackTax(taxableAmount: number, countryCode: string, stateCod
           ratePercent: gstRate,
           taxableAmount,
           taxAmount,
-          metadata: { source: "fallback" },
+          metadata: { source: "fallback", productTaxCode },
         },
       ],
     }
@@ -130,15 +145,21 @@ function computeFallbackTax(taxableAmount: number, countryCode: string, stateCod
     taxableAmount,
     totalTaxAmount: 0,
     totalAmount: taxableAmount,
-    jurisdictionDetails: { model: "UNSUPPORTED_REGION", defaulted: true },
+    jurisdictionDetails: { model: "UNSUPPORTED_REGION", defaulted: true, productTaxCode },
     lineItems: [],
   }
 }
 
-export async function computeTaxForRegion(input: { amount: number; currency: string; address?: TaxAddress }): Promise<TaxComputation> {
+export async function computeTaxForRegion(input: {
+  amount: number
+  currency: string
+  address?: TaxAddress
+  productTaxCode?: string
+}): Promise<TaxComputation> {
   const taxableAmount = round2(input.amount)
   const countryCode = normalizeCountry(input.address?.country)
   const stateCode = normalizeState(input.address?.state)
+  const productTaxCode = normalizeProductTaxCode(input.productTaxCode)
 
   if (!countryCode) {
     return {
@@ -147,12 +168,12 @@ export async function computeTaxForRegion(input: { amount: number; currency: str
       taxableAmount,
       totalTaxAmount: 0,
       totalAmount: taxableAmount,
-      jurisdictionDetails: { model: "UNKNOWN" },
+      jurisdictionDetails: { model: "UNKNOWN", productTaxCode },
       lineItems: [],
     }
   }
 
-  const configuredRates = await listEffectiveTaxRates(countryCode, stateCode)
+  const configuredRates = await listEffectiveTaxRates(countryCode, stateCode, productTaxCode)
   if (configuredRates.length > 0) {
     const lineItems = configuredRates.map<TaxLineItemInput>((rate) => {
       const taxAmount = round2((taxableAmount * Number(rate.ratePercent)) / 100)
@@ -165,7 +186,7 @@ export async function computeTaxForRegion(input: { amount: number; currency: str
         ratePercent: Number(rate.ratePercent),
         taxableAmount,
         taxAmount,
-        metadata: { source: "configured" },
+        metadata: { source: "configured", productTaxCode },
       }
     })
     const totalTaxAmount = round2(lineItems.reduce((sum, item) => sum + item.taxAmount, 0))
@@ -181,12 +202,13 @@ export async function computeTaxForRegion(input: { amount: number; currency: str
         source: "tax_rates",
         city: input.address?.city ?? null,
         postalCode: input.address?.postalCode ?? null,
+        productTaxCode,
       },
       lineItems,
     }
   }
 
-  return computeFallbackTax(taxableAmount, countryCode, stateCode)
+  return computeFallbackTax(taxableAmount, countryCode, stateCode, productTaxCode)
 }
 
 export async function persistTaxComputation(input: {

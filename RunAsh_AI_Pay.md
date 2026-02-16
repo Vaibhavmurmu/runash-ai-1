@@ -542,3 +542,22 @@ Backward compatibility notes:
 - Customer-scoped payment resources require ownership verification against session user/tenant scope before mutation.
 - Payment route authorization now supports explicit action-level RBAC classes for finance read access, billing admin actions, and billing operator actions.
 
+
+## 2026-02 tax modeling and finance visibility update
+
+RunAsh AI Pay now applies product-aware tax computation during checkout and subscription creation using customer location plus product tax classification (`physical_goods`, `digital_services`, `professional_services`).
+
+### What is now persisted
+- Jurisdiction-aware tax models and effective rates.
+- Tax calculation artifacts for checkout, subscription, invoice, and transaction records.
+- Transaction tax line items with tax type, jurisdiction, rate, taxable amount, and tax amount.
+
+### What is now exposed
+- Invoice APIs return tax breakdown plus a tax-inclusive `financial_summary` view.
+- Payment reporting includes:
+  - `revenue_tax_summary`
+  - `operations_finance_summary`
+  - existing `revenue_summary`, `payouts_summary`, `tax_liability_by_jurisdiction`, `tax_breakdown`
+
+### Compliance responsibility reminder
+RunAsh provides tax estimation and reporting support. Customers and finance operators remain responsible for tax registration validation, filing decisions, and legal compliance in their operating jurisdictions.

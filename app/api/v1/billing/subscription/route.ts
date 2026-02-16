@@ -71,10 +71,11 @@ export async function POST(request: NextRequest) {
 
   try {
     const payload = await request.json().catch(() => ({}))
-    const { plan_id, payment_method_id, billing_address } = payload as {
+    const { plan_id, payment_method_id, billing_address, product_tax_code } = payload as {
       plan_id?: string
       payment_method_id?: string
       billing_address?: { country?: string; state?: string; city?: string; postal_code?: string }
+      product_tax_code?: "physical_goods" | "digital_services" | "professional_services"
     }
 
     if (!plan_id) {
@@ -86,9 +87,15 @@ export async function POST(request: NextRequest) {
       return respondError(request, { code: "PLAN_NOT_FOUND", message: "Plan not found" }, { status: 404 })
     }
 
+    const productTaxCode =
+      product_tax_code ||
+      (typeof plan[0].product_tax_code === "string" ? plan[0].product_tax_code : undefined) ||
+      "digital_services"
+
     const taxComputation = await computeTaxForRegion({
       amount: Number(plan[0].price) / 100,
       currency: String(plan[0].currency || "USD").toUpperCase(),
+      productTaxCode,
       address: {
         country: billing_address?.country,
         state: billing_address?.state,
@@ -123,6 +130,7 @@ export async function POST(request: NextRequest) {
         tax_country_code: taxComputation.countryCode,
         tax_state_code: taxComputation.stateCode ?? "",
         tax_total_amount: String(taxComputation.totalTaxAmount),
+        product_tax_code: productTaxCode,
       },
     }
 
@@ -193,6 +201,7 @@ export async function POST(request: NextRequest) {
         hasPaymentMethod: Boolean(payment_method_id),
         taxCountryCode: taxComputation.countryCode,
         taxStateCode: taxComputation.stateCode,
+        productTaxCode,
       },
     })
 
