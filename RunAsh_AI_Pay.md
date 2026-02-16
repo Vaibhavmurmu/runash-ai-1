@@ -1048,3 +1048,18 @@ Updated customer billing profile bank-account handling for safer payout onboardi
 Compatibility and rollout notes:
 - Existing persistence fields and table contracts are preserved.
 - No migration is required; this is an additive API surface and stricter validation gate.
+
+## 2026-02 customer bank-account management hardening
+
+- Added dedicated ownership-checked account mutation endpoints:
+  - `PATCH /api/v1/payment/profile/bank-accounts/:id`
+  - `DELETE /api/v1/payment/profile/bank-accounts/:id` (implemented as soft-archive).
+- Introduced soft-delete semantics for portal-managed bank accounts:
+  - archival writes `is_active = false`
+  - archival stamps `archived_at` for audit timeline visibility.
+- Enforced primary-account safety invariant so customer mutations cannot leave the user without an active primary account.
+- Wired customer portal account actions (`Manage`, `Archive`, `Delete`) to real API handlers with confirmation UX and prefilled edit state.
+
+Risk/rollback notes:
+- Risk: low-medium (additive API + stricter mutation guards on existing flows).
+- Rollback: revert `/api/v1/payment/profile/bank-accounts/[id]` route and UI action handlers; retain additive `archived_at` column (non-breaking) or stop writing it.

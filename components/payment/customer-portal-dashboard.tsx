@@ -1,9 +1,11 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 
 type ApiEnvelope<T> = {
@@ -28,10 +30,12 @@ type BankAccount = {
   accountNumberMasked: string
   accountLast4: string
   ifscCode: string | null
+  accountHolderName: string
   accountType: string
   currency: string
   isPrimary: boolean
   isActive: boolean
+  archivedAt: string | null
   createdAt: string
   updatedAt: string
 }
@@ -51,6 +55,26 @@ type AnalyticsSummary = {
   checkoutConversion?: { conversionRatePercent?: number }
   failedPaymentRecovery?: { recoveryRatePercent?: number }
   portalMetrics?: { renewalAtRisk?: number }
+}
+
+type BankAccountFormState = {
+  bankName: string
+  accountNumber: string
+  ifscCode: string
+  accountHolderName: string
+  accountType: string
+  currency: string
+  isPrimary: boolean
+}
+
+const defaultBankAccountForm: BankAccountFormState = {
+  bankName: "",
+  accountNumber: "",
+  ifscCode: "",
+  accountHolderName: "",
+  accountType: "savings",
+  currency: "INR",
+  isPrimary: false,
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -74,15 +98,19 @@ export function CustomerPortalDashboard() {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [billingName, setBillingName] = useState("")
-  const [bankAccountForm, setBankAccountForm] = useState({
+  const [bankAccountForm, setBankAccountForm] = useState<BankAccountFormState>(defaultBankAccountForm)
+
+  const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [editForm, setEditForm] = useState({
     bankName: "",
-    accountNumber: "",
-    ifscCode: "",
     accountHolderName: "",
+    ifscCode: "",
     accountType: "savings",
     currency: "INR",
     isPrimary: false,
   })
+  const [confirmAction, setConfirmAction] = useState<{ type: "archive" | "delete"; account: BankAccount } | null>(null)
 
   const loadAll = useCallback(async () => {
     setLoading(true)
@@ -172,19 +200,69 @@ export function CustomerPortalDashboard() {
         }),
       })
 
-      setBankAccountForm({
-        bankName: "",
-        accountNumber: "",
-        ifscCode: "",
-        accountHolderName: "",
-        accountType: "savings",
-        currency: "INR",
-        isPrimary: false,
-      })
-
+      setBankAccountForm(defaultBankAccountForm)
       await loadAll()
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Failed to add bank account")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const openEditAccount = (account: BankAccount) => {
+    setEditingAccount(account)
+    setEditForm({
+      bankName: account.bankName,
+      accountHolderName: account.accountHolderName,
+      ifscCode: account.ifscCode ?? "",
+      accountType: account.accountType,
+      currency: account.currency,
+      isPrimary: account.isPrimary,
+    })
+    setIsEditModalOpen(true)
+  }
+
+  const submitEditAccount = async () => {
+    if (!editingAccount) return
+
+    setSaving(true)
+    setError(null)
+    try {
+      await fetchJson<BankAccount>(`/api/v1/payment/profile/bank-accounts/${editingAccount.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bankName: editForm.bankName,
+          accountHolderName: editForm.accountHolderName || undefined,
+          ifscCode: editForm.ifscCode,
+          accountType: editForm.accountType,
+          currency: editForm.currency,
+          isPrimary: editForm.isPrimary,
+        }),
+      })
+      setIsEditModalOpen(false)
+      setEditingAccount(null)
+      await loadAll()
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Failed to update bank account")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleArchiveOrDelete = async () => {
+    if (!confirmAction) return
+
+    setSaving(true)
+    setError(null)
+    try {
+      await fetchJson(`/api/v1/payment/profile/bank-accounts/${confirmAction.account.id}`, {
+        method: "DELETE",
+      })
+      setConfirmAction(null)
+      await loadAll()
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Failed to archive bank account")
     } finally {
       setSaving(false)
     }
@@ -263,7 +341,7 @@ export function CustomerPortalDashboard() {
         <Card>
           <CardHeader>
             <CardTitle>Bank Accounts</CardTitle>
-            <CardDescription>Add settlement bank accounts with server-validated details.</CardDescription>
+            <CardDescription>Add and manage settlement bank accounts with ownership checks and soft-archive controls.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-1 gap-2">
@@ -287,17 +365,35 @@ export function CustomerPortalDashboard() {
                 onChange={(event) => setBankAccountForm((value) => ({ ...value, ifscCode: event.target.value.toUpperCase() }))}
                 placeholder="IFSC (e.g., HDFC0ABC123)"
               />
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={bankAccountForm.isPrimary}
+                  onChange={(event) => setBankAccountForm((value) => ({ ...value, isPrimary: event.target.checked }))}
+                />
+                Set as primary
+              </label>
             </div>
             <Button onClick={() => void addBankAccount()} disabled={saving}>Add bank account</Button>
             {bankAccounts.length === 0 ? <p className="text-sm text-muted-foreground">No bank accounts added yet.</p> : null}
             <div className="space-y-2">
               {bankAccounts.map((account) => (
                 <div key={account.id} className="rounded border p-3 text-sm">
-                  <p className="font-medium">{account.bankName} • {account.accountNumberMasked}</p>
-                  <p className="text-muted-foreground">Type: {account.accountType} · IFSC: {account.ifscCode ?? "N/A"} · {account.currency}</p>
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium">{account.bankName} • {account.accountNumberMasked}</p>
+                      <p className="text-muted-foreground">Type: {account.accountType} · IFSC: {account.ifscCode ?? "N/A"} · {account.currency}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" disabled={saving} onClick={() => openEditAccount(account)}>Manage</Button>
+                      <Button size="sm" variant="outline" disabled={saving || !account.isActive} onClick={() => setConfirmAction({ type: "archive", account })}>Archive</Button>
+                      <Button size="sm" variant="destructive" disabled={saving || !account.isActive} onClick={() => setConfirmAction({ type: "delete", account })}>Delete</Button>
+                    </div>
+                  </div>
                   <div className="mt-2 flex gap-2">
                     {account.isPrimary ? <Badge variant="secondary">Primary</Badge> : null}
-                    {account.isActive ? <Badge variant="outline">Active</Badge> : <Badge variant="destructive">Inactive</Badge>}
+                    {account.isActive ? <Badge variant="outline">Active</Badge> : <Badge variant="destructive">Archived</Badge>}
+                    {account.archivedAt ? <Badge variant="outline">Archived {new Date(account.archivedAt).toLocaleDateString()}</Badge> : null}
                   </div>
                 </div>
               ))}
@@ -342,6 +438,53 @@ export function CustomerPortalDashboard() {
           </CardContent>
         </Card>
       </section>
+
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit bank account</DialogTitle>
+            <DialogDescription>Update account details and primary-account status. Ownership is verified server-side.</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 gap-2">
+            <Input value={editForm.bankName} onChange={(event) => setEditForm((value) => ({ ...value, bankName: event.target.value }))} placeholder="Bank name" />
+            <Input value={editForm.accountHolderName} onChange={(event) => setEditForm((value) => ({ ...value, accountHolderName: event.target.value }))} placeholder="Account holder name" />
+            <Input value={editForm.ifscCode} onChange={(event) => setEditForm((value) => ({ ...value, ifscCode: event.target.value.toUpperCase() }))} placeholder="IFSC" />
+            <Input value={editForm.accountType} onChange={(event) => setEditForm((value) => ({ ...value, accountType: event.target.value }))} placeholder="Account type" />
+            <Input value={editForm.currency} onChange={(event) => setEditForm((value) => ({ ...value, currency: event.target.value.toUpperCase() }))} placeholder="Currency" />
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={editForm.isPrimary}
+                onChange={(event) => setEditForm((value) => ({ ...value, isPrimary: event.target.checked }))}
+              />
+              Mark as primary account
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditModalOpen(false)} disabled={saving}>Cancel</Button>
+            <Button onClick={() => void submitEditAccount()} disabled={saving || !editingAccount}>Save changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={Boolean(confirmAction)} onOpenChange={(open) => !open && setConfirmAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmAction?.type === "archive" ? "Archive bank account?" : "Delete bank account?"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction?.type === "archive"
+                ? "This action soft-archives the account by setting it inactive and storing archived_at."
+                : "Delete action is implemented as a safe soft-delete archive for auditability."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={saving} onClick={(event) => { event.preventDefault(); void handleArchiveOrDelete() }}>
+              {saving ? "Processing..." : "Confirm"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

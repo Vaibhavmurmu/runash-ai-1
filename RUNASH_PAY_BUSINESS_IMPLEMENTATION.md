@@ -1738,3 +1738,23 @@ Risk and rollback:
 ### Risk and rollback
 - **Risk:** Medium (webhook lifecycle state machine changed to include processing claim and dead-letter materialization).
 - **Rollback:** Revert webhook state transition changes and dead-letter table writes; retain event uniqueness for duplicate safety.
+
+## 2026-02 bank account lifecycle reliability update
+
+### Changes
+- Added customer-owned update/archive endpoints for bank accounts:
+  - `PATCH /api/v1/payment/profile/bank-accounts/:id`
+  - `DELETE /api/v1/payment/profile/bank-accounts/:id`.
+- Delete requests are processed as auditable soft-delete operations (`is_active=false`, `archived_at=<timestamp>`).
+- Portal UI action buttons now execute real handlers for manage/edit/archive/delete account lifecycle tasks.
+- Added primary-account invariant checks to prevent invalid account states during archive/update operations.
+
+### Impacted flows
+- Customer billing portal bank account lifecycle management.
+- Settlement preference management where a primary active account is required.
+
+### Risk and rollback
+- Risk: medium (mutation behavior now enforces stronger state invariants).
+- Rollback:
+  1. Revert bank account `PATCH/DELETE` route handlers and portal UI action wiring.
+  2. Keep `archived_at` column as additive schema metadata (safe), or stop consuming it in UI badges.
