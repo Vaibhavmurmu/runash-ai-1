@@ -5,7 +5,7 @@ import {
   evaluateValidatorSafetyGate,
   type PaymentSafetyPolicyDecision,
 } from "@/lib/payments/validator-safety-gate"
-import { estimateTaxPreview } from "@/lib/payments/tax-preview"
+import { estimateTaxPreview } from "@/lib/payments/tax-estimator"
 import { runLinkCheckoutWithFallback } from "@/lib/services/link-checkout-service"
 
 export const initiateLinkCheckoutToolParameters = {
@@ -253,8 +253,8 @@ export const initiateLinkCheckoutTool = {
 
     const activitySummary = {
       subtotal: taxPreview.subtotal,
-      tax: taxPreview.taxAmount,
-      total: taxPreview.total,
+      tax: taxPreview.gstVatAmount,
+      total: taxPreview.totalPayable,
       currency: payload.currency,
       tax_label: taxPreview.taxLabel,
       tax_rate_percent: taxPreview.taxRatePercent,
@@ -272,8 +272,8 @@ export const initiateLinkCheckoutTool = {
     }
     const taxBreakdown = {
       subtotal: taxPreview.subtotal,
-      tax: taxPreview.taxAmount,
-      total: taxPreview.total,
+      tax: taxPreview.gstVatAmount,
+      total: taxPreview.totalPayable,
       currency: payload.currency,
       label: taxPreview.taxLabel,
       ratePercent: taxPreview.taxRatePercent,
@@ -346,8 +346,8 @@ export const initiateLinkCheckoutTool = {
           idempotency_key: payload.idempotency_key,
           tax_preview: {
             subtotal: taxPreview.subtotal,
-            tax: taxPreview.taxAmount,
-            total: taxPreview.total,
+            tax: taxPreview.gstVatAmount,
+            total: taxPreview.totalPayable,
             tax_label: taxPreview.taxLabel,
             tax_rate_percent: taxPreview.taxRatePercent,
             country: taxPreview.country,

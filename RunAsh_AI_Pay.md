@@ -937,3 +937,18 @@ RunAshChat Relay integration now formalizes natural-language checkout intent map
 ### Risk and rollback
 - **Risk level:** Low (contract additive + UI mapping updates).
 - **Rollback:** Revert `lib/agent-tools/initiate-link-checkout.ts`, `app/chat/page.tsx`, and `types/runash-chat.ts` to previous revision.
+
+
+## Instant Checkout Tax Preview & Capture Safeguards (RunAshChat)
+
+RunAshChat Instant Checkout now applies a deterministic tax estimation and confirmation gate before final Link capture:
+
+- `lib/payments/tax-estimator.ts` computes `subtotal`, GST/VAT estimate, and `totalPayable` for confirmation UX and payment handoff.
+- RunAshChat renders this tax preview (subtotal + tax + total) in the checkout confirmation step so users can review exact payable totals before charge execution.
+- Final capture remains blocked until explicit post-preview confirmation (`preview_displayed=true` and `user_confirmation_after_preview=true`).
+- Tax line items are persisted in transaction metadata (`tax_line_items` and `tax_reporting`) to support finance reporting and invoice export pipelines.
+
+Backward-compatibility notes:
+- Existing payment API fields and signatures remain unchanged.
+- The preview/confirmation gate adds validation behavior without changing existing request field names.
+
