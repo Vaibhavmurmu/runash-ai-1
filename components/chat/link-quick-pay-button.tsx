@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Loader2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -57,6 +57,19 @@ export default function LinkQuickPayButton({
 }: LinkQuickPayButtonProps) {
   const [status, setStatus] = useState<LinkQuickPayStatus>("idle")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [confirmedAfterPreview, setConfirmedAfterPreview] = useState(false)
+
+  const requiresPostPreviewConfirmation =
+    typeof subtotal === "number" && typeof taxAmount === "number" && typeof totalAmount === "number"
+
+  useEffect(() => {
+    if (!requiresPostPreviewConfirmation) {
+      setConfirmedAfterPreview(true)
+      return
+    }
+
+    setConfirmedAfterPreview(false)
+  }, [requiresPostPreviewConfirmation, subtotal, taxAmount, totalAmount])
 
   const statusLabel = useMemo(() => {
     if (status === "processing") return "Processing Link payment…"
@@ -66,7 +79,7 @@ export default function LinkQuickPayButton({
   }, [status])
 
   const isLoading = status === "processing"
-  const isDisabled = !eligibleForLink || isLoading || status === "success"
+  const isDisabled = !eligibleForLink || isLoading || status === "success" || !confirmedAfterPreview
 
   const handlePay = async () => {
     if (!eligibleForLink || isLoading) return
@@ -118,6 +131,17 @@ export default function LinkQuickPayButton({
             <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
               Final charge is blocked until you confirm after reviewing subtotal, tax, and total.
             </p>
+          ) : null}
+
+          {requiresPostPreviewConfirmation ? (
+            <Button
+              type="button"
+              variant={confirmedAfterPreview ? "secondary" : "outline"}
+              onClick={() => setConfirmedAfterPreview((current) => !current)}
+              className="h-8 w-full text-xs md:w-auto"
+            >
+              {confirmedAfterPreview ? "Totals confirmed" : "Confirm subtotal + tax + total"}
+            </Button>
           ) : null}
 
           {statusLabel ? (

@@ -199,6 +199,13 @@ async function persistAttempt(
       final_status: input.result.success ? "initiated" : "failed",
       tax_preview: input.taxPreview,
       tax_line_items: input.taxLineItems,
+      tax_reporting: {
+        subtotal: input.taxPreview?.subtotal ?? null,
+        tax: input.taxPreview?.tax ?? null,
+        total: input.taxPreview?.total ?? null,
+        tax_label: input.taxPreview?.tax_label ?? null,
+        line_items: input.taxLineItems ?? [],
+      },
     },
   })
 }

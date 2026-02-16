@@ -757,11 +757,13 @@ RunAshChat Link checkout now uses a reliability-first payment orchestration path
 RunAshChat Instant Checkout now enforces a tax-preview confirmation step before final charge execution:
 
 - Tax estimation is computed by `lib/payments/tax-preview.ts` with:
+- Tax estimation normalizes INR/USD minor units (paise/cents) into currency major units before computing preview totals.
   - `india_gst` mode for INR/India GST flows
   - `sales_tax` (US states) and `vat` modes for USD-region flows
 - The checkout preview card includes **subtotal, tax, and total** so users can review the complete payable amount.
 - Final Link charge is blocked until user confirms **after** tax preview.
 - Tax line items are persisted in transaction metadata for reporting and auditability.
+- Persisted tax metadata now includes explicit line-item tuples (`type`, `label`, `jurisdiction`, `rate_percent`, `amount`) per checkout attempt for reconciliation exports.
 
 This rollout is backward compatible with existing checkout contracts and keeps sensitive payment/auth values out of logs.
 

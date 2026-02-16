@@ -5,6 +5,7 @@ export type TaxPreviewInput = {
   region?: string | null
   amount: number
   currency: string
+  amountUnit?: "minor" | "major"
   mode?: TaxMode
   lineItemMetadata?: {
     taxCode?: string | null
@@ -62,6 +63,15 @@ function roundCurrency(value: number) {
   return Math.round(value * 100) / 100
 }
 
+function resolveCurrencyScale(currency: string) {
+  const normalizedCurrency = currency.trim().toUpperCase()
+  if (normalizedCurrency === "INR" || normalizedCurrency === "USD") {
+    return 100
+  }
+
+  return 1
+}
+
 function normalizeCode(value?: string | null) {
   return (value ?? "").trim().toUpperCase()
 }
@@ -105,7 +115,10 @@ export function estimateTaxPreview(input: TaxPreviewInput): TaxPreviewResult {
   const country = normalizeCode(input.country) || "US"
   const region = normalizeCode(input.region) || null
   const mode = resolveMode({ mode: input.mode, country, currency: input.currency })
-  const subtotal = roundCurrency(input.amount)
+  const currencyScale = resolveCurrencyScale(input.currency)
+  const amountUnit = input.amountUnit ?? "minor"
+  const normalizedAmount = amountUnit === "minor" ? input.amount / currencyScale : input.amount
+  const subtotal = roundCurrency(normalizedAmount)
   const taxRatePercent = resolveTaxRate({
     mode,
     country,
