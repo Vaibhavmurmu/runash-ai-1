@@ -811,3 +811,15 @@ When supplied, usage is ingested alongside payment intent creation for auditabil
 
 ### Security and authorization
 Profile and analytics endpoints enforce billing-role checks and customer organization scope checks. Sensitive payment/auth data remains tokenized only (no PAN/CVV logging).
+
+## Relay Instant Checkout contract update (RunAshChat)
+
+RunAshChat instant checkout (`initiate_link_checkout`) now enforces explicit runtime input validation before Link execution and returns structured validation diagnostics for agent UX remediation.
+
+### Structured validation output
+- `status: "validation_failed"` for invalid payloads.
+- `validation_issues: [{ path, message }]` to support deterministic prompt repair/retry.
+- Currency validation remains constrained to `INR | USD`, with default `USD` when omitted.
+
+### Compatibility note
+This update is additive and preserves existing payment flow field names and Relay tool routing contracts.

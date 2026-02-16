@@ -25,7 +25,7 @@ export const initiateLinkCheckoutToolParameters = {
       type: "string",
       enum: ["INR", "USD"],
       default: "USD",
-      description: "ISO currency code. Defaults to USD when omitted.",
+      description: "ISO currency code. Defaults to USD when omitted by the caller.",
     },
     product_metadata: {
       type: "object",
@@ -119,6 +119,10 @@ export type InitiateLinkCheckoutActivityPayload = {
   status: "initiated" | "validation_failed" | "failed"
   checkout_session_id: string | null
   request_id: string
+  validation_issues?: Array<{
+    path: string
+    message: string
+  }>
   idempotency_key?: string
   next_action: "open_link_checkout" | "collect_valid_checkout_fields" | "retry_or_manual_review"
   fallback_used?: boolean
@@ -165,7 +169,7 @@ const defaultValidationFailureDecision: PaymentSafetyPolicyDecision = {
 
 export const initiateLinkCheckoutTool = {
   name: "initiate_link_checkout",
-  description: "Triggers the Link payment flow inside RunAshChat",
+  description: "Triggers Link payment flow inside RunAshChat.",
   parameters: initiateLinkCheckoutToolParameters,
   async execute(args: unknown): Promise<InitiateLinkCheckoutActivityPayload> {
     const requestId = randomUUID()
@@ -176,6 +180,10 @@ export const initiateLinkCheckoutTool = {
         status: "validation_failed",
         checkout_session_id: null,
         request_id: requestId,
+        validation_issues: parsed.error.issues.map((issue) => ({
+          path: issue.path.join("."),
+          message: issue.message,
+        })),
         next_action: "collect_valid_checkout_fields",
         policy_decision: defaultValidationFailureDecision,
       }

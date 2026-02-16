@@ -18,6 +18,6 @@ export const relayToolExecutionMode: Record<RelayAgentTool, "immediate" | "queue
   initiate_link_checkout: "immediate",
 }
 
-export const relayAgentSkillModules = {
+export const relayAgentSkillModules: Record<string, { name: string; execute: (args: unknown) => Promise<unknown> }> = {
   [initiateLinkCheckoutTool.name]: initiateLinkCheckoutTool,
 }
