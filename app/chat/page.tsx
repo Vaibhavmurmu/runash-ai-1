@@ -417,7 +417,7 @@ export default function RunAshChatPage() {
     setIsTyping(true)
 
     try {
-      const isInstantCheckoutIntent = /\b(buy this|checkout|pay now|instant checkout)\b/i.test(content)
+      const isInstantCheckoutIntent = /\b(buy this|checkout|pay now|instant checkout|confirm)\b/i.test(content)
       const requestedTools = isInstantCheckoutIntent
         ? ["catalog_lookup", "initiate_link_checkout"]
         : /search|find|best|compare|web/i.test(content)
