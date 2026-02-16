@@ -1678,3 +1678,17 @@ Hook ingestion is additive and does not break intent creation behavior.
 - Existing payment/profile API signatures are preserved.
 - Default/backup payment method field names are unchanged.
 - New payload fields are additive; no required existing field was renamed or removed.
+
+
+## RunAshChat Instant Checkout: Tax Estimation and Confirmation Gate
+
+To harden reliability for conversational checkout flows, RunAshChat Instant Checkout now enforces:
+
+1. **Tax estimator stage**: subtotal + GST/VAT + total payable are calculated before checkout execution.
+2. **Preview-first confirmation**: users must confirm after seeing the tax preview before final capture proceeds.
+3. **Tax metadata persistence**: tax line items are attached to transaction metadata for downstream reporting and invoice export.
+
+Risk and rollback:
+- Risk: low-to-medium (validation hardening may block incomplete confirmation payloads).
+- Rollback: disable preview confirmation gating in the checkout tool payload path and redeploy, while preserving transaction metadata writes.
+
