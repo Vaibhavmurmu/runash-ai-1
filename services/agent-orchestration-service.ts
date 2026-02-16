@@ -18,6 +18,7 @@ import {
 import { relayAgentSkillModules, type RelayAgentTool } from "@/lib/skills/relay-tool-registry"
 import { estimateTaxPreview } from "@/lib/payments/tax-estimator"
 import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
+import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
 import { searchProductsWithProviders } from "@/services/web-search-service"
 
 export type SupportedTool = RelayAgentTool
@@ -150,7 +151,35 @@ async function executeWebSearch(payload: Record<string, unknown>) {
 }
 
 async function executeInitiateLinkCheckout(payload: Record<string, unknown>) {
-  return relayAgentSkillModules.initiate_link_checkout.execute(payload)
+  const amount = Number(payload.amount)
+  const currency = String(payload.currency ?? "USD")
+  const validatorGate = enforcePaymentValidatorMiddleware({
+    amountMinor: Number.isFinite(amount) ? Math.round(amount) : 0,
+    currency,
+    humanConfirmed:
+      typeof payload.human_confirmed === "boolean"
+        ? payload.human_confirmed
+        : typeof payload.user_confirmation_after_preview === "boolean"
+          ? payload.user_confirmation_after_preview
+          : false,
+    mfaVerified: typeof payload.mfa_verified === "boolean" ? payload.mfa_verified : false,
+  })
+
+  if (!validatorGate.allowed) {
+    return {
+      status: "requires_manual_review",
+      blockedReason: "validator_gate_blocked",
+      validatorDecision: validatorGate.decision,
+      validatorGate,
+      fallbackPath: "manual_review_queue",
+    }
+  }
+
+  const result = await relayAgentSkillModules.initiate_link_checkout.execute(payload)
+  return {
+    ...result,
+    validatorGate,
+  }
 }
 
 function sanitizeToolPayloadForLineage(tool: SupportedTool, payload: Record<string, unknown>) {

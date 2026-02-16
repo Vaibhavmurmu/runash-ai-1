@@ -4,7 +4,7 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 import { getAuthorizedBillingIdentity, requireScopedBillingAccess } from "@/lib/billing-auth"
 import { computeTaxForRegion, persistTaxComputation } from "@/lib/services/tax-service"
-import { evaluatePaymentValidatorGate } from "@/lib/payments/validator-gate"
+import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
 import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
 import {
   createPaymentRoutingAuditEvent,
@@ -83,14 +83,15 @@ export async function POST(request: NextRequest) {
 
     const price = await stripe.prices.retrieve(priceId)
     const amount = Number(price.unit_amount ?? 0) / 100
-    const validatorDecision = evaluatePaymentValidatorGate({
+    const validatorGate = enforcePaymentValidatorMiddleware({
       amountMinor: Number(price.unit_amount ?? 0),
       currency: String(price.currency || "usd").toUpperCase(),
       humanConfirmed,
       mfaVerified,
     })
+    const validatorDecision = validatorGate.decision
 
-    if (!validatorDecision.allowed) {
+    if (!validatorGate.allowed) {
       await logPrivilegedAction({
         actorUserId: sessionUser.userId,
         action: "billing.checkout.validator_blocked",
@@ -102,6 +103,7 @@ export async function POST(request: NextRequest) {
           currency: String(price.currency || "usd").toUpperCase(),
           unitAmount: Number(price.unit_amount ?? 0),
           validatorDecision,
+          validatorGate,
         }),
       })
 
@@ -113,7 +115,7 @@ export async function POST(request: NextRequest) {
         },
         {
           status: 403,
-          meta: { validatorDecision },
+          meta: { validatorDecision, validatorGate },
         },
       )
     }
