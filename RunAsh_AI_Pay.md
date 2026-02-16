@@ -667,3 +667,25 @@ RunAshChat Instant Checkout now applies a deterministic routing policy before in
 ### Backward compatibility
 - Existing API signatures and payment flow contracts are preserved.
 - Routing and residency fields are additive in internal transaction context and agent activity summary.
+
+## 2026-02 Reliability Extension — Checkout Attempts, Usage Ingestion, Reporting Trail
+
+Implemented for RunAshChat Instant Checkout + Stripe Link reliability:
+
+- Added checkout attempt/result persistence model for per-session attempt outcomes (`authorized|completed|failed|expired`) with result code/message and metadata trail.
+- Added customer portal metrics expansion to include checkout attempt analytics (total/completed/failed/expired, success rate, attempts/session).
+- Added explicit usage ingestion APIs for manual and batch modes at `/api/v1/payment/usage/ingest` supporting custom metadata.
+- Extended reporting transaction payloads with financial reliability fields:
+  - `estimatedTaxAmount`
+  - `payoutEligibleAmount`
+  - `metadata`
+  - `transactionTrail` (provider event trail for auditability)
+- Dashboard components now surface checkout attempt KPIs and reporting finance highlights.
+
+Backward compatibility notes:
+- Existing billing/payment/profile API signatures are preserved.
+- New fields are additive only.
+
+Rollback notes:
+- Revert service/API/UI changes in this PR and keep previous reporting payload shape.
+- Keep database additive tables; they are isolated and non-breaking.

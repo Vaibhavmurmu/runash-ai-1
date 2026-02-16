@@ -1473,3 +1473,21 @@ For checkout execution reliability, payment confirmation now uses a two-step det
 ### Risk and rollback
 - **Risk:** low-medium (execution branching), limited to payment confirmation path.
 - **Rollback:** disable backup fallback logic and retain first-attempt-only confirmation while preserving stored timeline history.
+
+## Reliability Addendum: RunAsh AI Link / Instant Checkout
+
+### New persisted models
+- `checkout_attempt_results` for checkout attempts and outcomes linked to `checkout_sessions`.
+- Existing `customer_checkout_profiles` continues to store default + backup method references.
+- Existing usage billing event models continue to record prompt/completion tokens, delta time, metadata, and pricing model.
+
+### New/expanded APIs
+- `GET/POST /api/v1/payment/checkout-attempts` for checkout attempt retrieval + ingestion.
+- `POST/PUT /api/v1/payment/usage/ingest` for manual + batch usage ingestion with custom metadata.
+- `GET /api/payment/analytics` now includes checkout analytics + attempt result timeline.
+- `GET /api/v1/payment/profile/portal/metrics` now includes `checkoutAnalytics` block.
+- `GET /api/v1/payment/reporting` now returns transaction-level trail fields for finance ops.
+
+### Risk + rollback
+- Risk: low-medium (additive schema/API/UI only).
+- Rollback: revert API and UI additions; keep additive DB table as inert if unused.
