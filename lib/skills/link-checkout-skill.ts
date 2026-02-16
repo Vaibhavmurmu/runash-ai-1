@@ -1,6 +1,8 @@
 import { createHash } from "crypto"
 
 import { z } from "zod"
+import { evaluatePaymentValidatorGate, type ValidatorDecision } from "@/lib/payments/validator-gate"
+import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
 
 const LINK_CHECKOUT_API_URL = "https://api.runash.in/v3/pay"
 
@@ -76,11 +78,13 @@ type CheckoutActivitySummary = {
   tax: number
   paymentMethodUsed: string
   fallbackPath: string | null
+  validatorDecision: ValidatorDecision
   activity: {
     validatorGate: {
       passed: boolean
       checks: string[]
       merchantFingerprint: string
+      validatorDecision: ValidatorDecision
     }
     provider: "stripe_link"
     currency: "USD" | "INR"
@@ -89,31 +93,39 @@ type CheckoutActivitySummary = {
 }
 
 async function runValidatorGate(input: InitiateLinkCheckoutArgs) {
-  const checks: string[] = ["hitl_precheck:passed", "pii_safe_logging:passed"]
+  const checks: string[] = ["pii_safe_logging:passed"]
 
-  const mfaRequired = process.env.RUNASH_LINK_CHECKOUT_REQUIRE_MFA === "true"
   const mfaVerified = process.env.RUNASH_LINK_CHECKOUT_MFA_VERIFIED === "true"
+  const humanConfirmed = process.env.RUNASH_LINK_CHECKOUT_HUMAN_CONFIRMED === "true"
 
-  if (mfaRequired && !mfaVerified) {
-    checks.push("mfa_precheck:failed")
+  const validatorDecision = evaluatePaymentValidatorGate({
+    amountMinor: input.amount,
+    currency: input.currency,
+    humanConfirmed,
+    mfaVerified,
+  })
+
+  if (validatorDecision.requiresHitl) {
+    checks.push(validatorDecision.allowed ? "hitl_precheck:passed" : "hitl_precheck:failed")
   } else {
-    checks.push("mfa_precheck:passed")
+    checks.push("hitl_precheck:not_required")
   }
 
-  const hitlAmountThreshold = Number(process.env.RUNASH_LINK_CHECKOUT_HITL_THRESHOLD ?? "500000")
-  if (input.amount >= hitlAmountThreshold) {
-    checks.push("hitl_threshold:requires_review")
+  if (validatorDecision.requiresMfa) {
+    checks.push(validatorDecision.allowed ? "mfa_precheck:passed" : "mfa_precheck:failed")
+  } else {
+    checks.push("mfa_precheck:not_required")
   }
-
-  const passed = !(mfaRequired && !mfaVerified) && input.amount < hitlAmountThreshold
 
   return {
-    passed,
+    passed: validatorDecision.allowed,
     checks,
-    fallbackPath: passed ? null : "manual_review_queue",
+    fallbackPath: validatorDecision.allowed ? null : "manual_review_queue",
     merchantFingerprint: createHash("sha256").update(input.merchant_id).digest("hex").slice(0, 12),
+    validatorDecision,
   }
 }
+
 
 function buildActivitySummary(
   payload: InitiateLinkCheckoutArgs,
@@ -148,11 +160,13 @@ function buildActivitySummary(
         passed: gate.passed,
         checks: gate.checks,
         merchantFingerprint: gate.merchantFingerprint,
+        validatorDecision: gate.validatorDecision,
       },
       provider: "stripe_link",
       currency: payload.currency,
       amount: payload.amount,
     },
+    validatorDecision: gate.validatorDecision,
   }
 }
 
@@ -177,7 +191,7 @@ export const linkCheckoutSkill = {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(sanitizePaymentActivityDetails(payload as unknown as Record<string, unknown>)),
       signal: AbortSignal.timeout(10_000),
     })
 

@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server"
 import { Database } from "@/lib/database"
+import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
 
 interface PrivilegedAuditInput {
   actorUserId: string
@@ -11,9 +12,9 @@ interface PrivilegedAuditInput {
 
 function sanitizeDetails(details: Record<string, unknown> = {}) {
   const blockedKeys = new Set(["token", "access_token", "refresh_token", "password", "secret", "client_secret", "card"])
-  const sanitized: Record<string, unknown> = {}
+  const sanitized = sanitizePaymentActivityDetails(details)
 
-  for (const [key, value] of Object.entries(details)) {
+  for (const [key, value] of Object.entries(sanitized)) {
     sanitized[key] = blockedKeys.has(key.toLowerCase()) ? "[REDACTED]" : value
   }
 

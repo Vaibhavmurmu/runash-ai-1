@@ -1424,3 +1424,22 @@ The payment processing path now uses repository-backed persistence for:
 ### Contract compatibility
 - Existing payment/API contracts are preserved.
 - New tool uses explicit schema validation and does not alter existing field names.
+
+
+## Payment validator decision contract
+
+Checkout and create-intent flows now attach a structured `validatorDecision` payload:
+
+```json
+{
+  "requiresHitl": true,
+  "requiresMfa": false,
+  "allowed": false,
+  "reasonCodes": ["HITL_CONFIRMATION_REQUIRED"]
+}
+```
+
+Operational notes:
+- Validator executes **before** Stripe payment intent/session creation.
+- Threshold checks are currency-normalized across INR/USD using configurable conversion rate.
+- Audit payloads sanitize sensitive card fields and only persist masked last4 formats.
