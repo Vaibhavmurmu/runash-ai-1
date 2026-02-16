@@ -575,8 +575,13 @@ RunAsh provides tax estimation and reporting support. Customers and finance oper
   - MFA gate (env-controlled)
   - PII-safe logging (merchant fingerprint hashing)
 - External payment API call: `POST https://api.runash.in/v3/pay`
-- Activity summary returned to Relay includes `status`, `tax`, `paymentMethodUsed`, and `fallbackPath`.
-- Backward compatibility preserved for existing agent tools and API signatures.
+- Runtime input validation now executes before external invocation using JSON schema + zod parsing.
+- Structured activity payload returned to Relay includes:
+  - `status`
+  - `checkout_session_id`
+  - `request_id`
+  - `next_action`
+- Backward compatibility preserved for existing agent tools and API signatures (tool name and API surface unchanged).
 
 
 ## Validator Gate for Instant Checkout (RunAshChat + Stripe Link)

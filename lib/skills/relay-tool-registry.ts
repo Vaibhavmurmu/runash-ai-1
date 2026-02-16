@@ -1,4 +1,4 @@
-import { linkCheckoutSkill } from "@/lib/skills/link-checkout-skill"
+import { initiateLinkCheckoutTool } from "@/lib/agent-tools/initiate-link-checkout"
 
 export const RELAY_AGENT_TOOLS = [
   "catalog_lookup",
@@ -19,5 +19,5 @@ export const relayToolExecutionMode: Record<RelayAgentTool, "immediate" | "queue
 }
 
 export const relayAgentSkillModules = {
-  [linkCheckoutSkill.name]: linkCheckoutSkill,
+  [initiateLinkCheckoutTool.name]: initiateLinkCheckoutTool,
 }
