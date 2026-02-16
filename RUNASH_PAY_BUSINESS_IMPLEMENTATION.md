@@ -1646,3 +1646,34 @@ Hook ingestion is additive and does not break intent creation behavior.
 ### Risk and rollback
 - **Risk:** Low (UI-level state and retry handling only).
 - **Rollback:** Revert Link quick-pay button state/error handling and retry wiring from chat message renderer.
+
+## 2026-02 Business reliability addendum: profile controls, analytics slices, and financial attempt reporting
+
+### Delivery scope
+- Added billing detail management support within checkout profile persistence (`billing_details_encrypted`).
+- Added dedicated billing details profile API for customer portal/profile flows.
+- Added analytics slice endpoints for:
+  - checkout conversion,
+  - payment failures + recovery,
+  - fallback usage,
+  - revenue/payout/tax summaries.
+- Added checkout-attempt financial aggregation support for reporting trails.
+- Exposed new metrics in payment dashboard and customer portal sections.
+
+### Impacted flows
+- RunAshChat AI Link instant checkout tracking (`/api/v1/payment/checkout-attempts`).
+- Customer default/backup method management and billing detail profile updates.
+- Finance-read analytics/reporting observability in business payment UI.
+
+### Risk and rollback
+- **Risk:** Medium (expanded analytics/profile surface + additive profile column migration).
+- **Rollback:**
+  1. Revert new `/api/v1/payment/analytics/*` slice routes.
+  2. Revert `/api/v1/payment/profile/billing-details` route.
+  3. Revert `billing_details_encrypted` usage while leaving existing profile fields intact.
+  4. Revert UI fetch wiring in `components/payment/unified-payment-sections.tsx`.
+
+### Contract safety notes
+- Existing payment/profile API signatures are preserved.
+- Default/backup payment method field names are unchanged.
+- New payload fields are additive; no required existing field was renamed or removed.

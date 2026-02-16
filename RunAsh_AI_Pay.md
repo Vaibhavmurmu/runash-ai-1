@@ -854,3 +854,35 @@ This update is additive and preserves existing payment flow field names and Rela
 ### Risk and rollback
 - **Risk level:** Low to medium (client-side checkout experience + retry behavior).
 - **Rollback:** Revert chat Link quick-pay component wiring in `components/chat/chat-message.tsx` and `components/chat/link-quick-pay-button.tsx`.
+
+## 2026-02 Instant Checkout Reliability Expansion (Profile + Analytics + Reporting)
+
+### New profile management APIs
+- `GET|PUT /api/v1/payment/profile`
+  - Supports `billingDetails` in addition to billing/shipping addresses.
+  - Preserves existing `defaultPaymentMethodId` and `backupPaymentMethodId` fields.
+- `GET|PUT /api/v1/payment/profile/billing-details`
+  - Dedicated billing-detail management endpoint for customer portal/profile workflows.
+- `GET|PUT /api/v1/payment/profile/controls`
+  - Continues default/backup payment method control and billing history/retry visibility.
+
+### New analytics endpoints
+- `GET /api/v1/payment/analytics/checkout-conversion`
+- `GET /api/v1/payment/analytics/payment-failures`
+- `GET /api/v1/payment/analytics/fallback-usage`
+- `GET /api/v1/payment/analytics/revenue-payout-tax`
+- Existing `GET /api/v1/payment/analytics/summary` now also includes `checkoutAttemptFinancialSummary`.
+
+### Checkout-attempt reporting metadata
+- `POST /api/v1/payment/checkout-attempts` now normalizes additive `metadata.reporting` fields:
+  - `grossAmount`, `netAmount`, `processingFeeAmount`, `taxAmount`, `payoutAmount`, `taxWithheldAmount`
+  - optional context keys: `exchangeRate`, `settlementCurrency`, `taxJurisdiction`, `payoutSchedule`
+- Added aggregation support for attempt-level finance reporting via service-level summary helpers.
+
+### Dashboard + customer portal visibility
+- Payment analytics UI now loads dedicated endpoint slices (conversion, failures/recovery, fallback, revenue/payout/tax).
+- Customer portal UI now surfaces billing-details payloads and financial-attempt aggregates with portal metrics.
+
+### Compatibility + security
+- All changes are additive and backward compatible; existing field names/contracts remain valid.
+- Sensitive card/auth data remains prohibited from logs/storage; tokenized references only.

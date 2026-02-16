@@ -274,6 +274,7 @@ export function AnalyticsSection() {
   const [isLoading, setIsLoading] = useState(false)
   const [status, setStatus] = useState<Status>(null)
   const [analyticsData, setAnalyticsData] = useState<Record<string, any> | null>(null)
+  const [analyticsBreakdown, setAnalyticsBreakdown] = useState<Record<string, any> | null>(null)
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -281,14 +282,31 @@ export function AnalyticsSection() {
     setIsLoading(true)
 
     try {
-      const response = await fetch(`/api/payment/analytics?period=${encodeURIComponent(period)}`, { method: "GET", cache: "no-store" })
+      const [response, conversionResponse, failuresResponse, fallbackResponse, financialResponse] = await Promise.all([
+        fetch(`/api/payment/analytics?period=${encodeURIComponent(period)}`, { method: "GET", cache: "no-store" }),
+        fetch("/api/v1/payment/analytics/checkout-conversion", { method: "GET", cache: "no-store" }),
+        fetch("/api/v1/payment/analytics/payment-failures", { method: "GET", cache: "no-store" }),
+        fetch("/api/v1/payment/analytics/fallback-usage", { method: "GET", cache: "no-store" }),
+        fetch("/api/v1/payment/analytics/revenue-payout-tax", { method: "GET", cache: "no-store" }),
+      ])
       const payload = (await response.json()) as ApiEnvelope<unknown>
+      const conversionPayload = (await conversionResponse.json()) as ApiEnvelope<unknown>
+      const failuresPayload = (await failuresResponse.json()) as ApiEnvelope<unknown>
+      const fallbackPayload = (await fallbackResponse.json()) as ApiEnvelope<unknown>
+      const financialPayload = (await financialResponse.json()) as ApiEnvelope<unknown>
+
       if (!response.ok || !payload.success) {
         setStatus({ kind: "error", message: payload.error?.message ?? "Failed to fetch analytics." })
         return
       }
 
       setAnalyticsData(payload.data)
+      setAnalyticsBreakdown({
+        checkoutConversion: conversionPayload.success ? conversionPayload.data : null,
+        paymentFailures: failuresPayload.success ? failuresPayload.data : null,
+        fallbackUsage: fallbackPayload.success ? fallbackPayload.data : null,
+        revenuePayoutTax: financialPayload.success ? financialPayload.data : null,
+      })
       setStatus({ kind: "success", message: "Analytics loaded." })
     } catch {
       setStatus({ kind: "error", message: "Network error while fetching analytics." })
@@ -327,7 +345,16 @@ export function AnalyticsSection() {
             <p>Fallback txns: {analyticsData.paymentAnalyticsSummary.fallbackUsage?.transactionsWithFallback ?? 0}</p>
           </div>
         ) : null}
+                {analyticsBreakdown ? (
+          <div className="grid gap-2 rounded border p-3 text-xs sm:grid-cols-2">
+            <p>Conversion attempts: {analyticsBreakdown.checkoutConversion?.attempted ?? 0}</p>
+            <p>Recovered failures: {analyticsBreakdown.paymentFailures?.recoveredAfterRetry ?? 0}</p>
+            <p>Fallback txns: {analyticsBreakdown.fallbackUsage?.transactionsWithFallback ?? 0}</p>
+            <p>Revenue net: {analyticsBreakdown.revenuePayoutTax?.revenueTaxSummary?.netRevenue ?? 0}</p>
+          </div>
+        ) : null}
         <JsonPreview payload={analyticsData} />
+        <JsonPreview payload={analyticsBreakdown} />
       </CardContent>
     </Card>
   )
@@ -504,12 +531,13 @@ export function CustomerPortalSection() {
 
   const loadPortalContext = async () => {
     try {
-      const [metricsResponse, profileResponse, controlsResponse, analyticsSummaryResponse, actionsResponse] = await Promise.all([
+      const [metricsResponse, profileResponse, controlsResponse, analyticsSummaryResponse, actionsResponse, billingDetailsResponse] = await Promise.all([
         fetch("/api/v1/payment/profile/portal/metrics", { method: "GET", cache: "no-store" }),
         fetch("/api/v1/payment/profile/portal", { method: "GET", cache: "no-store" }),
         fetch("/api/v1/payment/profile/controls", { method: "GET", cache: "no-store" }),
         fetch("/api/v1/payment/analytics/summary", { method: "GET", cache: "no-store" }),
         fetch("/api/v1/payment/profile/portal/lifecycle", { method: "GET", cache: "no-store" }),
+        fetch("/api/v1/payment/profile/billing-details", { method: "GET", cache: "no-store" }),
       ])
 
       const metricsPayload = (await metricsResponse.json()) as ApiEnvelope<unknown>
@@ -517,9 +545,11 @@ export function CustomerPortalSection() {
       const controlsPayload = (await controlsResponse.json()) as ApiEnvelope<unknown>
       const analyticsSummaryPayload = (await analyticsSummaryResponse.json()) as ApiEnvelope<unknown>
       const actionsPayload = (await actionsResponse.json()) as ApiEnvelope<unknown>
+      const billingDetailsPayload = (await billingDetailsResponse.json()) as ApiEnvelope<unknown>
 
       if (metricsResponse.ok && metricsPayload.success) setMetrics(metricsPayload.data)
       if (profileResponse.ok && profilePayload.success) setProfile(profilePayload.data)
+      if (billingDetailsResponse.ok && billingDetailsPayload.success) setProfile({ ...(profilePayload.data as Record<string, unknown>), ...(billingDetailsPayload.data as Record<string, unknown>) })
       if (controlsResponse.ok && controlsPayload.success) setControls(controlsPayload.data)
       if (analyticsSummaryResponse.ok && analyticsSummaryPayload.success) setAnalyticsSummary(analyticsSummaryPayload.data)
       if (actionsResponse.ok && actionsPayload.success) setActions(actionsPayload.data)
@@ -609,6 +639,13 @@ export function CustomerPortalSection() {
         </div>
         <StatusMessage status={status} />
         <div className="grid gap-3">
+          {metrics ? (
+            <div className="grid gap-2 rounded border p-3 text-xs sm:grid-cols-3">
+              <p>Total payments: {(metrics as any).totalPayments ?? 0}</p>
+              <p>Failed payments: {(metrics as any).failedPayments ?? 0}</p>
+              <p>Tracked attempt gross: {(metrics as any).checkoutAttemptFinancialSummary?.grossAmount ?? 0}</p>
+            </div>
+          ) : null}
           <div>
             <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">Profile controls (default/backup + history)</p>
             <JsonPreview payload={controls} />
