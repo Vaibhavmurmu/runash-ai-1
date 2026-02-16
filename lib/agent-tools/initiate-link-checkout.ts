@@ -57,6 +57,10 @@ export const initiateLinkCheckoutToolParameters = {
       type: "boolean",
       description: "Indicates whether the user passed MFA before checkout confirmation.",
     },
+    default_payment_method: {
+      type: "string",
+      description: "Optional default method for the primary attempt. Defaults to stripe_link when omitted.",
+    },
     backup_payment_method: {
       type: "string",
       description: "Optional backup method automatically attempted on retryable failure (for example: card_ending_4242).",
@@ -107,6 +111,7 @@ const initiateLinkCheckoutInputSchema = z.object({
     }),
   human_confirmed: z.boolean().optional(),
   mfa_verified: z.boolean().optional(),
+  default_payment_method: z.string().trim().min(1).optional(),
   backup_payment_method: z.string().trim().min(1).optional(),
   idempotency_key: z.string().trim().min(1).optional(),
   country: z.string().trim().min(2).max(3).optional(),
@@ -135,6 +140,7 @@ export type InitiateLinkCheckoutActivityPayload = {
     status_code: number | null
     provider_status: string | null
     error_code: string | null
+    safe_error_code: string
     checkout_session_id: string | null
   }>
   policy_decision: PaymentSafetyPolicyDecision
@@ -262,6 +268,7 @@ export const initiateLinkCheckoutTool = {
           product_metadata: payload.product_metadata,
           human_confirmed: payload.human_confirmed,
           mfa_verified: payload.mfa_verified,
+          default_payment_method: payload.default_payment_method,
           backup_payment_method: payload.backup_payment_method,
           idempotency_key: payload.idempotency_key,
           tax_preview: {
