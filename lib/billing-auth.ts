@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { Database } from "@/lib/database"
-import { DEFAULT_ROLES, RBACManager, type OperatorScope } from "@/lib/rbac"
+import { DEFAULT_ROLES, RBACManager, type BillingAction, type OperatorScope } from "@/lib/rbac"
 import { getAuthenticatedSessionUser, isSessionAuthorizedForScope, type AuthenticatedSessionUser } from "@/lib/auth/session"
 
 export interface RouteGuardSuccess {
@@ -83,6 +83,40 @@ export async function requireRoleBillingAccess(roles: string[]): Promise<RouteGu
   }
 
   return { sessionUser: auth.sessionUser }
+}
+
+
+export function requireBillingActionRole(sessionUser: AuthenticatedSessionUser, action: BillingAction): NextResponse | null {
+  if (!RBACManager.hasBillingActionAccess(sessionUser.role, action)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
+  return requireCustomerOrganizationScope(sessionUser)
+}
+
+export async function requireBillingActionAccess(action: BillingAction): Promise<RouteGuardResult> {
+  const auth = await requireBillingSession()
+  if (auth.unauthorizedResponse || !auth.sessionUser) {
+    return { response: auth.unauthorizedResponse }
+  }
+
+  const actionRoleResponse = requireBillingActionRole(auth.sessionUser, action)
+  if (actionRoleResponse) {
+    return { response: actionRoleResponse }
+  }
+
+  return { sessionUser: auth.sessionUser }
+}
+
+export function ensureCustomerScopedAccess(
+  sessionUser: AuthenticatedSessionUser,
+  scope: { ownerUserId?: string | number | null; customerId?: string | number | null; organizationId?: string | number | null },
+): NextResponse | null {
+  if (!isSessionAuthorizedForScope(sessionUser, { userId: scope.ownerUserId ?? scope.customerId, organizationId: scope.organizationId })) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
+  return null
 }
 
 export async function getAuthorizedBillingIdentity(sessionUser: AuthenticatedSessionUser) {

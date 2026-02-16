@@ -534,3 +534,11 @@ Backward compatibility notes:
   - `POST /api/internal/billing/webhook/events/:eventId/rollback` to reset eligible failed/dead-letter events and trigger replay.
 - Reporting enhancements in `GET /api/v1/payment/reporting` now include transaction-level revenue rows, payout visibility rows, and tax breakdown records in addition to existing summaries.
 - Security note: webhook and reporting paths continue to avoid logging sensitive payment/auth secrets.
+
+
+## Authorization hardening update
+
+- Billing usage and payment lifecycle actions bind customer identity to authenticated server session claims; no caller-provided customer identity is trusted for authorization.
+- Customer-scoped payment resources require ownership verification against session user/tenant scope before mutation.
+- Payment route authorization now supports explicit action-level RBAC classes for finance read access, billing admin actions, and billing operator actions.
+

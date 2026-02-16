@@ -5,7 +5,7 @@ import { z } from "zod"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { logApiRouteError } from "@/lib/api/logging"
 import { logPrivilegedAction } from "@/lib/audit-logging"
-import { getAuthorizedBillingIdentity, requireScopedBillingAccess } from "@/lib/billing-auth"
+import { getAuthorizedBillingIdentity, requireBillingActionAccess } from "@/lib/billing-auth"
 import { Database } from "@/lib/database"
 import { computeTaxForRegion, persistTaxComputation } from "@/lib/services/tax-service"
 
@@ -22,7 +22,7 @@ const updateSubscriptionSchema = z
   .strict()
 
 export async function GET(request: NextRequest) {
-  const access = await requireScopedBillingAccess("startup")
+  const access = await requireBillingActionAccess("billing:admin")
   if ("response" in access) return access.response
   const { sessionUser } = access
 
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const access = await requireScopedBillingAccess("startup")
+  const access = await requireBillingActionAccess("billing:admin")
   if ("response" in access) return access.response
   const { sessionUser } = access
 
@@ -207,7 +207,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const access = await requireScopedBillingAccess("business")
+  const access = await requireBillingActionAccess("billing:admin")
   if ("response" in access) return access.response
   const { sessionUser } = access
 

@@ -1,11 +1,11 @@
 import { type NextRequest } from "next/server"
 
 import { respondError, respondSuccess } from "@/lib/api/envelope"
-import { requireScopedBillingAccess } from "@/lib/billing-auth"
+import { requireBillingActionAccess } from "@/lib/billing-auth"
 import { reconcileDelayedUsageIngestion } from "@/lib/billing-usage"
 
 export async function POST(request: NextRequest) {
-  const access = await requireScopedBillingAccess("business")
+  const access = await requireBillingActionAccess("billing:admin")
   if ("response" in access) return access.response
 
   const body = await request.json().catch(() => null)

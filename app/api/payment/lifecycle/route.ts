@@ -1,20 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 
-import { requireScopedBillingAccess } from "@/lib/billing-auth"
+import { ensureCustomerScopedAccess, requireBillingActionAccess } from "@/lib/billing-auth"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 import { logApiRouteError } from "@/lib/api/logging"
 import { createLifecycleEvent, getLifecycleSnapshot } from "@/lib/customer-lifecycle-analytics-service"
 
 const eventSchema = z.object({
-  customerId: z.string().min(1),
   eventType: z.string().min(1),
   source: z.enum(["web", "api", "agent_action"]),
   metadata: z.record(z.unknown()).optional(),
 })
 
 export async function GET(request: NextRequest) {
-  const access = await requireScopedBillingAccess("business")
+  const access = await requireBillingActionAccess("finance:read")
   if ("response" in access) return access.response
   const { sessionUser } = access
 
@@ -39,7 +38,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const access = await requireScopedBillingAccess("business")
+  const access = await requireBillingActionAccess("billing:operate")
   if ("response" in access) return access.response
   const { sessionUser } = access
 
@@ -51,8 +50,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid lifecycle event payload", details: parsed.error.flatten() }, { status: 400 })
     }
 
+    const customerScopeError = ensureCustomerScopedAccess(sessionUser, { customerId: sessionUser.userId, organizationId: sessionUser.organizationId })
+    if (customerScopeError) return customerScopeError
+
     const event = await createLifecycleEvent({
-      customerId: parsed.data.customerId,
+      customerId: sessionUser.userId,
       eventType: parsed.data.eventType,
       source: parsed.data.source,
       actorUserId: sessionUser.userId,

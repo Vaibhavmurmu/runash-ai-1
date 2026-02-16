@@ -1,11 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { PaymentService } from "@/lib/payment-service"
-import { requireScopedBillingAccess } from "@/lib/billing-auth"
+import { requireBillingActionAccess } from "@/lib/billing-auth"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 import { logApiRouteError } from "@/lib/api/logging"
 
 export async function GET(request: NextRequest) {
-  const access = await requireScopedBillingAccess("business")
+  const access = await requireBillingActionAccess("finance:read")
   if ("response" in access) return access.response
   const { sessionUser } = access
 
