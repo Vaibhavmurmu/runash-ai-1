@@ -1604,3 +1604,17 @@ Hook ingestion is additive and does not break intent creation behavior.
 - **Risk:** Low-to-medium (new read/write API surfaces + additive metadata/hook ingestion).
 - **Mitigation:** Existing routes and fields retained; failures in optional hooks do not alter core contract shape.
 - **Rollback:** Revert new routes and keep existing `/api/v1/payment/*` and `/api/payment/*` behavior unchanged.
+
+## 2026-02 Relay tool contract clarification: `initiate_link_checkout`
+
+### Scope
+- Relay checkout tool contract now explicitly documents `currency` enum support (`INR | USD`) with default handling (`USD` when omitted).
+- Runtime argument validation now returns structured `validation_issues` (`path`, `message`) when payload parsing fails before execution.
+
+### Backward compatibility
+- Existing payload field names (`merchant_id`, `amount`, `currency`, `product_metadata`) remain unchanged.
+- Existing relay tool name and action routing remain unchanged (`initiate_link_checkout`).
+
+### Risk + rollback
+- Risk: low (additive response field + doc clarifications).
+- Rollback: remove `validation_issues` from tool response mapping and revert doc section; payment API contracts remain intact.
