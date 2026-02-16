@@ -130,6 +130,59 @@ Response:
 
 - Apply DB migration script: `scripts/013-uploaded-files-schema.sql` before using `/api/upload` in production.
 
+
+## Billing APIs (`/api/billing/*`)
+
+The billing endpoints below support a normalized envelope and legacy compatibility fields to keep existing pages working during migration.
+
+### Envelope shape
+
+```json
+{
+  "success": true,
+  "data": { "...": "endpoint payload" },
+  "error": null,
+  "requestId": "req_123"
+}
+```
+
+For compatibility, selected top-level fields (for example `plans`, `subscription`, `invoices`, `invoice`) are also included outside `data`.
+
+### `GET /api/billing/plans`
+- `data`: `{ plans: SubscriptionPlan[] }`
+- legacy-compatible: top-level `plans`
+
+### `POST /api/billing/subscription/cancel`
+- Request body: `{ "immediately"?: boolean, "confirm"?: true }`
+- `data`: `{ subscription: UserSubscription }`
+- legacy-compatible: top-level `subscription`
+
+### `POST /api/billing/subscription/reactivate`
+- `data`: `{ subscription: UserSubscription }`
+- legacy-compatible: top-level `subscription`
+
+### `GET /api/billing/invoices?limit=<n>&offset=<n>`
+- `data`: `{ invoices: Invoice[], total: number, limit: number, offset: number }`
+- legacy-compatible: top-level `invoices`, `total`, `limit`, `offset`
+
+### `GET /api/billing/invoices/:id`
+- `data`: `{ invoice: Invoice }`
+- legacy-compatible: top-level `invoice`
+
+### `GET /api/billing/invoices/:id/download`
+- Default behavior: HTTP redirect to invoice PDF/hosted URL.
+- Optional compatibility mode: `?redirect=false` returns JSON envelope:
+  - `data`: `{ invoiceId: string, downloadUrl: string }`
+  - legacy-compatible: top-level `invoice_id`, `download_url`
+
+### Error codes
+- `PLAN_NOT_FOUND` (`404`)
+- `SUBSCRIPTION_NOT_FOUND` (`404`)
+- `SUBSCRIPTION_NOT_CANCELING` (`404`)
+- `INVOICE_NOT_FOUND` (`404`)
+- `INVOICE_DOWNLOAD_NOT_AVAILABLE` (`404`)
+- `BILLING_*_FAILED` (`500`) for unexpected failures
+
 ## Logging & Redaction
 
 Structured API logs include:
@@ -144,6 +197,117 @@ Sensitive payload fields in auth/payment/chat context are redacted before loggin
 
 ## Agent APIs (`/api/agents/*`)
 
+### Payment Protocol Orchestration (`v1`)
+
+`POST /api/v1/protocol/orchestrate`
+
+Request payload (`application/json`):
+
+```json
+{
+  "protocolVersion": "v1",
+  "intentId": "pi_123",
+  "actionType": "payment.capture",
+  "actionPayload": {
+    "amount": 999,
+    "currency": "USD"
+  },
+  "requestedBy": "user_456",
+  "userConfirmed": true,
+  "verifierSet": ["risk-engine", "policy-engine"],
+  "approvals": ["risk-engine", "policy-engine"]
+}
+```
+
+Success response (`decision=approved`):
+
+```json
+{
+  "success": true,
+  "data": {
+    "decision": "approved",
+    "intentLock": {
+      "protocolVersion": "v1",
+      "intentId": "pi_123",
+      "lockId": "lock_001",
+      "actionType": "payment.capture",
+      "riskLevel": "high",
+      "requiredConfirmations": 1,
+      "metadata": {
+        "requestedBy": "user_456"
+      },
+      "createdAt": "2026-02-14T04:20:00.000Z"
+    },
+    "consensusVerification": {
+      "protocolVersion": "v1",
+      "intentId": "pi_123",
+      "lockId": "lock_001",
+      "verifierSet": ["risk-engine", "policy-engine"],
+      "approvals": ["risk-engine", "policy-engine"],
+      "deterministicChecks": [
+        {
+          "checkId": "policy.no_prompt_injection",
+          "passed": true
+        }
+      ],
+      "verifiedAt": "2026-02-14T04:20:00.030Z"
+    },
+    "release": {
+      "protocolVersion": "v1",
+      "intentId": "pi_123",
+      "lockId": "lock_001",
+      "releasedBy": "user_456",
+      "releaseDecision": "approved",
+      "releaseReason": "All deterministic policy checks passed.",
+      "releasedAt": "2026-02-14T04:20:00.050Z"
+    }
+  },
+  "error": null,
+  "requestId": "req_abc"
+}
+```
+
+Blocked response (`decision=blocked`):
+
+```json
+{
+  "success": false,
+  "data": {
+    "decision": "blocked"
+  },
+  "error": {
+    "code": "POLICY_CHECK_FAILED",
+    "message": "Deterministic policy checks failed. Release is blocked.",
+    "details": {
+      "failedChecks": [
+        {
+          "checkId": "policy.min_consensus",
+          "passed": false,
+          "reason": "consensus approvals are invalid"
+        }
+      ]
+    }
+  },
+  "requestId": "req_abc"
+}
+```
+
+Confirmation-required response (`decision=requires_confirmation`):
+
+```json
+{
+  "success": false,
+  "data": {
+    "decision": "requires_confirmation"
+  },
+  "error": {
+    "code": "USER_CONFIRMATION_REQUIRED",
+    "message": "Explicit user confirmation is required for high-risk payment actions."
+  },
+  "requestId": "req_abc"
+}
+```
+
 ### `POST /api/agents/chat`
 - Auth required (NextAuth session).
 - Streams SSE events with event names:
@@ -156,7 +320,8 @@ Sensitive payload fields in auth/payment/chat context are redacted before loggin
   - `sessionId?: string`
   - `title?: string`
   - `message: string`
-  - `tools?: ("catalog_lookup"|"inventory_health"|"checkout_preview")[]`
+  - `tools?: ("catalog_lookup"|"inventory_health"|"checkout_preview"|"web_search"|"initiate_link_checkout")[]`
+  - `toolPayloads?: Record<string, Record<string, unknown>>` (optional per-tool payload overrides; required for `initiate_link_checkout`)
 
 ### `GET /api/agents/sessions/:id`
 - Auth required.
@@ -218,3 +383,122 @@ Removes the product from the user cart.
 - Existing product list response shape is preserved.
 - Legacy `POST /api/grocery/products` add-to-cart payload is still accepted for backward compatibility.
 - Apply DB migration script: `scripts/012-grocery-cart-schema.sql` before using new cart endpoints in production.
+
+## Payment & Billing API (`/api/v1`) Contract Examples
+
+All payment and billing endpoints below return the standard envelope (`success`, `data`, `error`, `requestId`, optional `meta`).
+
+### `POST /api/v1/payment/create-intent`
+
+```json
+{
+  "amount": 499,
+  "currency": "INR",
+  "paymentMethodId": "stripe-card",
+  "metadata": {
+    "orderId": "ord_123"
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "pi_123",
+    "amount": 499,
+    "currency": "INR",
+    "status": "pending",
+    "paymentMethod": "stripe-card"
+  },
+  "error": null,
+  "requestId": "req_123"
+}
+```
+
+### `POST /api/v1/payment/confirm`
+
+```json
+{
+  "intentId": "pi_123"
+}
+```
+
+### `GET /api/v1/payment/methods?currency=INR`
+
+Response data is an array of enabled methods for the requested currency.
+
+### `GET /api/v1/billing/subscription`
+
+Response `data` is either `null` (no active subscription) or the customer-owned subscription record + `plan` object.
+
+### `POST /api/v1/billing/checkout`
+
+```json
+{
+  "priceId": "price_abc",
+  "mode": "subscription",
+  "success_url": "https://example.com/success",
+  "cancel_url": "https://example.com/cancel"
+}
+```
+
+### `POST /api/v1/billing/portal`
+
+```json
+{
+  "return_url": "https://example.com/settings/billing"
+}
+```
+
+### `GET /api/v1/billing/usage?plan=starter&period=2026-02`
+
+Returns customer-owned usage totals, limits, and utilization for the requested period.
+
+### `POST /api/v1/billing/usage` (authenticated ingestion)
+
+Supports both:
+- legacy metric increment payloads (`metric`, `amount`, optional `period`), and
+- single usage-event ingestion payloads (`eventId`, token counts, `deltaMs`, `pricingModel`, optional resolver fields/metadata).
+
+Usage-event ingestion is idempotent by `eventId` and returns duplicate-safe outcomes.
+
+### `PUT /api/v1/billing/usage` (authenticated batch ingestion)
+
+```json
+{
+  "events": [
+    {
+      "eventId": "evt_123",
+      "customerId": "cus_123",
+      "subscriptionId": "sub_123",
+      "promptTokens": 100,
+      "completionTokens": 240,
+      "deltaMs": 950,
+      "resolverId": "res_1",
+      "resolverType": "custom",
+      "metadata": { "tenant": "alpha" },
+      "pricingModel": {
+        "strategy": "hybrid",
+        "promptTokenRate": 0.000001,
+        "completionTokenRate": 0.000002,
+        "millisecondRate": 0.0000005
+      }
+    }
+  ]
+}
+```
+
+Batch ingestion applies the same idempotency guarantees as single ingestion and returns per-event duplicate/ingested status details.
+
+### `GET /api/v1/billing/invoices?limit=10&offset=0`
+
+Returns paginated, customer-owned invoices and aggregated line items.
+
+### Backward compatibility aliases
+
+Legacy paths remain active as aliases to v1 handlers:
+- `/api/payment/*` → `/api/v1/payment/*`
+- `/api/billing/*` → `/api/v1/billing/*`

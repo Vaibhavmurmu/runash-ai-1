@@ -110,3 +110,26 @@ Operational guidance:
 - Avoid logging full request bodies for auth/payment flows.
 
 
+
+## Payment-specific authentication hardening
+
+- **Single auth source for billing/payment APIs:** server-side session identity is required for payment/billing routes; header-only user identity patterns are rejected for these flows.
+- **Usage endpoint anti-spoofing:** billing usage ingestion binds `customerId` and `userId` to the authenticated session user.
+- **RBAC + organization scope:** `customer_admin`, `customer_operator`, and `customer_finance` roles are treated as payment operators only when organization scope is present.
+- **Session integrity for payment methods:** payment-method mutation endpoints enforce a session integrity check by comparing a hashed device/browser fingerprint with the most recent authorized checkout session.
+- **Sensitive data minimization:** payment controls avoid logging raw payment/auth payload material and continue requiring tokenized provider references.
+
+
+## Payment authz ownership + redaction requirements
+
+- Customer-scoped payment resources must enforce both RBAC action permissions and session ownership checks before read/write operations.
+- Do not trust caller-supplied customer/user identifiers in billing/payment route bodies for authorization decisions.
+- Continue structured logging only; redact payment/auth sensitive fields and avoid raw credential/payment payload logging in all payment/billing handlers.
+
+
+## Billing encryption policy update (2026-02)
+
+- Sensitive billing profile fields must remain encrypted at rest.
+- Production deployments must provide explicit encryption key material through `CHECKOUT_PROFILE_ENCRYPTION_KEY` (or approved auth-secret fallback).
+- Weak implicit defaults are not permitted in production environments.
+- Payment/auth logs must avoid sensitive payload fields and raw credentials/card data.

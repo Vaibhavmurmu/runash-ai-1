@@ -1,4 +1,5 @@
 import { queryMany, queryOne, sql } from "@/lib/db"
+import { randomUUID } from "crypto"
 
 export interface EcommercePaymentLink {
   id: string
@@ -162,8 +163,7 @@ export async function createPaymentLink(
   owner: EcommercePaymentOwner,
 ): Promise<EcommercePaymentLink> {
   await ensureTables()
-  const id = `plink_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-  const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "")
+  const safeId = `plink_${randomUUID().replace(/-/g, "")}`
 
   const row = await queryOne<EcommercePaymentLink>(
     `

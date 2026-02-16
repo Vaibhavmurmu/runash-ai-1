@@ -7,6 +7,7 @@ import RecipeCard from "./recipe-card"
 import SustainabilityTip from "./sustainability-tip"
 import AutomationSuggestion from "./automation-suggestion"
 import SearchResults from "./search-results"
+import LinkQuickPayButton from "./link-quick-pay-button"
 
 interface ChatMessageProps {
   message: ChatMessage
@@ -102,6 +103,85 @@ export default function ChatMessageComponent({ message }: ChatMessageProps) {
               {message.metadata.searchResults && message.metadata.searchResults.length > 0 && (
                 <SearchResults results={message.metadata.searchResults} />
               )}
+
+
+              {message.metadata.linkQuickPay && (
+                <LinkQuickPayButton
+                  last4={message.metadata.linkQuickPay.last4}
+                  eligibleForLink={message.metadata.linkQuickPay.eligibleForLink}
+                  taxPreview={message.metadata.linkQuickPay.taxPreview}
+                  isDigitalProduct={message.metadata.linkQuickPay.tags.includes("digital")}
+                  itemName={message.metadata.linkQuickPay.itemName}
+                  amountLabel={`${message.metadata.linkQuickPay.currency} ${(message.metadata.linkQuickPay.amountMinor / 100).toFixed(2)}`}
+                  subtotal={message.metadata.linkQuickPay.subtotal}
+                  taxAmount={message.metadata.linkQuickPay.taxAmount}
+                  totalAmount={message.metadata.linkQuickPay.totalAmount}
+                  taxLabel={message.metadata.linkQuickPay.taxLabel}
+                  blockedReason={message.metadata.linkQuickPay.blockedReason}
+                  attemptTimeline={message.metadata.linkQuickPay.attemptTimeline}
+                  onPay={async () => {
+                    const executeLinkCheckout = async () => {
+                      const quickPay = message.metadata?.linkQuickPay
+                      if (!quickPay?.confirmationPayload) {
+                        throw new Error("missing_confirmation_payload")
+                      }
+
+                      const response = await fetch("/api/agents/chat", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          title: "RunAsh Agent Session",
+                          message: "confirm checkout",
+                          tools: ["initiate_link_checkout"],
+                          toolPayloads: {
+                            initiate_link_checkout: {
+                              ...quickPay.confirmationPayload,
+                              preview_displayed: true,
+                              user_confirmation_after_preview: true,
+                              human_confirmed: true,
+                            },
+                          },
+                        }),
+                      })
+
+                      if (!response.ok) {
+                        throw new Error("link_checkout_confirmation_failed")
+                      }
+                    }
+
+                    await executeLinkCheckout()
+                  }}
+                  onRetry={async () => {
+                    const quickPay = message.metadata?.linkQuickPay
+                    if (!quickPay?.confirmationPayload) {
+                      throw new Error("missing_confirmation_payload")
+                    }
+
+                    const response = await fetch("/api/agents/chat", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        title: "RunAsh Agent Session",
+                        message: "confirm checkout",
+                        tools: ["initiate_link_checkout"],
+                        toolPayloads: {
+                          initiate_link_checkout: {
+                            ...quickPay.confirmationPayload,
+                            preview_displayed: true,
+                            user_confirmation_after_preview: true,
+                            human_confirmed: true,
+                          },
+                        },
+                      }),
+                    })
+
+                    if (!response.ok) {
+                      throw new Error("link_checkout_confirmation_failed")
+                    }
+                  }}
+                />
+              )}
+
             </div>
           )}
 

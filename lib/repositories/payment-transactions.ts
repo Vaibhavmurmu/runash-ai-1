@@ -342,6 +342,78 @@ export async function listRecentPaymentTransactions(limit = 10): Promise<Payment
   return rows.map(mapRow)
 }
 
+export async function listPaymentTransactions(input: {
+  limit?: number
+  offset?: number
+  status?: PaymentTransactionStatus
+  query?: string
+}): Promise<{ records: PaymentTransactionRecord[]; total: number }> {
+  await ensurePaymentTransactionTable()
+
+  const limit = Math.max(1, Math.min(100, input.limit ?? 20))
+  const offset = Math.max(0, input.offset ?? 0)
+  const status = input.status ?? null
+  const query = input.query?.trim() ? `%${input.query.trim()}%` : null
+
+  const totalRow = await queryOne<{ count: number }>(
+    `
+      SELECT COUNT(*)::int AS count
+      FROM payment_transactions_v2
+      WHERE ($1::text IS NULL OR status = $1)
+        AND (
+          $2::text IS NULL
+          OR id ILIKE $2
+          OR intent_id ILIKE $2
+          OR payment_method ILIKE $2
+          OR provider ILIKE $2
+          OR provider_status ILIKE $2
+        )
+    `,
+    [status, query],
+  )
+
+  const rows = await queryMany<PaymentTransactionRecord>(
+    `
+      SELECT
+        id,
+        intent_id AS "intentId",
+        amount::float8 AS amount,
+        currency,
+        status,
+        payment_method AS "paymentMethod",
+        provider,
+        provider_transaction_id AS "providerTransactionId",
+        provider_status AS "providerStatus",
+        processing_fee::float8 AS "processingFee",
+        net_amount::float8 AS "netAmount",
+        failure_reason AS "failureReason",
+        refund_amount::float8 AS "refundAmount",
+        refund_reason AS "refundReason",
+        confirm_idempotency_key AS "confirmIdempotencyKey",
+        metadata,
+        provider_events AS "providerEvents",
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+      FROM payment_transactions_v2
+      WHERE ($1::text IS NULL OR status = $1)
+        AND (
+          $2::text IS NULL
+          OR id ILIKE $2
+          OR intent_id ILIKE $2
+          OR payment_method ILIKE $2
+          OR provider ILIKE $2
+          OR provider_status ILIKE $2
+        )
+      ORDER BY created_at DESC
+      LIMIT $3
+      OFFSET $4
+    `,
+    [status, query, limit, offset],
+  )
+
+  return { records: rows.map(mapRow), total: totalRow?.count ?? 0 }
+}
+
 export async function getPaymentTransactionMonthlyTrends(monthCount = 6): Promise<Array<{ month: string; revenue: number; transactions: number }>> {
   await ensurePaymentTransactionTable()
   const rows = await queryMany<{ month: string; revenue: number; transactions: number }>(
@@ -360,4 +432,193 @@ export async function getPaymentTransactionMonthlyTrends(monthCount = 6): Promis
   )
 
   return rows
+}
+
+
+export async function getRevenueSummary(input: { from?: Date; to?: Date }) {
+  await ensurePaymentTransactionTable()
+  const row = await queryOne<{
+    grossRevenue: number
+    netRevenue: number
+    processingFees: number
+    transactions: number
+  }>(
+    `
+      SELECT
+        COALESCE(SUM(amount), 0)::float8 AS "grossRevenue",
+        COALESCE(SUM(net_amount), 0)::float8 AS "netRevenue",
+        COALESCE(SUM(processing_fee), 0)::float8 AS "processingFees",
+        COUNT(*)::int AS transactions
+      FROM payment_transactions_v2
+      WHERE status IN ('completed', 'refunded')
+        AND ($1::timestamptz IS NULL OR created_at >= $1)
+        AND ($2::timestamptz IS NULL OR created_at <= $2)
+    `,
+    [input.from ?? null, input.to ?? null],
+  )
+
+  return row ?? { grossRevenue: 0, netRevenue: 0, processingFees: 0, transactions: 0 }
+}
+
+export async function getPayoutsSummary(input: { from?: Date; to?: Date }) {
+  await ensurePaymentTransactionTable()
+  const row = await queryOne<{
+    totalPayoutEligible: number
+    payoutCount: number
+    refundedAmount: number
+  }>(
+    `
+      SELECT
+        COALESCE(SUM(CASE WHEN status = 'completed' THEN net_amount ELSE 0 END), 0)::float8 AS "totalPayoutEligible",
+        COUNT(*) FILTER (WHERE status = 'completed')::int AS "payoutCount",
+        COALESCE(SUM(CASE WHEN status = 'refunded' THEN refund_amount ELSE 0 END), 0)::float8 AS "refundedAmount"
+      FROM payment_transactions_v2
+      WHERE ($1::timestamptz IS NULL OR created_at >= $1)
+        AND ($2::timestamptz IS NULL OR created_at <= $2)
+    `,
+    [input.from ?? null, input.to ?? null],
+  )
+
+  return row ?? { totalPayoutEligible: 0, payoutCount: 0, refundedAmount: 0 }
+}
+
+export async function getRevenueTransactions(input: { from?: Date; to?: Date; limit?: number }) {
+  await ensurePaymentTransactionTable()
+  return queryMany<{
+    id: string
+    intentId: string
+    amount: number
+    netAmount: number
+    processingFee: number
+    estimatedTaxAmount: number
+    payoutEligibleAmount: number
+    currency: string
+    status: string
+    metadata: Record<string, unknown>
+    transactionTrail: Array<Record<string, unknown>>
+    createdAt: string
+  }>(
+    `
+      SELECT
+        p.id,
+        p.intent_id AS "intentId",
+        p.amount::float8 AS amount,
+        p.net_amount::float8 AS "netAmount",
+        p.processing_fee::float8 AS "processingFee",
+        COALESCE(tc.total_tax_amount, 0)::float8 AS "estimatedTaxAmount",
+        CASE WHEN p.status = 'completed' THEN p.net_amount::float8 ELSE 0::float8 END AS "payoutEligibleAmount",
+        p.currency,
+        p.status,
+        p.metadata,
+        p.provider_events AS "transactionTrail",
+        p.created_at::text AS "createdAt"
+      FROM payment_transactions_v2 p
+      LEFT JOIN tax_calculations tc ON tc.source_type = 'transaction' AND tc.source_id = p.intent_id
+      WHERE p.status IN ('completed', 'refunded')
+        AND ($1::timestamptz IS NULL OR p.created_at >= $1)
+        AND ($2::timestamptz IS NULL OR p.created_at <= $2)
+      ORDER BY p.created_at DESC
+      LIMIT $3
+    `,
+    [input.from ?? null, input.to ?? null, Math.max(1, Math.min(500, input.limit ?? 200))],
+  )
+}
+
+export async function getPayoutVisibility(input: { from?: Date; to?: Date; limit?: number }) {
+  await ensurePaymentTransactionTable()
+  return queryMany<{
+    transactionId: string
+    intentId: string
+    status: string
+    grossAmount: number
+    netAmount: number
+    payoutEligible: boolean
+    refundedAmount: number | null
+    createdAt: string
+  }>(
+    `
+      SELECT
+        id AS "transactionId",
+        intent_id AS "intentId",
+        status,
+        amount::float8 AS "grossAmount",
+        net_amount::float8 AS "netAmount",
+        (status = 'completed') AS "payoutEligible",
+        refund_amount::float8 AS "refundedAmount",
+        created_at::text AS "createdAt"
+      FROM payment_transactions_v2
+      WHERE ($1::timestamptz IS NULL OR created_at >= $1)
+        AND ($2::timestamptz IS NULL OR created_at <= $2)
+      ORDER BY created_at DESC
+      LIMIT $3
+    `,
+    [input.from ?? null, input.to ?? null, Math.max(1, Math.min(500, input.limit ?? 200))],
+  )
+}
+
+export async function getRevenueTaxSummary(input: { from?: Date; to?: Date }) {
+  await ensurePaymentTransactionTable()
+  const row = await queryOne<{
+    transactionCount: number
+    grossRevenueExcludingTax: number
+    taxCollected: number
+    grossRevenueIncludingTax: number
+    netRevenueAfterFees: number
+  }>(
+    `
+      SELECT
+        COUNT(*)::int AS "transactionCount",
+        COALESCE(SUM(COALESCE(tc.taxable_amount, p.amount)), 0)::float8 AS "grossRevenueExcludingTax",
+        COALESCE(SUM(COALESCE(tc.total_tax_amount, 0)), 0)::float8 AS "taxCollected",
+        COALESCE(SUM(COALESCE(tc.total_amount, p.amount)), 0)::float8 AS "grossRevenueIncludingTax",
+        COALESCE(SUM(p.net_amount), 0)::float8 AS "netRevenueAfterFees"
+      FROM payment_transactions_v2 p
+      LEFT JOIN tax_calculations tc ON tc.source_type = 'transaction' AND tc.source_id = p.intent_id
+      WHERE p.status IN ('completed', 'refunded')
+        AND ($1::timestamptz IS NULL OR p.created_at >= $1)
+        AND ($2::timestamptz IS NULL OR p.created_at <= $2)
+    `,
+    [input.from ?? null, input.to ?? null],
+  )
+
+  return row ?? {
+    transactionCount: 0,
+    grossRevenueExcludingTax: 0,
+    taxCollected: 0,
+    grossRevenueIncludingTax: 0,
+    netRevenueAfterFees: 0,
+  }
+}
+
+export async function getOperationsFinanceSummary(input: { from?: Date; to?: Date }) {
+  await ensurePaymentTransactionTable()
+  const row = await queryOne<{
+    payoutEligibleNetAmount: number
+    payoutPendingCount: number
+    payoutCompletedCount: number
+    refundedAmount: number
+    taxWithheldForRemittance: number
+  }>(
+    `
+      SELECT
+        COALESCE(SUM(CASE WHEN p.status = 'completed' THEN p.net_amount ELSE 0 END), 0)::float8 AS "payoutEligibleNetAmount",
+        COUNT(*) FILTER (WHERE p.status IN ('pending', 'processing'))::int AS "payoutPendingCount",
+        COUNT(*) FILTER (WHERE p.status = 'completed')::int AS "payoutCompletedCount",
+        COALESCE(SUM(CASE WHEN p.status = 'refunded' THEN p.refund_amount ELSE 0 END), 0)::float8 AS "refundedAmount",
+        COALESCE(SUM(CASE WHEN p.status IN ('completed', 'refunded') THEN COALESCE(tc.total_tax_amount, 0) ELSE 0 END), 0)::float8 AS "taxWithheldForRemittance"
+      FROM payment_transactions_v2 p
+      LEFT JOIN tax_calculations tc ON tc.source_type = 'transaction' AND tc.source_id = p.intent_id
+      WHERE ($1::timestamptz IS NULL OR p.created_at >= $1)
+        AND ($2::timestamptz IS NULL OR p.created_at <= $2)
+    `,
+    [input.from ?? null, input.to ?? null],
+  )
+
+  return row ?? {
+    payoutEligibleNetAmount: 0,
+    payoutPendingCount: 0,
+    payoutCompletedCount: 0,
+    refundedAmount: 0,
+    taxWithheldForRemittance: 0,
+  }
 }

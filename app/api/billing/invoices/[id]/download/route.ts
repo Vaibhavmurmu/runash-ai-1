@@ -1,19 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
+
+import { respondError, respondSuccess, resolveRequestId } from "@/lib/api/envelope"
+import { logApiRouteError } from "@/lib/api/logging"
 import { requireScopedBillingAccess } from "@/lib/billing-auth"
 import { Database } from "@/lib/database"
-import { logApiRouteError } from "@/lib/api/logging"
-
-function withRequestHeaders(requestId: string) {
-  return {
-    headers: {
-      "x-request-id": requestId,
-      "x-correlation-id": requestId,
-    },
-  }
-}
 
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const requestId = request.headers.get("x-request-id") ?? request.headers.get("x-correlation-id") ?? crypto.randomUUID()
+  const requestId = resolveRequestId(request)
 
   try {
     const access = await requireScopedBillingAccess("startup")
@@ -28,20 +21,37 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
 
     const invoice = invoices[0]
     if (!invoice) {
-      return NextResponse.json({ error: "Invoice not found", requestId }, { status: 404, ...withRequestHeaders(requestId) })
+      return respondError(request, { code: "INVOICE_NOT_FOUND", message: "Invoice not found" }, { status: 404, requestId })
     }
 
     if (!invoice.invoice_pdf && !invoice.hosted_invoice_url) {
-      return NextResponse.json({ error: "Invoice download not available", requestId }, { status: 404, ...withRequestHeaders(requestId) })
+      return respondError(
+        request,
+        { code: "INVOICE_DOWNLOAD_NOT_AVAILABLE", message: "Invoice download not available" },
+        { status: 404, requestId },
+      )
     }
 
     const downloadUrl = invoice.invoice_pdf || invoice.hosted_invoice_url
-    return NextResponse.redirect(downloadUrl!, withRequestHeaders(requestId))
+    if (request.nextUrl.searchParams.get("redirect") === "false") {
+      return respondSuccess(
+        request,
+        { invoiceId: invoice.id, downloadUrl },
+        { legacy: { invoice_id: invoice.id, download_url: downloadUrl }, requestId },
+      )
+    }
+
+    return NextResponse.redirect(downloadUrl!, {
+      headers: {
+        "x-request-id": requestId,
+        "x-correlation-id": requestId,
+      },
+    })
   } catch (error) {
     logApiRouteError(request, "billing.invoice.download_failed", error, {
       errorCode: "BILLING_INVOICE_DOWNLOAD_FAILED",
       requestId,
     })
-    return NextResponse.json({ error: "Internal server error", requestId }, { status: 500, ...withRequestHeaders(requestId) })
+    return respondError(request, { code: "BILLING_INVOICE_DOWNLOAD_FAILED", message: "Internal server error" }, { status: 500, requestId })
   }
 }

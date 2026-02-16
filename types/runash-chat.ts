@@ -11,6 +11,44 @@ export interface ChatMessage {
     tips?: SustainabilityTip[]
     automationSuggestions?: AutomationSuggestion[]
     searchResults?: SearchResult[]
+    linkQuickPay?: LinkQuickPayPreview
+  }
+}
+
+export interface LinkQuickPayPreview {
+  itemName: string
+  amountMinor: number
+  currency: "USD" | "INR"
+  eligibleForLink: boolean
+  last4: string
+  tags: string[]
+  taxPreview?: number
+  status?: string
+  subtotal?: number
+  taxAmount?: number
+  totalAmount?: number
+  taxLabel?: "GST" | "VAT" | "Sales Tax"
+  taxRatePercent?: number
+  blockedReason?: string
+  checkoutId?: string
+  nextAction?: "open_link_checkout" | "collect_valid_checkout_fields" | "retry_or_manual_review"
+  attemptTimeline?: Array<{
+    method: string
+    reason: "primary" | "fallback_retry" | "no_retry"
+    status: "initiated" | "failed"
+    timestamp: string
+  }>
+  confirmationPayload?: {
+    merchant_id: string
+    amount: number
+    currency: "USD" | "INR"
+    product_metadata: {
+      item_name: string
+      sku: string
+      tags: string[]
+    }
+    country?: string
+    region?: string
   }
 }
 

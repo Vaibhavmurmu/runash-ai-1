@@ -201,4 +201,16 @@ class MockAuthService {
   }
 }
 
-export const mockAuth = process.env.NODE_ENV === "test" ? new MockAuthService() : null
+let testMockAuth: MockAuthService | null = null
+
+export function getMockAuthServiceForTests(): MockAuthService {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("Mock auth service is only available in test runtime")
+  }
+
+  if (!testMockAuth) {
+    testMockAuth = new MockAuthService()
+  }
+
+  return testMockAuth
+}

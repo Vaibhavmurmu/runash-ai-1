@@ -1,11 +1,11 @@
-import type { SupportedTool } from "@/services/agent-orchestration-service"
+import { relayToolExecutionMode, type RelayAgentTool } from "@/lib/skills/relay-tool-registry"
 
-export function buildToolPlan(tools: SupportedTool[]) {
-  const immediate: SupportedTool[] = []
-  const queued: SupportedTool[] = []
+export function buildToolPlan(tools: RelayAgentTool[]) {
+  const immediate: RelayAgentTool[] = []
+  const queued: RelayAgentTool[] = []
 
   for (const tool of tools) {
-    if (tool === "catalog_lookup" || tool === "web_search") {
+    if (relayToolExecutionMode[tool] === "immediate") {
       immediate.push(tool)
       continue
     }

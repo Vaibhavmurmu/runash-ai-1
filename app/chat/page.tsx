@@ -417,9 +417,27 @@ export default function RunAshChatPage() {
     setIsTyping(true)
 
     try {
-      const requestedTools = /search|find|best|compare|web/i.test(content)
-        ? ["catalog_lookup", "web_search"]
-        : ["catalog_lookup"]
+      const isInstantCheckoutIntent = /\b(buy this|confirm purchase|pay now|instant checkout|checkout|confirm)\b/i.test(content)
+      const requestedTools = isInstantCheckoutIntent
+        ? ["catalog_lookup", "initiate_link_checkout"]
+        : /search|find|best|compare|web/i.test(content)
+          ? ["catalog_lookup", "web_search"]
+          : ["catalog_lookup"]
+
+      const toolPayloads = isInstantCheckoutIntent
+        ? {
+            initiate_link_checkout: {
+              merchant_id: "runash-default-merchant",
+              amount: 1000,
+              currency: "USD",
+              product_metadata: {
+                item_name: "RunAshChat Instant Checkout Item",
+                sku: "runashchat-instant-checkout",
+                tags: ["via RunAshChat", "instant_checkout", "digital"],
+              },
+            },
+          }
+        : undefined
 
       const response = await fetch("/api/agents/chat", {
         method: "POST",
@@ -429,6 +447,7 @@ export default function RunAshChatPage() {
           title: currentSession?.title ?? "RunAsh Agent Session",
           message: content,
           tools: requestedTools,
+          toolPayloads,
         }),
       })
 
@@ -472,6 +491,109 @@ export default function RunAshChatPage() {
 
           if (eventName === "tool_start") {
             updateAssistantMessage((existing) => ({ ...existing, status: "tool-running" }))
+          }
+
+          if (eventName === "tool_result" && payload.tool === "initiate_link_checkout") {
+            const linkPayload = toolPayloads?.initiate_link_checkout
+            const productMetadata =
+              linkPayload && typeof linkPayload.product_metadata === "object" && linkPayload.product_metadata !== null
+                ? (linkPayload.product_metadata as Record<string, unknown>)
+                : undefined
+            const tags = Array.isArray(productMetadata?.tags)
+              ? productMetadata.tags.filter((tag): tag is string => typeof tag === "string")
+              : []
+            const amountMinor = typeof linkPayload?.amount === "number" ? linkPayload.amount : 0
+            const taxPreview =
+              typeof payload.result?.activity_summary?.tax === "number"
+                ? payload.result.activity_summary.tax
+                : Number(payload.result?.tax ?? Number.NaN)
+            const subtotal =
+              typeof payload.result?.activity_summary?.subtotal === "number"
+                ? payload.result.activity_summary.subtotal
+                : Number.NaN
+            const total =
+              typeof payload.result?.activity_summary?.total === "number"
+                ? payload.result.activity_summary.total
+                : Number.NaN
+            const taxLabel =
+              typeof payload.result?.activity_summary?.tax_label === "string" ? payload.result.activity_summary.tax_label : undefined
+            const taxRatePercent =
+              typeof payload.result?.activity_summary?.tax_rate_percent === "number"
+                ? payload.result.activity_summary.tax_rate_percent
+                : undefined
+            const blockedReason =
+              typeof payload.result?.blocked_reason === "string" ? payload.result.blocked_reason : undefined
+            const checkoutId =
+              typeof payload.result?.activity_summary_payload?.checkoutId === "string"
+                ? payload.result.activity_summary_payload.checkoutId
+                : typeof payload.result?.checkout_session_id === "string"
+                  ? payload.result.checkout_session_id
+                  : undefined
+            const nextAction =
+              typeof payload.result?.activity_summary_payload?.nextAction === "string"
+                ? payload.result.activity_summary_payload.nextAction
+                : typeof payload.result?.next_action === "string"
+                  ? payload.result.next_action
+                  : undefined
+            const attemptTimeline = Array.isArray(payload.result?.attempt_timeline)
+              ? payload.result.attempt_timeline
+                  .map((entry: unknown) => {
+                    const timelineEntry = entry as Record<string, unknown>
+                    const method = typeof timelineEntry.method === "string" ? timelineEntry.method : null
+                    const reason =
+                      timelineEntry.reason === "primary" || timelineEntry.reason === "fallback_retry" || timelineEntry.reason === "no_retry"
+                        ? timelineEntry.reason
+                        : null
+                    const status = timelineEntry.status === "initiated" || timelineEntry.status === "failed" ? timelineEntry.status : null
+                    const timestamp = typeof timelineEntry.timestamp === "string" ? timelineEntry.timestamp : null
+
+                    if (!method || !reason || !status || !timestamp) return null
+                    return { method, reason, status, timestamp }
+                  })
+                  .filter((entry): entry is { method: string; reason: "primary" | "fallback_retry" | "no_retry"; status: "initiated" | "failed"; timestamp: string } => entry !== null)
+              : undefined
+
+            updateAssistantMessage((existing) => ({
+              ...existing,
+              metadata: {
+                ...existing.metadata,
+                linkQuickPay: {
+                  itemName:
+                    typeof productMetadata?.item_name === "string" ? productMetadata.item_name : "RunAshChat Instant Checkout Item",
+                  amountMinor,
+                  currency: linkPayload?.currency === "INR" ? "INR" : "USD",
+                  eligibleForLink: true,
+                  last4: "4242",
+                  tags,
+                  taxPreview: Number.isFinite(taxPreview) ? taxPreview : undefined,
+                  subtotal: Number.isFinite(subtotal) ? subtotal : undefined,
+                  taxAmount: Number.isFinite(taxPreview) ? taxPreview : undefined,
+                  totalAmount: Number.isFinite(total) ? total : undefined,
+                  taxLabel: taxLabel === "GST" || taxLabel === "VAT" || taxLabel === "Sales Tax" ? taxLabel : undefined,
+                  taxRatePercent,
+                  blockedReason,
+                  status: typeof payload.result?.status === "string" ? payload.result.status : undefined,
+                  checkoutId,
+                  nextAction,
+                  attemptTimeline,
+                  confirmationPayload: {
+                    merchant_id: typeof linkPayload?.merchant_id === "string" ? linkPayload.merchant_id : "runash-default-merchant",
+                    amount: amountMinor,
+                    currency: linkPayload?.currency === "INR" ? "INR" : "USD",
+                    product_metadata: {
+                      item_name:
+                        typeof productMetadata?.item_name === "string"
+                          ? productMetadata.item_name
+                          : "RunAshChat Instant Checkout Item",
+                      sku: typeof productMetadata?.sku === "string" ? productMetadata.sku : "runashchat-instant-checkout",
+                      tags,
+                    },
+                    country: typeof linkPayload?.country === "string" ? linkPayload.country : undefined,
+                    region: typeof linkPayload?.region === "string" ? linkPayload.region : undefined,
+                  },
+                },
+              },
+            }))
           }
 
           if (eventName === "final") {

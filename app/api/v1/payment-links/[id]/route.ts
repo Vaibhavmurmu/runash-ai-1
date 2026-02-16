@@ -3,7 +3,15 @@ import { deletePaymentLink, getPaymentLinkById, updatePaymentLink } from "@/lib/
 import { requireRoleBillingAccess } from "@/lib/billing-auth"
 import { DEFAULT_ROLES } from "@/lib/rbac"
 
-const OPERATOR_ROLES = [DEFAULT_ROLES.STARTUP_OPERATOR, DEFAULT_ROLES.STARTUP_ADMIN, DEFAULT_ROLES.ADMIN, DEFAULT_ROLES.SUPER_ADMIN]
+const OPERATOR_ROLES = [
+  DEFAULT_ROLES.STARTUP_OPERATOR,
+  DEFAULT_ROLES.STARTUP_ADMIN,
+  DEFAULT_ROLES.CUSTOMER_OPERATOR,
+  DEFAULT_ROLES.CUSTOMER_ADMIN,
+  DEFAULT_ROLES.CUSTOMER_FINANCE,
+  DEFAULT_ROLES.ADMIN,
+  DEFAULT_ROLES.SUPER_ADMIN,
+]
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
   const access = await requireRoleBillingAccess(OPERATOR_ROLES)

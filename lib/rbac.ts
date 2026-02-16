@@ -13,9 +13,13 @@ export const DEFAULT_ROLES = {
   BUSINESS_OPERATOR: "business_operator",
   STARTUP_ADMIN: "startup_admin",
   STARTUP_OPERATOR: "startup_operator",
+  CUSTOMER_ADMIN: "customer_admin",
+  CUSTOMER_OPERATOR: "customer_operator",
+  CUSTOMER_FINANCE: "customer_finance",
 } as const
 
 export type OperatorScope = "business" | "startup"
+export type BillingAction = "finance:read" | "billing:admin" | "billing:operate"
 
 export const DEFAULT_PERMISSIONS = {
   // User management
@@ -88,6 +92,9 @@ export const ROLE_PERMISSIONS = {
     "admin:access",
   ],
   [DEFAULT_ROLES.BUSINESS_OPERATOR]: ["payments:read", "payments:write", "admin:access"],
+  [DEFAULT_ROLES.CUSTOMER_ADMIN]: ["payments:read", "payments:write", "payments:refund", "admin:access"],
+  [DEFAULT_ROLES.CUSTOMER_OPERATOR]: ["payments:read", "payments:write"],
+  [DEFAULT_ROLES.CUSTOMER_FINANCE]: ["payments:read", "payments:refund", "admin:analytics"],
   [DEFAULT_ROLES.STARTUP_ADMIN]: ["payments:read", "payments:write", "streams:create", "admin:access"],
   [DEFAULT_ROLES.STARTUP_OPERATOR]: ["payments:read", "payments:write", "streams:create"],
   [DEFAULT_ROLES.MODERATOR]: [
@@ -110,10 +117,44 @@ export class RBACManager {
     }
 
     if (scope === "business") {
-      return role === DEFAULT_ROLES.BUSINESS_ADMIN || role === DEFAULT_ROLES.BUSINESS_OPERATOR
+      return (
+        role === DEFAULT_ROLES.BUSINESS_ADMIN ||
+        role === DEFAULT_ROLES.BUSINESS_OPERATOR ||
+        role === DEFAULT_ROLES.CUSTOMER_ADMIN ||
+        role === DEFAULT_ROLES.CUSTOMER_OPERATOR ||
+        role === DEFAULT_ROLES.CUSTOMER_FINANCE
+      )
     }
 
     return role === DEFAULT_ROLES.STARTUP_ADMIN || role === DEFAULT_ROLES.STARTUP_OPERATOR
+  }
+
+  static hasBillingActionAccess(role: string, action: BillingAction): boolean {
+    if (role === DEFAULT_ROLES.SUPER_ADMIN || role === DEFAULT_ROLES.ADMIN) {
+      return true
+    }
+
+    if (action === "finance:read") {
+      return (
+        role === DEFAULT_ROLES.BUSINESS_ADMIN ||
+        role === DEFAULT_ROLES.CUSTOMER_ADMIN ||
+        role === DEFAULT_ROLES.CUSTOMER_FINANCE ||
+        role === DEFAULT_ROLES.STARTUP_ADMIN
+      )
+    }
+
+    if (action === "billing:admin") {
+      return role === DEFAULT_ROLES.BUSINESS_ADMIN || role === DEFAULT_ROLES.CUSTOMER_ADMIN || role === DEFAULT_ROLES.STARTUP_ADMIN
+    }
+
+    return (
+      role === DEFAULT_ROLES.BUSINESS_ADMIN ||
+      role === DEFAULT_ROLES.BUSINESS_OPERATOR ||
+      role === DEFAULT_ROLES.CUSTOMER_ADMIN ||
+      role === DEFAULT_ROLES.CUSTOMER_OPERATOR ||
+      role === DEFAULT_ROLES.STARTUP_ADMIN ||
+      role === DEFAULT_ROLES.STARTUP_OPERATOR
+    )
   }
 
   /**
