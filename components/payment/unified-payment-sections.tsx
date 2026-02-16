@@ -273,7 +273,7 @@ export function AnalyticsSection() {
   const [period, setPeriod] = useState("7d")
   const [isLoading, setIsLoading] = useState(false)
   const [status, setStatus] = useState<Status>(null)
-  const [analyticsData, setAnalyticsData] = useState<unknown>(null)
+  const [analyticsData, setAnalyticsData] = useState<Record<string, any> | null>(null)
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -281,7 +281,7 @@ export function AnalyticsSection() {
     setIsLoading(true)
 
     try {
-      const response = await fetch(`/api/v1/analytics?period=${encodeURIComponent(period)}`, { method: "GET", cache: "no-store" })
+      const response = await fetch(`/api/payment/analytics?period=${encodeURIComponent(period)}`, { method: "GET", cache: "no-store" })
       const payload = (await response.json()) as ApiEnvelope<unknown>
       if (!response.ok || !payload.success) {
         setStatus({ kind: "error", message: payload.error?.message ?? "Failed to fetch analytics." })
@@ -312,6 +312,13 @@ export function AnalyticsSection() {
           <SubmitButton isLoading={isLoading} label="Load analytics" />
         </form>
         <StatusMessage status={status} />
+        {analyticsData?.checkoutAnalytics ? (
+          <div className="grid gap-2 rounded border p-3 text-xs sm:grid-cols-3">
+            <p>Total checkout attempts: {analyticsData.checkoutAnalytics.totalAttempts ?? 0}</p>
+            <p>Completed attempts: {analyticsData.checkoutAnalytics.completedAttempts ?? 0}</p>
+            <p>Success rate: {Number(analyticsData.checkoutAnalytics.successRatePercent ?? 0).toFixed(1)}%</p>
+          </div>
+        ) : null}
         <JsonPreview payload={analyticsData} />
       </CardContent>
     </Card>
@@ -322,6 +329,7 @@ export function UsageBillingSection() {
   const [metric, setMetric] = useState("api_calls")
   const [amount, setAmount] = useState("1")
   const [summary, setSummary] = useState<unknown>(null)
+  const [ingestionPayload, setIngestionPayload] = useState('{"eventId":"manual-event-1","promptTokens":100,"completionTokens":40,"deltaMs":2500,"metadata":{"source":"dashboard"},"pricingModel":{"strategy":"token","promptTokenRate":0.000002,"completionTokenRate":0.000004}}')
   const [isSummaryLoading, setIsSummaryLoading] = useState(false)
   const [isIncrementLoading, setIsIncrementLoading] = useState(false)
   const [status, setStatus] = useState<Status>(null)
@@ -345,6 +353,55 @@ export function UsageBillingSection() {
     }
   }
 
+
+  const ingestManualEvent = async () => {
+    setStatus(null)
+    setIsIncrementLoading(true)
+    try {
+      const parsed = JSON.parse(ingestionPayload)
+      const response = await fetch("/api/v1/payment/usage/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed),
+      })
+      const payload = (await response.json()) as ApiEnvelope<unknown>
+      if (!response.ok || !payload.success) {
+        setStatus({ kind: "error", message: payload.error?.message ?? "Failed to ingest usage event." })
+        return
+      }
+      setStatus({ kind: "success", message: "Manual usage event ingested." })
+      await loadSummary()
+    } catch {
+      setStatus({ kind: "error", message: "Invalid JSON payload or network failure for manual ingest." })
+    } finally {
+      setIsIncrementLoading(false)
+    }
+  }
+
+  const ingestBatchEvents = async () => {
+    setStatus(null)
+    setIsIncrementLoading(true)
+    try {
+      const parsed = JSON.parse(ingestionPayload)
+      const events = Array.isArray(parsed) ? parsed : [parsed]
+      const response = await fetch("/api/v1/payment/usage/ingest", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ events }),
+      })
+      const payload = (await response.json()) as ApiEnvelope<unknown>
+      if (!response.ok || !payload.success) {
+        setStatus({ kind: "error", message: payload.error?.message ?? "Failed to ingest usage batch." })
+        return
+      }
+      setStatus({ kind: "success", message: "Batch usage events ingested." })
+      await loadSummary()
+    } catch {
+      setStatus({ kind: "error", message: "Invalid JSON payload or network failure for batch ingest." })
+    } finally {
+      setIsIncrementLoading(false)
+    }
+  }
   const handleIncrement = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setStatus(null)
@@ -403,6 +460,23 @@ export function UsageBillingSection() {
             </Button>
           </div>
         </form>
+        <div className="space-y-2 rounded border p-3">
+          <Label htmlFor="usage-ingest-json">Manual / Batch usage ingestion payload (JSON)</Label>
+          <textarea
+            id="usage-ingest-json"
+            className="min-h-[120px] w-full rounded border bg-background p-2 text-xs"
+            value={ingestionPayload}
+            onChange={(event) => setIngestionPayload(event.target.value)}
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={ingestManualEvent} disabled={isIncrementLoading}>
+              Ingest manual usage event
+            </Button>
+            <Button type="button" variant="outline" onClick={ingestBatchEvents} disabled={isIncrementLoading}>
+              Ingest batch usage events
+            </Button>
+          </div>
+        </div>
         <StatusMessage status={status} />
         <JsonPreview payload={summary} />
       </CardContent>
@@ -545,7 +619,7 @@ export function TaxPayoutReportsSection() {
   const [toDate, setToDate] = useState(defaultTo)
   const [isLoading, setIsLoading] = useState(false)
   const [status, setStatus] = useState<Status>(null)
-  const [reportData, setReportData] = useState<unknown>(null)
+  const [reportData, setReportData] = useState<Record<string, any> | null>(null)
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -591,6 +665,15 @@ export function TaxPayoutReportsSection() {
           <SubmitButton isLoading={isLoading} label="Load reports" />
         </form>
         <StatusMessage status={status} />
+        {reportData ? (
+          <div className="grid gap-2 rounded border p-3 text-xs sm:grid-cols-2">
+            <p>Gross revenue: {reportData.revenue_summary?.grossRevenue ?? 0}</p>
+            <p>Net revenue: {reportData.revenue_summary?.netRevenue ?? 0}</p>
+            <p>Payout eligible: {reportData.operations_finance_summary?.payoutEligibleNetAmount ?? 0}</p>
+            <p>Tax withheld: {reportData.operations_finance_summary?.taxWithheldForRemittance ?? 0}</p>
+            <p>Transactions in trail: {Array.isArray(reportData.revenue_transactions) ? reportData.revenue_transactions.length : 0}</p>
+          </div>
+        ) : null}
         <JsonPreview payload={reportData} />
       </CardContent>
     </Card>

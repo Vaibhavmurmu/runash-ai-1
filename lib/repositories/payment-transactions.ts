@@ -418,25 +418,34 @@ export async function getRevenueTransactions(input: { from?: Date; to?: Date; li
     amount: number
     netAmount: number
     processingFee: number
+    estimatedTaxAmount: number
+    payoutEligibleAmount: number
     currency: string
     status: string
+    metadata: Record<string, unknown>
+    transactionTrail: Array<Record<string, unknown>>
     createdAt: string
   }>(
     `
       SELECT
-        id,
-        intent_id AS "intentId",
-        amount::float8 AS amount,
-        net_amount::float8 AS "netAmount",
-        processing_fee::float8 AS "processingFee",
-        currency,
-        status,
-        created_at::text AS "createdAt"
-      FROM payment_transactions_v2
-      WHERE status IN ('completed', 'refunded')
-        AND ($1::timestamptz IS NULL OR created_at >= $1)
-        AND ($2::timestamptz IS NULL OR created_at <= $2)
-      ORDER BY created_at DESC
+        p.id,
+        p.intent_id AS "intentId",
+        p.amount::float8 AS amount,
+        p.net_amount::float8 AS "netAmount",
+        p.processing_fee::float8 AS "processingFee",
+        COALESCE(tc.total_tax_amount, 0)::float8 AS "estimatedTaxAmount",
+        CASE WHEN p.status = 'completed' THEN p.net_amount::float8 ELSE 0::float8 END AS "payoutEligibleAmount",
+        p.currency,
+        p.status,
+        p.metadata,
+        p.provider_events AS "transactionTrail",
+        p.created_at::text AS "createdAt"
+      FROM payment_transactions_v2 p
+      LEFT JOIN tax_calculations tc ON tc.source_type = 'transaction' AND tc.source_id = p.intent_id
+      WHERE p.status IN ('completed', 'refunded')
+        AND ($1::timestamptz IS NULL OR p.created_at >= $1)
+        AND ($2::timestamptz IS NULL OR p.created_at <= $2)
+      ORDER BY p.created_at DESC
       LIMIT $3
     `,
     [input.from ?? null, input.to ?? null, Math.max(1, Math.min(500, input.limit ?? 200))],

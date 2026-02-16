@@ -69,6 +69,30 @@ export interface PortalMetricsSnapshot {
   renewalHealthy: number
 }
 
+export interface CheckoutAttemptResultRecord {
+  id: string
+  checkoutSessionId: string
+  customerId: string
+  paymentMethodRefId: string | null
+  attemptStatus: "authorized" | "completed" | "failed" | "expired"
+  attemptResultCode: string | null
+  attemptResultMessage: string | null
+  metadata: Record<string, unknown>
+  occurredAt: string
+  createdAt: string
+}
+
+export interface CheckoutAnalyticsSnapshot {
+  totalAttempts: number
+  completedAttempts: number
+  failedAttempts: number
+  authorizedAttempts: number
+  expiredAttempts: number
+  successRatePercent: number
+  avgAttemptsPerSession: number
+  lastAttemptAt: string | null
+}
+
 let tablesReady = false
 
 function getEncryptionKey() {
@@ -169,6 +193,24 @@ async function ensureTables() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_checkout_sessions_customer_created ON checkout_sessions(customer_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS checkout_attempt_results (
+      id TEXT PRIMARY KEY,
+      checkout_session_id TEXT NOT NULL REFERENCES checkout_sessions(id) ON DELETE CASCADE,
+      customer_id TEXT NOT NULL,
+      payment_method_ref_id TEXT REFERENCES customer_payment_method_vault_refs(id) ON DELETE SET NULL,
+      attempt_status TEXT NOT NULL,
+      attempt_result_code TEXT,
+      attempt_result_message TEXT,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_checkout_attempt_results_customer_created
+      ON checkout_attempt_results(customer_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_checkout_attempt_results_session_status
+      ON checkout_attempt_results(checkout_session_id, attempt_status);
 
     CREATE TABLE IF NOT EXISTS portal_lifecycle_actions (
       id TEXT PRIMARY KEY,
@@ -792,6 +834,143 @@ function mapLifecycleAction(row: any): PortalLifecycleActionRecord {
     metadata: row.metadata ?? {},
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+  }
+}
+
+function mapCheckoutAttemptResult(row: any): CheckoutAttemptResultRecord {
+  return {
+    id: row.id,
+    checkoutSessionId: row.checkoutSessionId,
+    customerId: row.customerId,
+    paymentMethodRefId: row.paymentMethodRefId,
+    attemptStatus: row.attemptStatus,
+    attemptResultCode: row.attemptResultCode,
+    attemptResultMessage: row.attemptResultMessage,
+    metadata: row.metadata ?? {},
+    occurredAt: row.occurredAt,
+    createdAt: row.createdAt,
+  }
+}
+
+export async function recordCheckoutAttemptResult(input: {
+  checkoutSessionId: string
+  customerId: string
+  paymentMethodRefId?: string | null
+  attemptStatus: CheckoutAttemptResultRecord["attemptStatus"]
+  attemptResultCode?: string | null
+  attemptResultMessage?: string | null
+  metadata?: Record<string, unknown>
+  occurredAt?: string
+}) {
+  await ensureTables()
+
+  const row = await queryOne<any>(
+    `
+      INSERT INTO checkout_attempt_results (
+        id,
+        checkout_session_id,
+        customer_id,
+        payment_method_ref_id,
+        attempt_status,
+        attempt_result_code,
+        attempt_result_message,
+        metadata,
+        occurred_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, COALESCE($9::timestamptz, NOW()))
+      RETURNING
+        id,
+        checkout_session_id AS "checkoutSessionId",
+        customer_id AS "customerId",
+        payment_method_ref_id AS "paymentMethodRefId",
+        attempt_status AS "attemptStatus",
+        attempt_result_code AS "attemptResultCode",
+        attempt_result_message AS "attemptResultMessage",
+        metadata,
+        occurred_at AS "occurredAt",
+        created_at AS "createdAt"
+    `,
+    [
+      nowId("chk_attempt"),
+      input.checkoutSessionId,
+      input.customerId,
+      input.paymentMethodRefId ?? null,
+      input.attemptStatus,
+      input.attemptResultCode ?? null,
+      input.attemptResultMessage ?? null,
+      JSON.stringify(input.metadata ?? {}),
+      input.occurredAt ?? null,
+    ],
+  )
+
+  if (!row) throw new Error("Failed to persist checkout attempt result")
+  return mapCheckoutAttemptResult(row)
+}
+
+export async function listCheckoutAttemptResults(customerId: string, limit = 100): Promise<CheckoutAttemptResultRecord[]> {
+  await ensureTables()
+  const rows = await queryMany<any>(
+    `
+      SELECT
+        id,
+        checkout_session_id AS "checkoutSessionId",
+        customer_id AS "customerId",
+        payment_method_ref_id AS "paymentMethodRefId",
+        attempt_status AS "attemptStatus",
+        attempt_result_code AS "attemptResultCode",
+        attempt_result_message AS "attemptResultMessage",
+        metadata,
+        occurred_at AS "occurredAt",
+        created_at AS "createdAt"
+      FROM checkout_attempt_results
+      WHERE customer_id = $1
+      ORDER BY occurred_at DESC
+      LIMIT $2
+    `,
+    [customerId, Math.max(1, Math.min(500, limit))],
+  )
+
+  return rows.map(mapCheckoutAttemptResult)
+}
+
+export async function getCheckoutAnalyticsSnapshot(customerId: string): Promise<CheckoutAnalyticsSnapshot> {
+  await ensureTables()
+  const [attemptsRow] = await queryMany<{
+    totalAttempts: number
+    completedAttempts: number
+    failedAttempts: number
+    authorizedAttempts: number
+    expiredAttempts: number
+    avgAttemptsPerSession: number
+    lastAttemptAt: string | null
+  }>(
+    `
+      SELECT
+        COUNT(*)::int AS "totalAttempts",
+        COUNT(*) FILTER (WHERE attempt_status = 'completed')::int AS "completedAttempts",
+        COUNT(*) FILTER (WHERE attempt_status = 'failed')::int AS "failedAttempts",
+        COUNT(*) FILTER (WHERE attempt_status = 'authorized')::int AS "authorizedAttempts",
+        COUNT(*) FILTER (WHERE attempt_status = 'expired')::int AS "expiredAttempts",
+        COALESCE(COUNT(*)::float8 / NULLIF(COUNT(DISTINCT checkout_session_id), 0), 0)::float8 AS "avgAttemptsPerSession",
+        MAX(occurred_at)::text AS "lastAttemptAt"
+      FROM checkout_attempt_results
+      WHERE customer_id = $1
+    `,
+    [customerId],
+  )
+
+  const totalAttempts = Number(attemptsRow?.totalAttempts ?? 0)
+  const completedAttempts = Number(attemptsRow?.completedAttempts ?? 0)
+
+  return {
+    totalAttempts,
+    completedAttempts,
+    failedAttempts: Number(attemptsRow?.failedAttempts ?? 0),
+    authorizedAttempts: Number(attemptsRow?.authorizedAttempts ?? 0),
+    expiredAttempts: Number(attemptsRow?.expiredAttempts ?? 0),
+    successRatePercent: totalAttempts > 0 ? (completedAttempts / totalAttempts) * 100 : 0,
+    avgAttemptsPerSession: Number(attemptsRow?.avgAttemptsPerSession ?? 0),
+    lastAttemptAt: attemptsRow?.lastAttemptAt ?? null,
   }
 }
 
