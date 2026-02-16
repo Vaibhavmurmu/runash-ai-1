@@ -11,6 +11,7 @@ const createCheckoutSchema = z
     mode: z.enum(["payment", "subscription"]).default("subscription"),
     success_url: z.string().url(),
     cancel_url: z.string().url(),
+    product_tax_code: z.enum(["physical_goods", "digital_services", "professional_services"]).optional(),
     billing_address: z
       .object({
         country: z.string().min(2).max(2).optional(),
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
       return respondError(request, { code: "INVALID_CHECKOUT_PAYLOAD", message: "Invalid checkout payload" }, { status: 400 })
     }
 
-    const { priceId, mode, success_url, cancel_url, billing_address } = validation.data
+    const { priceId, mode, success_url, cancel_url, product_tax_code, billing_address } = validation.data
 
     if (!process.env.STRIPE_SECRET_KEY) {
       return respondError(request, { code: "STRIPE_NOT_CONFIGURED", message: "Stripe not configured" }, { status: 500 })
@@ -53,6 +54,7 @@ export async function POST(request: NextRequest) {
     const taxComputation = await computeTaxForRegion({
       amount,
       currency: String(price.currency || "usd").toUpperCase(),
+      productTaxCode: product_tax_code,
       address: {
         country: billing_address?.country,
         state: billing_address?.state,
@@ -75,6 +77,7 @@ export async function POST(request: NextRequest) {
         tax_country_code: taxComputation.countryCode,
         tax_state_code: taxComputation.stateCode ?? "",
         tax_total_amount: String(taxComputation.totalTaxAmount),
+        product_tax_code: product_tax_code ?? "digital_services",
       },
     })
 

@@ -474,3 +474,70 @@ export async function getPayoutVisibility(input: { from?: Date; to?: Date; limit
     [input.from ?? null, input.to ?? null, Math.max(1, Math.min(500, input.limit ?? 200))],
   )
 }
+
+export async function getRevenueTaxSummary(input: { from?: Date; to?: Date }) {
+  await ensurePaymentTransactionTable()
+  const row = await queryOne<{
+    transactionCount: number
+    grossRevenueExcludingTax: number
+    taxCollected: number
+    grossRevenueIncludingTax: number
+    netRevenueAfterFees: number
+  }>(
+    `
+      SELECT
+        COUNT(*)::int AS "transactionCount",
+        COALESCE(SUM(COALESCE(tc.taxable_amount, p.amount)), 0)::float8 AS "grossRevenueExcludingTax",
+        COALESCE(SUM(COALESCE(tc.total_tax_amount, 0)), 0)::float8 AS "taxCollected",
+        COALESCE(SUM(COALESCE(tc.total_amount, p.amount)), 0)::float8 AS "grossRevenueIncludingTax",
+        COALESCE(SUM(p.net_amount), 0)::float8 AS "netRevenueAfterFees"
+      FROM payment_transactions_v2 p
+      LEFT JOIN tax_calculations tc ON tc.source_type = 'transaction' AND tc.source_id = p.intent_id
+      WHERE p.status IN ('completed', 'refunded')
+        AND ($1::timestamptz IS NULL OR p.created_at >= $1)
+        AND ($2::timestamptz IS NULL OR p.created_at <= $2)
+    `,
+    [input.from ?? null, input.to ?? null],
+  )
+
+  return row ?? {
+    transactionCount: 0,
+    grossRevenueExcludingTax: 0,
+    taxCollected: 0,
+    grossRevenueIncludingTax: 0,
+    netRevenueAfterFees: 0,
+  }
+}
+
+export async function getOperationsFinanceSummary(input: { from?: Date; to?: Date }) {
+  await ensurePaymentTransactionTable()
+  const row = await queryOne<{
+    payoutEligibleNetAmount: number
+    payoutPendingCount: number
+    payoutCompletedCount: number
+    refundedAmount: number
+    taxWithheldForRemittance: number
+  }>(
+    `
+      SELECT
+        COALESCE(SUM(CASE WHEN p.status = 'completed' THEN p.net_amount ELSE 0 END), 0)::float8 AS "payoutEligibleNetAmount",
+        COUNT(*) FILTER (WHERE p.status IN ('pending', 'processing'))::int AS "payoutPendingCount",
+        COUNT(*) FILTER (WHERE p.status = 'completed')::int AS "payoutCompletedCount",
+        COALESCE(SUM(CASE WHEN p.status = 'refunded' THEN p.refund_amount ELSE 0 END), 0)::float8 AS "refundedAmount",
+        COALESCE(SUM(CASE WHEN p.status IN ('completed', 'refunded') THEN COALESCE(tc.total_tax_amount, 0) ELSE 0 END), 0)::float8 AS "taxWithheldForRemittance"
+      FROM payment_transactions_v2 p
+      LEFT JOIN tax_calculations tc ON tc.source_type = 'transaction' AND tc.source_id = p.intent_id
+      WHERE ($1::timestamptz IS NULL OR p.created_at >= $1)
+        AND ($2::timestamptz IS NULL OR p.created_at <= $2)
+    `,
+    [input.from ?? null, input.to ?? null],
+  )
+
+  return row ?? {
+    payoutEligibleNetAmount: 0,
+    payoutPendingCount: 0,
+    payoutCompletedCount: 0,
+    refundedAmount: 0,
+    taxWithheldForRemittance: 0,
+  }
+}

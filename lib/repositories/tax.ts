@@ -8,6 +8,17 @@ export interface TaxRateRecord {
   name: string
   ratePercent: number
   inclusive: boolean
+  productTaxCode: string | null
+}
+
+export interface ProductTaxClassificationRecord {
+  id: number
+  code: string
+  name: string
+  description: string | null
+  defaultTaxType: string
+  defaultInclusive: boolean
+  metadata: Record<string, unknown>
 }
 
 export interface TaxLineItemInput {
@@ -50,6 +61,7 @@ async function ensureTaxTables() {
       name TEXT NOT NULL,
       rate_percent NUMERIC(8,4) NOT NULL,
       inclusive BOOLEAN NOT NULL DEFAULT FALSE,
+      product_tax_code VARCHAR(64),
       effective_from TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       effective_to TIMESTAMPTZ,
       metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -89,16 +101,56 @@ async function ensureTaxTables() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS product_tax_classifications (
+      id BIGSERIAL PRIMARY KEY,
+      code VARCHAR(64) NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      description TEXT,
+      default_tax_type VARCHAR(32) NOT NULL,
+      default_inclusive BOOLEAN NOT NULL DEFAULT FALSE,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS transaction_tax_line_items (
+      id BIGSERIAL PRIMARY KEY,
+      transaction_id TEXT NOT NULL,
+      tax_calculation_id BIGINT NOT NULL REFERENCES tax_calculations(id) ON DELETE CASCADE,
+      jurisdiction_level VARCHAR(16) NOT NULL,
+      jurisdiction_code VARCHAR(32) NOT NULL,
+      tax_type VARCHAR(32) NOT NULL,
+      tax_name TEXT NOT NULL,
+      rate_percent NUMERIC(8,4) NOT NULL,
+      taxable_amount NUMERIC(15,2) NOT NULL,
+      tax_amount NUMERIC(15,2) NOT NULL,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE INDEX IF NOT EXISTS idx_tax_rates_country_state ON tax_rates(country_code, state_code);
+    CREATE INDEX IF NOT EXISTS idx_tax_rates_country_state_product ON tax_rates(country_code, state_code, product_tax_code);
     CREATE INDEX IF NOT EXISTS idx_tax_calculations_source ON tax_calculations(source_type, source_id);
     CREATE INDEX IF NOT EXISTS idx_tax_calculations_country_state ON tax_calculations(country_code, state_code);
     CREATE INDEX IF NOT EXISTS idx_tax_line_items_calculation ON tax_line_items(tax_calculation_id);
+    CREATE INDEX IF NOT EXISTS idx_transaction_tax_line_items_transaction ON transaction_tax_line_items(transaction_id, created_at DESC);
+
+    INSERT INTO product_tax_classifications (code, name, description, default_tax_type, default_inclusive, metadata)
+    VALUES
+      ('physical_goods', 'Physical Goods', 'Tangible product sold and shipped to customer', 'sales_tax', false, '{"scope":"default"}'::jsonb),
+      ('digital_services', 'Digital Services', 'Digital service or SaaS subscription', 'vat', false, '{"scope":"default"}'::jsonb),
+      ('professional_services', 'Professional Services', 'Consulting, implementation, or managed service', 'service_tax', false, '{"scope":"default"}'::jsonb)
+    ON CONFLICT (code) DO NOTHING;
   `)
 
   taxTablesReady = true
 }
 
-export async function listEffectiveTaxRates(countryCode: string, stateCode?: string | null): Promise<TaxRateRecord[]> {
+export async function listEffectiveTaxRates(
+  countryCode: string,
+  stateCode?: string | null,
+  productTaxCode?: string | null,
+): Promise<TaxRateRecord[]> {
   await ensureTaxTables()
 
   const rows = await queryMany<TaxRateRecord>(
@@ -110,15 +162,17 @@ export async function listEffectiveTaxRates(countryCode: string, stateCode?: str
         tax_type AS "taxType",
         name,
         rate_percent::float8 AS "ratePercent",
-        inclusive
+        inclusive,
+        product_tax_code AS "productTaxCode"
       FROM tax_rates
       WHERE country_code = $1
         AND (state_code = $2 OR state_code IS NULL)
+        AND (product_tax_code = $3 OR product_tax_code IS NULL)
         AND effective_from <= NOW()
         AND (effective_to IS NULL OR effective_to > NOW())
-      ORDER BY state_code DESC NULLS LAST, rate_percent DESC
+      ORDER BY state_code DESC NULLS LAST, (product_tax_code IS NOT NULL) DESC, rate_percent DESC
     `,
-    [countryCode, stateCode ?? null],
+    [countryCode, stateCode ?? null, productTaxCode ?? null],
   )
 
   return rows
@@ -221,7 +275,64 @@ export async function createTaxCalculation(input: {
     )
   }
 
+  if (input.sourceType === "transaction") {
+    await (sql as { unsafe: (query: string, params?: unknown[]) => Promise<unknown> }).unsafe(
+      `DELETE FROM transaction_tax_line_items WHERE transaction_id = $1`,
+      [input.sourceId],
+    )
+
+    for (const lineItem of input.lineItems) {
+      await (sql as { unsafe: (query: string, params?: unknown[]) => Promise<unknown> }).unsafe(
+        `
+          INSERT INTO transaction_tax_line_items (
+            transaction_id,
+            tax_calculation_id,
+            jurisdiction_level,
+            jurisdiction_code,
+            tax_type,
+            tax_name,
+            rate_percent,
+            taxable_amount,
+            tax_amount,
+            metadata
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
+        `,
+        [
+          input.sourceId,
+          calculation.id,
+          lineItem.jurisdictionLevel,
+          lineItem.jurisdictionCode,
+          lineItem.taxType,
+          lineItem.taxName,
+          lineItem.ratePercent,
+          lineItem.taxableAmount,
+          lineItem.taxAmount,
+          JSON.stringify(lineItem.metadata ?? {}),
+        ],
+      )
+    }
+  }
+
   return calculation
+}
+
+export async function listProductTaxClassifications(): Promise<ProductTaxClassificationRecord[]> {
+  await ensureTaxTables()
+  return queryMany<ProductTaxClassificationRecord>(
+    `
+      SELECT
+        id::int AS id,
+        code,
+        name,
+        description,
+        default_tax_type AS "defaultTaxType",
+        default_inclusive AS "defaultInclusive",
+        metadata
+      FROM product_tax_classifications
+      ORDER BY name ASC
+    `,
+  )
 }
 
 export async function getTaxLiabilitySummary(input: { from?: Date; to?: Date }) {

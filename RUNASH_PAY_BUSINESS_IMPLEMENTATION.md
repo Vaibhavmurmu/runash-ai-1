@@ -1381,3 +1381,31 @@ The payment processing path now uses repository-backed persistence for:
 ### Validation commands
 - `npm run lint`
 - `npm run build`
+
+## 2026-02 tax accounting & finance operations increment
+
+### Scope delivered
+- Added product tax classification support for checkout/subscription tax computation (`physical_goods`, `digital_services`, `professional_services`).
+- Added transaction-level tax line item persistence for auditable per-payment tax records (`transaction_tax_line_items`) with jurisdiction, rate, amount, and tax type.
+- Exposed tax-inclusive invoice financial summaries and expanded reporting payloads with revenue-tax and operations-finance summary views.
+
+### Compliance assumptions
+- RunAsh computes indirect tax estimates from billing/shipping location and configured tax rates; this is an operational aid and not legal advice.
+- Tax registrations, exemptions, and filing cadence remain jurisdiction-dependent and must be maintained by operations/finance teams.
+- Stripe invoice/webhook-derived tax is treated as source-of-truth when available; fallback models are used when provider tax artifacts are absent.
+
+### Responsibilities matrix
+- **Engineering**
+  - Keep tax schema backward compatible and additive for existing payment contracts.
+  - Ensure sensitive payment/auth fields are not logged in tax and reporting flows.
+  - Preserve auditability across checkout, subscription, invoice, and transaction tax records.
+- **Finance**
+  - Validate tax classifications and jurisdiction mappings for products/plans.
+  - Reconcile revenue/tax summaries with accounting books and statutory returns.
+- **Operations**
+  - Monitor payout eligibility and remittance exposure via reporting endpoints.
+  - Coordinate rollback to previous tax persistence/reporting behavior if anomalies are detected.
+
+### Risk and rollback notes
+- Risk: **medium** (expanded tax persistence and reporting joins).
+- Rollback: disable transaction tax line item writes and finance summary aggregations while preserving existing base revenue/payout summaries.

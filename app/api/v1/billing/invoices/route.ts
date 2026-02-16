@@ -62,7 +62,13 @@ export async function GET(request: NextRequest) {
           )
         ),
         '{}'::json
-      ) AS tax_breakdown
+      ) AS tax_breakdown,
+      json_build_object(
+        'subtotal_amount', COALESCE(tc.taxable_amount, i.amount_due, i.total, 0),
+        'tax_amount', COALESCE(tc.total_tax_amount, 0),
+        'total_amount', COALESCE(tc.total_amount, i.amount_paid, i.amount_due, i.total, 0),
+        'tax_inclusive', true
+      ) AS financial_summary
       FROM invoices i
       LEFT JOIN invoice_line_items ili ON ili.invoice_id = i.id
       LEFT JOIN tax_calculations tc ON tc.source_type = 'invoice' AND tc.source_id = i.id::text
