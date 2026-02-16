@@ -1458,3 +1458,18 @@ Operational notes:
 ### Risk and rollback
 - Risk: low (UI + metadata rendering layer only).
 - Rollback: remove `metadata.linkQuickPay` rendering path; existing checkout flow remains available.
+
+## Reliability Addendum: Default→Backup Method Fallback (2026-02)
+
+For checkout execution reliability, payment confirmation now uses a two-step deterministic policy within a single checkout action:
+1. Charge `default_payment_method` first.
+2. On retryable/default-method failure codes, automatically retry using `backup_payment_method`.
+
+### Audit and response contract
+- Every execution attempt is written to transaction timeline metadata with `attemptIndex` and `reason`.
+- Confirm responses include additive fields: `attemptedMethods`, `fallbackUsed`, and `finalStatus`.
+- Confirm idempotency remains single-key per checkout action across retries.
+
+### Risk and rollback
+- **Risk:** low-medium (execution branching), limited to payment confirmation path.
+- **Rollback:** disable backup fallback logic and retain first-attempt-only confirmation while preserving stored timeline history.
