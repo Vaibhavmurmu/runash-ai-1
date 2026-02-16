@@ -1529,3 +1529,20 @@ Relay now runs a payment safety middleware before calling Link checkout executio
 - **Primary risk:** stricter policy may increase `validation_failed` outcomes for high-value payments without explicit confirmations.
 - **Mitigation:** clients must include HITL and MFA flags for qualifying transactions.
 - **Rollback path:** revert validator-safety-gate integration in Relay tool execution path and redeploy.
+
+## RunAsh AI Link: Fallback and Idempotent Attempt Persistence
+
+The Link checkout service now enforces a deterministic two-step method strategy for instant checkout:
+
+1. Attempt with default Link method (`stripe_link`).
+2. Retry with `backup_payment_method` only when first failure is retryable.
+
+Operational guarantees:
+- **Backward compatibility:** Existing checkout request fields are preserved; `backup_payment_method` and `idempotency_key` are additive.
+- **Auditability:** Every attempt is persisted with shared idempotency key, request id, attempt number, method name, status code, provider status, and retryable marker.
+- **Unified result contract:** returns `fallback_used`, `attempted_methods`, and `final_status` so Relay can provide stable UX behavior regardless of primary/fallback outcomes.
+- **Security hardening:** Avoid logging sensitive payment method payload fields; only minimal, non-sensitive attempt metadata is persisted.
+
+Rollback strategy:
+- Disable fallback behavior by omitting `backup_payment_method` while preserving primary flow behavior.
+- Preserve persistence writes for visibility during rollback verification.
