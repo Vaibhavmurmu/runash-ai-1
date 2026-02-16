@@ -5,7 +5,7 @@ import { logPrivilegedAction } from "@/lib/audit-logging"
 import { requireScopedBillingAccess } from "@/lib/billing-auth"
 import { resolveCreateIntentIdempotencyKey } from "@/lib/payment-idempotency"
 import { PaymentService } from "@/lib/payment-service"
-import { evaluatePaymentValidatorGate } from "@/lib/payments/validator-gate"
+import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
 import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
 import {
   createPaymentRoutingAuditEvent,
@@ -62,14 +62,15 @@ export async function POST(request: NextRequest) {
       return respondError(request, { code: "INVALID_AMOUNT", message: "Amount must be a positive number" }, { status: 400 })
     }
 
-    const validatorDecision = evaluatePaymentValidatorGate({
+    const validatorGate = enforcePaymentValidatorMiddleware({
       amountMinor: Math.round(amount),
       currency,
       humanConfirmed: Boolean(humanConfirmed),
       mfaVerified: Boolean(mfaVerified),
     })
+    const validatorDecision = validatorGate.decision
 
-    if (!validatorDecision.allowed) {
+    if (!validatorGate.allowed) {
       await logPrivilegedAction({
         actorUserId: sessionUser.userId,
         action: "payment.intent.validator_blocked",
@@ -80,6 +81,7 @@ export async function POST(request: NextRequest) {
           currency,
           paymentMethodId,
           validatorDecision,
+          validatorGate,
           metadata: metadata || {},
         }),
       })
@@ -92,7 +94,7 @@ export async function POST(request: NextRequest) {
         },
         {
           status: 403,
-          meta: { validatorDecision },
+          meta: { validatorDecision, validatorGate },
         },
       )
     }
@@ -142,6 +144,7 @@ export async function POST(request: NextRequest) {
       user_id: sessionUser.userId,
       organization_id: sessionUser.organizationId,
       validatorDecision,
+      validatorGate,
       usage_hook_attached: Boolean(usageHook),
       payment_context: {
         regionRoute: edgeRouting.regionRoute,
@@ -184,12 +187,14 @@ export async function POST(request: NextRequest) {
         },
         routeDecision: routeAudit.routeDecision,
         validatorDecision,
+        validatorGate,
       }),
     })
 
     return respondSuccess(request, {
       ...intent,
       validatorDecision,
+      validatorGate,
       usageHook: usageHookResult,
     })
   } catch (error) {

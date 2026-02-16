@@ -699,7 +699,8 @@ Rollback notes:
 
 RunAshChat "Instant Checkout" now enforces a deterministic Relay safety middleware before Link checkout execution:
 
-- New middleware: `lib/payments/validator-safety-gate.ts`.
+- Middleware enforcement layer: `lib/payments/validator-gate.ts` (built on `lib/payments/validator-safety-gate.ts`).
+- Middleware is enforced in both API execution paths (`/api/v1/payment/create-intent`, `/api/v1/billing/checkout`) and Relay agent tool execution path (`services/agent-orchestration-service.ts` + `lib/skills/link-checkout-skill.ts`).
 - Policy decision contract returned by Relay tooling:
   - `allowed`
   - `requiresHitl`
@@ -716,7 +717,7 @@ RunAshChat "Instant Checkout" now enforces a deterministic Relay safety middlewa
 ### Risk + rollback notes
 
 - **Risk level:** medium (may block high-value checkout attempts that previously proceeded without HITL/MFA flags).
-- **Rollback:** revert Relay validator middleware integration in `lib/agent-tools/initiate-link-checkout.ts` and `services/agent-orchestration-service.ts`, then redeploy.
+- **Rollback:** revert validator middleware integration in `lib/payments/validator-gate.ts`, API payment routes, and `services/agent-orchestration-service.ts`, then redeploy.
 
 ## RunAshChat Instant Checkout (Stripe Link bridge)
 

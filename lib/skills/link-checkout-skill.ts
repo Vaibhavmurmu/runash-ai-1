@@ -77,6 +77,16 @@ export const initiateLinkCheckoutParameters = {
       description: "Must be true only when user confirms after preview is displayed",
       default: false,
     },
+    human_confirmed: {
+      type: "boolean",
+      description: "Human-in-the-loop confirmation for high-value transactions",
+      default: false,
+    },
+    mfa_verified: {
+      type: "boolean",
+      description: "MFA verification flag for high-value INR-equivalent transactions",
+      default: false,
+    },
   },
 } as const
 
@@ -89,6 +99,8 @@ const initiateLinkCheckoutArgsSchema = z.object({
   merchant_region: z.string().trim().min(2).max(20).optional(),
   preview_displayed: z.boolean().default(false),
   user_confirmation_after_preview: z.boolean().default(false),
+  human_confirmed: z.boolean().optional(),
+  mfa_verified: z.boolean().optional(),
   product_metadata: z
     .object({
       item_name: z.string().trim().min(1),
@@ -153,8 +165,12 @@ type CheckoutActivitySummary = {
 async function runValidatorGate(input: InitiateLinkCheckoutArgs) {
   const checks: string[] = ["pii_safe_logging:passed"]
 
-  const mfaVerified = process.env.RUNASH_LINK_CHECKOUT_MFA_VERIFIED === "true"
-  const humanConfirmed = process.env.RUNASH_LINK_CHECKOUT_HUMAN_CONFIRMED === "true"
+  const mfaVerified =
+    typeof input.mfa_verified === "boolean" ? input.mfa_verified : process.env.RUNASH_LINK_CHECKOUT_MFA_VERIFIED === "true"
+  const humanConfirmed =
+    typeof input.human_confirmed === "boolean"
+      ? input.human_confirmed
+      : process.env.RUNASH_LINK_CHECKOUT_HUMAN_CONFIRMED === "true"
 
   const validatorDecision = evaluatePaymentValidatorGate({
     amountMinor: input.amount,

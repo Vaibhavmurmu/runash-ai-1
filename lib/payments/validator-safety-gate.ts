@@ -1,4 +1,4 @@
-import { toInrEquivalentPaise, toUsdEquivalentCents } from "@/lib/payments/currency-normalizer"
+import { normalizePolicyThresholdAmounts } from "@/lib/payments/currency-normalizer"
 
 const SUPPORTED_POLICY_CURRENCIES = new Set(["USD", "INR"])
 
@@ -69,12 +69,7 @@ export function evaluateValidatorSafetyGate(input: PaymentSafetyGateInput): Paym
   }
 
   const usdToInrRate = getUsdToInrRate()
-  const usdEquivalentCents = toUsdEquivalentCents({
-    amountMinor: input.amount_minor,
-    currency,
-    usdToInrRate,
-  })
-  const inrEquivalentPaise = toInrEquivalentPaise({
+  const { usdEquivalentCents, inrEquivalentPaise } = normalizePolicyThresholdAmounts({
     amountMinor: input.amount_minor,
     currency,
     usdToInrRate,

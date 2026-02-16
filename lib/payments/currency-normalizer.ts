@@ -72,3 +72,24 @@ export function toInrEquivalentPaise(input: { amountMinor: number; currency: str
     usdToInrRate: input.usdToInrRate,
   })
 }
+
+export function normalizePolicyThresholdAmounts(input: { amountMinor: number; currency: string; usdToInrRate?: number }) {
+  const currency = input.currency.toUpperCase()
+  const usdEquivalentCents = toUsdEquivalentCents({
+    amountMinor: input.amountMinor,
+    currency,
+    usdToInrRate: input.usdToInrRate,
+  })
+
+  const inrEquivalentPaise = toInrEquivalentPaise({
+    amountMinor: input.amountMinor,
+    currency,
+    usdToInrRate: input.usdToInrRate,
+  })
+
+  return {
+    currency,
+    usdEquivalentCents,
+    inrEquivalentPaise,
+  }
+}
