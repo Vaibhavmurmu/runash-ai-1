@@ -1409,3 +1409,18 @@ The payment processing path now uses repository-backed persistence for:
 ### Risk and rollback notes
 - Risk: **medium** (expanded tax persistence and reporting joins).
 - Rollback: disable transaction tax line item writes and finance summary aggregations while preserving existing base revenue/payout summaries.
+
+## 2026 Update: RunAshChat Instant Checkout via Relay Skill
+
+### Payment-impacting behavior changes
+- Relay agent now supports `initiate_link_checkout` for natural-language purchase intents in RunAshChat.
+- The flow performs mandatory validator-gate checks (HITL/MFA/PII-safe logging) before calling RunAsh Pay.
+- For blocked/failed external calls, a fallback path (`manual_review_queue` or `relay_agent_manual_checkout`) is returned for operator continuity.
+
+### Risk and rollback
+- Risk level: **medium** (touches checkout orchestration in agent tooling).
+- Rollback: remove `initiate_link_checkout` from relay tool registry and API `tools` enum; existing payment APIs remain unchanged.
+
+### Contract compatibility
+- Existing payment/API contracts are preserved.
+- New tool uses explicit schema validation and does not alter existing field names.

@@ -13,6 +13,7 @@ import {
   upsertAgentSession,
   updateAgentMessage,
 } from "@/lib/repositories/agent-orchestration"
+import { RELAY_AGENT_TOOLS } from "@/lib/skills/relay-tool-registry"
 import { AgentOrchestrationService, type SupportedTool } from "@/services/agent-orchestration-service"
 import { enqueueToolJob } from "@/services/agent-tool-queue-worker"
 import { buildToolPlan } from "./chat-request-handler"
@@ -21,7 +22,8 @@ const requestSchema = z.object({
   sessionId: z.string().trim().min(1).optional(),
   title: z.string().trim().min(1).max(120).optional(),
   message: z.string().trim().min(1).max(5000),
-  tools: z.array(z.enum(["catalog_lookup", "inventory_health", "checkout_preview", "web_search"])).default([]),
+  tools: z.array(z.enum(RELAY_AGENT_TOOLS)).default([]),
+  toolPayloads: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
 })
 
 const AGENT_CHAT_ENABLED = process.env.RUNASH_AGENT_CHAT_ENABLED !== "false"
@@ -84,7 +86,8 @@ export async function POST(request: NextRequest) {
           for (const tool of toolPlan.immediate) {
             send("tool_start", { tool, messageId: assistantMessage.id, status: "tool-running" })
 
-            const execution = await AgentOrchestrationService.executeToolWithPolicy(tool, { query: sanitizedMessage }, {
+            const payload = parsed.data.toolPayloads?.[tool] ?? { query: sanitizedMessage }
+            const execution = await AgentOrchestrationService.executeToolWithPolicy(tool, payload, {
               sessionId: agentSession.id,
               messageId: assistantMessage.id,
               tenantId: userId,
@@ -96,9 +99,10 @@ export async function POST(request: NextRequest) {
 
           for (const tool of toolPlan.queued) {
             send("tool_start", { tool, messageId: assistantMessage.id, status: "tool-running" })
+            const payload = parsed.data.toolPayloads?.[tool] ?? { query: sanitizedMessage }
             const jobId = enqueueToolJob({
               tool,
-              payload: { query: sanitizedMessage },
+              payload,
               context: {
                 sessionId: agentSession.id,
                 messageId: assistantMessage.id,
