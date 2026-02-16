@@ -7,6 +7,10 @@ import { resolveCreateIntentIdempotencyKey } from "@/lib/payment-idempotency"
 import { PaymentService } from "@/lib/payment-service"
 import { evaluatePaymentValidatorGate } from "@/lib/payments/validator-gate"
 import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
+import {
+  createPaymentRoutingAuditEvent,
+  resolveEdgeRoutingPolicy
+} from "@/lib/payments/edge-routing-policy"
 import { ingestUsageEvent, type UsageEventIngestionInput } from "@/lib/billing-usage"
 
 function toUsageBillingHook(
@@ -98,6 +102,31 @@ export async function POST(request: NextRequest) {
       return respondError(request, { code: "INVALID_PAYMENT_METHOD", message: "Invalid payment method for the specified currency" }, { status: 400 })
     }
 
+    const edgeRouting = resolveEdgeRoutingPolicy({
+      merchantRegion: process.env.RUNASH_MERCHANT_REGION || undefined,
+      customerRegion:
+        (typeof metadata?.customer_region === "string" ? metadata.customer_region : undefined) ||
+        request.headers.get("x-customer-region") ||
+        undefined,
+    })
+    const routeAudit = createPaymentRoutingAuditEvent({
+      requestId: request.headers.get("x-request-id"),
+      decision: edgeRouting,
+      metadata: {
+        route_scope: "payment.create_intent",
+        currency,
+        payment_method_id: paymentMethodId,
+      },
+    })
+
+    await logPrivilegedAction({
+      actorUserId: sessionUser.userId,
+      action: "payment.intent.route_decision",
+      resource: "payment.intent",
+      request,
+      details: routeAudit,
+    })
+
     const requestIdempotencyKey = resolveCreateIntentIdempotencyKey({
       providedKey: idempotencyKey || request.headers.get("x-idempotency-key") || undefined,
       userId: sessionUser.userId,
@@ -108,13 +137,20 @@ export async function POST(request: NextRequest) {
       metadata: metadata || {},
     })
 
-    const mergedMetadata = {
+    const mergedMetadata = sanitizePaymentActivityDetails({
       ...(metadata || {}),
       user_id: sessionUser.userId,
       organization_id: sessionUser.organizationId,
       validatorDecision,
       usage_hook_attached: Boolean(usageHook),
-    }
+      payment_context: {
+        regionRoute: edgeRouting.regionRoute,
+        residencyPolicy: edgeRouting.residencyPolicy,
+      },
+      region_route: edgeRouting.regionRoute,
+      residency_policy: edgeRouting.residencyPolicy,
+      compliance_profile: edgeRouting.complianceProfile,
+    })
 
     const intent = await PaymentService.createPaymentIntent(
       amount,
@@ -142,6 +178,11 @@ export async function POST(request: NextRequest) {
         hasPaymentMethodId: Boolean(paymentMethodId),
         paymentMethodId,
         metadata: metadata || {},
+        paymentContext: {
+          regionRoute: edgeRouting.regionRoute,
+          residencyPolicy: edgeRouting.residencyPolicy,
+        },
+        routeDecision: routeAudit.routeDecision,
         validatorDecision,
       }),
     })

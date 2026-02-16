@@ -24,6 +24,7 @@ import {
 } from "@/lib/repositories/payment-transactions"
 import { getProviderAdapter } from "@/lib/services/payment-provider-gateway"
 import { getLifecycleSnapshot, type LifecycleSnapshot } from "@/lib/customer-lifecycle-analytics-service"
+import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
 
 export interface PaymentMethod {
   id: string
@@ -419,7 +420,7 @@ export class PaymentService {
       amount,
       currency,
       paymentMethod,
-      metadata,
+      metadata: sanitizePaymentActivityDetails(metadata),
     })
 
     const persisted = await createPaymentIntentRecord({
@@ -430,7 +431,7 @@ export class PaymentService {
       provider: paymentMethod.provider,
       providerIntentId: providerIntent.providerIntentId,
       createIdempotencyKey: createKey,
-      metadata,
+      metadata: sanitizePaymentActivityDetails(metadata),
       providerEvents: [providerIntent.event],
     })
 
@@ -500,11 +501,11 @@ export class PaymentService {
         amount: persistedIntent.amount,
         currency: persistedIntent.currency,
         paymentMethod: method,
-        metadata: {
+        metadata: sanitizePaymentActivityDetails({
           ...persistedIntent.metadata,
           idempotency_key: confirmKey,
           payment_attempt_index: index + 1,
-        },
+        }),
       })
 
       const status = statusFromProviderEvent({

@@ -1577,11 +1577,14 @@ Business billing flows now apply a mandatory edge-routing policy layer before ou
 ### Metadata and auditability
 - Route context is attached to outbound payment metadata as additive fields:
   - `region_route`
+  - `residency_policy`
   - `compliance_profile`
-- Compliance/audit records now include:
+- Payment intent metadata additionally carries `payment_context = { regionRoute, residencyPolicy }` to preserve region-aware execution context without changing API signatures.
+- Compliance/audit records now include a structured route envelope:
   - request ID
-  - route decision
+  - route decision (`regionRoute`, `residencyPolicy`, `complianceProfile`, `reason`)
   - sanitized metadata only
+- Provider-bound outbound metadata is sanitized before dispatch to prevent sensitive auth/payment data exposure in gateway logs and events.
 
 ### Risk and rollback
 - Risk level: low-to-medium (policy misclassification could route traffic to default US edge).
