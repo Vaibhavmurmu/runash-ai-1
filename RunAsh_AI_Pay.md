@@ -603,3 +603,23 @@ RunAshChat buy-intent messages now support an in-chat Link quick-pay experience 
 - Safety posture: no sensitive payment/auth fields are logged in the UI flow.
 
 This preserves existing checkout contracts and only augments chat rendering/metadata for backward-compatible payment UX.
+
+## Checkout execution fallback sequencing update (2026-02)
+
+Payment confirmation now executes deterministic method fallback for one checkout action while preserving existing route contracts.
+
+### Execution behavior
+- Attempt 1 always uses `default_payment_method`.
+- If attempt 1 fails with retryable/default-method failure codes, attempt 2 automatically uses `backup_payment_method`.
+- Both attempts are persisted into the transaction timeline with explicit `attemptIndex` and `reason` for auditability.
+- A single confirm idempotency key is reused for all attempts inside the same checkout action.
+
+### Response fields
+The confirm response now includes additive fields:
+- `attemptedMethods`: ordered list of method attempts.
+- `fallbackUsed`: boolean indicating whether backup fallback executed.
+- `finalStatus`: final transaction status after fallback resolution.
+
+### Rollback and compatibility
+- Existing transaction fields and endpoint paths are unchanged.
+- This rollout is additive and backward compatible; clients can ignore the new fields.

@@ -67,6 +67,24 @@ export interface PaymentTransaction {
   updatedAt: Date
 }
 
+export interface PaymentExecutionAttempt {
+  attemptIndex: number
+  methodId: string
+  methodName: string
+  provider: string
+  status: PaymentTransaction["status"]
+  reason: string
+  failureCode?: string
+  providerStatus: string
+}
+
+export interface PaymentExecutionResult {
+  transaction: PaymentTransaction
+  attemptedMethods: PaymentExecutionAttempt[]
+  fallbackUsed: boolean
+  finalStatus: PaymentTransaction["status"]
+}
+
 export interface PaymentAnalytics {
   lifecycle: LifecycleSnapshot
   totalRevenue: number
@@ -327,6 +345,31 @@ function toPublicMethod(record: PaymentMethodRecord): PaymentMethod {
   }
 }
 
+const RETRYABLE_DEFAULT_METHOD_FAILURE_CODES = new Set([
+  "insufficient_funds",
+  "do_not_honor",
+  "issuer_unavailable",
+  "processing_error",
+  "network_error",
+  "gateway_timeout",
+  "provider_declined",
+])
+
+function resolveFailureCode(input: {
+  providerFailureCode?: string
+  providerEvent?: Record<string, unknown>
+}): string | undefined {
+  if (typeof input.providerFailureCode === "string" && input.providerFailureCode.trim()) {
+    return input.providerFailureCode.trim().toLowerCase()
+  }
+
+  if (typeof input.providerEvent?.code === "string" && input.providerEvent.code.trim()) {
+    return input.providerEvent.code.trim().toLowerCase()
+  }
+
+  return undefined
+}
+
 export class PaymentService {
   private static methodsSeeded = false
 
@@ -394,65 +437,178 @@ export class PaymentService {
     return toPublicIntent(persisted)
   }
 
-  static async processPayment(intentId: string, idempotencyKey?: string): Promise<PaymentTransaction> {
+  static async processPayment(intentId: string, idempotencyKey?: string): Promise<PaymentExecutionResult> {
     const persistedIntent = await getPaymentIntentById(intentId)
     if (!persistedIntent) {
       throw new Error("Payment intent not found")
     }
 
-    const paymentMethod = await this.getPaymentMethodOrThrow(persistedIntent.paymentMethodId)
+    const defaultMethod = await this.getPaymentMethodOrThrow(persistedIntent.paymentMethodId)
+    const backupMethodId =
+      typeof persistedIntent.metadata?.backup_payment_method_id === "string"
+        ? persistedIntent.metadata.backup_payment_method_id
+        : null
+
+    const backupMethod =
+      backupMethodId && backupMethodId !== defaultMethod.id ? await findPaymentMethodById(backupMethodId) : null
+
+    const candidateMethods = [defaultMethod, ...(backupMethod && backupMethod.enabled ? [backupMethod] : [])]
 
     const confirmKey = idempotencyKey ?? `confirm:${intentId}`
     const existingByKey = await getPaymentTransactionByConfirmIdempotencyKey(confirmKey)
-    if (existingByKey) return toPublicTransaction(existingByKey)
+    if (existingByKey) {
+      const attempts = Array.isArray(existingByKey.metadata?.attempts)
+        ? (existingByKey.metadata.attempts as PaymentExecutionAttempt[])
+        : []
+
+      return {
+        transaction: toPublicTransaction(existingByKey),
+        attemptedMethods: attempts,
+        fallbackUsed: attempts.length > 1,
+        finalStatus: existingByKey.status,
+      }
+    }
 
     const existingByIntent = await getPaymentTransactionByIntentId(intentId)
-    if (existingByIntent) return toPublicTransaction(existingByIntent)
+    if (existingByIntent) {
+      const attempts = Array.isArray(existingByIntent.metadata?.attempts)
+        ? (existingByIntent.metadata.attempts as PaymentExecutionAttempt[])
+        : []
+
+      return {
+        transaction: toPublicTransaction(existingByIntent),
+        attemptedMethods: attempts,
+        fallbackUsed: attempts.length > 1,
+        finalStatus: existingByIntent.status,
+      }
+    }
 
     await updatePaymentIntentStatus({ id: intentId, status: "processing" })
 
-    const processingFee = (persistedIntent.amount * paymentMethod.processingFee) / 100
-    const providerAdapter = getProviderAdapter(paymentMethod.provider)
-    const providerResult = await providerAdapter.confirmPayment({
-      intentId,
-      providerIntentId: persistedIntent.providerIntentId ?? `${paymentMethod.provider}_pi_${intentId}`,
-      amount: persistedIntent.amount,
-      currency: persistedIntent.currency,
-      paymentMethod,
-      metadata: persistedIntent.metadata,
-    })
+    const attemptedMethods: PaymentExecutionAttempt[] = []
+    const attemptProviderEvents: Array<Record<string, unknown>> = []
+    let selectedProviderResult: Awaited<ReturnType<ReturnType<typeof getProviderAdapter>["confirmPayment"]>> | null = null
+    let selectedStatus: PaymentTransaction["status"] = "failed"
+    let selectedMethod: PaymentMethodRecord | null = null
 
-    const status = statusFromProviderEvent({
-      event: providerResult.event,
-      providerStatus: providerResult.providerStatus,
-      fallbackStatus: providerResult.status,
-    })
+    for (let index = 0; index < candidateMethods.length; index += 1) {
+      const method = candidateMethods[index]
+      const providerAdapter = getProviderAdapter(method.provider)
+      const providerResult = await providerAdapter.confirmPayment({
+        intentId,
+        providerIntentId: persistedIntent.providerIntentId ?? `${method.provider}_pi_${intentId}`,
+        amount: persistedIntent.amount,
+        currency: persistedIntent.currency,
+        paymentMethod: method,
+        metadata: {
+          ...persistedIntent.metadata,
+          idempotency_key: confirmKey,
+          payment_attempt_index: index + 1,
+        },
+      })
+
+      const status = statusFromProviderEvent({
+        event: providerResult.event,
+        providerStatus: providerResult.providerStatus,
+        fallbackStatus: providerResult.status,
+      })
+
+      const failureCode = resolveFailureCode({
+        providerFailureCode: providerResult.failureCode,
+        providerEvent: providerResult.event,
+      })
+
+      const reason =
+        status === "failed"
+          ? index === 0
+            ? "default_method_failed"
+            : "backup_method_failed"
+          : index === 0
+            ? "default_method_succeeded"
+            : "backup_method_succeeded"
+
+      attemptedMethods.push({
+        attemptIndex: index + 1,
+        methodId: method.id,
+        methodName: method.name,
+        provider: method.provider,
+        status,
+        reason,
+        failureCode,
+        providerStatus: providerResult.providerStatus,
+      })
+
+      attemptProviderEvents.push({
+        ...(providerResult.event ?? {}),
+        attemptIndex: index + 1,
+        reason,
+        methodId: method.id,
+        provider: method.provider,
+        status,
+        failureCode,
+      })
+
+      selectedProviderResult = providerResult
+      selectedStatus = status
+      selectedMethod = method
+
+      if (status !== "failed") {
+        break
+      }
+
+      const shouldRetryWithBackup =
+        index === 0 &&
+        candidateMethods.length > 1 &&
+        (failureCode == null || RETRYABLE_DEFAULT_METHOD_FAILURE_CODES.has(failureCode))
+
+      if (!shouldRetryWithBackup) {
+        break
+      }
+    }
+
+    if (!selectedProviderResult || !selectedMethod) {
+      throw new Error("Failed to execute payment attempt")
+    }
+
+    const processingFee = (persistedIntent.amount * selectedMethod.processingFee) / 100
+    const fallbackUsed = attemptedMethods.length > 1
 
     const transaction = await createPaymentTransactionRecord({
       id: createEntityId("txn"),
       intentId,
       amount: persistedIntent.amount,
       currency: persistedIntent.currency,
-      status,
-      paymentMethod: paymentMethod.name,
-      provider: paymentMethod.provider,
-      providerTransactionId: providerResult.providerTransactionId,
-      providerStatus: providerResult.providerStatus,
+      status: selectedStatus,
+      paymentMethod: selectedMethod.name,
+      provider: selectedMethod.provider,
+      providerTransactionId: selectedProviderResult.providerTransactionId,
+      providerStatus: selectedProviderResult.providerStatus,
       processingFee,
-      netAmount: status === "completed" ? persistedIntent.amount - processingFee : 0,
-      failureReason: status === "failed" ? providerResult.failureReason ?? "Provider declined payment" : null,
+      netAmount: selectedStatus === "completed" ? persistedIntent.amount - processingFee : 0,
+      failureReason: selectedStatus === "failed" ? selectedProviderResult.failureReason ?? "Provider declined payment" : null,
       confirmIdempotencyKey: confirmKey,
-      metadata: persistedIntent.metadata,
-      providerEvents: [providerResult.event],
+      metadata: {
+        ...persistedIntent.metadata,
+        attempts: attemptedMethods,
+        attemptedMethods: attemptedMethods.map((attempt) => attempt.methodId),
+        fallbackUsed,
+        finalStatus: selectedStatus,
+      },
+      providerEvents: attemptProviderEvents,
     })
 
     await updatePaymentIntentStatus({
       id: intentId,
-      status: intentStatusFromTransactionStatus(status),
-      providerEvent: providerResult.event,
+      status: intentStatusFromTransactionStatus(selectedStatus),
+      providerEvent: selectedProviderResult.event,
     })
 
-    return toPublicTransaction(transaction)
+    return {
+      transaction: toPublicTransaction(transaction),
+      attemptedMethods,
+      fallbackUsed,
+      finalStatus: selectedStatus,
+    }
   }
 
   static async getTransaction(transactionId: string): Promise<PaymentTransaction | null> {

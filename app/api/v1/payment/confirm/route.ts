@@ -26,7 +26,8 @@ export async function POST(request: NextRequest) {
       intentId,
     })
 
-    const transaction = await PaymentService.processPayment(intentId, requestIdempotencyKey)
+    const executionResult = await PaymentService.processPayment(intentId, requestIdempotencyKey)
+    const transaction = executionResult.transaction
     const transactionOwner = String(transaction.metadata?.user_id || "")
 
     if (!transactionOwner || transactionOwner !== sessionUser.userId) {
@@ -41,7 +42,12 @@ export async function POST(request: NextRequest) {
       details: { intentId, transactionId: transaction.id, status: transaction.status },
     })
 
-    return respondSuccess(request, transaction)
+    return respondSuccess(request, {
+      ...transaction,
+      attemptedMethods: executionResult.attemptedMethods,
+      fallbackUsed: executionResult.fallbackUsed,
+      finalStatus: executionResult.finalStatus,
+    })
   } catch (error) {
     logApiRouteError(request, "payment.intent.confirm_failed", error, { errorCode: "PAYMENT_CONFIRMATION_FAILED" })
     return respondError(request, { code: "PAYMENT_CONFIRMATION_FAILED", message: "Failed to confirm payment" }, { status: 500 })
