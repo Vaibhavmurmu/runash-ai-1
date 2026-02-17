@@ -75,6 +75,14 @@ Note: middleware currently treats `/signup` as public, but there is no dedicated
 - Session checks rely on Better Auth session cookies and server-side validation endpoint lookup (`/api/auth/get-session` via Better Auth handler, plus `auth.api.getSession` usage in server helpers).
 - Legacy NextAuth cookie parsing is retained in session accessors for migration compatibility when feature-flag logic requires fallback.
 
+
+## 4.1) Feature-flag rollout and validation status (2026-02)
+
+- Better Auth rollout is staged via `FEATURE_FLAG_USE_BETTER_AUTH_PERCENT` (internal -> 10% -> 50% -> 100%).
+- Focused automated tests now cover session lifecycle outcomes, RBAC route enforcement, and admin endpoint permission mapping before each stage increase.
+- Stage promotion requires healthy error/security metrics and no payment-adjacent auth regressions.
+- Rollback trigger thresholds and runbook are tracked in `docs/RELEASE_NOTES_AUTH_RBAC_ROLLOUT_2026-02.md`.
+
 ## 5) Drizzle / Neon / Better Auth migration-config artifacts
 
 ### Present artifacts

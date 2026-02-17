@@ -1,9 +1,16 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { resolveRequiredAdminPermissions } from "./admin-authorization-handler.ts"
+type Resolver = typeof import("./admin-authorization-handler.ts").resolveRequiredAdminPermissions
 
-test("admin users list requires admin access and users:read", () => {
+async function loadResolver(): Promise<Resolver> {
+  process.env.DATABASE_URL ??= "postgresql://test:test@localhost:5432/test"
+  const module = await import("./admin-authorization-handler.ts")
+  return module.resolveRequiredAdminPermissions
+}
+
+test("admin users list requires admin access and users:read", async () => {
+  const resolveRequiredAdminPermissions = await loadResolver()
   const permissions = resolveRequiredAdminPermissions({
     pathname: "/api/admin/users",
     method: "GET",
@@ -13,7 +20,8 @@ test("admin users list requires admin access and users:read", () => {
   assert.ok(permissions.includes("users:read"))
 })
 
-test("admin users CRUD methods map to write/delete RBAC permissions", () => {
+test("admin users CRUD methods map to write/delete RBAC permissions", async () => {
+  const resolveRequiredAdminPermissions = await loadResolver()
   const createPermissions = resolveRequiredAdminPermissions({ pathname: "/api/admin/users", method: "POST" })
   const updatePermissions = resolveRequiredAdminPermissions({ pathname: "/api/admin/users/42", method: "PUT" })
   const deletePermissions = resolveRequiredAdminPermissions({ pathname: "/api/admin/users/42", method: "DELETE" })
@@ -24,7 +32,8 @@ test("admin users CRUD methods map to write/delete RBAC permissions", () => {
   assert.ok(deletePermissions.includes("system:control"))
 })
 
-test("explicit permissions are merged without duplicates", () => {
+test("explicit permissions are merged without duplicates", async () => {
+  const resolveRequiredAdminPermissions = await loadResolver()
   const permissions = resolveRequiredAdminPermissions({
     pathname: "/api/admin/users",
     method: "GET",
@@ -37,7 +46,8 @@ test("explicit permissions are merged without duplicates", () => {
   assert.ok(permissions.includes("admin:analytics"))
 })
 
-test("admin role-management routes require admin settings permission", () => {
+test("admin role-management routes require admin settings permission", async () => {
+  const resolveRequiredAdminPermissions = await loadResolver()
   const listPermissions = resolveRequiredAdminPermissions({
     pathname: "/api/admin/roles",
     method: "GET",
@@ -58,7 +68,8 @@ test("admin role-management routes require admin settings permission", () => {
   assert.ok(deletePermissions.includes("system:control"))
 })
 
-test("session delete requires logs and elevated control", () => {
+test("session delete requires logs and elevated control", async () => {
+  const resolveRequiredAdminPermissions = await loadResolver()
   const permissions = resolveRequiredAdminPermissions({
     pathname: "/api/admin/sessions/9f09a4ce-7a3c-47fd-9bfa-53413cb89fc0",
     method: "DELETE",
@@ -66,4 +77,30 @@ test("session delete requires logs and elevated control", () => {
 
   assert.ok(permissions.includes("system:logs"))
   assert.ok(permissions.includes("system:control"))
+})
+
+test("admin analytics and logs endpoints map to read-only operational permissions", async () => {
+  const resolveRequiredAdminPermissions = await loadResolver()
+  const analyticsPermissions = resolveRequiredAdminPermissions({
+    pathname: "/api/admin/analytics",
+    method: "GET",
+  })
+
+  const logsPermissions = resolveRequiredAdminPermissions({
+    pathname: "/api/admin/logs",
+    method: "GET",
+  })
+
+  assert.ok(analyticsPermissions.includes("admin:analytics"))
+  assert.ok(logsPermissions.includes("system:logs"))
+})
+
+test("unknown admin endpoints retain baseline admin access guard", async () => {
+  const resolveRequiredAdminPermissions = await loadResolver()
+  const permissions = resolveRequiredAdminPermissions({
+    pathname: "/api/admin/unknown-endpoint",
+    method: "GET",
+  })
+
+  assert.deepEqual(permissions, ["admin:access"])
 })
