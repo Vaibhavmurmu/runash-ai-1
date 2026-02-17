@@ -1067,5 +1067,6 @@ Risk/rollback notes:
 ## 2026-02 auth runtime migration impact on AI Pay
 
 - Payment and billing authorization paths now depend on Better Auth session resolution through shared auth session helpers.
+- `lib/auth-helpers.ts#getSession` now calls the canonical Better Auth API (`auth.api.getSession`) using forwarded cookie headers to keep payment-adjacent auth lookups aligned with runtime behavior.
 - No payment contract field names or API signatures were changed in this auth migration.
 - Rollback for payment-impacting auth regressions: revert auth runtime migration commit and restore prior NextAuth session guards.
