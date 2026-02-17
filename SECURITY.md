@@ -90,3 +90,10 @@ When auth/session/RBAC anomalies are detected:
 - Payment flows must continue to enforce authenticated server-session identity and RBAC checks.
 - Auth/security documentation changes must be reflected in payment documentation when policy affects operator or customer access.
 - No payment flow contract breaks are allowed without migration notes.
+
+
+### 2026-02 admin auth storage hardening update
+
+- Role grants and permission overrides are now persisted as dedicated PostgreSQL entities (`admin_role_grants`, `admin_permission_overrides`) rather than transient runtime-only merges.
+- Security and admin activity events remain audit-traceable through PostgreSQL-backed `admin_activity_logs`.
+- Session management endpoints use PostgreSQL-backed `user_sessions` with validated pagination/filtering to support incident response and forensics workflows.

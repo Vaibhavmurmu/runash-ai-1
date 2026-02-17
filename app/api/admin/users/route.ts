@@ -6,14 +6,8 @@ import { ASSIGNABLE_ADMIN_ROLES, normalizeRoleForStorage } from "@/lib/rbac"
 import { recordAdminAuditLog, respondInternalServerError } from "@/lib/api/admin-route-utils"
 
 const getUsersSchema = z.object({
-  page: z
-    .string()
-    .optional()
-    .transform((val) => (val ? Number.parseInt(val) : 1)),
-  limit: z
-    .string()
-    .optional()
-    .transform((val) => (val ? Number.parseInt(val) : 20)),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(200).default(20),
   search: z.string().optional(),
   role: z.string().optional(),
   email_verified: z

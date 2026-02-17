@@ -2,9 +2,10 @@ import { type NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { queryOne } from "@/lib/db"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
+import { ensureAdminAuthMigrationTables } from "@/lib/migration-helpers"
 import { recordAdminAuditLog, respondInternalServerError } from "@/lib/api/admin-route-utils"
 
-const idSchema = z.string().uuid()
+const idSchema = z.coerce.number().int().positive()
 const updateSchema = z.object({
   isActive: z.boolean().optional(),
 })
@@ -15,6 +16,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
   try {
     const id = idSchema.parse(params.id)
+    await ensureAdminAuthMigrationTables()
     const session = await queryOne(
       `SELECT id, user_id, device_id, device_name, ip_address::text AS ip_address, user_agent, is_active, last_activity, created_at
        FROM user_sessions
@@ -40,6 +42,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
   try {
     const id = idSchema.parse(params.id)
+    await ensureAdminAuthMigrationTables()
     const parsed = updateSchema.safeParse(await request.json())
     if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
@@ -81,6 +84,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
 
   try {
     const id = idSchema.parse(params.id)
+    await ensureAdminAuthMigrationTables()
     const deleted = await queryOne(`DELETE FROM user_sessions WHERE id = $1 RETURNING id, user_id`, [id])
     if (!deleted) return NextResponse.json({ error: "Session not found" }, { status: 404 })
 

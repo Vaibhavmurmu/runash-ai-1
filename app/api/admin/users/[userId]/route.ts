@@ -16,6 +16,8 @@ const updateUserSchema = z.object({
   avatar_url: z.string().url().optional(),
 })
 
+const userIdSchema = z.coerce.number().int().positive()
+
 export async function GET(request: NextRequest, { params }: { params: { userId: string } }) {
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:read"],
@@ -24,7 +26,7 @@ export async function GET(request: NextRequest, { params }: { params: { userId: 
   if (!auth.success) return auth.response
 
   try {
-    const userId = Number.parseInt(params.userId)
+    const userId = userIdSchema.parse(params.userId)
     const user = await UserManager.getUserById(userId)
 
     if (!user) {
@@ -50,7 +52,7 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
   if (!auth.success) return auth.response
 
   try {
-    const userId = Number.parseInt(params.userId)
+    const userId = userIdSchema.parse(params.userId)
     const body = await request.json()
     const validatedData = updateUserSchema.parse(body)
     const normalizedData = {
@@ -87,7 +89,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { userI
   if (!auth.success) return auth.response
 
   try {
-    const userId = Number.parseInt(params.userId)
+    const userId = userIdSchema.parse(params.userId)
     await UserManager.deleteUser(userId, auth.userId)
 
     await recordAdminAuditLog({

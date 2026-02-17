@@ -6,10 +6,8 @@ import { requireAdminAuthorization } from "@/lib/auth-middleware"
 const threatsSchema = z.object({
   status: z.enum(["active", "investigating", "resolved", "false_positive"]).optional(),
   severity: z.enum(["low", "medium", "high", "critical"]).optional(),
-  limit: z
-    .string()
-    .optional()
-    .transform((val) => (val ? Number.parseInt(val) : 50)),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
 })
 
 export async function GET(request: NextRequest) {
@@ -22,11 +20,13 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const params = Object.fromEntries(searchParams.entries())
-    const { limit } = threatsSchema.parse(params)
+    const { page, limit } = threatsSchema.parse(params)
 
-    const threats = await SecurityMonitor.getActiveThreats(limit)
+    const threats = await SecurityMonitor.getActiveThreats(page * limit)
+    const start = (page - 1) * limit
+    const pagedThreats = threats.slice(start, start + limit)
 
-    return NextResponse.json(threats)
+    return NextResponse.json({ data: pagedThreats, pagination: { page, limit, total: threats.length } })
   } catch (error) {
     console.error("Error fetching threats:", error)
     return NextResponse.json({ error: "Failed to fetch threats" }, { status: 500 })
