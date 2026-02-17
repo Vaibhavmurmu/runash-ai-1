@@ -1841,3 +1841,11 @@ To preserve payment and auth reliability under the active service override:
 ### Risk and rollback note
 - **Risk:** Low. Changes are additive telemetry + sanitization and preserve existing API contracts.
 - **Rollback:** Disable consumption of new dashboard fields/endpoints and revert structured event emitters if any unforeseen noise/volume issue occurs.
+
+## 2026-02 canonical admin role baseline compatibility note
+
+- Payment-auth-adjacent admin routes now align to canonical RBAC baselines: `viewer` (dashboard read-only), `operator` (restart/cache-clear operational controls), and `admin` (full CRUD/system management).
+- Legacy role values remain accepted for compatibility, but authorization capability evaluation maps them to the baseline matrix to prevent lockouts during migration.
+- Role assignment APIs normalize stored role values to canonical baseline roles, while preserving existing payment API signatures and payload contracts.
+- **Risk:** Low to medium (authorization tightening can surface previously over-permissive access patterns).
+- **Rollback:** Revert canonical role normalization and restore legacy role persistence/mapping paths while keeping payment contract schemas unchanged.

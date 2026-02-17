@@ -73,28 +73,30 @@ export const DEFAULT_PERMISSIONS = {
   "system:logs": "View system logs",
 } as const
 
-const VIEWER_PERMISSION_BUNDLE = ["content:read", "dashboard:read", "admin:access", "admin:analytics"] as const
+const VIEWER_PERMISSION_BUNDLE = ["admin:access", "dashboard:read"] as const
 const OPERATOR_PERMISSION_BUNDLE = [
   ...VIEWER_PERMISSION_BUNDLE,
-  "content:write",
-  "streams:create",
-  "payments:read",
-  "payments:write",
-  "system:maintenance",
   "operations:restart",
   "operations:cache:clear",
+  "system:maintenance",
 ] as const
 const ADMIN_PERMISSION_BUNDLE = [
   ...OPERATOR_PERMISSION_BUNDLE,
+  "admin:analytics",
+  "admin:settings",
   "users:read",
   "users:write",
   "users:delete",
   "users:ban",
+  "content:read",
+  "content:write",
   "content:delete",
   "content:moderate",
-  "admin:settings",
+  "streams:create",
   "streams:moderate",
   "streams:analytics",
+  "payments:read",
+  "payments:write",
   "payments:refund",
   "system:logs",
   "system:control",
@@ -221,10 +223,10 @@ export const LEGACY_ROLE_TO_BASELINE: Record<string, BaselineRole> = {
   [CANONICAL_ADMIN_ROLES.ADMIN]: BASELINE_ROLES.ADMIN,
 }
 
-export const BASELINE_TO_LEGACY_STORAGE_ROLE: Record<BaselineRole, string> = {
-  [BASELINE_ROLES.VIEWER]: DEFAULT_ROLES.GUEST,
-  [BASELINE_ROLES.OPERATOR]: DEFAULT_ROLES.USER,
-  [BASELINE_ROLES.ADMIN]: DEFAULT_ROLES.ADMIN,
+export const BASELINE_TO_STORAGE_ROLE: Record<BaselineRole, string> = {
+  [BASELINE_ROLES.VIEWER]: BASELINE_ROLES.VIEWER,
+  [BASELINE_ROLES.OPERATOR]: BASELINE_ROLES.OPERATOR,
+  [BASELINE_ROLES.ADMIN]: BASELINE_ROLES.ADMIN,
 }
 
 export const ASSIGNABLE_ADMIN_ROLES = [
@@ -314,19 +316,21 @@ export function resolveBaselineRole(role: string): BaselineRole | null {
 export function normalizeRoleForStorage(role: string): string {
   const baselineRole = resolveBaselineRole(role)
   if (!baselineRole) return role
-  return BASELINE_TO_LEGACY_STORAGE_ROLE[baselineRole]
+  return BASELINE_TO_STORAGE_ROLE[baselineRole]
 }
 
 export function getEffectiveRolePermissions(role: string): string[] {
+  const baselineRole = resolveBaselineRole(role)
+  if (baselineRole) {
+    return Array.from(new Set(BASELINE_ROLE_PERMISSIONS[baselineRole]))
+  }
+
   const directPermissions = ROLE_PERMISSIONS[role as keyof typeof ROLE_PERMISSIONS]
   if (directPermissions) {
     return Array.from(new Set(directPermissions))
   }
 
-  const baselineRole = resolveBaselineRole(role)
-  if (!baselineRole) return []
-
-  return Array.from(new Set(BASELINE_ROLE_PERMISSIONS[baselineRole]))
+  return []
 }
 
 export class RBACManager {

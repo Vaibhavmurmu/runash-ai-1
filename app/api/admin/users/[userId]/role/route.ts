@@ -1,5 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { BASELINE_ROLES, DEFAULT_ROLES, RBACManager, isAssignableAdminRole, normalizeRoleForStorage } from "@/lib/rbac"
+import {
+  BASELINE_ROLES,
+  DEFAULT_ROLES,
+  RBACManager,
+  isAssignableAdminRole,
+  normalizeRoleForStorage,
+  resolveBaselineRole,
+} from "@/lib/rbac"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { z } from "zod"
 import { recordAuthMetric } from "@/lib/auth-observability"
@@ -44,13 +51,16 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
       return NextResponse.json({ message: "Cannot change your own role" }, { status: 400 })
     }
 
+    const actorBaselineRole = resolveBaselineRole(auth.session.user.role)
+    const targetBaselineRole = resolveBaselineRole(role)
+
     // Check if admin has permission to assign this role
-    if (normalizedRole === DEFAULT_ROLES.SUPER_ADMIN && auth.session.user.role !== DEFAULT_ROLES.SUPER_ADMIN) {
+    if (role === DEFAULT_ROLES.SUPER_ADMIN && auth.session.user.role !== DEFAULT_ROLES.SUPER_ADMIN) {
       return NextResponse.json({ message: "Only super admins can assign super admin role" }, { status: 403 })
     }
 
-    if (role === BASELINE_ROLES.ADMIN && auth.session.user.role !== DEFAULT_ROLES.SUPER_ADMIN && auth.session.user.role !== DEFAULT_ROLES.ADMIN) {
-      return NextResponse.json({ message: "Only admin-level users can assign baseline admin role" }, { status: 403 })
+    if (targetBaselineRole === BASELINE_ROLES.ADMIN && actorBaselineRole !== BASELINE_ROLES.ADMIN) {
+      return NextResponse.json({ message: "Only admin-level users can assign admin-capability roles" }, { status: 403 })
     }
 
     await RBACManager.changeUserRole(userId, role, adminId)
