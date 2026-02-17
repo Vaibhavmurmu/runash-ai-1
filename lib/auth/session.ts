@@ -1,7 +1,5 @@
-import { neon } from "@neondatabase/serverless"
 import { getAuthSessionFromHeaders } from "@/lib/auth/session-accessor"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { sql } from "@/lib/db"
 
 export interface ServerAuthSession {
   user: {

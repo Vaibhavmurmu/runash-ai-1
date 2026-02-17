@@ -1127,3 +1127,7 @@ See `RUNASH-AUTH.md` and `SECURITY.md` for the full linking policy and migration
 - Risk: elevated checkout/auth denial risk during phased flag increases if session extraction regresses.
 - Rollback: immediately disable `FEATURE_FLAG_USE_BETTER_AUTH`, keep payment APIs online, and re-run checkout + refund permission smoke tests.
 - Incident accounting: include payment/auth coupled incidents in `payment_auth_incident_count` and require on-call review before next phase bump.
+
+## 2026-02 Reliability Note (Auth/Payment Boundary)
+
+Auth module consolidation and session helper standardization were completed without changing payment route contracts or payment payload field names. This improves reliability at the auth boundary while keeping payment integrations backward compatible.

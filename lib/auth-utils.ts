@@ -1,9 +1,7 @@
-import { neon } from "@neondatabase/serverless"
 import { hash, compare } from "bcryptjs"
 import { randomBytes } from "crypto"
 import { recordAuthMetric } from "@/lib/auth-observability"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { sql } from "@/lib/db"
 
 export async function createUser(email: string, password: string, name: string) {
   try {

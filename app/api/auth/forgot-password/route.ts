@@ -2,13 +2,11 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createPasswordResetToken } from "@/lib/auth-utils"
 import { sendPasswordResetEmail } from "@/lib/email"
 import { rateLimit } from "@/lib/rate-limit"
-import { neon } from "@neondatabase/serverless"
 import { z } from "zod"
 import { logApiRouteError } from "@/lib/api/logging"
 import { AUTH_ENDPOINT_RATE_LIMITS } from "@/lib/auth-security-config"
 import { recordAuthMetric } from "@/lib/auth-observability"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { sql } from "@/lib/db"
 
 const forgotPasswordSchema = z.object({
   email: z.string().email("Invalid email address"),

@@ -1,6 +1,7 @@
 import { cookies } from "next/headers"
 import { getAuthSessionFromHeaders } from "./auth/session-accessor"
 import { isFeatureFlagEnabled } from "./feature-flags"
+import { getServerAuthSession } from "@/lib/auth/session"
 
 type GetSessionDependencies = {
   readSessionFromHeaders: typeof getAuthSessionFromHeaders
@@ -43,7 +44,7 @@ export async function shouldUseBetterAuth(userId?: string): Promise<boolean> {
 }
 
 export async function getCurrentUser() {
-  const session = await getSession()
+  const session = await getServerAuthSession()
   return session?.user || null
 }
 

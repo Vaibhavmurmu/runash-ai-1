@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { resetPassword } from "@/lib/auth-utils"
+import { auth } from "@/lib/auth"
 import { rateLimit } from "@/lib/rate-limit"
 import { z } from "zod"
 import { logApiRouteError } from "@/lib/api/logging"
@@ -48,7 +48,13 @@ export async function POST(request: NextRequest) {
 
     const { token, password } = validationResult.data
 
-    await resetPassword(token, password)
+    await auth.api.resetPassword({
+      headers: request.headers,
+      body: {
+        token,
+        newPassword: password,
+      },
+    })
 
     return NextResponse.json({ message: "Password reset successfully" })
   } catch (error) {
