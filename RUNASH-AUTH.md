@@ -16,7 +16,7 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 - `lib/auth-helpers.ts` — app-facing auth helper bridge (`getSession`, `requireAuth`, `getCurrentUser`).
 
 ### Middleware and guard rails
-- `middleware.ts` — public/protected route checks, `/login` redirect behavior, auth endpoint rate limiting, and `/api/auth/get-session` server-side validation call.
+- `middleware.ts` — public/protected route checks, `/login` redirect behavior, auth endpoint rate limiting, and direct Better Auth `auth.api.getSession` validation.
 - `lib/auth-middleware.ts` — admin/API guard helpers for permissioned routes.
 - `lib/auth-security-config.ts` — auth endpoint rate-limit profiles.
 
@@ -72,8 +72,17 @@ Note: middleware currently treats `/signup` as public, but there is no dedicated
 
 - Protected routes are evaluated in `middleware.ts`.
 - If no valid auth session is resolved, browser routes redirect to `/login`; API routes return `401`.
-- Session checks rely on Better Auth session cookies and server-side validation endpoint lookup (`/api/auth/get-session` via Better Auth handler, plus `auth.api.getSession` usage in server helpers).
-- Legacy NextAuth cookie parsing is retained in session accessors for migration compatibility when feature-flag logic requires fallback.
+- Session checks rely on Better Auth session cookies and direct `auth.api.getSession` usage in middleware/helpers.
+- Session minting for passkey and magic-link paths now uses the canonical auth secret resolver in `lib/auth.ts`, keeping a single source-of-truth secret for Better Auth runtime and custom JWT issuance.
+- Legacy NextAuth cookie parsing remains available in session accessor fallback paths for migration compatibility when feature-flag logic requires fallback.
+
+### 4.2) Migration compatibility notes: cookie/session-token transition
+
+- **Primary cookie name:** new/renewed sessions are written to `better-auth.session-token` (or the secure-prefixed variant in production environments).
+- **Legacy cookie handling:** legacy `next-auth.session-token` and `__Secure-next-auth.session-token` cookies are explicitly cleared on new session writes.
+- **Fallback verification behavior:** when legacy cookies are still present during rollout windows, server session accessor fallback can verify tokens with `NEXTAUTH_SECRET` and then `BETTER_AUTH_SECRET` to reduce migration lockout risk.
+- **Failure mode:** if Better Auth is enabled and no valid Better Auth session is resolved, protected routes continue to reject (`401`) or redirect (`/login`) exactly as before.
+- **Rollback guidance:** if migration issues are detected, rollback can safely re-enable legacy fallback behavior through existing feature-flag gating while preserving Better Auth cookie issuance for newly authenticated users.
 
 
 ## 4.1) Feature-flag rollout and validation status (2026-02)

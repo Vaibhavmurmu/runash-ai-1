@@ -4,6 +4,7 @@ import { SignJWT } from "jose"
 import { z } from "zod"
 import { logApiRouteError } from "@/lib/api/logging"
 import { setSessionCookies } from "@/lib/auth/cookies"
+import { getAuthSecret } from "@/lib/auth"
 
 const authenticationSchema = z.object({
   response: z.object({
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
 
     if (result.verified && result.user) {
       // Create JWT session token
-      const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET!)
+      const secret = new TextEncoder().encode(getAuthSecret())
       const sessionToken = await new SignJWT({
         sub: result.user.id.toString(),
         email: result.user.email,
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest) {
         user: result.user,
       })
 
-      await setSessionCookies(response, sessionToken)
+      setSessionCookies(response, sessionToken)
 
       return response
     }

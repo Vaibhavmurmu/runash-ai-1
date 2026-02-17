@@ -27,7 +27,8 @@ No new payment endpoint signatures, field names, or webhook contracts were chang
 ### 2026-02 middleware auth validation migration note
 
 - Route protection still follows existing public/protected behavior for web and API surfaces.
-- Protected requests now rely on Better Auth session validation (`/api/auth/get-session`) and canonical Better Auth session cookies (`better-auth.session-token`, `__Secure-better-auth.session-token`) before granting access.
+- Protected requests now rely on direct Better Auth session validation (`auth.api.getSession`) and canonical Better Auth session cookies (`better-auth.session-token`, `__Secure-better-auth.session-token`) before granting access.
+- Legacy NextAuth cookies (`next-auth.session-token`, `__Secure-next-auth.session-token`) are cleared on fresh session writes; controlled fallback verification remains available during migration windows to prevent lockouts.
 - No payment request/response contract fields were changed; this is an auth-gating reliability hardening update.
 
 
