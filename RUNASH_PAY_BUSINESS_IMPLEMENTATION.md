@@ -1867,3 +1867,32 @@ To preserve payment and auth reliability under the active service override:
   - role-scoped monitoring payload visibility for operational dashboards.
 - Sensitive payment/auth payload elements continue to be redacted prior to logging/audit persistence.
 - Rollback: revert observability emitter changes while keeping payment checkout/refund request/response contracts untouched.
+
+## Auth-related payment impact, risk, and rollback (final)
+
+### Impact summary
+- Business and startup payment flows remain auth-gated by server-session validation and RBAC permission checks.
+- No payment contract changes: existing endpoint signatures and field names remain backward compatible.
+- Auth/RBAC hardening affects access control behavior and rollout operations, not payment payload structure.
+
+### Risk and mitigation summary
+- **Risk:** rollout errors can deny valid operators/admins from payment surfaces.
+- **Risk:** RBAC route-policy mistakes can cause authorization drift on finance/admin operations.
+- **Mitigation:** percentage-gated rollout, metric-based promotion gates, and immediate rollback switch.
+
+### Phased rollout checklist
+- [ ] **Internal-only:** validate auth/session/RBAC behavior for payment create, confirm, refund, billing, and portal actions.
+- [ ] **10% rollout:** enable `FEATURE_FLAG_USE_BETTER_AUTH_PERCENT=10` and monitor for one business cycle.
+- [ ] **50% rollout:** promote only if auth and payment authorization metrics stay healthy.
+- [ ] **Full cutover:** set `FEATURE_FLAG_USE_BETTER_AUTH_PERCENT=100` and keep fallback window active.
+
+### Explicit rollback triggers
+- Auth/session error rate above 2x baseline for 15+ minutes.
+- Any payment-impacting auth incident (unauthorized action or widespread authorization failure).
+- Admin/payment permission-denied anomaly rate above agreed thresholds.
+- Customer checkout/billing funnel degradation attributed to auth failures.
+
+### Rollback actions
+- Disable Better Auth rollout (`FEATURE_FLAG_USE_BETTER_AUTH=false`).
+- Confirm legacy compatibility session behavior and payment access restoration.
+- Re-run payment auth smoke tests before staged re-enable.
