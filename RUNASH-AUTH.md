@@ -480,6 +480,42 @@ For payment and billing routes, role checks are enforced with explicit action cl
 
 All customer-scoped payment resources must pass an ownership check (`ensureCustomerScopedAccess`) that validates user and organization claims from the authenticated server session.
 
+## Role normalization migration (baseline + legacy compatibility)
+
+RunAsh RBAC now supports baseline roles for progressive normalization while preserving legacy role compatibility.
+
+### Baseline canonical roles and effective permissions
+
+| Baseline role | Effective permissions bundle |
+| --- | --- |
+| `viewer` | `content:read` |
+| `operator` | viewer bundle + `content:write`, `streams:create`, `payments:read`, `payments:write` |
+| `admin` | operator bundle + `users:read`, `users:write`, `users:ban`, `content:delete`, `content:moderate`, `admin:access`, `admin:analytics`, `admin:settings`, `streams:moderate`, `streams:analytics`, `payments:refund`, `system:logs` |
+
+### Legacy compatibility mapping
+
+Legacy roles are mapped to baseline capabilities to avoid breaking existing users during migration:
+
+- `guest` → `viewer`
+- `user`, `premium`, `moderator`, `business_operator`, `startup_operator`, `customer_operator`, `customer_finance` → `operator`
+- `admin`, `business_admin`, `startup_admin`, `customer_admin`, `super_admin` → `admin`
+
+### Admin role assignment API behavior
+
+`PUT /api/admin/users/[userId]/role` accepts both baseline (`viewer`, `operator`, `admin`) and legacy role values.
+
+- Requested baseline roles are normalized to legacy storage roles for backward compatibility:
+  - `viewer` → persisted as `guest`
+  - `operator` → persisted as `user`
+  - `admin` → persisted as `admin`
+- Response now includes both `requestedRole` and `storedRole` to make migration behavior explicit.
+
+### Migration and rollback notes
+
+- Existing users keep current role strings; permissions are resolved through compatibility mapping.
+- No payment/auth API signatures changed; role checks remain backward compatible.
+- Rollback: revert RBAC normalization helpers and role-assignment API acceptance list to legacy-only values. Existing rows remain valid because stored role values are still legacy-compatible.
+
 
 ## 2026-02 Better Auth canonical runtime migration
 

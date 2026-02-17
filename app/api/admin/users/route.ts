@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { UserManager } from "@/lib/user-management"
 import { z } from "zod"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
+import { ASSIGNABLE_ADMIN_ROLES, normalizeRoleForStorage } from "@/lib/rbac"
 
 const getUsersSchema = z.object({
   page: z
@@ -53,7 +54,7 @@ const createUserSchema = z.object({
   name: z.string().min(1),
   username: z.string().min(1).optional(),
   email: z.string().email(),
-  role: z.string().default("user"),
+  role: z.enum(ASSIGNABLE_ADMIN_ROLES).default("user"),
   password: z.string().min(8).optional(),
 })
 
@@ -66,9 +67,13 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    createUserSchema.parse(body)
+    const validatedBody = createUserSchema.parse(body)
 
-    return NextResponse.json({ message: "User created successfully" })
+    return NextResponse.json({
+      message: "User created successfully",
+      requestedRole: validatedBody.role,
+      storedRole: normalizeRoleForStorage(validatedBody.role),
+    })
   } catch (error) {
     console.error("Error creating user:", error)
     return NextResponse.json({ error: "Failed to create user" }, { status: 500 })

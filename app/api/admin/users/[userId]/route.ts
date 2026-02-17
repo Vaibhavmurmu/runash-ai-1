@@ -2,12 +2,13 @@ import { type NextRequest, NextResponse } from "next/server"
 import { UserManager } from "@/lib/user-management"
 import { z } from "zod"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
+import { ASSIGNABLE_ADMIN_ROLES, normalizeRoleForStorage } from "@/lib/rbac"
 
 const updateUserSchema = z.object({
   name: z.string().optional(),
   username: z.string().optional(),
   email: z.string().email().optional(),
-  role: z.string().optional(),
+  role: z.enum(ASSIGNABLE_ADMIN_ROLES).optional(),
   bio: z.string().optional(),
   location: z.string().optional(),
   website: z.string().url().optional(),
@@ -47,8 +48,12 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
     const userId = Number.parseInt(params.userId)
     const body = await request.json()
     const validatedData = updateUserSchema.parse(body)
+    const normalizedData = {
+      ...validatedData,
+      ...(validatedData.role ? { role: normalizeRoleForStorage(validatedData.role) } : {}),
+    }
 
-    const updatedUser = await UserManager.updateUser(userId, validatedData, auth.userId)
+    const updatedUser = await UserManager.updateUser(userId, normalizedData, auth.userId)
 
     return NextResponse.json(updatedUser)
   } catch (error) {

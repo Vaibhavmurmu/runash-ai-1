@@ -541,6 +541,9 @@ Backward compatibility notes:
 - Billing usage and payment lifecycle actions bind customer identity to authenticated server session claims; no caller-provided customer identity is trusted for authorization.
 - Customer-scoped payment resources require ownership verification against session user/tenant scope before mutation.
 - Payment route authorization now supports explicit action-level RBAC classes for finance read access, billing admin actions, and billing operator actions.
+- Role normalization now accepts baseline role requests (`viewer`, `operator`, `admin`) while preserving legacy compatibility through role-to-capability mapping in RBAC.
+- Baseline role assignments are normalized to legacy storage role values (`guest`, `user`, `admin`) to keep existing payment/auth contracts and queries backward compatible.
+- Rollback behavior: revert normalization helpers and baseline input acceptance, then continue operating on persisted legacy roles without data migration.
 
 
 ## 2026-02 tax modeling and finance visibility update
