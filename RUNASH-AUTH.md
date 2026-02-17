@@ -687,11 +687,12 @@ Legacy roles are mapped to baseline capabilities to avoid breaking existing user
 
 ### Cookie/session key migration notes
 - Legacy cookie names retained for migration fallback: `next-auth.session-token`, `__Secure-next-auth.session-token`.
-- Canonical cookie name going forward: `better-auth.session-token`.
+- Canonical cookie names going forward: `better-auth.session-token` and `__Secure-better-auth.session-token`.
+- Middleware protected-route checks now only attempt server-side session validation when a Better Auth cookie is present, then validate through `/api/auth/get-session`.
 - Rollout behavior is controlled by `FEATURE_FLAG_USE_BETTER_AUTH`:
-  - `true` (default): reads/writes canonical Better Auth cookie and clears legacy cookie names.
-  - `false`: writes both canonical and legacy names, and session reads can fallback to legacy JWT cookies.
-- During migration, validate load-balancer/proxy cookie forwarding allows `better-auth.session-token` for all protected route paths.
+  - `true` (default): reads/writes canonical Better Auth cookie names and clears legacy NextAuth cookie names.
+  - `false`: writes both canonical and legacy names, and shared server session accessors can fallback to legacy JWT cookies.
+- During migration, validate load-balancer/proxy cookie forwarding allows Better Auth cookie names for all protected route paths.
 
 ### Rollback plan
 1. Set `FEATURE_FLAG_USE_BETTER_AUTH=false` to re-enable dual-write cookies and legacy-cookie session fallback without redeploying code.

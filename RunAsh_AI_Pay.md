@@ -13,6 +13,12 @@ To protect payment-linked identities and admin access pathways, the auth hardeni
 
 Payment contracts and field-level payment API signatures are unchanged in this update.
 
+### 2026-02 middleware auth validation migration note
+
+- Route protection still follows existing public/protected behavior for web and API surfaces.
+- Protected requests now rely on Better Auth session validation (`/api/auth/get-session`) and canonical Better Auth session cookies (`better-auth.session-token`, `__Secure-better-auth.session-token`) before granting access.
+- No payment request/response contract fields were changed; this is an auth-gating reliability hardening update.
+
 
 
 ### The Future of Agentic, Intent-Driven Payments

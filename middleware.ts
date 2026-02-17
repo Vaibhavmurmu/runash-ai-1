@@ -4,7 +4,92 @@ import { logApiEvent } from "@/lib/api/logging"
 import { getAuthEndpointRateLimit } from "@/lib/auth-security-config"
 import { recordAuthMetric } from "@/lib/auth-observability"
 
+const BETTER_AUTH_COOKIE_NAMES = ["better-auth.session-token", "__Secure-better-auth.session-token"] as const
+
+const publicRoutes = [
+  "/",
+  "/login",
+  "/signup",
+  "/get-started",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+  "/about",
+  "/features",
+  "/pricing",
+  "/contact",
+  "/blog",
+  "/careers",
+  "/press",
+  "/support",
+  "/tutorials",
+  "/integrations",
+  "/privacy",
+  "/terms",
+  "/cookies",
+  "/roadmap",
+  "/status",
+  "/creator",
+  "/business",
+  "/partners",
+  "/changelog",
+  "/forum",
+  "/community",
+  "/pro",
+  "/enterprise",
+  "/ai-overview",
+  "/models",
+  "/company",
+  "/faq",
+  "/docs",
+  "/live",
+] as const
+
+const publicApiRoutes = [
+  "/api/auth",
+  "/api/turn-credentials",
+  "/api/users/search", // Public user search
+] as const
+
+function parseCookieValue(cookieHeader: string | null, cookieName: string): string | null {
+  if (!cookieHeader) {
+    return null
+  }
+
+  for (const segment of cookieHeader.split(";")) {
+    const [name, ...valueParts] = segment.trim().split("=")
+    if (name !== cookieName) {
+      continue
+    }
+
+    const cookieValue = valueParts.join("=")
+    return cookieValue || null
+  }
+
+  return null
+}
+
+function hasBetterAuthSessionCookie(request: NextRequest): boolean {
+  const cookieHeader = request.headers.get("cookie")
+  return BETTER_AUTH_COOKIE_NAMES.some((cookieName) => Boolean(parseCookieValue(cookieHeader, cookieName)))
+}
+
+function resolveAuthDecision(pathname: string) {
+  const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + "/"))
+  const isPublicApiRoute = publicApiRoutes.some((route) => pathname.startsWith(route))
+  const isAuthPage = pathname === "/login" || pathname === "/signup" || pathname === "/get-started"
+
+  return {
+    isAuthPage,
+    requiresSessionValidation: !isPublicApiRoute && (!isPublicRoute || isAuthPage),
+  }
+}
+
 async function hasValidAuthSession(request: NextRequest): Promise<boolean> {
+  if (!hasBetterAuthSessionCookie(request)) {
+    return false
+  }
+
   try {
     const sessionResponse = await fetch(new URL("/api/auth/get-session", request.url), {
       method: "GET",
@@ -76,6 +161,7 @@ function checkRateLimit(request: NextRequest, identifier: string, limit: number,
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+  const { isAuthPage, requiresSessionValidation } = resolveAuthDecision(pathname)
   const response = NextResponse.next()
 
   // Add security headers to all responses
@@ -132,61 +218,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Public routes that don't require authentication
-  const publicRoutes = [
-    "/",
-    "/login",
-    "/signup",
-    "/get-started",
-    "/forgot-password",
-    "/reset-password",
-    "/verify-email",
-    "/about",
-    "/features",
-    "/pricing",
-    "/contact",
-    "/blog",
-    "/careers",
-    "/press",
-    "/support",
-    "/tutorials",
-    "/integrations",
-    "/privacy",
-    "/terms",
-    "/cookies",
-    "/roadmap",
-    "/status",
-    "/creator",
-    "/business",
-    "/partners",
-    "/changelog",
-    "/forum",
-    "/community",
-    "/pro",
-    "/enterprise",
-    "/ai-overview",
-    "/models",
-    "/company",
-    "/faq",
-    "/docs",
-    "/live",
-  ]
-
-  // API routes that don't require authentication
-  const publicApiRoutes = [
-    "/api/auth",
-    "/api/turn-credentials",
-    "/api/users/search", // Public user search
-  ]
-
-  // Check if the route is public
-  const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + "/"))
-
-  const isPublicApiRoute = publicApiRoutes.some((route) => pathname.startsWith(route))
-
-  const isAuthPage = pathname === "/login" || pathname === "/signup" || pathname === "/get-started"
-
-  if (isPublicApiRoute || (isPublicRoute && !isAuthPage)) {
+  if (!requiresSessionValidation) {
     return response
   }
 
