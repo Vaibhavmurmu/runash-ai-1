@@ -663,11 +663,17 @@ Legacy roles are mapped to baseline capabilities to avoid breaking existing user
 
 `PUT /api/admin/users/[userId]/role` accepts both baseline (`viewer`, `operator`, `admin`) and legacy role values.
 
+- Role validation now enforces assignment through a shared allowlist helper (`isAssignableAdminRole`) so role-management routes stay aligned as canonical roles evolve.
 - Requested baseline roles are normalized to legacy storage roles for backward compatibility:
   - `viewer` → persisted as `guest`
   - `operator` → persisted as `user`
   - `admin` → persisted as `admin`
 - Response now includes both `requestedRole` and `storedRole` to make migration behavior explicit.
+
+### Admin route authorization consistency
+
+- Route-level RBAC permission mapping now explicitly covers role/permission/session/audit/flags admin surfaces (for example `/api/admin/roles`, `/api/admin/permissions`, `/api/admin/sessions`, `/api/admin/audit-logs`).
+- Protected admin UI routes continue to enforce `admin:access`, with additional route-specific checks such as `/admin/roles` requiring `admin:settings`.
 
 ### Migration and rollback notes
 

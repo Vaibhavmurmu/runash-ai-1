@@ -24,6 +24,12 @@ export const BASELINE_ROLES = {
   ADMIN: "admin",
 } as const
 
+export const CANONICAL_ADMIN_ROLES = {
+  VIEWER: BASELINE_ROLES.VIEWER,
+  OPERATOR: BASELINE_ROLES.OPERATOR,
+  ADMIN: BASELINE_ROLES.ADMIN,
+} as const
+
 export type BaselineRole = (typeof BASELINE_ROLES)[keyof typeof BASELINE_ROLES]
 export type ProtectedRouteScope = "api" | "ui"
 
@@ -114,6 +120,11 @@ const ADMIN_API_ROUTE_RULES: readonly RoutePermissionRule[] = [
   { prefix: "/api/admin/performance", requiredPermissions: ["admin:analytics"] },
   { prefix: "/api/admin/analytics", requiredPermissions: ["admin:analytics"] },
   { prefix: "/api/admin/logs", requiredPermissions: ["system:logs"] },
+  { prefix: "/api/admin/audit-logs", requiredPermissions: ["system:logs"] },
+  { prefix: "/api/admin/sessions", requiredPermissions: ["system:logs"] },
+  { prefix: "/api/admin/permissions", requiredPermissions: ["admin:settings"] },
+  { prefix: "/api/admin/roles", requiredPermissions: ["admin:settings"] },
+  { prefix: "/api/admin/flags", requiredPermissions: ["admin:settings"] },
   { prefix: "/api/admin/users", requiredPermissions: ["users:read"], methods: ["GET"] },
   { prefix: "/api/admin/users", requiredPermissions: ["users:write"], methods: ["POST", "PUT", "PATCH"] },
   { prefix: "/api/admin/users", requiredPermissions: ["users:delete"], methods: ["DELETE"] },
@@ -124,6 +135,7 @@ const PROTECTED_UI_ROUTE_RULES: readonly RoutePermissionRule[] = [
   { prefix: "/admin/performance", requiredPermissions: ["admin:analytics"] },
   { prefix: "/admin/email-analytics", requiredPermissions: ["admin:analytics"] },
   { prefix: "/admin/email-management", requiredPermissions: ["admin:settings"] },
+  { prefix: "/admin/roles", requiredPermissions: ["admin:settings"] },
   { prefix: "/admin/users", requiredPermissions: ["users:read"] },
 ]
 
@@ -176,6 +188,9 @@ export const LEGACY_ROLE_TO_BASELINE: Record<string, BaselineRole> = {
   [DEFAULT_ROLES.STARTUP_ADMIN]: BASELINE_ROLES.ADMIN,
   [DEFAULT_ROLES.CUSTOMER_ADMIN]: BASELINE_ROLES.ADMIN,
   [DEFAULT_ROLES.SUPER_ADMIN]: BASELINE_ROLES.ADMIN,
+  [CANONICAL_ADMIN_ROLES.VIEWER]: BASELINE_ROLES.VIEWER,
+  [CANONICAL_ADMIN_ROLES.OPERATOR]: BASELINE_ROLES.OPERATOR,
+  [CANONICAL_ADMIN_ROLES.ADMIN]: BASELINE_ROLES.ADMIN,
 }
 
 export const BASELINE_TO_LEGACY_STORAGE_ROLE: Record<BaselineRole, string> = {
@@ -191,9 +206,14 @@ export const ASSIGNABLE_ADMIN_ROLES = [
   DEFAULT_ROLES.USER,
   DEFAULT_ROLES.GUEST,
   "premium",
+  BASELINE_ROLES.ADMIN,
   BASELINE_ROLES.OPERATOR,
   BASELINE_ROLES.VIEWER,
 ] as const
+
+export function isAssignableAdminRole(role: string): role is (typeof ASSIGNABLE_ADMIN_ROLES)[number] {
+  return (ASSIGNABLE_ADMIN_ROLES as readonly string[]).includes(role)
+}
 
 // Role hierarchy (higher roles inherit permissions from lower roles)
 export const ROLE_HIERARCHY = {

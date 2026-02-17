@@ -35,3 +35,18 @@ test("explicit permissions are merged without duplicates", () => {
   assert.equal(readCount, 1)
   assert.ok(permissions.includes("admin:analytics"))
 })
+
+test("admin role-management routes require admin settings permission", () => {
+  const listPermissions = resolveRequiredAdminPermissions({
+    pathname: "/api/admin/roles",
+    method: "GET",
+  })
+
+  const updatePermissions = resolveRequiredAdminPermissions({
+    pathname: "/api/admin/roles/12",
+    method: "PATCH",
+  })
+
+  assert.ok(listPermissions.includes("admin:settings"))
+  assert.ok(updatePermissions.includes("admin:settings"))
+})
