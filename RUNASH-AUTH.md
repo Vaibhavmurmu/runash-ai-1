@@ -143,4 +143,6 @@ Role-assignment endpoints continue accepting legacy role inputs, but stored role
 
 - All `app/api/admin/**` handlers use `requireAdminAuthorization`.
 - Required permissions are resolved from route+method policy mapping (`lib/rbac.ts`) and merged with handler-explicit requirements before authorization decisions.
+- Unauthorized/forbidden admin guard outcomes are standardized to JSON `401/403` envelopes with `requestId` and mirrored `x-request-id`/`x-correlation-id` headers for traceability.
+- Sensitive admin operations emit audit events, including user CRUD (`user.created`/`user.updated`/`user.deleted`), role changes (`user.role.changed`), and settings writes (`admin.settings.updated`).
 - Role assignment to admin-capability roles is restricted to users already resolving to canonical `admin` capability; `super_admin` assignment remains super-admin only.

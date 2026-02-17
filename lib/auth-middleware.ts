@@ -84,65 +84,98 @@ export async function requireAdminAuthorization(
   options: RequireAdminAuthorizationOptions,
 ): Promise<AdminAuthResult> {
   const requestId = resolveRequestId(request)
-  const session = await getServerAuthSession(request.headers)
-  const token = session?.user
 
-  if (!token?.id) {
-    logApiEvent("warn", `${options.auditEvent}.unauthorized`, {
-      requestId,
-      route: request.nextUrl.pathname,
+  try {
+    const session = await getServerAuthSession(request.headers)
+    const token = session?.user
+
+    if (!token?.id) {
+      logApiEvent("warn", `${options.auditEvent}.unauthorized`, {
+        requestId,
+        route: request.nextUrl.pathname,
+        method: request.method,
+        details: {
+          reason: "missing_session",
+        },
+      })
+
+      return {
+        success: false,
+        response: respondAdminError(request, 401, "Unauthorized", requestId),
+      }
+    }
+
+    const userId = Number.parseInt(token.id)
+    if (!Number.isFinite(userId)) {
+      logApiEvent("warn", `${options.auditEvent}.unauthorized`, {
+        requestId,
+        route: request.nextUrl.pathname,
+        method: request.method,
+        details: {
+          reason: "invalid_user_id",
+        },
+      })
+
+      return {
+        success: false,
+        response: respondAdminError(request, 401, "Unauthorized", requestId),
+      }
+    }
+
+    const requiredPermissions = resolveRequiredAdminPermissions({
+      pathname: request.nextUrl.pathname,
       method: request.method,
-      details: {
-        reason: "missing_session",
-      },
+      explicitPermissions: options.requiredPermissions,
     })
 
-    return {
-      success: false,
-      response: respondAdminError(request, 401, "Unauthorized", requestId),
+    const hasPermission = options.requireAnyPermission
+      ? await RBACManager.hasAnyPermission(userId, requiredPermissions)
+      : await RBACManager.hasAllPermissions(userId, requiredPermissions)
+
+    if (!hasPermission) {
+      logApiEvent("warn", `${options.auditEvent}.forbidden`, {
+        requestId,
+        route: request.nextUrl.pathname,
+        method: request.method,
+        userId: token.id,
+        details: {
+          requiredPermissions,
+        },
+      })
+
+      return {
+        success: false,
+        response: respondAdminError(request, 403, "Forbidden", requestId),
+      }
     }
-  }
 
-  const userId = Number.parseInt(token.id)
-  const requiredPermissions = resolveRequiredAdminPermissions({
-    pathname: request.nextUrl.pathname,
-    method: request.method,
-    explicitPermissions: options.requiredPermissions,
-  })
-
-  const hasPermission = options.requireAnyPermission
-    ? await RBACManager.hasAnyPermission(userId, requiredPermissions)
-    : await RBACManager.hasAllPermissions(userId, requiredPermissions)
-
-  if (!hasPermission) {
-    logApiEvent("warn", `${options.auditEvent}.forbidden`, {
+    logApiEvent("info", `${options.auditEvent}.allowed`, {
       requestId,
       route: request.nextUrl.pathname,
       method: request.method,
       userId: token.id,
+    })
+
+    return {
+      success: true,
+      session,
+      userId,
+      requestId,
+    }
+  } catch (error) {
+    logApiEvent("error", `${options.auditEvent}.error`, {
+      requestId,
+      route: request.nextUrl.pathname,
+      method: request.method,
       details: {
-        requiredPermissions,
+        error: error instanceof Error ? error.message : "Unknown error",
       },
     })
 
     return {
       success: false,
-      response: respondAdminError(request, 403, "Forbidden", requestId),
+      response: respondAdminError(request, 500, "Internal server error", requestId),
     }
-  }
-
-  logApiEvent("info", `${options.auditEvent}.allowed`, {
-    requestId,
-    route: request.nextUrl.pathname,
-    method: request.method,
-    userId: token.id,
-  })
-
-  return {
-    success: true,
-    session,
-    userId,
-    requestId,
   }
 }
 
