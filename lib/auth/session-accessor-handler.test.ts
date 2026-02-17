@@ -153,3 +153,31 @@ test("resolveSessionFromSources falls back to legacy session when better auth fl
 
   assert.equal(result?.session.id, "legacy_1")
 })
+
+test("resolveSessionFromSources preserves legacy continuity when better-auth session payload is incomplete", async () => {
+  const legacySession: SessionFixture = {
+    session: {
+      id: "legacy_continuity",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    user: { id: "u_legacy" },
+  }
+
+  const result = await resolveSessionFromSources({
+    getPrimarySession: async () => ({
+      session: {
+        id: "better_auth_missing_user",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      user: null,
+    }),
+    getLegacySession: async () => legacySession,
+    isBetterAuthEnabled: async () => false,
+    recordMetric: () => {},
+    now: () => Date.now(),
+  })
+
+  assert.equal(result?.session.id, "legacy_continuity")
+})
