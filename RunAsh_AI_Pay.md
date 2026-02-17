@@ -1085,3 +1085,9 @@ Operational impact:
 
 See `RUNASH-AUTH.md` and `SECURITY.md` for the full linking policy and migration notes.
 
+## Auth migration dependency tracking (2026-02)
+
+- Before payment/auth rollout changes, verify auth endpoint readiness against `RUNASH-AUTH.md` ("Endpoint Audit" + "Current Status").
+- Security controls for this dependency are tracked in `SECURITY.md` (auth/payment hardening and redaction policies).
+- This linkage is required for payment governance auditability under `docs/DOC_GOVERNANCE.md`.
+

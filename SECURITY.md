@@ -157,3 +157,9 @@ RunAsh account-linking now follows an explicit deny-by-default model for OAuth i
 - New link attempts may now be denied unless verification and ownership requirements are met.
 - Environments enabling step-up enforcement must update linking clients/flows to send `x-runash-link-step-up: verified` after successful challenge completion.
 
+## Auth migration status linkage (2026-02)
+
+- The repository auth migration audit and implemented-vs-planned phase status are maintained in `RUNASH-AUTH.md` ("Endpoint Audit" and "Current Status").
+- Payment/business release validation must confirm auth readiness against that status before enabling payment-surface changes.
+- Governance cross-reference for release docs: `RunAsh_AI_Pay.md` and `RUNASH_PAY_BUSINESS_IMPLEMENTATION.md`.
+
