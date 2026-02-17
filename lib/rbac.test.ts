@@ -48,6 +48,15 @@ test("canonical role permission bundles are explicit", () => {
   assert.ok(adminPermissions.includes("system:control"))
 })
 
+test("legacy admin routes preserve baseline permissions for existing role names", () => {
+  const legacyAdminPermissions = getEffectiveRolePermissions(DEFAULT_ROLES.ADMIN)
+  const canonicalAdminPermissions = getEffectiveRolePermissions(BASELINE_ROLES.ADMIN)
+
+  assert.deepEqual(legacyAdminPermissions, canonicalAdminPermissions)
+  assert.ok(legacyAdminPermissions.includes("users:write"))
+  assert.ok(legacyAdminPermissions.includes("system:control"))
+})
+
 test("all protected admin API endpoints resolve explicit route permissions", () => {
   const routeFiles = getAdminRouteFiles(path.join(process.cwd(), "app", "api", "admin"))
 

@@ -1178,3 +1178,11 @@ Auth module consolidation and session helper standardization were completed with
 - Set `FEATURE_FLAG_USE_BETTER_AUTH=false` immediately.
 - Verify legacy compatibility session path and replay payment authorization smoke checks.
 - Restore staged rollout only after root cause remediation and metrics normalization.
+
+## 2026-02 auth/session compatibility validation note
+
+- Payment contract compatibility confirmed for existing users during auth-session migration checks: no payment endpoint or payload field changes were introduced.
+- Session continuity validation covered Better Auth primary-session behavior, legacy fallback behavior when migration flags are disabled, and admin CRUD authorization route guards.
+- Security posture remains unchanged for payment surfaces: sensitive auth/payment values stay redacted in logs and audit events.
+- Rollback path remains feature-flag based (`FEATURE_FLAG_USE_BETTER_AUTH=false`) with legacy session compatibility retained.
+
