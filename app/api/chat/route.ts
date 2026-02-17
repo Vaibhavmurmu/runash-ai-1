@@ -1,7 +1,5 @@
 import { type NextRequest } from "next/server"
-import { getServerSession } from "next-auth"
 import { DatabaseService } from "../../../lib/database"
-import { authOptions } from "../../../lib/auth"
 import { openai } from "@ai-sdk/openai"
 import { streamText } from "ai"
 import { z } from "zod"
@@ -9,6 +7,7 @@ import { respondError, respondSuccess } from "../../../lib/api/envelope"
 import { logApiEvent } from "../../../lib/api/logging"
 import { resolveRequestId } from "../../../lib/api/response"
 import { handleGetChat } from "./get-chat-handler"
+import { getServerAuthSession } from "@/lib/auth/session"
 
 export const maxDuration = 30
 
@@ -31,7 +30,7 @@ export async function POST(request: NextRequest) {
   const requestId = resolveRequestId(request)
 
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
 
     if (!session?.user?.id) {
       return respondError(
@@ -121,7 +120,7 @@ export async function GET(request: NextRequest) {
       })
     },
     getSessionUserId: async () => {
-      const session = await getServerSession(authOptions)
+      const session = await getServerAuthSession()
       return session?.user?.id ?? null
     },
     getChatMessages: DatabaseService.getChatMessages,

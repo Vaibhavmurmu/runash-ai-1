@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { neon } from "@neondatabase/serverless"
+import { getServerAuthSession } from "@/lib/auth/session"
 
 const sql = neon(process.env.DATABASE_URL!)
 const DEFAULT_STORAGE_LIMIT = 50 * 1024 * 1024 * 1024
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }

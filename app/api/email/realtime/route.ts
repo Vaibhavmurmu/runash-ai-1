@@ -1,11 +1,10 @@
 import type { NextRequest } from "next/server"
 import { emailRealtimeManager } from "@/lib/email-realtime"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { getServerAuthSession } from "@/lib/auth/session"
 
 export async function GET(request: NextRequest) {
   // Check authentication
-  const session = await getServerSession(authOptions)
+  const session = await getServerAuthSession()
   if (!session?.user) {
     return new Response("Unauthorized", { status: 401 })
   }

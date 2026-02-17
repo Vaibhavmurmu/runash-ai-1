@@ -1,10 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
 import { openai } from "@ai-sdk/openai"
 import { streamText } from "ai"
-import { authOptions } from "@/lib/auth"
 import { RBACManager } from "@/lib/rbac"
 import { rateLimit } from "@/lib/rate-limit"
+import { getServerAuthSession } from "@/lib/auth/session"
 
 export const maxDuration = 30
 
@@ -52,7 +51,7 @@ export async function POST(request: NextRequest) {
   const startedAt = Date.now()
 
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
 
     if (!session?.user?.id) {
       logChatEvent("unauthorized", { correlationId })

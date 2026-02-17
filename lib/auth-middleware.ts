@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getToken } from "next-auth/jwt"
+import { getServerAuthSession } from "@/lib/auth/session"
 import { RBACManager } from "./rbac"
 import { neon } from "@neondatabase/serverless"
 
@@ -19,13 +19,14 @@ export async function withAuth(
   const { requiredPermissions = [], requiredRole, requireAnyPermission = false, redirectTo = "/login" } = options
 
   try {
-    const token = await getToken({ req: request })
+    const session = await getServerAuthSession(request.headers)
+    const token = session?.user
 
-    if (!token || !token.sub) {
+    if (!token || !token.id) {
       return NextResponse.redirect(new URL(redirectTo, request.url))
     }
 
-    const userId = Number.parseInt(token.sub)
+    const userId = Number.parseInt(token.id)
 
     // Check role requirement
     if (requiredRole && token.role !== requiredRole) {

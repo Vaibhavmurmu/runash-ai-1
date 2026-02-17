@@ -1,10 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { changePassword } from "@/lib/auth-utils"
 import { rateLimit } from "@/lib/rate-limit"
 import { z } from "zod"
 import { logApiRouteError } from "@/lib/api/logging"
+import { getServerAuthSession } from "@/lib/auth/session"
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required"),
@@ -20,7 +19,7 @@ const changePasswordSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     // Check authentication
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
     if (!session?.user?.id) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
     }

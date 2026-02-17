@@ -1,8 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { AuthLogger, type LogFilters } from "@/lib/auth-logger"
 import { z } from "zod"
+import { getServerAuthSession } from "@/lib/auth/session"
 
 const logsSchema = z.object({
   page: z
@@ -39,7 +38,7 @@ const logsSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }

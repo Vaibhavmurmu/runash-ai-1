@@ -1,9 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { RBACManager, DEFAULT_ROLES } from "@/lib/rbac"
 import { withAuth } from "@/lib/auth-middleware"
 import { z } from "zod"
+import { getServerAuthSession } from "@/lib/auth/session"
 
 const changeRoleSchema = z.object({
   role: z.enum([
@@ -22,7 +21,7 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
   if (authResult) return authResult
 
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
     const body = await request.json()
 
     const validationResult = changeRoleSchema.safeParse(body)
