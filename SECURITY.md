@@ -90,6 +90,18 @@ Payment and billing APIs now enforce server-side session authentication and owne
 - Logs must include event name, route, method, and request ID only, with sensitive fields redacted by key and value patterns.
 - Provider payload internals, raw emails, tokens, and payment method identifiers must not be logged directly.
 
+## Admin API authorization response and audit policy (2026-02)
+
+- All `app/api/admin/**` routes must authorize through `requireAdminAuthorization(...)` in `lib/auth-middleware.ts` with route-specific permissions.
+- Denied responses are standardized:
+  - `401`: `{ success: false, error: { code: "UNAUTHORIZED", message: "Unauthorized" }, requestId }`
+  - `403`: `{ success: false, error: { code: "FORBIDDEN", message: "Forbidden" }, requestId }`
+- Both denied responses must include `x-request-id` and `x-correlation-id` headers (same value).
+- Admin authorization outcomes must be auditable:
+  - Denials: `*.unauthorized`, `*.forbidden`
+  - Allowed access: `*.allowed`
+- Audit events must not include sensitive auth/payment payload data.
+
 ## Observability log redaction standard (auth + payment)
 
 All auth/payment route logs must go through `lib/api/logging.ts` and emit structured fields only:
