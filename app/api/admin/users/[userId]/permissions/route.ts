@@ -3,6 +3,10 @@ import { RBACManager } from "@/lib/rbac"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { recordAuthMetric } from "@/lib/auth-observability"
 import { recordAdminAuditLog, respondInternalServerError } from "@/lib/api/admin-route-utils"
+import { z } from "zod"
+
+const userIdSchema = z.coerce.number().int().positive()
+const permissionMutationSchema = z.object({ permission: z.string().min(2).max(100) })
 
 export async function GET(request: NextRequest, { params }: { params: { userId: string } }) {
   const auth = await requireAdminAuthorization(request, {
@@ -12,7 +16,7 @@ export async function GET(request: NextRequest, { params }: { params: { userId: 
   if (!auth.success) return auth.response
 
   try {
-    const userId = Number.parseInt(params.userId)
+    const userId = userIdSchema.parse(params.userId)
     const permissions = await RBACManager.getUserPermissions(userId)
 
     return NextResponse.json({ permissions })
@@ -34,8 +38,8 @@ export async function POST(request: NextRequest, { params }: { params: { userId:
   if (!auth.success) return auth.response
 
   try {
-    const { permission } = await request.json()
-    const userId = Number.parseInt(params.userId)
+    const { permission } = permissionMutationSchema.parse(await request.json())
+    const userId = userIdSchema.parse(params.userId)
     const adminId = auth.userId
 
     await RBACManager.grantPermission(userId, permission, adminId)
@@ -68,8 +72,8 @@ export async function DELETE(request: NextRequest, { params }: { params: { userI
   if (!auth.success) return auth.response
 
   try {
-    const { permission } = await request.json()
-    const userId = Number.parseInt(params.userId)
+    const { permission } = permissionMutationSchema.parse(await request.json())
+    const userId = userIdSchema.parse(params.userId)
     const adminId = auth.userId
 
     await RBACManager.revokePermission(userId, permission, adminId)

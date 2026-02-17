@@ -35,6 +35,8 @@ Only routes currently present under `app/api/auth/**` are listed below.
 | `POST /api/auth/sign-in` | `app/api/auth/sign-in/route.ts` |
 | `POST /api/auth/sign-out` | `app/api/auth/sign-out/route.ts` |
 | `GET /api/auth/session` | `app/api/auth/session/route.ts` |
+| `GET /api/auth/get-session` | `app/api/auth/get-session/route.ts` |
+| `POST /api/auth/refresh` | `app/api/auth/refresh/route.ts` |
 | `POST /api/auth/register` | `app/api/auth/register/route.ts` |
 | `POST /api/auth/forgot-password` | `app/api/auth/forgot-password/route.ts` |
 | `POST /api/auth/reset-password` | `app/api/auth/reset-password/route.ts` |
@@ -146,3 +148,10 @@ Role-assignment endpoints continue accepting legacy role inputs, but stored role
 - Unauthorized/forbidden admin guard outcomes are standardized to JSON `401/403` envelopes with `requestId` and mirrored `x-request-id`/`x-correlation-id` headers for traceability.
 - Sensitive admin operations emit audit events, including user CRUD (`user.created`/`user.updated`/`user.deleted`), role changes (`user.role.changed`), and settings writes (`admin.settings.updated`).
 - Role assignment to admin-capability roles is restricted to users already resolving to canonical `admin` capability; `super_admin` assignment remains super-admin only.
+
+
+## 2026-02 auth/admin implementation update
+
+- Added explicit session fetch compatibility endpoint (`GET /api/auth/get-session`) and session refresh endpoint (`POST /api/auth/refresh`) for middleware/docs parity.
+- Admin auth storage is now backed by PostgreSQL tables for session records (`user_sessions`), role grants (`admin_role_grants`), permission overrides (`admin_permission_overrides`), and admin activity logs (`admin_activity_logs`).
+- Admin management/monitoring endpoints now enforce stricter schema validation and server-side pagination/filtering for users, roles, permissions, sessions, audit logs, auth events, and security threats/events.

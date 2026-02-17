@@ -15,6 +15,7 @@ import { recordAdminAuditLog, respondAdminError, respondInternalServerError } fr
 const changeRoleSchema = z.object({
   role: z.string().min(1),
 })
+const userIdSchema = z.coerce.number().int().positive()
 
 export async function PUT(request: NextRequest, { params }: { params: { userId: string } }) {
   const auth = await requireAdminAuthorization(request, {
@@ -43,7 +44,7 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
     }
 
     const normalizedRole = normalizeRoleForStorage(role)
-    const userId = Number.parseInt(params.userId)
+    const userId = userIdSchema.parse(params.userId)
     const adminId = auth.userId
 
     // Prevent users from changing their own role

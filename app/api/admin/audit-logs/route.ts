@@ -8,6 +8,7 @@ import { respondInternalServerError } from "@/lib/api/admin-route-utils"
 const listSchema = z.object({
   entityType: z.string().max(100).optional(),
   action: z.string().max(100).optional(),
+  page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 })
 
@@ -25,6 +26,15 @@ export async function GET(request: NextRequest) {
   try {
     const parsed = listSchema.parse(Object.fromEntries(request.nextUrl.searchParams.entries()))
     await ensureAdminAuthMigrationTables()
+    const offset = (parsed.page - 1) * parsed.limit
+
+    const [countRow] = await queryMany<{ total: string }>(
+      `SELECT COUNT(*)::text AS total
+       FROM admin_audit_logs
+       WHERE ($1::text IS NULL OR entity_type = $1)
+         AND ($2::text IS NULL OR action = $2)`,
+      [parsed.entityType ?? null, parsed.action ?? null],
+    )
 
     const logs = await queryMany(
       `SELECT id, actor_user_id, action, entity_type, entity_id, metadata, created_at
@@ -32,11 +42,14 @@ export async function GET(request: NextRequest) {
        WHERE ($1::text IS NULL OR entity_type = $1)
          AND ($2::text IS NULL OR action = $2)
        ORDER BY created_at DESC
-       LIMIT $3`,
-      [parsed.entityType ?? null, parsed.action ?? null, parsed.limit],
+       LIMIT $3 OFFSET $4`,
+      [parsed.entityType ?? null, parsed.action ?? null, parsed.limit, offset],
     )
 
-    return NextResponse.json({ data: logs })
+    return NextResponse.json({
+      data: logs,
+      pagination: { page: parsed.page, limit: parsed.limit, total: Number.parseInt(countRow?.total ?? "0", 10) },
+    })
   } catch (error) {
     return respondInternalServerError(request, error, {
       event: "admin.audit_logs.list.failed",

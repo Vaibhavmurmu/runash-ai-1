@@ -1,4 +1,5 @@
 import { neon } from "@neondatabase/serverless"
+import { ensureAdminAuthMigrationTables } from "@/lib/migration-helpers"
 
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -439,20 +440,39 @@ export class RBACManager {
    */
   static async getUserPermissions(userId: number): Promise<string[]> {
     try {
+      await ensureAdminAuthMigrationTables()
       const [user] = await sql`
-        SELECT u.role, au.permissions 
+        SELECT u.role,
+               rg.role AS granted_role,
+               COALESCE(
+                 (
+                   SELECT jsonb_agg(jsonb_build_object('permission_key', apo.permission_key, 'effect', apo.effect))
+                   FROM admin_permission_overrides apo
+                   WHERE apo.user_id = u.id
+                 ),
+                 '[]'::jsonb
+               ) AS permission_overrides
         FROM users u
-        LEFT JOIN admin_users au ON u.id = au.user_id
+        LEFT JOIN admin_role_grants rg ON u.id = rg.user_id
         WHERE u.id = ${userId}
       `
 
       if (!user) return []
 
-      const rolePermissions = getEffectiveRolePermissions(user.role)
-      const customPermissions = user.permissions && Array.isArray(user.permissions) ? user.permissions : []
+      const rolePermissions = getEffectiveRolePermissions(user.granted_role ?? user.role)
+      const overrides = Array.isArray(user.permission_overrides) ? user.permission_overrides : []
+
+      const grantedOverrides = overrides
+        .filter((entry: { effect?: string }) => entry?.effect === "grant")
+        .map((entry: { permission_key?: string }) => entry.permission_key)
+      const revokedOverrides = new Set(
+        overrides
+          .filter((entry: { effect?: string }) => entry?.effect === "revoke")
+          .map((entry: { permission_key?: string }) => entry.permission_key),
+      )
 
       // Combine and deduplicate permissions
-      return Array.from(new Set([...rolePermissions, ...customPermissions]))
+      return Array.from(new Set([...rolePermissions, ...grantedOverrides])).filter((permission) => !revokedOverrides.has(permission))
     } catch (error) {
       console.error("Error getting user permissions:", error)
       return []
@@ -472,29 +492,13 @@ export class RBACManager {
    */
   static async grantPermission(userId: number, permission: string, grantedBy: number): Promise<void> {
     try {
-      // Check if admin_users record exists
-      const [existingAdmin] = await sql`
-        SELECT id, permissions FROM admin_users WHERE user_id = ${userId}
+      await ensureAdminAuthMigrationTables()
+      await sql`
+        INSERT INTO admin_permission_overrides (user_id, permission_key, effect, updated_by, created_at, updated_at)
+        VALUES (${userId}, ${permission}, 'grant', ${grantedBy}, NOW(), NOW())
+        ON CONFLICT (user_id, permission_key)
+        DO UPDATE SET effect = EXCLUDED.effect, updated_by = EXCLUDED.updated_by, updated_at = NOW()
       `
-
-      if (existingAdmin) {
-        // Update existing permissions
-        const currentPermissions = existingAdmin.permissions || []
-        if (!currentPermissions.includes(permission)) {
-          const updatedPermissions = [...currentPermissions, permission]
-          await sql`
-            UPDATE admin_users 
-            SET permissions = ${JSON.stringify(updatedPermissions)}, updated_at = NOW()
-            WHERE user_id = ${userId}
-          `
-        }
-      } else {
-        // Create new admin_users record
-        await sql`
-          INSERT INTO admin_users (user_id, permissions, created_by, created_at, updated_at)
-          VALUES (${userId}, ${JSON.stringify([permission])}, ${grantedBy}, NOW(), NOW())
-        `
-      }
 
       // Log the action
       await sql`
@@ -512,24 +516,19 @@ export class RBACManager {
    */
   static async revokePermission(userId: number, permission: string, revokedBy: number): Promise<void> {
     try {
-      const [existingAdmin] = await sql`
-        SELECT id, permissions FROM admin_users WHERE user_id = ${userId}
+      await ensureAdminAuthMigrationTables()
+      await sql`
+        INSERT INTO admin_permission_overrides (user_id, permission_key, effect, updated_by, created_at, updated_at)
+        VALUES (${userId}, ${permission}, 'revoke', ${revokedBy}, NOW(), NOW())
+        ON CONFLICT (user_id, permission_key)
+        DO UPDATE SET effect = EXCLUDED.effect, updated_by = EXCLUDED.updated_by, updated_at = NOW()
       `
 
-      if (existingAdmin && existingAdmin.permissions) {
-        const updatedPermissions = existingAdmin.permissions.filter((p: string) => p !== permission)
-        await sql`
-          UPDATE admin_users 
-          SET permissions = ${JSON.stringify(updatedPermissions)}, updated_at = NOW()
-          WHERE user_id = ${userId}
-        `
-
-        // Log the action
-        await sql`
-          INSERT INTO admin_activity_logs (admin_id, action, target_type, target_id, details, created_at)
-          VALUES (${revokedBy}, 'revoke_permission', 'user', ${userId}, ${JSON.stringify({ permission })}, NOW())
-        `
-      }
+      // Log the action
+      await sql`
+        INSERT INTO admin_activity_logs (admin_id, action, target_type, target_id, details, created_at)
+        VALUES (${revokedBy}, 'revoke_permission', 'user', ${userId}, ${JSON.stringify({ permission })}, NOW())
+      `
     } catch (error) {
       console.error("Error revoking permission:", error)
       throw error
@@ -541,13 +540,21 @@ export class RBACManager {
    */
   static async changeUserRole(userId: number, newRole: string, changedBy: number): Promise<void> {
     try {
+      await ensureAdminAuthMigrationTables()
       const [oldUser] = await sql`SELECT role FROM users WHERE id = ${userId}`
       const normalizedRole = normalizeRoleForStorage(newRole)
 
       await sql`
-        UPDATE users 
+        UPDATE users
         SET role = ${normalizedRole}, updated_at = NOW()
         WHERE id = ${userId}
+      `
+
+      await sql`
+        INSERT INTO admin_role_grants (user_id, role, granted_by, created_at, updated_at)
+        VALUES (${userId}, ${normalizedRole}, ${changedBy}, NOW(), NOW())
+        ON CONFLICT (user_id)
+        DO UPDATE SET role = EXCLUDED.role, granted_by = EXCLUDED.granted_by, updated_at = NOW()
       `
 
       // Log the action
