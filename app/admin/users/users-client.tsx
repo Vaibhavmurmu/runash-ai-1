@@ -1,6 +1,6 @@
 "use client"
 import { useEffect, useState } from "react"
-import { useSession, signIn } from "next-auth/react"
+import { useAuthSession } from "@/lib/auth/access-client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -15,7 +15,7 @@ type User = {
 }
 
 export default function UsersPage() {
-  const { data: session } = useSession()
+  const { data: session } = useAuthSession()
   const [users, setUsers] = useState<User[]>([])
   const [form, setForm] = useState({ email: "", name: "", role: "user", password: "" })
 
@@ -37,7 +37,7 @@ export default function UsersPage() {
             <CardTitle>Sign in to manage users</CardTitle>
           </CardHeader>
           <CardContent>
-            <Button onClick={() => signIn(undefined, { callbackUrl: "/admin/users" })}>Sign in</Button>
+            <Button asChild><a href="/login?callbackUrl=/admin/users">Sign in</a></Button>
           </CardContent>
         </Card>
       </div>

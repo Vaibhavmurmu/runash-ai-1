@@ -12,7 +12,7 @@ type SessionShape = {
 type SessionAccessorDependencies<TSession extends SessionShape> = {
   getPrimarySession: () => Promise<TSession | null>
   getLegacySession: () => Promise<TSession | null>
-  isBetterAuthEnabled: () => Promise<boolean>
+  isLegacyFallbackEnabled: () => Promise<boolean>
   recordMetric: (name: "auth.session.invalidated" | "auth.session.rotation_due", tags?: Record<string, string>) => void
   now: () => number
 }
@@ -43,11 +43,10 @@ export async function resolveSessionFromSources<TSession extends SessionShape>(
     return betterAuthSession
   }
 
-  const useBetterAuth = await dependencies.isBetterAuthEnabled()
-  if (useBetterAuth) {
+  const useLegacyFallback = await dependencies.isLegacyFallbackEnabled()
+  if (!useLegacyFallback) {
     return null
   }
 
   return dependencies.getLegacySession()
 }
-

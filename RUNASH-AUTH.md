@@ -89,7 +89,7 @@ Note: middleware still treats `/signup` as public, but no `app/signup/page.tsx` 
 - **Legacy cookie handling:** legacy `next-auth.session-token` and `__Secure-next-auth.session-token` cookies are explicitly cleared on new session writes.
 - **Fallback verification behavior:** when legacy cookies are still present during rollout windows, server session accessor fallback can verify tokens with `NEXTAUTH_SECRET` and then `BETTER_AUTH_SECRET` to reduce migration lockout risk.
 - **Failure mode:** if Better Auth is enabled and no valid Better Auth session is resolved, protected routes continue to reject (`401`) or redirect (`/login`) exactly as before.
-- **Rollback guidance:** if migration issues are detected, rollback can safely re-enable legacy fallback behavior through existing feature-flag gating while preserving Better Auth cookie issuance for newly authenticated users.
+- **Rollback guidance:** if migration issues are detected, keep `use_better_auth` enabled and temporarily set `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK=true` to restore compatibility reads for legacy NextAuth cookies while incident response runs; remove the fallback flag after mitigation.
 
 
 ## 4.1) Feature-flag rollout and validation status (2026-02)
@@ -171,3 +171,10 @@ Role-assignment endpoints continue accepting legacy role inputs, but stored role
   - `operator`: aggregate + redacted recent event stream,
   - `admin`: full aggregate + realtime metrics stream.
 - Login instrumentation now uses hashed principal fingerprints for repeated-failure detection and never stores raw identifiers.
+
+
+### 4.3) Current helper layering
+
+- **Client session helper:** `lib/auth/access-client.ts` is the unified session-check hook for client components (`useAuthSession`), plus shared imperative helpers (`getAuthSession`, `signOutWithRedirect`).
+- **Server session helper:** `lib/auth/session.ts` + `lib/auth/session-accessor.ts` remain the canonical server path.
+- **Migration fallback flag gate:** legacy NextAuth cookie verification runs only when `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK` is enabled; without this flag, only Better Auth sessions are accepted.
