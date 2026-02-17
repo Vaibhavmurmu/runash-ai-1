@@ -97,3 +97,10 @@ When auth/session/RBAC anomalies are detected:
 - Role grants and permission overrides are now persisted as dedicated PostgreSQL entities (`admin_role_grants`, `admin_permission_overrides`) rather than transient runtime-only merges.
 - Security and admin activity events remain audit-traceable through PostgreSQL-backed `admin_activity_logs`.
 - Session management endpoints use PostgreSQL-backed `user_sessions` with validated pagination/filtering to support incident response and forensics workflows.
+
+## 7) 2026-02 sensitive logging safeguards expansion
+
+- API/auth logging redaction now explicitly blocks raw cookie and token-style value patterns from structured logs.
+- Auth observability tags and audit details are sanitized for payment/auth payload and credential-like keys before emission.
+- Session/security telemetry uses redacted/safe reason codes rather than raw session artifacts.
+- Forbidden access and permission-abuse events are emitted as structured metrics for alerting without exposing user secrets.

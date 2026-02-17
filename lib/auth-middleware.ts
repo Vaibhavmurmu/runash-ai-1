@@ -6,6 +6,7 @@ import { neon } from "@neondatabase/serverless"
 import { logApiEvent } from "@/lib/api/logging"
 import { resolveRequestId } from "@/lib/api/response"
 import { respondAdminError } from "@/lib/api/admin-route-utils"
+import { recordAuthMetric } from "@/lib/auth-observability"
 
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -64,7 +65,12 @@ export async function withAuth(
 
     return null
   } catch (error) {
-    console.error("Auth middleware error:", error)
+    logApiEvent("error", "auth.middleware.error", {
+      requestId: resolveRequestId(request),
+      route: request.nextUrl.pathname,
+      method: request.method,
+      error,
+    })
     return respondAdminError(request, 500, "Internal server error", resolveRequestId(request))
   }
 }
@@ -90,6 +96,11 @@ export async function requireAdminAuthorization(
     const token = session?.user
 
     if (!token?.id) {
+      recordAuthMetric("auth.forbidden.action", {
+        endpoint: request.nextUrl.pathname,
+        reason: "missing_session",
+        method: request.method,
+      })
       logApiEvent("warn", `${options.auditEvent}.unauthorized`, {
         requestId,
         route: request.nextUrl.pathname,
@@ -107,6 +118,11 @@ export async function requireAdminAuthorization(
 
     const userId = Number.parseInt(token.id)
     if (!Number.isFinite(userId)) {
+      recordAuthMetric("auth.forbidden.action", {
+        endpoint: request.nextUrl.pathname,
+        reason: "invalid_user_id",
+        method: request.method,
+      })
       logApiEvent("warn", `${options.auditEvent}.unauthorized`, {
         requestId,
         route: request.nextUrl.pathname,
@@ -133,6 +149,16 @@ export async function requireAdminAuthorization(
       : await RBACManager.hasAllPermissions(userId, requiredPermissions)
 
     if (!hasPermission) {
+      recordAuthMetric("auth.forbidden.action", {
+        endpoint: request.nextUrl.pathname,
+        method: request.method,
+        reason: "missing_permissions",
+      })
+      recordAuthMetric("auth.permission.abuse", {
+        endpoint: request.nextUrl.pathname,
+        method: request.method,
+        reason: "permission_denied",
+      })
       logApiEvent("warn", `${options.auditEvent}.forbidden`, {
         requestId,
         route: request.nextUrl.pathname,
@@ -192,8 +218,8 @@ export function requireAuth(options: AuthMiddlewareOptions = {}) {
 export async function requirePermission(userId: string, permission: string): Promise<boolean> {
   try {
     return await RBACManager.hasPermission(Number.parseInt(userId), permission)
-  } catch (error) {
-    console.error("Permission check error:", error)
+  } catch {
+    console.error("Permission check failed")
     return false
   }
 }
@@ -204,7 +230,7 @@ export async function logAdminActivity(userId: string, action: string, details: 
       INSERT INTO admin_activity_logs (admin_user_id, action, details, ip_address)
       VALUES (${userId}, ${action}, ${JSON.stringify(details)}, ${ipAddress})
     `
-  } catch (error) {
-    console.error("Failed to log admin activity:", error)
+  } catch {
+    console.error("Failed to log admin activity")
   }
 }
