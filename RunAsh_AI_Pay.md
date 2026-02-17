@@ -1070,3 +1070,15 @@ Risk/rollback notes:
 - `lib/auth-helpers.ts#getSession` now calls the canonical Better Auth API (`auth.api.getSession`) using forwarded cookie headers to keep payment-adjacent auth lookups aligned with runtime behavior.
 - No payment contract field names or API signatures were changed in this auth migration.
 - Rollback for payment-impacting auth regressions: revert auth runtime migration commit and restore prior NextAuth session guards.
+
+## Auth & identity prerequisites for payment operations (2026-02)
+
+Payment/admin operations depend on trustworthy account ownership. OAuth account-linking now requires verified account state and provider subject ownership enforcement before linking to existing RunAsh identities.
+
+Operational impact:
+- Existing account links are unaffected.
+- New high-risk OAuth links can require a completed step-up challenge before they are accepted.
+- This reduces risk of payment-admin takeover through weak or unsafe social account linking.
+
+See `RUNASH-AUTH.md` and `SECURITY.md` for the full linking policy and migration notes.
+
