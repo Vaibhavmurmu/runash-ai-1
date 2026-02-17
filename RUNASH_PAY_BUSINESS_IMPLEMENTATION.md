@@ -1,5 +1,11 @@
 # RunAsh Pay - Business & Startup Implementation Plan
 
+## 2026-02 Auth Transition Dependency Note
+
+- Payment and business APIs continue to rely on stable auth identity/session contracts during the Better Auth single-runtime migration.
+- Existing payment endpoint field names and API signatures remain unchanged in this phase.
+- Production cutover must be gated on auth compatibility checks for existing users/cookies/tokens and a tested rollback plan documented in `RUNASH-AUTH.md`.
+
 ## Executive Summary
 
 This comprehensive guide outlines the strategy for deploying RunAsh Pay across Business and Startup segments. The implementation focuses on secure payment processing, seamless integrations, enterprise scalability, and compliance requirements specific to each user segment.

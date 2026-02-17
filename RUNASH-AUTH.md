@@ -1,6 +1,127 @@
 # Custom RunAsh Auth Integration 
 
 
+## 2026-02 Target-State Auth Architecture (Single Runtime / Single Session Source)
+
+### Target state definition
+
+RunAsh auth cutover target is a **single Better Auth runtime** with one canonical session validation path.
+
+1. **Single runtime**
+   - Better Auth is the only active auth runtime and signer/verifier for session artifacts.
+   - `/api/auth/[...nextauth]` remains as the compatibility route surface during transition but is backed by `better-auth/next-js` + `lib/auth.ts`.
+   - No dual-write or dual-validation against legacy NextAuth internals after cutover gate is opened.
+2. **Single session source of truth**
+   - Session validity is resolved server-side from Better Auth session APIs/readers (`/api/auth/get-session` + server accessors).
+   - Middleware, API guards, and SSR checks must use the same session accessor contract and must not trust cookie presence alone.
+3. **Fallback behavior (safe degradation)**
+   - If session lookup fails (network/runtime error, timeout, malformed payload), treat request as unauthenticated.
+   - Preserve current UX behavior: UI routes redirect to `/login`; API routes return `401`.
+   - Fallback must never grant access, never mint new session state, and never log sensitive cookie/token values.
+4. **Rollback path**
+   - Rollback is configuration-first:
+     - disable Better Auth rollout flag (`use_better_auth`) for targeted cohorts,
+     - keep compatibility handlers/routes active,
+     - revert auth UI client calls to legacy-safe route behavior without schema changes.
+   - Rollback must preserve existing cookie names and token parsing during the rollback window so active sessions are not force-expired unintentionally.
+   - If emergency rollback is required in production, execute staging-validated rollback runbook first (see cutover gates below).
+
+### Current auth touchpoint inventory and classification
+
+#### Core runtime/session files
+
+| Touchpoint | Current role | Classification | Transition action |
+| --- | --- | --- | --- |
+| `lib/auth.ts` | Better Auth runtime config, provider setup, account-linking security hooks | **KEEP** | Keep as canonical runtime and tighten as needed; avoid API/signature breaks. |
+| `lib/auth-helpers.ts` | Server session/user helper bridge + rollout helper (`shouldUseBetterAuth`) | **REPLACE (incremental)** | Keep helper names; replace internals so all reads use one session accessor path and deprecate dual-runtime branching at 100% rollout. |
+| `middleware.ts` | Edge auth gate, route access control, rate limits, `/api/auth/get-session` verification | **KEEP** | Keep behavior; standardize error/fallback contract and keep fail-closed semantics. |
+
+#### API surface (`app/api/**`) touchpoints
+
+| Touchpoint | Current role | Classification | Transition action |
+| --- | --- | --- | --- |
+| `app/api/auth/[...nextauth]/route.ts` | Main auth handler route, currently Better Auth-backed | **KEEP (compat route)** | Keep during transition; optional rename only after clients are migrated and aliases exist. |
+| `app/api/auth/register/route.ts` | Primary signup endpoint | **KEEP** | Keep contract stable for existing clients; internals can move to shared auth services. |
+| `app/api/v1/auth/register/route.ts` | Versioned/legacy-compatible register endpoint | **KEEP (compat)** | Preserve response fields; retire only after explicit API version sunset. |
+| `app/api/auth/forgot-password/route.ts` | Password reset initiation | **KEEP** | Keep endpoint and payload contract; move session invalidation + auditing into shared auth runtime services. |
+| `app/api/auth/reset-password/route.ts` | Password reset completion | **KEEP** | Keep endpoint contract; enforce session revocation on success. |
+| `app/api/auth/change-password/route.ts` | Authenticated password change | **KEEP** | Keep; ensure it resolves actor identity through single session accessor. |
+| `app/api/auth/verify-email/route.ts` | Email verification confirmation | **KEEP** | Keep existing token/link flow for backward compatibility. |
+| `app/api/auth/resend-verification/route.ts` | Verification re-send | **KEEP** | Keep; ensure rate-limit + anti-enumeration consistency. |
+| `app/api/auth/magic-link/route.ts` | Magic-link request | **KEEP** | Keep endpoint shape; unify token issuance/validation under Better Auth runtime controls. |
+| `app/api/auth/magic-link/verify/route.ts` | Magic-link verification | **KEEP** | Keep route; ensure cookie issuance uses canonical runtime only. |
+| `app/api/auth/otp/email/route.ts` + `app/api/auth/otp/sms/route.ts` | OTP send/verify flows | **KEEP** | Keep API shape; centralize challenge/session binding logic. |
+| `app/api/auth/2fa/setup/route.ts`, `app/api/auth/2fa/verify/route.ts`, `app/api/auth/2fa/backup-codes/route.ts` | 2FA provisioning and verification | **KEEP** | Keep endpoints; align all verification checks to single session source. |
+| `app/api/auth/passkey/register/route.ts`, `app/api/auth/passkey/authenticate/route.ts` | Passkey registration/authentication | **KEEP** | Keep WebAuthn contract stable; only replace internals as runtime converges. |
+| `app/api/auth/permissions/route.ts` | Permission introspection for authenticated user | **KEEP** | Keep route and payload; switch to one canonical auth context resolver if not already. |
+| `app/api/auth/sso/check/route.ts` | SSO discovery/check helper | **KEEP** | Keep contract stable; ensure org/user resolution follows canonical runtime identity. |
+| `app/api/admin/analytics/auth/route.ts` + `app/api/admin/analytics/auth/events/route.ts` | Auth analytics/audit API | **KEEP** | Keep; verify no sensitive token/cookie data is logged. |
+| Non-auth API routes that depend on auth context | Protected business endpoints | **REPLACE (internal auth plumbing)** | Preserve endpoint contracts; replace ad-hoc auth reads with shared session accessor. |
+
+#### Auth UI touchpoints
+
+| Touchpoint | Current role | Classification | Transition action |
+| --- | --- | --- | --- |
+| `app/login/page.tsx` | Login UI using `next-auth/react` client helpers | **REPLACE** | Migrate to Better Auth client/session primitives while preserving UX copy and redirect behavior. |
+| `app/get-started/page.tsx` | Registration/onboarding UI with OAuth and register API calls | **REPLACE** | Migrate sign-in provider calls to Better Auth client APIs; keep register API payload contract stable. |
+| `app/forgot-password/page.tsx` | Forgot password request UI | **KEEP** | Keep UI and endpoint contract; only adjust handling as needed for unified errors. |
+| `app/reset-password/page.tsx` | Reset password UI | **KEEP** | Keep route and token UX stable; ensure post-reset session behavior matches compatibility rules. |
+| `app/verify-email/page.tsx` | Email verification UI | **KEEP** | Keep; preserve verification link compatibility for in-flight emails. |
+| `app/auth/magic-link/page.tsx` | Magic link completion UI | **KEEP** | Keep route and token parsing behavior stable. |
+| `app/unauthorized/page.tsx` | Unauthorized fallback page | **KEEP** | Keep as unchanged UX endpoint for authorization failures. |
+| `/signup` page route (planned/legacy references) | Duplicate signup surface | **REMOVE (deferred)** | Do not reintroduce duplicate signup route; use `/get-started` as single signup experience. |
+
+### Transition compatibility rules (users, cookies, tokens)
+
+1. **Existing users**
+   - Existing user IDs remain the durable principal key across transition.
+   - No forced account recreation, no email re-verification reset, and no role/permission resets as a side effect of auth runtime cutover.
+2. **Cookies**
+   - Maintain read compatibility for currently issued auth cookies during the migration window.
+   - Writers must converge to the Better Auth canonical cookie/session format at cutover.
+   - Cookie attribute policy (HttpOnly/Secure/SameSite/TTL) may be tightened but not relaxed.
+3. **Tokens (verification/reset/magic-link/2FA)**
+   - Previously issued, unexpired tokens continue to validate through transition.
+   - Token verifiers should support legacy token formats until token TTL + grace window has elapsed after cutover.
+   - Do not log raw token values; only hashed/redacted identifiers in telemetry.
+4. **Session continuity**
+   - Active sessions should remain valid through normal TTL where cryptographically compatible.
+   - If incompatibility is unavoidable, force re-auth only behind an explicit release gate with user-facing communication.
+5. **API compatibility**
+   - Preserve existing request/response field names for auth endpoints unless a versioned route is introduced.
+   - Any breaking auth contract change requires migration notes and staged client rollout.
+
+### Migration checklist with explicit cutover gates
+
+#### Gate 1 — Development
+- [ ] Target-state architecture documented and approved in `RUNASH-AUTH.md`.
+- [ ] Touchpoint inventory completed (keep/replace/remove) and owners assigned.
+- [ ] Local validation green: `npm run lint`, `npm run build`.
+- [ ] Unit/integration checks for session accessor fail-closed behavior added or updated.
+- [ ] Rollback drill executed locally (feature flag off path tested).
+
+**Exit criterion:** all auth paths resolve identity from one canonical session accessor in development.
+
+#### Gate 2 — Staging
+- [ ] 100% of staging traffic uses Better Auth runtime.
+- [ ] Cookie/token backward-compatibility checks pass for pre-cutover staging fixtures.
+- [ ] Middleware/API/UI behavior parity confirmed for login, logout, reset, verify-email, magic-link, OAuth, 2FA, passkeys.
+- [ ] Security review confirms no sensitive auth data in logs/analytics.
+- [ ] Rollback rehearsal executed and timed (RTO documented).
+
+**Exit criterion:** staging can run steady-state for agreed soak period with no Sev-1/Sev-2 auth regressions.
+
+#### Gate 3 — Production
+- [ ] Progressive rollout plan approved (e.g., cohort/percentage ramps with halt criteria).
+- [ ] Real-time monitoring/alerts enabled for auth success rate, failure rate, session validation errors, and lockout anomalies.
+- [ ] Support + incident runbook updated with rollback commands and decision tree.
+- [ ] Backward-compatibility window start/end dates published.
+- [ ] Final go/no-go review signed by engineering + security owners.
+
+**Exit criterion:** production rollout reaches 100% with stable auth KPIs through the defined observation window.
+
+
+
 ## 2026-02 Security Hardening Addendum
 
 - OAuth/provider account linking now enforces **verified identity linking** by default (`AUTH_ENFORCE_VERIFIED_IDENTITY_LINKING=true`). Linking is denied unless the primary RunAsh account is email-verified **and** step-up identity proof (`x-runash-identity-verified: verified` or `x-runash-link-step-up: verified`) is present with provider identity evidence (`idToken`).
