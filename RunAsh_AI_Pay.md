@@ -1186,3 +1186,10 @@ Auth module consolidation and session helper standardization were completed with
 - Security posture remains unchanged for payment surfaces: sensitive auth/payment values stay redacted in logs and audit events.
 - Rollback path remains feature-flag based (`FEATURE_FLAG_USE_BETTER_AUTH=false`) with legacy session compatibility retained.
 
+
+
+## Auth/session migration note (no payment contract change)
+
+- The Better Auth migration updates only session validation helpers and client auth access utilities.
+- Payment API field names, request/response contracts, and settlement flows remain unchanged in this change set.
+- Rollback for auth compatibility is feature-flagged via `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK`; payment processing behavior is unaffected by toggling this flag.

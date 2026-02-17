@@ -3,7 +3,8 @@
 import type React from "react"
 import Image from "next/image"
 import { useState } from "react"
-import { signIn, getSession } from "next-auth/react"
+import { signIn } from "next-auth/react"
+import { getAuthSession } from "@/lib/auth/access-client"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -47,7 +48,7 @@ export default function LoginPage() {
         setError("Invalid email or password")
       } else {
         // Check if user has completed onboarding
-        const session = await getSession()
+        const session = await getAuthSession()
         if (session?.user) {
           router.push("/dashboard")
         }

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { signOut, useSession } from "next-auth/react"
+import { signOutWithRedirect, useAuthSession } from "@/lib/auth/access-client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -150,7 +150,7 @@ const sidebarNavItems = [
 export default function RunashChatPage() {
   const updatesBannerHiddenKey = "runash_updates_banner_hidden"
   const router = useRouter()
-  const { data: session } = useSession()
+  const { data: session } = useAuthSession()
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [messagesPreview, setMessagesPreview] = useState<ChatPreviewMessage[]>([])
   const [loadingSession, setLoadingSession] = useState(false)
@@ -703,7 +703,7 @@ export default function RunashChatPage() {
                         </DropdownMenuItem>
                       ))}
                       <DropdownMenuItem
-                        onClick={() => signOut({ callbackUrl: "/" })}
+                        onClick={() => signOutWithRedirect("/")}
                         className="cursor-pointer text-rose-300 focus:bg-rose-500/20 focus:text-rose-200"
                       >
                         Sign out
@@ -871,7 +871,7 @@ export default function RunashChatPage() {
                       )
                     })}
                     <DropdownMenuItem
-                      onClick={() => signOut({ callbackUrl: "/" })}
+                      onClick={() => signOutWithRedirect("/")}
                       className="cursor-pointer text-rose-300 focus:bg-rose-500/20 focus:text-rose-200"
                     >
                       <LogOut className="mr-2 h-4 w-4" />

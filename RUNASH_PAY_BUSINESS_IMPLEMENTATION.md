@@ -1896,3 +1896,10 @@ To preserve payment and auth reliability under the active service override:
 - Disable Better Auth rollout (`FEATURE_FLAG_USE_BETTER_AUTH=false`).
 - Confirm legacy compatibility session behavior and payment access restoration.
 - Re-run payment auth smoke tests before staged re-enable.
+
+
+## Auth/session migration note (no payment contract change)
+
+- The Better Auth migration updates only session validation helpers and client auth access utilities.
+- Payment API field names, request/response contracts, and settlement flows remain unchanged in this change set.
+- Rollback for auth compatibility is feature-flagged via `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK`; payment processing behavior is unaffected by toggling this flag.

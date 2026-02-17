@@ -156,3 +156,10 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
 - Auth observability tags and audit details are sanitized for payment/auth payload and credential-like keys before emission.
 - Session/security telemetry uses redacted/safe reason codes rather than raw session artifacts.
 - Forbidden access and permission-abuse events are emitted as structured metrics for alerting without exposing user secrets.
+
+
+## Auth session migration control
+
+- Legacy NextAuth cookie/session fallback is disabled by default and can be temporarily enabled only through `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK=true`.
+- Rollback path for auth migration incidents: keep Better Auth as primary, enable the fallback flag for compatibility reads, validate login recovery, then disable the fallback flag and rotate incident credentials as needed.
+- Do not log cookie values, legacy tokens, or secret material during migration diagnostics.

@@ -75,7 +75,7 @@ async function readLegacyNextAuthSession(cookieHeader: string | null): Promise<B
 export async function getAuthSessionFromHeaders(requestHeaders: Headers): Promise<BetterAuthSession | null> {
   return resolveSessionFromSources({
     getPrimarySession: () => auth.api.getSession({ headers: requestHeaders }),
-    isBetterAuthEnabled: () => isFeatureFlagEnabled("use_better_auth"),
+    isLegacyFallbackEnabled: () => isFeatureFlagEnabled("allow_legacy_next_auth_fallback"),
     getLegacySession: () => readLegacyNextAuthSession(requestHeaders.get("cookie")),
     recordMetric: recordAuthMetric,
     now: () => Date.now(),

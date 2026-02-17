@@ -4,7 +4,8 @@ import type React from "react"
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { signIn, getSession } from "next-auth/react"
+import { signIn } from "next-auth/react"
+import { getAuthSession } from "@/lib/auth/access-client"
 import { Eye, EyeOff, Github, Loader2, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -45,7 +46,7 @@ export function LoginForm() {
       }
 
       // Get updated session
-      const session = await getSession()
+      const session = await getAuthSession()
 
       toast({
         title: "Welcome back!",
