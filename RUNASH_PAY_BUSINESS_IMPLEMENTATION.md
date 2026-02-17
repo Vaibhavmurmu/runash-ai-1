@@ -1790,3 +1790,21 @@ Risk and rollback:
 
 ### Planned
 - Full Better Auth route replacement and Drizzle migration artifact rollout remain planned phases and are not prerequisites for current additive payment API flows.
+
+## Phased rollout + rollback policy for auth-dependent business payment flows (2026-02)
+
+### Phase gates
+- **Internal:** business/admin operators only.
+- **10%:** controlled cohort with hourly KPI review.
+- **50%:** maintain stable auth/payment KPIs for at least 24h before expansion.
+- **100%:** only after no Sev1/Sev2 payment-auth incidents in the previous 48h.
+
+### Required KPI checks before each phase
+- Auth error rate remains within baseline control band.
+- Session invalidation rate does not breach 3% threshold.
+- Admin 403 anomaly rate remains below 1%.
+- Payment/auth incident count is zero for release-blocking severities.
+
+### Compatibility and rollback
+- Backward compatibility remains required: no payment payload field rename/removal in this rollout.
+- Rollback path: disable Better Auth flag, preserve existing payment API signatures, and revert only auth gating behavior if anomalies persist.
