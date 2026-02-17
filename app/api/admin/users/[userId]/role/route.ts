@@ -11,6 +11,7 @@ import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { z } from "zod"
 import { recordAuthMetric } from "@/lib/auth-observability"
 import { recordAdminAuditLog, respondAdminError, respondInternalServerError } from "@/lib/api/admin-route-utils"
+import { queryOne } from "@/lib/db"
 
 const changeRoleSchema = z.object({
   role: z.string().min(1),
@@ -46,6 +47,11 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
     const normalizedRole = normalizeRoleForStorage(role)
     const userId = userIdSchema.parse(params.userId)
     const adminId = auth.userId
+
+    const targetUser = await queryOne<{ id: number }>(`SELECT id FROM users WHERE id = $1`, [userId])
+    if (!targetUser) {
+      return NextResponse.json({ message: "User not found" }, { status: 404 })
+    }
 
     // Prevent users from changing their own role
     if (userId === adminId) {

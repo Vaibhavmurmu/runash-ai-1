@@ -163,3 +163,9 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
 - Legacy NextAuth cookie/session fallback is disabled by default and can be temporarily enabled only through `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK=true`.
 - Rollback path for auth migration incidents: keep Better Auth as primary, enable the fallback flag for compatibility reads, validate login recovery, then disable the fallback flag and rotate incident credentials as needed.
 - Do not log cookie values, legacy tokens, or secret material during migration diagnostics.
+
+## 8) 2026-02 admin RBAC assignment safety updates
+
+- Admin permission-override endpoints now reject self-targeted permission mutations and validate permission keys against the persisted `admin_permissions` registry before writes.
+- Admin role-assignment endpoint now validates target-user existence before applying role updates.
+- Protected admin page access policy now explicitly includes `/ecommerce/admin` under permission-based UI checks.

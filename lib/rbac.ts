@@ -156,6 +156,7 @@ const PROTECTED_UI_ROUTE_RULES: readonly RoutePermissionRule[] = [
   { prefix: "/admin/email-management", requiredPermissions: ["admin:settings"] },
   { prefix: "/admin/roles", requiredPermissions: ["admin:settings"] },
   { prefix: "/admin/users", requiredPermissions: ["users:read"] },
+  { prefix: "/ecommerce/admin", requiredPermissions: ["admin:analytics"] },
 ]
 
 export const BASELINE_ROLE_PERMISSIONS: Record<BaselineRole, readonly string[]> = {

@@ -1193,3 +1193,9 @@ Auth module consolidation and session helper standardization were completed with
 - The Better Auth migration updates only session validation helpers and client auth access utilities.
 - Payment API field names, request/response contracts, and settlement flows remain unchanged in this change set.
 - Rollback for auth compatibility is feature-flagged via `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK`; payment processing behavior is unaffected by toggling this flag.
+
+## 2026-02 auth/RBAC compatibility note (no payment contract change)
+
+- Canonical admin baseline roles (`viewer`, `operator`, `admin`) and assignment-endpoint validation hardening were added in auth/admin surfaces.
+- These changes do **not** modify RunAsh Pay API payloads, payment method contracts, or checkout request/response field names.
+- Payment-affecting admin actions continue to depend on existing permission gates; this update only tightens role/permission assignment safety and admin UI/API access enforcement.

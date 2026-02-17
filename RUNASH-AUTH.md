@@ -178,3 +178,12 @@ Role-assignment endpoints continue accepting legacy role inputs, but stored role
 - **Client session helper:** `lib/auth/access-client.ts` is the unified session-check hook for client components (`useAuthSession`), plus shared imperative helpers (`getAuthSession`, `signOutWithRedirect`).
 - **Server session helper:** `lib/auth/session.ts` + `lib/auth/session-accessor.ts` remain the canonical server path.
 - **Migration fallback flag gate:** legacy NextAuth cookie verification runs only when `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK` is enabled; without this flag, only Better Auth sessions are accepted.
+
+## 9) 2026-02 RBAC assignment validation hardening
+
+- Protected admin UI coverage now includes `/ecommerce/admin`, enforced through `requireAdminUiRouteAccess` and route-policy permission resolution (`admin:analytics`).
+- Role assignment endpoint validation now verifies target user existence before role mutation.
+- Permission assignment/revocation endpoints now:
+  - reject self-targeted permission override mutations,
+  - verify target user existence, and
+  - verify the permission key exists in `admin_permissions` before applying grants/revokes.

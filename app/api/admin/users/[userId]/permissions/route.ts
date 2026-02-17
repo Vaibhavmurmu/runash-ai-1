@@ -4,6 +4,7 @@ import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { recordAuthMetric } from "@/lib/auth-observability"
 import { recordAdminAuditLog, respondInternalServerError } from "@/lib/api/admin-route-utils"
 import { z } from "zod"
+import { queryOne } from "@/lib/db"
 
 const userIdSchema = z.coerce.number().int().positive()
 const permissionMutationSchema = z.object({ permission: z.string().min(2).max(100) })
@@ -42,6 +43,23 @@ export async function POST(request: NextRequest, { params }: { params: { userId:
     const userId = userIdSchema.parse(params.userId)
     const adminId = auth.userId
 
+    if (userId === adminId) {
+      return NextResponse.json({ message: "Cannot modify your own permission overrides" }, { status: 400 })
+    }
+
+    const [targetUser, knownPermission] = await Promise.all([
+      queryOne<{ id: number }>(`SELECT id FROM users WHERE id = $1`, [userId]),
+      queryOne<{ id: number }>(`SELECT id FROM admin_permissions WHERE key = $1`, [permission]),
+    ])
+
+    if (!targetUser) {
+      return NextResponse.json({ message: "User not found" }, { status: 404 })
+    }
+
+    if (!knownPermission) {
+      return NextResponse.json({ message: "Unknown permission" }, { status: 400 })
+    }
+
     await RBACManager.grantPermission(userId, permission, adminId)
     recordAuthMetric("admin.permission.granted", { adminId, targetUserId: userId, permission })
 
@@ -75,6 +93,23 @@ export async function DELETE(request: NextRequest, { params }: { params: { userI
     const { permission } = permissionMutationSchema.parse(await request.json())
     const userId = userIdSchema.parse(params.userId)
     const adminId = auth.userId
+
+    if (userId === adminId) {
+      return NextResponse.json({ message: "Cannot modify your own permission overrides" }, { status: 400 })
+    }
+
+    const [targetUser, knownPermission] = await Promise.all([
+      queryOne<{ id: number }>(`SELECT id FROM users WHERE id = $1`, [userId]),
+      queryOne<{ id: number }>(`SELECT id FROM admin_permissions WHERE key = $1`, [permission]),
+    ])
+
+    if (!targetUser) {
+      return NextResponse.json({ message: "User not found" }, { status: 404 })
+    }
+
+    if (!knownPermission) {
+      return NextResponse.json({ message: "Unknown permission" }, { status: 400 })
+    }
 
     await RBACManager.revokePermission(userId, permission, adminId)
     recordAuthMetric("admin.permission.revoked", { adminId, targetUserId: userId, permission })
