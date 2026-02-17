@@ -1,12 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { ASSIGNABLE_ADMIN_ROLES, BASELINE_ROLES, DEFAULT_ROLES, RBACManager, normalizeRoleForStorage } from "@/lib/rbac"
+import { BASELINE_ROLES, DEFAULT_ROLES, RBACManager, isAssignableAdminRole, normalizeRoleForStorage } from "@/lib/rbac"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { z } from "zod"
 import { recordAuthMetric } from "@/lib/auth-observability"
 import { logApiRouteError } from "@/lib/api/logging"
 
 const changeRoleSchema = z.object({
-  role: z.enum(ASSIGNABLE_ADMIN_ROLES),
+  role: z.string().min(1),
 })
 
 export async function PUT(request: NextRequest, { params }: { params: { userId: string } }) {
@@ -31,6 +31,10 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
     }
 
     const { role } = validationResult.data
+    if (!isAssignableAdminRole(role)) {
+      return NextResponse.json({ message: "Invalid role" }, { status: 400 })
+    }
+
     const normalizedRole = normalizeRoleForStorage(role)
     const userId = Number.parseInt(params.userId)
     const adminId = auth.userId

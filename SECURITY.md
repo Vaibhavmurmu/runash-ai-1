@@ -192,6 +192,7 @@ RunAsh account-linking now follows an explicit deny-by-default model for OAuth i
 
 ### Implemented
 - Admin management endpoints for roles, permissions, sessions, audit logs, and feature flags are present with request-schema validation and admin authorization checks.
+- Canonical RBAC role assignment (`viewer`, `operator`, `admin`) is validated through shared helpers, while legacy role strings remain supported through compatibility mapping to prevent migration-time access regressions.
 - Migration helper support exists in `lib/migration-helpers.ts` to provision admin auth governance tables in Neon-backed deployments.
 - Database URL resolution is standardized in `lib/db.ts` with `DATABASE_URL` as the primary connection source.
 
