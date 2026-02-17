@@ -1,6 +1,7 @@
 import { hash, compare } from "bcryptjs"
 import { randomBytes } from "crypto"
 import { recordAuthMetric } from "@/lib/auth-observability"
+import { recordSecurityAuditEvent } from "@/lib/security-audit-events"
 import { sql } from "@/lib/db"
 
 export async function createUser(email: string, password: string, name: string) {
@@ -15,7 +16,7 @@ export async function createUser(email: string, password: string, name: string) 
 
     return user
   } catch (error) {
-    console.error("Error creating user:", error)
+    console.error("Error creating user")
     throw new Error("Failed to create user")
   }
 }
@@ -32,7 +33,7 @@ export async function createPasswordResetToken(userId: number) {
 
     return token
   } catch (error) {
-    console.error("Error creating reset artifact:", error)
+    console.error("Error creating reset artifact")
     throw new Error("Failed to create password reset token")
   }
 }
@@ -46,7 +47,7 @@ export async function verifyPasswordResetToken(token: string) {
 
     return resetToken
   } catch (error) {
-    console.error("Error verifying reset artifact:", error)
+    console.error("Error verifying reset artifact")
     return null
   }
 }
@@ -78,7 +79,7 @@ export async function resetPassword(token: string, newPassword: string) {
 
     return true
   } catch (error) {
-    console.error("Error applying credential update:", error)
+    console.error("Error applying credential update")
     throw new Error("Failed to reset password")
   }
 }
@@ -95,7 +96,7 @@ export async function createEmailVerificationToken(userId: number) {
 
     return token
   } catch (error) {
-    console.error("Error creating verification artifact:", error)
+    console.error("Error creating verification artifact")
     throw new Error("Failed to create email verification token")
   }
 }
@@ -126,7 +127,7 @@ export async function verifyEmailToken(token: string) {
 
     return verificationToken
   } catch (error) {
-    console.error("Error verifying email artifact:", error)
+    console.error("Error verifying email artifact")
     return null
   }
 }
@@ -138,7 +139,7 @@ export async function getUserByEmail(email: string) {
     `
     return user
   } catch (error) {
-    console.error("Error getting user by email:", error)
+    console.error("Error getting user by email")
     return null
   }
 }
@@ -150,7 +151,7 @@ export async function getUserById(id: number) {
     `
     return user
   } catch (error) {
-    console.error("Error getting user by id:", error)
+    console.error("Error getting user by id")
     return null
   }
 }
@@ -167,7 +168,7 @@ export async function updateUserPassword(userId: number, newPassword: string) {
 
     return true
   } catch (error) {
-    console.error("Error updating user credential:", error)
+    console.error("Error updating user credential")
     throw new Error("Failed to update password")
   }
 }
@@ -198,7 +199,7 @@ export async function changePassword(userId: number, currentPassword: string, ne
 
     return true
   } catch (error) {
-    console.error("Error changing user credential:", error)
+    console.error("Error changing user credential")
     throw error
   }
 }
@@ -216,7 +217,7 @@ export async function generateEmailVerificationToken(userId: number) {
 
     return token
   } catch (error) {
-    console.error("Error generating verification artifact:", error)
+    console.error("Error generating verification artifact")
     throw new Error("Failed to generate email verification token")
   }
 }
@@ -227,9 +228,21 @@ export async function createUserSession(userId: number, sessionToken: string, ex
       INSERT INTO user_sessions (user_id, session_token, expires_at)
       VALUES (${userId}, ${sessionToken}, ${expires})
     `
+
+    recordAuthMetric("auth.session.created", { source: "createUserSession", userId })
+    await recordSecurityAuditEvent({
+      event: "auth.session.created",
+      actorUserId: userId,
+      resource: "auth_session",
+      details: {
+        source: "createUserSession",
+        expiresAt: expires.toISOString(),
+      },
+    })
+
     return true
   } catch (error) {
-    console.error("Error creating user session:", error)
+    console.error("Error creating user session")
     throw new Error("Failed to create session")
   }
 }
@@ -239,9 +252,19 @@ export async function deleteUserSession(sessionToken: string) {
     await sql`
       DELETE FROM user_sessions WHERE session_token = ${sessionToken}
     `
+
+    recordAuthMetric("auth.session.revoked", { source: "deleteUserSession" })
+    await recordSecurityAuditEvent({
+      event: "auth.session.revoked",
+      resource: "auth_session",
+      details: {
+        source: "deleteUserSession",
+      },
+    })
+
     return true
   } catch (error) {
-    console.error("Error deleting user session:", error)
+    console.error("Error deleting user session")
     throw new Error("Failed to delete session")
   }
 }
@@ -264,6 +287,15 @@ export async function invalidateUserSessions(userId: number, reason: "password_c
   }
 
   recordAuthMetric("auth.session.invalidated", { reason, userId })
+  await recordSecurityAuditEvent({
+    event: "auth.session.invalidated",
+    actorUserId: userId,
+    resource: "auth_session",
+    details: {
+      reason,
+      source: "invalidateUserSessions",
+    },
+  })
 }
 
 export async function cleanupExpiredTokens() {
@@ -279,7 +311,7 @@ export async function cleanupExpiredTokens() {
     `
     return true
   } catch (error) {
-    console.error("Error cleaning up expired auth artifacts:", error)
+    console.error("Error cleaning up expired auth artifacts")
     return false
   }
 }

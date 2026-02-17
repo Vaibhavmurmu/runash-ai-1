@@ -57,6 +57,33 @@ Reference: `docs/API_CONTRACTS.md`.
 - High-risk actions (payment/account-impacting operations) require explicit user confirmation via `/api/agents/actions`.
 - Agent transcript/tool records use retention pruning (`RUNASH_AGENT_RETENTION_DAYS`, default 30 days) for PII minimization.
 
+## Monitoring runbook — Auth, sessions, and admin actions
+
+### Primary telemetry sources
+- `GET /api/admin/analytics/auth`: auth analytics plus `securityDashboard` rollups and realtime auth/admin metrics.
+- `GET /api/admin/analytics/security`: dedicated dashboard source for auth failures, suspicious activity, and admin operation totals.
+- `audit_logs` and `admin_audit_logs` tables for immutable audit history.
+
+### Structured audit events to monitor
+- Login lifecycle: `auth.login.attempt`, `auth.login.success`, `auth.login.failed`.
+- Session lifecycle: `auth.session.created`, `auth.session.revoked`, `auth.session.invalidated`.
+- Privileged operations: `admin.action.executed`, `admin.role.changed`, `admin.permission.granted`, `admin.permission.revoked`.
+
+### Alert thresholds (baseline)
+1. **Auth failure spike:** >25 `auth.login.failed` events in 5 minutes per environment.
+2. **Suspicious activity burst:** any `auth.suspicious_activity` burst >10/hour.
+3. **Admin operation anomaly:** >50 `admin.*` operations/hour or unusual off-hours mutation concentration.
+
+### Incident response steps
+1. Pull the latest `securityDashboard` and realtime metrics from admin analytics APIs.
+2. Correlate with `audit_logs`/`admin_audit_logs` by request time window and actor.
+3. Revoke active sessions for impacted users/admins, rotate credentials/tokens, and enforce step-up auth where required.
+4. Document root cause, impact window, and rollback/remediation actions in the incident log.
+
+### Logging redaction requirements (mandatory)
+- Never log raw credentials, bearer tokens, API secrets, refresh/session tokens, card PAN/CVV, or raw payment payloads.
+- Structured logs and audit details must pass sanitization/redaction before persistence or console output.
+
 
 
 ## Settings mutation confirmation policy
