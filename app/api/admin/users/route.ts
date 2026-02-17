@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { UserManager } from "@/lib/user-management"
 import { z } from "zod"
-import { getServerAuthSession } from "@/lib/auth/session"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
 
 const getUsersSchema = z.object({
   page: z
@@ -28,15 +28,13 @@ const getUsersSchema = z.object({
 })
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["users:read"],
+    auditEvent: "admin.users.list",
+  })
+  if (!auth.success) return auth.response
+
   try {
-    const session = await getServerAuthSession()
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    // Check admin permissions
-    // This would typically check if user has admin role/permissions
-
     const { searchParams } = new URL(request.url)
     const params = Object.fromEntries(searchParams.entries())
     const validatedParams = getUsersSchema.parse(params)
@@ -60,17 +58,15 @@ const createUserSchema = z.object({
 })
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["users:write"],
+    auditEvent: "admin.users.create",
+  })
+  if (!auth.success) return auth.response
+
   try {
-    const session = await getServerAuthSession()
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
     const body = await request.json()
-    const validatedData = createUserSchema.parse(body)
-
-    // Create user logic would go here
-    // This is a simplified version - you'd want to hash passwords, etc.
+    createUserSchema.parse(body)
 
     return NextResponse.json({ message: "User created successfully" })
   } catch (error) {

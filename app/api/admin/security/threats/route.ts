@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { SecurityMonitor } from "@/lib/security-monitor"
 import { z } from "zod"
-import { getServerAuthSession } from "@/lib/auth/session"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
 
 const threatsSchema = z.object({
   status: z.enum(["active", "investigating", "resolved", "false_positive"]).optional(),
@@ -13,12 +13,13 @@ const threatsSchema = z.object({
 })
 
 export async function GET(request: NextRequest) {
-  try {
-    const session = await getServerAuthSession()
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:analytics"],
+    auditEvent: "admin.security.threats.read",
+  })
+  if (!auth.success) return auth.response
 
+  try {
     const { searchParams } = new URL(request.url)
     const params = Object.fromEntries(searchParams.entries())
     const { limit } = threatsSchema.parse(params)
@@ -45,12 +46,13 @@ const createThreatSchema = z.object({
 })
 
 export async function POST(request: NextRequest) {
-  try {
-    const session = await getServerAuthSession()
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["system:maintenance"],
+    auditEvent: "admin.security.threats.create",
+  })
+  if (!auth.success) return auth.response
 
+  try {
     const body = await request.json()
     const validatedData = createThreatSchema.parse(body)
 
