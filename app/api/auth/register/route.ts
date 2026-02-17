@@ -6,13 +6,16 @@ import { rateLimit } from "@/lib/rate-limit"
 import { sendVerificationEmail } from "@/lib/email"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { logApiRouteError } from "@/lib/api/logging"
+import { AUTH_ENDPOINT_RATE_LIMITS } from "@/lib/auth-security-config"
+import { recordAuthMetric } from "@/lib/auth-observability"
 
 const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST(request: NextRequest) {
   try {
-    const rateLimitResult = await rateLimit(request, "register", 5, 900) // 5 attempts per 15 minutes
+    const rateLimitResult = await rateLimit(request, "register", AUTH_ENDPOINT_RATE_LIMITS.register.limit, AUTH_ENDPOINT_RATE_LIMITS.register.windowMs)
     if (!rateLimitResult.success) {
+      recordAuthMetric("auth.rate_limited", { endpoint: "register" })
       return respondError(
         request,
         {
@@ -98,6 +101,7 @@ export async function POST(request: NextRequest) {
       },
     )
   } catch (error) {
+    recordAuthMetric("auth.suspicious_activity", { endpoint: "register", reason: "error" })
     logApiRouteError(request, "auth.register.failed", error, { errorCode: "AUTH_REGISTER_FAILED" })
     return respondError(
       request,

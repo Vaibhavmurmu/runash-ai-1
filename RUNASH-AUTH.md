@@ -1,4 +1,17 @@
 # Custom RunAsh Auth Integration 
+
+
+## 2026-02 Security Hardening Addendum
+
+- OAuth/provider account linking now enforces **verified identity linking** by default (`AUTH_ENFORCE_VERIFIED_IDENTITY_LINKING=true`). Linking is denied unless the primary RunAsh account is email-verified **and** step-up identity proof (`x-runash-identity-verified: verified` or `x-runash-link-step-up: verified`) is present with provider identity evidence (`idToken`).
+- Session policy adds explicit controls for:
+  - rotation due signal (`AUTH_SESSION_ROTATION_INTERVAL_MS`, default 30m),
+  - inactivity timeout (`AUTH_SESSION_INACTIVITY_TIMEOUT_MS`, default 30m),
+  - absolute timeout (`AUTH_SESSION_ABSOLUTE_TIMEOUT_MS`, default 24h).
+- Sensitive changes (`change-password`, `reset-password`) now trigger best-effort server-side session invalidation.
+- Auth endpoint abuse controls now use centralized per-endpoint limits in `lib/auth-security-config.ts` for middleware and route parity.
+- Auth/admin observability now emits dashboard-ready in-memory counters for login success/failure, role and permission changes, session invalidation/rotation, and suspicious/rate-limited activity.
+
 Better Auth & Drizzle ORM Auth Integration Setup Guide
 
 Complete implementation guide for migrating to Better Auth with Drizzle ORM and feature flags for gradual rollout.

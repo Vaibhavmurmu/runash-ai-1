@@ -3,6 +3,7 @@ import { AuthAnalytics } from "@/lib/auth-analytics"
 import { z } from "zod"
 import { logApiRouteError } from "@/lib/api/logging"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
+import { getAuthMetricsSnapshot } from "@/lib/auth-observability"
 
 const analyticsSchema = z.object({
   start: z
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
 
     const analyticsData = await AuthAnalytics.getOverviewMetrics({ start, end })
 
-    return NextResponse.json({ requestId: auth.requestId, ...analyticsData })
+    return NextResponse.json({ requestId: auth.requestId, ...analyticsData, realtimeMetrics: getAuthMetricsSnapshot(200) })
   } catch (error) {
     logApiRouteError(request, "admin.auth.analytics.fetch_failed", error, {
       errorCode: "AUTH_ANALYTICS_FETCH_FAILED",
