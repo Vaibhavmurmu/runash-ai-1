@@ -857,3 +857,16 @@ Track and alert on:
   - `audit records`: list/create/read/update/delete
 - Destructive operations (`DELETE`) now require elevated permission checks and emit admin audit log entries.
 - Error envelope handling for auth-critical admin APIs is standardized for `401`, `403`, and `500` responses through shared helpers with request correlation headers.
+
+## Auth security observability updates (current)
+
+- Added structured security audit events for login attempts/results, session create/revoke/invalidate operations, role/permission mutations, and generic admin operations.
+- Added security dashboard data source endpoints for operations:
+  - `GET /api/admin/analytics/auth` now includes `securityDashboard` rollups.
+  - `GET /api/admin/analytics/security` provides focused auth failure/suspicious/admin operation telemetry.
+- Enforced stricter auth/payment log hygiene by redacting token/secret/session/credential-like fields before metric and audit persistence.
+
+### Operations checklist
+1. Use `securityDashboard.totals.authFailures` for brute-force monitoring.
+2. Use `securityDashboard.totals.suspiciousActivity` for anomaly triage.
+3. Use `securityDashboard.totals.adminOperations` and `admin_audit_logs` for privileged operation reviews.

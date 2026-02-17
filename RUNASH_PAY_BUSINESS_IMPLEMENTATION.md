@@ -1814,3 +1814,15 @@ Risk and rollback:
 ### Compatibility and rollback
 - Backward compatibility remains required: no payment payload field rename/removal in this rollout.
 - Rollback path: disable Better Auth flag, preserve existing payment API signatures, and revert only auth gating behavior if anomalies persist.
+
+## Security & reliability addendum — auth/payment observability
+
+To preserve payment and auth reliability under the active service override:
+
+- Payment/auth-adjacent audit trails now rely on structured event logging with sensitive-field redaction before persistence.
+- Monitoring dashboards should consume `GET /api/admin/analytics/security` and `GET /api/admin/analytics/auth` for auth failure and privileged-operation trends that can impact checkout or account access continuity.
+- Raw secrets/credentials/tokens/payment artifacts must never be logged; only sanitized metadata is permitted in audit context.
+
+### Risk and rollback note
+- **Risk:** Low. Changes are additive telemetry + sanitization and preserve existing API contracts.
+- **Rollback:** Disable consumption of new dashboard fields/endpoints and revert structured event emitters if any unforeseen noise/volume issue occurs.

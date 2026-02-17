@@ -3,6 +3,8 @@ import { queryOne } from "@/lib/db"
 import { ensureAdminAuthMigrationTables } from "@/lib/migration-helpers"
 import { resolveRequestId } from "@/lib/api/response"
 import { logApiRouteError } from "@/lib/api/logging"
+import { recordAuthMetric } from "@/lib/auth-observability"
+import { recordSecurityAuditEvent } from "@/lib/security-audit-events"
 
 export function respondAdminError(request: NextRequest, status: 401 | 403 | 500, message: string, requestId?: string) {
   const resolvedRequestId = requestId ?? resolveRequestId(request)
@@ -55,4 +57,21 @@ export async function recordAdminAuditLog(entry: {
      RETURNING id`,
     [entry.actorUserId, entry.action, entry.entityType, entry.entityId ? String(entry.entityId) : null, entry.metadata ?? {}],
   )
+
+  recordAuthMetric("admin.operation.executed", {
+    actorUserId: entry.actorUserId,
+    action: entry.action,
+    entityType: entry.entityType,
+  })
+
+  await recordSecurityAuditEvent({
+    event: "admin.action.executed",
+    actorUserId: entry.actorUserId,
+    resource: entry.entityType,
+    details: {
+      action: entry.action,
+      entityId: entry.entityId ? String(entry.entityId) : null,
+      ...(entry.metadata ?? {}),
+    },
+  })
 }
