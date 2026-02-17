@@ -107,27 +107,43 @@ type RoutePermissionRule = {
 }
 
 const ADMIN_API_ROUTE_RULES: readonly RoutePermissionRule[] = [
+  // Settings-write and full CRUD admin resources
   { prefix: "/api/admin/settings", requiredPermissions: ["admin:settings"] },
   { prefix: "/api/admin/sso", requiredPermissions: ["admin:settings"] },
+  { prefix: "/api/admin/permissions", requiredPermissions: ["admin:settings"], methods: ["GET", "POST", "PATCH"] },
+  { prefix: "/api/admin/permissions", requiredPermissions: ["admin:settings", "system:control"], methods: ["DELETE"] },
+  { prefix: "/api/admin/roles", requiredPermissions: ["admin:settings"], methods: ["GET", "POST", "PATCH"] },
+  { prefix: "/api/admin/roles", requiredPermissions: ["admin:settings", "system:control"], methods: ["DELETE"] },
+  { prefix: "/api/admin/audit-logs", requiredPermissions: ["system:logs"], methods: ["GET"] },
+  { prefix: "/api/admin/audit-logs", requiredPermissions: ["admin:settings"], methods: ["POST", "PATCH"] },
+  { prefix: "/api/admin/audit-logs", requiredPermissions: ["admin:settings", "system:control"], methods: ["DELETE"] },
+
+  // Read/operate scoped endpoints
   { prefix: "/api/admin/email-templates", requiredPermissions: ["admin:analytics"], methods: ["GET"] },
-  { prefix: "/api/admin/email-templates", requiredPermissions: ["admin:settings"], methods: ["POST", "PUT", "PATCH", "DELETE"] },
+  { prefix: "/api/admin/email-templates", requiredPermissions: ["admin:settings"], methods: ["POST", "PUT", "PATCH"] },
+  { prefix: "/api/admin/email-templates", requiredPermissions: ["admin:settings", "system:control"], methods: ["DELETE"] },
   { prefix: "/api/admin/email-suppressions", requiredPermissions: ["admin:analytics"], methods: ["GET"] },
-  { prefix: "/api/admin/email-suppressions", requiredPermissions: ["admin:settings"], methods: ["POST", "PUT", "PATCH", "DELETE"] },
+  { prefix: "/api/admin/email-suppressions", requiredPermissions: ["admin:settings"], methods: ["POST", "PUT", "PATCH"] },
+  { prefix: "/api/admin/email-suppressions", requiredPermissions: ["admin:settings", "system:control"], methods: ["DELETE"] },
   { prefix: "/api/admin/email-management", requiredPermissions: ["admin:settings"] },
   { prefix: "/api/admin/email-delivery", requiredPermissions: ["admin:analytics"] },
   { prefix: "/api/admin/email-analytics", requiredPermissions: ["admin:analytics"] },
-  { prefix: "/api/admin/security", requiredPermissions: ["admin:analytics"] },
-  { prefix: "/api/admin/performance", requiredPermissions: ["admin:analytics"] },
+  { prefix: "/api/admin/security", requiredPermissions: ["admin:analytics"], methods: ["GET"] },
+  { prefix: "/api/admin/security", requiredPermissions: ["system:maintenance"], methods: ["POST", "PUT", "PATCH"] },
+  { prefix: "/api/admin/security", requiredPermissions: ["system:control"], methods: ["DELETE"] },
+  { prefix: "/api/admin/performance", requiredPermissions: ["system:maintenance"] },
   { prefix: "/api/admin/analytics", requiredPermissions: ["admin:analytics"] },
   { prefix: "/api/admin/logs", requiredPermissions: ["system:logs"] },
-  { prefix: "/api/admin/audit-logs", requiredPermissions: ["system:logs"] },
-  { prefix: "/api/admin/sessions", requiredPermissions: ["system:logs"] },
-  { prefix: "/api/admin/permissions", requiredPermissions: ["admin:settings"] },
-  { prefix: "/api/admin/roles", requiredPermissions: ["admin:settings"] },
-  { prefix: "/api/admin/flags", requiredPermissions: ["admin:settings"] },
+
+  // Sessions require elevated control for destructive actions
+  { prefix: "/api/admin/sessions", requiredPermissions: ["system:logs"], methods: ["GET", "POST", "PATCH"] },
+  { prefix: "/api/admin/sessions", requiredPermissions: ["system:logs", "system:control"], methods: ["DELETE"] },
+
+  // User management CRUD
   { prefix: "/api/admin/users", requiredPermissions: ["users:read"], methods: ["GET"] },
   { prefix: "/api/admin/users", requiredPermissions: ["users:write"], methods: ["POST", "PUT", "PATCH"] },
-  { prefix: "/api/admin/users", requiredPermissions: ["users:delete"], methods: ["DELETE"] },
+  { prefix: "/api/admin/users", requiredPermissions: ["users:write", "system:control"], methods: ["DELETE"] },
+  { prefix: "/api/admin/flags", requiredPermissions: ["admin:settings"] },
 ]
 
 const PROTECTED_UI_ROUTE_RULES: readonly RoutePermissionRule[] = [

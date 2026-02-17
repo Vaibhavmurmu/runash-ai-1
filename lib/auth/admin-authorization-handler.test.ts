@@ -20,7 +20,8 @@ test("admin users CRUD methods map to write/delete RBAC permissions", () => {
 
   assert.ok(createPermissions.includes("users:write"))
   assert.ok(updatePermissions.includes("users:write"))
-  assert.ok(deletePermissions.includes("users:delete"))
+  assert.ok(deletePermissions.includes("users:write"))
+  assert.ok(deletePermissions.includes("system:control"))
 })
 
 test("explicit permissions are merged without duplicates", () => {
@@ -47,6 +48,22 @@ test("admin role-management routes require admin settings permission", () => {
     method: "PATCH",
   })
 
+  const deletePermissions = resolveRequiredAdminPermissions({
+    pathname: "/api/admin/roles/12",
+    method: "DELETE",
+  })
+
   assert.ok(listPermissions.includes("admin:settings"))
   assert.ok(updatePermissions.includes("admin:settings"))
+  assert.ok(deletePermissions.includes("system:control"))
+})
+
+test("session delete requires logs and elevated control", () => {
+  const permissions = resolveRequiredAdminPermissions({
+    pathname: "/api/admin/sessions/9f09a4ce-7a3c-47fd-9bfa-53413cb89fc0",
+    method: "DELETE",
+  })
+
+  assert.ok(permissions.includes("system:logs"))
+  assert.ok(permissions.includes("system:control"))
 })

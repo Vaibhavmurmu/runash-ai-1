@@ -5,6 +5,7 @@ import { resolveRequiredAdminPermissions } from "@/lib/auth/admin-authorization-
 import { neon } from "@neondatabase/serverless"
 import { logApiEvent } from "@/lib/api/logging"
 import { resolveRequestId } from "@/lib/api/response"
+import { respondAdminError } from "@/lib/api/admin-route-utils"
 
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -14,26 +15,6 @@ export interface AuthMiddlewareOptions {
   requireAnyPermission?: boolean // If true, user needs ANY of the permissions, not ALL
   redirectTo?: string
   responseMode?: "redirect" | "json"
-}
-
-function authErrorResponse(request: NextRequest, status: 401 | 403, message: string, requestId: string) {
-  return NextResponse.json(
-    {
-      success: false,
-      error: {
-        code: status === 401 ? "UNAUTHORIZED" : "FORBIDDEN",
-        message,
-      },
-      requestId,
-    },
-    {
-      status,
-      headers: {
-        "x-request-id": requestId,
-        "x-correlation-id": requestId,
-      },
-    },
-  )
 }
 
 export async function withAuth(
@@ -55,7 +36,7 @@ export async function withAuth(
 
     if (!token || !token.id) {
       return responseMode === "json"
-        ? authErrorResponse(request, 401, "Unauthorized", requestId)
+        ? respondAdminError(request, 401, "Unauthorized", requestId)
         : NextResponse.redirect(new URL(redirectTo, request.url))
     }
 
@@ -64,7 +45,7 @@ export async function withAuth(
     if (requiredRole && token.role !== requiredRole) {
       if (!RBACManager.isRoleHigher(token.role as string, requiredRole)) {
         return responseMode === "json"
-          ? authErrorResponse(request, 403, "Insufficient permissions", requestId)
+          ? respondAdminError(request, 403, "Insufficient permissions", requestId)
           : NextResponse.json({ message: "Insufficient permissions" }, { status: 403 })
       }
     }
@@ -76,7 +57,7 @@ export async function withAuth(
 
       if (!hasPermission) {
         return responseMode === "json"
-          ? authErrorResponse(request, 403, "Insufficient permissions", requestId)
+          ? respondAdminError(request, 403, "Insufficient permissions", requestId)
           : NextResponse.json({ message: "Insufficient permissions" }, { status: 403 })
       }
     }
@@ -84,7 +65,7 @@ export async function withAuth(
     return null
   } catch (error) {
     console.error("Auth middleware error:", error)
-    return NextResponse.json({ message: "Authentication error" }, { status: 500 })
+    return respondAdminError(request, 500, "Internal server error", resolveRequestId(request))
   }
 }
 
@@ -118,7 +99,7 @@ export async function requireAdminAuthorization(
 
     return {
       success: false,
-      response: authErrorResponse(request, 401, "Unauthorized", requestId),
+      response: respondAdminError(request, 401, "Unauthorized", requestId),
     }
   }
 
@@ -146,7 +127,7 @@ export async function requireAdminAuthorization(
 
     return {
       success: false,
-      response: authErrorResponse(request, 403, "Forbidden", requestId),
+      response: respondAdminError(request, 403, "Forbidden", requestId),
     }
   }
 

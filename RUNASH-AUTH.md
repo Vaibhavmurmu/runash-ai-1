@@ -841,3 +841,19 @@ Track and alert on:
   - `POST /api/auth/reset-password`
 - Server-side session reads are standardized through `getServerAuthSession` to reduce fragmented access patterns.
 - Auth persistence now consistently uses shared Neon/PostgreSQL access utilities (`@/lib/db`) instead of ad-hoc client initialization in auth modules/routes.
+
+## 2026-02 Admin Authorization Hardening (Route-level + CRUD)
+
+- Admin API route-policy resolution now enforces method-aware permissions for admin CRUD endpoints:
+  - **Read:** `users:read`, `system:logs`, `admin:analytics`
+  - **Operate:** `users:write`, `system:maintenance`
+  - **Settings-write:** `admin:settings`
+  - **Destructive (elevated):** `system:control` in addition to route-specific permissions
+- CRUD coverage is now complete for admin-managed resources:
+  - `users`: list/create/read/update/delete
+  - `roles`: list/create/read/update/delete
+  - `permissions`: list/create/read/update/delete
+  - `sessions`: list/create/read/update/delete
+  - `audit records`: list/create/read/update/delete
+- Destructive operations (`DELETE`) now require elevated permission checks and emit admin audit log entries.
+- Error envelope handling for auth-critical admin APIs is standardized for `401`, `403`, and `500` responses through shared helpers with request correlation headers.

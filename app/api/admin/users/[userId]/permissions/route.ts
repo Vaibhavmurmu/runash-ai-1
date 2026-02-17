@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { RBACManager } from "@/lib/rbac"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { recordAuthMetric } from "@/lib/auth-observability"
-import { logApiRouteError } from "@/lib/api/logging"
+import { recordAdminAuditLog, respondInternalServerError } from "@/lib/api/admin-route-utils"
 
 export async function GET(request: NextRequest, { params }: { params: { userId: string } }) {
   const auth = await requireAdminAuthorization(request, {
@@ -17,8 +17,12 @@ export async function GET(request: NextRequest, { params }: { params: { userId: 
 
     return NextResponse.json({ permissions })
   } catch (error) {
-    console.error("Error fetching user permissions:", error)
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+    return respondInternalServerError(request, error, {
+      event: "admin.users.permissions.read.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_USER_PERMISSIONS_READ_FAILED",
+    })
   }
 }
 
@@ -37,16 +41,28 @@ export async function POST(request: NextRequest, { params }: { params: { userId:
     await RBACManager.grantPermission(userId, permission, adminId)
     recordAuthMetric("admin.permission.granted", { adminId, targetUserId: userId, permission })
 
+    await recordAdminAuditLog({
+      actorUserId: adminId,
+      action: "user.permission.granted",
+      entityType: "user",
+      entityId: userId,
+      metadata: { permission },
+    })
+
     return NextResponse.json({ message: "Permission granted successfully" })
   } catch (error) {
-    logApiRouteError(request, "admin.users.permissions.grant.failed", error, { errorCode: "ADMIN_PERMISSION_GRANT_FAILED" })
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+    return respondInternalServerError(request, error, {
+      event: "admin.users.permissions.grant.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_PERMISSION_GRANT_FAILED",
+    })
   }
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: { userId: string } }) {
   const auth = await requireAdminAuthorization(request, {
-    requiredPermissions: ["users:write"],
+    requiredPermissions: ["users:write", "system:control"],
     auditEvent: "admin.users.permissions.revoke",
   })
   if (!auth.success) return auth.response
@@ -59,9 +75,21 @@ export async function DELETE(request: NextRequest, { params }: { params: { userI
     await RBACManager.revokePermission(userId, permission, adminId)
     recordAuthMetric("admin.permission.revoked", { adminId, targetUserId: userId, permission })
 
+    await recordAdminAuditLog({
+      actorUserId: adminId,
+      action: "user.permission.revoked",
+      entityType: "user",
+      entityId: userId,
+      metadata: { permission },
+    })
+
     return NextResponse.json({ message: "Permission revoked successfully" })
   } catch (error) {
-    logApiRouteError(request, "admin.users.permissions.revoke.failed", error, { errorCode: "ADMIN_PERMISSION_REVOKE_FAILED" })
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+    return respondInternalServerError(request, error, {
+      event: "admin.users.permissions.revoke.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_PERMISSION_REVOKE_FAILED",
+    })
   }
 }
