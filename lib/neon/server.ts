@@ -2,12 +2,8 @@ import "server-only"
 import { createServerClient } from "@/lib/neon/ssr"
 import { cookies } from "next/headers"
 import type { Database } from "./types"
+import { getServerAuthSession } from "@/lib/auth/session"
 
-/**
- * Server-only Neon client bound to Next.js request cookies.
- *
- * Use this in Route Handlers, Server Components, and other server execution paths.
- */
 export function createServerNeonClient() {
   const cookieStore = cookies()
 
@@ -29,35 +25,42 @@ export function createServerNeonClient() {
   })
 }
 
-// Named export alias for compatibility
 export const createClient = createServerNeonClient
 
 export async function getUser() {
-  const neon = createServerNeonClient()
-  try {
-    const {
-      data: { user },
-      error,
-    } = await neon.auth.getUser()
-    if (error) throw error
-    return user
-  } catch (error) {
-    console.error("Error getting user:", error)
+  const session = await getServerAuthSession()
+
+  if (!session?.user) {
     return null
+  }
+
+  return {
+    id: session.user.id,
+    email: session.user.email ?? undefined,
+    user_metadata: {
+      name: session.user.name,
+      role: session.user.role,
+      ssoOrganization: session.user.ssoOrganization,
+    },
   }
 }
 
 export async function getSession() {
-  const neon = createServerNeonClient()
-  try {
-    const {
-      data: { session },
-      error,
-    } = await neon.auth.getSession()
-    if (error) throw error
-    return session
-  } catch (error) {
-    console.error("Error getting session:", error)
+  const session = await getServerAuthSession()
+
+  if (!session?.user) {
     return null
+  }
+
+  return {
+    user: {
+      id: session.user.id,
+      email: session.user.email ?? undefined,
+      user_metadata: {
+        name: session.user.name,
+        role: session.user.role,
+        ssoOrganization: session.user.ssoOrganization,
+      },
+    },
   }
 }

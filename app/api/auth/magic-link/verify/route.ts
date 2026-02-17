@@ -3,6 +3,7 @@ import { verifyMagicLinkToken } from "@/lib/magic-link"
 import { z } from "zod"
 import { SignJWT } from "jose"
 import { logApiRouteError } from "@/lib/api/logging"
+import { setSessionCookies } from "@/lib/auth/cookies"
 
 const verifySchema = z.object({
   token: z.string().min(1, "Token is required"),
@@ -48,13 +49,7 @@ export async function POST(request: NextRequest) {
       { status: 200 },
     )
 
-    response.cookies.set("next-auth.session-token", sessionToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 30 * 24 * 60 * 60, // 30 days
-      path: "/",
-    })
+    await setSessionCookies(response, sessionToken)
 
     return response
   } catch (error) {

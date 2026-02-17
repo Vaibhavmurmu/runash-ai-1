@@ -1,23 +1,22 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useMemo } from "react"
+import { createContext, useContext } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { authClient } from "@/lib/auth/client"
+import { useAuth as useSharedAuth } from "@/lib/hooks/use-auth"
 
 interface User {
   id: string
-  email: string
-  full_name?: string
-  phone?: string
+  email?: string
+  name?: string
 }
 
 interface AuthContextType {
   user: User | null
   loading: boolean
-  signIn: (email: string, password: string) => Promise<{ error: any }>
-  signUp: (email: string, password: string, userData: any) => Promise<{ error: any }>
+  signIn: (email: string, password: string) => Promise<{ error: unknown }>
+  signUp: (email: string, password: string, userData: any) => Promise<{ error: unknown }>
   signOut: () => Promise<void>
 }
 
@@ -25,64 +24,47 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter()
-  const session = authClient.useSession()
+  const auth = useSharedAuth()
 
-  const value = useMemo<AuthContextType>(() => {
-    const currentUser = session.data?.user
-
-    return {
-      user: currentUser
-        ? {
-            id: String(currentUser.id),
-            email: currentUser.email ?? "",
-            full_name: currentUser.name ?? undefined,
-          }
-        : null,
-      loading: session.isPending,
-      signIn: async (email: string, password: string) => {
-        try {
-          const result = await authClient.signIn.email({ email, password })
-          if (result.error) {
-            return { error: result.error }
-          }
-
-          toast.success("Successfully signed in!")
-          router.push("/")
-          return { error: null }
-        } catch (error) {
-          return { error: { message: "Network error. Please try again." } }
+  const value: AuthContextType = {
+    user: auth.user
+      ? {
+          id: String(auth.user.id),
+          email: auth.user.email ?? "",
+          name: auth.user.name ?? undefined,
         }
-      },
-      signUp: async (email: string, password: string, userData: any) => {
-        try {
-          const result = await authClient.signUp.email({
-            email,
-            password,
-            name: userData?.full_name,
-          })
+      : null,
+    loading: auth.isLoading,
+    signIn: async (email, password) => {
+      const result = await auth.signIn(email, password)
+      if ((result as { error?: unknown })?.error) {
+        return { error: (result as { error?: unknown }).error }
+      }
 
-          if (result.error) {
-            return { error: result.error }
-          }
+      toast.success("Successfully signed in!")
+      router.push("/")
+      return { error: null }
+    },
+    signUp: async (email, password, userData) => {
+      const result = await auth.signUp(email, password, userData)
+      if ((result as { error?: unknown })?.error) {
+        return { error: (result as { error?: unknown }).error }
+      }
 
-          toast.success("Account created successfully!")
-          return { error: null }
-        } catch (error) {
-          return { error: { message: "Network error. Please try again." } }
-        }
-      },
-      signOut: async () => {
-        const result = await authClient.signOut()
-        if (result.error) {
-          toast.error("Error signing out")
-          return
-        }
+      toast.success("Account created successfully!")
+      return { error: null }
+    },
+    signOut: async () => {
+      const result = await auth.signOut()
+      if ((result as { error?: unknown })?.error) {
+        toast.error("Error signing out")
+        return
+      }
 
-        toast.success("Successfully signed out!")
-        router.push("/login")
-      },
-    }
-  }, [router, session.data?.user, session.isPending])
+      toast.success("Successfully signed out!")
+      router.push("/login")
+    },
+  }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

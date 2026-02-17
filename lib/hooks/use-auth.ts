@@ -1,21 +1,21 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { signIn as nextSignIn, signOut as nextSignOut, useSession } from "next-auth/react"
+import { authClient } from "@/lib/auth/client"
 
 export function useAuth() {
-  const { data, status } = useSession()
-  const [isLoading, setIsLoading] = useState(status === "loading")
-
-  useEffect(() => {
-    setIsLoading(status === "loading")
-  }, [status])
+  const session = authClient.useSession()
 
   return {
-    user: data?.user ?? null,
-    isAuthenticated: !!data?.user,
-    isLoading,
-    signIn: (email: string, password: string) => nextSignIn("credentials", { email, password, redirect: false }),
-    signOut: () => nextSignOut({ redirect: false }),
+    user: session.data?.user ?? null,
+    isAuthenticated: Boolean(session.data?.user),
+    isLoading: session.isPending,
+    signIn: (email: string, password: string) => authClient.signIn.email({ email, password }),
+    signUp: (email: string, password: string, userData?: { full_name?: string }) =>
+      authClient.signUp.email({
+        email,
+        password,
+        name: userData?.full_name,
+      }),
+    signOut: () => authClient.signOut(),
   }
 }

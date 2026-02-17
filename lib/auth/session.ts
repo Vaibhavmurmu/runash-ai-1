@@ -1,6 +1,5 @@
-import { headers } from "next/headers"
 import { neon } from "@neondatabase/serverless"
-import { auth } from "@/lib/auth"
+import { getAuthSessionFromHeaders } from "@/lib/auth/session-accessor"
 
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -23,8 +22,8 @@ export interface AuthenticatedSessionUser {
 }
 
 export async function getServerAuthSession(requestHeaders?: Headers): Promise<ServerAuthSession | null> {
-  const resolvedHeaders = requestHeaders ?? (await headers())
-  const session = await auth.api.getSession({ headers: resolvedHeaders })
+  const resolvedHeaders = requestHeaders ?? (await (await import("next/headers")).headers())
+  const session = await getAuthSessionFromHeaders(resolvedHeaders)
 
   if (!session?.user) {
     return null
