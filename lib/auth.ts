@@ -6,6 +6,25 @@ const baseURL =
 
 const secret = process.env.BETTER_AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
 
+export const AUTH_COOKIE_NAMES = ["better-auth.session-token", "__Secure-better-auth.session-token"] as const
+
+export function getAuthSecret(): string {
+  const resolvedSecret = process.env.BETTER_AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
+  if (!resolvedSecret) {
+    throw new Error("Missing auth secret: set BETTER_AUTH_SECRET (or NEXTAUTH_SECRET for migration compatibility)")
+  }
+
+  return resolvedSecret
+}
+
+export function getLegacySessionSecrets(): string[] {
+  const secrets = [process.env.NEXTAUTH_SECRET, process.env.BETTER_AUTH_SECRET].filter(
+    (value): value is string => Boolean(value),
+  )
+
+  return [...new Set(secrets)]
+}
+
 const enforceVerifiedIdentityLinking = (process.env.AUTH_ENFORCE_VERIFIED_IDENTITY_LINKING ?? "true") === "true"
 
 type AuthAccountLink = {
