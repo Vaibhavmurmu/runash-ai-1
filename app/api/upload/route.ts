@@ -1,8 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
 import { neon } from "@neondatabase/serverless"
-import { authOptions } from "@/lib/auth"
 import { CloudStorage } from "@/lib/cloud-storage"
+import { getServerAuthSession } from "@/lib/auth/session"
 
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -32,7 +31,7 @@ function sanitizePathSegment(input: string, fallback: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }

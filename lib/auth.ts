@@ -1,193 +1,174 @@
-import type { NextAuthOptions } from "next-auth"
-import CredentialsProvider from "next-auth/providers/credentials"
-import GoogleProvider from "next-auth/providers/google"
-import GitHubProvider from "next-auth/providers/github"
-import AzureADProvider from "next-auth/providers/azure-ad"
-import OktaProvider from "next-auth/providers/okta"
-import { neon } from "@neondatabase/serverless"
-import { compare } from "bcryptjs"
-import { getSSOConfigForDomain, provisionSSOUser, logSSOLoginAttempt } from "./sso"
+import { betterAuth } from "better-auth"
 
-// Initialize the SQL client
-const sql = neon(process.env.DATABASE_URL!)
+const baseURL =
+  process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
 
-export const authOptions: NextAuthOptions = {
-  session: {
-    strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
-  },
-  pages: {
-    signIn: "/login",
-    signOut: "/logout",
-    error: "/auth/error",
-    verifyRequest: "/auth/verify-request",
-    newUser: "/get-started",
-  },
-  providers: [
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      allowDangerousEmailAccountLinking: true,
-    }),
-    GitHubProvider({
-      clientId: process.env.GITHUB_CLIENT_ID!,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-      allowDangerousEmailAccountLinking: true,
-    }),
-    ...(process.env.AZURE_AD_CLIENT_ID && process.env.AZURE_AD_CLIENT_SECRET && process.env.AZURE_AD_TENANT_ID
-      ? [
-          AzureADProvider({
-            clientId: process.env.AZURE_AD_CLIENT_ID,
-            clientSecret: process.env.AZURE_AD_CLIENT_SECRET,
-            tenantId: process.env.AZURE_AD_TENANT_ID,
-            allowDangerousEmailAccountLinking: true,
-          }),
-        ]
-      : []),
-    ...(process.env.OKTA_CLIENT_ID && process.env.OKTA_CLIENT_SECRET && process.env.OKTA_ISSUER
-      ? [
-          OktaProvider({
-            clientId: process.env.OKTA_CLIENT_ID,
-            clientSecret: process.env.OKTA_CLIENT_SECRET,
-            issuer: process.env.OKTA_ISSUER,
-            allowDangerousEmailAccountLinking: true,
-          }),
-        ]
-      : []),
-    CredentialsProvider({
-      name: "credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          return null
-        }
+const secret = process.env.BETTER_AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
 
-        try {
-          // Find user in database
-          const [user] = await sql`
-            SELECT * FROM users WHERE email = ${credentials.email}
-          `
+const oauthStepUpRequired = process.env.AUTH_ACCOUNT_LINK_STEP_UP_REQUIRED === "true"
+const riskyLinkProviders = new Set(
+  (process.env.AUTH_RISKY_ACCOUNT_LINK_PROVIDERS ?? "")
+    .split(",")
+    .map((provider) => provider.trim().toLowerCase())
+    .filter(Boolean),
+)
 
-          if (!user) {
-            return null
-          }
-
-          // Check if password matches
-          const passwordMatch = await compare(credentials.password, user.password_hash)
-
-          if (!passwordMatch) {
-            return null
-          }
-
-          return {
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            image: user.avatar_url,
-            role: user.role,
-          }
-        } catch (error) {
-          console.error("Error during authorization:", error)
-          return null
-        }
-      },
-    }),
-  ],
-  callbacks: {
-    async jwt({ token, user, account }) {
-      if (user) {
-        token.role = user.role
-        token.id = user.id
-      }
-
-      if (
-        account?.provider &&
-        (account.provider === "google" ||
-          account.provider === "github" ||
-          account.provider === "azure-ad" ||
-          account.provider === "okta")
-      ) {
-        try {
-          // Check if this is an SSO login
-          const domain = user.email?.split("@")[1]
-          let ssoConfig = null
-
-          if (domain) {
-            ssoConfig = await getSSOConfigForDomain(domain)
-          }
-
-          // Check if user exists in database
-          const [existingUser] = await sql`
-            SELECT * FROM users WHERE email = ${user.email}
-          `
-
-          if (!existingUser) {
-            if (ssoConfig) {
-              // SSO user provisioning
-              const provisionResult = await provisionSSOUser(
-                user.email!,
-                ssoConfig.organization.id,
-                ssoConfig.provider.id,
-                account.providerAccountId!,
-                {
-                  name: user.name,
-                  image: user.image,
-                  provider: account.provider,
-                },
-              )
-
-              if (provisionResult) {
-                token.role = provisionResult.user.role
-                token.id = provisionResult.user.id
-                token.ssoOrganization = ssoConfig.organization.id
-
-                await logSSOLoginAttempt(ssoConfig.organization.id, ssoConfig.provider.id, true, {
-                  userId: provisionResult.user.id,
-                  externalId: account.providerAccountId,
-                  email: user.email!,
-                })
-              }
-            } else {
-              // Regular OAuth user creation
-              const [newUser] = await sql`
-                INSERT INTO users (email, name, avatar_url, provider, provider_id, role, email_verified)
-                VALUES (${user.email}, ${user.name}, ${user.image}, ${account.provider}, ${account.providerAccountId}, 'user', true)
-                RETURNING *
-              `
-              token.role = newUser.role
-              token.id = newUser.id
-            }
-          } else {
-            token.role = existingUser.role
-            token.id = existingUser.id
-            token.ssoOrganization = existingUser.sso_organization_id
-
-            // Update SSO mapping if this is an SSO login
-            if (ssoConfig && existingUser.is_sso_user) {
-              await logSSOLoginAttempt(ssoConfig.organization.id, ssoConfig.provider.id, true, {
-                userId: existingUser.id,
-                externalId: account.providerAccountId,
-                email: user.email!,
-              })
-            }
-          }
-        } catch (error) {
-          console.error("Error handling OAuth/SSO user:", error)
-        }
-      }
-
-      return token
-    },
-    async session({ session, token }) {
-      if (token) {
-        session.user.id = token.id as string
-        session.user.role = token.role as string
-        session.user.ssoOrganization = token.ssoOrganization as number
-      }
-      return session
-    },
-  },
+type AuthAccountLink = {
+  userId: string
+  providerId: string
+  accountId: string
+  idToken?: string | null
 }
+
+type AuthUser = {
+  id: string
+  emailVerified?: boolean
+}
+
+type AuthHookContext = {
+  path?: string
+  request?: {
+    headers?: Headers
+  }
+  context?: {
+    internalAdapter?: {
+      findUserById?: (userId: string) => Promise<AuthUser | null>
+      findAccountByProviderId?: (accountId: string, providerId: string) => Promise<AuthAccountLink | null>
+    }
+  }
+}
+
+function redactSubject(accountId: string) {
+  if (accountId.length <= 6) {
+    return "***"
+  }
+
+  return `${accountId.slice(0, 3)}***${accountId.slice(-3)}`
+}
+
+function auditAccountLinkEvent(
+  event: "account_link_attempt" | "account_link_denied" | "account_link_allowed",
+  payload: {
+    providerId: string
+    userId: string
+    reason?: string
+    requestPath?: string
+    subjectHash?: string
+  },
+) {
+  console.info("[auth.account-link]", {
+    event,
+    providerId: payload.providerId,
+    userId: payload.userId,
+    reason: payload.reason,
+    requestPath: payload.requestPath,
+    subjectHash: payload.subjectHash,
+  })
+}
+
+export const auth = betterAuth({
+  appName: "RunAsh AI",
+  baseURL,
+  secret,
+  emailAndPassword: {
+    enabled: true,
+  },
+  account: {
+    accountLinking: {
+      enabled: true,
+      trustedProviders: [],
+      allowDifferentEmails: false,
+      allowUnlinkingAll: false,
+    },
+  },
+  socialProviders: {
+    ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+      ? {
+          google: {
+            clientId: process.env.GOOGLE_CLIENT_ID,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+            allowDangerousEmailAccountLinking: false,
+          },
+        }
+      : {}),
+    ...(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET
+      ? {
+          github: {
+            clientId: process.env.GITHUB_CLIENT_ID,
+            clientSecret: process.env.GITHUB_CLIENT_SECRET,
+            allowDangerousEmailAccountLinking: false,
+          },
+        }
+      : {}),
+  },
+  databaseHooks: {
+    account: {
+      create: {
+        before: async (account: AuthAccountLink, context?: AuthHookContext) => {
+          const providerId = account.providerId.toLowerCase()
+          const requestPath = context?.path
+          const subjectHash = redactSubject(account.accountId)
+
+          auditAccountLinkEvent("account_link_attempt", {
+            providerId,
+            userId: account.userId,
+            requestPath,
+            subjectHash,
+          })
+
+          const internalAdapter = context?.context?.internalAdapter
+          const [existingProviderSubject, currentUser] = await Promise.all([
+            internalAdapter?.findAccountByProviderId?.(account.accountId, account.providerId),
+            internalAdapter?.findUserById?.(account.userId),
+          ])
+
+          if (existingProviderSubject && existingProviderSubject.userId !== account.userId) {
+            auditAccountLinkEvent("account_link_denied", {
+              providerId,
+              userId: account.userId,
+              requestPath,
+              subjectHash,
+              reason: "provider_subject_already_linked_to_another_user",
+            })
+            return false
+          }
+
+          if (!currentUser?.emailVerified) {
+            auditAccountLinkEvent("account_link_denied", {
+              providerId,
+              userId: account.userId,
+              requestPath,
+              subjectHash,
+              reason: "primary_user_email_not_verified",
+            })
+            return false
+          }
+
+          const stepUpHeader = context?.request?.headers?.get("x-runash-link-step-up")
+          const riskyProviderLink = riskyLinkProviders.has(providerId)
+
+          if ((oauthStepUpRequired || riskyProviderLink) && stepUpHeader !== "verified") {
+            auditAccountLinkEvent("account_link_denied", {
+              providerId,
+              userId: account.userId,
+              requestPath,
+              subjectHash,
+              reason: "step_up_verification_required",
+            })
+            return false
+          }
+
+          auditAccountLinkEvent("account_link_allowed", {
+            providerId,
+            userId: account.userId,
+            requestPath,
+            subjectHash,
+          })
+
+          return true
+        },
+      },
+    },
+  },
+  trustedOrigins: [baseURL],
+})

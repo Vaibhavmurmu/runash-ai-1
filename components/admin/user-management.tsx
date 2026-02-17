@@ -277,10 +277,14 @@ export default function UserManagement() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Roles</SelectItem>
-                  <SelectItem value="user">User</SelectItem>
-                  <SelectItem value="premium">Premium</SelectItem>
-                  <SelectItem value="moderator">Moderator</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="viewer">Viewer (baseline)</SelectItem>
+                  <SelectItem value="operator">Operator (baseline)</SelectItem>
+                  <SelectItem value="admin">Admin (baseline)</SelectItem>
+                  <SelectItem value="user">User (legacy)</SelectItem>
+                  <SelectItem value="premium">Premium (legacy)</SelectItem>
+                  <SelectItem value="moderator">Moderator (legacy)</SelectItem>
+                  <SelectItem value="guest">Guest (legacy)</SelectItem>
+                  <SelectItem value="super_admin">Super Admin (legacy)</SelectItem>
                 </SelectContent>
               </Select>
               <Select
@@ -548,10 +552,14 @@ function EditUserForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="user">User</SelectItem>
-            <SelectItem value="premium">Premium</SelectItem>
-            <SelectItem value="moderator">Moderator</SelectItem>
-            <SelectItem value="admin">Admin</SelectItem>
+            <SelectItem value="viewer">Viewer (baseline)</SelectItem>
+            <SelectItem value="operator">Operator (baseline)</SelectItem>
+            <SelectItem value="admin">Admin (baseline)</SelectItem>
+            <SelectItem value="user">User (legacy)</SelectItem>
+            <SelectItem value="premium">Premium (legacy)</SelectItem>
+            <SelectItem value="moderator">Moderator (legacy)</SelectItem>
+            <SelectItem value="guest">Guest (legacy)</SelectItem>
+            <SelectItem value="super_admin">Super Admin (legacy)</SelectItem>
           </SelectContent>
         </Select>
       </div>

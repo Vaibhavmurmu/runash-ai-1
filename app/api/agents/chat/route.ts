@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
 import { openai } from "@ai-sdk/openai"
 import { streamText } from "ai"
 import { z } from "zod"
+import { getServerAuthSession } from "@/lib/auth/session"
 
-import { authOptions } from "@/lib/auth"
 import { logApiEvent } from "@/lib/api/logging"
 import { resolveRequestId } from "@/lib/api/response"
 import { rateLimit } from "@/lib/rate-limit"
@@ -36,7 +35,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized", requestId }, { status: 401 })
     }

@@ -1,21 +1,15 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { AdminSettings } from "@/lib/admin-settings"
-import { requirePermission, logAdminActivity } from "@/lib/auth-middleware"
+import { logAdminActivity, requireAdminAuthorization } from "@/lib/auth-middleware"
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:settings"],
+    auditEvent: "admin.settings.read",
+  })
+  if (!auth.success) return auth.response
+
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const hasPermission = await requirePermission(session.user.id, "admin.settings.view")
-    if (!hasPermission) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
-    }
-
     const { searchParams } = new URL(request.url)
     const category = searchParams.get("category")
 
@@ -33,23 +27,19 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:settings"],
+    auditEvent: "admin.settings.update",
+  })
+  if (!auth.success) return auth.response
+
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const hasPermission = await requirePermission(session.user.id, "admin.settings.manage")
-    if (!hasPermission) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
-    }
-
     const { category, key, value, type, description } = await request.json()
 
-    await AdminSettings.set(category, key, value, type, session.user.id, description)
+    await AdminSettings.set(category, key, value, type, auth.session.user.id, description)
 
     await logAdminActivity(
-      session.user.id,
+      auth.session.user.id,
       "settings_update",
       { category, key, value, type },
       request.headers.get("x-forwarded-for") || "unknown",

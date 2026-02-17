@@ -1,14 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { RBACManager } from "@/lib/rbac"
-import { withAuth } from "@/lib/auth-middleware"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
 
 export async function GET(request: NextRequest, { params }: { params: { userId: string } }) {
-  const authResult = await withAuth(request, {
-    requiredPermissions: ["users:read", "admin:access"],
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["users:read"],
+    auditEvent: "admin.users.permissions.read",
   })
-  if (authResult) return authResult
+  if (!auth.success) return auth.response
 
   try {
     const userId = Number.parseInt(params.userId)
@@ -22,16 +21,16 @@ export async function GET(request: NextRequest, { params }: { params: { userId: 
 }
 
 export async function POST(request: NextRequest, { params }: { params: { userId: string } }) {
-  const authResult = await withAuth(request, {
-    requiredPermissions: ["users:write", "admin:access"],
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["users:write"],
+    auditEvent: "admin.users.permissions.write",
   })
-  if (authResult) return authResult
+  if (!auth.success) return auth.response
 
   try {
-    const session = await getServerSession(authOptions)
     const { permission } = await request.json()
     const userId = Number.parseInt(params.userId)
-    const adminId = Number.parseInt(session!.user.id)
+    const adminId = auth.userId
 
     await RBACManager.grantPermission(userId, permission, adminId)
 
@@ -43,16 +42,16 @@ export async function POST(request: NextRequest, { params }: { params: { userId:
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: { userId: string } }) {
-  const authResult = await withAuth(request, {
-    requiredPermissions: ["users:write", "admin:access"],
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["users:write"],
+    auditEvent: "admin.users.permissions.revoke",
   })
-  if (authResult) return authResult
+  if (!auth.success) return auth.response
 
   try {
-    const session = await getServerSession(authOptions)
     const { permission } = await request.json()
     const userId = Number.parseInt(params.userId)
-    const adminId = Number.parseInt(session!.user.id)
+    const adminId = auth.userId
 
     await RBACManager.revokePermission(userId, permission, adminId)
 

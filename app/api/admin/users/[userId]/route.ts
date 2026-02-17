@@ -1,28 +1,29 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { UserManager } from "@/lib/user-management"
 import { z } from "zod"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
+import { ASSIGNABLE_ADMIN_ROLES, normalizeRoleForStorage } from "@/lib/rbac"
 
 const updateUserSchema = z.object({
   name: z.string().optional(),
   username: z.string().optional(),
   email: z.string().email().optional(),
-  role: z.string().optional(),
+  role: z.enum(ASSIGNABLE_ADMIN_ROLES).optional(),
   bio: z.string().optional(),
   location: z.string().optional(),
   website: z.string().url().optional(),
   avatar_url: z.string().url().optional(),
 })
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+export async function GET(request: NextRequest, { params }: { params: { userId: string } }) {
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["users:read"],
+    auditEvent: "admin.users.read",
+  })
+  if (!auth.success) return auth.response
 
-    const userId = Number.parseInt(params.id)
+  try {
+    const userId = Number.parseInt(params.userId)
     const user = await UserManager.getUserById(userId)
 
     if (!user) {
@@ -36,21 +37,23 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+export async function PUT(request: NextRequest, { params }: { params: { userId: string } }) {
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["users:write"],
+    auditEvent: "admin.users.update",
+  })
+  if (!auth.success) return auth.response
 
-    const userId = Number.parseInt(params.id)
+  try {
+    const userId = Number.parseInt(params.userId)
     const body = await request.json()
     const validatedData = updateUserSchema.parse(body)
+    const normalizedData = {
+      ...validatedData,
+      ...(validatedData.role ? { role: normalizeRoleForStorage(validatedData.role) } : {}),
+    }
 
-    // Get admin user ID (you'd implement this based on your auth system)
-    const adminId = Number.parseInt(session.user.id!)
-
-    const updatedUser = await UserManager.updateUser(userId, validatedData, adminId)
+    const updatedUser = await UserManager.updateUser(userId, normalizedData, auth.userId)
 
     return NextResponse.json(updatedUser)
   } catch (error) {
@@ -59,17 +62,16 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: { userId: string } }) {
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["users:delete"],
+    auditEvent: "admin.users.delete",
+  })
+  if (!auth.success) return auth.response
+
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const userId = Number.parseInt(params.id)
-    const adminId = Number.parseInt(session.user.id!)
-
-    await UserManager.deleteUser(userId, adminId)
+    const userId = Number.parseInt(params.userId)
+    await UserManager.deleteUser(userId, auth.userId)
 
     return NextResponse.json({ message: "User deleted successfully" })
   } catch (error) {

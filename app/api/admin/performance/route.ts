@@ -1,22 +1,15 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { PerformanceOptimizer } from "@/lib/performance"
-import { requirePermission } from "@/lib/auth-middleware"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["system:maintenance"],
+    auditEvent: "admin.performance.read",
+  })
+  if (!auth.success) return auth.response
+
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    // Check admin permissions
-    const hasPermission = await requirePermission(session.user.id, "admin.performance.view")
-    if (!hasPermission) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
-    }
-
     const metrics = await PerformanceOptimizer.getPerformanceMetrics()
 
     return NextResponse.json({
@@ -30,17 +23,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["system:maintenance"],
+    auditEvent: "admin.performance.execute",
+  })
+  if (!auth.success) return auth.response
+
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const hasPermission = await requirePermission(session.user.id, "admin.performance.manage")
-    if (!hasPermission) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
-    }
-
     const { action } = await request.json()
 
     switch (action) {

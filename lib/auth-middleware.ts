@@ -1,7 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getToken } from "next-auth/jwt"
+import { getServerAuthSession, type ServerAuthSession } from "@/lib/auth/session"
 import { RBACManager } from "./rbac"
 import { neon } from "@neondatabase/serverless"
+import { logApiEvent } from "@/lib/api/logging"
+import { resolveRequestId } from "@/lib/api/response"
 
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -10,57 +12,149 @@ export interface AuthMiddlewareOptions {
   requiredRole?: string
   requireAnyPermission?: boolean // If true, user needs ANY of the permissions, not ALL
   redirectTo?: string
+  responseMode?: "redirect" | "json"
+}
+
+function authErrorResponse(request: NextRequest, status: 401 | 403, message: string, requestId: string) {
+  return NextResponse.json(
+    {
+      error: message,
+      requestId,
+    },
+    {
+      status,
+      headers: {
+        "x-request-id": requestId,
+        "x-correlation-id": requestId,
+      },
+    },
+  )
 }
 
 export async function withAuth(
   request: NextRequest,
   options: AuthMiddlewareOptions = {},
 ): Promise<NextResponse | null> {
-  const { requiredPermissions = [], requiredRole, requireAnyPermission = false, redirectTo = "/login" } = options
+  const {
+    requiredPermissions = [],
+    requiredRole,
+    requireAnyPermission = false,
+    redirectTo = "/login",
+    responseMode = "redirect",
+  } = options
 
   try {
-    const token = await getToken({ req: request })
+    const session = await getServerAuthSession(request.headers)
+    const token = session?.user
+    const requestId = resolveRequestId(request)
 
-    if (!token || !token.sub) {
-      return NextResponse.redirect(new URL(redirectTo, request.url))
+    if (!token || !token.id) {
+      return responseMode === "json"
+        ? authErrorResponse(request, 401, "Unauthorized", requestId)
+        : NextResponse.redirect(new URL(redirectTo, request.url))
     }
 
-    const userId = Number.parseInt(token.sub)
+    const userId = Number.parseInt(token.id)
 
-    // Check role requirement
     if (requiredRole && token.role !== requiredRole) {
-      // Check if user's role is higher in hierarchy
       if (!RBACManager.isRoleHigher(token.role as string, requiredRole)) {
-        return NextResponse.json({ message: "Insufficient permissions" }, { status: 403 })
+        return responseMode === "json"
+          ? authErrorResponse(request, 403, "Insufficient permissions", requestId)
+          : NextResponse.json({ message: "Insufficient permissions" }, { status: 403 })
       }
     }
 
-    // Check permission requirements
     if (requiredPermissions.length > 0) {
       const hasPermission = requireAnyPermission
         ? await RBACManager.hasAnyPermission(userId, requiredPermissions)
         : await RBACManager.hasAllPermissions(userId, requiredPermissions)
 
       if (!hasPermission) {
-        return NextResponse.json({ message: "Insufficient permissions" }, { status: 403 })
+        return responseMode === "json"
+          ? authErrorResponse(request, 403, "Insufficient permissions", requestId)
+          : NextResponse.json({ message: "Insufficient permissions" }, { status: 403 })
       }
     }
 
-    return null // Allow request to continue
+    return null
   } catch (error) {
     console.error("Auth middleware error:", error)
     return NextResponse.json({ message: "Authentication error" }, { status: 500 })
   }
 }
 
-// Higher-order function for API route protection
+export interface RequireAdminAuthorizationOptions {
+  requiredPermissions?: string[]
+  requireAnyPermission?: boolean
+  auditEvent: string
+}
+
+type AdminAuthResult =
+  | { success: true; session: ServerAuthSession; userId: number; requestId: string }
+  | { success: false; response: NextResponse }
+
+export async function requireAdminAuthorization(
+  request: NextRequest,
+  options: RequireAdminAuthorizationOptions,
+): Promise<AdminAuthResult> {
+  const requestId = resolveRequestId(request)
+  const session = await getServerAuthSession(request.headers)
+  const token = session?.user
+
+  if (!token?.id) {
+    logApiEvent("warn", `${options.auditEvent}.unauthorized`, {
+      requestId,
+      route: request.nextUrl.pathname,
+      method: request.method,
+      details: {
+        reason: "missing_session",
+      },
+    })
+
+    return {
+      success: false,
+      response: authErrorResponse(request, 401, "Unauthorized", requestId),
+    }
+  }
+
+  const userId = Number.parseInt(token.id)
+  const requiredPermissions = ["admin:access", ...(options.requiredPermissions ?? [])]
+
+  const hasPermission = options.requireAnyPermission
+    ? await RBACManager.hasAnyPermission(userId, requiredPermissions)
+    : await RBACManager.hasAllPermissions(userId, requiredPermissions)
+
+  if (!hasPermission) {
+    logApiEvent("warn", `${options.auditEvent}.forbidden`, {
+      requestId,
+      route: request.nextUrl.pathname,
+      method: request.method,
+      userId: token.id,
+      details: {
+        requiredPermissions,
+      },
+    })
+
+    return {
+      success: false,
+      response: authErrorResponse(request, 403, "Forbidden", requestId),
+    }
+  }
+
+  return {
+    success: true,
+    session,
+    userId,
+    requestId,
+  }
+}
+
 export function requireAuth(options: AuthMiddlewareOptions = {}) {
   return async (request: NextRequest) => {
     const authResult = await withAuth(request, options)
     if (authResult) {
       return authResult
     }
-    // If auth passes, continue to the actual handler
     return null
   }
 }

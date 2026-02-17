@@ -1,9 +1,8 @@
 import { type NextRequest } from "next/server"
-import { getServerSession } from "next-auth"
 import { z } from "zod"
+import { getServerAuthSession } from "@/lib/auth/session"
 
 import { respondError, respondSuccess } from "@/lib/api/envelope"
-import { authOptions } from "@/lib/auth"
 import { getSql } from "@/lib/db/neon"
 
 type AttachmentMetadata = {
@@ -543,7 +542,7 @@ function withLegacyFields(settings: UserSettings) {
 }
 
 async function resolveUserId(request: NextRequest): Promise<number> {
-  const session = await getServerSession(authOptions)
+  const session = await getServerAuthSession()
   const sessionId = Number(session?.user?.id)
 
   if (Number.isFinite(sessionId) && sessionId > 0) {

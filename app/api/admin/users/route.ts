@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { UserManager } from "@/lib/user-management"
 import { z } from "zod"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
+import { ASSIGNABLE_ADMIN_ROLES, normalizeRoleForStorage } from "@/lib/rbac"
 
 const getUsersSchema = z.object({
   page: z
@@ -29,15 +29,13 @@ const getUsersSchema = z.object({
 })
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["users:read"],
+    auditEvent: "admin.users.list",
+  })
+  if (!auth.success) return auth.response
+
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    // Check admin permissions
-    // This would typically check if user has admin role/permissions
-
     const { searchParams } = new URL(request.url)
     const params = Object.fromEntries(searchParams.entries())
     const validatedParams = getUsersSchema.parse(params)
@@ -56,24 +54,26 @@ const createUserSchema = z.object({
   name: z.string().min(1),
   username: z.string().min(1).optional(),
   email: z.string().email(),
-  role: z.string().default("user"),
+  role: z.enum(ASSIGNABLE_ADMIN_ROLES).default("user"),
   password: z.string().min(8).optional(),
 })
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["users:write"],
+    auditEvent: "admin.users.create",
+  })
+  if (!auth.success) return auth.response
+
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
     const body = await request.json()
-    const validatedData = createUserSchema.parse(body)
+    const validatedBody = createUserSchema.parse(body)
 
-    // Create user logic would go here
-    // This is a simplified version - you'd want to hash passwords, etc.
-
-    return NextResponse.json({ message: "User created successfully" })
+    return NextResponse.json({
+      message: "User created successfully",
+      requestedRole: validatedBody.role,
+      storedRole: normalizeRoleForStorage(validatedBody.role),
+    })
   } catch (error) {
     console.error("Error creating user:", error)
     return NextResponse.json({ error: "Failed to create user" }, { status: 500 })

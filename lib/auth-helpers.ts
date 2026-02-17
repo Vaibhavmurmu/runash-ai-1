@@ -2,24 +2,45 @@ import { cookies, headers } from "next/headers"
 import { auth } from "./auth"
 import { isFeatureFlagEnabled } from "./feature-flags"
 
+type SessionReader = typeof auth.api.getSession
+
+type GetSessionDependencies = {
+  readSession: SessionReader
+  getCookieHeader: () => Promise<string>
+  getRequestHeaders: () => Promise<Headers>
+}
+
+async function getDefaultCookieHeader(): Promise<string> {
+  const cookieStore = await cookies()
+  const cookieHeader = cookieStore
+    .getAll()
+    .map((cookie) => `${cookie.name}=${cookie.value}`)
+    .join("; ")
+
+  return cookieHeader
+}
+
 /**
  * Get current session from cookies
  * Works in Server Components and API Routes
  */
-export async function getSession() {
-  const cookieStore = await cookies()
-  const betterAuthToken = cookieStore.get("better-auth.session-token")?.value
+export async function getSession(dependencies: Partial<GetSessionDependencies> = {}) {
+  const getCookieHeader = dependencies.getCookieHeader ?? getDefaultCookieHeader
+  const readSession = dependencies.readSession ?? auth.api.getSession
+  const getRequestHeaders = dependencies.getRequestHeaders ?? (async () => new Headers(await headers()))
+  const cookieHeader = await getCookieHeader()
 
-  if (!betterAuthToken) {
+  if (!cookieHeader) {
     return null
   }
 
   try {
+    const requestHeaders = await getRequestHeaders()
+    requestHeaders.set("cookie", cookieHeader)
+
     // Verify token with Better Auth
-    const session = await auth.api.getSession({
-      headers: new Headers({
-        cookie: `better-auth.session-token=${betterAuthToken}`,
-      }),
+    const session = await readSession({
+      headers: requestHeaders,
     })
 
     return session

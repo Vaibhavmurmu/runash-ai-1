@@ -1,8 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { createSSOOrganization } from "@/lib/sso"
 import { z } from "zod"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
 
 const createOrgSchema = z.object({
   name: z.string().min(1, "Organization name is required"),
@@ -17,16 +16,17 @@ const createOrgSchema = z.object({
 })
 
 export async function POST(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id || session.user.role !== "admin") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:settings"],
+    auditEvent: "admin.sso.organizations.create",
+  })
+  if (!auth.success) return auth.response
 
+  try {
     const body = await request.json()
     const { name, domain, slug, ssoEnabled, autoProvision, defaultRole } = createOrgSchema.parse(body)
 
-    const organization = await createSSOOrganization(name, domain, slug, Number.parseInt(session.user.id), {
+    const organization = await createSSOOrganization(name, domain, slug, auth.userId, {
       ssoEnabled,
       autoProvision,
       defaultRole,

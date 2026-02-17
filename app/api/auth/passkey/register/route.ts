@@ -1,9 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { generatePasskeyRegistrationOptions, verifyPasskeyRegistration } from "@/lib/passkey"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { z } from "zod"
 import { logApiRouteError } from "@/lib/api/logging"
+import { getServerAuthSession } from "@/lib/auth/session"
 
 const registrationSchema = z.object({
   response: z.object({
@@ -21,7 +20,7 @@ const registrationSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -41,7 +40,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }

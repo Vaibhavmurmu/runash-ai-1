@@ -133,3 +133,33 @@ Operational guidance:
 - Production deployments must provide explicit encryption key material through `CHECKOUT_PROFILE_ENCRYPTION_KEY` (or approved auth-secret fallback).
 - Weak implicit defaults are not permitted in production environments.
 - Payment/auth logs must avoid sensitive payload fields and raw credentials/card data.
+
+## 2026-02 auth runtime migration security note
+
+- Middleware and API auth checks now resolve from Better Auth session validation and shared session extraction helpers.
+- Sensitive token material is not logged in migration paths; only role/scope authorization outcomes are used for control flow.
+- Migration requires operational verification that `better-auth.session-token` is forwarded intact through edge/network layers.
+
+## OAuth account-linking security policy update (2026-02)
+
+RunAsh account-linking now follows an explicit deny-by-default model for OAuth identity binding:
+
+- `allowDangerousEmailAccountLinking` is disabled for configured OAuth providers.
+- Linking an OAuth identity to an existing RunAsh user requires verified email on the destination RunAsh account.
+- Provider subject ownership is enforced: an OAuth subject (`accountId`) already linked to one user cannot be linked to another.
+- Provider + subject (`providerId` + `accountId`) is the canonical account-link identity tuple used by policy checks.
+- Optional step-up verification can be required globally (`AUTH_ACCOUNT_LINK_STEP_UP_REQUIRED=true`) or per-provider (`AUTH_RISKY_ACCOUNT_LINK_PROVIDERS`).
+- Audit logging captures link attempts/denials/allows while avoiding raw token data and raw provider subject values in logs.
+
+### Migration impact
+
+- Existing links are preserved.
+- New link attempts may now be denied unless verification and ownership requirements are met.
+- Environments enabling step-up enforcement must update linking clients/flows to send `x-runash-link-step-up: verified` after successful challenge completion.
+
+## Auth migration status linkage (2026-02)
+
+- The repository auth migration audit and implemented-vs-planned phase status are maintained in `RUNASH-AUTH.md` ("Endpoint Audit" and "Current Status").
+- Payment/business release validation must confirm auth readiness against that status before enabling payment-surface changes.
+- Governance cross-reference for release docs: `RunAsh_AI_Pay.md` and `RUNASH_PAY_BUSINESS_IMPLEMENTATION.md`.
+

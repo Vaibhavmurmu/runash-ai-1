@@ -1,8 +1,7 @@
 import { createHash, randomBytes } from "crypto"
-import { getServerSession } from "next-auth"
 import { z } from "zod"
+import { getServerAuthSession } from "@/lib/auth/session"
 
-import { authOptions } from "@/lib/auth"
 import { getSql } from "@/lib/db/neon"
 
 const securityStateSchema = z.object({
@@ -15,7 +14,7 @@ const securityStateSchema = z.object({
 export type SecurityState = z.infer<typeof securityStateSchema>
 
 export async function resolveSettingsUserId(request: Request): Promise<number | null> {
-  const session = await getServerSession(authOptions)
+  const session = await getServerAuthSession()
   const sessionId = Number(session?.user?.id)
 
   if (Number.isFinite(sessionId) && sessionId > 0) {

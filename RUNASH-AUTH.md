@@ -86,51 +86,97 @@ curl -X POST https://your-app.vercel.app/api/db/migrate \
 
 ## File Structure
 
-\`\`\`
-app/
-├── api/
-│   ├── auth/
-│   │   ├── route.ts                 # Better Auth main handler
-│   │   ├── session/route.ts         # Get current session
-│   │   ├── verify-email/route.ts    # Email verification
-│   │   ├── refresh-session/route.ts # Keep session alive
-│   │   ├── signout/route.ts         # Sign out user
-│   │   ├── request-password-reset/route.ts
-│   │   └── reset-password/route.ts
-│   ├── admin/
-│   │   └── flags/route.ts           # Feature flag management
-│   └── db/
-│       └── migrate/route.ts         # Run pending migrations
-├── dashboard/page.tsx               # Protected page
-├── profile/page.tsx
-├── login/page.tsx
-├── signup/page.tsx
-├── forgot-password/page.tsx
-├── reset-password/page.tsx
-├── verify-email/page.tsx
-├── page.tsx
-└── layout.tsx
-db/
-├── schema.ts                         # Drizzle schema definition
-└── migrations/                       # Auto-generated SQL migrations
-lib/
-├── auth.ts                           # Better Auth configuration
-├── auth-client.ts                    # Client-side auth
-├── auth-helpers.ts                   # Server utilities
-├── db.ts                             # Database connection
-├── feature-flags.ts                  # Feature flag logic
-└── migration-helpers.ts              # NextAuth → Better Auth migration
-hooks/
-├── use-auth.ts                       # Auth state hook
-components/
-├── auth-provider.tsx                 # Auth context provider
-scripts/
-├── init-db.ts                        # Initialize database with flags
-drizzle.config.ts                     # Drizzle configuration
-middleware.ts                         # Next.js middleware
-\`\`\`
+Repository audit status (checked against the current tree):
+
+| Path from plan | Status | Notes |
+| --- | --- | --- |
+| `app/api/auth/route.ts` | Planned | Better Auth catch-all route is not implemented in-repo. |
+| `app/api/auth/session/route.ts` | Planned | Session endpoint is currently served by NextAuth/session helpers. |
+| `app/api/auth/verify-email/route.ts` | Implemented | Present and active. |
+| `app/api/auth/refresh-session/route.ts` | Planned | No dedicated route exists yet. |
+| `app/api/auth/signout/route.ts` | Planned | Sign-out handled through existing NextAuth/client flow. |
+| `app/api/auth/request-password-reset/route.ts` | Planned | Existing route is `app/api/auth/forgot-password/route.ts`. |
+| `app/api/auth/reset-password/route.ts` | Implemented | Present and active. |
+| `app/api/admin/flags/route.ts` | Planned | Feature-flag admin API route is documented target, not implemented yet. |
+| `app/api/db/migrate/route.ts` | Planned | Migration endpoint not present. |
+| `app/dashboard/page.tsx` | Implemented | Present. |
+| `app/profile/page.tsx` | Planned | Dynamic API profile routes exist; page route at this path does not. |
+| `app/login/page.tsx` | Implemented | Present. |
+| `app/signup/page.tsx` | Planned | Registration currently uses API route + alternate UI flow. |
+| `app/forgot-password/page.tsx` | Implemented | Present. |
+| `app/reset-password/page.tsx` | Implemented | Present. |
+| `app/verify-email/page.tsx` | Implemented | Present. |
+| `db/schema.ts` | Planned | Drizzle schema file at this path is not in repository. |
+| `db/migrations/` | Planned | Drizzle migration directory at this path is not in repository. |
+| `lib/auth.ts` | Implemented | Present. |
+| `lib/auth-client.ts` | Planned | No client wrapper at this path. |
+| `lib/auth-helpers.ts` | Implemented | Present. |
+| `lib/db.ts` | Implemented | Present. |
+| `lib/feature-flags.ts` | Implemented | Present. |
+| `lib/migration-helpers.ts` | Planned | Not implemented at this path. |
+| `hooks/use-auth.ts` | Planned | Hook does not exist at this path. |
+| `components/auth-provider.tsx` | Planned | Provider component does not exist at this path. |
+| `scripts/init-db.ts` | Planned | Initialization script does not exist at this path. |
+| `drizzle.config.ts` | Planned | Drizzle config file not present. |
+| `middleware.ts` | Implemented | Present. |
+
+## Endpoint Audit (Documented vs Current)
+
+| Endpoint documented in this guide | Current status | Current equivalent |
+| --- | --- | --- |
+| `POST /api/auth/sign-up` | Planned | `POST /api/auth/register` |
+| `POST /api/auth/sign-in/email` | Planned | NextAuth sign-in flow via `/api/auth/[...nextauth]` |
+| `GET /api/auth/session` | Planned | NextAuth session API (`/api/auth/[...nextauth]`) |
+| `POST /api/db/migrate` | Planned | No public migration route currently exposed |
+| `GET /admin/flags` | Planned | No admin feature-flag page/route currently exposed |
+
+## Current Status
+
+### Implemented migration phases
+
+- **Phase 0 – Harden existing auth stack (implemented):** NextAuth-based auth routes, verification/reset endpoints, middleware protection, and security hardening are active.
+- **Phase 1 – OAuth account-linking hardening (implemented):** provider-linking checks and step-up hooks in `lib/auth.ts` are active.
+
+### Planned migration phases
+
+- **Phase 2 – Better Auth + Drizzle bootstrap (planned):** add `drizzle.config.ts`, `db/schema.ts`, and migration artifacts.
+- **Phase 3 – Better Auth route surface (planned):** add Better Auth handler/session/refresh/signout/reset route structure, then migrate clients.
+- **Phase 4 – Feature flag administration (planned):** add `app/api/admin/flags/route.ts` and corresponding admin UI.
+- **Phase 5 – Controlled rollout and deprecation (planned):** progressive rollout from legacy NextAuth to Better Auth with rollback gates.
+
+## Governance Cross-Links (Auth + Payment)
+
+- Security policy linkage: `SECURITY.md` tracks mandatory auth/payment controls and log-redaction requirements.
+- Payment governance linkage: `RunAsh_AI_Pay.md` and `RUNASH_PAY_BUSINESS_IMPLEMENTATION.md` now reference this auth migration status so payment/business rollouts can account for auth readiness.
 
 ## Key Features Implemented
+
+## OAuth account-linking policy (2026-02)
+
+RunAsh now enforces a stricter OAuth account-linking baseline in `lib/auth.ts`.
+
+### Policy requirements
+
+1. **Dangerous automatic linking is disabled** for configured OAuth providers (`allowDangerousEmailAccountLinking: false`).
+2. **Verified email is required** before a provider account can be linked to an existing RunAsh user.
+3. **Provider subject ownership is enforced**:
+   - A provider `subject` (`accountId`) can only be linked to one RunAsh user.
+   - If a provider subject is already linked to another user, the new link attempt is denied.
+4. **Provider/issuer consistency** is enforced by requiring a stable provider identifier (`providerId`) and subject pair (`providerId + accountId`) for linking decisions.
+5. **Optional step-up verification for risky links**:
+   - Set `AUTH_ACCOUNT_LINK_STEP_UP_REQUIRED=true` to require step-up for all link attempts.
+   - Or set `AUTH_RISKY_ACCOUNT_LINK_PROVIDERS=<csv>` to require step-up only for targeted providers.
+   - Step-up is validated via `x-runash-link-step-up: verified`.
+6. **Audit logging** captures account-link attempts, denials, and allows without storing OAuth tokens or raw account identifiers.
+
+### Migration impact
+
+- Existing linked accounts remain valid.
+- New links can now be denied when:
+  - the RunAsh user email is unverified,
+  - the provider subject already belongs to a different user,
+  - required step-up verification is missing.
+- Integrations that trigger link flows should add step-up verification headers when strict mode is enabled.
 
 ### Authentication Methods
 - Email + Password (with 8-char minimum)
@@ -453,3 +499,111 @@ For payment and billing routes, role checks are enforced with explicit action cl
 
 All customer-scoped payment resources must pass an ownership check (`ensureCustomerScopedAccess`) that validates user and organization claims from the authenticated server session.
 
+## Role normalization migration (baseline + legacy compatibility)
+
+RunAsh RBAC now supports baseline roles for progressive normalization while preserving legacy role compatibility.
+
+### Baseline canonical roles and effective permissions
+
+| Baseline role | Effective permissions bundle |
+| --- | --- |
+| `viewer` | `content:read` |
+| `operator` | viewer bundle + `content:write`, `streams:create`, `payments:read`, `payments:write` |
+| `admin` | operator bundle + `users:read`, `users:write`, `users:ban`, `content:delete`, `content:moderate`, `admin:access`, `admin:analytics`, `admin:settings`, `streams:moderate`, `streams:analytics`, `payments:refund`, `system:logs` |
+
+### Legacy compatibility mapping
+
+Legacy roles are mapped to baseline capabilities to avoid breaking existing users during migration:
+
+- `guest` → `viewer`
+- `user`, `premium`, `moderator`, `business_operator`, `startup_operator`, `customer_operator`, `customer_finance` → `operator`
+- `admin`, `business_admin`, `startup_admin`, `customer_admin`, `super_admin` → `admin`
+
+### Admin role assignment API behavior
+
+`PUT /api/admin/users/[userId]/role` accepts both baseline (`viewer`, `operator`, `admin`) and legacy role values.
+
+- Requested baseline roles are normalized to legacy storage roles for backward compatibility:
+  - `viewer` → persisted as `guest`
+  - `operator` → persisted as `user`
+  - `admin` → persisted as `admin`
+- Response now includes both `requestedRole` and `storedRole` to make migration behavior explicit.
+
+### Migration and rollback notes
+
+- Existing users keep current role strings; permissions are resolved through compatibility mapping.
+- No payment/auth API signatures changed; role checks remain backward compatible.
+- Rollback: revert RBAC normalization helpers and role-assignment API acceptance list to legacy-only values. Existing rows remain valid because stored role values are still legacy-compatible.
+
+
+## 2026-02 Better Auth canonical runtime migration
+
+### What changed
+- Server-side auth runtime is now canonicalized on Better Auth (`lib/auth.ts`) for session validation in middleware and API routes.
+- API routes now use shared server session helper (`lib/auth/session.ts`) for uniform `userId`, `role`, and `organizationId` extraction.
+- `lib/auth-helpers.ts#getSession` now delegates directly to `auth.api.getSession` using request headers + forwarded cookie header so helper behavior matches the Better Auth server API contract.
+- Added a narrow regression check (`lib/auth-helpers.get-session-check.test.ts`) that verifies both the exported Better Auth instance and helper delegation shape remain intact.
+- Legacy NextAuth server-session reads (`getServerSession(authOptions)`) were removed from API route authorization paths.
+
+### Cookie/session key migration notes
+- Previous runtime key: `next-auth.session-token`.
+- Canonical runtime key: `better-auth.session-token`.
+- During migration, validate load-balancer/proxy cookie forwarding allows `better-auth.session-token` for all protected route paths.
+
+### Rollback plan
+1. Revert this migration commit to restore `getServerSession(authOptions)` server checks.
+2. Restore NextAuth auth route handler wiring if Better Auth session verification fails in production.
+3. Re-run auth smoke tests for login, role-protected admin routes, and billing-protected APIs before reopening traffic.
+
+## Admin API authorization matrix (admin guard)
+
+All `app/api/admin/**` handlers now enforce a shared guard in `lib/auth-middleware.ts` via `requireAdminAuthorization(...)`.
+
+**Baseline requirement on every admin API route:**
+- `admin:access`
+
+**Route-specific requirements (least privilege):**
+
+| Route | Methods | Additional permissions |
+| --- | --- | --- |
+| `/api/admin/users` | `GET` | `users:read` |
+| `/api/admin/users` | `POST` | `users:write` |
+| `/api/admin/users/[userId]` | `GET` | `users:read` |
+| `/api/admin/users/[userId]` | `PUT` | `users:write` |
+| `/api/admin/users/[userId]` | `DELETE` | `users:delete` |
+| `/api/admin/users/[userId]/role` | `PUT` | `users:write` |
+| `/api/admin/users/[userId]/permissions` | `GET` | `users:read` |
+| `/api/admin/users/[userId]/permissions` | `POST`, `DELETE` | `users:write` |
+| `/api/admin/logs` | `GET` | `system:logs` |
+| `/api/admin/logs/analytics` | `GET` | `system:logs`, `admin:analytics` |
+| `/api/admin/logs/export` | `GET` | `system:logs` |
+| `/api/admin/analytics/auth` | `GET` | `admin:analytics` |
+| `/api/admin/analytics/auth/events` | `GET` | `admin:analytics` |
+| `/api/admin/security/metrics` | `GET` | `admin:analytics` |
+| `/api/admin/security/threats` | `GET` | `admin:analytics` |
+| `/api/admin/security/threats` | `POST` | `system:maintenance` |
+| `/api/admin/settings` | `GET`, `POST` | `admin:settings` |
+| `/api/admin/settings/[category]` | `GET` | `admin:settings` |
+| `/api/admin/performance` | `GET`, `POST` | `system:maintenance` |
+| `/api/admin/sso/organizations` | `POST` | `admin:settings` |
+| `/api/admin/email-analytics` | `GET` | `admin:analytics` |
+| `/api/admin/email-analytics/realtime` | `GET` | `admin:analytics` |
+| `/api/admin/email-delivery` | `GET` | `admin:analytics` |
+| `/api/admin/email-delivery/stats` | `GET` | `admin:analytics` |
+| `/api/admin/email-suppressions` | `GET` | `admin:analytics` |
+| `/api/admin/email-suppressions` | `POST`, `DELETE` | `admin:settings` |
+| `/api/admin/email-templates` | `GET` | `admin:analytics` |
+| `/api/admin/email-templates` | `POST` | `admin:settings` |
+| `/api/admin/email-templates/[id]` | `GET` | `admin:analytics` |
+| `/api/admin/email-templates/[id]` | `PUT`, `DELETE` | `admin:settings` |
+
+### Standardized denied responses
+
+For failed admin authorization, the guard returns:
+- `401 Unauthorized` when no valid session exists.
+- `403 Forbidden` when `admin:access` or route-specific permissions are missing.
+
+Both responses include:
+- JSON body with `error` and `requestId`
+- `x-request-id` and `x-correlation-id` headers
+- audit events emitted via API logging (`*.unauthorized` / `*.forbidden`)

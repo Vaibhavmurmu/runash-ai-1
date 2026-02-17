@@ -541,6 +541,9 @@ Backward compatibility notes:
 - Billing usage and payment lifecycle actions bind customer identity to authenticated server session claims; no caller-provided customer identity is trusted for authorization.
 - Customer-scoped payment resources require ownership verification against session user/tenant scope before mutation.
 - Payment route authorization now supports explicit action-level RBAC classes for finance read access, billing admin actions, and billing operator actions.
+- Role normalization now accepts baseline role requests (`viewer`, `operator`, `admin`) while preserving legacy compatibility through role-to-capability mapping in RBAC.
+- Baseline role assignments are normalized to legacy storage role values (`guest`, `user`, `admin`) to keep existing payment/auth contracts and queries backward compatible.
+- Rollback behavior: revert normalization helpers and baseline input acceptance, then continue operating on persisted legacy roles without data migration.
 
 
 ## 2026-02 tax modeling and finance visibility update
@@ -1063,3 +1066,28 @@ Compatibility and rollout notes:
 Risk/rollback notes:
 - Risk: low-medium (additive API + stricter mutation guards on existing flows).
 - Rollback: revert `/api/v1/payment/profile/bank-accounts/[id]` route and UI action handlers; retain additive `archived_at` column (non-breaking) or stop writing it.
+
+## 2026-02 auth runtime migration impact on AI Pay
+
+- Payment and billing authorization paths now depend on Better Auth session resolution through shared auth session helpers.
+- `lib/auth-helpers.ts#getSession` now calls the canonical Better Auth API (`auth.api.getSession`) using forwarded cookie headers to keep payment-adjacent auth lookups aligned with runtime behavior.
+- No payment contract field names or API signatures were changed in this auth migration.
+- Rollback for payment-impacting auth regressions: revert auth runtime migration commit and restore prior NextAuth session guards.
+
+## Auth & identity prerequisites for payment operations (2026-02)
+
+Payment/admin operations depend on trustworthy account ownership. OAuth account-linking now requires verified account state and provider subject ownership enforcement before linking to existing RunAsh identities.
+
+Operational impact:
+- Existing account links are unaffected.
+- New high-risk OAuth links can require a completed step-up challenge before they are accepted.
+- This reduces risk of payment-admin takeover through weak or unsafe social account linking.
+
+See `RUNASH-AUTH.md` and `SECURITY.md` for the full linking policy and migration notes.
+
+## Auth migration dependency tracking (2026-02)
+
+- Before payment/auth rollout changes, verify auth endpoint readiness against `RUNASH-AUTH.md` ("Endpoint Audit" + "Current Status").
+- Security controls for this dependency are tracked in `SECURITY.md` (auth/payment hardening and redaction policies).
+- This linkage is required for payment governance auditability under `docs/DOC_GOVERNANCE.md`.
+

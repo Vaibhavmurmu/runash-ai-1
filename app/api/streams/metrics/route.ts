@@ -1,13 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { getStreamRealtimeMetrics } from "@/lib/analytics/stream-realtime";
+import { getServerAuthSession } from "@/lib/auth/session"
 
 export async function GET(req: NextRequest) {
   const startedAt = Date.now();
 
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getServerAuthSession();
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

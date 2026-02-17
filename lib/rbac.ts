@@ -18,6 +18,14 @@ export const DEFAULT_ROLES = {
   CUSTOMER_FINANCE: "customer_finance",
 } as const
 
+export const BASELINE_ROLES = {
+  VIEWER: "viewer",
+  OPERATOR: "operator",
+  ADMIN: "admin",
+} as const
+
+export type BaselineRole = (typeof BASELINE_ROLES)[keyof typeof BASELINE_ROLES]
+
 export type OperatorScope = "business" | "startup"
 export type BillingAction = "finance:read" | "billing:admin" | "billing:operate"
 
@@ -53,6 +61,69 @@ export const DEFAULT_PERMISSIONS = {
   "system:maintenance": "Perform system maintenance",
   "system:logs": "View system logs",
 } as const
+
+const VIEWER_PERMISSION_BUNDLE = ["content:read"] as const
+const OPERATOR_PERMISSION_BUNDLE = [
+  ...VIEWER_PERMISSION_BUNDLE,
+  "content:write",
+  "streams:create",
+  "payments:read",
+  "payments:write",
+] as const
+const ADMIN_PERMISSION_BUNDLE = [
+  ...OPERATOR_PERMISSION_BUNDLE,
+  "users:read",
+  "users:write",
+  "users:ban",
+  "content:delete",
+  "content:moderate",
+  "admin:access",
+  "admin:analytics",
+  "admin:settings",
+  "streams:moderate",
+  "streams:analytics",
+  "payments:refund",
+  "system:logs",
+] as const
+
+export const BASELINE_ROLE_PERMISSIONS: Record<BaselineRole, readonly string[]> = {
+  [BASELINE_ROLES.VIEWER]: VIEWER_PERMISSION_BUNDLE,
+  [BASELINE_ROLES.OPERATOR]: OPERATOR_PERMISSION_BUNDLE,
+  [BASELINE_ROLES.ADMIN]: ADMIN_PERMISSION_BUNDLE,
+}
+
+export const LEGACY_ROLE_TO_BASELINE: Record<string, BaselineRole> = {
+  [DEFAULT_ROLES.GUEST]: BASELINE_ROLES.VIEWER,
+  [DEFAULT_ROLES.USER]: BASELINE_ROLES.OPERATOR,
+  premium: BASELINE_ROLES.OPERATOR,
+  [DEFAULT_ROLES.MODERATOR]: BASELINE_ROLES.OPERATOR,
+  [DEFAULT_ROLES.BUSINESS_OPERATOR]: BASELINE_ROLES.OPERATOR,
+  [DEFAULT_ROLES.STARTUP_OPERATOR]: BASELINE_ROLES.OPERATOR,
+  [DEFAULT_ROLES.CUSTOMER_OPERATOR]: BASELINE_ROLES.OPERATOR,
+  [DEFAULT_ROLES.CUSTOMER_FINANCE]: BASELINE_ROLES.OPERATOR,
+  [DEFAULT_ROLES.ADMIN]: BASELINE_ROLES.ADMIN,
+  [DEFAULT_ROLES.BUSINESS_ADMIN]: BASELINE_ROLES.ADMIN,
+  [DEFAULT_ROLES.STARTUP_ADMIN]: BASELINE_ROLES.ADMIN,
+  [DEFAULT_ROLES.CUSTOMER_ADMIN]: BASELINE_ROLES.ADMIN,
+  [DEFAULT_ROLES.SUPER_ADMIN]: BASELINE_ROLES.ADMIN,
+}
+
+export const BASELINE_TO_LEGACY_STORAGE_ROLE: Record<BaselineRole, string> = {
+  [BASELINE_ROLES.VIEWER]: DEFAULT_ROLES.GUEST,
+  [BASELINE_ROLES.OPERATOR]: DEFAULT_ROLES.USER,
+  [BASELINE_ROLES.ADMIN]: DEFAULT_ROLES.ADMIN,
+}
+
+export const ASSIGNABLE_ADMIN_ROLES = [
+  DEFAULT_ROLES.SUPER_ADMIN,
+  DEFAULT_ROLES.ADMIN,
+  DEFAULT_ROLES.MODERATOR,
+  DEFAULT_ROLES.USER,
+  DEFAULT_ROLES.GUEST,
+  "premium",
+  BASELINE_ROLES.OPERATOR,
+  BASELINE_ROLES.VIEWER,
+] as const
 
 // Role hierarchy (higher roles inherit permissions from lower roles)
 export const ROLE_HIERARCHY = {
@@ -107,8 +178,38 @@ export const ROLE_PERMISSIONS = {
     "streams:moderate",
   ],
   [DEFAULT_ROLES.USER]: ["content:read", "content:write", "streams:create"],
+  premium: ["content:read", "content:write", "streams:create"],
   [DEFAULT_ROLES.GUEST]: ["content:read"],
+  [BASELINE_ROLES.VIEWER]: [...BASELINE_ROLE_PERMISSIONS[BASELINE_ROLES.VIEWER]],
+  [BASELINE_ROLES.OPERATOR]: [...BASELINE_ROLE_PERMISSIONS[BASELINE_ROLES.OPERATOR]],
+  [BASELINE_ROLES.ADMIN]: [...BASELINE_ROLE_PERMISSIONS[BASELINE_ROLES.ADMIN]],
 } as const
+
+export function resolveBaselineRole(role: string): BaselineRole | null {
+  if (role === BASELINE_ROLES.VIEWER || role === BASELINE_ROLES.OPERATOR || role === BASELINE_ROLES.ADMIN) {
+    return role
+  }
+
+  return LEGACY_ROLE_TO_BASELINE[role] ?? null
+}
+
+export function normalizeRoleForStorage(role: string): string {
+  const baselineRole = resolveBaselineRole(role)
+  if (!baselineRole) return role
+  return BASELINE_TO_LEGACY_STORAGE_ROLE[baselineRole]
+}
+
+export function getEffectiveRolePermissions(role: string): string[] {
+  const directPermissions = ROLE_PERMISSIONS[role as keyof typeof ROLE_PERMISSIONS]
+  if (directPermissions) {
+    return Array.from(new Set(directPermissions))
+  }
+
+  const baselineRole = resolveBaselineRole(role)
+  if (!baselineRole) return []
+
+  return Array.from(new Set(BASELINE_ROLE_PERMISSIONS[baselineRole]))
+}
 
 export class RBACManager {
   static hasScopedOperatorAccess(role: string, scope: OperatorScope): boolean {
@@ -172,7 +273,7 @@ export class RBACManager {
       if (!user) return false
 
       // Check role-based permissions
-      const rolePermissions = ROLE_PERMISSIONS[user.role as keyof typeof ROLE_PERMISSIONS] || []
+      const rolePermissions = getEffectiveRolePermissions(user.role)
       if (rolePermissions.includes(permission)) return true
 
       // Check custom permissions from admin_users table
@@ -225,11 +326,11 @@ export class RBACManager {
 
       if (!user) return []
 
-      const rolePermissions = ROLE_PERMISSIONS[user.role as keyof typeof ROLE_PERMISSIONS] || []
+      const rolePermissions = getEffectiveRolePermissions(user.role)
       const customPermissions = user.permissions && Array.isArray(user.permissions) ? user.permissions : []
 
       // Combine and deduplicate permissions
-      return [...new Set([...rolePermissions, ...customPermissions])]
+      return Array.from(new Set([...rolePermissions, ...customPermissions]))
     } catch (error) {
       console.error("Error getting user permissions:", error)
       return []
@@ -240,8 +341,8 @@ export class RBACManager {
    * Check if a role is higher than another role in the hierarchy
    */
   static isRoleHigher(role1: string, role2: string): boolean {
-    const hierarchy = ROLE_HIERARCHY[role1 as keyof typeof ROLE_HIERARCHY]
-    return hierarchy ? hierarchy.includes(role2 as any) : false
+    const hierarchy = ROLE_HIERARCHY[role1 as keyof typeof ROLE_HIERARCHY] as readonly string[] | undefined
+    return hierarchy ? hierarchy.includes(role2) : false
   }
 
   /**
@@ -319,10 +420,11 @@ export class RBACManager {
   static async changeUserRole(userId: number, newRole: string, changedBy: number): Promise<void> {
     try {
       const [oldUser] = await sql`SELECT role FROM users WHERE id = ${userId}`
+      const normalizedRole = normalizeRoleForStorage(newRole)
 
       await sql`
         UPDATE users 
-        SET role = ${newRole}, updated_at = NOW()
+        SET role = ${normalizedRole}, updated_at = NOW()
         WHERE id = ${userId}
       `
 
@@ -331,7 +433,8 @@ export class RBACManager {
         INSERT INTO admin_activity_logs (admin_id, action, target_type, target_id, details, created_at)
         VALUES (${changedBy}, 'change_role', 'user', ${userId}, ${JSON.stringify({
           oldRole: oldUser?.role,
-          newRole,
+          requestedRole: newRole,
+          normalizedRole,
         })}, NOW())
       `
     } catch (error) {
