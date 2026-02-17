@@ -3,7 +3,7 @@ import { BASELINE_ROLES, DEFAULT_ROLES, RBACManager, isAssignableAdminRole, norm
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { z } from "zod"
 import { recordAuthMetric } from "@/lib/auth-observability"
-import { logApiRouteError } from "@/lib/api/logging"
+import { recordAdminAuditLog, respondInternalServerError } from "@/lib/api/admin-route-utils"
 
 const changeRoleSchema = z.object({
   role: z.string().min(1),
@@ -56,9 +56,21 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
     await RBACManager.changeUserRole(userId, role, adminId)
     recordAuthMetric("admin.role.changed", { adminId, targetUserId: userId, role: normalizedRole })
 
+    await recordAdminAuditLog({
+      actorUserId: adminId,
+      action: "user.role.changed",
+      entityType: "user",
+      entityId: userId,
+      metadata: { requestedRole: role, storedRole: normalizedRole },
+    })
+
     return NextResponse.json({ message: "Role changed successfully", requestedRole: role, storedRole: normalizedRole })
   } catch (error) {
-    logApiRouteError(request, "admin.users.role.update.failed", error, { errorCode: "ADMIN_ROLE_UPDATE_FAILED" })
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+    return respondInternalServerError(request, error, {
+      event: "admin.users.role.update.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_ROLE_UPDATE_FAILED",
+    })
   }
 }
