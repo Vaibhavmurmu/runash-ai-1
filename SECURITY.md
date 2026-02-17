@@ -70,6 +70,8 @@ Legacy roles are mapped to this matrix for authorization decisions to preserve b
 
 - Never log raw credentials, tokens, cookies, OTPs, payment instruments, CVV/PAN-equivalent fields, or provider token payloads.
 - Use request IDs and redacted metadata for traceability.
+- Admin authorization failures return standardized `401/403` JSON error envelopes that include `requestId` and correlation headers.
+- Sensitive admin actions must write audit records with sanitized metadata (e.g., role-change + settings-key context, not raw secret values).
 - Use structured logging for auth/admin/payment security events.
 
 ## 5) Incident response notes (auth + payment)

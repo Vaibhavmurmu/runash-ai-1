@@ -10,7 +10,7 @@ import {
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { z } from "zod"
 import { recordAuthMetric } from "@/lib/auth-observability"
-import { recordAdminAuditLog, respondInternalServerError } from "@/lib/api/admin-route-utils"
+import { recordAdminAuditLog, respondAdminError, respondInternalServerError } from "@/lib/api/admin-route-utils"
 
 const changeRoleSchema = z.object({
   role: z.string().min(1),
@@ -56,11 +56,11 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
 
     // Check if admin has permission to assign this role
     if (role === DEFAULT_ROLES.SUPER_ADMIN && auth.session.user.role !== DEFAULT_ROLES.SUPER_ADMIN) {
-      return NextResponse.json({ message: "Only super admins can assign super admin role" }, { status: 403 })
+      return respondAdminError(request, 403, "Only super admins can assign super admin role", auth.requestId)
     }
 
     if (targetBaselineRole === BASELINE_ROLES.ADMIN && actorBaselineRole !== BASELINE_ROLES.ADMIN) {
-      return NextResponse.json({ message: "Only admin-level users can assign admin-capability roles" }, { status: 403 })
+      return respondAdminError(request, 403, "Only admin-level users can assign admin-capability roles", auth.requestId)
     }
 
     await RBACManager.changeUserRole(userId, role, adminId)
