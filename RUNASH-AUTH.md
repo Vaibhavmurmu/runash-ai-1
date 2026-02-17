@@ -822,3 +822,15 @@ Track and alert on:
 - `session_invalidation_rate` (invalidated sessions / active sessions)
 - `admin_403_anomaly_rate` (unexpected forbidden responses for known-admin principals)
 - `payment_auth_incident_count` (open + newly created incidents tied to auth/payment interactions)
+
+## 2026-02 Auth Runtime Consolidation Update
+
+- `lib/auth.ts` is the canonical Better Auth server module and exports the production `auth` instance used by API handlers.
+- Added explicit auth route handlers for:
+  - `POST /api/auth/sign-in`
+  - `POST /api/auth/sign-out`
+  - `GET /api/auth/session`
+  - `GET|POST /api/auth/verify-email`
+  - `POST /api/auth/reset-password`
+- Server-side session reads are standardized through `getServerAuthSession` to reduce fragmented access patterns.
+- Auth persistence now consistently uses shared Neon/PostgreSQL access utilities (`@/lib/db`) instead of ad-hoc client initialization in auth modules/routes.

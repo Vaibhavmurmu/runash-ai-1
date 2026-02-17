@@ -1,6 +1,5 @@
 import { type NextRequest } from "next/server"
 import { createUser, generateEmailVerificationToken } from "@/lib/auth-utils"
-import { neon } from "@neondatabase/serverless"
 import { registerSchema } from "@/lib/validations/auth"
 import { rateLimit } from "@/lib/rate-limit"
 import { sendVerificationEmail } from "@/lib/email"
@@ -8,8 +7,7 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { logApiRouteError } from "@/lib/api/logging"
 import { AUTH_ENDPOINT_RATE_LIMITS } from "@/lib/auth-security-config"
 import { recordAuthMetric } from "@/lib/auth-observability"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { sql } from "@/lib/db"
 
 export async function POST(request: NextRequest) {
   try {

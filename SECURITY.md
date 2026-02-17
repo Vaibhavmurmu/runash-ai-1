@@ -201,3 +201,9 @@ RunAsh account-linking now follows an explicit deny-by-default model for OAuth i
 ## Database environment policy
 
 For security and operational consistency, production should define `DATABASE_URL` as the canonical Neon connection string. Compatibility fallbacks (`NEON_DATABASE_URL`, `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `POSTGRES_URL_NON_POOLING`, `runash_POSTGRES_URL`, `runash_POSTGRES_URL_NON_POOLING`) are transitional and should not replace `DATABASE_URL` as the primary source.
+
+## 2026-02 Auth Surface Hardening Note
+
+- Centralized Better Auth runtime usage in `lib/auth.ts` for server handlers.
+- Reduced auth persistence drift by standardizing auth route and helper DB access on shared Neon/PostgreSQL connection utilities.
+- Preserved existing auth endpoint signatures for backward compatibility while adding explicit sign-in/sign-out/session route handlers.
