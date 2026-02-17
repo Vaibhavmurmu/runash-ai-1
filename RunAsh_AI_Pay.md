@@ -1120,3 +1120,10 @@ See `RUNASH-AUTH.md` and `SECURITY.md` for the full linking policy and migration
 
 ### Planned
 - Better Auth route-surface migration and Drizzle-first migration artifacts remain planned; payment contracts remain backward-compatible until those phases are versioned.
+
+## Release note addendum: Auth migration compatibility for AI Pay (2026-02)
+
+- Compatibility: payment request/response contracts remain unchanged; rollout is auth-session plumbing only.
+- Risk: elevated checkout/auth denial risk during phased flag increases if session extraction regresses.
+- Rollback: immediately disable `FEATURE_FLAG_USE_BETTER_AUTH`, keep payment APIs online, and re-run checkout + refund permission smoke tests.
+- Incident accounting: include payment/auth coupled incidents in `payment_auth_incident_count` and require on-call review before next phase bump.

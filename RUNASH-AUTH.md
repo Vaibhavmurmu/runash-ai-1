@@ -678,3 +678,26 @@ RunAsh auth and admin APIs now follow this resolution order for server-side SQL 
 Deployment recommendation:
 - Always set `DATABASE_URL` to the canonical Neon connection string.
 - Use fallback variables only for compatibility while migrating older deployments.
+
+## 2026-02 phased auth rollout + KPI guardrails
+
+### Feature-flag rollout phases (`use_better_auth`)
+1. **Internal**: enable for RunAsh staff and staging org IDs only.
+2. **10% cohort**: enable for deterministic 10% user hash bucket while monitoring auth/session errors.
+3. **50% cohort**: expand to 50% once KPI thresholds hold for 24 hours.
+4. **100%**: full rollout after two consecutive healthy windows.
+
+### Rollback criteria
+- Auth error rate increases above **2x baseline** for 15 minutes.
+- Session invalidation rate exceeds **3%** of active sessions in a 30-minute window.
+- Admin 403 anomaly rate (unexpected denies on known-admin accounts) exceeds **1%** of admin API calls.
+- Any Sev1 payment/auth incident triggered by auth migration.
+
+Rollback action: set `FEATURE_FLAG_USE_BETTER_AUTH=false` to return to legacy fallback path, then run targeted smoke checks for sign-in, sign-out, session refresh, and admin routes before re-expanding traffic.
+
+### Migration KPI dashboard requirements
+Track and alert on:
+- `auth_error_rate` (login/session/api-auth failures per minute)
+- `session_invalidation_rate` (invalidated sessions / active sessions)
+- `admin_403_anomaly_rate` (unexpected forbidden responses for known-admin principals)
+- `payment_auth_incident_count` (open + newly created incidents tied to auth/payment interactions)

@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getServerAuthSession, type ServerAuthSession } from "@/lib/auth/session"
-import { getRouteRequiredPermissions, RBACManager } from "./rbac"
+import { RBACManager } from "./rbac"
+import { resolveRequiredAdminPermissions } from "@/lib/auth/admin-authorization-handler"
 import { neon } from "@neondatabase/serverless"
 import { logApiEvent } from "@/lib/api/logging"
 import { resolveRequestId } from "@/lib/api/response"
@@ -122,8 +123,11 @@ export async function requireAdminAuthorization(
   }
 
   const userId = Number.parseInt(token.id)
-  const routePermissions = getRouteRequiredPermissions(request.nextUrl.pathname, request.method, "api")
-  const requiredPermissions = Array.from(new Set(["admin:access", ...routePermissions, ...(options.requiredPermissions ?? [])]))
+  const requiredPermissions = resolveRequiredAdminPermissions({
+    pathname: request.nextUrl.pathname,
+    method: request.method,
+    explicitPermissions: options.requiredPermissions,
+  })
 
   const hasPermission = options.requireAnyPermission
     ? await RBACManager.hasAnyPermission(userId, requiredPermissions)
