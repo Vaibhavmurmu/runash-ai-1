@@ -27,7 +27,7 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 
 ## 2) Implemented auth routes (API)
 
-Only routes currently present under `app/api/auth/**` are listed below.
+Only routes currently present under `app/api/auth/**` are listed below (verified against repository route files).
 
 | Route | File |
 |---|---|
@@ -55,7 +55,7 @@ Only routes currently present under `app/api/auth/**` are listed below.
 | `GET /api/auth/permissions` | `app/api/auth/permissions/route.ts` |
 | `POST /api/auth/sso/check` | `app/api/auth/sso/check/route.ts` |
 
-Related routes:
+Related auth routes outside `app/api/auth/**`:
 - `POST /api/v1/auth/register` (`app/api/v1/auth/register/route.ts`)
 - `GET /api/admin/analytics/auth` (`app/api/admin/analytics/auth/route.ts`)
 - `GET /api/admin/analytics/auth/events` (`app/api/admin/analytics/auth/events/route.ts`)
@@ -63,20 +63,25 @@ Related routes:
 ## 3) Implemented auth-related UI routes
 
 - `/login` (`app/login/page.tsx`)
+- `/logout` (`app/logout/page.tsx`)
 - `/forgot-password` (`app/forgot-password/page.tsx`)
 - `/reset-password` (`app/reset-password/page.tsx`)
 - `/verify-email` (`app/verify-email/page.tsx`)
-- `/settings/security` and `/settings/sessions` surfaces are represented through settings route targets and section pages.
+- `/auth/magic-link` (`app/auth/magic-link/page.tsx`)
+- `/settings/security` (`app/settings/security/page.tsx`)
+- `/settings/sessions` (`app/settings/sessions/page.tsx`)
 
-Note: middleware currently treats `/signup` as public, but there is no dedicated `app/signup/page.tsx` in this repository.
+Removed stale reference pattern: these settings pages are direct routes in `app/settings/**` and not only abstract route-target placeholders.
+
+Note: middleware still treats `/signup` as public, but no `app/signup/page.tsx` currently exists.
 
 ## 4) Session and fallback behavior (as implemented)
 
 - Protected routes are evaluated in `middleware.ts`.
 - If no valid auth session is resolved, browser routes redirect to `/login`; API routes return `401`.
-- Session checks rely on Better Auth session cookies, middleware validation through `/api/auth/get-session`, and `auth.api.getSession` usage in server helpers/accessors.
+- Session checks rely on Better Auth session cookies, middleware validation through `/api/auth/get-session`, and `auth.api.getSession` in server helpers/accessors.
 - Session minting for passkey and magic-link paths now uses the canonical auth secret resolver in `lib/auth.ts`, keeping a single source-of-truth secret for Better Auth runtime and custom JWT issuance.
-- Legacy NextAuth cookie parsing remains available in session accessor fallback paths for migration compatibility when feature-flag logic requires fallback.
+- Legacy NextAuth cookie parsing remains available in session accessor fallback paths when feature-flagged compatibility fallback is enabled.
 
 ### 4.2) Migration compatibility notes: cookie/session-token transition
 

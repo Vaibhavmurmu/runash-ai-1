@@ -17,6 +17,18 @@ Policy requirements:
 4. Linking decisions are auditable via sanitized auth metrics/events.
 5. Sensitive identity artifacts are never logged in plaintext.
 
+## 1.1) Final auth architecture (2026-02 baseline)
+
+RunAsh now operates with a single Better Auth runtime and shared server-side accessors:
+
+- Runtime source of truth: `lib/auth.ts` (Better Auth config, secret resolver, account-linking hooks).
+- Next.js auth entrypoint: `app/api/auth/[...nextauth]/route.ts` via `toNextJsHandler(auth)`.
+- Middleware gate: `middleware.ts` validates protected requests through `GET /api/auth/get-session` before granting access.
+- Server session accessors: `lib/auth/session-accessor.ts`, `lib/auth/session-accessor-handler.ts`, and `lib/auth/session.ts`.
+- Authorization layer: `lib/auth-middleware.ts` + `lib/rbac.ts` route/method permission mapping.
+
+This architecture preserves existing API signatures while tightening auth validation and auditability.
+
 ## 2) Session policy
 
 ### Session validation model
@@ -32,6 +44,12 @@ Policy requirements:
 - Fail closed when session lookups fail (treat as unauthenticated).
 - Do not grant access based on cookie presence alone.
 - Session-bound authorization checks must include role and organization scope where required.
+
+### Session policy enforcement details
+- Middleware only treats requests as authenticated after successful `/api/auth/get-session` response with both `session` and `user` payload members.
+- Auth pages (`/login`, `/signup`, `/get-started`) redirect authenticated users to `/dashboard`.
+- API routes blocked by middleware return JSON `401` without exposing credential material.
+- Legacy NextAuth cookie verification remains compatibility-only and does not bypass Better Auth validation when Better Auth is enabled.
 
 ## 3) RBAC model
 
@@ -54,6 +72,13 @@ Legacy roles are mapped to this matrix for authorization decisions to preserve b
 ### Permission model
 - Permissions include domains such as admin access/settings, analytics, operations, streams, users, payments, and system controls.
 - Admin API endpoints are mapped to explicit permission requirements by route prefix and (where needed) HTTP method.
+
+### RBAC enforcement model (final)
+- Default admin authorization path is `requireAdminAuthorization` in `lib/auth-middleware.ts`.
+- Required permissions are derived by route + method policy (`getRouteRequiredPermissions` in `lib/rbac.ts`) and merged with handler-explicit permissions.
+- Authorization is deny-by-default: missing session -> `401`; missing permission -> `403`.
+- Forbidden responses include request correlation identifiers and structured audit/event logging.
+- Legacy roles are normalized into canonical baseline capability tiers (`viewer`, `operator`, `admin`) for consistent enforcement.
 
 ### Payment-sensitive RBAC expectations
 - Payment and billing actions require authenticated server session identity.
@@ -90,6 +115,33 @@ When auth/session/RBAC anomalies are detected:
 - Payment flows must continue to enforce authenticated server-session identity and RBAC checks.
 - Auth/security documentation changes must be reflected in payment documentation when policy affects operator or customer access.
 - No payment flow contract breaks are allowed without migration notes.
+
+## 6.1) Phased rollout + rollback trigger checklist (auth/payment)
+
+Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
+
+### Phase 0 - Internal only
+- [ ] Enable for internal/staff accounts only.
+- [ ] Validate login, session refresh, logout, and admin RBAC paths.
+- [ ] Confirm no payment API contract or field changes.
+
+### Phase 1 - Percentage rollout
+- [ ] Set `FEATURE_FLAG_USE_BETTER_AUTH_PERCENT=10` and monitor for at least one full business cycle.
+- [ ] Promote to 50% only if auth error and payment-auth incident metrics remain within baseline thresholds.
+
+### Phase 2 - Full cutover
+- [ ] Set `FEATURE_FLAG_USE_BETTER_AUTH_PERCENT=100`.
+- [ ] Keep legacy compatibility fallback available for emergency rollback window.
+- [ ] Confirm payment checkout, billing portal, and admin payment operations remain healthy.
+
+### Explicit rollback triggers
+- Sustained authentication failure rate > 2x baseline for 15+ minutes.
+- Session invalidation anomalies affecting active payment operators.
+- Any confirmed unauthorized payment/admin action tied to auth/RBAC regression.
+- Elevated `403`/permission-denied spikes on payment-admin routes beyond alert thresholds.
+
+### Rollback action
+- Immediately disable percentage rollout (`FEATURE_FLAG_USE_BETTER_AUTH=false`), verify legacy session compatibility behavior, and re-run payment authorization smoke checks before re-enabling staged rollout.
 
 
 ### 2026-02 admin auth storage hardening update

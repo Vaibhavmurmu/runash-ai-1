@@ -1149,3 +1149,32 @@ See `RUNASH-AUTH.md` and `SECURITY.md` for the full linking policy and migration
 ## 2026-02 Reliability Note (Auth/Payment Boundary)
 
 Auth module consolidation and session helper standardization were completed without changing payment route contracts or payment payload field names. This improves reliability at the auth boundary while keeping payment integrations backward compatible.
+
+## Auth impact, risk, and rollback notes (2026-02 final)
+
+### Auth-related payment impact
+- Payment endpoints continue to require authenticated server-session identity before create/confirm/refund/billing mutations.
+- RBAC checks for payment/admin actions continue to enforce canonical permissions and organization scope.
+- This update is documentation and rollout governance only; payment request/response fields and endpoint signatures are unchanged.
+
+### Risk notes
+- **Primary risk:** auth rollout misconfiguration could block legitimate checkout/billing/admin payment access.
+- **Secondary risk:** permission mapping regressions could over-restrict or over-grant payment admin actions.
+- **Mitigations:** staged traffic rollout, metric gates, and immediate feature-flag rollback path.
+
+### Phased rollout checklist (internal -> % rollout -> full cutover)
+- [ ] **Internal phase:** enable Better Auth for internal users only; validate checkout, billing, refunds, and admin payment actions.
+- [ ] **10% rollout:** set `FEATURE_FLAG_USE_BETTER_AUTH_PERCENT=10`; monitor auth/login failure, payment-auth incident, and admin `403` anomaly metrics.
+- [ ] **50% rollout:** promote only when metrics remain within baseline and no payment authorization incidents are detected.
+- [ ] **100% cutover:** set `FEATURE_FLAG_USE_BETTER_AUTH_PERCENT=100`; keep compatibility fallback during post-cutover watch window.
+
+### Explicit rollback triggers
+- Auth failure rate exceeds 2x established baseline for 15+ minutes.
+- Any confirmed unauthorized payment/admin action linked to auth or RBAC regression.
+- Payment conversion drop correlated with auth/session failures above alert threshold.
+- Sustained spikes in payment-admin `403` denials not explained by known policy changes.
+
+### Rollback plan
+- Set `FEATURE_FLAG_USE_BETTER_AUTH=false` immediately.
+- Verify legacy compatibility session path and replay payment authorization smoke checks.
+- Restore staged rollout only after root cause remediation and metrics normalization.
