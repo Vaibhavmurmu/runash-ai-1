@@ -547,19 +547,22 @@ Legacy roles are mapped to baseline capabilities to avoid breaking existing user
 ### What changed
 - Server-side auth runtime is now canonicalized on Better Auth (`lib/auth.ts`) for session validation in middleware and API routes.
 - API routes now use shared server session helper (`lib/auth/session.ts`) for uniform `userId`, `role`, and `organizationId` extraction.
-- `lib/auth-helpers.ts#getSession` now delegates directly to `auth.api.getSession` using request headers + forwarded cookie header so helper behavior matches the Better Auth server API contract.
+- `lib/auth-helpers.ts#getSession`, middleware auth checks, and server auth helpers now delegate to a shared accessor (`lib/auth/session-accessor.ts`) so session reads are centralized.
 - Added a narrow regression check (`lib/auth-helpers.get-session-check.test.ts`) that verifies both the exported Better Auth instance and helper delegation shape remain intact.
-- Legacy NextAuth server-session reads (`getServerSession(authOptions)`) were removed from API route authorization paths.
+- Legacy NextAuth server-session reads (`getServerSession(authOptions)`/`getToken`) were removed from API route, middleware, and helper authorization paths.
 
 ### Cookie/session key migration notes
-- Previous runtime key: `next-auth.session-token`.
-- Canonical runtime key: `better-auth.session-token`.
+- Legacy cookie names retained for migration fallback: `next-auth.session-token`, `__Secure-next-auth.session-token`.
+- Canonical cookie name going forward: `better-auth.session-token`.
+- Rollout behavior is controlled by `FEATURE_FLAG_USE_BETTER_AUTH`:
+  - `true` (default): reads/writes canonical Better Auth cookie and clears legacy cookie names.
+  - `false`: writes both canonical and legacy names, and session reads can fallback to legacy JWT cookies.
 - During migration, validate load-balancer/proxy cookie forwarding allows `better-auth.session-token` for all protected route paths.
 
 ### Rollback plan
-1. Revert this migration commit to restore `getServerSession(authOptions)` server checks.
-2. Restore NextAuth auth route handler wiring if Better Auth session verification fails in production.
-3. Re-run auth smoke tests for login, role-protected admin routes, and billing-protected APIs before reopening traffic.
+1. Set `FEATURE_FLAG_USE_BETTER_AUTH=false` to re-enable dual-write cookies and legacy-cookie session fallback without redeploying code.
+2. If parity issues persist, revert this migration commit to restore previous middleware/helper session-read behavior.
+3. Re-run auth smoke tests for login, role-protected admin routes, passkey login, and billing-protected APIs before reopening traffic.
 
 ## Admin API authorization matrix (admin guard)
 

@@ -3,6 +3,7 @@ import { generatePasskeyAuthenticationOptions, verifyPasskeyAuthentication } fro
 import { SignJWT } from "jose"
 import { z } from "zod"
 import { logApiRouteError } from "@/lib/api/logging"
+import { setSessionCookies } from "@/lib/auth/cookies"
 
 const authenticationSchema = z.object({
   response: z.object({
@@ -60,13 +61,7 @@ export async function POST(request: NextRequest) {
         user: result.user,
       })
 
-      response.cookies.set("next-auth.session-token", sessionToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60, // 30 days
-        path: "/",
-      })
+      await setSessionCookies(response, sessionToken)
 
       return response
     }
