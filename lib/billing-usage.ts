@@ -181,6 +181,10 @@ async function ensureUsageEventsTables() {
 
   await queryMany(`CREATE INDEX IF NOT EXISTS idx_usage_events_customer_created ON usage_events(customer_id, created_at DESC);`)
   await queryMany(`CREATE INDEX IF NOT EXISTS idx_usage_events_payload_hash ON usage_events(payload_hash);`)
+  await queryMany(`
+    CREATE UNIQUE INDEX IF NOT EXISTS usage_aggregates_customer_subscription_scope_unique
+    ON usage_aggregates(customer_id, COALESCE(subscription_id, '__no_subscription__'), aggregate_type, period_start);
+  `)
   await queryMany(`CREATE INDEX IF NOT EXISTS idx_usage_aggregates_period ON usage_aggregates(customer_id, period_start, aggregate_type);`)
   await queryMany(`CREATE INDEX IF NOT EXISTS idx_usage_ingestion_queue_status ON usage_ingestion_queue(status, next_retry_at);`)
 
@@ -249,7 +253,7 @@ async function updateUsageAggregates(input: {
         charge_amount
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, $10)
-      ON CONFLICT (customer_id, subscription_id, aggregate_type, period_start)
+      ON CONFLICT (customer_id, (COALESCE(subscription_id, '__no_subscription__')), aggregate_type, period_start)
       DO UPDATE SET
         prompt_tokens = usage_aggregates.prompt_tokens + EXCLUDED.prompt_tokens,
         completion_tokens = usage_aggregates.completion_tokens + EXCLUDED.completion_tokens,
@@ -424,18 +428,17 @@ export async function getCurrentPeriodUsage(customerId: string, subscriptionId?:
   }>(
     `
     SELECT
-      COALESCE(prompt_tokens, 0)::float8 as prompt_tokens,
-      COALESCE(completion_tokens, 0)::float8 as completion_tokens,
-      COALESCE(total_tokens, 0)::float8 as total_tokens,
-      COALESCE(delta_ms, 0)::float8 as delta_ms,
-      COALESCE(events_count, 0)::float8 as events_count,
-      COALESCE(charge_amount, 0)::float8 as charge_amount
+      COALESCE(SUM(prompt_tokens), 0)::float8 as prompt_tokens,
+      COALESCE(SUM(completion_tokens), 0)::float8 as completion_tokens,
+      COALESCE(SUM(total_tokens), 0)::float8 as total_tokens,
+      COALESCE(SUM(delta_ms), 0)::float8 as delta_ms,
+      COALESCE(SUM(events_count), 0)::float8 as events_count,
+      COALESCE(SUM(charge_amount), 0)::float8 as charge_amount
     FROM usage_aggregates
     WHERE customer_id = $1
       AND aggregate_type = 'monthly'
       AND period_start = $2::date
       AND (($3::text IS NULL AND subscription_id IS NULL) OR subscription_id = $3::text)
-    LIMIT 1
   `,
     [customerId, periodStart, subscriptionId ?? null],
   )

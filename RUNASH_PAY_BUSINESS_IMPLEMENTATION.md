@@ -1771,3 +1771,9 @@ Risk and rollback:
 - Security alignment and redaction constraints remain normative in `SECURITY.md`.
 - Keep payment rollout notes synchronized with these docs per `docs/DOC_GOVERNANCE.md`.
 
+## Reliability updates (2026-02)
+
+- Usage aggregate upserts are now null-safe for `subscription_id` by using a normalized conflict scope key.
+- Monthly usage reads now sum matching aggregate rows to avoid undercounting in environments that previously allowed multiple `NULL subscription_id` rows.
+- Rollback plan: remove the null-safe unique index and revert to the previous conflict target if downstream consumers depend on per-row fragmentation behavior.
+

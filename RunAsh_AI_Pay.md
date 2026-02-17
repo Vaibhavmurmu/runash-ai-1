@@ -1091,3 +1091,9 @@ See `RUNASH-AUTH.md` and `SECURITY.md` for the full linking policy and migration
 - Security controls for this dependency are tracked in `SECURITY.md` (auth/payment hardening and redaction policies).
 - This linkage is required for payment governance auditability under `docs/DOC_GOVERNANCE.md`.
 
+## Billing subscription/tax reliability note (2026-02)
+
+- Subscription tax persistence now treats auth user IDs as string-first identifiers.
+- Tax computation writes only set `user_id` when the session identifier is a safe integer, preventing `NaN` writes in UUID-backed auth deployments.
+- This avoids partial-success failures where Stripe subscription creation succeeds but API persistence fails.
+
