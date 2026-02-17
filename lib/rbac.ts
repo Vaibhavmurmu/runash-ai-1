@@ -167,7 +167,7 @@ function resolveRouteRule(
   rules: readonly RoutePermissionRule[],
 ): readonly string[] {
   const normalizedMethod = method.toUpperCase()
-  const matchedRule = rules.find((rule) => {
+  const matchingRules = rules.filter((rule) => {
     if (!(pathname === rule.prefix || pathname.startsWith(`${rule.prefix}/`))) {
       return false
     }
@@ -179,7 +179,19 @@ function resolveRouteRule(
     return rule.methods.includes(normalizedMethod)
   })
 
-  return matchedRule?.requiredPermissions ?? []
+  if (matchingRules.length === 0) {
+    return []
+  }
+
+  const matchedRule = matchingRules.reduce((mostSpecific, candidate) => {
+    if (candidate.prefix.length > mostSpecific.prefix.length) {
+      return candidate
+    }
+
+    return mostSpecific
+  })
+
+  return matchedRule.requiredPermissions
 }
 
 export function getRouteRequiredPermissions(pathname: string, method: string, scope: ProtectedRouteScope): readonly string[] {

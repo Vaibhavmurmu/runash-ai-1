@@ -6,6 +6,14 @@
 - Existing payment endpoint field names and API signatures remain unchanged in this phase.
 - Production cutover must be gated on auth compatibility checks for existing users/cookies/tokens and a tested rollback plan documented in `RUNASH-AUTH.md`.
 
+
+### Auth feature-flag rollout and payment safety gates (2026-02)
+
+- Better Auth rollout for payment-adjacent traffic uses staged percentages (`10% -> 50% -> 100%`) behind `FEATURE_FLAG_USE_BETTER_AUTH_PERCENT`.
+- Promotion between stages requires stable auth/security metrics: `auth_error_rate`, `session_invalidation_rate`, `admin_403_anomaly_rate`, and `payment_auth_incident_count`.
+- Rollback trigger conditions include sustained auth failures (>2x baseline), privileged access anomalies, or any payment-flow authorization incident.
+- Rollback action is immediate hard-disable (`FEATURE_FLAG_USE_BETTER_AUTH=false`) with verification of legacy session fallback and payment access checks before resuming rollout.
+
 ### Payment/Auth policy alignment additions
 
 - Account-linking posture for payment operators follows verified-identity requirements (deny-by-default for unsafe linking paths).
