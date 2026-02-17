@@ -1,5 +1,5 @@
 import { jwtVerify } from "jose"
-import { auth } from "@/lib/auth"
+import { auth, getLegacySessionSecrets } from "@/lib/auth"
 import { isFeatureFlagEnabled } from "@/lib/feature-flags"
 import { recordAuthMetric } from "@/lib/auth-observability"
 import { resolveSessionFromSources } from "@/lib/auth/session-accessor-handler"
@@ -27,7 +27,8 @@ function parseCookieValue(cookieHeader: string | null, cookieName: string): stri
 }
 
 async function readLegacyNextAuthSession(cookieHeader: string | null): Promise<BetterAuthSession | null> {
-  if (!cookieHeader || !process.env.NEXTAUTH_SECRET) {
+  const fallbackSecrets = getLegacySessionSecrets()
+  if (!cookieHeader || fallbackSecrets.length === 0) {
     return null
   }
 
@@ -36,35 +37,39 @@ async function readLegacyNextAuthSession(cookieHeader: string | null): Promise<B
     return null
   }
 
-  try {
-    const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET)
-    const { payload } = await jwtVerify(token, secret)
+  for (const legacySecret of fallbackSecrets) {
+    try {
+      const secret = new TextEncoder().encode(legacySecret)
+      const { payload } = await jwtVerify(token, secret)
 
-    if (!payload.sub) {
-      return null
+      if (!payload.sub) {
+        return null
+      }
+
+      return {
+        session: {
+          id: payload.jti ? String(payload.jti) : `legacy-${String(payload.sub)}`,
+          token,
+          userId: String(payload.sub),
+          expiresAt: payload.exp ? new Date(payload.exp * 1000) : new Date(Date.now() + 60 * 60 * 1000),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        user: {
+          id: String(payload.sub),
+          email: typeof payload.email === "string" ? payload.email : undefined,
+          name: typeof payload.name === "string" ? payload.name : undefined,
+          emailVerified: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      } as BetterAuthSession
+    } catch {
+      continue
     }
-
-    return {
-      session: {
-        id: payload.jti ? String(payload.jti) : `legacy-${String(payload.sub)}`,
-        token,
-        userId: String(payload.sub),
-        expiresAt: payload.exp ? new Date(payload.exp * 1000) : new Date(Date.now() + 60 * 60 * 1000),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      user: {
-        id: String(payload.sub),
-        email: typeof payload.email === "string" ? payload.email : undefined,
-        name: typeof payload.name === "string" ? payload.name : undefined,
-        emailVerified: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    } as BetterAuthSession
-  } catch {
-    return null
   }
+
+  return null
 }
 
 export async function getAuthSessionFromHeaders(requestHeaders: Headers): Promise<BetterAuthSession | null> {
