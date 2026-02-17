@@ -118,3 +118,29 @@ Payment flows remain dependent on:
 - sensitive-field-safe logging requirements captured in `SECURITY.md`.
 
 See also: `RunAsh_AI_Pay.md` and `RUNASH_PAY_BUSINESS_IMPLEMENTATION.md`.
+
+## 7) Canonical admin role baseline and migration guidance (2026-02)
+
+RunAsh admin authorization now standardizes on three canonical baseline roles for protected admin routes.
+
+| Canonical role | Baseline permissions | Notes |
+|---|---|---|
+| `viewer` | `admin:access`, `dashboard:read` | Dashboard read-only; no write/settings/system controls. |
+| `operator` | `viewer` + `operations:restart`, `operations:cache:clear`, `system:maintenance` | Operational controls only; no global config write (`admin:settings`). |
+| `admin` | Full CRUD/system management (`users:*`, `content:*`, `admin:*`, `payments:*`, `streams:*`, `system:*`) | Includes global settings and destructive system control actions. |
+
+### Legacy role compatibility mapping
+
+To avoid lockouts during migration, legacy role values continue to resolve into the canonical capability baseline for runtime permission checks:
+
+- Viewer-equivalent: `guest` -> `viewer`
+- Operator-equivalent: `user`, `moderator`, `premium`, `business_operator`, `startup_operator`, `customer_operator`, `customer_finance` -> `operator`
+- Admin-equivalent: `admin`, `super_admin`, `business_admin`, `startup_admin`, `customer_admin` -> `admin`
+
+Role-assignment endpoints continue accepting legacy role inputs, but stored role values are now normalized to canonical baseline roles (`viewer`/`operator`/`admin`) so new updates converge on a single RBAC contract.
+
+### Protected admin endpoint enforcement
+
+- All `app/api/admin/**` handlers use `requireAdminAuthorization`.
+- Required permissions are resolved from route+method policy mapping (`lib/rbac.ts`) and merged with handler-explicit requirements before authorization decisions.
+- Role assignment to admin-capability roles is restricted to users already resolving to canonical `admin` capability; `super_admin` assignment remains super-admin only.

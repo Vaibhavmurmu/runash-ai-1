@@ -41,6 +41,16 @@ RunAsh uses role + permission enforcement with route-level checks.
 - Baseline roles: `viewer`, `operator`, `admin`.
 - Legacy/support roles retained for compatibility, including customer/business/startup operator and admin variants.
 
+### Canonical admin role matrix
+
+| Role | Allowed baseline capabilities | Explicit restrictions |
+|---|---|---|
+| `viewer` | `admin:access`, `dashboard:read` | No admin write, no global settings, no system controls. |
+| `operator` | Viewer + `operations:restart`, `operations:cache:clear`, `system:maintenance` | No `admin:settings`; cannot perform global config writes. |
+| `admin` | Full CRUD and system management (users/content/settings/streams/payments/logs/control) | Highest standard role; destructive actions still require route-level checks. |
+
+Legacy roles are mapped to this matrix for authorization decisions to preserve backward compatibility during migration windows.
+
 ### Permission model
 - Permissions include domains such as admin access/settings, analytics, operations, streams, users, payments, and system controls.
 - Admin API endpoints are mapped to explicit permission requirements by route prefix and (where needed) HTTP method.
@@ -49,6 +59,12 @@ RunAsh uses role + permission enforcement with route-level checks.
 - Payment and billing actions require authenticated server session identity.
 - Customer payment roles are valid only with organization scope.
 - Privileged payment actions (for example refunds/admin mutations) require elevated permissions and ownership checks.
+
+### Role migration guidance
+
+- Existing legacy role records remain valid and are translated to canonical capability bundles at runtime.
+- Admin role update APIs accept legacy and canonical role names, then normalize persisted values to canonical baseline roles.
+- This migration path does not alter payment API payloads or endpoint contracts; it tightens authorization consistency only.
 
 ## 4) Logging and data handling
 
