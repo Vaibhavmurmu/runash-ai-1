@@ -1857,3 +1857,13 @@ To preserve payment and auth reliability under the active service override:
 - Auth/session support endpoints now include explicit `GET /api/auth/get-session` and `POST /api/auth/refresh` compatibility handlers to reduce rollout mismatch risk for middleware/session checks.
 - Backward compatibility: payment API contracts and field names are unchanged; these are additive auth/admin reliability controls only.
 - Rollback: revert new auth/admin route handlers and RBAC storage table reads while preserving existing payment payload contracts.
+
+## 2026-02 auth observability alignment note (payment reliability)
+
+- Payment contract fields and API signatures remain unchanged.
+- Auth/admin telemetry used by payment-adjacent operations now adds:
+  - structured forbidden-action + session-invalidation counters,
+  - suspicious-login and permission-abuse alert categories,
+  - role-scoped monitoring payload visibility for operational dashboards.
+- Sensitive payment/auth payload elements continue to be redacted prior to logging/audit persistence.
+- Rollback: revert observability emitter changes while keeping payment checkout/refund request/response contracts untouched.

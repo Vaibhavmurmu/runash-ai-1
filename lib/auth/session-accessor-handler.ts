@@ -36,7 +36,7 @@ export async function resolveSessionFromSources<TSession extends SessionShape>(
 
     if (now - updatedAt > SESSION_SECURITY_POLICY.rotationIntervalMs) {
       dependencies.recordMetric("auth.session.rotation_due", {
-        sessionId: betterAuthSession.session.id,
+        reason: "rotation_interval_exceeded",
       })
     }
 

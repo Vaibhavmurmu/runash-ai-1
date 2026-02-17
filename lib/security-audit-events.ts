@@ -14,7 +14,7 @@ export type SecurityAuditEvent =
   | "admin.permission.revoked"
   | "admin.action.executed"
 
-const SENSITIVE_KEY_PATTERN = /(token|secret|password|credential|authorization|cookie|email|card|cvv|otp|session|refresh|access)/i
+const SENSITIVE_KEY_PATTERN = /(token|secret|password|credential|authorization|cookie|email|card|cvv|otp|session|refresh|access|payload|payment|auth)/i
 
 function sanitizeAuditDetails(details: Record<string, unknown> = {}) {
   const sanitized = sanitizePaymentActivityDetails(details)

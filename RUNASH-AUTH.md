@@ -155,3 +155,14 @@ Role-assignment endpoints continue accepting legacy role inputs, but stored role
 - Added explicit session fetch compatibility endpoint (`GET /api/auth/get-session`) and session refresh endpoint (`POST /api/auth/refresh`) for middleware/docs parity.
 - Admin auth storage is now backed by PostgreSQL tables for session records (`user_sessions`), role grants (`admin_role_grants`), permission overrides (`admin_permission_overrides`), and admin activity logs (`admin_activity_logs`).
 - Admin management/monitoring endpoints now enforce stricter schema validation and server-side pagination/filtering for users, roles, permissions, sessions, audit logs, auth events, and security threats/events.
+
+## 8) 2026-02 auth observability + monitoring visibility hardening
+
+- Added structured auth metrics categories for authentication, authorization, session, admin, and alert streams.
+- New alert-friendly categories are emitted for suspicious login behavior and permission abuse to support on-call routing.
+- Forbidden-action and session-invalidation metrics are now first-class counters in dashboard aggregates.
+- Operational monitoring now supports role-based visibility:
+  - `viewer`: aggregate trend totals only,
+  - `operator`: aggregate + redacted recent event stream,
+  - `admin`: full aggregate + realtime metrics stream.
+- Login instrumentation now uses hashed principal fingerprints for repeated-failure detection and never stores raw identifiers.

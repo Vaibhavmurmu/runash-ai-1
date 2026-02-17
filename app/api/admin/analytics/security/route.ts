@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
-import { getAuthMetricsSnapshot, getAuthSecurityDashboardData } from "@/lib/auth-observability"
+import { getScopedAuthMonitoringData, type MonitoringVisibility } from "@/lib/auth-observability"
+import { RBACManager } from "@/lib/rbac"
 import { logApiRouteError } from "@/lib/api/logging"
 
 export async function GET(request: NextRequest) {
@@ -12,10 +13,16 @@ export async function GET(request: NextRequest) {
   if (!auth.success) return auth.response
 
   try {
+    const [canViewSystemLogs, canViewAdminAnalytics] = await Promise.all([
+      RBACManager.hasPermission(auth.userId, "system:logs"),
+      RBACManager.hasPermission(auth.userId, "admin:analytics"),
+    ])
+
+    const visibility: MonitoringVisibility = canViewSystemLogs ? "admin" : canViewAdminAnalytics ? "operator" : "viewer"
+
     return NextResponse.json({
       requestId: auth.requestId,
-      dashboard: getAuthSecurityDashboardData(24 * 60),
-      realtimeMetrics: getAuthMetricsSnapshot(200),
+      monitoring: getScopedAuthMonitoringData(visibility, 24 * 60),
     })
   } catch (error) {
     logApiRouteError(request, "admin.security.analytics.fetch_failed", error, {

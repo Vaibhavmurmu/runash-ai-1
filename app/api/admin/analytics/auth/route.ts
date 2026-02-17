@@ -3,7 +3,8 @@ import { AuthAnalytics } from "@/lib/auth-analytics"
 import { z } from "zod"
 import { logApiRouteError } from "@/lib/api/logging"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
-import { getAuthMetricsSnapshot, getAuthSecurityDashboardData } from "@/lib/auth-observability"
+import { getScopedAuthMonitoringData, type MonitoringVisibility } from "@/lib/auth-observability"
+import { RBACManager } from "@/lib/rbac"
 
 const analyticsSchema = z.object({
   start: z
@@ -35,12 +36,18 @@ export async function GET(request: NextRequest) {
     const { start, end } = analyticsSchema.parse(params)
 
     const analyticsData = await AuthAnalytics.getOverviewMetrics({ start, end })
+    const [canViewSystemLogs, canViewAdminAnalytics] = await Promise.all([
+      RBACManager.hasPermission(auth.userId, "system:logs"),
+      RBACManager.hasPermission(auth.userId, "admin:analytics"),
+    ])
+
+    const visibility: MonitoringVisibility = canViewSystemLogs ? "admin" : canViewAdminAnalytics ? "operator" : "viewer"
+    const monitoring = getScopedAuthMonitoringData(visibility, 24 * 60)
 
     return NextResponse.json({
       requestId: auth.requestId,
       ...analyticsData,
-      securityDashboard: getAuthSecurityDashboardData(24 * 60),
-      realtimeMetrics: getAuthMetricsSnapshot(200),
+      monitoring,
     })
   } catch (error) {
     logApiRouteError(request, "admin.auth.analytics.fetch_failed", error, {
