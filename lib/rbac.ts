@@ -25,6 +25,7 @@ export const BASELINE_ROLES = {
 } as const
 
 export type BaselineRole = (typeof BASELINE_ROLES)[keyof typeof BASELINE_ROLES]
+export type ProtectedRouteScope = "api" | "ui"
 
 export type OperatorScope = "business" | "startup"
 export type BillingAction = "finance:read" | "billing:admin" | "billing:operate"
@@ -46,6 +47,10 @@ export const DEFAULT_PERMISSIONS = {
   "admin:access": "Access admin panel",
   "admin:analytics": "View analytics",
   "admin:settings": "Manage system settings",
+  "dashboard:read": "Read-only dashboard access",
+  "operations:restart": "Restart operational services",
+  "operations:cache:clear": "Clear operational caches",
+  "system:control": "Perform system-level control operations",
 
   // Streaming
   "streams:create": "Create streams",
@@ -62,34 +67,99 @@ export const DEFAULT_PERMISSIONS = {
   "system:logs": "View system logs",
 } as const
 
-const VIEWER_PERMISSION_BUNDLE = ["content:read"] as const
+const VIEWER_PERMISSION_BUNDLE = ["content:read", "dashboard:read", "admin:access", "admin:analytics"] as const
 const OPERATOR_PERMISSION_BUNDLE = [
   ...VIEWER_PERMISSION_BUNDLE,
   "content:write",
   "streams:create",
   "payments:read",
   "payments:write",
+  "system:maintenance",
+  "operations:restart",
+  "operations:cache:clear",
 ] as const
 const ADMIN_PERMISSION_BUNDLE = [
   ...OPERATOR_PERMISSION_BUNDLE,
   "users:read",
   "users:write",
+  "users:delete",
   "users:ban",
   "content:delete",
   "content:moderate",
-  "admin:access",
-  "admin:analytics",
   "admin:settings",
   "streams:moderate",
   "streams:analytics",
   "payments:refund",
   "system:logs",
+  "system:control",
 ] as const
+
+type RoutePermissionRule = {
+  prefix: string
+  methods?: readonly string[]
+  requiredPermissions: readonly string[]
+}
+
+const ADMIN_API_ROUTE_RULES: readonly RoutePermissionRule[] = [
+  { prefix: "/api/admin/settings", requiredPermissions: ["admin:settings"] },
+  { prefix: "/api/admin/sso", requiredPermissions: ["admin:settings"] },
+  { prefix: "/api/admin/email-templates", requiredPermissions: ["admin:analytics"], methods: ["GET"] },
+  { prefix: "/api/admin/email-templates", requiredPermissions: ["admin:settings"], methods: ["POST", "PUT", "PATCH", "DELETE"] },
+  { prefix: "/api/admin/email-suppressions", requiredPermissions: ["admin:analytics"], methods: ["GET"] },
+  { prefix: "/api/admin/email-suppressions", requiredPermissions: ["admin:settings"], methods: ["POST", "PUT", "PATCH", "DELETE"] },
+  { prefix: "/api/admin/email-management", requiredPermissions: ["admin:settings"] },
+  { prefix: "/api/admin/email-delivery", requiredPermissions: ["admin:analytics"] },
+  { prefix: "/api/admin/email-analytics", requiredPermissions: ["admin:analytics"] },
+  { prefix: "/api/admin/security", requiredPermissions: ["admin:analytics"] },
+  { prefix: "/api/admin/performance", requiredPermissions: ["admin:analytics"] },
+  { prefix: "/api/admin/analytics", requiredPermissions: ["admin:analytics"] },
+  { prefix: "/api/admin/logs", requiredPermissions: ["system:logs"] },
+  { prefix: "/api/admin/users", requiredPermissions: ["users:read"], methods: ["GET"] },
+  { prefix: "/api/admin/users", requiredPermissions: ["users:write"], methods: ["POST", "PUT", "PATCH"] },
+  { prefix: "/api/admin/users", requiredPermissions: ["users:delete"], methods: ["DELETE"] },
+]
+
+const PROTECTED_UI_ROUTE_RULES: readonly RoutePermissionRule[] = [
+  { prefix: "/admin", requiredPermissions: ["admin:access"] },
+  { prefix: "/admin/performance", requiredPermissions: ["admin:analytics"] },
+  { prefix: "/admin/email-analytics", requiredPermissions: ["admin:analytics"] },
+  { prefix: "/admin/email-management", requiredPermissions: ["admin:settings"] },
+  { prefix: "/admin/users", requiredPermissions: ["users:read"] },
+]
 
 export const BASELINE_ROLE_PERMISSIONS: Record<BaselineRole, readonly string[]> = {
   [BASELINE_ROLES.VIEWER]: VIEWER_PERMISSION_BUNDLE,
   [BASELINE_ROLES.OPERATOR]: OPERATOR_PERMISSION_BUNDLE,
   [BASELINE_ROLES.ADMIN]: ADMIN_PERMISSION_BUNDLE,
+}
+
+function resolveRouteRule(
+  pathname: string,
+  method: string,
+  rules: readonly RoutePermissionRule[],
+): readonly string[] {
+  const normalizedMethod = method.toUpperCase()
+  const matchedRule = rules.find((rule) => {
+    if (!(pathname === rule.prefix || pathname.startsWith(`${rule.prefix}/`))) {
+      return false
+    }
+
+    if (!rule.methods) {
+      return true
+    }
+
+    return rule.methods.includes(normalizedMethod)
+  })
+
+  return matchedRule?.requiredPermissions ?? []
+}
+
+export function getRouteRequiredPermissions(pathname: string, method: string, scope: ProtectedRouteScope): readonly string[] {
+  if (scope === "api") {
+    return resolveRouteRule(pathname, method, ADMIN_API_ROUTE_RULES)
+  }
+
+  return resolveRouteRule(pathname, method, PROTECTED_UI_ROUTE_RULES)
 }
 
 export const LEGACY_ROLE_TO_BASELINE: Record<string, BaselineRole> = {

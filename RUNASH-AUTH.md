@@ -513,9 +513,9 @@ RunAsh RBAC now supports baseline roles for progressive normalization while pres
 
 | Baseline role | Effective permissions bundle |
 | --- | --- |
-| `viewer` | `content:read` |
-| `operator` | viewer bundle + `content:write`, `streams:create`, `payments:read`, `payments:write` |
-| `admin` | operator bundle + `users:read`, `users:write`, `users:ban`, `content:delete`, `content:moderate`, `admin:access`, `admin:analytics`, `admin:settings`, `streams:moderate`, `streams:analytics`, `payments:refund`, `system:logs` |
+| `viewer` | read-only dashboards: `content:read`, `dashboard:read`, `admin:access`, `admin:analytics` |
+| `operator` | viewer bundle + operational actions: `content:write`, `streams:create`, `payments:read`, `payments:write`, `system:maintenance`, `operations:restart`, `operations:cache:clear` (no `admin:settings`) |
+| `admin` | full CRUD + system-level control: operator bundle + `users:read`, `users:write`, `users:delete`, `users:ban`, `content:delete`, `content:moderate`, `admin:settings`, `streams:moderate`, `streams:analytics`, `payments:refund`, `system:logs`, `system:control` |
 
 ### Legacy compatibility mapping
 
@@ -566,7 +566,7 @@ Legacy roles are mapped to baseline capabilities to avoid breaking existing user
 
 ## Admin API authorization matrix (admin guard)
 
-All `app/api/admin/**` handlers now enforce a shared guard in `lib/auth-middleware.ts` via `requireAdminAuthorization(...)`.
+All `app/api/admin/**` handlers now enforce a shared guard in `lib/auth-middleware.ts` via `requireAdminAuthorization(...)` and centralized route-policy resolution from `lib/rbac.ts#getRouteRequiredPermissions`.
 
 **Baseline requirement on every admin API route:**
 - `admin:access`
@@ -605,6 +605,19 @@ All `app/api/admin/**` handlers now enforce a shared guard in `lib/auth-middlewa
 | `/api/admin/email-templates` | `POST` | `admin:settings` |
 | `/api/admin/email-templates/[id]` | `GET` | `admin:analytics` |
 | `/api/admin/email-templates/[id]` | `PUT`, `DELETE` | `admin:settings` |
+
+
+## Protected admin UI route matrix
+
+Protected admin pages now use shared server guard `requireAdminUiRouteAccess(...)` (`lib/admin-route-guard.ts`) with the same centralized route-policy lookup in `lib/rbac.ts`.
+
+| Route | Required permissions |
+| --- | --- |
+| `/admin` | `admin:access` |
+| `/admin/performance` | `admin:access`, `admin:analytics` |
+| `/admin/email-analytics` | `admin:access`, `admin:analytics` |
+| `/admin/email-management` | `admin:access`, `admin:settings` |
+| `/admin/users` | `admin:access`, `users:read` |
 
 ### Standardized denied responses
 
