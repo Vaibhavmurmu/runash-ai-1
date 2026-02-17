@@ -459,6 +459,8 @@ All customer-scoped payment resources must pass an ownership check (`ensureCusto
 ### What changed
 - Server-side auth runtime is now canonicalized on Better Auth (`lib/auth.ts`) for session validation in middleware and API routes.
 - API routes now use shared server session helper (`lib/auth/session.ts`) for uniform `userId`, `role`, and `organizationId` extraction.
+- `lib/auth-helpers.ts#getSession` now delegates directly to `auth.api.getSession` using request headers + forwarded cookie header so helper behavior matches the Better Auth server API contract.
+- Added a narrow regression check (`lib/auth-helpers.get-session-check.test.ts`) that verifies both the exported Better Auth instance and helper delegation shape remain intact.
 - Legacy NextAuth server-session reads (`getServerSession(authOptions)`) were removed from API route authorization paths.
 
 ### Cookie/session key migration notes
