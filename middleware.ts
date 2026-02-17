@@ -2,11 +2,25 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { logApiEvent } from "@/lib/api/logging"
 
-function hasAuthSessionCookie(request: NextRequest): boolean {
-  return Boolean(
-    request.cookies.get("better-auth.session-token")?.value ||
-      request.cookies.get("__Secure-better-auth.session-token")?.value,
-  )
+async function hasValidAuthSession(request: NextRequest): Promise<boolean> {
+  try {
+    const sessionResponse = await fetch(new URL("/api/auth/get-session", request.url), {
+      method: "GET",
+      headers: {
+        cookie: request.headers.get("cookie") ?? "",
+      },
+      cache: "no-store",
+    })
+
+    if (!sessionResponse.ok) {
+      return false
+    }
+
+    const sessionPayload = await sessionResponse.json()
+    return Boolean(sessionPayload?.user && sessionPayload?.session)
+  } catch {
+    return false
+  }
 }
 
 // Security headers
@@ -135,8 +149,6 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  const isAuthenticated = hasAuthSessionCookie(request)
-
   // Public routes that don't require authentication
   const publicRoutes = [
     "/",
@@ -189,9 +201,17 @@ export async function middleware(request: NextRequest) {
 
   const isPublicApiRoute = publicApiRoutes.some((route) => pathname.startsWith(route))
 
-  if (isPublicRoute || isPublicApiRoute) {
-    // Redirect authenticated users away from auth pages
-    if (isAuthenticated && (pathname === "/login" || pathname === "/signup" || pathname === "/get-started")) {
+  const isAuthPage = pathname === "/login" || pathname === "/signup" || pathname === "/get-started"
+
+  if (isPublicApiRoute || (isPublicRoute && !isAuthPage)) {
+    return response
+  }
+
+  const isAuthenticated = await hasValidAuthSession(request)
+
+  // Redirect authenticated users away from auth pages
+  if (isAuthPage) {
+    if (isAuthenticated) {
       return NextResponse.redirect(new URL("/dashboard", request.url))
     }
     return response

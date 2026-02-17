@@ -601,6 +601,10 @@ X-RateLimit-Reset: 1640000000
 
 ---
 
+## Auth Gateway Dependency Note (2026-02)
+
+Payment and business APIs continue to rely on upstream authenticated session context. Middleware now verifies Better Auth session validity before allowing requests into protected routes, reducing forged-cookie bypass risk for downstream billing and analytics handlers. This change is backward compatible and does not alter payment API contracts or payload schemas.
+
 ## Compliance & Security Framework
 
 ### Regulatory Compliance

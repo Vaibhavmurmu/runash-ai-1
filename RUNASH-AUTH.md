@@ -192,6 +192,12 @@ RunAsh now enforces a stricter OAuth account-linking baseline in `lib/auth.ts`.
 - `verification_tokens`: Email verification & password reset tokens
 - `auth_feature_flags`: Feature flag configuration
 
+### Middleware session verification hardening (2026-02)
+
+- Protected route checks in `middleware.ts` now validate Better Auth sessions via the Better Auth session endpoint (`/api/auth/get-session`) instead of trusting cookie presence alone; this keeps middleware Edge-runtime safe.
+- Forged `better-auth.session-token` cookies no longer bypass middleware authentication gates for protected pages and APIs.
+- On session read failures, middleware safely treats requests as unauthenticated and preserves existing redirect/401 behavior.
+
 ### Security Features
 - HTTPS-only in production
 - HTTPOnly, Secure, SameSite cookies
