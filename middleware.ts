@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { logApiEvent } from "@/lib/api/logging"
+import { getAuthEndpointRateLimit } from "@/lib/auth-security-config"
+import { recordAuthMetric } from "@/lib/auth-observability"
 
 async function hasValidAuthSession(request: NextRequest): Promise<boolean> {
   try {
@@ -101,35 +103,16 @@ export async function middleware(request: NextRequest) {
 
   // Rate limiting for sensitive endpoints
   if (pathname.startsWith("/api/auth/")) {
-    const authEndpoint = pathname.split("/").pop()
-    let limit = 10 // default
-    let windowMs = 15 * 60 * 1000 // 15 minutes
-
-    switch (authEndpoint) {
-      case "register":
-        limit = 5
-        windowMs = 15 * 60 * 1000 // 5 attempts per 15 minutes
-        break
-      case "forgot-password":
-        limit = 3
-        windowMs = 15 * 60 * 1000 // 3 attempts per 15 minutes
-        break
-      case "reset-password":
-        limit = 5
-        windowMs = 15 * 60 * 1000 // 5 attempts per 15 minutes
-        break
-      case "verify-email":
-        limit = 10
-        windowMs = 60 * 60 * 1000 // 10 attempts per hour
-        break
-    }
+    const authEndpoint = pathname.replace(/^\/api\/auth\//, "")
+    const { limit, windowMs } = getAuthEndpointRateLimit(pathname)
 
     if (!checkRateLimit(request, `auth-${authEndpoint}`, limit, windowMs)) {
+      recordAuthMetric("auth.rate_limited", { endpoint: authEndpoint })
       return new NextResponse(JSON.stringify({ message: "Too many requests. Please try again later." }), {
         status: 429,
         headers: {
           "Content-Type": "application/json",
-          "Retry-After": "900", // 15 minutes
+          "Retry-After": String(Math.max(1, Math.ceil(windowMs / 1000))),
         },
       })
     }
@@ -219,6 +202,7 @@ export async function middleware(request: NextRequest) {
 
   // Check authentication for protected routes
   if (!isAuthenticated) {
+    recordAuthMetric("auth.login.failed", { endpoint: pathname, reason: "missing_or_invalid_session" })
     if (pathname.startsWith("/api/")) {
       return new NextResponse(JSON.stringify({ message: "Unauthorized" }), {
         status: 401,
@@ -230,6 +214,7 @@ export async function middleware(request: NextRequest) {
 
   // Log security events for audit
   if (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) {
+    recordAuthMetric("auth.login.success", { endpoint: pathname.startsWith("/api/") ? "admin_api" : "admin_ui" })
     logApiEvent("info", "security.admin_access", {
       requestId: request.headers.get("x-request-id") ?? crypto.randomUUID(),
       route: pathname,

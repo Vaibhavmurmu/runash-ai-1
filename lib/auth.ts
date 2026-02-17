@@ -1,17 +1,12 @@
 import { betterAuth } from "better-auth"
+import { recordAuthMetric } from "@/lib/auth-observability"
 
 const baseURL =
   process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
 
 const secret = process.env.BETTER_AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
 
-const oauthStepUpRequired = process.env.AUTH_ACCOUNT_LINK_STEP_UP_REQUIRED === "true"
-const riskyLinkProviders = new Set(
-  (process.env.AUTH_RISKY_ACCOUNT_LINK_PROVIDERS ?? "")
-    .split(",")
-    .map((provider) => provider.trim().toLowerCase())
-    .filter(Boolean),
-)
+const enforceVerifiedIdentityLinking = (process.env.AUTH_ENFORCE_VERIFIED_IDENTITY_LINKING ?? "true") === "true"
 
 type AuthAccountLink = {
   userId: string
@@ -56,6 +51,11 @@ function auditAccountLinkEvent(
     subjectHash?: string
   },
 ) {
+  recordAuthMetric(event === "account_link_allowed" ? "auth.account_link.allowed" : "auth.account_link.denied", {
+    providerId: payload.providerId,
+    reason: payload.reason ?? "none",
+  })
+
   console.info("[auth.account-link]", {
     event,
     providerId: payload.providerId,
@@ -145,15 +145,17 @@ export const auth = betterAuth({
           }
 
           const stepUpHeader = context?.request?.headers?.get("x-runash-link-step-up")
-          const riskyProviderLink = riskyLinkProviders.has(providerId)
+          const identityHeader = context?.request?.headers?.get("x-runash-identity-verified")
+          const hasVerifiedIdentityHeader = identityHeader === "verified" || stepUpHeader === "verified"
+          const hasProviderIdentityToken = Boolean(account.idToken && account.idToken.length > 12)
 
-          if ((oauthStepUpRequired || riskyProviderLink) && stepUpHeader !== "verified") {
+          if (enforceVerifiedIdentityLinking && (!hasVerifiedIdentityHeader || !hasProviderIdentityToken)) {
             auditAccountLinkEvent("account_link_denied", {
               providerId,
               userId: account.userId,
               requestPath,
               subjectHash,
-              reason: "step_up_verification_required",
+              reason: "verified_identity_linking_required",
             })
             return false
           }

@@ -1,6 +1,7 @@
 import { neon } from "@neondatabase/serverless"
 import { hash, compare } from "bcryptjs"
 import { randomBytes } from "crypto"
+import { recordAuthMetric } from "@/lib/auth-observability"
 
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -33,7 +34,7 @@ export async function createPasswordResetToken(userId: number) {
 
     return token
   } catch (error) {
-    console.error("Error creating password reset token:", error)
+    console.error("Error creating reset artifact:", error)
     throw new Error("Failed to create password reset token")
   }
 }
@@ -47,7 +48,7 @@ export async function verifyPasswordResetToken(token: string) {
 
     return resetToken
   } catch (error) {
-    console.error("Error verifying password reset token:", error)
+    console.error("Error verifying reset artifact:", error)
     return null
   }
 }
@@ -75,9 +76,11 @@ export async function resetPassword(token: string, newPassword: string) {
       WHERE token = ${token}
     `
 
+    await invalidateUserSessions(resetToken.user_id, "password_reset")
+
     return true
   } catch (error) {
-    console.error("Error resetting password:", error)
+    console.error("Error applying credential update:", error)
     throw new Error("Failed to reset password")
   }
 }
@@ -94,7 +97,7 @@ export async function createEmailVerificationToken(userId: number) {
 
     return token
   } catch (error) {
-    console.error("Error creating email verification token:", error)
+    console.error("Error creating verification artifact:", error)
     throw new Error("Failed to create email verification token")
   }
 }
@@ -125,7 +128,7 @@ export async function verifyEmailToken(token: string) {
 
     return verificationToken
   } catch (error) {
-    console.error("Error verifying email token:", error)
+    console.error("Error verifying email artifact:", error)
     return null
   }
 }
@@ -166,7 +169,7 @@ export async function updateUserPassword(userId: number, newPassword: string) {
 
     return true
   } catch (error) {
-    console.error("Error updating user password:", error)
+    console.error("Error updating user credential:", error)
     throw new Error("Failed to update password")
   }
 }
@@ -187,6 +190,7 @@ export async function changePassword(userId: number, currentPassword: string, ne
 
     // Update to new password
     await updateUserPassword(userId, newPassword)
+    await invalidateUserSessions(userId, "password_change")
 
     // Log the password change for security
     await sql`
@@ -196,7 +200,7 @@ export async function changePassword(userId: number, currentPassword: string, ne
 
     return true
   } catch (error) {
-    console.error("Error changing password:", error)
+    console.error("Error changing user credential:", error)
     throw error
   }
 }
@@ -214,7 +218,7 @@ export async function generateEmailVerificationToken(userId: number) {
 
     return token
   } catch (error) {
-    console.error("Error generating email verification token:", error)
+    console.error("Error generating verification artifact:", error)
     throw new Error("Failed to generate email verification token")
   }
 }
@@ -244,6 +248,26 @@ export async function deleteUserSession(sessionToken: string) {
   }
 }
 
+export async function invalidateUserSessions(userId: number, reason: "password_change" | "password_reset") {
+  try {
+    await sql`
+      DELETE FROM user_sessions WHERE user_id = ${userId}
+    `
+  } catch {
+    // best-effort invalidation for mixed schema deployments
+  }
+
+  try {
+    await sql`
+      DELETE FROM session WHERE user_id = ${String(userId)}
+    `
+  } catch {
+    // best-effort invalidation for Better Auth session table
+  }
+
+  recordAuthMetric("auth.session.invalidated", { reason, userId })
+}
+
 export async function cleanupExpiredTokens() {
   try {
     await sql`
@@ -257,7 +281,7 @@ export async function cleanupExpiredTokens() {
     `
     return true
   } catch (error) {
-    console.error("Error cleaning up expired tokens:", error)
+    console.error("Error cleaning up expired auth artifacts:", error)
     return false
   }
 }

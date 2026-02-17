@@ -3,6 +3,8 @@ import { resetPassword } from "@/lib/auth-utils"
 import { rateLimit } from "@/lib/rate-limit"
 import { z } from "zod"
 import { logApiRouteError } from "@/lib/api/logging"
+import { AUTH_ENDPOINT_RATE_LIMITS } from "@/lib/auth-security-config"
+import { recordAuthMetric } from "@/lib/auth-observability"
 
 const resetPasswordSchema = z.object({
   token: z.string().min(1, "Token is required"),
@@ -17,8 +19,14 @@ const resetPasswordSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const rateLimitResult = await rateLimit(request, "reset-password", 5, 900) // 5 attempts per 15 minutes
+    const rateLimitResult = await rateLimit(
+      request,
+      "reset-password",
+      AUTH_ENDPOINT_RATE_LIMITS["reset-password"].limit,
+      AUTH_ENDPOINT_RATE_LIMITS["reset-password"].windowMs,
+    )
     if (!rateLimitResult.success) {
+      recordAuthMetric("auth.rate_limited", { endpoint: "reset-password" })
       return NextResponse.json(
         { message: "Too many password reset attempts. Please try again later." },
         { status: 429 },
@@ -44,6 +52,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ message: "Password reset successfully" })
   } catch (error) {
+    recordAuthMetric("auth.suspicious_activity", { endpoint: "reset-password", reason: "error" })
     logApiRouteError(request, "auth.reset_password.failed", error, { errorCode: "AUTH_RESET_PASSWORD_FAILED" })
 
     if (error instanceof Error && error.message === "Invalid or expired token") {

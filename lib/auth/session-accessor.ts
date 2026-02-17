@@ -1,6 +1,8 @@
 import { jwtVerify } from "jose"
 import { auth } from "@/lib/auth"
 import { isFeatureFlagEnabled } from "@/lib/feature-flags"
+import { SESSION_SECURITY_POLICY } from "@/lib/auth-security-config"
+import { recordAuthMetric } from "@/lib/auth-observability"
 
 const LEGACY_NEXT_AUTH_COOKIE_NAMES = ["next-auth.session-token", "__Secure-next-auth.session-token"] as const
 
@@ -68,6 +70,26 @@ async function readLegacyNextAuthSession(cookieHeader: string | null): Promise<B
 export async function getAuthSessionFromHeaders(requestHeaders: Headers): Promise<BetterAuthSession | null> {
   const betterAuthSession = await auth.api.getSession({ headers: requestHeaders })
   if (betterAuthSession?.user) {
+    const now = Date.now()
+    const createdAt = new Date(betterAuthSession.session.createdAt).getTime()
+    const updatedAt = new Date(betterAuthSession.session.updatedAt).getTime()
+
+    if (
+      now - createdAt > SESSION_SECURITY_POLICY.absoluteTimeoutMs ||
+      now - updatedAt > SESSION_SECURITY_POLICY.inactivityTimeoutMs
+    ) {
+      recordAuthMetric("auth.session.invalidated", {
+        reason: now - createdAt > SESSION_SECURITY_POLICY.absoluteTimeoutMs ? "absolute_expiry" : "inactivity_expiry",
+      })
+      return null
+    }
+
+    if (now - updatedAt > SESSION_SECURITY_POLICY.rotationIntervalMs) {
+      recordAuthMetric("auth.session.rotation_due", {
+        sessionId: betterAuthSession.session.id,
+      })
+    }
+
     return betterAuthSession
   }
 

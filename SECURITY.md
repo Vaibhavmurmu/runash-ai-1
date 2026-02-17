@@ -1,5 +1,17 @@
 # Security Policy
 
+
+## Security hardening update — Auth & Admin controls
+
+- Removed optional/risky provider-link policy behavior and moved to a strict verified-identity account-link model.
+- Enforced stronger session controls with inactivity and absolute expiry checks and rotation-due telemetry.
+- Added centralized auth endpoint rate-limiting configuration to prevent route/middleware drift.
+- Added sensitive logging guardrails:
+  - deeper redaction for token/secret-like patterns in structured logging,
+  - static check script (`npm run lint:security-logs`) that fails on suspicious direct console logging patterns.
+- Added observability signals for auth/admin flows: login success/failure, session invalidation, role/permission mutations, and suspicious activity.
+
+
 ## Supported Versions
 
 Use this section to tell people about which versions of your project are

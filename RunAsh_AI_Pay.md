@@ -1,6 +1,20 @@
 # 🏦 RunAsh AI Pay 
 
 
+## Security alignment note (Auth/Payment shared controls)
+
+To protect payment-linked identities and admin access pathways, the auth hardening rollout now includes:
+
+- strict verified-identity account linking (no dangerous provider email-link fallback),
+- stronger session expiry/invalidation controls after sensitive auth events,
+- centralized auth abuse-rate controls,
+- expanded sensitive log redaction and static guards against secret leakage,
+- dashboard-ready auth/admin security telemetry for operational detection and response.
+
+Payment contracts and field-level payment API signatures are unchanged in this update.
+
+
+
 ### The Future of Agentic, Intent-Driven Payments
 
 RunAsh AI Pay is a high-performance, multi-agent fintech platform designed to move money at the speed of thought. By replacing traditional banking menus with **Intent-Based Voice Commands** and a **Consensus-Driven Security Layer**, we provide a "Supreme Court for Payments."

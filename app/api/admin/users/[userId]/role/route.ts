@@ -2,6 +2,8 @@ import { type NextRequest, NextResponse } from "next/server"
 import { ASSIGNABLE_ADMIN_ROLES, BASELINE_ROLES, DEFAULT_ROLES, RBACManager, normalizeRoleForStorage } from "@/lib/rbac"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { z } from "zod"
+import { recordAuthMetric } from "@/lib/auth-observability"
+import { logApiRouteError } from "@/lib/api/logging"
 
 const changeRoleSchema = z.object({
   role: z.enum(ASSIGNABLE_ADMIN_ROLES),
@@ -48,10 +50,11 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
     }
 
     await RBACManager.changeUserRole(userId, role, adminId)
+    recordAuthMetric("admin.role.changed", { adminId, targetUserId: userId, role: normalizedRole })
 
     return NextResponse.json({ message: "Role changed successfully", requestedRole: role, storedRole: normalizedRole })
   } catch (error) {
-    console.error("Error changing user role:", error)
+    logApiRouteError(request, "admin.users.role.update.failed", error, { errorCode: "ADMIN_ROLE_UPDATE_FAILED" })
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }

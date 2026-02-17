@@ -19,8 +19,6 @@ export async function rateLimit(
   const key = `${identifier}:${ip}`
 
   const now = Date.now()
-  const windowStart = now - windowMs * 1000
-
   // Clean up old entries
   for (const [k, v] of rateLimitStore.entries()) {
     if (v.resetTime < now) {
@@ -34,12 +32,12 @@ export async function rateLimit(
     // First request in window or window expired
     rateLimitStore.set(key, {
       count: 1,
-      resetTime: now + windowMs * 1000,
+      resetTime: now + windowMs,
     })
     return {
       success: true,
       remaining: limit - 1,
-      resetTime: now + windowMs * 1000,
+      resetTime: now + windowMs,
     }
   }
 
