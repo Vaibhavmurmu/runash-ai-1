@@ -6,6 +6,13 @@
 - Existing payment endpoint field names and API signatures remain unchanged in this phase.
 - Production cutover must be gated on auth compatibility checks for existing users/cookies/tokens and a tested rollback plan documented in `RUNASH-AUTH.md`.
 
+### Payment/Auth policy alignment additions
+
+- Account-linking posture for payment operators follows verified-identity requirements (deny-by-default for unsafe linking paths).
+- Session policy for payment operations is fail-closed and must be server-session derived.
+- RBAC model for finance/admin/operator responsibilities must include organization scope validation for customer-facing payment surfaces.
+- Incident handling for auth anomalies that may affect payment authorization must include rapid session revocation, key rotation, and documented rollback actions.
+
 ## Executive Summary
 
 This comprehensive guide outlines the strategy for deploying RunAsh Pay across Business and Startup segments. The implementation focuses on secure payment processing, seamless integrations, enterprise scalability, and compliance requirements specific to each user segment.

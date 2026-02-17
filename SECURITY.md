@@ -1,237 +1,74 @@
-# Security Policy
+# RunAsh Security Policy Notes
 
+Last updated: 2026-02
 
-## Security hardening update — Auth & Admin controls
+Cross-links: `RUNASH-AUTH.md`, `README.md`, `docs/DOC_GOVERNANCE.md`.
 
-- Removed optional/risky provider-link policy behavior and moved to a strict verified-identity account-link model.
-- Enforced stronger session controls with inactivity and absolute expiry checks and rotation-due telemetry.
-- Added centralized auth endpoint rate-limiting configuration to prevent route/middleware drift.
-- Added sensitive logging guardrails:
-  - deeper redaction for token/secret-like patterns in structured logging,
-  - static check script (`npm run lint:security-logs`) that fails on suspicious direct console logging patterns.
-- Added observability signals for auth/admin flows: login success/failure, session invalidation, role/permission mutations, and suspicious activity.
+## 1) Account-linking policy (OAuth / social providers)
 
+RunAsh account linking is deny-by-default and implemented through Better Auth database hooks.
 
-## Supported Versions
+Policy requirements:
+1. Provider subject (`providerId + accountId`) must not already be linked to a different user.
+2. Primary account email must already be verified before linking.
+3. Verified-identity linking controls are enforced when `AUTH_ENFORCE_VERIFIED_IDENTITY_LINKING=true`:
+   - request must carry verified identity/step-up signal headers, and
+   - provider identity token evidence must be present.
+4. Linking decisions are auditable via sanitized auth metrics/events.
+5. Sensitive identity artifacts are never logged in plaintext.
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+## 2) Session policy
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.3.0.x   | :x: |
-| 1.2.0.x   | :x:              |
-| 1.1.0.x   | :x: |
-| < 1.0.0   | :white_check_mark:              |
+### Session validation model
+- Middleware and server helpers perform session checks using Better Auth session APIs and shared session accessors.
+- Protected UI routes redirect to `/login` when unauthenticated.
+- Protected API routes return HTTP `401` when unauthenticated.
 
-## Reporting a Vulnerability
+### Cookie and compatibility behavior
+- Canonical session cookies: `better-auth.session-token`, `__Secure-better-auth.session-token`.
+- Legacy NextAuth cookie parsing remains available in session-accessor fallback paths for migration safety.
 
-Use this section to tell people how to report a vulnerability.
+### Session lifecycle controls
+- Fail closed when session lookups fail (treat as unauthenticated).
+- Do not grant access based on cookie presence alone.
+- Session-bound authorization checks must include role and organization scope where required.
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+## 3) RBAC model
 
-## AI Chat Turn Hardening
+RunAsh uses role + permission enforcement with route-level checks.
 
-The `POST /api/v1/agents/chat` endpoint includes mandatory runtime controls per request:
+### Role families
+- Baseline roles: `viewer`, `operator`, `admin`.
+- Legacy/support roles retained for compatibility, including customer/business/startup operator and admin variants.
 
-- **Authentication gate:** only authenticated sessions can open chat streams.
-- **Rate limiting:** per-user/IP request windows reduce abuse and brute-force traffic.
-- **Tool authorization:** requested tools are validated and mapped to RBAC permissions before use.
-- **Correlation IDs:** each turn carries a request correlation identifier (`x-correlation-id`) for traceability.
-- **Structured logging:** chat lifecycle events are logged as metadata-only records without prompt/response body data.
+### Permission model
+- Permissions include domains such as admin access/settings, analytics, operations, streams, users, payments, and system controls.
+- Admin API endpoints are mapped to explicit permission requirements by route prefix and (where needed) HTTP method.
 
-## API Log Redaction Standard
+### Payment-sensitive RBAC expectations
+- Payment and billing actions require authenticated server session identity.
+- Customer payment roles are valid only with organization scope.
+- Privileged payment actions (for example refunds/admin mutations) require elevated permissions and ownership checks.
 
-Chat/session handlers now emit structured logs with request correlation IDs and metadata-only payloads.
+## 4) Logging and data handling
 
-Sensitive auth/payment/chat keys are redacted before logs are written (for example: `password`, `token`, `authorization`, `payment`, `card`, `cvv`, `otp`, `message`, `content`, `prompt`).
+- Never log raw credentials, tokens, cookies, OTPs, payment instruments, CVV/PAN-equivalent fields, or provider token payloads.
+- Use request IDs and redacted metadata for traceability.
+- Use structured logging for auth/admin/payment security events.
 
-Reference: `docs/API_CONTRACTS.md`.
+## 5) Incident response notes (auth + payment)
 
-## Agent orchestration security controls
+When auth/session/RBAC anomalies are detected:
+1. **Triage:** classify severity and impacted surfaces (auth-only vs payment-impacting).
+2. **Containment:** revoke active sessions for impacted principals; enforce step-up auth where needed.
+3. **Credential hygiene:** rotate/revoke affected secrets or provider credentials.
+4. **Protection checks:** verify no sensitive fields were emitted to logs; if detected, apply immediate redaction and retention controls.
+5. **Rollback/mitigation:** revert to last known-safe auth feature-flag/config state when needed.
+6. **Communication:** record impact window, root cause, and recovery actions in incident tracking.
+7. **Post-incident:** add preventive controls/tests and update docs.
 
-- Prompt-injection screening rejects obvious jailbreak patterns before model execution.
-- Tool/audit payloads redact secrets and payment-like identifiers before persistence/logging.
-- High-risk actions (payment/account-impacting operations) require explicit user confirmation via `/api/agents/actions`.
-- Agent transcript/tool records use retention pruning (`RUNASH_AGENT_RETENTION_DAYS`, default 30 days) for PII minimization.
+## 6) Payment/auth integration guardrails
 
-## Monitoring runbook — Auth, sessions, and admin actions
-
-### Primary telemetry sources
-- `GET /api/admin/analytics/auth`: auth analytics plus `securityDashboard` rollups and realtime auth/admin metrics.
-- `GET /api/admin/analytics/security`: dedicated dashboard source for auth failures, suspicious activity, and admin operation totals.
-- `audit_logs` and `admin_audit_logs` tables for immutable audit history.
-
-### Structured audit events to monitor
-- Login lifecycle: `auth.login.attempt`, `auth.login.success`, `auth.login.failed`.
-- Session lifecycle: `auth.session.created`, `auth.session.revoked`, `auth.session.invalidated`.
-- Privileged operations: `admin.action.executed`, `admin.role.changed`, `admin.permission.granted`, `admin.permission.revoked`.
-
-### Alert thresholds (baseline)
-1. **Auth failure spike:** >25 `auth.login.failed` events in 5 minutes per environment.
-2. **Suspicious activity burst:** any `auth.suspicious_activity` burst >10/hour.
-3. **Admin operation anomaly:** >50 `admin.*` operations/hour or unusual off-hours mutation concentration.
-
-### Incident response steps
-1. Pull the latest `securityDashboard` and realtime metrics from admin analytics APIs.
-2. Correlate with `audit_logs`/`admin_audit_logs` by request time window and actor.
-3. Revoke active sessions for impacted users/admins, rotate credentials/tokens, and enforce step-up auth where required.
-4. Document root cause, impact window, and rollback/remediation actions in the incident log.
-
-### Logging redaction requirements (mandatory)
-- Never log raw credentials, bearer tokens, API secrets, refresh/session tokens, card PAN/CVV, or raw payment payloads.
-- Structured logs and audit details must pass sanitization/redaction before persistence or console output.
-
-
-
-## Settings mutation confirmation policy
-
-High-risk settings mutations are protected by mandatory user-intent confirmations in UI flows. The dialog gate applies to account deletion, session revocation, API key regeneration/deletion, 2FA disablement, and subscription cancellation/downgrade operations.
-
-Operational requirements:
-- No sensitive token/key values are displayed in confirmation dialogs.
-- Mutation requests execute only after explicit user confirmation.
-- Dialogs surface pending/error states to prevent repeated unsafe retries.
-
-
-## Settings security hardening updates
-
-The settings UI/API contract includes hardening controls for sensitive security operations:
-
-- API keys are never re-displayed in full after creation. Rotation returns a one-time copy value and stores only masked metadata for subsequent reads.
-- Security actions (`revoke-sessions`, `regenerate-api-key`, `delete-api-key`, `disable-2fa`) require strict server-side payload validation with explicit user intent confirmation.
-- Security settings updates reject invalid mutation payloads and preserve server-owned key metadata.
-- Client security forms send minimal payloads and clear sensitive fields after mutation completion.
-- 2FA disable operations execute against backend 2FA state, not only UI preference state.
-
-Cross-reference: `RUNASH-AUTH.md`, `docs/DOC_GOVERNANCE.md`.
-
-## Payment and billing session hardening
-
-Payment and billing APIs now enforce server-side session authentication and ownership authorization checks against the user and organization context from JWT-backed NextAuth sessions.
-
-### Security controls added
-- Canonical server session extraction for billing/payment routes via `getServerSession` wrapper utilities.
-- Route-level ownership checks to prevent cross-user and cross-organization billing access.
-- Privileged action audit logging for payment intent creation/confirmation, subscription mutations, analytics access, and billing session creation.
-- Audit payload sanitization to avoid persisting sensitive auth/payment secrets.
-
-### Explicit exception
-- `POST /api/billing/webhook` remains non-session authenticated because it is provider-originated and validated with Stripe webhook signatures.
-
-
-
-### Correlation and audit requirements
-- Payment, billing, and auth routes must return both `x-request-id` and `x-correlation-id` headers (same value), and include `requestId` in error/success JSON payloads where supported.
-- Route failures must be logged through structured API logging helpers (no raw `console.error` in auth/payment/billing handlers).
-- Logs must include event name, route, method, and request ID only, with sensitive fields redacted by key and value patterns.
-- Provider payload internals, raw emails, tokens, and payment method identifiers must not be logged directly.
-
-## Admin API authorization response and audit policy (2026-02)
-
-- All `app/api/admin/**` routes must authorize through `requireAdminAuthorization(...)` in `lib/auth-middleware.ts` with route-specific permissions.
-- Denied responses are standardized:
-  - `401`: `{ success: false, error: { code: "UNAUTHORIZED", message: "Unauthorized" }, requestId }`
-  - `403`: `{ success: false, error: { code: "FORBIDDEN", message: "Forbidden" }, requestId }`
-- Both denied responses must include `x-request-id` and `x-correlation-id` headers (same value).
-- Admin authorization outcomes must be auditable:
-  - Denials: `*.unauthorized`, `*.forbidden`
-  - Allowed access: `*.allowed`
-- Audit events must not include sensitive auth/payment payload data.
-
-## Observability log redaction standard (auth + payment)
-
-All auth/payment route logs must go through `lib/api/logging.ts` and emit structured fields only:
-
-- `event`
-- `requestId`
-- `route`
-- `method`
-- `details.errorCode` (and non-sensitive operational metadata only)
-
-Redaction policy:
-- Redact sensitive key names and nested values (for example `password`, `token`, `authorization`, `cookie`, `email`, `otp`, `payment`, `card`, `cvv`, `auth`, `session`, `credential`).
-- Redact token-like and email-like raw string values when encountered in nested payloads.
-- Never include direct user identifiers (email, raw auth token, card/account data) in logs; use `requestId` for traceability.
-
-Operational guidance:
-- Incident triage and cross-system correlation must use `x-request-id` / `requestId`.
-- Avoid logging full request bodies for auth/payment flows.
-
-
-
-## Payment-specific authentication hardening
-
-- **Single auth source for billing/payment APIs:** server-side session identity is required for payment/billing routes; header-only user identity patterns are rejected for these flows.
-- **Usage endpoint anti-spoofing:** billing usage ingestion binds `customerId` and `userId` to the authenticated session user.
-- **RBAC + organization scope:** `customer_admin`, `customer_operator`, and `customer_finance` roles are treated as payment operators only when organization scope is present.
-- **Session integrity for payment methods:** payment-method mutation endpoints enforce a session integrity check by comparing a hashed device/browser fingerprint with the most recent authorized checkout session.
-- **Sensitive data minimization:** payment controls avoid logging raw payment/auth payload material and continue requiring tokenized provider references.
-
-
-## Payment authz ownership + redaction requirements
-
-- Customer-scoped payment resources must enforce both RBAC action permissions and session ownership checks before read/write operations.
-- Do not trust caller-supplied customer/user identifiers in billing/payment route bodies for authorization decisions.
-- Continue structured logging only; redact payment/auth sensitive fields and avoid raw credential/payment payload logging in all payment/billing handlers.
-
-
-## Billing encryption policy update (2026-02)
-
-- Sensitive billing profile fields must remain encrypted at rest.
-- Production deployments must provide explicit encryption key material through `CHECKOUT_PROFILE_ENCRYPTION_KEY` (or approved auth-secret fallback).
-- Weak implicit defaults are not permitted in production environments.
-- Payment/auth logs must avoid sensitive payload fields and raw credentials/card data.
-
-## 2026-02 auth runtime migration security note
-
-- Middleware and API auth checks now resolve from Better Auth session validation and shared session extraction helpers.
-- Sensitive token material is not logged in migration paths; only role/scope authorization outcomes are used for control flow.
-- Migration requires operational verification that `better-auth.session-token` is forwarded intact through edge/network layers.
-
-## OAuth account-linking security policy update (2026-02)
-
-RunAsh account-linking now follows an explicit deny-by-default model for OAuth identity binding:
-
-- `allowDangerousEmailAccountLinking` is disabled for configured OAuth providers.
-- Linking an OAuth identity to an existing RunAsh user requires verified email on the destination RunAsh account.
-- Provider subject ownership is enforced: an OAuth subject (`accountId`) already linked to one user cannot be linked to another.
-- Provider + subject (`providerId` + `accountId`) is the canonical account-link identity tuple used by policy checks.
-- Optional step-up verification can be required globally (`AUTH_ACCOUNT_LINK_STEP_UP_REQUIRED=true`) or per-provider (`AUTH_RISKY_ACCOUNT_LINK_PROVIDERS`).
-- Audit logging captures link attempts/denials/allows while avoiding raw token data and raw provider subject values in logs.
-
-### Migration impact
-
-- Existing links are preserved.
-- New link attempts may now be denied unless verification and ownership requirements are met.
-- Environments enabling step-up enforcement must update linking clients/flows to send `x-runash-link-step-up: verified` after successful challenge completion.
-
-## Auth migration status linkage (2026-02)
-
-- The repository auth migration audit and implemented-vs-planned phase status are maintained in `RUNASH-AUTH.md` ("Endpoint Audit" and "Current Status").
-- Payment/business release validation must confirm auth readiness against that status before enabling payment-surface changes.
-- Governance cross-reference for release docs: `RunAsh_AI_Pay.md` and `RUNASH_PAY_BUSINESS_IMPLEMENTATION.md`.
-
-
-## Implemented vs Planned alignment (2026-02 refresh)
-
-### Implemented
-- Admin management endpoints for roles, permissions, sessions, audit logs, and feature flags are present with request-schema validation and admin authorization checks.
-- Canonical RBAC role assignment (`viewer`, `operator`, `admin`) is validated through shared helpers, while legacy role strings remain supported through compatibility mapping to prevent migration-time access regressions.
-- Migration helper support exists in `lib/migration-helpers.ts` to provision admin auth governance tables in Neon-backed deployments.
-- Database URL resolution is standardized in `lib/db.ts` with `DATABASE_URL` as the primary connection source.
-
-### Planned
-- Better Auth full route-surface replacement and Drizzle-managed schema migrations remain planned and are tracked in `RUNASH-AUTH.md`.
-
-## Database environment policy
-
-For security and operational consistency, production should define `DATABASE_URL` as the canonical Neon connection string. Compatibility fallbacks (`NEON_DATABASE_URL`, `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `POSTGRES_URL_NON_POOLING`, `runash_POSTGRES_URL`, `runash_POSTGRES_URL_NON_POOLING`) are transitional and should not replace `DATABASE_URL` as the primary source.
-
-## 2026-02 Auth Surface Hardening Note
-
-- Centralized Better Auth runtime usage in `lib/auth.ts` for server handlers.
-- Reduced auth persistence drift by standardizing auth route and helper DB access on shared Neon/PostgreSQL connection utilities.
-- Preserved existing auth endpoint signatures for backward compatibility while adding explicit sign-in/sign-out/session route handlers.
+- Payment flows must continue to enforce authenticated server-session identity and RBAC checks.
+- Auth/security documentation changes must be reflected in payment documentation when policy affects operator or customer access.
+- No payment flow contract breaks are allowed without migration notes.
