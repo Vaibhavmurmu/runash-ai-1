@@ -13,6 +13,17 @@ To protect payment-linked identities and admin access pathways, the auth hardeni
 
 Payment contracts and field-level payment API signatures are unchanged in this update.
 
+## Auth dependency update (2026-02)
+
+The payment stack is coupled to auth security controls in the following ways:
+
+- **Account-linking hardening:** linked identities used for payer/operator access must satisfy verified-identity linking policy before they can operate payment surfaces.
+- **Session policy:** billing/payment actions require authenticated server-session identity checks; unauthorized requests remain fail-closed (`401` for APIs, login redirect for UI).
+- **RBAC policy:** payment operations require role + permission checks (including org-scoped customer finance/operator/admin roles where applicable).
+- **Incident readiness:** payment-impacting auth incidents require session revocation + credential rotation + audit trail updates per `SECURITY.md`.
+
+No new payment endpoint signatures, field names, or webhook contracts were changed by this documentation update.
+
 ### 2026-02 middleware auth validation migration note
 
 - Route protection still follows existing public/protected behavior for web and API surfaces.

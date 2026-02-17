@@ -1,0 +1,14 @@
+-- planned: auth/neon/better-auth drizzle baseline
+-- status: placeholder artifact for migration planning
+--
+-- This file exists to establish a tracked migration artifact path while
+-- RunAsh continues SQL-first migrations under scripts/sql.
+--
+-- Candidate tables for first generated baseline (to be finalized):
+--   users
+--   sessions
+--   accounts
+--   verifications
+--   passkeys
+--
+-- Do not execute in production until replaced with reviewed SQL.
