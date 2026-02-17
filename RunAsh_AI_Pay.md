@@ -1097,3 +1097,12 @@ See `RUNASH-AUTH.md` and `SECURITY.md` for the full linking policy and migration
 - Tax computation writes only set `user_id` when the session identifier is a safe integer, preventing `NaN` writes in UUID-backed auth deployments.
 - This avoids partial-success failures where Stripe subscription creation succeeds but API persistence fails.
 
+
+## Implemented vs Planned (Auth/Payment dependency clarity)
+
+### Implemented
+- Auth readiness now includes implemented admin management APIs for roles, permissions, sessions, audit logs, and feature flags.
+- Payment rollout dependency checks should use the updated `RUNASH-AUTH.md` implemented/planned refresh block.
+
+### Planned
+- Better Auth route-surface migration and Drizzle-first migration artifacts remain planned; payment contracts remain backward-compatible until those phases are versioned.
