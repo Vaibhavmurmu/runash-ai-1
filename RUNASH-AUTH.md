@@ -86,49 +86,68 @@ curl -X POST https://your-app.vercel.app/api/db/migrate \
 
 ## File Structure
 
-\`\`\`
-app/
-├── api/
-│   ├── auth/
-│   │   ├── route.ts                 # Better Auth main handler
-│   │   ├── session/route.ts         # Get current session
-│   │   ├── verify-email/route.ts    # Email verification
-│   │   ├── refresh-session/route.ts # Keep session alive
-│   │   ├── signout/route.ts         # Sign out user
-│   │   ├── request-password-reset/route.ts
-│   │   └── reset-password/route.ts
-│   ├── admin/
-│   │   └── flags/route.ts           # Feature flag management
-│   └── db/
-│       └── migrate/route.ts         # Run pending migrations
-├── dashboard/page.tsx               # Protected page
-├── profile/page.tsx
-├── login/page.tsx
-├── signup/page.tsx
-├── forgot-password/page.tsx
-├── reset-password/page.tsx
-├── verify-email/page.tsx
-├── page.tsx
-└── layout.tsx
-db/
-├── schema.ts                         # Drizzle schema definition
-└── migrations/                       # Auto-generated SQL migrations
-lib/
-├── auth.ts                           # Better Auth configuration
-├── auth-client.ts                    # Client-side auth
-├── auth-helpers.ts                   # Server utilities
-├── db.ts                             # Database connection
-├── feature-flags.ts                  # Feature flag logic
-└── migration-helpers.ts              # NextAuth → Better Auth migration
-hooks/
-├── use-auth.ts                       # Auth state hook
-components/
-├── auth-provider.tsx                 # Auth context provider
-scripts/
-├── init-db.ts                        # Initialize database with flags
-drizzle.config.ts                     # Drizzle configuration
-middleware.ts                         # Next.js middleware
-\`\`\`
+Repository audit status (checked against the current tree):
+
+| Path from plan | Status | Notes |
+| --- | --- | --- |
+| `app/api/auth/route.ts` | Planned | Better Auth catch-all route is not implemented in-repo. |
+| `app/api/auth/session/route.ts` | Planned | Session endpoint is currently served by NextAuth/session helpers. |
+| `app/api/auth/verify-email/route.ts` | Implemented | Present and active. |
+| `app/api/auth/refresh-session/route.ts` | Planned | No dedicated route exists yet. |
+| `app/api/auth/signout/route.ts` | Planned | Sign-out handled through existing NextAuth/client flow. |
+| `app/api/auth/request-password-reset/route.ts` | Planned | Existing route is `app/api/auth/forgot-password/route.ts`. |
+| `app/api/auth/reset-password/route.ts` | Implemented | Present and active. |
+| `app/api/admin/flags/route.ts` | Planned | Feature-flag admin API route is documented target, not implemented yet. |
+| `app/api/db/migrate/route.ts` | Planned | Migration endpoint not present. |
+| `app/dashboard/page.tsx` | Implemented | Present. |
+| `app/profile/page.tsx` | Planned | Dynamic API profile routes exist; page route at this path does not. |
+| `app/login/page.tsx` | Implemented | Present. |
+| `app/signup/page.tsx` | Planned | Registration currently uses API route + alternate UI flow. |
+| `app/forgot-password/page.tsx` | Implemented | Present. |
+| `app/reset-password/page.tsx` | Implemented | Present. |
+| `app/verify-email/page.tsx` | Implemented | Present. |
+| `db/schema.ts` | Planned | Drizzle schema file at this path is not in repository. |
+| `db/migrations/` | Planned | Drizzle migration directory at this path is not in repository. |
+| `lib/auth.ts` | Implemented | Present. |
+| `lib/auth-client.ts` | Planned | No client wrapper at this path. |
+| `lib/auth-helpers.ts` | Implemented | Present. |
+| `lib/db.ts` | Implemented | Present. |
+| `lib/feature-flags.ts` | Implemented | Present. |
+| `lib/migration-helpers.ts` | Planned | Not implemented at this path. |
+| `hooks/use-auth.ts` | Planned | Hook does not exist at this path. |
+| `components/auth-provider.tsx` | Planned | Provider component does not exist at this path. |
+| `scripts/init-db.ts` | Planned | Initialization script does not exist at this path. |
+| `drizzle.config.ts` | Planned | Drizzle config file not present. |
+| `middleware.ts` | Implemented | Present. |
+
+## Endpoint Audit (Documented vs Current)
+
+| Endpoint documented in this guide | Current status | Current equivalent |
+| --- | --- | --- |
+| `POST /api/auth/sign-up` | Planned | `POST /api/auth/register` |
+| `POST /api/auth/sign-in/email` | Planned | NextAuth sign-in flow via `/api/auth/[...nextauth]` |
+| `GET /api/auth/session` | Planned | NextAuth session API (`/api/auth/[...nextauth]`) |
+| `POST /api/db/migrate` | Planned | No public migration route currently exposed |
+| `GET /admin/flags` | Planned | No admin feature-flag page/route currently exposed |
+
+## Current Status
+
+### Implemented migration phases
+
+- **Phase 0 – Harden existing auth stack (implemented):** NextAuth-based auth routes, verification/reset endpoints, middleware protection, and security hardening are active.
+- **Phase 1 – OAuth account-linking hardening (implemented):** provider-linking checks and step-up hooks in `lib/auth.ts` are active.
+
+### Planned migration phases
+
+- **Phase 2 – Better Auth + Drizzle bootstrap (planned):** add `drizzle.config.ts`, `db/schema.ts`, and migration artifacts.
+- **Phase 3 – Better Auth route surface (planned):** add Better Auth handler/session/refresh/signout/reset route structure, then migrate clients.
+- **Phase 4 – Feature flag administration (planned):** add `app/api/admin/flags/route.ts` and corresponding admin UI.
+- **Phase 5 – Controlled rollout and deprecation (planned):** progressive rollout from legacy NextAuth to Better Auth with rollback gates.
+
+## Governance Cross-Links (Auth + Payment)
+
+- Security policy linkage: `SECURITY.md` tracks mandatory auth/payment controls and log-redaction requirements.
+- Payment governance linkage: `RunAsh_AI_Pay.md` and `RUNASH_PAY_BUSINESS_IMPLEMENTATION.md` now reference this auth migration status so payment/business rollouts can account for auth readiness.
 
 ## Key Features Implemented
 
