@@ -499,3 +499,56 @@ All customer-scoped payment resources must pass an ownership check (`ensureCusto
 1. Revert this migration commit to restore `getServerSession(authOptions)` server checks.
 2. Restore NextAuth auth route handler wiring if Better Auth session verification fails in production.
 3. Re-run auth smoke tests for login, role-protected admin routes, and billing-protected APIs before reopening traffic.
+
+## Admin API authorization matrix (admin guard)
+
+All `app/api/admin/**` handlers now enforce a shared guard in `lib/auth-middleware.ts` via `requireAdminAuthorization(...)`.
+
+**Baseline requirement on every admin API route:**
+- `admin:access`
+
+**Route-specific requirements (least privilege):**
+
+| Route | Methods | Additional permissions |
+| --- | --- | --- |
+| `/api/admin/users` | `GET` | `users:read` |
+| `/api/admin/users` | `POST` | `users:write` |
+| `/api/admin/users/[userId]` | `GET` | `users:read` |
+| `/api/admin/users/[userId]` | `PUT` | `users:write` |
+| `/api/admin/users/[userId]` | `DELETE` | `users:delete` |
+| `/api/admin/users/[userId]/role` | `PUT` | `users:write` |
+| `/api/admin/users/[userId]/permissions` | `GET` | `users:read` |
+| `/api/admin/users/[userId]/permissions` | `POST`, `DELETE` | `users:write` |
+| `/api/admin/logs` | `GET` | `system:logs` |
+| `/api/admin/logs/analytics` | `GET` | `system:logs`, `admin:analytics` |
+| `/api/admin/logs/export` | `GET` | `system:logs` |
+| `/api/admin/analytics/auth` | `GET` | `admin:analytics` |
+| `/api/admin/analytics/auth/events` | `GET` | `admin:analytics` |
+| `/api/admin/security/metrics` | `GET` | `admin:analytics` |
+| `/api/admin/security/threats` | `GET` | `admin:analytics` |
+| `/api/admin/security/threats` | `POST` | `system:maintenance` |
+| `/api/admin/settings` | `GET`, `POST` | `admin:settings` |
+| `/api/admin/settings/[category]` | `GET` | `admin:settings` |
+| `/api/admin/performance` | `GET`, `POST` | `system:maintenance` |
+| `/api/admin/sso/organizations` | `POST` | `admin:settings` |
+| `/api/admin/email-analytics` | `GET` | `admin:analytics` |
+| `/api/admin/email-analytics/realtime` | `GET` | `admin:analytics` |
+| `/api/admin/email-delivery` | `GET` | `admin:analytics` |
+| `/api/admin/email-delivery/stats` | `GET` | `admin:analytics` |
+| `/api/admin/email-suppressions` | `GET` | `admin:analytics` |
+| `/api/admin/email-suppressions` | `POST`, `DELETE` | `admin:settings` |
+| `/api/admin/email-templates` | `GET` | `admin:analytics` |
+| `/api/admin/email-templates` | `POST` | `admin:settings` |
+| `/api/admin/email-templates/[id]` | `GET` | `admin:analytics` |
+| `/api/admin/email-templates/[id]` | `PUT`, `DELETE` | `admin:settings` |
+
+### Standardized denied responses
+
+For failed admin authorization, the guard returns:
+- `401 Unauthorized` when no valid session exists.
+- `403 Forbidden` when `admin:access` or route-specific permissions are missing.
+
+Both responses include:
+- JSON body with `error` and `requestId`
+- `x-request-id` and `x-correlation-id` headers
+- audit events emitted via API logging (`*.unauthorized` / `*.forbidden`)

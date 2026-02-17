@@ -1,8 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { RBACManager, DEFAULT_ROLES } from "@/lib/rbac"
-import { withAuth } from "@/lib/auth-middleware"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { z } from "zod"
-import { getServerAuthSession } from "@/lib/auth/session"
 
 const changeRoleSchema = z.object({
   role: z.enum([
@@ -15,13 +14,13 @@ const changeRoleSchema = z.object({
 })
 
 export async function PUT(request: NextRequest, { params }: { params: { userId: string } }) {
-  const authResult = await withAuth(request, {
-    requiredPermissions: ["users:write", "admin:access"],
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["users:write"],
+    auditEvent: "admin.users.role.update",
   })
-  if (authResult) return authResult
+  if (!auth.success) return auth.response
 
   try {
-    const session = await getServerAuthSession()
     const body = await request.json()
 
     const validationResult = changeRoleSchema.safeParse(body)
@@ -37,7 +36,7 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
 
     const { role } = validationResult.data
     const userId = Number.parseInt(params.userId)
-    const adminId = Number.parseInt(session!.user.id)
+    const adminId = auth.userId
 
     // Prevent users from changing their own role
     if (userId === adminId) {
@@ -45,7 +44,7 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
     }
 
     // Check if admin has permission to assign this role
-    if (role === DEFAULT_ROLES.SUPER_ADMIN && session!.user.role !== DEFAULT_ROLES.SUPER_ADMIN) {
+    if (role === DEFAULT_ROLES.SUPER_ADMIN && auth.session.user.role !== DEFAULT_ROLES.SUPER_ADMIN) {
       return NextResponse.json({ message: "Only super admins can assign super admin role" }, { status: 403 })
     }
 

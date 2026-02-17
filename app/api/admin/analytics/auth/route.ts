@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { AuthAnalytics } from "@/lib/auth-analytics"
 import { z } from "zod"
 import { logApiRouteError } from "@/lib/api/logging"
-import { getServerAuthSession } from "@/lib/auth/session"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
 
 const analyticsSchema = z.object({
   start: z
@@ -21,33 +21,26 @@ const analyticsSchema = z.object({
     }),
 })
 
-function withRequestHeaders(requestId: string) {
-  return {
-    headers: {
-      "x-request-id": requestId,
-      "x-correlation-id": requestId,
-    },
-  }
-}
-
 export async function GET(request: NextRequest) {
-  const requestId = request.headers.get("x-request-id") ?? request.headers.get("x-correlation-id") ?? crypto.randomUUID()
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:analytics"],
+    auditEvent: "admin.auth.analytics.read",
+  })
+  if (!auth.success) return auth.response
 
   try {
-    const session = await getServerAuthSession()
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized", requestId }, { status: 401, ...withRequestHeaders(requestId) })
-    }
-
     const { searchParams } = new URL(request.url)
     const params = Object.fromEntries(searchParams.entries())
     const { start, end } = analyticsSchema.parse(params)
 
     const analyticsData = await AuthAnalytics.getOverviewMetrics({ start, end })
 
-    return NextResponse.json({ requestId, ...analyticsData }, withRequestHeaders(requestId))
+    return NextResponse.json({ requestId: auth.requestId, ...analyticsData })
   } catch (error) {
-    logApiRouteError(request, "admin.auth.analytics.fetch_failed", error, { errorCode: "AUTH_ANALYTICS_FETCH_FAILED", requestId })
-    return NextResponse.json({ error: "Failed to fetch analytics", requestId }, { status: 500, ...withRequestHeaders(requestId) })
+    logApiRouteError(request, "admin.auth.analytics.fetch_failed", error, {
+      errorCode: "AUTH_ANALYTICS_FETCH_FAILED",
+      requestId: auth.requestId,
+    })
+    return NextResponse.json({ error: "Failed to fetch analytics", requestId: auth.requestId }, { status: 500 })
   }
 }

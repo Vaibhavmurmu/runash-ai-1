@@ -1,15 +1,15 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { EmailDeliveryTracker } from "@/lib/email-delivery"
-import { requirePermission } from "@/lib/auth-middleware"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
 
 export async function GET(request: NextRequest) {
-  try {
-    // Check admin permissions
-    const authResult = await requirePermission(request, "view_email_analytics")
-    if (!authResult.success) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
-    }
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:analytics"],
+    auditEvent: "admin.email.delivery.read",
+  })
+  if (!auth.success) return auth.response
 
+  try {
     const { searchParams } = new URL(request.url)
     const campaign_id = searchParams.get("campaign_id") ? Number.parseInt(searchParams.get("campaign_id")!) : undefined
     const template_id = searchParams.get("template_id") ? Number.parseInt(searchParams.get("template_id")!) : undefined
@@ -35,11 +35,7 @@ export async function GET(request: NextRequest) {
       success: true,
       data: result.deliveries,
       total: result.total,
-      pagination: {
-        limit,
-        offset,
-        hasMore: offset + limit < result.total,
-      },
+      pagination: { limit, offset, hasMore: offset + limit < result.total },
     })
   } catch (error) {
     console.error("Error fetching email deliveries:", error)

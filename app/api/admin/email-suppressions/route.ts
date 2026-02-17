@@ -1,15 +1,15 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { EmailBounceHandler } from "@/lib/email-bounce-handler"
-import { requirePermission } from "@/lib/auth-middleware"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
 
 export async function GET(request: NextRequest) {
-  try {
-    // Check admin permissions
-    const authResult = await requirePermission(request, "manage_email_suppressions")
-    if (!authResult.success) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
-    }
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:analytics"],
+    auditEvent: "admin.email.suppressions.read",
+  })
+  if (!auth.success) return auth.response
 
+  try {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get("type") || undefined
     const search = searchParams.get("search") || undefined
@@ -17,23 +17,13 @@ export async function GET(request: NextRequest) {
     const limit = searchParams.get("limit") ? Number.parseInt(searchParams.get("limit")!) : 50
     const offset = searchParams.get("offset") ? Number.parseInt(searchParams.get("offset")!) : 0
 
-    const result = await EmailBounceHandler.getSuppressions({
-      type,
-      search,
-      is_permanent,
-      limit,
-      offset,
-    })
+    const result = await EmailBounceHandler.getSuppressions({ type, search, is_permanent, limit, offset })
 
     return NextResponse.json({
       success: true,
       data: result.suppressions,
       total: result.total,
-      pagination: {
-        limit,
-        offset,
-        hasMore: offset + limit < result.total,
-      },
+      pagination: { limit, offset, hasMore: offset + limit < result.total },
     })
   } catch (error) {
     console.error("Error fetching suppressions:", error)
@@ -42,13 +32,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    // Check admin permissions
-    const authResult = await requirePermission(request, "manage_email_suppressions")
-    if (!authResult.success) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
-    }
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:settings"],
+    auditEvent: "admin.email.suppressions.create",
+  })
+  if (!auth.success) return auth.response
 
+  try {
     const body = await request.json()
     const { email, type, reason } = body
 
@@ -56,21 +46,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Email and type are required" }, { status: 400 })
     }
 
-    const success = await EmailBounceHandler.addSuppression({
-      email,
-      type,
-      reason,
-      is_permanent: true,
-    })
+    const success = await EmailBounceHandler.addSuppression({ email, type, reason, is_permanent: true })
 
     if (!success) {
       return NextResponse.json({ error: "Failed to add suppression" }, { status: 500 })
     }
 
-    return NextResponse.json({
-      success: true,
-      message: "Suppression added successfully",
-    })
+    return NextResponse.json({ success: true, message: "Suppression added successfully" })
   } catch (error) {
     console.error("Error adding suppression:", error)
     return NextResponse.json({ error: "Failed to add suppression" }, { status: 500 })
@@ -78,13 +60,13 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  try {
-    // Check admin permissions
-    const authResult = await requirePermission(request, "manage_email_suppressions")
-    if (!authResult.success) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
-    }
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:settings"],
+    auditEvent: "admin.email.suppressions.delete",
+  })
+  if (!auth.success) return auth.response
 
+  try {
     const { searchParams } = new URL(request.url)
     const email = searchParams.get("email")
 
@@ -98,10 +80,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Suppression not found" }, { status: 404 })
     }
 
-    return NextResponse.json({
-      success: true,
-      message: "Suppression removed successfully",
-    })
+    return NextResponse.json({ success: true, message: "Suppression removed successfully" })
   } catch (error) {
     console.error("Error removing suppression:", error)
     return NextResponse.json({ error: "Failed to remove suppression" }, { status: 500 })

@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { AuthLogger } from "@/lib/auth-logger"
 import { z } from "zod"
-import { getServerAuthSession } from "@/lib/auth/session"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
 
 const analyticsSchema = z.object({
   start: z
@@ -21,12 +21,13 @@ const analyticsSchema = z.object({
 })
 
 export async function GET(request: NextRequest) {
-  try {
-    const session = await getServerAuthSession()
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["system:logs", "admin:analytics"],
+    auditEvent: "admin.logs.analytics.read",
+  })
+  if (!auth.success) return auth.response
 
+  try {
     const { searchParams } = new URL(request.url)
     const params = Object.fromEntries(searchParams.entries())
     const { start, end } = analyticsSchema.parse(params)

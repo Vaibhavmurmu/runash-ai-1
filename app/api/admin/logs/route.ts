@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { AuthLogger, type LogFilters } from "@/lib/auth-logger"
 import { z } from "zod"
-import { getServerAuthSession } from "@/lib/auth/session"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
 
 const logsSchema = z.object({
   page: z
@@ -37,15 +37,13 @@ const logsSchema = z.object({
 })
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["system:logs"],
+    auditEvent: "admin.logs.read",
+  })
+  if (!auth.success) return auth.response
+
   try {
-    const session = await getServerAuthSession()
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    // Check admin permissions
-    // This would typically check if user has admin role/permissions
-
     const { searchParams } = new URL(request.url)
     const params = Object.fromEntries(searchParams.entries())
     const validatedParams = logsSchema.parse(params)
