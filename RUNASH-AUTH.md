@@ -621,11 +621,17 @@ Protected admin pages now use shared server guard `requireAdminUiRouteAccess(...
 
 ### Standardized denied responses
 
+Audit result for `app/api/admin/**/route.ts`:
+- All current admin API handlers use `requireAdminAuthorization(...)` with explicit route permissions.
+- No handlers were found that only check authentication without role/permission validation.
+
 For failed admin authorization, the guard returns:
 - `401 Unauthorized` when no valid session exists.
 - `403 Forbidden` when `admin:access` or route-specific permissions are missing.
 
 Both responses include:
-- JSON body with `error` and `requestId`
+- JSON body with a consistent shape: `{ success: false, error: { code, message }, requestId }`
 - `x-request-id` and `x-correlation-id` headers
 - audit events emitted via API logging (`*.unauthorized` / `*.forbidden`)
+
+For successful admin authorization, the guard also emits `*.allowed` audit events with request metadata (route, method, requestId, and userId) without request-body payloads.

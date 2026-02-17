@@ -18,7 +18,11 @@ export interface AuthMiddlewareOptions {
 function authErrorResponse(request: NextRequest, status: 401 | 403, message: string, requestId: string) {
   return NextResponse.json(
     {
-      error: message,
+      success: false,
+      error: {
+        code: status === 401 ? "UNAUTHORIZED" : "FORBIDDEN",
+        message,
+      },
       requestId,
     },
     {
@@ -141,6 +145,13 @@ export async function requireAdminAuthorization(
       response: authErrorResponse(request, 403, "Forbidden", requestId),
     }
   }
+
+  logApiEvent("info", `${options.auditEvent}.allowed`, {
+    requestId,
+    route: request.nextUrl.pathname,
+    method: request.method,
+    userId: token.id,
+  })
 
   return {
     success: true,
