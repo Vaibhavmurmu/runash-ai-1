@@ -175,3 +175,17 @@ RunAsh account-linking now follows an explicit deny-by-default model for OAuth i
 - Payment/business release validation must confirm auth readiness against that status before enabling payment-surface changes.
 - Governance cross-reference for release docs: `RunAsh_AI_Pay.md` and `RUNASH_PAY_BUSINESS_IMPLEMENTATION.md`.
 
+
+## Implemented vs Planned alignment (2026-02 refresh)
+
+### Implemented
+- Admin management endpoints for roles, permissions, sessions, audit logs, and feature flags are present with request-schema validation and admin authorization checks.
+- Migration helper support exists in `lib/migration-helpers.ts` to provision admin auth governance tables in Neon-backed deployments.
+- Database URL resolution is standardized in `lib/db.ts` with `DATABASE_URL` as the primary connection source.
+
+### Planned
+- Better Auth full route-surface replacement and Drizzle-managed schema migrations remain planned and are tracked in `RUNASH-AUTH.md`.
+
+## Database environment policy
+
+For security and operational consistency, production should define `DATABASE_URL` as the canonical Neon connection string. Compatibility fallbacks (`NEON_DATABASE_URL`, `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `POSTGRES_URL_NON_POOLING`, `runash_POSTGRES_URL`, `runash_POSTGRES_URL_NON_POOLING`) are transitional and should not replace `DATABASE_URL` as the primary source.

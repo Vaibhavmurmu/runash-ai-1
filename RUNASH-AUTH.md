@@ -97,7 +97,7 @@ Repository audit status (checked against the current tree):
 | `app/api/auth/signout/route.ts` | Planned | Sign-out handled through existing NextAuth/client flow. |
 | `app/api/auth/request-password-reset/route.ts` | Planned | Existing route is `app/api/auth/forgot-password/route.ts`. |
 | `app/api/auth/reset-password/route.ts` | Implemented | Present and active. |
-| `app/api/admin/flags/route.ts` | Planned | Feature-flag admin API route is documented target, not implemented yet. |
+| `app/api/admin/flags/route.ts` | Implemented | Admin feature-flag list/upsert route is now present. |
 | `app/api/db/migrate/route.ts` | Planned | Migration endpoint not present. |
 | `app/dashboard/page.tsx` | Implemented | Present. |
 | `app/profile/page.tsx` | Planned | Dynamic API profile routes exist; page route at this path does not. |
@@ -106,18 +106,18 @@ Repository audit status (checked against the current tree):
 | `app/forgot-password/page.tsx` | Implemented | Present. |
 | `app/reset-password/page.tsx` | Implemented | Present. |
 | `app/verify-email/page.tsx` | Implemented | Present. |
-| `db/schema.ts` | Planned | Drizzle schema file at this path is not in repository. |
+| `db/schema.ts` | Implemented (placeholder) | Present as rollout anchor; SQL migrations remain source-of-truth. |
 | `db/migrations/` | Planned | Drizzle migration directory at this path is not in repository. |
 | `lib/auth.ts` | Implemented | Present. |
 | `lib/auth-client.ts` | Planned | No client wrapper at this path. |
 | `lib/auth-helpers.ts` | Implemented | Present. |
 | `lib/db.ts` | Implemented | Present. |
 | `lib/feature-flags.ts` | Implemented | Present. |
-| `lib/migration-helpers.ts` | Planned | Not implemented at this path. |
+| `lib/migration-helpers.ts` | Implemented | Helper provisions auth/admin migration tables for Neon SQL path. |
 | `hooks/use-auth.ts` | Planned | Hook does not exist at this path. |
 | `components/auth-provider.tsx` | Planned | Provider component does not exist at this path. |
 | `scripts/init-db.ts` | Planned | Initialization script does not exist at this path. |
-| `drizzle.config.ts` | Planned | Drizzle config file not present. |
+| `drizzle.config.ts` | Implemented (placeholder) | Present with DATABASE_URL/NEON_DATABASE_URL resolution for phased adoption. |
 | `middleware.ts` | Implemented | Present. |
 
 ## Endpoint Audit (Documented vs Current)
@@ -128,7 +128,7 @@ Repository audit status (checked against the current tree):
 | `POST /api/auth/sign-in/email` | Planned | NextAuth sign-in flow via `/api/auth/[...nextauth]` |
 | `GET /api/auth/session` | Planned | NextAuth session API (`/api/auth/[...nextauth]`) |
 | `POST /api/db/migrate` | Planned | No public migration route currently exposed |
-| `GET /admin/flags` | Planned | No admin feature-flag page/route currently exposed |
+| `GET /api/admin/flags` | Implemented | Feature-flag admin API route with authorization and validation |
 
 ## Current Status
 
@@ -139,9 +139,9 @@ Repository audit status (checked against the current tree):
 
 ### Planned migration phases
 
-- **Phase 2 – Better Auth + Drizzle bootstrap (planned):** add `drizzle.config.ts`, `db/schema.ts`, and migration artifacts.
+- **Phase 2 – Better Auth + Drizzle bootstrap (in progress):** config/schema anchors added; full migration artifacts and runtime adoption remain planned.
 - **Phase 3 – Better Auth route surface (planned):** add Better Auth handler/session/refresh/signout/reset route structure, then migrate clients.
-- **Phase 4 – Feature flag administration (planned):** add `app/api/admin/flags/route.ts` and corresponding admin UI.
+- **Phase 4 – Feature flag administration (in progress):** admin API route exists; admin UI remains planned.
 - **Phase 5 – Controlled rollout and deprecation (planned):** progressive rollout from legacy NextAuth to Better Auth with rollback gates.
 
 ## Governance Cross-Links (Auth + Payment)
@@ -635,3 +635,33 @@ Both responses include:
 - audit events emitted via API logging (`*.unauthorized` / `*.forbidden`)
 
 For successful admin authorization, the guard also emits `*.allowed` audit events with request metadata (route, method, requestId, and userId) without request-body payloads.
+
+## Implemented vs Planned (2026-02 refresh)
+
+### Implemented
+- `app/api/admin/flags/route.ts` now exists for admin feature-flag listing/upsert with schema validation and admin authorization.
+- `lib/migration-helpers.ts` now exists and can provision admin auth support tables (`admin_roles`, `admin_permissions`, `admin_role_permissions`, `admin_audit_logs`, `feature_flags`) in Neon.
+- Admin management CRUD route surface now includes:
+  - `app/api/admin/roles` and `app/api/admin/roles/:id`
+  - `app/api/admin/permissions` and `app/api/admin/permissions/:id`
+  - `app/api/admin/sessions` and `app/api/admin/sessions/:id`
+  - `app/api/admin/audit-logs` and `app/api/admin/audit-logs/:id`
+
+### Planned
+- Better Auth catch-all and session route replacement (`/api/auth/route.ts`, dedicated refresh route) remain planned.
+- Drizzle-first migration artifacts (`db/schema.ts`, `db/migrations/`, `drizzle.config.ts`) remain planned and are not required for current Neon SQL execution paths.
+
+## DATABASE_URL and Neon path consistency
+
+RunAsh auth and admin APIs now follow this resolution order for server-side SQL connection strings:
+1. `DATABASE_URL` (primary)
+2. `NEON_DATABASE_URL`
+3. `POSTGRES_URL`
+4. `POSTGRES_PRISMA_URL`
+5. `POSTGRES_URL_NON_POOLING`
+6. `runash_POSTGRES_URL`
+7. `runash_POSTGRES_URL_NON_POOLING`
+
+Deployment recommendation:
+- Always set `DATABASE_URL` to the canonical Neon connection string.
+- Use fallback variables only for compatibility while migrating older deployments.

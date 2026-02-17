@@ -1781,3 +1781,12 @@ Risk and rollback:
 - Monthly usage reads now sum matching aggregate rows to avoid undercounting in environments that previously allowed multiple `NULL subscription_id` rows.
 - Rollback plan: remove the null-safe unique index and revert to the previous conflict target if downstream consumers depend on per-row fragmentation behavior.
 
+
+## Implemented vs Planned (Operational clarity update)
+
+### Implemented
+- Admin-management CRUD APIs now exist for users, roles, permissions, sessions, audit logs, and feature-flag administration.
+- Current payment/business release gates can rely on these implemented admin surfaces for role/permission governance and auditability.
+
+### Planned
+- Full Better Auth route replacement and Drizzle migration artifact rollout remain planned phases and are not prerequisites for current additive payment API flows.
