@@ -132,6 +132,33 @@ middleware.ts                         # Next.js middleware
 
 ## Key Features Implemented
 
+## OAuth account-linking policy (2026-02)
+
+RunAsh now enforces a stricter OAuth account-linking baseline in `lib/auth.ts`.
+
+### Policy requirements
+
+1. **Dangerous automatic linking is disabled** for configured OAuth providers (`allowDangerousEmailAccountLinking: false`).
+2. **Verified email is required** before a provider account can be linked to an existing RunAsh user.
+3. **Provider subject ownership is enforced**:
+   - A provider `subject` (`accountId`) can only be linked to one RunAsh user.
+   - If a provider subject is already linked to another user, the new link attempt is denied.
+4. **Provider/issuer consistency** is enforced by requiring a stable provider identifier (`providerId`) and subject pair (`providerId + accountId`) for linking decisions.
+5. **Optional step-up verification for risky links**:
+   - Set `AUTH_ACCOUNT_LINK_STEP_UP_REQUIRED=true` to require step-up for all link attempts.
+   - Or set `AUTH_RISKY_ACCOUNT_LINK_PROVIDERS=<csv>` to require step-up only for targeted providers.
+   - Step-up is validated via `x-runash-link-step-up: verified`.
+6. **Audit logging** captures account-link attempts, denials, and allows without storing OAuth tokens or raw account identifiers.
+
+### Migration impact
+
+- Existing linked accounts remain valid.
+- New links can now be denied when:
+  - the RunAsh user email is unverified,
+  - the provider subject already belongs to a different user,
+  - required step-up verification is missing.
+- Integrations that trigger link flows should add step-up verification headers when strict mode is enabled.
+
 ### Authentication Methods
 - Email + Password (with 8-char minimum)
 - Google OAuth
