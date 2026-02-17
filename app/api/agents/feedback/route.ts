@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
 import { z } from "zod"
+import { getServerAuthSession } from "@/lib/auth/session"
 
-import { authOptions } from "@/lib/auth"
 import { resolveRequestId } from "@/lib/api/response"
 import { createFeedbackRecord } from "@/lib/repositories/agent-orchestration"
 
@@ -23,7 +22,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Agent APIs disabled", requestId }, { status: 404 })
   }
 
-  const session = await getServerSession(authOptions)
+  const session = await getServerAuthSession()
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized", requestId }, { status: 401 })
   }

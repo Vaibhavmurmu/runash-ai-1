@@ -133,3 +133,9 @@ Operational guidance:
 - Production deployments must provide explicit encryption key material through `CHECKOUT_PROFILE_ENCRYPTION_KEY` (or approved auth-secret fallback).
 - Weak implicit defaults are not permitted in production environments.
 - Payment/auth logs must avoid sensitive payload fields and raw credentials/card data.
+
+## 2026-02 auth runtime migration security note
+
+- Middleware and API auth checks now resolve from Better Auth session validation and shared session extraction helpers.
+- Sensitive token material is not logged in migration paths; only role/scope authorization outcomes are used for control flow.
+- Migration requires operational verification that `better-auth.session-token` is forwarded intact through edge/network layers.

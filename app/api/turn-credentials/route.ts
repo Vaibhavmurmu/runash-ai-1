@@ -1,8 +1,7 @@
 import * as crypto from "crypto"
-import { getServerSession } from "next-auth"
 import { type NextRequest, NextResponse } from "next/server"
+import { getServerAuthSession } from "@/lib/auth/session"
 
-import { authOptions } from "@/lib/auth"
 import { rateLimit } from "@/lib/rate-limit"
 
 const TURN_CREDENTIAL_TTL_SECONDS = 10 * 60 // 10 minutes for browser sessions
@@ -24,7 +23,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "TURN server URL is not configured" }, { status: 500 })
     }
 
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
     const userId = session?.user?.id
 
     if (!userId) {

@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
-import { getToken } from "next-auth/jwt"
 import { logApiEvent } from "@/lib/api/logging"
-import { RBACManager } from "@/lib/rbac"
+
+function hasAuthSessionCookie(request: NextRequest): boolean {
+  return Boolean(
+    request.cookies.get("better-auth.session-token")?.value ||
+      request.cookies.get("__Secure-better-auth.session-token")?.value,
+  )
+}
 
 // Security headers
 const securityHeaders = {
@@ -130,7 +135,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  const token = await getToken({ req: request })
+  const isAuthenticated = hasAuthSessionCookie(request)
 
   // Public routes that don't require authentication
   const publicRoutes = [
@@ -179,16 +184,6 @@ export async function middleware(request: NextRequest) {
     "/api/users/search", // Public user search
   ]
 
-  // Protected routes that require specific permissions
-  const protectedRoutes = {
-    "/admin": ["admin:access"],
-    "/dashboard": [], // Just requires authentication
-    "/profile": [], // Just requires authentication
-    "/settings": [], // Just requires authentication
-    "/api/admin": ["admin:access"],
-    "/api/profile": [], // Just requires authentication
-  }
-
   // Check if the route is public
   const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + "/"))
 
@@ -196,14 +191,14 @@ export async function middleware(request: NextRequest) {
 
   if (isPublicRoute || isPublicApiRoute) {
     // Redirect authenticated users away from auth pages
-    if (token && (pathname === "/login" || pathname === "/signup" || pathname === "/get-started")) {
+    if (isAuthenticated && (pathname === "/login" || pathname === "/signup" || pathname === "/get-started")) {
       return NextResponse.redirect(new URL("/dashboard", request.url))
     }
     return response
   }
 
   // Check authentication for protected routes
-  if (!token) {
+  if (!isAuthenticated) {
     if (pathname.startsWith("/api/")) {
       return new NextResponse(JSON.stringify({ message: "Unauthorized" }), {
         status: 401,
@@ -213,32 +208,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url))
   }
 
-  // Check permissions for protected routes
-  for (const [route, permissions] of Object.entries(protectedRoutes)) {
-    if (pathname.startsWith(route)) {
-      if (permissions.length > 0) {
-        const userId = Number.parseInt(token.sub!)
-        const hasPermission = await RBACManager.hasAllPermissions(userId, permissions)
-
-        if (!hasPermission) {
-          if (pathname.startsWith("/api/")) {
-            return new NextResponse(JSON.stringify({ message: "Insufficient permissions" }), {
-              status: 403,
-              headers: { "Content-Type": "application/json" },
-            })
-          }
-          return NextResponse.redirect(new URL("/unauthorized", request.url))
-        }
-      }
-      break
-    }
-  }
-
-  // Admin route protection
-  if (pathname.startsWith("/admin") && token.role !== "admin" && token.role !== "super_admin") {
-    return NextResponse.redirect(new URL("/unauthorized", request.url))
-  }
-
   // Log security events for audit
   if (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) {
     logApiEvent("info", "security.admin_access", {
@@ -246,7 +215,7 @@ export async function middleware(request: NextRequest) {
       route: pathname,
       method: request.method,
       details: {
-        actorRole: token.role,
+        actorRole: "unknown",
         accessScope: pathname.startsWith("/api/") ? "api" : "ui",
       },
     })

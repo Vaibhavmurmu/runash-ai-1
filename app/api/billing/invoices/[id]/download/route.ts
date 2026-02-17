@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-import { respondError, respondSuccess, resolveRequestId } from "@/lib/api/envelope"
+import { respondError, respondSuccess } from "@/lib/api/envelope"
+import { resolveRequestId } from "@/lib/api/response"
 import { logApiRouteError } from "@/lib/api/logging"
 import { requireScopedBillingAccess } from "@/lib/billing-auth"
 import { Database } from "@/lib/database"

@@ -1758,3 +1758,9 @@ Risk and rollback:
 - Rollback:
   1. Revert bank account `PATCH/DELETE` route handlers and portal UI action wiring.
   2. Keep `archived_at` column as additive schema metadata (safe), or stop consuming it in UI badges.
+
+## 2026-02 business payment auth reliability note
+
+- Business payment endpoints continue to enforce existing role/scope checks, now sourced from canonical Better Auth-backed session extraction.
+- Backward compatibility preserved for payment payload/API contracts; only authentication runtime plumbing changed.
+- Operational mitigation: if business billing auth anomalies appear, rollback by reverting auth migration and restoring legacy server session verification.

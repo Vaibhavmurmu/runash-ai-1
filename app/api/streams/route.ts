@@ -1,16 +1,15 @@
 import { type NextRequest } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { logApiEvent } from "@/lib/api/logging"
 import { Database } from "@/lib/database"
+import { getServerAuthSession } from "@/lib/auth/session"
 
 const ROUTE = "/api/streams"
 
 export async function POST(req: NextRequest) {
   const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID()
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
     if (!session) {
       return respondError(req, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401, requestId })
     }
@@ -54,7 +53,7 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID()
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
     if (!session) {
       return respondError(req, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401, requestId })
     }
@@ -76,7 +75,7 @@ export async function GET(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID()
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
     if (!session) {
       return respondError(req, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401, requestId })
     }

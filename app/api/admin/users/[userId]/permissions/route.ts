@@ -1,8 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { RBACManager } from "@/lib/rbac"
 import { withAuth } from "@/lib/auth-middleware"
+import { getServerAuthSession } from "@/lib/auth/session"
 
 export async function GET(request: NextRequest, { params }: { params: { userId: string } }) {
   const authResult = await withAuth(request, {
@@ -28,7 +27,7 @@ export async function POST(request: NextRequest, { params }: { params: { userId:
   if (authResult) return authResult
 
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
     const { permission } = await request.json()
     const userId = Number.parseInt(params.userId)
     const adminId = Number.parseInt(session!.user.id)
@@ -49,7 +48,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { userI
   if (authResult) return authResult
 
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
     const { permission } = await request.json()
     const userId = Number.parseInt(params.userId)
     const adminId = Number.parseInt(session!.user.id)

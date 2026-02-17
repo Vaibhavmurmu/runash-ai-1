@@ -1,9 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { AuthAnalytics } from "@/lib/auth-analytics"
 import { z } from "zod"
 import { logApiRouteError } from "@/lib/api/logging"
+import { getServerAuthSession } from "@/lib/auth/session"
 
 const analyticsSchema = z.object({
   start: z
@@ -35,7 +34,7 @@ export async function GET(request: NextRequest) {
   const requestId = request.headers.get("x-request-id") ?? request.headers.get("x-correlation-id") ?? crypto.randomUUID()
 
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized", requestId }, { status: 401, ...withRequestHeaders(requestId) })
     }

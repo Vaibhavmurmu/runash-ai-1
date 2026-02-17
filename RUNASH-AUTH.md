@@ -453,3 +453,20 @@ For payment and billing routes, role checks are enforced with explicit action cl
 
 All customer-scoped payment resources must pass an ownership check (`ensureCustomerScopedAccess`) that validates user and organization claims from the authenticated server session.
 
+
+## 2026-02 Better Auth canonical runtime migration
+
+### What changed
+- Server-side auth runtime is now canonicalized on Better Auth (`lib/auth.ts`) for session validation in middleware and API routes.
+- API routes now use shared server session helper (`lib/auth/session.ts`) for uniform `userId`, `role`, and `organizationId` extraction.
+- Legacy NextAuth server-session reads (`getServerSession(authOptions)`) were removed from API route authorization paths.
+
+### Cookie/session key migration notes
+- Previous runtime key: `next-auth.session-token`.
+- Canonical runtime key: `better-auth.session-token`.
+- During migration, validate load-balancer/proxy cookie forwarding allows `better-auth.session-token` for all protected route paths.
+
+### Rollback plan
+1. Revert this migration commit to restore `getServerSession(authOptions)` server checks.
+2. Restore NextAuth auth route handler wiring if Better Auth session verification fails in production.
+3. Re-run auth smoke tests for login, role-protected admin routes, and billing-protected APIs before reopening traffic.

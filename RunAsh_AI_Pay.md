@@ -1063,3 +1063,9 @@ Compatibility and rollout notes:
 Risk/rollback notes:
 - Risk: low-medium (additive API + stricter mutation guards on existing flows).
 - Rollback: revert `/api/v1/payment/profile/bank-accounts/[id]` route and UI action handlers; retain additive `archived_at` column (non-breaking) or stop writing it.
+
+## 2026-02 auth runtime migration impact on AI Pay
+
+- Payment and billing authorization paths now depend on Better Auth session resolution through shared auth session helpers.
+- No payment contract field names or API signatures were changed in this auth migration.
+- Rollback for payment-impacting auth regressions: revert auth runtime migration commit and restore prior NextAuth session guards.
