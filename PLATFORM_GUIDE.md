@@ -482,3 +482,17 @@ All routes are under `/api/editor/**` and are authenticated per user ownership.
 ### Persistence
 
 SQL migrations for editor persistence are located in `scripts/sql/2026-02-13_create_editor_domain_tables.sql` and include ownership (`owner_id`) and timestamp tracking (`created_at`, `updated_at`) for all editor entities.
+
+
+
+## Email Delivery Safety Layer
+
+RunAsh email sends now support a safety gate before provider delivery:
+
+- `EMAIL_SAFE_MODE=true` blocks non-allowlisted recipients.
+- `EMAIL_TEST_RECIPIENTS=comma,separated,list` defines the allowlist for safe mode.
+- `EMAIL_DRY_RUN=true` skips provider sends while preserving delivery tracking in `pending` simulated state.
+- `EMAIL_SAFE_SINK_RECIPIENT` optionally rewrites non-allowlisted recipients to a sink mailbox.
+
+For API surfaces that handle safety policy exceptions, blocked sends return an explicit payload with `error: "EMAIL_SAFETY_BLOCKED"`.
+

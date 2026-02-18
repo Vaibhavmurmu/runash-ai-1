@@ -3,6 +3,101 @@ import { EmailBounceHandler } from "./email-bounce-handler"
 import { triggerDeliveryStatusEvent } from "./email-realtime"
 import { type EmailAttachment, sendWithEmailProvider } from "./email-provider"
 
+export interface EmailSafetyPolicyPayload {
+  error: "EMAIL_SAFETY_BLOCKED"
+  message: string
+  policy: {
+    safeMode: boolean
+    dryRun: boolean
+    recipient: string
+    allowlistedRecipients: string[]
+    sinkRecipient?: string
+  }
+}
+
+export class EmailSafetyPolicyError extends Error {
+  readonly statusCode = 403
+  readonly payload: EmailSafetyPolicyPayload
+
+  constructor(payload: EmailSafetyPolicyPayload) {
+    super(payload.message)
+    this.name = "EmailSafetyPolicyError"
+    this.payload = payload
+  }
+}
+
+function parseBooleanEnv(value: string | undefined, fallback = false): boolean {
+  if (value === undefined) return fallback
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase())
+}
+
+function parseRecipientList(value: string | undefined): string[] {
+  if (!value) return []
+  return value
+    .split(",")
+    .map((recipient) => recipient.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+export function getEmailSafetyConfig() {
+  const safeMode = parseBooleanEnv(process.env.EMAIL_SAFE_MODE, false)
+  const dryRun = parseBooleanEnv(process.env.EMAIL_DRY_RUN, false)
+  const allowlistedRecipients = parseRecipientList(process.env.EMAIL_TEST_RECIPIENTS)
+  const sinkRecipient = process.env.EMAIL_SAFE_SINK_RECIPIENT?.trim().toLowerCase() || undefined
+
+  return {
+    safeMode,
+    dryRun,
+    allowlistedRecipients,
+    sinkRecipient,
+  }
+}
+
+export function applyEmailSafetyPolicy(recipientInput: string | string[]) {
+  const config = getEmailSafetyConfig()
+  const recipients = (Array.isArray(recipientInput) ? recipientInput : [recipientInput]).map((recipient) => recipient.trim())
+
+  if (!config.safeMode) {
+    return {
+      recipients,
+      rewritten: false,
+      config,
+    }
+  }
+
+  const unauthorizedRecipients = recipients.filter(
+    (recipient) => !config.allowlistedRecipients.includes(recipient.toLowerCase()),
+  )
+
+  if (unauthorizedRecipients.length > 0) {
+    if (config.sinkRecipient) {
+      return {
+        recipients: [config.sinkRecipient],
+        rewritten: true,
+        config,
+      }
+    }
+
+    throw new EmailSafetyPolicyError({
+      error: "EMAIL_SAFETY_BLOCKED",
+      message: "Email blocked by delivery safety policy",
+      policy: {
+        safeMode: config.safeMode,
+        dryRun: config.dryRun,
+        recipient: unauthorizedRecipients.join(", "),
+        allowlistedRecipients: config.allowlistedRecipients,
+        sinkRecipient: config.sinkRecipient,
+      },
+    })
+  }
+
+  return {
+    recipients,
+    rewritten: false,
+    config,
+  }
+}
+
 export async function sendEmail(options: {
   to: string
   subject: string
@@ -17,7 +112,10 @@ export async function sendEmail(options: {
   recipient_name?: string
   track_delivery?: boolean
 }) {
-  const validation = await EmailBounceHandler.validateEmailForSending(options.to)
+  const safeDelivery = applyEmailSafetyPolicy(options.to)
+  const targetRecipient = safeDelivery.recipients[0] ?? options.to
+
+  const validation = await EmailBounceHandler.validateEmailForSending(targetRecipient)
   if (!validation.canSend) {
     throw new Error(`Cannot send email: ${validation.reason} (${validation.suppressionType})`)
   }
@@ -28,7 +126,7 @@ export async function sendEmail(options: {
   if (options.track_delivery !== false) {
     try {
       const tracking = await EmailDeliveryTracker.createDelivery({
-        recipient_email: options.to,
+        recipient_email: targetRecipient,
         recipient_name: options.recipient_name,
         user_id: options.user_id,
         subject: options.subject,
@@ -47,7 +145,7 @@ export async function sendEmail(options: {
   if (message_id && options.track_delivery !== false) {
     html = EmailDeliveryTracker.addTrackingToEmail(html, message_id)
 
-    const unsubscribeUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/email/unsubscribe?email=${encodeURIComponent(options.to)}`
+    const unsubscribeUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/email/unsubscribe?email=${encodeURIComponent(targetRecipient)}`
     const unsubscribeFooter = `
       <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #666; font-size: 12px;">
         <p>
@@ -69,15 +167,41 @@ export async function sendEmail(options: {
     ...(message_id
       ? {
           "X-Message-ID": message_id,
-          "List-Unsubscribe": `<${process.env.NEXT_PUBLIC_APP_URL}/api/email/unsubscribe?email=${encodeURIComponent(options.to)}>`,
+          "List-Unsubscribe": `<${process.env.NEXT_PUBLIC_APP_URL}/api/email/unsubscribe?email=${encodeURIComponent(targetRecipient)}>`,
         }
       : {}),
   }
 
   try {
+    if (safeDelivery.config.dryRun) {
+      if (message_id) {
+        await EmailDeliveryTracker.updateDeliveryStatus(message_id, "pending", {
+          tracking_data: {
+            dry_run: true,
+            simulated: true,
+            safe_mode: safeDelivery.config.safeMode,
+            rewritten_recipient: safeDelivery.rewritten ? targetRecipient : undefined,
+            original_recipient: options.to,
+          },
+        })
+
+        triggerDeliveryStatusEvent(message_id, targetRecipient, "pending", {
+          simulated: true,
+          dry_run: true,
+        })
+      }
+
+      return {
+        success: true,
+        simulated: true,
+        message_id,
+        delivery_id,
+      }
+    }
+
     const providerResult = await sendWithEmailProvider({
       from: options.from,
-      to: options.to,
+      to: targetRecipient,
       subject: options.subject,
       html,
       text: options.text,
@@ -90,7 +214,7 @@ export async function sendEmail(options: {
         tracking_data: { provider_response: providerResult },
       })
 
-      triggerDeliveryStatusEvent(message_id, options.to, "sent", {
+      triggerDeliveryStatusEvent(message_id, targetRecipient, "sent", {
         provider_response: providerResult,
       })
     }
@@ -104,7 +228,7 @@ export async function sendEmail(options: {
         error_message: error instanceof Error ? error.message : "Unknown error",
       })
 
-      triggerDeliveryStatusEvent(message_id, options.to, "failed", {
+      triggerDeliveryStatusEvent(message_id, targetRecipient, "failed", {
         error_message: error instanceof Error ? error.message : "Unknown error",
       })
     }

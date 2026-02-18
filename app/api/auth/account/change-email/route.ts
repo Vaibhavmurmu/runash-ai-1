@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto"
 import { z } from "zod"
 import { getServerAuthSession } from "@/lib/auth/session"
 import { ensureAccountLifecycleTables } from "@/lib/auth/account-lifecycle"
-import { sendEmail } from "@/lib/email"
+import { EmailSafetyPolicyError, sendEmail } from "@/lib/email"
 import { sql } from "@/lib/db"
 
 const requestSchema = z.object({ newEmail: z.string().email() })
@@ -31,11 +31,19 @@ export async function POST(request: NextRequest) {
   `
 
   const confirmUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/auth/error?mode=confirm-email-change&token=${token}`
-  await sendEmail({
-    to: parsed.data.newEmail,
-    subject: "Confirm your new RunAsh email",
-    html: `<p>Confirm your new email by opening this link:</p><p><a href="${confirmUrl}">${confirmUrl}</a></p>`,
-  })
+  try {
+    await sendEmail({
+      to: parsed.data.newEmail,
+      subject: "Confirm your new RunAsh email",
+      html: `<p>Confirm your new email by opening this link:</p><p><a href="${confirmUrl}">${confirmUrl}</a></p>`,
+    })
+  } catch (error) {
+    if (error instanceof EmailSafetyPolicyError) {
+      return NextResponse.json(error.payload, { status: error.statusCode })
+    }
+
+    throw error
+  }
 
   return NextResponse.json({ message: "Confirmation link sent" })
 }

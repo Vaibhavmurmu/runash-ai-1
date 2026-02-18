@@ -16,6 +16,13 @@ import { useToast } from "@/hooks/use-toast"
 import { useAnalyticsOverview, useDelivery, useSuppressions, useTemplates } from "@/components/email/use-email-management"
 import type { TemplatePayload } from "@/components/email/email-management-types"
 
+interface EmailSafetyModeState {
+  safeMode: boolean
+  dryRun: boolean
+  testRecipients: string[]
+  sinkRecipient?: string
+}
+
 function SectionState({ loading, error, empty }: { loading: boolean; error: string | null; empty: boolean }) {
   if (loading) {
     return (
@@ -299,7 +306,7 @@ function SuppressionsTab() {
   )
 }
 
-function SettingsTab() {
+function SettingsTab({ safety }: { safety: EmailSafetyModeState }) {
   const { overview, loading, error } = useAnalyticsOverview()
 
   if (loading) {
@@ -328,11 +335,30 @@ function SettingsTab() {
           <p>Unsubscribed: {overview.unsubscribed.toLocaleString()} ({overview.unsubscribe_rate.toFixed(1)}%)</p>
         </CardContent>
       </Card>
+      <Card className="md:col-span-2">
+        <CardHeader className="flex flex-row items-center justify-between gap-3">
+          <div>
+            <CardTitle>Email Delivery Safety</CardTitle>
+            <CardDescription>Read-only environment state for delivery guardrails.</CardDescription>
+          </div>
+          <Badge variant="outline">Read only</Badge>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <p>
+            Safe mode: <Badge variant={safety.safeMode ? "default" : "secondary"}>{safety.safeMode ? "enabled" : "disabled"}</Badge>
+          </p>
+          <p>
+            Dry run: <Badge variant={safety.dryRun ? "default" : "secondary"}>{safety.dryRun ? "enabled" : "disabled"}</Badge>
+          </p>
+          <p>Allowlisted test recipients: {safety.testRecipients.length ? safety.testRecipients.join(", ") : "none configured"}</p>
+          <p>Sink mailbox: {safety.sinkRecipient || "not configured"}</p>
+        </CardContent>
+      </Card>
     </div>
   )
 }
 
-export function EmailManagementDashboard() {
+export function EmailManagementDashboard({ safety }: { safety: EmailSafetyModeState }) {
   const { overview } = useAnalyticsOverview()
   const stats = useMemo(
     () => ({
@@ -368,7 +394,7 @@ export function EmailManagementDashboard() {
         <TabsContent value="templates"><TemplatesTab /></TabsContent>
         <TabsContent value="delivery"><DeliveryTab /></TabsContent>
         <TabsContent value="suppressions"><SuppressionsTab /></TabsContent>
-        <TabsContent value="settings"><SettingsTab /></TabsContent>
+        <TabsContent value="settings"><SettingsTab safety={safety} /></TabsContent>
       </Tabs>
     </div>
   )
