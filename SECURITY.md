@@ -77,7 +77,7 @@ RunAsh uses role + permission enforcement with route-level checks.
 | `operator` | Viewer + `operations:restart`, `operations:cache:clear`, `system:maintenance` | No `admin:settings`; cannot perform global config writes. |
 | `admin` | Full CRUD and system management (users/content/settings/streams/payments/logs/control) | Highest standard role; destructive actions still require route-level checks. |
 
-Legacy roles are mapped to this matrix for authorization decisions to preserve backward compatibility during migration windows.
+Legacy roles are mapped to this matrix for authorization decisions to preserve backward compatibility during migration windows, with legacy compatibility bundles merged to prevent permission loss during migration.
 
 ### Final RBAC matrix by security-sensitive operation
 
@@ -96,6 +96,7 @@ Legacy roles are mapped to this matrix for authorization decisions to preserve b
 ### RBAC enforcement model (final)
 - Default admin authorization path is `requireAdminAuthorization` in `lib/auth-middleware.ts`.
 - Required permissions are derived by route + method policy (`getRouteRequiredPermissions` in `lib/rbac.ts`) and merged with handler-explicit permissions.
+- Admin routes without either a route-policy mapping or explicit handler permission requirements are denied to enforce full guard coverage across `app/api/admin/**`.
 - Authorization is deny-by-default: missing session -> `401`; missing permission -> `403`.
 - Forbidden responses include request correlation identifiers and structured audit/event logging.
 - Legacy roles are normalized into canonical baseline capability tiers (`viewer`, `operator`, `admin`) for consistent enforcement.

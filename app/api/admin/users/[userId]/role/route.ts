@@ -62,6 +62,14 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
     const actorBaselineRole = resolveBaselineRole(auth.session.user.role)
     const targetBaselineRole = resolveBaselineRole(role)
 
+    if (!targetBaselineRole) {
+      return NextResponse.json({ message: "Invalid role" }, { status: 400 })
+    }
+
+    if (!actorBaselineRole) {
+      return respondAdminError(request, 403, "Your account role is not eligible for admin role assignment", auth.requestId)
+    }
+
     // Check if admin has permission to assign this role
     if (role === DEFAULT_ROLES.SUPER_ADMIN && auth.session.user.role !== DEFAULT_ROLES.SUPER_ADMIN) {
       return respondAdminError(request, 403, "Only super admins can assign super admin role", auth.requestId)
@@ -95,7 +103,12 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
       metadata: { requestedRole: role, storedRole: normalizedRole },
     })
 
-    return NextResponse.json({ message: "Role changed successfully", requestedRole: role, storedRole: normalizedRole })
+    return NextResponse.json({
+      message: "Role changed successfully",
+      requestedRole: role,
+      storedRole: normalizedRole,
+      baselineRole: targetBaselineRole,
+    })
   } catch (error) {
     return respondInternalServerError(request, error, {
       event: "admin.users.role.update.failed",

@@ -180,18 +180,18 @@ RunAsh admin authorization now standardizes on three canonical baseline roles fo
 
 ### Legacy role compatibility mapping
 
-To avoid lockouts during migration, legacy role values continue to resolve into the canonical capability baseline for runtime permission checks:
+To avoid lockouts during migration, legacy role values continue to resolve into the canonical capability baseline for runtime permission checks and now retain legacy permission compatibility bundles:
 
 - Viewer-equivalent: `guest` -> `viewer`
 - Operator-equivalent: `user`, `moderator`, `premium`, `business_operator`, `startup_operator`, `customer_operator`, `customer_finance` -> `operator`
 - Admin-equivalent: `admin`, `super_admin`, `business_admin`, `startup_admin`, `customer_admin` -> `admin`
 
-Role-assignment endpoints continue accepting legacy role inputs, but stored role values are now normalized to canonical baseline roles (`viewer`/`operator`/`admin`) so new updates converge on a single RBAC contract.
+Role-assignment endpoints continue accepting legacy role inputs, but stored role values are now normalized to canonical baseline roles (`viewer`/`operator`/`admin`) so new updates converge on a single RBAC contract. Legacy role-specific capabilities (for example `customer_finance` refund visibility) are merged with the baseline bundle to prevent access regressions for existing users.
 
 ### Protected admin endpoint enforcement
 
 - All `app/api/admin/**` handlers use `requireAdminAuthorization`.
-- Required permissions are resolved from route+method policy mapping (`lib/rbac.ts`) and merged with handler-explicit requirements before authorization decisions.
+- Required permissions are resolved from route+method policy mapping (`lib/rbac.ts`) and merged with handler-explicit requirements before authorization decisions. Unmapped `app/api/admin/**` routes without explicit handler permissions are denied as configuration errors to avoid accidental authorization gaps.
 - Unauthorized/forbidden admin guard outcomes are standardized to JSON `401/403` envelopes with `requestId` and mirrored `x-request-id`/`x-correlation-id` headers for traceability.
 - Sensitive admin operations emit audit events, including user CRUD (`user.created`/`user.updated`/`user.deleted`), role changes (`user.role.changed`), and settings writes (`admin.settings.updated`).
 - Role assignment to admin-capability roles is restricted to users already resolving to canonical `admin` capability; `super_admin` assignment remains super-admin only.
