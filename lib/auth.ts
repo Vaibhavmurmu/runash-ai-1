@@ -5,6 +5,9 @@ import { recordAuthMetric } from "@/lib/auth-observability"
 import { isFeatureFlagEnabled } from "@/lib/feature-flags"
 import { resolveSessionFromSources } from "@/lib/auth/session-accessor-handler"
 import { sql } from "@/lib/db"
+import { evaluateAccountLinkingPolicy } from "@/lib/auth/plugins/account-linking-policy"
+import { resolveGenericOAuthProviders } from "@/lib/auth/plugins/generic-oauth"
+import { buildTrustedAuthOrigins } from "@/lib/auth/plugins/oauth-proxy"
 
 const baseURL =
   process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
@@ -51,7 +54,7 @@ export function getLegacySessionSecrets(): string[] {
   return [...new Set(secrets)]
 }
 
-const enforceVerifiedIdentityLinking = true
+const genericOAuthProviders = resolveGenericOAuthProviders()
 
 type AuthAccountLink = {
   userId: string
@@ -149,6 +152,7 @@ export const auth = betterAuth({
           },
         }
       : {}),
+    ...genericOAuthProviders,
   },
   databaseHooks: {
     account: {
@@ -197,14 +201,24 @@ export const auth = betterAuth({
           const identityHeader = context?.request?.headers?.get("x-runash-identity-verified")
           const hasVerifiedIdentityHeader = identityHeader === "verified" || stepUpHeader === "verified"
           const hasProviderIdentityToken = Boolean(account.idToken && account.idToken.length > 12)
+          const userAgent = context?.request?.headers?.get("user-agent")
 
-          if (enforceVerifiedIdentityLinking && (!hasVerifiedIdentityHeader || !hasProviderIdentityToken)) {
+          const accountLinkingPolicy = evaluateAccountLinkingPolicy({
+            providerId,
+            requestPath,
+            userAgent,
+            hasVerifiedIdentityHeader,
+            hasProviderIdentityToken,
+            currentUserEmailVerified: Boolean(currentUser?.emailVerified),
+          })
+
+          if (!accountLinkingPolicy.allowed) {
             auditAccountLinkEvent("account_link_denied", {
               providerId,
               userId: account.userId,
               requestPath,
               subjectHash,
-              reason: "verified_identity_linking_required",
+              reason: accountLinkingPolicy.reason,
             })
             return false
           }
@@ -221,7 +235,7 @@ export const auth = betterAuth({
       },
     },
   },
-  trustedOrigins: [baseURL],
+  trustedOrigins: buildTrustedAuthOrigins(baseURL),
 })
 
 function parseCookieValue(cookieHeader: string | null, cookieName: string): string | null {

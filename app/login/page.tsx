@@ -2,7 +2,7 @@
 
 import type React from "react"
 import Image from "next/image"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { signIn } from "next-auth/react"
 import { getAuthSession } from "@/lib/auth/access-client"
 import { useRouter } from "next/navigation"
@@ -16,18 +16,25 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Eye, EyeOff, Github, Mail, Loader2, AlertCircle } from "lucide-react"
 import ThemeToggle from "@/components/theme-toggle"
 import { PhoneOtpVerification } from "@/components/auth/phone-otp-verification"
+import { GoogleOneTap } from "@/components/auth/google-one-tap"
+import { formatLoginMethodLabel, getLastLoginMethod, setLastLoginMethod, type LoginMethod } from "@/lib/auth/last-login-method"
 
 export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [phoneVerified, setPhoneVerified] = useState(false)
+  const [lastLoginMethod, setLastLoginMethodState] = useState<LoginMethod>("unknown")
   const [formData, setFormData] = useState({
     email: "",
     password: "",
     rememberMe: false,
   })
   const router = useRouter()
+
+  useEffect(() => {
+    setLastLoginMethodState(getLastLoginMethod())
+  }, [])
 
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -40,6 +47,7 @@ export default function LoginPage() {
     setError("")
 
     try {
+      setLastLoginMethod("password")
       const result = await signIn("credentials", {
         email: formData.email,
         password: formData.password,
@@ -65,6 +73,7 @@ export default function LoginPage() {
   const handleOAuthSignIn = async (provider: string) => {
     setIsLoading(true)
     try {
+      setLastLoginMethod(provider === "google" || provider === "github" ? provider : "unknown")
       await signIn(provider, { callbackUrl: "/dashboard" })
     } catch (error) {
       setError("Failed to sign in with " + provider)
@@ -170,6 +179,14 @@ export default function LoginPage() {
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
                 )}
+
+                {lastLoginMethod !== "unknown" ? (
+                  <Alert className="border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/20">
+                    <AlertDescription>Last login method: {formatLoginMethodLabel(lastLoginMethod)}</AlertDescription>
+                  </Alert>
+                ) : null}
+
+                <GoogleOneTap callbackUrl="/dashboard" />
 
                 {/* OAuth Buttons */}
                 <div className="space-y-3">
