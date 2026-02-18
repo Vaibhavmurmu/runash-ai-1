@@ -317,8 +317,8 @@ export class EmailTemplateManager {
 
   // Validate template variables
   static validateTemplate(
-    html: string,
-    text?: string,
+    htmlContent: string,
+    textContent?: string,
   ): {
     variables: string[]
     isValid: boolean
@@ -331,14 +331,14 @@ export class EmailTemplateManager {
 
     // Extract variables from HTML
     let match
-    while ((match = variableRegex.exec(html)) !== null) {
+    while ((match = variableRegex.exec(htmlContent)) !== null) {
       htmlVariables.add(match[1].trim())
     }
 
     // Extract variables from text if provided
-    if (text) {
+    if (textContent) {
       variableRegex.lastIndex = 0
-      while ((match = variableRegex.exec(text)) !== null) {
+      while ((match = variableRegex.exec(textContent)) !== null) {
         textVariables.add(match[1].trim())
       }
 
