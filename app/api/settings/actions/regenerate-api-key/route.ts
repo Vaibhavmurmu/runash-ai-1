@@ -2,6 +2,9 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { generateApiKey, resolveSettingsUserId, updateUserSecurityState } from "@/lib/settings-security"
+import { rateLimit } from "@/lib/rate-limit"
+import { recordAuthMetric } from "@/lib/auth-observability"
+import { attachSessionRevocationCookies, invalidateSensitiveActionSessions } from "@/lib/auth/session-hardening"
 
 const rotateSchema = z
   .object({
@@ -10,6 +13,12 @@ const rotateSchema = z
   .strict()
 
 export async function POST(request: Request) {
+  const rateLimitResult = await rateLimit(request, "settings-regenerate-api-key", 6, 15 * 60 * 1000)
+  if (!rateLimitResult.success) {
+    recordAuthMetric("auth.rate_limited", { endpoint: "settings-regenerate-api-key" })
+    return NextResponse.json({ error: "Too many API key rotation attempts" }, { status: 429 })
+  }
+
   const body = await request.json().catch(() => ({}))
   const validation = rotateSchema.safeParse(body)
 
@@ -34,9 +43,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unable to rotate API key" }, { status: 500 })
   }
 
-  return NextResponse.json({
+  await invalidateSensitiveActionSessions(userId, "api_key_rotated")
+
+  return attachSessionRevocationCookies(NextResponse.json({
     apiKey: nextKey.apiKey,
     apiKeyMasked: updated.apiKeyMasked,
     apiKeyLastRotatedAt: updated.apiKeyLastRotatedAt,
-  })
+  }))
 }

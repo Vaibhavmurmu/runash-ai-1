@@ -204,6 +204,32 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  if (pathname.startsWith("/api/admin")) {
+    if (!checkRateLimit(request, "admin-sensitive", 40, 5 * 60 * 1000)) {
+      recordAuthMetric("auth.rate_limited", { endpoint: "admin-sensitive" })
+      return new NextResponse(JSON.stringify({ message: "Admin API rate limit exceeded" }), {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "Retry-After": "300",
+        },
+      })
+    }
+  }
+
+  if (pathname === "/api/settings/actions/regenerate-api-key" || pathname === "/api/settings/actions/revoke-sessions") {
+    if (!checkRateLimit(request, "settings-sensitive", 10, 15 * 60 * 1000)) {
+      recordAuthMetric("auth.rate_limited", { endpoint: "settings-sensitive" })
+      return new NextResponse(JSON.stringify({ message: "Sensitive action rate limit exceeded" }), {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "Retry-After": "900",
+        },
+      })
+    }
+  }
+
   // General API rate limiting
   if (pathname.startsWith("/api/") && !pathname.startsWith("/api/auth/")) {
     if (!checkRateLimit(request, "api-general", 100, 60 * 1000)) {

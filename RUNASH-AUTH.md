@@ -2,6 +2,13 @@
 
 Last updated: 2026-02
 
+## Security hardening update (2026-02)
+
+- OAuth account linking now enforces verified identity linking by default at runtime (no permissive fallback toggle).
+- Sensitive account actions (password change, API key rotation, and session revoke-all) now trigger session invalidation and session cookie revocation to force secure re-authentication.
+- Auth/admin-sensitive APIs are protected with stricter endpoint-specific rate limits in addition to baseline API rate controls.
+- Auth event logging now redacts credentials/tokens/secrets and stores anonymized session identifiers for audit safety.
+
 This document tracks the **currently implemented** auth runtime, files, and routes in this repository. It intentionally excludes speculative endpoints that are not present in source.
 
 Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.

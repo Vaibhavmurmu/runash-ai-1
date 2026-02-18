@@ -1,5 +1,7 @@
 import type { NextRequest } from "next/server"
 
+type RequestLike = Pick<Request, "headers"> & { ip?: string | null }
+
 interface RateLimitResult {
   success: boolean
   remaining?: number
@@ -10,7 +12,7 @@ interface RateLimitResult {
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>()
 
 export async function rateLimit(
-  request: NextRequest,
+  request: NextRequest | RequestLike,
   identifier: string,
   limit: number,
   windowMs: number,

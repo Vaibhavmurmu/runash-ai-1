@@ -1,4 +1,6 @@
 import { neon } from "@neondatabase/serverless"
+import { createHash } from "node:crypto"
+import { redactAuthLogValue } from "@/lib/auth-log-redaction"
 
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -63,6 +65,8 @@ export class AuthLogger {
     const eventCategory = this.categorizeEvent(eventType)
     const deviceInfo = this.parseUserAgent(userAgent)
     const location = await this.getLocationFromIP(ipAddress)
+    const redactedDetails = redactAuthLogValue(details)
+    const anonymizedSessionId = sessionId ? createHash("sha256").update(sessionId).digest("hex") : null
 
     // Calculate expiration date (keep logs for 1 year by default)
     const expiresAt = new Date()
@@ -79,7 +83,7 @@ export class AuthLogger {
     `,
       [
         userId,
-        sessionId,
+        anonymizedSessionId,
         eventType,
         eventCategory,
         success,
@@ -87,7 +91,7 @@ export class AuthLogger {
         userAgent,
         JSON.stringify(location),
         JSON.stringify(deviceInfo),
-        JSON.stringify(details),
+        JSON.stringify(redactedDetails),
         riskScore,
         expiresAt.toISOString(),
       ],

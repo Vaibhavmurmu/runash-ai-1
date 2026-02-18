@@ -269,7 +269,10 @@ export async function deleteUserSession(sessionToken: string) {
   }
 }
 
-export async function invalidateUserSessions(userId: number, reason: "password_change" | "password_reset") {
+export async function invalidateUserSessions(
+  userId: number,
+  reason: "password_change" | "password_reset" | "api_key_rotated" | "manual_revoke",
+) {
   try {
     await sql`
       DELETE FROM user_sessions WHERE user_id = ${userId}

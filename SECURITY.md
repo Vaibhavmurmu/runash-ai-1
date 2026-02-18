@@ -11,7 +11,7 @@ RunAsh account linking is deny-by-default and implemented through Better Auth da
 Policy requirements:
 1. Provider subject (`providerId + accountId`) must not already be linked to a different user.
 2. Primary account email must already be verified before linking.
-3. Verified-identity linking controls are enforced when `AUTH_ENFORCE_VERIFIED_IDENTITY_LINKING=true`:
+3. Verified-identity linking controls are enforced by default (no permissive fallback):
    - request must carry verified identity/step-up signal headers, and
    - provider identity token evidence must be present.
 4. Linking decisions are auditable via sanitized auth metrics/events.
@@ -156,6 +156,12 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
 - Auth observability tags and audit details are sanitized for payment/auth payload and credential-like keys before emission.
 - Session/security telemetry uses redacted/safe reason codes rather than raw session artifacts.
 - Forbidden access and permission-abuse events are emitted as structured metrics for alerting without exposing user secrets.
+
+## 9) 2026-02 session hardening controls
+
+- Sensitive account actions (password changes, API key rotation, revoke-all sessions) now invalidate active server-side sessions.
+- Sensitive-action responses clear Better Auth session cookies to force secure re-authentication and session rotation.
+- Admin and settings-sensitive APIs now enforce tighter per-endpoint throttling in addition to baseline API protection.
 
 
 ## Auth session migration control
