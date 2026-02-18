@@ -1273,3 +1273,8 @@ To preserve payment-surface account integrity while extending OAuth support:
    - disable new linkage processing by reverting the plugin/service integration commit,
    - keep webhook ingestion active,
    - no payment API schema rollback required because the change is additive.
+
+## Better Auth compatibility update
+
+Authentication enhancements (additional social providers and shared Better Auth client exports) are compatible with existing RunAsh payment flows.
+No payment contract fields were renamed or removed in this update.

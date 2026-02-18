@@ -1952,3 +1952,14 @@ To preserve payment and auth reliability under the active service override:
   - `usersWithoutCustomer`
   - `staleLinks`
 - Escalate if `unlinkedCustomers` trend increases across two consecutive webhook batches.
+
+## Auth integration note (Better Auth social expansion)
+
+Payment and subscription flows continue to rely on stable user identifiers.
+Recent auth updates added additional Better Auth social providers (Hugging Face, LinkedIn, Twitter) and shared client helpers, without changing payment API field names or webhook contract payloads.
+
+Rollback strategy:
+
+1. Disable individual social providers by removing their environment variables.
+2. Keep existing payment customer mapping based on immutable internal user IDs.
+3. Revert auth UI routes `/auth/better-signin` and `/auth/better-signup` if operational issues arise.
