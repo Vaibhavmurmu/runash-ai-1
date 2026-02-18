@@ -275,3 +275,12 @@ For issues:
 2. Review error logs in console
 3. Verify environment variables in Vercel dashboard
 4. Check Neon/PostgreSQL dashboard for connection issues
+
+
+## Email broadcast workflow tables
+
+Recent schema additions support admin-authored outbound broadcasts:
+- `email_broadcasts`: stores draft/scheduled/sending/sent broadcast metadata, template key, JSON props, audience filter, and send counters.
+- `email_broadcast_recipients`: stores per-recipient send status and delivery metadata for auditability and retry analysis.
+
+Apply migration: `scripts/sql/2026-02-18_create_email_broadcast_tables.sql`.
