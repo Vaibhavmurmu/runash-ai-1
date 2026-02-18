@@ -41,3 +41,8 @@ Initiate rollback if any condition persists for 10 minutes or exceeds on-call th
 ## Backward compatibility
 - Existing payment/auth API signatures and field names are preserved.
 - Legacy NextAuth cookie fallback remains available when Better Auth is disabled.
+
+## Release documentation addendum (risk + rollback)
+- **Impacted flows:** auth sign-in/session lifecycle, admin RBAC checks, payment-adjacent authorization gates.
+- **Risk statement:** medium operational risk from temporary authorization regressions during staged rollout; no external payment API contract/schema changes in this release.
+- **Rollback owner action:** on trigger conditions, disable Better Auth percentage rollout/hard flag, validate legacy compatibility reads, re-run payment auth smoke checks, and freeze promotions until baseline health is restored.

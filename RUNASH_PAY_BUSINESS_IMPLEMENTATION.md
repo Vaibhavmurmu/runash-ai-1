@@ -26,6 +26,17 @@
 - Verified OAuth linking, sensitive-session invalidation, and stricter auth/admin throttling remain backward-compatible with existing payment API contracts.
 - No payment payload, field-name, or route signature changes are introduced by this hardening update.
 
+## Auth/RBAC architecture sync (implemented vs planned)
+
+### Implemented
+- Payment/business flows now reference the finalized Better Auth server-session architecture (`middleware.ts` -> `/api/auth/get-session` -> shared session accessors) described in `RUNASH-AUTH.md`.
+- Canonical RBAC tiers (`viewer`, `operator`, `admin`) and legacy-role compatibility mapping are the active authorization contract for payment-adjacent admin/business surfaces.
+- No payment API request/response field names, signatures, or webhook schemas changed in this documentation sync.
+
+### Planned
+- Continue staged fallback retirement for legacy NextAuth compatibility reads after stability criteria are met.
+- If future payment contract changes are required, ship them as explicitly versioned migrations with rollout communication.
+
 ## Executive Summary
 
 This comprehensive guide outlines the strategy for deploying RunAsh Pay across Business and Startup segments. The implementation focuses on secure payment processing, seamless integrations, enterprise scalability, and compliance requirements specific to each user segment.
