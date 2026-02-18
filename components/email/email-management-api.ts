@@ -7,6 +7,7 @@ import type {
   ContactQuery,
   DeliveryQuery,
   EmailAnalyticsData,
+  EmailAnalyticsQuery,
   EmailBroadcastRecord,
   EmailBroadcastTemplateOption,
   EmailContactImportSummary,
@@ -166,8 +167,9 @@ export const emailAdminApi = {
       }
     }
   },
-  getAnalytics: () => {
-    return request<ApiItemResponse<EmailAnalyticsData>>("/api/admin/email-analytics")
+  getAnalytics: (query: EmailAnalyticsQuery = {}) => {
+    const queryString = toQueryString(query)
+    return request<ApiItemResponse<EmailAnalyticsData>>(`/api/admin/email-analytics${queryString ? `?${queryString}` : ""}`)
   },
   getWebhooks: (query: WebhookQuery) => {
     const queryString = toQueryString(query)
