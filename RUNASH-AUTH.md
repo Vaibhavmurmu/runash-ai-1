@@ -237,3 +237,47 @@ Role-assignment endpoints continue accepting legacy role inputs, but stored role
 - Admin authorization denials (`401/403`) now emit `auth.forbidden.access` audit events with sanitized reason codes and route metadata.
 - Added health metrics endpoint (`/api/admin/analytics/auth/metrics`) exposing failed auth, forbidden access, and session revoke counters plus previous-window spike detection.
 - Auth analytics dashboard now surfaces auth/security health monitoring panels and alert cards when thresholds/spike rules trigger.
+
+## 11) Gradual rollout plan (internal → partial → full) with rollback triggers
+
+To reduce auth/session/RBAC/admin CRUD risk, ship in three gated phases with explicit stop and rollback conditions.
+
+### Phase A — Internal-only rollout
+
+- **Audience:** RunAsh internal users and test tenants only.
+- **Coverage:** New auth/session accessor behavior, RBAC route policy enforcement, and admin CRUD authorization checks enabled behind feature flags.
+- **Gate to proceed:**
+  - `5xx` on auth/admin surfaces does not exceed baseline by more than 0.5% for 24h.
+  - Forbidden/unauthorized responses are explainable by policy (no unexplained spikes).
+  - No P1/P2 incidents involving login/session continuity or admin lockout.
+
+### Phase B — Partial rollout
+
+- **Audience:** Controlled tenant subset (for example 10% → 25% → 50%).
+- **Coverage:** Expand the same feature-flag bundle to a representative customer mix.
+- **Gate to proceed:**
+  - Session refresh/revalidation success remains within expected SLO bounds.
+  - Admin CRUD workflows (create/update/delete + role/permission mutation) complete without elevated error rates.
+  - Support/ops ticket volume for auth failures remains within normal variance.
+
+### Phase C — Full rollout
+
+- **Audience:** 100% of production tenants.
+- **Coverage:** Remove percentage targeting; retain kill-switch flags for one release window.
+- **Post-rollout watch window:** 72h heightened monitoring on auth/security dashboards and admin activity audit streams.
+
+### Rollback triggers (immediate)
+
+Rollback to prior stable auth/session path if any of the following occur:
+
+- Sustained `5xx` increase > 1% for 15 minutes on `/api/auth/**`, `/api/sessions/**`, or `/api/admin/**`.
+- Repeated session invalidation anomalies (unexpected sign-outs) across multiple tenants.
+- Admin authorization regressions causing privileged user lockout from critical operations.
+- Security regression indicators (unexpected auth-forbidden spikes, policy bypass evidence, or sensitive data exposure in logs).
+
+### Rollback execution
+
+1. Disable rollout flags for affected cohorts (full kill switch if blast radius is unclear).
+2. Revert to last known-good deployment artifact.
+3. Confirm auth/session recovery through smoke checks (`/api/auth/get-session`, admin read/write probes).
+4. Publish incident summary with root-cause hypothesis and next safe re-rollout window.
