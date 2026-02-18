@@ -1919,3 +1919,10 @@ To preserve payment and auth reliability under the active service override:
 - The Better Auth migration updates only session validation helpers and client auth access utilities.
 - Payment API field names, request/response contracts, and settlement flows remain unchanged in this change set.
 - Rollback for auth compatibility is feature-flagged via `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK`; payment processing behavior is unaffected by toggling this flag.
+
+## 2026-02 identity protocol expansion impact note (payment compatibility)
+
+- Added enterprise identity capabilities (SSO provider management, SCIM provisioning, OAuth Device Grant, SIWE) to strengthen auth posture around payment-capable accounts.
+- **Payment contract impact:** none. Existing payment API field names, request/response schemas, and settlement contracts remain unchanged.
+- **Risk:** misconfigured identity providers can block operator access to payment tooling.
+- **Rollback:** disable/undo identity-provider configs at admin layer; payment APIs continue to operate with existing auth methods.

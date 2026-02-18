@@ -341,3 +341,22 @@ Rollback to prior stable auth/session path if any of the following occur:
 - Added one-time transfer token routes for cross-domain single-use session handoff (`POST /api/auth/ott/issue`, `POST /api/auth/ott/verify`).
 - Added bearer token session route (`POST/DELETE /api/auth/bearer-token`) and bearer resolver path in `getAuthSessionFromHeaders` so API auth can work with either secure cookies or bearer tokens.
 - Session invalidation now updates both legacy session tables and the auth session registry to keep revoke/rotation behavior consistent across auth modes.
+
+## 2026-02 Enterprise identity expansion (SSO + SCIM + Device + SIWE)
+
+- Added enterprise SSO provider management support for `oidc`, `oauth2`, and `saml2` configurations with organization-level mapping persistence (`sso_organization_mappings`).
+- Added SCIM v2 endpoints for user and group provisioning/deprovisioning:
+  - `GET/POST/PATCH /api/scim/v2/Users`
+  - `GET/POST/PATCH /api/scim/v2/Groups`
+  and immutable audit trail recording in `scim_audit_trails`.
+- Added OAuth Device Authorization Grant (RFC 8628 style) endpoints:
+  - `POST /api/auth/oauth/device/authorize`
+  - `POST /api/auth/oauth/device/verify`
+  - `POST /api/auth/oauth/device/token`
+- Added SIWE plugin and endpoints for nonce issuance and wallet session binding:
+  - `POST /api/auth/siwe/nonce`
+  - `POST /api/auth/siwe/verify`
+- Added admin identity management APIs and UI for provider inventory and protocol health visibility:
+  - `GET/POST /api/admin/identity/providers`
+  - `GET /api/admin/identity/health`
+  - `GET /admin/identity`
