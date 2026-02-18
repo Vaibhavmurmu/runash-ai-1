@@ -360,3 +360,23 @@ Rollback to prior stable auth/session path if any of the following occur:
   - `GET/POST /api/admin/identity/providers`
   - `GET /api/admin/identity/health`
   - `GET /admin/identity`
+
+## 2026-02 Account lifecycle + anti-abuse + WebAuthn UX hooks
+
+- Added captcha-hook verification middleware utility (`lib/auth/captcha-middleware.ts`) and wired it into high-risk routes:
+  - `POST /api/auth/register`
+  - `POST /api/auth/sign-in`
+  - `POST /api/auth/reset-password`
+  - `POST /api/auth/otp/email`
+  - `POST /api/auth/otp/sms`
+- Added account lifecycle APIs under `/api/auth/account`:
+  - `GET /api/auth/account` (fetch account profile)
+  - `PATCH /api/auth/account` (update account fields)
+  - `DELETE /api/auth/account` (2-step secure deletion with email verification code)
+  - `POST|PUT /api/auth/account/change-email` (request + confirm email change)
+  - `POST /api/auth/account/password` (`set`, `change`, `verify` operations)
+  - `POST /api/auth/account/resend-code` (verification/OTP resend)
+- Added before-delete and after-delete callback hooks in `lib/auth/account-lifecycle.ts` for pre-delete cleanup and post-delete auditability.
+- Added password-strength progress UX helper (`components/auth/password-strength-meter.tsx`) and surfaced it in sign-up/reset-password flows.
+- Added robust auth error UI route (`/auth/error`) with recovery CTAs and email-change confirmation handling.
+- Added client-side WebAuthn roadmap event hooks (`components/auth/webauthn-roadmap-hooks.tsx`) for passkey/biometric login readiness instrumentation.

@@ -8,6 +8,7 @@ import { logApiRouteError } from "@/lib/api/logging"
 import { AUTH_ENDPOINT_RATE_LIMITS } from "@/lib/auth-security-config"
 import { recordAuthMetric } from "@/lib/auth-observability"
 import { sql } from "@/lib/db"
+import { applyAuthCaptchaMiddleware } from "@/lib/auth/captcha-middleware"
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,6 +26,16 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
+
+    const captchaFailure = await applyAuthCaptchaMiddleware(request, {
+      endpoint: "register",
+      action: "sign-up",
+      body,
+      identifier: typeof body?.email === "string" ? body.email : undefined,
+    })
+    if (captchaFailure) {
+      return captchaFailure
+    }
 
     const validationResult = registerSchema.safeParse(body)
     if (!validationResult.success) {

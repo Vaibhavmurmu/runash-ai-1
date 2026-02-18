@@ -235,3 +235,10 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
 - Added OAuth Device Authorization Grant flow state table and endpoints with explicit pending/approved/denied/expired statuses.
 - Added SIWE nonce lifecycle and wallet session binding tables with short-lived nonce expiration and one-time nonce usage semantics.
 - Sensitive auth materials (raw tokens/secrets/signatures) are not written into audit trails or route-level logs in this change set.
+
+## 2026-02 Auth anti-abuse and lifecycle hardening
+
+- Captcha hook validation now guards sign-up, sign-in, reset-password, and OTP issue endpoints before auth actions execute.
+- Secure account deletion now requires a short-lived email verification code and records deletion audit events after cleanup callbacks complete.
+- Account lifecycle handlers avoid logging sensitive auth/payment values and only emit hashed/minimal metadata for anti-abuse integrations.
+- Auth error handling now routes users to explicit recovery surfaces (`/auth/error`) instead of ambiguous failures.

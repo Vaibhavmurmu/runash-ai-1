@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createEmailOTP, verifyOTP } from "@/lib/otp"
 import { z } from "zod"
 import { logApiRouteError } from "@/lib/api/logging"
+import { applyAuthCaptchaMiddleware } from "@/lib/auth/captcha-middleware"
 
 const sendOTPSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -18,6 +19,16 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { email, purpose } = sendOTPSchema.parse(body)
+
+    const captchaFailure = await applyAuthCaptchaMiddleware(request, {
+      endpoint: "otp/email",
+      action: "otp-send",
+      body,
+      identifier: email,
+    })
+    if (captchaFailure) {
+      return captchaFailure
+    }
 
     const clientIP = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown"
     const userAgent = request.headers.get("user-agent") || "unknown"
