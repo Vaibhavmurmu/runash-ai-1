@@ -7,7 +7,9 @@
     "dev": "next dev",
     "lint": "next lint",
     "start": "next start",
-    "lint:security-logs": "node scripts/check-sensitive-logging.mjs"
+    "lint:security-logs": "node scripts/check-sensitive-logging.mjs",
+    "openapi:auth:generate": "node scripts/generate-auth-openapi.mjs",
+    "openapi:auth:check": "npm run openapi:auth:generate && git diff --exit-code docs/openapi/auth.openapi.json"
   },
   "dependencies": {
     "@ai-sdk/openai": "latest",

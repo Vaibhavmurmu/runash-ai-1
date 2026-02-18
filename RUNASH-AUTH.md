@@ -13,6 +13,13 @@ This document tracks the **currently implemented** auth runtime, files, and rout
 
 Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 
+## OpenAPI + Scalar auth docs update (2026-02)
+
+- Added generated OpenAPI spec output for auth routes at `docs/openapi/auth.openapi.json`.
+- Added served OpenAPI endpoint at `GET /api/auth/openapi` and interactive Scalar docs at `GET /api/auth/docs` and `/docs/auth-api`.
+- OpenAPI includes core auth routes plus enabled plugin endpoints (OTP, SIWE, SCIM, SSO, device flow, bearer sessions, and OTT), with explicit auth requirements and example payloads for key plugin contracts.
+- Added CI guard to regenerate and diff-check `docs/openapi/auth.openapi.json` to keep docs in sync with route contract changes.
+
 ## 1) Runtime and source-of-truth files
 
 ### Better Auth runtime and adapters
