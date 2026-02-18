@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { EmailBounceHandler } from "@/lib/email-bounce-handler"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
+import { FilterValidationError, normalizePagination, parseOptionalBoolean, parseOptionalInteger } from "@/lib/email-filter-utils"
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdminAuthorization(request, {
@@ -13,9 +14,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get("type") || undefined
     const search = searchParams.get("search") || undefined
-    const is_permanent = searchParams.get("is_permanent") ? searchParams.get("is_permanent") === "true" : undefined
-    const limit = searchParams.get("limit") ? Number.parseInt(searchParams.get("limit")!) : 50
-    const offset = searchParams.get("offset") ? Number.parseInt(searchParams.get("offset")!) : 0
+    const is_permanent = parseOptionalBoolean(searchParams.get("is_permanent"), "is_permanent")
+    const { limit, offset } = normalizePagination(
+      parseOptionalInteger(searchParams.get("limit"), "limit"),
+      parseOptionalInteger(searchParams.get("offset"), "offset"),
+      { defaultLimit: 50, maxLimit: 200 },
+    )
 
     const result = await EmailBounceHandler.getSuppressions({ type, search, is_permanent, limit, offset })
 
@@ -26,6 +30,10 @@ export async function GET(request: NextRequest) {
       pagination: { limit, offset, hasMore: offset + limit < result.total },
     })
   } catch (error) {
+    if (error instanceof FilterValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
     console.error("Error fetching suppressions:", error)
     return NextResponse.json({ error: "Failed to fetch suppressions" }, { status: 500 })
   }
