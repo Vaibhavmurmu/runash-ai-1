@@ -135,6 +135,7 @@ const ADMIN_API_ROUTE_RULES: readonly RoutePermissionRule[] = [
   { prefix: "/api/admin/security", requiredPermissions: ["system:maintenance"], methods: ["POST", "PUT", "PATCH"] },
   { prefix: "/api/admin/security", requiredPermissions: ["system:control"], methods: ["DELETE"] },
   { prefix: "/api/admin/performance", requiredPermissions: ["system:maintenance"] },
+  { prefix: "/api/admin/operations", requiredPermissions: ["system:maintenance"] },
   { prefix: "/api/admin/analytics", requiredPermissions: ["admin:analytics"] },
   { prefix: "/api/admin/logs", requiredPermissions: ["system:logs"] },
 

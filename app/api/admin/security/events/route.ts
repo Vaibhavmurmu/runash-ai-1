@@ -9,6 +9,8 @@ const listSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   action: z.string().max(100).optional(),
+  adminId: z.coerce.number().int().positive().optional(),
+  search: z.string().trim().max(150).optional(),
 })
 
 const createSchema = z.object({
@@ -28,13 +30,21 @@ export async function GET(request: NextRequest) {
     const parsed = listSchema.parse(Object.fromEntries(request.nextUrl.searchParams.entries()))
     await ensureAdminAuthMigrationTables()
     const offset = (parsed.page - 1) * parsed.limit
+    const searchFilter = parsed.search ? `%${parsed.search}%` : null
 
     const [countRow] = await queryMany<{ total: string }>(
       `SELECT COUNT(*)::text AS total
        FROM admin_activity_logs
        WHERE target_type = 'security_event'
-         AND ($1::text IS NULL OR action = $1)`,
-      [parsed.action ?? null],
+         AND ($1::text IS NULL OR action = $1)
+         AND ($2::int IS NULL OR admin_id = $2)
+         AND (
+           $3::text IS NULL
+           OR action ILIKE $3
+           OR COALESCE(target_id::text, '') ILIKE $3
+           OR details::text ILIKE $3
+         )`,
+      [parsed.action ?? null, parsed.adminId ?? null, searchFilter],
     )
 
     const rows = await queryMany(
@@ -42,9 +52,16 @@ export async function GET(request: NextRequest) {
        FROM admin_activity_logs
        WHERE target_type = 'security_event'
          AND ($1::text IS NULL OR action = $1)
+         AND ($2::int IS NULL OR admin_id = $2)
+         AND (
+           $3::text IS NULL
+           OR action ILIKE $3
+           OR COALESCE(target_id::text, '') ILIKE $3
+           OR details::text ILIKE $3
+         )
        ORDER BY created_at DESC
-       LIMIT $2 OFFSET $3`,
-      [parsed.action ?? null, parsed.limit, offset],
+       LIMIT $4 OFFSET $5`,
+      [parsed.action ?? null, parsed.adminId ?? null, searchFilter, parsed.limit, offset],
     )
 
     return NextResponse.json({

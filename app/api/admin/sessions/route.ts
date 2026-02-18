@@ -12,6 +12,7 @@ const listSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   deviceName: z.string().trim().max(128).optional(),
+  search: z.string().trim().max(150).optional(),
 })
 
 const createSessionSchema = z.object({
@@ -32,13 +33,21 @@ export async function GET(request: NextRequest) {
     await ensureAdminAuthMigrationTables()
     const offset = (parsed.page - 1) * parsed.limit
     const deviceNameFilter = parsed.deviceName ? `%${parsed.deviceName}%` : null
+    const searchFilter = parsed.search ? `%${parsed.search}%` : null
     const [countRow] = await queryMany<{ total: string }>(
       `SELECT COUNT(*)::text AS total
        FROM user_sessions
        WHERE ($1::text IS NULL OR user_id::text = $1)
          AND ($2::boolean IS NULL OR is_active = $2)
-         AND ($3::text IS NULL OR device_name ILIKE $3)`,
-      [parsed.userId ?? null, parsed.isActive ? parsed.isActive === "true" : null, deviceNameFilter],
+         AND ($3::text IS NULL OR device_name ILIKE $3)
+         AND (
+           $4::text IS NULL
+           OR device_id ILIKE $4
+           OR device_name ILIKE $4
+           OR user_agent ILIKE $4
+           OR ip_address::text ILIKE $4
+         )`,
+      [parsed.userId ?? null, parsed.isActive ? parsed.isActive === "true" : null, deviceNameFilter, searchFilter],
     )
     const sessions = await queryMany(
       `SELECT id, user_id, device_id, device_name, ip_address::text AS ip_address, user_agent, is_active, last_activity, created_at
@@ -46,9 +55,16 @@ export async function GET(request: NextRequest) {
        WHERE ($1::text IS NULL OR user_id::text = $1)
          AND ($2::boolean IS NULL OR is_active = $2)
          AND ($3::text IS NULL OR device_name ILIKE $3)
+         AND (
+           $4::text IS NULL
+           OR device_id ILIKE $4
+           OR device_name ILIKE $4
+           OR user_agent ILIKE $4
+           OR ip_address::text ILIKE $4
+         )
        ORDER BY created_at DESC
-       LIMIT $4 OFFSET $5`,
-      [parsed.userId ?? null, parsed.isActive ? parsed.isActive === "true" : null, deviceNameFilter, parsed.limit, offset],
+       LIMIT $5 OFFSET $6`,
+      [parsed.userId ?? null, parsed.isActive ? parsed.isActive === "true" : null, deviceNameFilter, searchFilter, parsed.limit, offset],
     )
 
     return NextResponse.json({

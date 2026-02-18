@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { AuthLogger, type LogFilters } from "@/lib/auth-logger"
 import { z } from "zod"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
+import { respondInternalServerError } from "@/lib/api/admin-route-utils"
 
 const logsSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -38,7 +39,11 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error("Error fetching logs:", error)
-    return NextResponse.json({ error: "Failed to fetch logs" }, { status: 500 })
+    return respondInternalServerError(request, error, {
+      event: "admin.logs.read.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_LOGS_READ_FAILED",
+    })
   }
 }
