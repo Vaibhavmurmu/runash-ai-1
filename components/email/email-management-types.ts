@@ -58,6 +58,27 @@ export interface EmailSuppressionRecord {
   updated_at: string
 }
 
+export interface EmailContactRecord {
+  id: number
+  email: string
+  name?: string | null
+  status: "subscribed" | "unsubscribed" | "bounced" | "suppressed"
+  metadata: Record<string, unknown>
+  source?: string | null
+  tags: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface EmailContactImportSummary {
+  total_rows: number
+  created_count: number
+  updated_count: number
+  duplicate_count: number
+  invalid_count: number
+  errors: string[]
+}
+
 export interface EmailAnalyticsOverview {
   total_sent: number
   delivered: number
@@ -99,6 +120,14 @@ export interface SuppressionQuery {
   offset: number
 }
 
+export interface ContactQuery {
+  status?: string
+  tags?: string
+  search?: string
+  limit: number
+  offset: number
+}
+
 export interface TemplatePayload {
   name: string
   subject: string
@@ -112,4 +141,13 @@ export interface SuppressionPayload {
   email: string
   type: string
   reason?: string
+}
+
+export interface ContactPayload {
+  email: string
+  name?: string
+  status?: EmailContactRecord["status"]
+  metadata?: Record<string, unknown>
+  source?: string
+  tags?: string[]
 }

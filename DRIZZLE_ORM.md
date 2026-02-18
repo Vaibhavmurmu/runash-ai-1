@@ -107,6 +107,9 @@ Or use the admin dashboard at `/admin/db`
 - `messages` - Direct messages with read status
 - `conversations` - Message groups
 - `notifications` - User notifications
+- `email_contacts` - Broadcast audience contacts with status and metadata
+- `email_contact_tags` - Contact segmentation tags for filtering and targeting
+- `email_contact_import_jobs` - CSV import audit trail and processing summaries
 
 ### Additional
 - `wishlist` - User saved items
