@@ -228,6 +228,16 @@ Role-assignment endpoints continue accepting legacy role inputs, but stored role
 - **Server session helper:** `lib/auth.ts` is the single source of truth for server session reads; `lib/auth/session.ts` + `lib/auth/session-accessor.ts` are migration-safe wrapper entry points only.
 - **Migration fallback flag gate:** legacy NextAuth cookie verification runs only when `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK` is enabled; without this flag, only Better Auth cookies (`better-auth.session-token`, `__Secure-better-auth.session-token`) are accepted.
 
+## 13) Account Center auth UI surface (2026-02)
+
+- Added a composable auth UI layer at `components/auth/auth-ui.tsx` and `components/auth/auth-ui-provider.tsx`, wired globally through `components/providers.tsx`.
+- Added route `app/account/page.tsx` as an account center surface with:
+  - avatar upload card shell (`UpdateAvatarCard`),
+  - account/security/settings cards (`AccountSettingsCards`, `SecuritySettingsCards`, `ChangeEmailCard`, `ChangePasswordCard`, `PasskeysCard`, `TwoFactorCard`, `SessionsCard`, `ProvidersCard`, `ApiKeysCard`),
+  - organization cards (`OrganizationSwitcher`, `OrganizationSettingsCards`, `OrganizationMembersCard`), and
+  - conditional/redirect auth helpers (`AuthLoading`, `SignedIn`, `SignedOut`, `RedirectToSignIn`).
+- Introduced redirect hook helper `useAuthenticate()` for client-side auth guard behavior that routes unauthenticated visitors to sign-in while preserving a `next` return URL.
+
 ## 12) 2026-02 Better Auth server-module migration notes
 
 ### Cookie/token behavior changes
