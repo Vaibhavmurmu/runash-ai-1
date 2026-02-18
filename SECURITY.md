@@ -29,6 +29,16 @@ RunAsh now operates with a single Better Auth runtime and shared server-side acc
 
 This architecture preserves existing API signatures while tightening auth validation and auditability.
 
+### Implemented now
+- Better Auth is the primary runtime and session authority.
+- Middleware/session accessors enforce centralized server-side session checks before protected route access.
+- RBAC permission resolution is route/method-aware and deny-by-default.
+- Audit and observability events for auth/admin flows are emitted with redaction guarantees.
+
+### Planned next
+- Fully remove legacy NextAuth compatibility fallback after rollout stability and incident-free windows are met.
+- Finalize and apply canonical Drizzle/SQL migration artifacts for auth/session tables as operational migration tooling.
+
 ## 2) Session policy
 
 ### Session validation model
@@ -68,6 +78,16 @@ RunAsh uses role + permission enforcement with route-level checks.
 | `admin` | Full CRUD and system management (users/content/settings/streams/payments/logs/control) | Highest standard role; destructive actions still require route-level checks. |
 
 Legacy roles are mapped to this matrix for authorization decisions to preserve backward compatibility during migration windows.
+
+### Final RBAC matrix by security-sensitive operation
+
+| Operation class | `viewer` | `operator` | `admin` |
+|---|---|---|---|
+| Session/profile reads | ✅ (own scope) | ✅ (own scope + operational contexts) | ✅ |
+| Admin analytics reads | ✅ (aggregate-only views) | ✅ (aggregate + redacted events) | ✅ (full views) |
+| Payment admin actions (refund/admin mutation) | ❌ | ⚠️ org-scoped operational-only, no privileged overrides | ✅ |
+| Role/permission grant-revoke | ❌ | ❌ | ✅ |
+| Global settings/system controls | ❌ | ❌ | ✅ |
 
 ### Permission model
 - Permissions include domains such as admin access/settings, analytics, operations, streams, users, payments, and system controls.

@@ -32,6 +32,31 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 - `lib/auth-observability.ts` and `lib/auth-analytics.ts` — auth metrics/audit instrumentation.
 - `lib/auth-logger.ts` — auth-safe logging utilities.
 
+## 1.1) Final auth architecture snapshot (implemented vs planned)
+
+### Implemented (finalized 2026-02)
+
+```text
+Client/UI
+  -> middleware.ts
+     -> GET /api/auth/get-session
+        -> lib/auth/session-accessor*.ts
+           -> lib/auth.ts (Better Auth runtime + secrets)
+              -> RBAC checks via lib/auth-middleware.ts + lib/rbac.ts
+                 -> Protected API/UI handlers
+                    -> Sanitized audit + auth telemetry
+```
+
+- Canonical auth runtime and secret resolution are centralized in `lib/auth.ts`.
+- Auth route handling is mounted through `app/api/auth/[...nextauth]/route.ts`.
+- Server-side authorization enforces route+method RBAC with deny-by-default behavior (`401`/`403`).
+- Sensitive auth/admin events are logged with redacted metadata only.
+
+### Planned (post-baseline, non-blocking)
+
+- Convert `db/migrations/0000_auth_neon_better_auth_baseline.sql` from placeholder to executable migration once canonical Drizzle auth tables are finalized.
+- Retire legacy NextAuth compatibility fallback after rollout stability windows complete.
+
 ## 2) Implemented auth routes (API)
 
 Only routes currently present under `app/api/auth/**` are listed below (verified against repository route files).
@@ -143,6 +168,15 @@ RunAsh admin authorization now standardizes on three canonical baseline roles fo
 | `viewer` | `admin:access`, `dashboard:read` | Dashboard read-only; no write/settings/system controls. |
 | `operator` | `viewer` + `operations:restart`, `operations:cache:clear`, `system:maintenance` | Operational controls only; no global config write (`admin:settings`). |
 | `admin` | Full CRUD/system management (`users:*`, `content:*`, `admin:*`, `payments:*`, `streams:*`, `system:*`) | Includes global settings and destructive system control actions. |
+
+### Final RBAC responsibility matrix (auth + payment-sensitive surfaces)
+
+| Surface | `viewer` | `operator` | `admin` |
+|---|---|---|---|
+| Auth analytics (`/api/admin/analytics/auth*`) | Read-only aggregate visibility | Read + redacted stream visibility | Full visibility + incident triage views |
+| Admin role/permission mutation | No | No | Yes (plus super-admin restrictions where applicable) |
+| Payment operations (`payments:*`) | No | Limited to assigned org operational actions | Full privileged payment/admin actions |
+| System/settings mutation (`admin:settings`, `system:*`) | No | No | Yes |
 
 ### Legacy role compatibility mapping
 

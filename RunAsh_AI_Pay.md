@@ -24,6 +24,17 @@ The payment stack is coupled to auth security controls in the following ways:
 
 No new payment endpoint signatures, field names, or webhook contracts were changed by this documentation update.
 
+## Auth + payment architecture status (implemented vs planned)
+
+### Implemented
+- Payment endpoints continue to depend on authenticated server sessions resolved through Better Auth runtime paths documented in `RUNASH-AUTH.md`.
+- Payment/business authorization uses canonical RBAC capabilities (`viewer`/`operator`/`admin`) with legacy-role compatibility mapping preserved.
+- Sensitive payment/auth telemetry and logs are redacted by policy; no raw secrets/tokens are retained in auth/payment logs.
+
+### Planned
+- Remove temporary legacy session fallback dependency after rollout stabilization windows and incident-free operation.
+- Keep payment contract/versioning unchanged until a separately versioned migration is published.
+
 ### 2026-02 middleware auth validation migration note
 
 - Route protection still follows existing public/protected behavior for web and API surfaces.
