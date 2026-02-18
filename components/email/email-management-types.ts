@@ -212,3 +212,11 @@ export interface ContactPayload {
   source?: string
   tags?: string[]
 }
+
+
+export interface EmailAnalyticsQuery {
+  date_from?: string
+  date_to?: string
+  campaign_id?: number
+  template_id?: number
+}
