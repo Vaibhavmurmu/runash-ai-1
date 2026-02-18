@@ -1,6 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { Button } from "@/components/ui/button"
+import { CardAlert } from "@/components/ui/card-alert"
+import { CardAlertDialog } from "@/components/ui/card-alert-dialog"
 
 type Provider = {
   id: number
@@ -21,6 +24,7 @@ export function IdentityManagementPanel() {
   const [providers, setProviders] = useState<Provider[]>([])
   const [healthStatus, setHealthStatus] = useState<ProtocolHealth[]>([])
   const [loading, setLoading] = useState(true)
+  const [providerChangeCandidate, setProviderChangeCandidate] = useState<Provider | null>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -61,6 +65,11 @@ export function IdentityManagementPanel() {
               <div className="text-muted-foreground">
                 {provider.provider_type.toUpperCase()} · Org #{provider.organization_id}
               </div>
+              <div className="mt-2">
+                <Button type="button" size="sm" variant="outline" onClick={() => setProviderChangeCandidate(provider)}>
+                  Request provider change
+                </Button>
+              </div>
             </li>
           ))}
           {providers.length === 0 ? <li className="text-muted-foreground">No identity providers configured yet.</li> : null}
@@ -69,6 +78,12 @@ export function IdentityManagementPanel() {
 
       <div className="rounded-lg border p-4">
         <h2 className="mb-3 text-lg font-medium">Protocol Health</h2>
+        <CardAlert
+          severity="warning"
+          title="Provider change safety"
+          description="Provider updates can interrupt SSO sign-ins. Confirm cutover windows and rollback steps before applying changes."
+          className="mb-3"
+        />
         <ul className="space-y-2 text-sm">
           {healthStatus.map((item) => (
             <li key={item.protocol} className="rounded border p-2">
@@ -80,6 +95,24 @@ export function IdentityManagementPanel() {
           ))}
         </ul>
       </div>
+
+      <CardAlertDialog
+        open={providerChangeCandidate !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setProviderChangeCandidate(null)
+          }
+        }}
+        severity="warning"
+        title="Confirm identity provider change"
+        description={`Proceed with a change request for ${providerChangeCandidate?.provider_name ?? "the selected provider"}. Validate downstream SSO mappings and rollback procedures first.`}
+        confirmLabel="Acknowledge risk"
+        cancelLabel="Cancel"
+        confirmAriaLabel="Confirm provider change risk acknowledgement"
+        onConfirm={() => {
+          setProviderChangeCandidate(null)
+        }}
+      />
     </section>
   )
 }

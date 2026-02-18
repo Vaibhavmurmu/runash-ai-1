@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { CheckCircle2, Loader2, Smartphone } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { CardAlert } from "@/components/ui/card-alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
@@ -18,6 +19,7 @@ export function PhoneOtpVerification({ purpose, onVerifiedChange }: PhoneOtpVeri
   const [isLoading, setIsLoading] = useState(false)
   const [serverVerified, setServerVerified] = useState(false)
   const [message, setMessage] = useState("")
+  const [messageSeverity, setMessageSeverity] = useState<"info" | "success" | "warning" | "danger">("info")
   const [cooldownSeconds, setCooldownSeconds] = useState(0)
 
   useEffect(() => {
@@ -39,6 +41,7 @@ export function PhoneOtpVerification({ purpose, onVerifiedChange }: PhoneOtpVeri
   const sendCode = async () => {
     setIsLoading(true)
     setMessage("")
+    setMessageSeverity("info")
 
     try {
       const response = await fetch("/api/auth/phone-otp", {
@@ -49,11 +52,13 @@ export function PhoneOtpVerification({ purpose, onVerifiedChange }: PhoneOtpVeri
 
       const data = (await response.json()) as { success?: boolean; message?: string; cooldownSeconds?: number }
       setMessage(data.message ?? "OTP requested")
+      setMessageSeverity(response.ok ? "info" : "danger")
       if (data.cooldownSeconds) {
         setCooldownSeconds(data.cooldownSeconds)
       }
     } catch {
       setMessage("Unable to send OTP. Please retry.")
+      setMessageSeverity("danger")
     } finally {
       setIsLoading(false)
     }
@@ -62,6 +67,7 @@ export function PhoneOtpVerification({ purpose, onVerifiedChange }: PhoneOtpVeri
   const verifyCode = async () => {
     setIsLoading(true)
     setMessage("")
+    setMessageSeverity("info")
 
     try {
       const response = await fetch("/api/auth/phone-otp", {
@@ -74,9 +80,11 @@ export function PhoneOtpVerification({ purpose, onVerifiedChange }: PhoneOtpVeri
       const verified = Boolean(response.ok && data.success && data.verified)
       setServerVerified(verified)
       setMessage(data.message ?? (verified ? "Phone verified" : "Verification failed"))
+      setMessageSeverity(verified ? "success" : "danger")
     } catch {
       setServerVerified(false)
       setMessage("Unable to verify OTP.")
+      setMessageSeverity("danger")
     } finally {
       setIsLoading(false)
     }
@@ -85,6 +93,7 @@ export function PhoneOtpVerification({ purpose, onVerifiedChange }: PhoneOtpVeri
   const resendCode = async () => {
     setIsLoading(true)
     setMessage("")
+    setMessageSeverity("info")
 
     try {
       const response = await fetch("/api/auth/phone-otp", {
@@ -95,11 +104,13 @@ export function PhoneOtpVerification({ purpose, onVerifiedChange }: PhoneOtpVeri
 
       const data = (await response.json()) as { message?: string; cooldownSeconds?: number }
       setMessage(data.message ?? "OTP resent")
+      setMessageSeverity(response.ok ? "info" : "danger")
       if (data.cooldownSeconds) {
         setCooldownSeconds(data.cooldownSeconds)
       }
     } catch {
       setMessage("Unable to resend OTP.")
+      setMessageSeverity("danger")
     } finally {
       setIsLoading(false)
     }
@@ -166,7 +177,15 @@ export function PhoneOtpVerification({ purpose, onVerifiedChange }: PhoneOtpVeri
         </Button>
       </div>
 
-      {message ? <p className="text-xs text-muted-foreground">{message}</p> : null}
+      {cooldownSeconds > 0 && !serverVerified ? (
+        <CardAlert
+          severity="warning"
+          title="OTP resend temporarily locked"
+          description={`For security, wait ${cooldownSeconds}s before requesting a new code.`}
+        />
+      ) : null}
+
+      {message ? <CardAlert severity={messageSeverity} title="Phone OTP status" description={message} /> : null}
     </div>
   )
 }
