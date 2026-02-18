@@ -4,8 +4,6 @@ import { logApiEvent } from "@/lib/api/logging"
 import { getAuthEndpointRateLimit } from "@/lib/auth-security-config"
 import { recordAuthMetric } from "@/lib/auth-observability"
 
-const BETTER_AUTH_COOKIE_NAMES = ["better-auth.session-token", "__Secure-better-auth.session-token"] as const
-
 const publicRoutes = [
   "/",
   "/login",
@@ -51,29 +49,6 @@ const publicApiRoutes = [
   "/api/users/search", // Public user search
 ] as const
 
-function parseCookieValue(cookieHeader: string | null, cookieName: string): string | null {
-  if (!cookieHeader) {
-    return null
-  }
-
-  for (const segment of cookieHeader.split(";")) {
-    const [name, ...valueParts] = segment.trim().split("=")
-    if (name !== cookieName) {
-      continue
-    }
-
-    const cookieValue = valueParts.join("=")
-    return cookieValue || null
-  }
-
-  return null
-}
-
-function hasBetterAuthSessionCookie(request: NextRequest): boolean {
-  const cookieHeader = request.headers.get("cookie")
-  return BETTER_AUTH_COOKIE_NAMES.some((cookieName) => Boolean(parseCookieValue(cookieHeader, cookieName)))
-}
-
 function resolveAuthDecision(pathname: string) {
   const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + "/"))
   const isPublicApiRoute = publicApiRoutes.some((route) => pathname.startsWith(route))
@@ -86,10 +61,6 @@ function resolveAuthDecision(pathname: string) {
 }
 
 async function hasValidAuthSession(request: NextRequest): Promise<boolean> {
-  if (!hasBetterAuthSessionCookie(request)) {
-    return false
-  }
-
   try {
     const sessionResponse = await fetch(new URL("/api/auth/get-session", request.url), {
       method: "GET",
