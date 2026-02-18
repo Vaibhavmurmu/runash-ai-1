@@ -16,10 +16,12 @@ import type {
   EmailDeliveryRecord,
   EmailSuppressionRecord,
   EmailTemplateRecord,
+  EmailWebhookRecord,
   SuppressionPayload,
   SuppressionQuery,
   TemplatePayload,
   TemplateQuery,
+  WebhookQuery,
 } from "@/components/email/email-management-types"
 
 const DEFAULT_LIMIT = 10
@@ -322,6 +324,32 @@ export function useAnalyticsOverview() {
   return { overview, loading, error, deliveryRate, fetchOverview }
 }
 
+
+export function useWebhooks() {
+  const [query, setQuery] = useState<WebhookQuery>({ limit: DEFAULT_LIMIT, offset: 0, search: "" })
+  const [items, setItems] = useState<EmailWebhookRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchWebhooks = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await emailAdminApi.getWebhooks(query)
+      setItems(response.data)
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : "Failed to load webhooks")
+    } finally {
+      setLoading(false)
+    }
+  }, [query])
+
+  useEffect(() => {
+    fetchWebhooks()
+  }, [fetchWebhooks])
+
+  return { query, setQuery, items, loading, error, fetchWebhooks }
+}
 
 export function useBroadcasts() {
   const [query, setQuery] = useState<BroadcastQuery>({ limit: DEFAULT_LIMIT, offset: 0, status: "", search: "" })
