@@ -8,6 +8,7 @@ import { sql } from "@/lib/db"
 import { evaluateAccountLinkingPolicy } from "@/lib/auth/plugins/account-linking-policy"
 import { resolveGenericOAuthProviders } from "@/lib/auth/plugins/generic-oauth"
 import { buildTrustedAuthOrigins } from "@/lib/auth/plugins/oauth-proxy"
+import { resolveBearerAuthSession } from "@/lib/auth/session-modes"
 
 const baseURL =
   process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
@@ -303,6 +304,32 @@ async function readLegacyNextAuthSession(cookieHeader: string | null): Promise<B
 }
 
 export async function getAuthSessionFromHeaders(requestHeaders: Headers): Promise<BetterAuthSession | null> {
+  const authorizationHeader = requestHeaders.get("authorization")
+  if (authorizationHeader?.toLowerCase().startsWith("bearer ")) {
+    const bearerToken = authorizationHeader.slice(7).trim()
+    if (bearerToken) {
+      const bearerSession = await resolveBearerAuthSession(bearerToken)
+      if (bearerSession) {
+        return {
+          session: {
+            id: bearerSession.sessionId,
+            token: "[redacted]",
+            userId: bearerSession.userId,
+            expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          user: {
+            id: bearerSession.userId,
+            emailVerified: true,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        } as BetterAuthSession
+      }
+    }
+  }
+
   return resolveSessionFromSources({
     getPrimarySession: () => auth.api.getSession({ headers: requestHeaders }),
     isLegacyFallbackEnabled: () => isFeatureFlagEnabled("allow_legacy_next_auth_fallback"),

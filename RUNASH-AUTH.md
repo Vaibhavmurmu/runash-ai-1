@@ -332,3 +332,12 @@ Rollback to prior stable auth/session path if any of the following occur:
 | `POST /api/auth/google-one-tap/callback` | `app/api/auth/google-one-tap/callback/route.ts` |
 | `GET /api/auth/oauth/proxy` | `app/api/auth/oauth/proxy/route.ts` |
 | `POST /api/auth/account/unlink` | `app/api/auth/account/unlink/route.ts` |
+
+## 2026-02 Anonymous + multi-session + OTT auth extension
+
+- Added anonymous identity creation route (`POST /api/auth/anonymous`) that returns a non-PII identity id (`anon_*`) and a short-lived anonymous cookie session handle.
+- Added anonymous account-linking route (`POST /api/auth/account/link-anonymous`) so signed-in users can bind an anonymous identity later without exposing email/phone in the anonymous flow.
+- Added session mode registry support (`cookie`, `bearer`, `ott`) with device metadata and per-session scope to enable multi-session switching (`GET /api/auth/sessions`, `POST /api/auth/sessions/switch`).
+- Added one-time transfer token routes for cross-domain single-use session handoff (`POST /api/auth/ott/issue`, `POST /api/auth/ott/verify`).
+- Added bearer token session route (`POST/DELETE /api/auth/bearer-token`) and bearer resolver path in `getAuthSessionFromHeaders` so API auth can work with either secure cookies or bearer tokens.
+- Session invalidation now updates both legacy session tables and the auth session registry to keep revoke/rotation behavior consistent across auth modes.
