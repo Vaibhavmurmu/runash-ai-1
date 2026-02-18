@@ -21,9 +21,15 @@ export interface RealtimeEmailMetrics {
   recentEvents: EmailEvent[]
 }
 
+interface RealtimeConnection {
+  writer: WritableStreamDefaultWriter<Uint8Array>
+  closed: boolean
+}
+
 class EmailRealtimeManager extends EventEmitter {
   private static instance: EmailRealtimeManager
-  private connections: Map<string, Response> = new Map()
+  private connections: Map<string, RealtimeConnection> = new Map()
+  private encoder = new TextEncoder()
   private metrics: RealtimeEmailMetrics = {
     totalSent: 0,
     totalDelivered: 0,
@@ -45,19 +51,42 @@ class EmailRealtimeManager extends EventEmitter {
   }
 
   // Add SSE connection
-  addConnection(connectionId: string, response: Response) {
-    this.connections.set(connectionId, response)
+  addConnection(connectionId: string, writer: WritableStreamDefaultWriter<Uint8Array>) {
+    this.connections.set(connectionId, { writer, closed: false })
+    console.info("[email-realtime] connection registered", {
+      connectionId,
+      activeConnections: this.connections.size,
+    })
 
     // Send initial metrics
-    this.sendToConnection(connectionId, {
+    void this.sendToConnection(connectionId, {
       type: "metrics",
       data: this.metrics,
     })
   }
 
   // Remove SSE connection
-  removeConnection(connectionId: string) {
+  async removeConnection(connectionId: string, options?: { closeWriter?: boolean }) {
+    const connection = this.connections.get(connectionId)
+    if (!connection) {
+      return
+    }
+
     this.connections.delete(connectionId)
+    connection.closed = true
+
+    if (options?.closeWriter !== false) {
+      try {
+        await connection.writer.close()
+      } catch {
+        // Writer can already be closed/cancelled by runtime.
+      }
+    }
+
+    console.info("[email-realtime] connection unregistered", {
+      connectionId,
+      activeConnections: this.connections.size,
+    })
   }
 
   // Broadcast event to all connections
@@ -71,15 +100,20 @@ class EmailRealtimeManager extends EventEmitter {
     // Update metrics based on event type
     this.updateMetrics(event)
 
+    console.info("[email-realtime] broadcasting event", {
+      eventType: event.type,
+      activeConnections: this.connections.size,
+    })
+
     // Broadcast to all connections
     const message = {
       type: "event",
       data: event,
     }
 
-    this.connections.forEach((response, connectionId) => {
-      this.sendToConnection(connectionId, message)
-    })
+    for (const connectionId of this.connections.keys()) {
+      void this.sendToConnection(connectionId, message)
+    }
 
     // Also broadcast updated metrics
     setTimeout(() => {
@@ -94,23 +128,29 @@ class EmailRealtimeManager extends EventEmitter {
       data: this.metrics,
     }
 
-    this.connections.forEach((response, connectionId) => {
-      this.sendToConnection(connectionId, message)
-    })
+    for (const connectionId of this.connections.keys()) {
+      void this.sendToConnection(connectionId, message)
+    }
   }
 
   // Send message to specific connection
-  private sendToConnection(connectionId: string, message: any) {
-    const response = this.connections.get(connectionId)
-    if (response) {
-      try {
-        const encoder = new TextEncoder()
-        const data = encoder.encode(`data: ${JSON.stringify(message)}\n\n`)
-        response.body?.getWriter().write(data)
-      } catch (error) {
-        console.error("Error sending SSE message:", error)
-        this.connections.delete(connectionId)
-      }
+  private async sendToConnection(connectionId: string, message: any) {
+    const connection = this.connections.get(connectionId)
+    if (!connection || connection.closed) {
+      return
+    }
+
+    try {
+      const payload = this.encoder.encode(`data: ${JSON.stringify(message)}\n\n`)
+      await connection.writer.ready
+      await connection.writer.write(payload)
+    } catch (error) {
+      console.warn("[email-realtime] failed to send SSE payload", {
+        connectionId,
+        activeConnections: this.connections.size,
+        error: error instanceof Error ? error.message : "unknown",
+      })
+      await this.removeConnection(connectionId, { closeWriter: false })
     }
   }
 
