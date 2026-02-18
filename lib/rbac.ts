@@ -148,6 +148,7 @@ const ADMIN_API_ROUTE_RULES: readonly RoutePermissionRule[] = [
   { prefix: "/api/admin/users", requiredPermissions: ["users:write"], methods: ["POST", "PUT", "PATCH"] },
   { prefix: "/api/admin/users", requiredPermissions: ["users:write", "system:control"], methods: ["DELETE"] },
   { prefix: "/api/admin/flags", requiredPermissions: ["admin:settings"] },
+  { prefix: "/api/admin/payment-auth", requiredPermissions: ["admin:settings"] },
 ]
 
 const PROTECTED_UI_ROUTE_RULES: readonly RoutePermissionRule[] = [
@@ -157,6 +158,7 @@ const PROTECTED_UI_ROUTE_RULES: readonly RoutePermissionRule[] = [
   { prefix: "/admin/email-management", requiredPermissions: ["admin:settings"] },
   { prefix: "/admin/roles", requiredPermissions: ["admin:settings"] },
   { prefix: "/admin/users", requiredPermissions: ["users:read"] },
+  { prefix: "/admin/payment-auth", requiredPermissions: ["admin:settings"] },
   { prefix: "/ecommerce/admin", requiredPermissions: ["admin:analytics"] },
 ]
 

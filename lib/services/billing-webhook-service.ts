@@ -1,5 +1,6 @@
 import { queryMany, queryOne } from "@/lib/db"
 import { persistTaxComputation, type TaxComputation } from "@/lib/services/tax-service"
+import { handleSubscriptionLifecycleEvent, syncAuthUserWithPaymentCustomer } from "@/lib/auth/plugins/runash-payment"
 
 const WEBHOOK_PROVIDER = "stripe"
 const DEAD_LETTER_THRESHOLD = Number(process.env.BILLING_WEBHOOK_DEAD_LETTER_THRESHOLD ?? 10)
@@ -207,6 +208,23 @@ async function runWebhookDomainHandler(event: StripeWebhookEvent) {
   const stripeObject = event.data?.object as Record<string, any> | undefined
 
   switch (event.type) {
+    case "customer.created":
+    case "customer.updated": {
+      if (!stripeObject?.id) return
+
+      const metadata = stripeObject.metadata && typeof stripeObject.metadata === "object" ? stripeObject.metadata : {}
+      await syncAuthUserWithPaymentCustomer({
+        paymentCustomerId: String(stripeObject.id),
+        userId: metadata.user_id ? String(metadata.user_id) : null,
+        userEmail: stripeObject.email ? String(stripeObject.email) : null,
+        metadata: {
+          source: event.type,
+          customerName: stripeObject.name ? String(stripeObject.name) : undefined,
+        },
+      })
+
+      return
+    }
     case "invoice.created":
     case "invoice.payment_succeeded": {
       if (!stripeObject?.id) return
@@ -348,6 +366,23 @@ async function runWebhookDomainHandler(event: StripeWebhookEvent) {
     case "customer.subscription.deleted": {
       if (!stripeObject?.id) return
       const subscription = stripeObject
+
+      await handleSubscriptionLifecycleEvent({
+        eventId: event.id,
+        eventType: event.type,
+        paymentCustomerId: subscription.customer ? String(subscription.customer) : null,
+        paymentSubscriptionId: String(subscription.id),
+        subscriptionStatus: String(subscription.status ?? "unknown"),
+        currentPeriodStart: toIsoTimestamp(subscription.current_period_start),
+        currentPeriodEnd: toIsoTimestamp(subscription.current_period_end),
+        cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
+        canceledAt: toIsoTimestamp(subscription.canceled_at),
+        metadata: {
+          source: event.type,
+          planId: subscription.items?.data?.[0]?.price?.id ? String(subscription.items.data[0].price.id) : undefined,
+        },
+      })
+
       await queryMany(
         `
           INSERT INTO billing_webhook_subscriptions (

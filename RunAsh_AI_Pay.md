@@ -1239,3 +1239,30 @@ To preserve payment-surface account integrity while extending OAuth support:
 - Enterprise identity additions (SSO provider config, SCIM lifecycle APIs, OAuth device flow, and SIWE wallet login) were introduced for account access flexibility.
 - RunAsh Pay request/response contracts and payment-field naming remain unchanged.
 - Rollback remains isolated to auth/identity route and config layers; payment processing contracts do not require migration.
+
+## Payment-auth linkage reliability update (2026-02)
+
+### What changed
+- Added server-side auth plugin `lib/auth/plugins/runash-payment.ts` to keep auth users synchronized with Stripe customer identities.
+- Billing webhook processing now handles `customer.created`/`customer.updated` for auth-customer linking and records subscription lifecycle state transitions.
+- Stripe webhook verification now includes explicit signed-payload HMAC validation (`t=<timestamp>,v1=<digest>`) before event processing.
+- Added admin health telemetry endpoint/UI for payment-auth linkage coverage and stale-link detection.
+
+### Backward compatibility and migration notes
+- **No existing payment API field names were changed** for checkout/subscription/invoice routes.
+- Existing webhook API contract remains unchanged (`POST /api/billing/webhook`).
+- Schema evolution is additive: runtime creates `payment_auth_customer_links` if absent.
+- For managed/prod rollout, run an explicit migration to create `payment_auth_customer_links` and indexes ahead of deploy to avoid first-request DDL latency.
+
+### Operational runbook
+1. Ensure `STRIPE_WEBHOOK_SECRET` is configured in each environment.
+2. Confirm webhook signature tolerance (`BILLING_WEBHOOK_SIGNATURE_TOLERANCE_SECONDS`, default `300`) matches provider clock expectations.
+3. Verify linkage health at `/admin/payment-auth` or via `GET /api/admin/payment-auth/health`.
+4. If `unlinkedCustomers` grows unexpectedly:
+   - check Stripe customer metadata for `user_id`,
+   - verify customer email alignment with auth users,
+   - replay failed webhook events using internal webhook replay controls.
+5. Rollback strategy:
+   - disable new linkage processing by reverting the plugin/service integration commit,
+   - keep webhook ingestion active,
+   - no payment API schema rollback required because the change is additive.

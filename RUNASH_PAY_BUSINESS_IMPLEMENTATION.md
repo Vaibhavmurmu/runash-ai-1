@@ -1926,3 +1926,28 @@ To preserve payment and auth reliability under the active service override:
 - **Payment contract impact:** none. Existing payment API field names, request/response schemas, and settlement contracts remain unchanged.
 - **Risk:** misconfigured identity providers can block operator access to payment tooling.
 - **Rollback:** disable/undo identity-provider configs at admin layer; payment APIs continue to operate with existing auth methods.
+
+## 2026-02 payment/auth linkage implementation note
+
+### Impacted flows
+- Stripe customer creation/update webhooks now attempt deterministic linkage to auth users (`user_id` metadata first, email fallback second).
+- Subscription lifecycle events (`customer.subscription.created|updated|deleted`) now persist payment-auth linkage state for monitoring and reconciliation.
+- Admin operators now have dedicated linkage health visibility at `/admin/payment-auth`.
+
+### Risk assessment
+- **Primary risk:** webhook customer records without `user_id` metadata and non-matching email can remain unlinked.
+- **Mitigation:** keep email fallback enabled, monitor stale/unlinked counts, and run replay/rollback tooling for webhook events.
+- **Security posture:** signed payload verification is enforced before Stripe event construction; no sensitive auth/payment payload fields are logged.
+
+### Rollback plan
+1. Revert webhook-to-linkage plugin wiring while preserving core webhook recording/processing.
+2. Keep additive table in place (safe to retain; does not affect existing payment API contracts).
+3. Re-run webhook replay only after verification settings are restored.
+
+### Operational checks
+- Validate admin endpoint `GET /api/admin/payment-auth/health` as part of release smoke tests.
+- Track these signals during release window:
+  - `unlinkedCustomers`
+  - `usersWithoutCustomer`
+  - `staleLinks`
+- Escalate if `unlinkedCustomers` trend increases across two consecutive webhook batches.

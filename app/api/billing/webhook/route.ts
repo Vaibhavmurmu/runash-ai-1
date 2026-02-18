@@ -1,43 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { logApiEvent, createRequestLogContext } from "@/lib/api/logging"
 import { getWebhookEventByEventId, processWebhookEvent, recordWebhookEvent } from "@/lib/services/billing-webhook-service"
+import { verifyStripeSignedPayload } from "@/lib/auth/plugins/runash-payment"
 
 const DEFAULT_SIGNATURE_TOLERANCE_SECONDS = 300
 
 function getConfiguredToleranceSeconds() {
   const configured = Number(process.env.BILLING_WEBHOOK_SIGNATURE_TOLERANCE_SECONDS ?? DEFAULT_SIGNATURE_TOLERANCE_SECONDS)
   return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_SIGNATURE_TOLERANCE_SECONDS
-}
-
-function validateStripeSignatureHeader(signature: string, toleranceSeconds: number) {
-  const parts = signature
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean)
-
-  const parsed = new Map<string, string[]>()
-
-  for (const part of parts) {
-    const [key, value] = part.split("=")
-    if (!key || !value) continue
-    parsed.set(key, [...(parsed.get(key) ?? []), value])
-  }
-
-  const timestamp = parsed.get("t")?.[0]
-  const v1Signatures = parsed.get("v1") ?? []
-
-  if (!timestamp || !/^\d+$/.test(timestamp)) {
-    throw new Error("invalid_signature_timestamp")
-  }
-
-  if (!v1Signatures.length || v1Signatures.some((value) => !/^[a-fA-F0-9]{16,}$/.test(value))) {
-    throw new Error("invalid_signature_hash")
-  }
-
-  const ageSeconds = Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp))
-  if (ageSeconds > toleranceSeconds) {
-    throw new Error("signature_out_of_tolerance")
-  }
 }
 
 export async function POST(req: NextRequest) {
@@ -59,9 +29,10 @@ export async function POST(req: NextRequest) {
   }
 
   const toleranceSeconds = getConfiguredToleranceSeconds()
+  const raw = await req.text()
 
   try {
-    validateStripeSignatureHeader(sig, toleranceSeconds)
+    verifyStripeSignedPayload({ payload: raw, secret, signatureHeader: sig, toleranceSeconds })
   } catch (error) {
     logApiEvent("warn", "billing.webhook.signature_header_invalid", {
       ...requestContext,
@@ -72,7 +43,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid Stripe signature header" }, { status: 400 })
   }
 
-  const raw = await req.text()
   const { default: Stripe } = await import("stripe")
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY || "sk_webhook_placeholder", {
     apiVersion: "2026-01-28.clover",
