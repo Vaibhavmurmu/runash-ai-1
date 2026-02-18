@@ -289,7 +289,7 @@ export function AdminSettingsPanel() {
                 <Mail className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <p className="text-muted-foreground">Email settings are configured via environment variables</p>
                 <Badge variant="outline" className="mt-2">
-                  SMTP_HOST, SMTP_USER, SMTP_PASSWORD
+                  EMAIL_PROVIDER, EMAIL_FROM, SMTP_HOST/SMTP_USER/SMTP_PASSWORD or RESEND_API_KEY
                 </Badge>
               </div>
             </CardContent>

@@ -1,6 +1,13 @@
 # 🏦 RunAsh AI Pay 
 
 
+## Auth email transport reliability note (2026-02)
+
+- Auth email sending now uses a single canonical provider module (`lib/email-provider.ts`) with deterministic provider selection via `EMAIL_PROVIDER=smtp|resend`.
+- Payment-linked auth flows (verification/reset/challenge notifications) keep existing API contracts and field names; only outbound transport selection was unified.
+- Delivery tracking hooks and realtime delivery events remain intact to preserve auditability for payment-adjacent auth communications.
+- No payment request/response schema changes, webhook contract changes, or token/logging policy regressions were introduced by this update.
+
 ## Security alignment note (Auth/Payment shared controls)
 
 To protect payment-linked identities and admin access pathways, the auth hardening rollout now includes:

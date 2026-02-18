@@ -13,6 +13,37 @@ This document tracks the **currently implemented** auth runtime, files, and rout
 
 Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 
+## Auth email provider unification update (2026-02)
+
+- Introduced one canonical provider module at `lib/email-provider.ts` used by both transactional auth mail (`lib/email.ts`) and report mail (`lib/emails.ts`).
+- Provider selection is now deterministic via `EMAIL_PROVIDER=smtp|resend` with explicit fallback behavior:
+  - `EMAIL_PROVIDER=smtp` -> use SMTP when configured, otherwise fallback to Resend if available.
+  - `EMAIL_PROVIDER=resend` -> use Resend when configured, otherwise fallback to SMTP if available.
+  - unset/invalid `EMAIL_PROVIDER` -> auto-select SMTP first, then Resend.
+- Standardized environment variables on `SMTP_PASSWORD` (canonical) and `EMAIL_FROM` (canonical sender). Legacy aliases `SMTP_PASS` and `SMTP_FROM` remain temporary compatibility fallbacks for migration safety.
+- Existing auth send paths continue through `sendVerificationEmail` and `sendPasswordResetEmail`, but the final transport now resolves through the canonical provider path and keeps delivery tracking + realtime status events unchanged.
+
+### Required email environment variables
+
+- Shared:
+  - `EMAIL_PROVIDER` (`smtp` or `resend`)
+  - `EMAIL_FROM` (recommended canonical sender, for both providers)
+- SMTP path:
+  - `SMTP_HOST`
+  - `SMTP_PORT` (optional, defaults `587`)
+  - `SMTP_USER`
+  - `SMTP_PASSWORD`
+  - `SMTP_SECURE` (optional, `true|false`)
+- Resend path:
+  - `RESEND_API_KEY`
+
+### Migration notes
+
+1. Replace `SMTP_PASS` with `SMTP_PASSWORD` in deployment secrets.
+2. Replace `SMTP_FROM` with `EMAIL_FROM` in deployment secrets.
+3. Set `EMAIL_PROVIDER` explicitly per environment to avoid accidental provider switching.
+4. Keep legacy aliases only during rollout; remove after secret sync verification.
+
 ## OpenAPI + Scalar auth docs update (2026-02)
 
 - Added generated OpenAPI spec output for auth routes at `docs/openapi/auth.openapi.json`.

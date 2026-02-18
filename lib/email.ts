@@ -1,30 +1,22 @@
-import nodemailer from "nodemailer"
 import { EmailDeliveryTracker } from "./email-delivery"
 import { EmailBounceHandler } from "./email-bounce-handler"
 import { triggerDeliveryStatusEvent } from "./email-realtime"
-
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number.parseInt(process.env.SMTP_PORT || "587"),
-  secure: process.env.SMTP_SECURE === "true",
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASSWORD,
-  },
-})
+import { type EmailAttachment, sendWithEmailProvider } from "./email-provider"
 
 export async function sendEmail(options: {
   to: string
   subject: string
   html: string
+  text?: string
   from?: string
+  headers?: Record<string, string>
+  attachments?: EmailAttachment[]
   template_id?: number
   campaign_id?: number
   user_id?: number
   recipient_name?: string
   track_delivery?: boolean
 }) {
-  // Check if email is suppressed before sending
   const validation = await EmailBounceHandler.validateEmailForSending(options.to)
   if (!validation.canSend) {
     throw new Error(`Cannot send email: ${validation.reason} (${validation.suppressionType})`)
@@ -33,7 +25,6 @@ export async function sendEmail(options: {
   let message_id: string | undefined
   let delivery_id: number | undefined
 
-  // Create delivery tracking record if enabled
   if (options.track_delivery !== false) {
     try {
       const tracking = await EmailDeliveryTracker.createDelivery({
@@ -52,12 +43,10 @@ export async function sendEmail(options: {
     }
   }
 
-  // Add tracking to HTML if message_id exists
   let html = options.html
   if (message_id && options.track_delivery !== false) {
     html = EmailDeliveryTracker.addTrackingToEmail(html, message_id)
 
-    // Add unsubscribe link
     const unsubscribeUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/email/unsubscribe?email=${encodeURIComponent(options.to)}`
     const unsubscribeFooter = `
       <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #666; font-size: 12px;">
@@ -68,7 +57,6 @@ export async function sendEmail(options: {
       </div>
     `
 
-    // Add unsubscribe footer before closing body tag or at the end
     if (html.includes("</body>")) {
       html = html.replace("</body>", `${unsubscribeFooter}</body>`)
     } else {
@@ -76,30 +64,34 @@ export async function sendEmail(options: {
     }
   }
 
-  const mailOptions = {
-    from: options.from || process.env.SMTP_FROM || "noreply@runash.in",
-    to: options.to,
-    subject: options.subject,
-    html,
-    headers: message_id
+  const headers = {
+    ...(options.headers ?? {}),
+    ...(message_id
       ? {
           "X-Message-ID": message_id,
           "List-Unsubscribe": `<${process.env.NEXT_PUBLIC_APP_URL}/api/email/unsubscribe?email=${encodeURIComponent(options.to)}>`,
         }
-      : undefined,
+      : {}),
   }
 
   try {
-    const result = await transporter.sendMail(mailOptions)
+    const providerResult = await sendWithEmailProvider({
+      from: options.from,
+      to: options.to,
+      subject: options.subject,
+      html,
+      text: options.text,
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
+      attachments: options.attachments,
+    })
 
-    // Update delivery status to sent
     if (message_id) {
       await EmailDeliveryTracker.updateDeliveryStatus(message_id, "sent", {
-        tracking_data: { smtp_response: result.response },
+        tracking_data: { provider_response: providerResult },
       })
 
       triggerDeliveryStatusEvent(message_id, options.to, "sent", {
-        smtp_response: result.response,
+        provider_response: providerResult,
       })
     }
 
@@ -107,7 +99,6 @@ export async function sendEmail(options: {
   } catch (error) {
     console.error("Error sending email:", error)
 
-    // Update delivery status to failed
     if (message_id) {
       await EmailDeliveryTracker.updateDeliveryStatus(message_id, "failed", {
         error_message: error instanceof Error ? error.message : "Unknown error",
