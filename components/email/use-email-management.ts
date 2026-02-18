@@ -3,10 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { emailAdminApi } from "@/components/email/email-management-api"
 import type {
+  BroadcastPayload,
+  BroadcastQuery,
   ContactPayload,
   ContactQuery,
   DeliveryQuery,
   EmailAnalyticsOverview,
+  EmailBroadcastRecord,
+  EmailBroadcastTemplateOption,
   EmailContactImportSummary,
   EmailContactRecord,
   EmailDeliveryRecord,
@@ -316,4 +320,98 @@ export function useAnalyticsOverview() {
   const deliveryRate = useMemo(() => overview?.delivery_rate ?? 0, [overview])
 
   return { overview, loading, error, deliveryRate, fetchOverview }
+}
+
+
+export function useBroadcasts() {
+  const [query, setQuery] = useState<BroadcastQuery>({ limit: DEFAULT_LIMIT, offset: 0, status: "", search: "" })
+  const [items, setItems] = useState<EmailBroadcastRecord[]>([])
+  const [templates, setTemplates] = useState<EmailBroadcastTemplateOption[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchBroadcasts = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await emailAdminApi.getBroadcasts(query)
+      setItems(response.data)
+      setTemplates(response.templates || [])
+      setTotal(response.total)
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : "Failed to load broadcasts")
+    } finally {
+      setLoading(false)
+    }
+  }, [query])
+
+  useEffect(() => {
+    fetchBroadcasts()
+  }, [fetchBroadcasts])
+
+  const createBroadcast = useCallback(
+    async (payload: BroadcastPayload) => {
+      setSaving(true)
+      try {
+        await emailAdminApi.createBroadcast(payload)
+        await fetchBroadcasts()
+      } finally {
+        setSaving(false)
+      }
+    },
+    [fetchBroadcasts],
+  )
+
+  const updateBroadcast = useCallback(
+    async (id: number, payload: Partial<BroadcastPayload> & { status?: string }) => {
+      setSaving(true)
+      try {
+        await emailAdminApi.updateBroadcast(id, payload)
+        await fetchBroadcasts()
+      } finally {
+        setSaving(false)
+      }
+    },
+    [fetchBroadcasts],
+  )
+
+  const sendBroadcastTest = useCallback(async (id: number, recipientEmail: string) => {
+    setSaving(true)
+    try {
+      await emailAdminApi.sendBroadcastTest(id, recipientEmail)
+    } finally {
+      setSaving(false)
+    }
+  }, [])
+
+  const sendBroadcast = useCallback(
+    async (id: number) => {
+      setSaving(true)
+      try {
+        await emailAdminApi.sendBroadcast(id)
+        await fetchBroadcasts()
+      } finally {
+        setSaving(false)
+      }
+    },
+    [fetchBroadcasts],
+  )
+
+  return {
+    query,
+    setQuery,
+    items,
+    templates,
+    total,
+    loading,
+    saving,
+    error,
+    fetchBroadcasts,
+    createBroadcast,
+    updateBroadcast,
+    sendBroadcastTest,
+    sendBroadcast,
+  }
 }

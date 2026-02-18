@@ -1,10 +1,14 @@
 import type {
   ApiItemResponse,
   ApiListResponse,
+  BroadcastPayload,
+  BroadcastQuery,
   ContactPayload,
   ContactQuery,
   DeliveryQuery,
   EmailAnalyticsData,
+  EmailBroadcastRecord,
+  EmailBroadcastTemplateOption,
   EmailContactImportSummary,
   EmailContactRecord,
   EmailDeliveryRecord,
@@ -41,6 +45,34 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const emailAdminApi = {
+
+  getBroadcasts: (query: BroadcastQuery) => {
+    const queryString = toQueryString(query)
+    return request<ApiListResponse<EmailBroadcastRecord> & { templates: EmailBroadcastTemplateOption[] }>(`/api/admin/email-broadcasts?${queryString}`)
+  },
+  createBroadcast: (payload: BroadcastPayload) => {
+    return request<ApiItemResponse<EmailBroadcastRecord>>("/api/admin/email-broadcasts", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  },
+  updateBroadcast: (id: number, payload: Partial<BroadcastPayload> & { status?: string }) => {
+    return request<ApiItemResponse<EmailBroadcastRecord>>(`/api/admin/email-broadcasts/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  },
+  sendBroadcastTest: (id: number, recipient_email: string) => {
+    return request<{ success: boolean; data: { success: boolean; message: string } }>(`/api/admin/email-broadcasts/${id}/test-send`, {
+      method: "POST",
+      body: JSON.stringify({ recipient_email }),
+    })
+  },
+  sendBroadcast: (id: number) => {
+    return request<{ success: boolean; data: { sent: number; failed: number; total: number } }>(`/api/admin/email-broadcasts/${id}/send`, {
+      method: "POST",
+    })
+  },
   getTemplates: (query: TemplateQuery) => {
     const queryString = toQueryString(query)
     return request<ApiListResponse<EmailTemplateRecord>>(`/api/admin/email-templates?${queryString}`)

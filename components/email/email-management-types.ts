@@ -128,6 +128,52 @@ export interface ContactQuery {
   offset: number
 }
 
+
+
+export interface EmailBroadcastTemplateOption {
+  key: string
+  label: string
+  description: string
+}
+
+export interface EmailBroadcastRecord {
+  id: number
+  name: string
+  subject: string
+  preheader?: string | null
+  template_key: string
+  template_props: Record<string, unknown>
+  audience_filter: Record<string, unknown>
+  status: "draft" | "scheduled" | "sending" | "sent"
+  scheduled_at?: string | null
+  started_at?: string | null
+  sent_at?: string | null
+  total_recipients: number
+  sent_count: number
+  failed_count: number
+  last_error?: string | null
+  preview_html?: string
+  preview_text?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface BroadcastQuery {
+  status?: string
+  search?: string
+  limit: number
+  offset: number
+}
+
+export interface BroadcastPayload {
+  name: string
+  subject: string
+  preheader?: string
+  template_key: string
+  template_props?: Record<string, unknown>
+  audience_filter?: Record<string, unknown>
+  scheduled_at?: string | null
+}
 export interface TemplatePayload {
   name: string
   subject: string

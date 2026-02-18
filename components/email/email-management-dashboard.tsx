@@ -12,8 +12,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { BarChart3, Edit, Mail, Plus, RefreshCw, Search, Shield, Trash2, Upload } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { useAnalyticsOverview, useContacts, useDelivery, useSuppressions, useTemplates } from "@/components/email/use-email-management"
-import type { ContactPayload, EmailContactRecord, TemplatePayload } from "@/components/email/email-management-types"
+import { useAnalyticsOverview, useBroadcasts, useContacts, useDelivery, useSuppressions, useTemplates } from "@/components/email/use-email-management"
+import type { BroadcastPayload, ContactPayload, EmailContactRecord, TemplatePayload } from "@/components/email/email-management-types"
 
 interface EmailSafetyModeState {
   safeMode: boolean
@@ -266,6 +266,137 @@ function ContactsTab() {
   )
 }
 
+
+function BroadcastsTab() {
+  const { toast } = useToast()
+  const { query, setQuery, items, templates, loading, saving, error, createBroadcast, updateBroadcast, sendBroadcastTest, sendBroadcast } = useBroadcasts()
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [testEmail, setTestEmail] = useState("")
+  const [form, setForm] = useState<BroadcastPayload>({
+    name: "",
+    subject: "",
+    preheader: "",
+    template_key: "marketing.announcement",
+    template_props: {},
+    audience_filter: { status: "subscribed" },
+  })
+
+  const selected = items.find((item) => item.id === selectedId) || null
+
+  const applySelected = (id: number) => {
+    const broadcast = items.find((item) => item.id === id)
+    if (!broadcast) return
+    setSelectedId(id)
+    setForm({
+      name: broadcast.name,
+      subject: broadcast.subject,
+      preheader: broadcast.preheader || "",
+      template_key: broadcast.template_key,
+      template_props: broadcast.template_props || {},
+      audience_filter: broadcast.audience_filter || { status: "subscribed" },
+      scheduled_at: broadcast.scheduled_at || null,
+    })
+  }
+
+  const saveDraft = async () => {
+    try {
+      if (selectedId) {
+        await updateBroadcast(selectedId, form)
+        toast({ title: "Broadcast updated" })
+      } else {
+        await createBroadcast(form)
+        toast({ title: "Broadcast created" })
+      }
+    } catch (broadcastError) {
+      toast({ title: "Save failed", description: (broadcastError as Error).message, variant: "destructive" })
+    }
+  }
+
+  const sendTest = async () => {
+    if (!selectedId || !testEmail) return
+    try {
+      await sendBroadcastTest(selectedId, testEmail)
+      toast({ title: "Test email sent" })
+    } catch (sendError) {
+      toast({ title: "Test send failed", description: (sendError as Error).message, variant: "destructive" })
+    }
+  }
+
+  const sendNow = async () => {
+    if (!selectedId) return
+    const confirmation = window.prompt('Type SEND to confirm broadcast delivery')
+    if (confirmation !== 'SEND') return
+
+    try {
+      await sendBroadcast(selectedId)
+      toast({ title: "Broadcast send completed" })
+    } catch (sendError) {
+      toast({ title: "Broadcast send failed", description: (sendError as Error).message, variant: "destructive" })
+    }
+  }
+
+  const previewHtml = selected?.preview_html || ""
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <Input placeholder="Search broadcasts" value={query.search || ""} onChange={(e) => setQuery((prev) => ({ ...prev, search: e.target.value, offset: 0 }))} className="max-w-sm" />
+        <Button variant="outline" onClick={() => { setSelectedId(null); setForm({ name: "", subject: "", preheader: "", template_key: templates[0]?.key || "marketing.announcement", template_props: {}, audience_filter: { status: "subscribed" } }) }}>New broadcast</Button>
+      </div>
+
+      <SectionState loading={loading} error={error} empty={!items.length} />
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle>Broadcasts</CardTitle><CardDescription>Select a draft to edit or send.</CardDescription></CardHeader>
+          <CardContent className="space-y-2">
+            {items.map((item) => (
+              <button key={item.id} className={`w-full rounded border px-3 py-2 text-left ${selectedId === item.id ? "border-orange-500 bg-orange-50" : "border-border"}`} onClick={() => applySelected(item.id)}>
+                <div className="flex items-center justify-between"><span className="font-medium">{item.name}</span><Badge variant="outline">{item.status}</Badge></div>
+                <p className="text-xs text-muted-foreground">{item.subject}</p>
+              </button>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle>Editor</CardTitle><CardDescription>Subject, preheader, template, and variables.</CardDescription></CardHeader>
+          <CardContent className="space-y-3">
+            <Input placeholder="Broadcast name" value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} />
+            <Input placeholder="Subject" value={form.subject} onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))} />
+            <Input placeholder="Preheader" value={form.preheader || ""} onChange={(e) => setForm((prev) => ({ ...prev, preheader: e.target.value }))} />
+            <Select value={form.template_key} onValueChange={(value) => setForm((prev) => ({ ...prev, template_key: value }))}>
+              <SelectTrigger><SelectValue placeholder="Select template" /></SelectTrigger>
+              <SelectContent>{templates.map((template) => <SelectItem key={template.key} value={template.key}>{template.label}</SelectItem>)}</SelectContent>
+            </Select>
+            <Textarea placeholder='Template props JSON e.g. {"heading":"Big launch"}' value={JSON.stringify(form.template_props || {}, null, 2)} onChange={(e) => { try { setForm((prev) => ({ ...prev, template_props: JSON.parse(e.target.value) })) } catch { /* ignore invalid json while typing */ } }} className="min-h-36 font-mono text-xs" />
+            <div className="flex gap-2">
+              <Button onClick={saveDraft} disabled={saving || !form.name || !form.subject || !form.template_key}>Save</Button>
+              <Input placeholder="test@recipient.com" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} className="max-w-xs" />
+              <Button variant="outline" onClick={sendTest} disabled={saving || !selectedId || !testEmail}>Send test</Button>
+              <Button variant="destructive" onClick={sendNow} disabled={saving || !selectedId || selected?.status === "sent"}>Send broadcast</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader><CardTitle>Live preview</CardTitle><CardDescription>Desktop and mobile render snapshots.</CardDescription></CardHeader>
+        <CardContent className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded border p-3">
+            <p className="mb-2 text-xs font-medium text-muted-foreground">Desktop</p>
+            <div className="min-h-40 overflow-auto rounded border bg-white p-2" dangerouslySetInnerHTML={{ __html: previewHtml || "<p>No preview yet.</p>" }} />
+          </div>
+          <div className="rounded border p-3">
+            <p className="mb-2 text-xs font-medium text-muted-foreground">Mobile</p>
+            <div className="mx-auto min-h-40 max-w-[360px] overflow-auto rounded border bg-white p-2" dangerouslySetInnerHTML={{ __html: previewHtml || "<p>No preview yet.</p>" }} />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
 function SettingsTab({ safety }: { safety: EmailSafetyModeState }) {
   const { overview, loading, error } = useAnalyticsOverview()
   if (loading) return <SectionState loading={loading} error={null} empty={false} />
@@ -280,17 +411,19 @@ export function EmailManagementDashboard({ safety }: { safety: EmailSafetyModeSt
 
   return (
     <div className="space-y-6">
-      <div><h1 className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-orange-400 bg-clip-text text-transparent">Email Management</h1><p className="text-muted-foreground mt-2">Manage templates, contacts, delivery logs, suppressions, and settings</p></div>
+      <div><h1 className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-orange-400 bg-clip-text text-transparent">Email Management</h1><p className="text-muted-foreground mt-2">Manage broadcasts, templates, contacts, delivery logs, suppressions, and settings</p></div>
       <div className="grid gap-4 md:grid-cols-4"><Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Total Sent</CardTitle><Mail className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{stats.sent.toLocaleString()}</div></CardContent></Card><Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Delivery Rate</CardTitle><BarChart3 className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{stats.deliveryRate.toFixed(1)}%</div></CardContent></Card><Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Open Rate</CardTitle><BarChart3 className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{stats.openRate.toFixed(1)}%</div></CardContent></Card><Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Suppressed (bounced)</CardTitle><Shield className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{stats.bounced.toLocaleString()}</div></CardContent></Card></div>
 
       <Tabs defaultValue="templates" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
+          <TabsTrigger value="broadcasts">Broadcasts</TabsTrigger>
           <TabsTrigger value="templates">Templates</TabsTrigger>
           <TabsTrigger value="contacts">Contacts</TabsTrigger>
           <TabsTrigger value="delivery">Delivery</TabsTrigger>
           <TabsTrigger value="suppressions">Suppressions</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
+        <TabsContent value="broadcasts"><BroadcastsTab /></TabsContent>
         <TabsContent value="templates"><TemplatesTab /></TabsContent>
         <TabsContent value="contacts"><ContactsTab /></TabsContent>
         <TabsContent value="delivery"><DeliveryTab /></TabsContent>
