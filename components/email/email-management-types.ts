@@ -174,6 +174,21 @@ export interface BroadcastPayload {
   audience_filter?: Record<string, unknown>
   scheduled_at?: string | null
 }
+
+export interface EmailWebhookRecord {
+  id: number
+  url: string
+  events: string[]
+  active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface WebhookQuery {
+  limit: number
+  offset: number
+  search?: string
+}
 export interface TemplatePayload {
   name: string
   subject: string

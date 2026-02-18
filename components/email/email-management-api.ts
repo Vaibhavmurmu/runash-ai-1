@@ -14,10 +14,12 @@ import type {
   EmailDeliveryRecord,
   EmailSuppressionRecord,
   EmailTemplateRecord,
+  EmailWebhookRecord,
   SuppressionPayload,
   SuppressionQuery,
   TemplatePayload,
   TemplateQuery,
+  WebhookQuery,
 } from "@/components/email/email-management-types"
 
 const toQueryString = (query: Record<string, string | number | boolean | undefined>) => {
@@ -166,5 +168,9 @@ export const emailAdminApi = {
   },
   getAnalytics: () => {
     return request<ApiItemResponse<EmailAnalyticsData>>("/api/admin/email-analytics")
+  },
+  getWebhooks: (query: WebhookQuery) => {
+    const queryString = toQueryString(query)
+    return request<ApiListResponse<EmailWebhookRecord>>(`/api/admin/email-webhooks?${queryString}`)
   },
 }

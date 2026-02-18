@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { type ComponentType, useMemo, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -10,10 +10,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { BarChart3, Edit, Mail, Plus, RefreshCw, Search, Shield, Trash2, Upload } from "lucide-react"
+import { Activity, BarChart3, Mail, Plus, RefreshCw, Search, Settings2, Shield, Trash2, Webhook } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { useAnalyticsOverview, useBroadcasts, useContacts, useDelivery, useSuppressions, useTemplates } from "@/components/email/use-email-management"
-import type { BroadcastPayload, ContactPayload, EmailContactRecord, TemplatePayload } from "@/components/email/email-management-types"
+import { useAnalyticsOverview, useBroadcasts, useContacts, useDelivery, useSuppressions, useTemplates, useWebhooks } from "@/components/email/use-email-management"
+import type { BroadcastPayload, ContactPayload, TemplatePayload } from "@/components/email/email-management-types"
 
 interface EmailSafetyModeState {
   safeMode: boolean
@@ -22,413 +22,220 @@ interface EmailSafetyModeState {
   sinkRecipient?: string
 }
 
-function SectionState({ loading, error, empty }: { loading: boolean; error: string | null; empty: boolean }) {
-  if (loading) {
+type EmailSection = "emails" | "broadcasts" | "audiences" | "metrics" | "webhooks" | "logs" | "settings"
+
+function LoadingSkeleton({ rows = 3 }: { rows?: number }) {
+  return <div className="space-y-3">{Array.from({ length: rows }).map((_, i) => <div key={i} className="h-10 animate-pulse rounded bg-muted" />)}</div>
+}
+
+function SectionState({
+  loading,
+  error,
+  empty,
+  onRetry,
+  emptyTitle,
+  emptyCta,
+  onEmptyAction,
+}: {
+  loading: boolean
+  error: string | null
+  empty: boolean
+  onRetry?: () => void
+  emptyTitle?: string
+  emptyCta?: string
+  onEmptyAction?: () => void
+}) {
+  if (loading) return <LoadingSkeleton />
+
+  if (error) {
     return (
-      <div className="flex items-center justify-center h-40">
-        <RefreshCw className="h-6 w-6 animate-spin text-orange-500" />
-      </div>
+      <Card className="border-red-200">
+        <CardContent className="flex items-center justify-between pt-6">
+          <p className="text-sm text-red-600">{error}</p>
+          {onRetry && <Button variant="outline" size="sm" onClick={onRetry}><RefreshCw className="mr-2 h-4 w-4" />Retry</Button>}
+        </CardContent>
+      </Card>
     )
   }
-  if (error) return <p className="text-sm text-red-600">{error}</p>
-  if (empty) return <p className="text-sm text-muted-foreground">No records found for current filters.</p>
+
+  if (empty) {
+    return (
+      <Card>
+        <CardContent className="space-y-3 pt-6 text-sm text-muted-foreground">
+          <p>{emptyTitle || "No records found for current filters."}</p>
+          {emptyCta && onEmptyAction && <Button size="sm" onClick={onEmptyAction}>{emptyCta}</Button>}
+        </CardContent>
+      </Card>
+    )
+  }
+
   return null
+}
+
+function EmailSidebarNav() {
+  const sections: Array<{ key: EmailSection; label: string; icon: ComponentType<{ className?: string }> }> = [
+    { key: "emails", label: "Emails", icon: Mail },
+    { key: "broadcasts", label: "Broadcasts", icon: Activity },
+    { key: "audiences", label: "Audiences", icon: Shield },
+    { key: "metrics", label: "Metrics", icon: BarChart3 },
+    { key: "webhooks", label: "Webhooks", icon: Webhook },
+    { key: "logs", label: "Logs", icon: Activity },
+    { key: "settings", label: "Settings", icon: Settings2 },
+  ]
+
+  return (
+    <TabsList className="grid h-fit w-full grid-cols-2 gap-2 bg-transparent p-0 md:grid-cols-1">
+      {sections.map(({ key, label, icon: Icon }) => (
+        <TabsTrigger key={key} value={key} className="justify-start gap-2 rounded border bg-background px-3 py-2 data-[state=active]:border-orange-500 data-[state=active]:bg-orange-50">
+          <Icon className="h-4 w-4" />
+          {label}
+        </TabsTrigger>
+      ))}
+    </TabsList>
+  )
+}
+
+function EmailMetricsCards() {
+  const { overview, loading } = useAnalyticsOverview()
+  const stats = useMemo(() => ({ sent: overview?.total_sent ?? 0, deliveryRate: overview?.delivery_rate ?? 0, openRate: overview?.open_rate ?? 0, bounced: overview?.bounced ?? 0 }), [overview])
+
+  if (loading) return <LoadingSkeleton rows={1} />
+
+  return (
+    <div className="grid gap-4 md:grid-cols-4">
+      <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Total Sent</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{stats.sent.toLocaleString()}</CardContent></Card>
+      <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Delivery Rate</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{stats.deliveryRate.toFixed(1)}%</CardContent></Card>
+      <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Open Rate</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{stats.openRate.toFixed(1)}%</CardContent></Card>
+      <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Bounced</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{stats.bounced.toLocaleString()}</CardContent></Card>
+    </div>
+  )
+}
+
+function EmailDeliverabilityPanel() {
+  const { overview, loading, error, fetchOverview } = useAnalyticsOverview()
+  return <Card><CardHeader><CardTitle>EmailDeliverabilityPanel</CardTitle></CardHeader><CardContent>{loading ? <LoadingSkeleton rows={2} /> : error || !overview ? <SectionState loading={false} error={error || "Analytics unavailable"} empty={false} onRetry={fetchOverview} /> : <div className="space-y-1 text-sm"><p>Delivered: {overview.delivered.toLocaleString()}</p><p>Bounced: {overview.bounced.toLocaleString()}</p><p>Delivery rate: {overview.delivery_rate.toFixed(1)}%</p><p>Bounce rate: {overview.bounce_rate.toFixed(1)}%</p></div>}</CardContent></Card>
+}
+
+function EmailEngagementPanel() {
+  const { overview, loading, error, fetchOverview } = useAnalyticsOverview()
+  return <Card><CardHeader><CardTitle>EmailEngagementPanel</CardTitle></CardHeader><CardContent>{loading ? <LoadingSkeleton rows={2} /> : error || !overview ? <SectionState loading={false} error={error || "Analytics unavailable"} empty={false} onRetry={fetchOverview} /> : <div className="space-y-1 text-sm"><p>Opened: {overview.opened.toLocaleString()} ({overview.open_rate.toFixed(1)}%)</p><p>Clicked: {overview.clicked.toLocaleString()} ({overview.click_rate.toFixed(1)}%)</p><p>Unsubscribed: {overview.unsubscribed.toLocaleString()} ({overview.unsubscribe_rate.toFixed(1)}%)</p></div>}</CardContent></Card>
+}
+
+function EmailTimelineChart() {
+  const { overview, loading, error, fetchOverview } = useAnalyticsOverview()
+  const bars = [
+    { label: "Delivery", value: overview?.delivery_rate ?? 0 },
+    { label: "Open", value: overview?.open_rate ?? 0 },
+    { label: "Click", value: overview?.click_rate ?? 0 },
+  ]
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>EmailTimelineChart</CardTitle><CardDescription>Performance snapshot</CardDescription></CardHeader>
+      <CardContent className="space-y-3">
+        {loading && <LoadingSkeleton rows={3} />}
+        {!loading && (error || !overview) && <SectionState loading={false} error={error || "No timeline data"} empty={false} onRetry={fetchOverview} />}
+        {!loading && !error && overview && bars.map((bar) => (
+          <div key={bar.label}>
+            <div className="mb-1 flex justify-between text-xs"><span>{bar.label}</span><span>{bar.value.toFixed(1)}%</span></div>
+            <div className="h-2 rounded bg-muted"><div className="h-full rounded bg-orange-500" style={{ width: `${Math.min(bar.value, 100)}%` }} /></div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
 }
 
 function TemplatesTab() {
   const { toast } = useToast()
-  const { query, setQuery, items, total, loading, saving, error, createTemplate, updateTemplate, deleteTemplate } = useTemplates()
+  const { query, setQuery, items, loading, saving, error, fetchTemplates, createTemplate, deleteTemplate } = useTemplates()
   const [createOpen, setCreateOpen] = useState(false)
-  const [editingId, setEditingId] = useState<number | null>(null)
   const [form, setForm] = useState<TemplatePayload>({ name: "", subject: "", html_content: "", category: "general" })
-
-  const submitCreate = async () => {
-    try {
-      await createTemplate(form)
-      toast({ title: "Template created" })
-      setCreateOpen(false)
-      setForm({ name: "", subject: "", html_content: "", category: "general" })
-    } catch (createError) {
-      toast({ title: "Create failed", description: (createError as Error).message, variant: "destructive" })
-    }
-  }
-
-  const submitEdit = async () => {
-    if (!editingId) return
-    try {
-      await updateTemplate(editingId, form)
-      toast({ title: "Template updated" })
-      setEditingId(null)
-    } catch (updateError) {
-      toast({ title: "Update failed", description: (updateError as Error).message, variant: "destructive" })
-    }
-  }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input className="pl-9 w-80" placeholder="Search templates" value={query.search || ""} onChange={(e) => setQuery((prev) => ({ ...prev, search: e.target.value, offset: 0 }))} />
-        </div>
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger asChild><Button disabled={saving}><Plus className="h-4 w-4 mr-2" />New Template</Button></DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Create template</DialogTitle></DialogHeader>
-            <div className="space-y-3">
-              <Input placeholder="Name" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
-              <Input placeholder="Subject" value={form.subject} onChange={(e) => setForm((p) => ({ ...p, subject: e.target.value }))} />
-              <Textarea placeholder="HTML content" value={form.html_content} onChange={(e) => setForm((p) => ({ ...p, html_content: e.target.value }))} />
-              <Button onClick={submitCreate} disabled={saving || !form.name || !form.subject || !form.html_content}>Create</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="w-80 pl-9" placeholder="Search templates" value={query.search || ""} onChange={(e) => setQuery((prev) => ({ ...prev, search: e.target.value, offset: 0 }))} /></div>
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}><DialogTrigger asChild><Button disabled={saving}><Plus className="mr-2 h-4 w-4" />New Template</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Create template</DialogTitle></DialogHeader><div className="space-y-3"><Input placeholder="Name" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} /><Input placeholder="Subject" value={form.subject} onChange={(e) => setForm((p) => ({ ...p, subject: e.target.value }))} /><Textarea placeholder="HTML content" value={form.html_content} onChange={(e) => setForm((p) => ({ ...p, html_content: e.target.value }))} /><Button onClick={async () => { try { await createTemplate(form); toast({ title: "Template created" }); setCreateOpen(false) } catch (err) { toast({ title: "Create failed", description: (err as Error).message, variant: "destructive" }) } }} disabled={saving || !form.name || !form.subject || !form.html_content}>Create</Button></div></DialogContent></Dialog>
       </div>
 
-      <SectionState loading={loading} error={error} empty={!items.length} />
+      <SectionState loading={loading} error={error} onRetry={fetchTemplates} empty={!items.length} emptyTitle="No email templates yet." emptyCta="Create first template" onEmptyAction={() => setCreateOpen(true)} />
+      {!loading && !error && items.length > 0 && <div className="grid gap-4 md:grid-cols-2">{items.map((template) => <Card key={template.id}><CardHeader><div className="flex items-center justify-between"><CardTitle className="text-lg">{template.name}</CardTitle><Badge variant="outline">{template.category}</Badge></div><CardDescription>{template.subject}</CardDescription></CardHeader><CardContent><Button variant="outline" size="sm" disabled={saving} onClick={async () => { try { await deleteTemplate(template.id); toast({ title: "Template deleted" }) } catch (err) { toast({ title: "Delete failed", description: (err as Error).message, variant: "destructive" }) } }}><Trash2 className="h-4 w-4" /></Button></CardContent></Card>)}</div>}
+    </div>
+  )
+}
 
-      {!loading && !error && items.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2">
-          {items.map((template) => (
-            <Card key={template.id}>
-              <CardHeader>
-                <div className="flex items-center justify-between"><CardTitle className="text-lg">{template.name}</CardTitle><Badge variant="outline">{template.category}</Badge></div>
-                <CardDescription>{template.subject}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">Updated {new Date(template.updated_at).toLocaleDateString()}</p>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" disabled={saving} onClick={() => { setEditingId(template.id); setForm({ name: template.name, subject: template.subject, html_content: template.html_content, text_content: template.text_content || undefined, category: template.category }) }}><Edit className="h-4 w-4 mr-1" />Edit</Button>
-                  <Button variant="outline" size="sm" disabled={saving} onClick={async () => { try { await deleteTemplate(template.id); toast({ title: "Template deleted" }) } catch (err) { toast({ title: "Delete failed", description: (err as Error).message, variant: "destructive" }) } }}><Trash2 className="h-4 w-4" /></Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+function ContactsTab() {
+  const { toast } = useToast()
+  const { query, setQuery, items, loading, saving, error, fetchContacts, createContact } = useContacts()
+  const [form, setForm] = useState<ContactPayload>({ email: "", name: "", status: "subscribed", tags: [] })
 
-      <Dialog open={editingId !== null} onOpenChange={(open) => !open && setEditingId(null)}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Edit template</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <Input placeholder="Name" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
-            <Input placeholder="Subject" value={form.subject} onChange={(e) => setForm((p) => ({ ...p, subject: e.target.value }))} />
-            <Textarea placeholder="HTML content" value={form.html_content} onChange={(e) => setForm((p) => ({ ...p, html_content: e.target.value }))} />
-            <Button onClick={submitEdit} disabled={saving || !form.name || !form.subject || !form.html_content}>Save changes</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+  return <div className="space-y-4"><div className="grid gap-2 md:grid-cols-4"><Input placeholder="Search contacts" value={query.search || ""} onChange={(e) => setQuery((p) => ({ ...p, search: e.target.value, offset: 0 }))} /><Select value={query.status || "all"} onValueChange={(value) => setQuery((p) => ({ ...p, status: value === "all" ? "" : value, offset: 0 }))}><SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger><SelectContent><SelectItem value="all">All statuses</SelectItem><SelectItem value="subscribed">Subscribed</SelectItem><SelectItem value="unsubscribed">Unsubscribed</SelectItem><SelectItem value="bounced">Bounced</SelectItem><SelectItem value="suppressed">Suppressed</SelectItem></SelectContent></Select><Input placeholder="Tags" value={query.tags || ""} onChange={(e) => setQuery((p) => ({ ...p, tags: e.target.value, offset: 0 }))} /><Button onClick={async () => { try { await createContact(form); toast({ title: "Contact created" }); setForm({ email: "", name: "", status: "subscribed", tags: [] }) } catch (err) { toast({ title: "Save failed", description: (err as Error).message, variant: "destructive" }) } }} disabled={saving || !form.email}><Plus className="mr-1 h-4 w-4" />Quick add</Button></div><div className="grid gap-2 md:grid-cols-3"><Input placeholder="Email" value={form.email || ""} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} /><Input placeholder="Name" value={form.name || ""} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} /><Input placeholder="Tags csv" value={(form.tags || []).join(",")} onChange={(e) => setForm((p) => ({ ...p, tags: e.target.value.split(",").map((tag) => tag.trim()).filter(Boolean) }))} /></div><SectionState loading={loading} error={error} onRetry={fetchContacts} empty={!items.length} emptyTitle="No audience contacts yet." emptyCta="Import contacts" onEmptyAction={() => toast({ title: "Tip", description: "Use CSV import in the contacts workflow to seed your audience." })} />{!loading && !error && items.length > 0 && <Card><CardContent className="pt-6"><Table><TableHeader><TableRow><TableHead>Email</TableHead><TableHead>Name</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{items.map((contact) => <TableRow key={contact.id}><TableCell>{contact.email}</TableCell><TableCell>{contact.name || "-"}</TableCell><TableCell><Badge variant="outline">{contact.status}</Badge></TableCell></TableRow>)}</TableBody></Table></CardContent></Card>}</div>
+}
 
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">Total {total} templates</span>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" disabled={loading || query.offset === 0} onClick={() => setQuery((p) => ({ ...p, offset: Math.max(0, p.offset - p.limit) }))}>Previous</Button>
-          <Button variant="outline" size="sm" disabled={loading || query.offset + query.limit >= total} onClick={() => setQuery((p) => ({ ...p, offset: p.offset + p.limit }))}>Next</Button>
-        </div>
-      </div>
+function BroadcastsTab({ safety }: { safety: EmailSafetyModeState }) {
+  const { toast } = useToast()
+  const { query, setQuery, items, templates, loading, saving, error, fetchBroadcasts, createBroadcast, sendBroadcast, sendBroadcastTest } = useBroadcasts()
+  const [testEmail, setTestEmail] = useState("")
+  const [form, setForm] = useState<BroadcastPayload>({ name: "", subject: "", preheader: "", template_key: "", template_props: {}, audience_filter: { status: "subscribed" } })
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const selected = items.find((item) => item.id === selectedId)
+  const disableSend = !selectedId || selected?.status === "sent" || safety.safeMode || safety.dryRun
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3"><Input placeholder="Search broadcasts" value={query.search || ""} onChange={(e) => setQuery((prev) => ({ ...prev, search: e.target.value, offset: 0 }))} className="max-w-sm" /><Button variant="outline" onClick={() => setSelectedId(null)}>New</Button></div>
+      <SectionState loading={loading} error={error} empty={!items.length} onRetry={fetchBroadcasts} emptyTitle="No broadcasts created yet." emptyCta="Create broadcast" onEmptyAction={async () => { try { await createBroadcast({ ...form, template_key: templates[0]?.key || "marketing.announcement" }); toast({ title: "Broadcast created" }) } catch (err) { toast({ title: "Create failed", description: (err as Error).message, variant: "destructive" }) } }} />
+      {!loading && !error && <div className="grid gap-4 lg:grid-cols-2"><Card><CardHeader><CardTitle>Broadcasts</CardTitle></CardHeader><CardContent className="space-y-2">{items.map((item) => <button key={item.id} className={`w-full rounded border px-3 py-2 text-left ${selectedId === item.id ? "border-orange-500 bg-orange-50" : "border-border"}`} onClick={() => setSelectedId(item.id)}><div className="flex items-center justify-between"><span>{item.name}</span><Badge variant="outline">{item.status}</Badge></div><p className="text-xs text-muted-foreground">{item.subject}</p></button>)}</CardContent></Card><Card><CardHeader><CardTitle>Editor</CardTitle><CardDescription>{disableSend ? "Send is disabled in safety mode/dry-run or for sent campaigns." : "Ready to send."}</CardDescription></CardHeader><CardContent className="space-y-3"><Input placeholder="Name" value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} /><Input placeholder="Subject" value={form.subject} onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))} /><Select value={form.template_key} onValueChange={(value) => setForm((prev) => ({ ...prev, template_key: value }))}><SelectTrigger><SelectValue placeholder="Select template" /></SelectTrigger><SelectContent>{templates.map((template) => <SelectItem key={template.key} value={template.key}>{template.label}</SelectItem>)}</SelectContent></Select><div className="flex flex-wrap gap-2"><Button onClick={async () => { try { await createBroadcast(form); toast({ title: "Broadcast saved" }) } catch (err) { toast({ title: "Save failed", description: (err as Error).message, variant: "destructive" }) } }} disabled={saving || !form.name || !form.subject}>Save</Button><Input placeholder="test@recipient.com" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} className="max-w-xs" /><Button variant="outline" onClick={async () => { if (!selectedId || !testEmail) return; try { await sendBroadcastTest(selectedId, testEmail); toast({ title: "Test email sent" }) } catch (err) { toast({ title: "Test failed", description: (err as Error).message, variant: "destructive" }) } }} disabled={saving || !selectedId || !testEmail}>Send test</Button><Button variant="destructive" onClick={async () => { if (!selectedId) return; const confirmation = window.prompt("Type SEND to confirm broadcast delivery"); if (confirmation !== "SEND") return; try { await sendBroadcast(selectedId); toast({ title: "Broadcast sent" }) } catch (err) { toast({ title: "Send failed", description: (err as Error).message, variant: "destructive" }) } }} disabled={saving || disableSend}>Send broadcast</Button></div></CardContent></Card></div>}
     </div>
   )
 }
 
 function DeliveryTab() {
-  const { query, setQuery, items, total, loading, error } = useDelivery()
-  return <div className="space-y-4"><div className="grid gap-2 md:grid-cols-2"><Input placeholder="Recipient" value={query.recipient_email || ""} onChange={(e) => setQuery((p) => ({ ...p, recipient_email: e.target.value, offset: 0 }))} /><Select value={query.status || "all"} onValueChange={(value) => setQuery((p) => ({ ...p, status: value === "all" ? "" : value, offset: 0 }))}><SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger><SelectContent><SelectItem value="all">All</SelectItem><SelectItem value="pending">Pending</SelectItem><SelectItem value="sent">Sent</SelectItem><SelectItem value="delivered">Delivered</SelectItem><SelectItem value="bounced">Bounced</SelectItem></SelectContent></Select></div><SectionState loading={loading} error={error} empty={!items.length} />{!loading && !error && items.length > 0 && <Card><CardContent className="pt-6"><Table><TableHeader><TableRow><TableHead>Recipient</TableHead><TableHead>Subject</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead></TableRow></TableHeader><TableBody>{items.map((item) => <TableRow key={item.id}><TableCell>{item.recipient_email}</TableCell><TableCell>{item.subject}</TableCell><TableCell><Badge variant="outline">{item.status}</Badge></TableCell><TableCell>{new Date(item.created_at).toLocaleString()}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card>}<div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Total {total} delivery records</span><div className="flex gap-2"><Button variant="outline" size="sm" disabled={loading || query.offset === 0} onClick={() => setQuery((p) => ({ ...p, offset: Math.max(0, p.offset - p.limit) }))}>Previous</Button><Button variant="outline" size="sm" disabled={loading || query.offset + query.limit >= total} onClick={() => setQuery((p) => ({ ...p, offset: p.offset + p.limit }))}>Next</Button></div></div></div>
+  const { query, setQuery, items, loading, error, fetchDelivery } = useDelivery()
+  return <div className="space-y-4"><div className="grid gap-2 md:grid-cols-2"><Input placeholder="Recipient" value={query.recipient_email || ""} onChange={(e) => setQuery((p) => ({ ...p, recipient_email: e.target.value, offset: 0 }))} /><Select value={query.status || "all"} onValueChange={(value) => setQuery((p) => ({ ...p, status: value === "all" ? "" : value, offset: 0 }))}><SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger><SelectContent><SelectItem value="all">All</SelectItem><SelectItem value="pending">Pending</SelectItem><SelectItem value="sent">Sent</SelectItem><SelectItem value="delivered">Delivered</SelectItem><SelectItem value="bounced">Bounced</SelectItem></SelectContent></Select></div><SectionState loading={loading} error={error} empty={!items.length} onRetry={fetchDelivery} emptyTitle="No delivery logs for current filters." />{!loading && !error && items.length > 0 && <Card><CardContent className="pt-6"><Table><TableHeader><TableRow><TableHead>Recipient</TableHead><TableHead>Subject</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead></TableRow></TableHeader><TableBody>{items.map((item) => <TableRow key={item.id}><TableCell>{item.recipient_email}</TableCell><TableCell>{item.subject}</TableCell><TableCell><Badge variant="outline">{item.status}</Badge></TableCell><TableCell>{new Date(item.created_at).toLocaleString()}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card>}</div>
 }
 
 function SuppressionsTab() {
   const { toast } = useToast()
-  const { query, setQuery, items, total, loading, saving, error, createSuppression, deleteSuppression } = useSuppressions()
+  const { query, setQuery, items, loading, saving, error, fetchSuppressions, createSuppression } = useSuppressions()
   const [newEmail, setNewEmail] = useState("")
-  const [newType, setNewType] = useState("bounce")
 
-  return <div className="space-y-4"><div className="grid gap-2 md:grid-cols-3"><Input placeholder="Search email" value={query.search || ""} onChange={(e) => setQuery((p) => ({ ...p, search: e.target.value, offset: 0 }))} /><Select value={query.type || "all"} onValueChange={(value) => setQuery((p) => ({ ...p, type: value === "all" ? "" : value, offset: 0 }))}><SelectTrigger><SelectValue placeholder="Type" /></SelectTrigger><SelectContent><SelectItem value="all">All types</SelectItem><SelectItem value="bounce">Bounce</SelectItem><SelectItem value="unsubscribe">Unsubscribe</SelectItem><SelectItem value="complaint">Complaint</SelectItem></SelectContent></Select><div className="flex gap-2"><Input placeholder="email@domain.com" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} /><Select value={newType} onValueChange={setNewType}><SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="bounce">Bounce</SelectItem><SelectItem value="unsubscribe">Unsubscribe</SelectItem><SelectItem value="complaint">Complaint</SelectItem></SelectContent></Select><Button onClick={async () => { try { await createSuppression({ email: newEmail, type: newType }); setNewEmail(""); toast({ title: "Suppression added" }) } catch (err) { toast({ title: "Add failed", description: (err as Error).message, variant: "destructive" }) } }} disabled={saving || !newEmail}>Add</Button></div></div><SectionState loading={loading} error={error} empty={!items.length} />{!loading && !error && items.length > 0 && <Card><CardContent className="pt-6"><Table><TableHeader><TableRow><TableHead>Email</TableHead><TableHead>Type</TableHead><TableHead>Permanent</TableHead><TableHead>Created</TableHead><TableHead /></TableRow></TableHeader><TableBody>{items.map((item) => <TableRow key={item.id}><TableCell>{item.email}</TableCell><TableCell>{item.type}</TableCell><TableCell>{item.is_permanent ? "Yes" : "No"}</TableCell><TableCell>{new Date(item.created_at).toLocaleDateString()}</TableCell><TableCell><Button variant="outline" size="sm" disabled={saving} onClick={async () => { try { await deleteSuppression(item.email); toast({ title: "Suppression removed" }) } catch (err) { toast({ title: "Remove failed", description: (err as Error).message, variant: "destructive" }) } }}><Trash2 className="h-4 w-4" /></Button></TableCell></TableRow>)}</TableBody></Table></CardContent></Card>}<div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Total {total} suppressions</span><div className="flex gap-2"><Button variant="outline" size="sm" disabled={loading || query.offset === 0} onClick={() => setQuery((p) => ({ ...p, offset: Math.max(0, p.offset - p.limit) }))}>Previous</Button><Button variant="outline" size="sm" disabled={loading || query.offset + query.limit >= total} onClick={() => setQuery((p) => ({ ...p, offset: p.offset + p.limit }))}>Next</Button></div></div></div>
+  return <div className="space-y-4"><div className="grid gap-2 md:grid-cols-3"><Input placeholder="Search email" value={query.search || ""} onChange={(e) => setQuery((p) => ({ ...p, search: e.target.value, offset: 0 }))} /><Input placeholder="email@domain.com" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} /><Button onClick={async () => { try { await createSuppression({ email: newEmail, type: "bounce" }); setNewEmail(""); toast({ title: "Suppression added" }) } catch (err) { toast({ title: "Add failed", description: (err as Error).message, variant: "destructive" }) } }} disabled={saving || !newEmail}>Add suppression</Button></div><SectionState loading={loading} error={error} empty={!items.length} onRetry={fetchSuppressions} emptyTitle="No suppressions configured." />{!loading && !error && items.length > 0 && <Card><CardContent className="pt-6"><Table><TableHeader><TableRow><TableHead>Email</TableHead><TableHead>Type</TableHead><TableHead>Created</TableHead></TableRow></TableHeader><TableBody>{items.map((item) => <TableRow key={item.id}><TableCell>{item.email}</TableCell><TableCell>{item.type}</TableCell><TableCell>{new Date(item.created_at).toLocaleDateString()}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card>}</div>
 }
 
-function ContactsTab() {
-  const { toast } = useToast()
-  const { query, setQuery, items, total, loading, saving, error, lastImportSummary, createContact, updateContact, deleteContact, importContacts } = useContacts()
-  const [contactModalOpen, setContactModalOpen] = useState(false)
-  const [editingContact, setEditingContact] = useState<EmailContactRecord | null>(null)
-  const [importFile, setImportFile] = useState<File | null>(null)
-  const [form, setForm] = useState<ContactPayload>({ email: "", name: "", status: "subscribed", source: "manual", tags: [] })
-
-  const openCreateModal = () => {
-    setEditingContact(null)
-    setForm({ email: "", name: "", status: "subscribed", source: "manual", tags: [] })
-    setContactModalOpen(true)
-  }
-
-  const openEditModal = (contact: EmailContactRecord) => {
-    setEditingContact(contact)
-    setForm({ email: contact.email, name: contact.name || "", status: contact.status, source: contact.source || "manual", metadata: contact.metadata, tags: contact.tags })
-    setContactModalOpen(true)
-  }
-
-  const saveContact = async () => {
-    try {
-      const payload = { ...form, tags: form.tags || [] }
-      if (editingContact) {
-        await updateContact(editingContact.id, payload)
-        toast({ title: "Contact updated" })
-      } else {
-        await createContact(payload)
-        toast({ title: "Contact created" })
-      }
-      setContactModalOpen(false)
-    } catch (saveError) {
-      toast({ title: "Save failed", description: (saveError as Error).message, variant: "destructive" })
-    }
-  }
-
-  const runImport = async () => {
-    if (!importFile) return
-    try {
-      await importContacts({ file: importFile, defaultStatus: "subscribed", source: "csv_import", updateExisting: true })
-      toast({ title: "Import completed" })
-      setImportFile(null)
-    } catch (importError) {
-      toast({ title: "Import failed", description: (importError as Error).message, variant: "destructive" })
-    }
-  }
+function WebhooksTab() {
+  const { items, loading, error, fetchWebhooks } = useWebhooks()
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-2 md:grid-cols-4">
-        <Input placeholder="Search contacts" value={query.search || ""} onChange={(e) => setQuery((p) => ({ ...p, search: e.target.value, offset: 0 }))} />
-        <Select value={query.status || "all"} onValueChange={(value) => setQuery((p) => ({ ...p, status: value === "all" ? "" : value, offset: 0 }))}>
-          <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent><SelectItem value="all">All statuses</SelectItem><SelectItem value="subscribed">Subscribed</SelectItem><SelectItem value="unsubscribed">Unsubscribed</SelectItem><SelectItem value="bounced">Bounced</SelectItem><SelectItem value="suppressed">Suppressed</SelectItem></SelectContent>
-        </Select>
-        <Input placeholder="Tags (comma separated)" value={query.tags || ""} onChange={(e) => setQuery((p) => ({ ...p, tags: e.target.value, offset: 0 }))} />
-        <div className="flex gap-2"><Button onClick={openCreateModal} disabled={saving}><Plus className="h-4 w-4 mr-1" />Add Contact</Button><Button variant="outline" disabled={saving || !importFile} onClick={runImport}><Upload className="h-4 w-4 mr-1" />Import CSV</Button></div>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <Input type="file" accept=".csv,text/csv" className="max-w-sm" onChange={(e) => setImportFile(e.target.files?.[0] || null)} />
-        {importFile && <span className="text-xs text-muted-foreground">{importFile.name}</span>}
-      </div>
-
-      {lastImportSummary && (
-        <Card>
-          <CardContent className="pt-6 text-sm">
-            <p>Import summary: {lastImportSummary.created_count} created, {lastImportSummary.updated_count} updated, {lastImportSummary.duplicate_count} duplicates, {lastImportSummary.invalid_count} invalid.</p>
-          </CardContent>
-        </Card>
-      )}
-
-      <SectionState loading={loading} error={error} empty={!items.length} />
-      {!loading && !error && items.length > 0 && (
-        <Card>
-          <CardContent className="pt-6">
-            <Table>
-              <TableHeader><TableRow><TableHead>Email</TableHead><TableHead>Name</TableHead><TableHead>Status</TableHead><TableHead>Tags</TableHead><TableHead>Updated</TableHead><TableHead /></TableRow></TableHeader>
-              <TableBody>
-                {items.map((contact) => (
-                  <TableRow key={contact.id}>
-                    <TableCell>{contact.email}</TableCell>
-                    <TableCell>{contact.name || "-"}</TableCell>
-                    <TableCell><Badge variant="outline">{contact.status}</Badge></TableCell>
-                    <TableCell>{contact.tags.length ? contact.tags.join(", ") : "-"}</TableCell>
-                    <TableCell>{new Date(contact.updated_at).toLocaleDateString()}</TableCell>
-                    <TableCell className="space-x-2">
-                      <Button variant="outline" size="sm" disabled={saving} onClick={() => openEditModal(contact)}><Edit className="h-4 w-4" /></Button>
-                      <Button variant="outline" size="sm" disabled={saving} onClick={async () => { try { await deleteContact(contact.id); toast({ title: "Contact deleted" }) } catch (deleteError) { toast({ title: "Delete failed", description: (deleteError as Error).message, variant: "destructive" }) } }}><Trash2 className="h-4 w-4" /></Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
-
-      <Dialog open={contactModalOpen} onOpenChange={setContactModalOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>{editingContact ? "Edit contact" : "Add contact"}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <Input placeholder="Email" value={form.email || ""} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} />
-            <Input placeholder="Name" value={form.name || ""} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
-            <Select value={form.status || "subscribed"} onValueChange={(value) => setForm((p) => ({ ...p, status: value as ContactPayload["status"] }))}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="subscribed">Subscribed</SelectItem><SelectItem value="unsubscribed">Unsubscribed</SelectItem><SelectItem value="bounced">Bounced</SelectItem><SelectItem value="suppressed">Suppressed</SelectItem></SelectContent>
-            </Select>
-            <Input placeholder="Tags (comma separated)" value={(form.tags || []).join(",")} onChange={(e) => setForm((p) => ({ ...p, tags: e.target.value.split(",").map((tag) => tag.trim()).filter(Boolean) }))} />
-            <Button onClick={saveContact} disabled={saving || !form.email}>Save</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">Total {total} contacts</span>
-        <div className="flex gap-2"><Button variant="outline" size="sm" disabled={loading || query.offset === 0} onClick={() => setQuery((p) => ({ ...p, offset: Math.max(0, p.offset - p.limit) }))}>Previous</Button><Button variant="outline" size="sm" disabled={loading || query.offset + query.limit >= total} onClick={() => setQuery((p) => ({ ...p, offset: p.offset + p.limit }))}>Next</Button></div>
-      </div>
-    </div>
-  )
-}
-
-
-function BroadcastsTab() {
-  const { toast } = useToast()
-  const { query, setQuery, items, templates, loading, saving, error, createBroadcast, updateBroadcast, sendBroadcastTest, sendBroadcast } = useBroadcasts()
-  const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [testEmail, setTestEmail] = useState("")
-  const [form, setForm] = useState<BroadcastPayload>({
-    name: "",
-    subject: "",
-    preheader: "",
-    template_key: "marketing.announcement",
-    template_props: {},
-    audience_filter: { status: "subscribed" },
-  })
-
-  const selected = items.find((item) => item.id === selectedId) || null
-
-  const applySelected = (id: number) => {
-    const broadcast = items.find((item) => item.id === id)
-    if (!broadcast) return
-    setSelectedId(id)
-    setForm({
-      name: broadcast.name,
-      subject: broadcast.subject,
-      preheader: broadcast.preheader || "",
-      template_key: broadcast.template_key,
-      template_props: broadcast.template_props || {},
-      audience_filter: broadcast.audience_filter || { status: "subscribed" },
-      scheduled_at: broadcast.scheduled_at || null,
-    })
-  }
-
-  const saveDraft = async () => {
-    try {
-      if (selectedId) {
-        await updateBroadcast(selectedId, form)
-        toast({ title: "Broadcast updated" })
-      } else {
-        await createBroadcast(form)
-        toast({ title: "Broadcast created" })
-      }
-    } catch (broadcastError) {
-      toast({ title: "Save failed", description: (broadcastError as Error).message, variant: "destructive" })
-    }
-  }
-
-  const sendTest = async () => {
-    if (!selectedId || !testEmail) return
-    try {
-      await sendBroadcastTest(selectedId, testEmail)
-      toast({ title: "Test email sent" })
-    } catch (sendError) {
-      toast({ title: "Test send failed", description: (sendError as Error).message, variant: "destructive" })
-    }
-  }
-
-  const sendNow = async () => {
-    if (!selectedId) return
-    const confirmation = window.prompt('Type SEND to confirm broadcast delivery')
-    if (confirmation !== 'SEND') return
-
-    try {
-      await sendBroadcast(selectedId)
-      toast({ title: "Broadcast send completed" })
-    } catch (sendError) {
-      toast({ title: "Broadcast send failed", description: (sendError as Error).message, variant: "destructive" })
-    }
-  }
-
-  const previewHtml = selected?.preview_html || ""
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <Input placeholder="Search broadcasts" value={query.search || ""} onChange={(e) => setQuery((prev) => ({ ...prev, search: e.target.value, offset: 0 }))} className="max-w-sm" />
-        <Button variant="outline" onClick={() => { setSelectedId(null); setForm({ name: "", subject: "", preheader: "", template_key: templates[0]?.key || "marketing.announcement", template_props: {}, audience_filter: { status: "subscribed" } }) }}>New broadcast</Button>
-      </div>
-
-      <SectionState loading={loading} error={error} empty={!items.length} />
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle>Broadcasts</CardTitle><CardDescription>Select a draft to edit or send.</CardDescription></CardHeader>
-          <CardContent className="space-y-2">
-            {items.map((item) => (
-              <button key={item.id} className={`w-full rounded border px-3 py-2 text-left ${selectedId === item.id ? "border-orange-500 bg-orange-50" : "border-border"}`} onClick={() => applySelected(item.id)}>
-                <div className="flex items-center justify-between"><span className="font-medium">{item.name}</span><Badge variant="outline">{item.status}</Badge></div>
-                <p className="text-xs text-muted-foreground">{item.subject}</p>
-              </button>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle>Editor</CardTitle><CardDescription>Subject, preheader, template, and variables.</CardDescription></CardHeader>
-          <CardContent className="space-y-3">
-            <Input placeholder="Broadcast name" value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} />
-            <Input placeholder="Subject" value={form.subject} onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))} />
-            <Input placeholder="Preheader" value={form.preheader || ""} onChange={(e) => setForm((prev) => ({ ...prev, preheader: e.target.value }))} />
-            <Select value={form.template_key} onValueChange={(value) => setForm((prev) => ({ ...prev, template_key: value }))}>
-              <SelectTrigger><SelectValue placeholder="Select template" /></SelectTrigger>
-              <SelectContent>{templates.map((template) => <SelectItem key={template.key} value={template.key}>{template.label}</SelectItem>)}</SelectContent>
-            </Select>
-            <Textarea placeholder='Template props JSON e.g. {"heading":"Big launch"}' value={JSON.stringify(form.template_props || {}, null, 2)} onChange={(e) => { try { setForm((prev) => ({ ...prev, template_props: JSON.parse(e.target.value) })) } catch { /* ignore invalid json while typing */ } }} className="min-h-36 font-mono text-xs" />
-            <div className="flex gap-2">
-              <Button onClick={saveDraft} disabled={saving || !form.name || !form.subject || !form.template_key}>Save</Button>
-              <Input placeholder="test@recipient.com" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} className="max-w-xs" />
-              <Button variant="outline" onClick={sendTest} disabled={saving || !selectedId || !testEmail}>Send test</Button>
-              <Button variant="destructive" onClick={sendNow} disabled={saving || !selectedId || selected?.status === "sent"}>Send broadcast</Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader><CardTitle>Live preview</CardTitle><CardDescription>Desktop and mobile render snapshots.</CardDescription></CardHeader>
-        <CardContent className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded border p-3">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">Desktop</p>
-            <div className="min-h-40 overflow-auto rounded border bg-white p-2" dangerouslySetInnerHTML={{ __html: previewHtml || "<p>No preview yet.</p>" }} />
-          </div>
-          <div className="rounded border p-3">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">Mobile</p>
-            <div className="mx-auto min-h-40 max-w-[360px] overflow-auto rounded border bg-white p-2" dangerouslySetInnerHTML={{ __html: previewHtml || "<p>No preview yet.</p>" }} />
-          </div>
-        </CardContent>
-      </Card>
+      <SectionState loading={loading} error={error} empty={!items.length} onRetry={fetchWebhooks} emptyTitle="No webhooks configured yet." emptyCta="Create webhook" onEmptyAction={fetchWebhooks} />
+      {!loading && !error && items.length > 0 && <Card><CardHeader><CardTitle>Webhook Endpoints</CardTitle></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>URL</TableHead><TableHead>Status</TableHead><TableHead>Events</TableHead></TableRow></TableHeader><TableBody>{items.map((hook) => <TableRow key={hook.id}><TableCell>{hook.url}</TableCell><TableCell><Badge variant={hook.active ? "default" : "secondary"}>{hook.active ? "active" : "inactive"}</Badge></TableCell><TableCell>{hook.events.join(", ")}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card>}
     </div>
   )
 }
 
 function SettingsTab({ safety }: { safety: EmailSafetyModeState }) {
-  const { overview, loading, error } = useAnalyticsOverview()
-  if (loading) return <SectionState loading={loading} error={null} empty={false} />
-  if (error || !overview) return <p className="text-sm text-red-600">{error || "Analytics unavailable"}</p>
-
-  return <div className="grid gap-4 md:grid-cols-2"><Card><CardHeader><CardTitle>Delivery Overview</CardTitle></CardHeader><CardContent className="space-y-2 text-sm"><p>Total sent: {overview.total_sent.toLocaleString()}</p><p>Delivered: {overview.delivered.toLocaleString()} ({overview.delivery_rate.toFixed(1)}%)</p><p>Bounced: {overview.bounced.toLocaleString()} ({overview.bounce_rate.toFixed(1)}%)</p></CardContent></Card><Card><CardHeader><CardTitle>Engagement Overview</CardTitle></CardHeader><CardContent className="space-y-2 text-sm"><p>Opened: {overview.opened.toLocaleString()} ({overview.open_rate.toFixed(1)}%)</p><p>Clicked: {overview.clicked.toLocaleString()} ({overview.click_rate.toFixed(1)}%)</p><p>Unsubscribed: {overview.unsubscribed.toLocaleString()} ({overview.unsubscribe_rate.toFixed(1)}%)</p></CardContent></Card><Card className="md:col-span-2"><CardHeader className="flex flex-row items-center justify-between gap-3"><div><CardTitle>Email Delivery Safety</CardTitle><CardDescription>Read-only environment state for delivery guardrails.</CardDescription></div><Badge variant="outline">Read only</Badge></CardHeader><CardContent className="space-y-2 text-sm"><p>Safe mode: <Badge variant={safety.safeMode ? "default" : "secondary"}>{safety.safeMode ? "enabled" : "disabled"}</Badge></p><p>Dry run: <Badge variant={safety.dryRun ? "default" : "secondary"}>{safety.dryRun ? "enabled" : "disabled"}</Badge></p><p>Allowlisted test recipients: {safety.testRecipients.length ? safety.testRecipients.join(", ") : "none configured"}</p><p>Sink mailbox: {safety.sinkRecipient || "not configured"}</p></CardContent></Card></div>
+  return <Card><CardHeader><CardTitle>Email Delivery Safety</CardTitle><CardDescription>Read-only environment state for delivery guardrails.</CardDescription></CardHeader><CardContent className="space-y-2 text-sm"><p>Safe mode: <Badge variant={safety.safeMode ? "default" : "secondary"}>{safety.safeMode ? "enabled" : "disabled"}</Badge></p><p>Dry run: <Badge variant={safety.dryRun ? "default" : "secondary"}>{safety.dryRun ? "enabled" : "disabled"}</Badge></p><p>Allowlisted test recipients: {safety.testRecipients.length ? safety.testRecipients.join(", ") : "none configured"}</p><p>Sink mailbox: {safety.sinkRecipient || "not configured"}</p></CardContent></Card>
 }
 
 export function EmailManagementDashboard({ safety }: { safety: EmailSafetyModeState }) {
-  const { overview } = useAnalyticsOverview()
-  const stats = useMemo(() => ({ sent: overview?.total_sent ?? 0, deliveryRate: overview?.delivery_rate ?? 0, openRate: overview?.open_rate ?? 0, bounced: overview?.bounced ?? 0 }), [overview])
-
   return (
     <div className="space-y-6">
-      <div><h1 className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-orange-400 bg-clip-text text-transparent">Email Management</h1><p className="text-muted-foreground mt-2">Manage broadcasts, templates, contacts, delivery logs, suppressions, and settings</p></div>
-      <div className="grid gap-4 md:grid-cols-4"><Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Total Sent</CardTitle><Mail className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{stats.sent.toLocaleString()}</div></CardContent></Card><Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Delivery Rate</CardTitle><BarChart3 className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{stats.deliveryRate.toFixed(1)}%</div></CardContent></Card><Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Open Rate</CardTitle><BarChart3 className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{stats.openRate.toFixed(1)}%</div></CardContent></Card><Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Suppressed (bounced)</CardTitle><Shield className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{stats.bounced.toLocaleString()}</div></CardContent></Card></div>
+      <div><h1 className="bg-gradient-to-r from-orange-600 to-orange-400 bg-clip-text text-3xl font-bold text-transparent">Email Management</h1><p className="mt-2 text-muted-foreground">Modern modular workspace for email operations, metrics, and safety controls.</p></div>
+      <EmailMetricsCards />
 
-      <Tabs defaultValue="templates" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-6">
-          <TabsTrigger value="broadcasts">Broadcasts</TabsTrigger>
-          <TabsTrigger value="templates">Templates</TabsTrigger>
-          <TabsTrigger value="contacts">Contacts</TabsTrigger>
-          <TabsTrigger value="delivery">Delivery</TabsTrigger>
-          <TabsTrigger value="suppressions">Suppressions</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
-        </TabsList>
-        <TabsContent value="broadcasts"><BroadcastsTab /></TabsContent>
-        <TabsContent value="templates"><TemplatesTab /></TabsContent>
-        <TabsContent value="contacts"><ContactsTab /></TabsContent>
-        <TabsContent value="delivery"><DeliveryTab /></TabsContent>
-        <TabsContent value="suppressions"><SuppressionsTab /></TabsContent>
-        <TabsContent value="settings"><SettingsTab safety={safety} /></TabsContent>
+      <Tabs defaultValue="emails" className="grid gap-4 md:grid-cols-[220px_1fr]">
+        <EmailSidebarNav />
+        <div className="space-y-4">
+          <TabsContent value="emails"><TemplatesTab /></TabsContent>
+          <TabsContent value="broadcasts"><BroadcastsTab safety={safety} /></TabsContent>
+          <TabsContent value="audiences"><ContactsTab /></TabsContent>
+          <TabsContent value="metrics"><div className="grid gap-4 lg:grid-cols-3"><EmailDeliverabilityPanel /><EmailEngagementPanel /><EmailTimelineChart /></div></TabsContent>
+          <TabsContent value="webhooks"><WebhooksTab /></TabsContent>
+          <TabsContent value="logs"><Tabs defaultValue="delivery" className="space-y-3"><TabsList><TabsTrigger value="delivery">Delivery Logs</TabsTrigger><TabsTrigger value="suppressions">Suppression Logs</TabsTrigger></TabsList><TabsContent value="delivery"><DeliveryTab /></TabsContent><TabsContent value="suppressions"><SuppressionsTab /></TabsContent></Tabs></TabsContent>
+          <TabsContent value="settings"><SettingsTab safety={safety} /></TabsContent>
+        </div>
       </Tabs>
     </div>
   )
