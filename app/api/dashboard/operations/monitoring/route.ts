@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getServerAuthSession } from "@/lib/auth/session"
 import { RBACManager } from "@/lib/rbac"
-import { getScopedAuthMonitoringData, type MonitoringVisibility } from "@/lib/auth-observability"
+import { getAuthSecurityHealthMetrics, getScopedAuthMonitoringData, type MonitoringVisibility } from "@/lib/auth-observability"
 import { resolveRequestId } from "@/lib/api/response"
 import { logApiRouteError } from "@/lib/api/logging"
 
@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       requestId,
       monitoring: getScopedAuthMonitoringData(visibility),
+      metrics: getAuthSecurityHealthMetrics(60),
     })
   } catch (error) {
     logApiRouteError(request, "dashboard.operations.monitoring.fetch_failed", error, {

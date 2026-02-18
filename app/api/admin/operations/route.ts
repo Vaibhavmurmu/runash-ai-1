@@ -2,7 +2,9 @@ import { type NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { PerformanceOptimizer } from "@/lib/performance"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
+import { recordAuthMetric } from "@/lib/auth-observability"
 import { recordAdminAuditLog, respondInternalServerError } from "@/lib/api/admin-route-utils"
+import { recordSecurityAuditEvent } from "@/lib/security-audit-events"
 
 const operationSchema = z.object({
   action: z.enum(["cache.clear", "jobs.cleanup", "service.restart_hook"]),
@@ -48,6 +50,19 @@ export async function POST(request: NextRequest) {
         break
       }
     }
+
+    recordAuthMetric("admin.operation.executed", { adminId: auth.userId, action: parsed.data.action })
+    await recordSecurityAuditEvent({
+      event: "admin.action.executed",
+      actorUserId: auth.userId,
+      resource: "admin_operations",
+      request,
+      details: {
+        kind: "admin_action",
+        outcome: "success",
+        action: parsed.data.action,
+      },
+    })
 
     await recordAdminAuditLog({
       actorUserId: auth.userId,

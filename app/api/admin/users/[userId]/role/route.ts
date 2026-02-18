@@ -12,6 +12,7 @@ import { z } from "zod"
 import { recordAuthMetric } from "@/lib/auth-observability"
 import { recordAdminAuditLog, respondAdminError, respondInternalServerError } from "@/lib/api/admin-route-utils"
 import { queryOne } from "@/lib/db"
+import { recordSecurityAuditEvent } from "@/lib/security-audit-events"
 
 const changeRoleSchema = z.object({
   role: z.string().min(1),
@@ -72,6 +73,19 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
 
     await RBACManager.changeUserRole(userId, role, adminId)
     recordAuthMetric("admin.role.changed", { adminId, targetUserId: userId, role: normalizedRole })
+    await recordSecurityAuditEvent({
+      event: "admin.role.changed",
+      actorUserId: adminId,
+      resource: "admin_user_role",
+      request,
+      details: {
+        kind: "admin_role_change",
+        outcome: "success",
+        targetUserId: userId,
+        requestedRole: role,
+        storedRole: normalizedRole,
+      },
+    })
 
     await recordAdminAuditLog({
       actorUserId: adminId,

@@ -175,3 +175,17 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
 - Admin permission-override endpoints now reject self-targeted permission mutations and validate permission keys against the persisted `admin_permissions` registry before writes.
 - Admin role-assignment endpoint now validates target-user existence before applying role updates.
 - Protected admin page access policy now explicitly includes `/ecommerce/admin` under permission-based UI checks.
+
+
+## 10) Auth and admin security monitoring thresholds (2026-02)
+
+- New endpoint: `GET /api/admin/analytics/auth/metrics?windowMinutes=<n>` returns sanitized counters for:
+  - failed auth (`auth.login.failed`)
+  - forbidden access (`auth.forbidden.action`)
+  - session revokes (`auth.session.revoked`)
+- Endpoint includes threshold and spike alert metadata to flag suspicious activity bursts:
+  - failed auth threshold: `20` per window
+  - forbidden access threshold: `15` per window
+  - session revoke threshold: `25` per window
+  - spike threshold: `200%` vs previous window
+- Structured audit events are recorded for login, permission changes, role changes, admin operations, and forbidden access checks with redacted metadata only.

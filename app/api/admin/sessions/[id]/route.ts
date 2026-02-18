@@ -3,7 +3,9 @@ import { z } from "zod"
 import { queryOne } from "@/lib/db"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { ensureAdminAuthMigrationTables } from "@/lib/migration-helpers"
+import { recordAuthMetric } from "@/lib/auth-observability"
 import { recordAdminAuditLog, respondInternalServerError } from "@/lib/api/admin-route-utils"
+import { recordSecurityAuditEvent } from "@/lib/security-audit-events"
 
 const idSchema = z.coerce.number().int().positive()
 const updateSchema = z.object({
@@ -94,6 +96,20 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       entityType: "session",
       entityId: deleted.id,
       metadata: { userId: deleted.user_id },
+    })
+    recordAuthMetric("auth.session.revoked", { endpoint: "admin.sessions.delete", adminId: auth.userId })
+    await recordSecurityAuditEvent({
+      event: "auth.session.revoked",
+      actorUserId: auth.userId,
+      resource: "admin_user_session",
+      request,
+      details: {
+        kind: "session_revoke",
+        outcome: "success",
+        targetSessionId: deleted.id,
+        targetUserId: deleted.user_id,
+        source: "admin",
+      },
     })
 
     return NextResponse.json({ data: deleted })

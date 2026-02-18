@@ -7,6 +7,7 @@ import { logApiEvent } from "@/lib/api/logging"
 import { resolveRequestId } from "@/lib/api/response"
 import { respondAdminError } from "@/lib/api/admin-route-utils"
 import { recordAuthMetric } from "@/lib/auth-observability"
+import { recordSecurityAuditEvent } from "@/lib/security-audit-events"
 
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -101,6 +102,18 @@ export async function requireAdminAuthorization(
         reason: "missing_session",
         method: request.method,
       })
+      await recordSecurityAuditEvent({
+        event: "auth.forbidden.access",
+        resource: request.nextUrl.pathname,
+        request,
+        details: {
+          kind: "auth",
+          outcome: "unauthorized",
+          reason: "missing_session",
+          method: request.method,
+          auditEvent: options.auditEvent,
+        },
+      })
       logApiEvent("warn", `${options.auditEvent}.unauthorized`, {
         requestId,
         route: request.nextUrl.pathname,
@@ -122,6 +135,18 @@ export async function requireAdminAuthorization(
         endpoint: request.nextUrl.pathname,
         reason: "invalid_user_id",
         method: request.method,
+      })
+      await recordSecurityAuditEvent({
+        event: "auth.forbidden.access",
+        resource: request.nextUrl.pathname,
+        request,
+        details: {
+          kind: "auth",
+          outcome: "unauthorized",
+          reason: "invalid_user_id",
+          method: request.method,
+          auditEvent: options.auditEvent,
+        },
       })
       logApiEvent("warn", `${options.auditEvent}.unauthorized`, {
         requestId,
@@ -158,6 +183,20 @@ export async function requireAdminAuthorization(
         endpoint: request.nextUrl.pathname,
         method: request.method,
         reason: "permission_denied",
+      })
+      await recordSecurityAuditEvent({
+        event: "auth.forbidden.access",
+        actorUserId: token.id,
+        resource: request.nextUrl.pathname,
+        request,
+        details: {
+          kind: "authorization",
+          outcome: "forbidden",
+          reason: "missing_permissions",
+          method: request.method,
+          requiredPermissions,
+          auditEvent: options.auditEvent,
+        },
       })
       logApiEvent("warn", `${options.auditEvent}.forbidden`, {
         requestId,

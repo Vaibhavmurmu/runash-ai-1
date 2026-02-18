@@ -5,6 +5,7 @@ import { recordAuthMetric } from "@/lib/auth-observability"
 import { recordAdminAuditLog, respondInternalServerError } from "@/lib/api/admin-route-utils"
 import { z } from "zod"
 import { queryOne } from "@/lib/db"
+import { recordSecurityAuditEvent } from "@/lib/security-audit-events"
 
 const userIdSchema = z.coerce.number().int().positive()
 const permissionMutationSchema = z.object({ permission: z.string().min(2).max(100) })
@@ -62,6 +63,19 @@ export async function POST(request: NextRequest, { params }: { params: { userId:
 
     await RBACManager.grantPermission(userId, permission, adminId)
     recordAuthMetric("admin.permission.granted", { adminId, targetUserId: userId, permission })
+    await recordSecurityAuditEvent({
+      event: "admin.permission.granted",
+      actorUserId: adminId,
+      resource: "admin_user_permission",
+      request,
+      details: {
+        kind: "admin_permission_change",
+        outcome: "success",
+        action: "grant",
+        targetUserId: userId,
+        permission,
+      },
+    })
 
     await recordAdminAuditLog({
       actorUserId: adminId,
@@ -113,6 +127,19 @@ export async function DELETE(request: NextRequest, { params }: { params: { userI
 
     await RBACManager.revokePermission(userId, permission, adminId)
     recordAuthMetric("admin.permission.revoked", { adminId, targetUserId: userId, permission })
+    await recordSecurityAuditEvent({
+      event: "admin.permission.revoked",
+      actorUserId: adminId,
+      resource: "admin_user_permission",
+      request,
+      details: {
+        kind: "admin_permission_change",
+        outcome: "success",
+        action: "revoke",
+        targetUserId: userId,
+        permission,
+      },
+    })
 
     await recordAdminAuditLog({
       actorUserId: adminId,
