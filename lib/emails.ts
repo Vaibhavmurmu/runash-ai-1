@@ -1,4 +1,5 @@
 import { type EmailAttachment, sendWithEmailProvider } from "./email-provider"
+import { applyEmailSafetyPolicy } from "./email"
 
 export async function sendReportEmail({
   to,
@@ -21,8 +22,19 @@ export async function sendReportEmail({
       <p>${text ?? "Your scheduled report is attached."}</p>
     </div>`
 
+  const safeDelivery = applyEmailSafetyPolicy(to)
+  const recipient = safeDelivery.recipients.length === 1 ? safeDelivery.recipients[0] : safeDelivery.recipients
+
+  if (safeDelivery.config.dryRun) {
+    return {
+      success: true,
+      simulated: true,
+      to: recipient,
+    }
+  }
+
   return sendWithEmailProvider({
-    to,
+    to: recipient,
     subject,
     text,
     html: reportHtml,
