@@ -3,6 +3,7 @@ import { randomBytes } from "crypto"
 import { recordAuthMetric } from "@/lib/auth-observability"
 import { recordSecurityAuditEvent } from "@/lib/security-audit-events"
 import { sql } from "@/lib/db"
+import { createAuthSession, invalidateSession } from "@/lib/auth/session-modes"
 
 export async function createUser(email: string, password: string, name: string) {
   try {
@@ -222,12 +223,30 @@ export async function generateEmailVerificationToken(userId: number) {
   }
 }
 
-export async function createUserSession(userId: number, sessionToken: string, expires: Date) {
+export async function createUserSession(
+  userId: number,
+  sessionToken: string,
+  expires: Date,
+  metadata?: { deviceName?: string; deviceId?: string; ipAddress?: string; userAgent?: string },
+) {
   try {
     await sql`
       INSERT INTO user_sessions (user_id, session_token, expires_at)
       VALUES (${userId}, ${sessionToken}, ${expires})
     `
+
+    await createAuthSession({
+      userId: String(userId),
+      mode: "cookie",
+      token: sessionToken,
+      ttlMinutes: Math.max(1, Math.round((expires.getTime() - Date.now()) / 60_000)),
+      device: {
+        deviceName: metadata?.deviceName,
+        deviceId: metadata?.deviceId,
+        ipAddress: metadata?.ipAddress,
+        userAgent: metadata?.userAgent,
+      },
+    })
 
     recordAuthMetric("auth.session.created", { source: "createUserSession", userId })
     await recordSecurityAuditEvent({
@@ -288,6 +307,8 @@ export async function invalidateUserSessions(
   } catch {
     // best-effort invalidation for Better Auth session table
   }
+
+  await invalidateSession({ userId: String(userId), reason })
 
   recordAuthMetric("auth.session.invalidated", { reason, userId })
   await recordSecurityAuditEvent({

@@ -1,11 +1,12 @@
 "use client"
 
-import { type RefObject, useRef, useState } from "react"
+import { type RefObject, useEffect, useRef, useState } from "react"
 import { ImagePlus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SectionFeatureCard } from "@/components/settings/sections/section-feature-card"
 import type { AttachmentMetadata, SettingsData, SettingsSection } from "@/components/settings/types"
 
@@ -29,6 +30,14 @@ type UploadState = {
   progress: number
   error: string
   activeSlot: ProfileAttachmentKey | null
+}
+
+
+type AuthSessionOption = {
+  id: string
+  scope: string
+  mode: string
+  lastSeenAt: string
 }
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
@@ -59,6 +68,61 @@ export function AccountSettings({ data, isDisabled, isSaving, errors, onFieldCha
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const bannerInputRef = useRef<HTMLInputElement>(null)
   const [uploadState, setUploadState] = useState<UploadState>({ progress: 0, error: "", activeSlot: null })
+  const [authSessions, setAuthSessions] = useState<AuthSessionOption[]>([])
+  const [activeSessionId, setActiveSessionId] = useState<string>("")
+  const [sessionError, setSessionError] = useState<string>("")
+
+  useEffect(() => {
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        const response = await fetch("/api/auth/sessions", { cache: "no-store" })
+        if (!response.ok) {
+          return
+        }
+
+        const payload = await response.json()
+        const sessions = Array.isArray(payload?.sessions) ? (payload.sessions as AuthSessionOption[]) : []
+
+        if (!cancelled) {
+          setAuthSessions(sessions)
+          setActiveSessionId(sessions[0]?.id ?? "")
+        }
+      } catch {
+        if (!cancelled) {
+          setSessionError("Unable to load active sessions")
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const handleSessionSwitch = async (sessionId: string) => {
+    setActiveSessionId(sessionId)
+    setSessionError("")
+
+    const selected = authSessions.find((item) => item.id === sessionId)
+    if (!selected) {
+      return
+    }
+
+    const response = await fetch("/api/auth/sessions/switch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId,
+        scope: selected.scope,
+      }),
+    })
+
+    if (!response.ok) {
+      setSessionError("Session switch failed")
+    }
+  }
 
   const handleProfileUpload = async (slot: ProfileAttachmentKey, file?: File) => {
     if (!file) {
@@ -254,7 +318,24 @@ export function AccountSettings({ data, isDisabled, isSaving, errors, onFieldCha
         actionLabel="Revoke sessions"
         disabled={isDisabled}
         onAction={() => onAction("revokeSessions")}
-      />
+      >
+        <div className="space-y-2">
+          <Label htmlFor="active-auth-session">Active session context</Label>
+          <Select value={activeSessionId} onValueChange={(value) => void handleSessionSwitch(value)}>
+            <SelectTrigger id="active-auth-session" disabled={isDisabled || authSessions.length === 0}>
+              <SelectValue placeholder="Select a session" />
+            </SelectTrigger>
+            <SelectContent>
+              {authSessions.map((session) => (
+                <SelectItem key={session.id} value={session.id}>
+                  {session.scope} · {session.mode}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {sessionError ? <p className="text-xs text-destructive">{sessionError}</p> : null}
+        </div>
+      </SectionFeatureCard>
 
       <SectionFeatureCard
         panelId="devices"

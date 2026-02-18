@@ -219,3 +219,11 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
 - Unlink attempts must satisfy explicit safeguards: recent step-up verification and at least one remaining login method (`POST /api/auth/account/unlink`).
 - OAuth callback redirection for preview hosts is constrained through allowlisted proxy logic (`GET /api/auth/oauth/proxy`); unknown hosts are denied.
 - Google One Tap callback handling verifies Google token validity and verified email before redirecting into auth sign-in flow.
+
+## 2026-02 anonymous identities + OTT + bearer session hardening
+
+- Anonymous auth identifiers are generated from random non-PII ids (`anon_*`) and do not include direct user attributes (email/phone/name).
+- One-time transfer tokens are stored as SHA-256 hashes, have short TTLs (30-600 seconds), and are single-use via atomic `consumed_at` updates.
+- Bearer access tokens are only returned at issuance time and persisted as hashes in `auth_session_registry`.
+- Auth session records now capture device metadata (`device_metadata`) for audit and security review across cookie, bearer, and OTT session modes.
+- Revoke-all session operations invalidate registry records in addition to legacy cookie/session tables.
