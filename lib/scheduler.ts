@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from "uuid"
 import cron from "node-cron"
 import path from "path"
 import { readSchedulesFromDisk, writeSchedulesToDisk, getLatestLive, getDashboardData } from "./data-source"
-import { sendReportEmail } from "./email"
+import { sendReportEmail } from "./emails"
 import { writeFileSync } from "fs"
 
 /**
