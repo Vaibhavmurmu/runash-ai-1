@@ -304,3 +304,10 @@ Rollback to prior stable auth/session path if any of the following occur:
 2. Revert to last known-good deployment artifact.
 3. Confirm auth/session recovery through smoke checks (`/api/auth/get-session`, admin read/write probes).
 4. Publish incident summary with root-cause hypothesis and next safe re-rollout window.
+
+## 2026-02 Phone OTP plugin rollout
+
+- Added `POST/PUT/PATCH /api/auth/phone-otp` endpoints backed by `lib/auth/plugins/phone-otp.ts` for start, verify, resend, cooldown, and challenge lifecycle handling.
+- Phone OTP challenges now persist with TTL windows, resend cooldown metadata, and verification attempt counters in PostgreSQL tables (`phone_otp_challenges`, `phone_verifications`, `phone_otp_throttles`).
+- Anti-abuse controls include per-IP and per-identifier throttling, optional captcha hook validation (`PHONE_OTP_CAPTCHA_HOOK_URL`), and security audit-log events with hashed identifier metadata.
+- UI now exposes phone verification widgets in login/signup and shared auth form components; green "Verified" state appears only after successful server-side OTP verification.

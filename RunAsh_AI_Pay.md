@@ -1217,3 +1217,9 @@ Auth module consolidation and session helper standardization were completed with
 - Auth observability now exposes admin metrics for failed authentication, forbidden access, and session revocations.
 - This update does **not** change RunAsh Pay API payloads, field names, or payment flow contracts.
 - Payment-adjacent authorization behavior remains backward compatible; only monitoring/audit coverage is expanded for faster incident response.
+
+## Auth reliability note: Phone OTP verification controls (2026-02)
+
+- Added phone OTP anti-abuse controls in auth flows (identifier/IP throttling + captcha hook integration) to reduce account-takeover risk around payment-capable sessions.
+- Payment API contracts and field names were not changed by this update.
+- Rollback remains isolated to auth phone OTP endpoints and UI state, with no required migration for existing RunAsh Pay request/response payloads.
