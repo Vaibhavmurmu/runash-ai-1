@@ -13,7 +13,8 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { CardAlert } from "@/components/ui/card-alert"
+import { CardAlertDialog } from "@/components/ui/card-alert-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { PhoneOtpVerification } from "@/components/auth/phone-otp-verification"
 import { GoogleOneTap } from "@/components/auth/google-one-tap"
@@ -24,6 +25,7 @@ export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [phoneVerified, setPhoneVerified] = useState(false)
+  const [pendingOAuthProvider, setPendingOAuthProvider] = useState<"github" | "google" | null>(null)
   const [lastLoginMethod, setLastLoginMethodState] = useState<LoginMethod>("unknown")
   const [formData, setFormData] = useState({
     email: "",
@@ -86,6 +88,8 @@ export function LoginForm() {
     }
   }
 
+  const providerName = pendingOAuthProvider === "github" ? "GitHub" : "Google"
+
   return (
     <div className="w-full max-w-md mx-auto">
       <Card className="relative overflow-hidden border-0 shadow-2xl bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl">
@@ -97,16 +101,15 @@ export function LoginForm() {
           <CardDescription className="text-base">Sign in to your account to continue</CardDescription>
         </CardHeader>
         <CardContent className="relative">
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+          {error ? <CardAlert severity="danger" title="Sign-in failed" description={error} className="mb-4" /> : null}
 
           {lastLoginMethod !== "unknown" ? (
-            <Alert className="mb-4">
-              <AlertDescription>Last login method: {formatLoginMethodLabel(lastLoginMethod)}</AlertDescription>
-            </Alert>
+            <CardAlert
+              severity="info"
+              title="Recent activity"
+              description={`Last login method: ${formatLoginMethodLabel(lastLoginMethod)}`}
+              className="mb-4"
+            />
           ) : null}
 
           <GoogleOneTap callbackUrl="/dashboard" />
@@ -214,7 +217,7 @@ export function LoginForm() {
             <Button
               variant="outline"
               className="h-12 border-2 hover:border-orange-500 hover:bg-orange-50 dark:hover:bg-orange-950 transition-colors bg-transparent"
-              onClick={() => handleOAuthSignIn("github")}
+              onClick={() => setPendingOAuthProvider("github")}
             >
               <Github className="mr-2 h-4 w-4" />
               GitHub
@@ -222,7 +225,7 @@ export function LoginForm() {
             <Button
               variant="outline"
               className="h-12 border-2 hover:border-orange-500 hover:bg-orange-50 dark:hover:bg-orange-950 transition-colors bg-transparent"
-              onClick={() => handleOAuthSignIn("google")}
+              onClick={() => setPendingOAuthProvider("google")}
             >
               <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
                 <path
@@ -258,6 +261,27 @@ export function LoginForm() {
           </div>
         </CardFooter>
       </Card>
+
+      <CardAlertDialog
+        open={pendingOAuthProvider !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingOAuthProvider(null)
+          }
+        }}
+        severity="warning"
+        title="Confirm account link"
+        description={`Continue with ${providerName} to link this provider to your RunAsh account and merge any active guest session data.`}
+        confirmLabel={`Continue with ${providerName}`}
+        cancelLabel="Stay on sign in"
+        confirmAriaLabel={`Confirm account link with ${providerName}`}
+        onConfirm={() => {
+          if (pendingOAuthProvider) {
+            void handleOAuthSignIn(pendingOAuthProvider)
+            setPendingOAuthProvider(null)
+          }
+        }}
+      />
     </div>
   )
 }

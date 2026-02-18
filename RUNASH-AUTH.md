@@ -318,6 +318,8 @@ Rollback to prior stable auth/session path if any of the following occur:
 - Phone OTP challenges now persist with TTL windows, resend cooldown metadata, and verification attempt counters in PostgreSQL tables (`phone_otp_challenges`, `phone_verifications`, `phone_otp_throttles`).
 - Anti-abuse controls include per-IP and per-identifier throttling, optional captcha hook validation (`PHONE_OTP_CAPTCHA_HOOK_URL`), and security audit-log events with hashed identifier metadata.
 - UI now exposes phone verification widgets in login/signup and shared auth form components; green "Verified" state appears only after successful server-side OTP verification.
+- Auth UI now uses reusable `CardAlert` + `CardAlertDialog` severity variants for OTP resend states, cooldown lockout messaging, verification outcomes, and OAuth account-link confirmations.
+- Admin auth UI now applies the same confirmation pattern to high-risk role changes, user deletion, and identity-provider change acknowledgements.
 
 ## 2026-02 OAuth extensibility + login UX hardening update
 

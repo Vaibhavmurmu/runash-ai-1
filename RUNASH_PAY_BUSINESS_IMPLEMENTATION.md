@@ -32,6 +32,7 @@
 - Payment/business flows now reference the finalized Better Auth server-session architecture (`middleware.ts` -> `/api/auth/get-session` -> shared session accessors) described in `RUNASH-AUTH.md`.
 - Canonical RBAC tiers (`viewer`, `operator`, `admin`) and legacy-role compatibility mapping are the active authorization contract for payment-adjacent admin/business surfaces.
 - No payment API request/response field names, signatures, or webhook schemas changed in this documentation sync.
+- Auth/admin UX now includes severity-based confirmation prompts around role mutations, user deletion, and identity-provider change requests to reduce accidental payment-authorization impact from privileged actions.
 
 ### Planned
 - Continue staged fallback retirement for legacy NextAuth compatibility reads after stability criteria are met.
