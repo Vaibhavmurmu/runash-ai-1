@@ -13,6 +13,13 @@ To protect payment-linked identities and admin access pathways, the auth hardeni
 
 Payment contracts and field-level payment API signatures are unchanged in this update.
 
+
+## Auth API documentation synchronization note (2026-02)
+
+- Added auth OpenAPI generation + Scalar UI docs endpoints for auth/plugin route contracts.
+- This update improves auth/payment auditability and integration visibility; **no payment API contract fields or payment flow signatures were changed**.
+- CI now checks that the auth OpenAPI artifact is regenerated and committed when auth route contracts change.
+
 ## Auth dependency update (2026-02)
 
 The payment stack is coupled to auth security controls in the following ways:
