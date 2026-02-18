@@ -15,11 +15,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Eye, EyeOff, Github, Mail, Loader2, AlertCircle } from "lucide-react"
 import ThemeToggle from "@/components/theme-toggle"
+import { PhoneOtpVerification } from "@/components/auth/phone-otp-verification"
 
 export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
+  const [phoneVerified, setPhoneVerified] = useState(false)
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -247,6 +249,11 @@ export default function LoginPage() {
                       </Button>
                     </div>
                   </div>
+
+                  <PhoneOtpVerification purpose="login" onVerifiedChange={({ verified }) => setPhoneVerified(verified)} />
+                  {phoneVerified ? (
+                    <p className="text-xs text-green-700 dark:text-green-400">Phone verified by server challenge.</p>
+                  ) : null}
 
                   <div className="flex items-center space-x-2">
                     <Checkbox

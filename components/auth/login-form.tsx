@@ -15,11 +15,13 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
+import { PhoneOtpVerification } from "@/components/auth/phone-otp-verification"
 
 export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
+  const [phoneVerified, setPhoneVerified] = useState(false)
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -150,6 +152,9 @@ export function LoginForm() {
                 </Button>
               </div>
             </div>
+
+            <PhoneOtpVerification purpose="login" onVerifiedChange={({ verified }) => setPhoneVerified(verified)} />
+            {phoneVerified ? <p className="text-xs text-green-700 dark:text-green-400">Phone verified by server challenge.</p> : null}
 
             <div className="flex items-center space-x-2">
               <Checkbox
