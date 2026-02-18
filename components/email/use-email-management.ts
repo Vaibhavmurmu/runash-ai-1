@@ -3,8 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { emailAdminApi } from "@/components/email/email-management-api"
 import type {
+  ContactPayload,
+  ContactQuery,
   DeliveryQuery,
   EmailAnalyticsOverview,
+  EmailContactImportSummary,
+  EmailContactRecord,
   EmailDeliveryRecord,
   EmailSuppressionRecord,
   EmailTemplateRecord,
@@ -187,6 +191,103 @@ export function useSuppressions() {
     fetchSuppressions,
     createSuppression,
     deleteSuppression,
+  }
+}
+
+export function useContacts() {
+  const [query, setQuery] = useState<ContactQuery>({ limit: DEFAULT_LIMIT, offset: 0, search: "", status: "", tags: "" })
+  const [items, setItems] = useState<EmailContactRecord[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [lastImportSummary, setLastImportSummary] = useState<EmailContactImportSummary | null>(null)
+
+  const fetchContacts = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await emailAdminApi.getContacts(query)
+      setItems(response.data)
+      setTotal(response.total)
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : "Failed to load contacts")
+    } finally {
+      setLoading(false)
+    }
+  }, [query])
+
+  useEffect(() => {
+    fetchContacts()
+  }, [fetchContacts])
+
+  const createContact = useCallback(
+    async (payload: ContactPayload) => {
+      setSaving(true)
+      try {
+        await emailAdminApi.createContact(payload)
+        await fetchContacts()
+      } finally {
+        setSaving(false)
+      }
+    },
+    [fetchContacts],
+  )
+
+  const updateContact = useCallback(
+    async (id: number, payload: Partial<ContactPayload>) => {
+      setSaving(true)
+      try {
+        await emailAdminApi.updateContact(id, payload)
+        await fetchContacts()
+      } finally {
+        setSaving(false)
+      }
+    },
+    [fetchContacts],
+  )
+
+  const deleteContact = useCallback(
+    async (id: number) => {
+      setSaving(true)
+      try {
+        await emailAdminApi.deleteContact(id)
+        await fetchContacts()
+      } finally {
+        setSaving(false)
+      }
+    },
+    [fetchContacts],
+  )
+
+  const importContacts = useCallback(
+    async (payload: { file: File; source?: string; defaultStatus?: string; updateExisting?: boolean }) => {
+      setSaving(true)
+      try {
+        const result = await emailAdminApi.importContacts(payload)
+        setLastImportSummary(result.data.summary)
+        await fetchContacts()
+      } finally {
+        setSaving(false)
+      }
+    },
+    [fetchContacts],
+  )
+
+  return {
+    query,
+    setQuery,
+    items,
+    total,
+    loading,
+    saving,
+    error,
+    lastImportSummary,
+    fetchContacts,
+    createContact,
+    updateContact,
+    deleteContact,
+    importContacts,
   }
 }
 

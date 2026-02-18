@@ -1,8 +1,12 @@
 import type {
   ApiItemResponse,
   ApiListResponse,
+  ContactPayload,
+  ContactQuery,
   DeliveryQuery,
   EmailAnalyticsData,
+  EmailContactImportSummary,
+  EmailContactRecord,
   EmailDeliveryRecord,
   EmailSuppressionRecord,
   EmailTemplateRecord,
@@ -77,6 +81,56 @@ export const emailAdminApi = {
     return request<{ success: boolean; message: string }>(`/api/admin/email-suppressions?${queryString}`, {
       method: "DELETE",
     })
+  },
+  getContacts: (query: ContactQuery) => {
+    const queryString = toQueryString(query)
+    return request<ApiListResponse<EmailContactRecord>>(`/api/admin/email-contacts?${queryString}`)
+  },
+  createContact: (payload: ContactPayload) => {
+    return request<ApiItemResponse<EmailContactRecord>>("/api/admin/email-contacts", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  },
+  updateContact: (id: number, payload: Partial<ContactPayload>) => {
+    return request<ApiItemResponse<EmailContactRecord>>(`/api/admin/email-contacts/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  },
+  deleteContact: (id: number) => {
+    return request<{ success: boolean; message: string }>(`/api/admin/email-contacts/${id}`, {
+      method: "DELETE",
+    })
+  },
+  importContacts: async (payload: {
+    file: File
+    source?: string
+    defaultStatus?: string
+    updateExisting?: boolean
+  }) => {
+    const formData = new FormData()
+    formData.set("file", payload.file)
+    if (payload.source) formData.set("source", payload.source)
+    if (payload.defaultStatus) formData.set("defaultStatus", payload.defaultStatus)
+    if (payload.updateExisting) formData.set("updateExisting", "true")
+
+    const response = await fetch("/api/admin/email-contacts/import", {
+      method: "POST",
+      body: formData,
+    })
+
+    const body = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      throw new Error(body.error || "Import failed")
+    }
+
+    return body as {
+      success: boolean
+      data: {
+        summary: EmailContactImportSummary
+      }
+    }
   },
   getAnalytics: () => {
     return request<ApiItemResponse<EmailAnalyticsData>>("/api/admin/email-analytics")
