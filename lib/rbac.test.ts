@@ -37,6 +37,7 @@ test("legacy roles resolve to canonical baseline capabilities", () => {
 test("canonical role permission bundles are explicit", () => {
   const viewerPermissions = getEffectiveRolePermissions(BASELINE_ROLES.VIEWER)
   const legacyOperatorPermissions = getEffectiveRolePermissions(DEFAULT_ROLES.CUSTOMER_OPERATOR)
+  const legacyFinancePermissions = getEffectiveRolePermissions(DEFAULT_ROLES.CUSTOMER_FINANCE)
   const adminPermissions = getEffectiveRolePermissions(BASELINE_ROLES.ADMIN)
 
   assert.ok(viewerPermissions.includes("dashboard:read"))
@@ -44,6 +45,8 @@ test("canonical role permission bundles are explicit", () => {
   assert.ok(!viewerPermissions.includes("admin:settings"))
   assert.ok(legacyOperatorPermissions.includes("operations:restart"))
   assert.ok(!legacyOperatorPermissions.includes("admin:settings"))
+  assert.ok(legacyFinancePermissions.includes("payments:refund"))
+  assert.ok(legacyFinancePermissions.includes("admin:analytics"))
   assert.ok(adminPermissions.includes("admin:settings"))
   assert.ok(adminPermissions.includes("system:control"))
 })
@@ -73,4 +76,17 @@ test("all protected admin API endpoints resolve explicit route permissions", () 
       assert.ok(requiredPermissions.length > 0, `Expected explicit permission mapping for ${match[1]} ${routePath}`)
     }
   }
+})
+
+
+test("admin authorization resolver denies unmapped admin route policies", async () => {
+  const { resolveRequiredAdminPermissions } = await import("./auth/admin-authorization-handler.ts")
+
+  assert.throws(() =>
+    resolveRequiredAdminPermissions({
+      pathname: "/api/admin/unmapped-endpoint",
+      method: "GET",
+      explicitPermissions: [],
+    }),
+  )
 })
