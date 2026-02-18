@@ -1233,3 +1233,9 @@ To preserve payment-surface account integrity while extending OAuth support:
 - Forced-linking providers require verified identity/step-up signals and provider token evidence before link acceptance.
 - Unlink guardrails now require recent step-up and alternative sign-in fallback (`POST /api/auth/account/unlink`) to reduce payment-operator lockout/takeover risk.
 - OAuth preview callback proxying is restricted to allowlisted hosts to avoid open redirect exposure for payment-adjacent auth callbacks.
+
+## 2026-02 identity protocol expansion compatibility note
+
+- Enterprise identity additions (SSO provider config, SCIM lifecycle APIs, OAuth device flow, and SIWE wallet login) were introduced for account access flexibility.
+- RunAsh Pay request/response contracts and payment-field naming remain unchanged.
+- Rollback remains isolated to auth/identity route and config layers; payment processing contracts do not require migration.

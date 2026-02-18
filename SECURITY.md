@@ -227,3 +227,11 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
 - Bearer access tokens are only returned at issuance time and persisted as hashes in `auth_session_registry`.
 - Auth session records now capture device metadata (`device_metadata`) for audit and security review across cookie, bearer, and OTT session modes.
 - Revoke-all session operations invalidate registry records in addition to legacy cookie/session tables.
+
+## 2026-02 identity protocol hardening (SSO/SCIM/Device/SIWE)
+
+- Added enterprise SSO management controls for OIDC, OAuth2, and SAML2 with org-level mapping storage while preserving existing SSO table contracts.
+- Added SCIM provisioning/deprovisioning data paths with dedicated audit trail table (`scim_audit_trails`) to improve lifecycle traceability.
+- Added OAuth Device Authorization Grant flow state table and endpoints with explicit pending/approved/denied/expired statuses.
+- Added SIWE nonce lifecycle and wallet session binding tables with short-lived nonce expiration and one-time nonce usage semantics.
+- Sensitive auth materials (raw tokens/secrets/signatures) are not written into audit trails or route-level logs in this change set.
