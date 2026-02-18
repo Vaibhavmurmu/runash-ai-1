@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import Link from "next/link"
+import { PasswordStrengthMeter } from "@/components/auth/password-strength-meter"
 
 export function ResetPasswordForm() {
   const [isLoading, setIsLoading] = useState(false)
@@ -158,9 +159,7 @@ export function ResetPasswordForm() {
                   <span className="sr-only">{showPassword ? "Hide password" : "Show password"}</span>
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Must be at least 8 characters with uppercase, lowercase, number, and special character
-              </p>
+              <PasswordStrengthMeter password={formData.password} />
             </div>
 
             <div className="space-y-2">

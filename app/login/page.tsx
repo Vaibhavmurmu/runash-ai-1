@@ -18,6 +18,7 @@ import ThemeToggle from "@/components/theme-toggle"
 import { PhoneOtpVerification } from "@/components/auth/phone-otp-verification"
 import { GoogleOneTap } from "@/components/auth/google-one-tap"
 import { formatLoginMethodLabel, getLastLoginMethod, setLastLoginMethod, type LoginMethod } from "@/lib/auth/last-login-method"
+import { WebAuthnRoadmapHooks } from "@/components/auth/webauthn-roadmap-hooks"
 
 export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
@@ -314,6 +315,7 @@ export default function LoginPage() {
             </Card>
           </div>
         </div>
+        <div className="px-6 pb-8"><div className="mx-auto max-w-md"><WebAuthnRoadmapHooks /></div></div>
       </main>
 
       {/* Footer */}

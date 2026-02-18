@@ -3,6 +3,7 @@ import { createHash } from "node:crypto"
 import { auth } from "@/lib/auth"
 import { recordAuthMetric } from "@/lib/auth-observability"
 import { recordSecurityAuditEvent } from "@/lib/security-audit-events"
+import { applyAuthCaptchaMiddleware } from "@/lib/auth/captcha-middleware"
 
 function buildPrincipalFingerprint(email: unknown) {
   const normalized = typeof email === "string" ? email.trim().toLowerCase() : "unknown"
@@ -12,6 +13,16 @@ function buildPrincipalFingerprint(email: unknown) {
 export async function POST(request: NextRequest) {
   const body = await request.json()
   const principalFingerprint = buildPrincipalFingerprint(body?.email)
+
+  const captchaFailure = await applyAuthCaptchaMiddleware(request, {
+    endpoint: "sign-in",
+    action: "sign-in",
+    body,
+    identifier: typeof body?.email === "string" ? body.email : undefined,
+  })
+  if (captchaFailure) {
+    return captchaFailure
+  }
 
   recordAuthMetric("auth.login.attempt", { endpoint: "sign-in", principalFingerprint })
   await recordSecurityAuditEvent({
