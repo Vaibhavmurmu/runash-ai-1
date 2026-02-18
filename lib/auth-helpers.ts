@@ -1,7 +1,6 @@
 import { cookies } from "next/headers"
-import { getAuthSessionFromHeaders } from "./auth/session-accessor"
 import { isFeatureFlagEnabled } from "./feature-flags"
-import { getServerAuthSession } from "@/lib/auth/session"
+import { getAuthSessionFromHeaders, getServerAuthSession } from "@/lib/auth"
 
 type GetSessionDependencies = {
   readSessionFromHeaders: typeof getAuthSessionFromHeaders

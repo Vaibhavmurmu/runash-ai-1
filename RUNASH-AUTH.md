@@ -16,10 +16,10 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 ## 1) Runtime and source-of-truth files
 
 ### Better Auth runtime and adapters
-- `lib/auth.ts` — Better Auth instance, provider config, and account-linking hooks.
+- `lib/auth.ts` — Better Auth instance, provider config, account-linking hooks, and the canonical server-side session resolver (`getAuthSessionFromHeaders`, `getServerAuthSession`).
 - `app/api/auth/[...nextauth]/route.ts` — Next.js route handler mounted via `toNextJsHandler(auth)`.
-- `lib/auth/session-accessor.ts` and `lib/auth/session-accessor-handler.ts` — canonical server-side session resolution.
-- `lib/auth/session.ts` — server session/user extraction (`userId`, `role`, `organizationId`).
+- `lib/auth/session-accessor.ts` and `lib/auth/session.ts` — compatibility wrappers that now delegate to `lib/auth.ts` during migration.
+- `lib/auth/session-accessor-handler.ts` — lifecycle validation + legacy fallback orchestration used by the auth module.
 - `lib/auth-helpers.ts` — app-facing auth helper bridge (`getSession`, `requireAuth`, `getCurrentUser`).
 
 ### Middleware and guard rails
@@ -218,8 +218,31 @@ Role-assignment endpoints continue accepting legacy role inputs, but stored role
 ### 4.3) Current helper layering
 
 - **Client session helper:** `lib/auth/access-client.ts` is the unified session-check hook for client components (`useAuthSession`), plus shared imperative helpers (`getAuthSession`, `signOutWithRedirect`).
-- **Server session helper:** `lib/auth/session.ts` + `lib/auth/session-accessor.ts` remain the canonical server path.
-- **Migration fallback flag gate:** legacy NextAuth cookie verification runs only when `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK` is enabled; without this flag, only Better Auth sessions are accepted.
+- **Server session helper:** `lib/auth.ts` is the single source of truth for server session reads; `lib/auth/session.ts` + `lib/auth/session-accessor.ts` are migration-safe wrapper entry points only.
+- **Migration fallback flag gate:** legacy NextAuth cookie verification runs only when `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK` is enabled; without this flag, only Better Auth cookies (`better-auth.session-token`, `__Secure-better-auth.session-token`) are accepted.
+
+## 12) 2026-02 Better Auth server-module migration notes
+
+### Cookie/token behavior changes
+
+- Middleware and auth API handlers now resolve session validity through one canonical code path: `lib/auth.ts#getAuthSessionFromHeaders`.
+- `GET /api/auth/get-session`, `GET /api/auth/session`, and `POST /api/auth/refresh` now all call the same server session resolver instead of directly calling `auth.api.getSession` in route-level fragments.
+- Legacy NextAuth token parsing (`next-auth.session-token`, `__Secure-next-auth.session-token`) remains available only through feature-flagged fallback and is no longer a primary session source.
+
+### Compatibility assumptions
+
+- Better Auth cookies remain the default and expected session carrier for authenticated traffic.
+- Legacy NextAuth tokens are treated as temporary migration artifacts and must be explicitly enabled with `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK`.
+- Wrapper modules (`lib/auth/session.ts`, `lib/auth/session-accessor.ts`) are retained only for import compatibility while callers converge on `@/lib/auth`.
+
+### Rollback plan
+
+If migration parity regressions are detected (for example: unexpected `401` from protected routes, or session continuity failures):
+
+1. Enable `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK=true` to restore legacy token fallback reads.
+2. Revert route-level imports for `/api/auth/session`, `/api/auth/get-session`, and `/api/auth/refresh` to prior behavior if required.
+3. Validate middleware auth redirects and protected API authorization behavior.
+4. Disable the fallback flag again after parity issues are remediated and confirmed in staging.
 
 ## 9) 2026-02 RBAC assignment validation hardening
 

@@ -1,6 +1,10 @@
 import { betterAuth } from "better-auth"
 import { createHash } from "node:crypto"
+import { jwtVerify } from "jose"
 import { recordAuthMetric } from "@/lib/auth-observability"
+import { isFeatureFlagEnabled } from "@/lib/feature-flags"
+import { resolveSessionFromSources } from "@/lib/auth/session-accessor-handler"
+import { sql } from "@/lib/db"
 
 const baseURL =
   process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
@@ -8,6 +12,27 @@ const baseURL =
 const secret = process.env.BETTER_AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
 
 export const AUTH_COOKIE_NAMES = ["better-auth.session-token", "__Secure-better-auth.session-token"] as const
+const LEGACY_NEXT_AUTH_COOKIE_NAMES = ["next-auth.session-token", "__Secure-next-auth.session-token"] as const
+
+export type BetterAuthSession = Awaited<ReturnType<typeof auth.api.getSession>>
+
+export interface ServerAuthSession {
+  user: {
+    id: string
+    role: string
+    ssoOrganization: number | null
+    email?: string | null
+    name?: string | null
+  }
+}
+
+export interface AuthenticatedSessionUser {
+  userId: string
+  role: string
+  organizationId: number | null
+  email?: string | null
+  name?: string | null
+}
 
 export function getAuthSecret(): string {
   const resolvedSecret = process.env.BETTER_AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
@@ -198,3 +223,144 @@ export const auth = betterAuth({
   },
   trustedOrigins: [baseURL],
 })
+
+function parseCookieValue(cookieHeader: string | null, cookieName: string): string | null {
+  if (!cookieHeader) {
+    return null
+  }
+
+  for (const segment of cookieHeader.split(";")) {
+    const [name, ...valueParts] = segment.trim().split("=")
+    if (name !== cookieName) {
+      continue
+    }
+
+    const cookieValue = valueParts.join("=")
+    return cookieValue || null
+  }
+
+  return null
+}
+
+async function readLegacyNextAuthSession(cookieHeader: string | null): Promise<BetterAuthSession | null> {
+  const fallbackSecrets = getLegacySessionSecrets()
+  if (!cookieHeader || fallbackSecrets.length === 0) {
+    return null
+  }
+
+  const token = LEGACY_NEXT_AUTH_COOKIE_NAMES.map((cookieName) => parseCookieValue(cookieHeader, cookieName)).find(Boolean)
+  if (!token) {
+    return null
+  }
+
+  for (const legacySecret of fallbackSecrets) {
+    try {
+      const secretBytes = new TextEncoder().encode(legacySecret)
+      const { payload } = await jwtVerify(token, secretBytes)
+
+      if (!payload.sub) {
+        return null
+      }
+
+      return {
+        session: {
+          id: payload.jti ? String(payload.jti) : `legacy-${String(payload.sub)}`,
+          token,
+          userId: String(payload.sub),
+          expiresAt: payload.exp ? new Date(payload.exp * 1000) : new Date(Date.now() + 60 * 60 * 1000),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        user: {
+          id: String(payload.sub),
+          email: typeof payload.email === "string" ? payload.email : undefined,
+          name: typeof payload.name === "string" ? payload.name : undefined,
+          emailVerified: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      } as BetterAuthSession
+    } catch {
+      continue
+    }
+  }
+
+  return null
+}
+
+export async function getAuthSessionFromHeaders(requestHeaders: Headers): Promise<BetterAuthSession | null> {
+  return resolveSessionFromSources({
+    getPrimarySession: () => auth.api.getSession({ headers: requestHeaders }),
+    isLegacyFallbackEnabled: () => isFeatureFlagEnabled("allow_legacy_next_auth_fallback"),
+    getLegacySession: () => readLegacyNextAuthSession(requestHeaders.get("cookie")),
+    recordMetric: recordAuthMetric,
+    now: () => Date.now(),
+  })
+}
+
+async function getRuntimeRequestHeaders(): Promise<Headers> {
+  return (await (await import("next/headers")).headers()) as Headers
+}
+
+export async function getServerAuthSession(requestHeaders?: Headers): Promise<ServerAuthSession | null> {
+  const resolvedHeaders = requestHeaders ?? (await getRuntimeRequestHeaders())
+  const session = await getAuthSessionFromHeaders(resolvedHeaders)
+
+  if (!session?.user) {
+    return null
+  }
+
+  const [dbUser] =
+    session.user.email
+      ? await sql`
+          SELECT id::text AS id, role, sso_organization_id
+          FROM users
+          WHERE email = ${session.user.email}
+          LIMIT 1
+        `
+      : []
+
+  return {
+    user: {
+      id: dbUser?.id ?? String(session.user.id),
+      role: dbUser?.role ?? "user",
+      ssoOrganization: dbUser?.sso_organization_id ?? null,
+      email: session.user.email,
+      name: session.user.name,
+    },
+  }
+}
+
+export async function getAuthenticatedSessionUser(): Promise<AuthenticatedSessionUser | null> {
+  const session = await getServerAuthSession()
+  if (!session?.user?.id) {
+    return null
+  }
+
+  return {
+    userId: session.user.id,
+    role: session.user.role ?? "user",
+    organizationId: session.user.ssoOrganization ?? null,
+    email: session.user.email,
+    name: session.user.name,
+  }
+}
+
+export function isSessionAuthorizedForScope(
+  sessionUser: AuthenticatedSessionUser,
+  scope: { userId?: string | number | null; organizationId?: string | number | null },
+): boolean {
+  if (scope.userId !== undefined && scope.userId !== null && String(scope.userId) !== sessionUser.userId) {
+    return false
+  }
+
+  if (scope.organizationId === undefined || scope.organizationId === null) {
+    return true
+  }
+
+  if (!sessionUser.organizationId) {
+    return false
+  }
+
+  return Number(scope.organizationId) === sessionUser.organizationId
+}

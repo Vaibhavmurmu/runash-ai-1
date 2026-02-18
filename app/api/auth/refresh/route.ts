@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getAuthSessionFromHeaders } from "@/lib/auth"
 import { recordAuthMetric } from "@/lib/auth-observability"
 import { recordSecurityAuditEvent } from "@/lib/security-audit-events"
 
 export async function POST(request: NextRequest) {
-  const session = await auth.api.getSession({ headers: request.headers })
+  const session = await getAuthSessionFromHeaders(request.headers)
 
   if (!session?.session || !session?.user) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
