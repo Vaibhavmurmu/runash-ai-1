@@ -153,6 +153,33 @@ export const auth = betterAuth({
           },
         }
       : {}),
+    ...(process.env.HUGGINGFACE_CLIENT_ID && process.env.HUGGINGFACE_CLIENT_SECRET
+      ? {
+          huggingface: {
+            clientId: process.env.HUGGINGFACE_CLIENT_ID,
+            clientSecret: process.env.HUGGINGFACE_CLIENT_SECRET,
+            allowDangerousEmailAccountLinking: false,
+          },
+        }
+      : {}),
+    ...(process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET
+      ? {
+          linkedin: {
+            clientId: process.env.LINKEDIN_CLIENT_ID,
+            clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
+            allowDangerousEmailAccountLinking: false,
+          },
+        }
+      : {}),
+    ...(process.env.TWITTER_CLIENT_ID && process.env.TWITTER_CLIENT_SECRET
+      ? {
+          twitter: {
+            clientId: process.env.TWITTER_CLIENT_ID,
+            clientSecret: process.env.TWITTER_CLIENT_SECRET,
+            allowDangerousEmailAccountLinking: false,
+          },
+        }
+      : {}),
     ...genericOAuthProviders,
   },
   databaseHooks: {

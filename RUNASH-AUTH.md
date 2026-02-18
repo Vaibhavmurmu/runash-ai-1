@@ -389,3 +389,30 @@ Rollback to prior stable auth/session path if any of the following occur:
 - Added password-strength progress UX helper (`components/auth/password-strength-meter.tsx`) and surfaced it in sign-up/reset-password flows.
 - Added robust auth error UI route (`/auth/error`) with recovery CTAs and email-change confirmation handling.
 - Added client-side WebAuthn roadmap event hooks (`components/auth/webauthn-roadmap-hooks.tsx`) for passkey/biometric login readiness instrumentation.
+
+## Better Auth client helpers and UI cards
+
+This repository now exposes Better Auth client helpers from:
+
+- `lib/auth/client.ts`
+- `lib/auth-client.ts` (compatibility re-export)
+
+Available exports:
+
+- `authClient`
+- `signIn`
+- `signOut`
+- `signUp`
+- `useSession`
+
+Sample auth UI pages are available at:
+
+- `/auth/better-signin`
+- `/auth/better-signup`
+
+These pages include:
+
+- Email/password sign-in and sign-up
+- Passkey sign-in action
+- Social provider buttons (Google, GitHub, Hugging Face, LinkedIn, Twitter)
+- Card alert feedback states and password strength indicator
