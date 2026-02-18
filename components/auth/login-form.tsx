@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { signIn } from "next-auth/react"
@@ -16,12 +16,15 @@ import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
 import { PhoneOtpVerification } from "@/components/auth/phone-otp-verification"
+import { GoogleOneTap } from "@/components/auth/google-one-tap"
+import { formatLoginMethodLabel, getLastLoginMethod, setLastLoginMethod, type LoginMethod } from "@/lib/auth/last-login-method"
 
 export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [phoneVerified, setPhoneVerified] = useState(false)
+  const [lastLoginMethod, setLastLoginMethodState] = useState<LoginMethod>("unknown")
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -30,12 +33,18 @@ export function LoginForm() {
   const router = useRouter()
   const { toast } = useToast()
 
+  useEffect(() => {
+    setLastLoginMethodState(getLastLoginMethod())
+  }, [])
+
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setIsLoading(true)
     setError("")
 
     try {
+      setLastLoginMethod("password")
       const result = await signIn("credentials", {
         email: formData.email,
         password: formData.password,
@@ -66,6 +75,7 @@ export function LoginForm() {
 
   const handleOAuthSignIn = async (provider: string) => {
     try {
+      setLastLoginMethod(provider === "google" || provider === "github" ? provider : "unknown")
       await signIn(provider, { callbackUrl: "/dashboard" })
     } catch (error) {
       toast({
@@ -92,6 +102,14 @@ export function LoginForm() {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
+
+          {lastLoginMethod !== "unknown" ? (
+            <Alert className="mb-4">
+              <AlertDescription>Last login method: {formatLoginMethodLabel(lastLoginMethod)}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          <GoogleOneTap callbackUrl="/dashboard" />
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">

@@ -311,3 +311,24 @@ Rollback to prior stable auth/session path if any of the following occur:
 - Phone OTP challenges now persist with TTL windows, resend cooldown metadata, and verification attempt counters in PostgreSQL tables (`phone_otp_challenges`, `phone_verifications`, `phone_otp_throttles`).
 - Anti-abuse controls include per-IP and per-identifier throttling, optional captcha hook validation (`PHONE_OTP_CAPTCHA_HOOK_URL`), and security audit-log events with hashed identifier metadata.
 - UI now exposes phone verification widgets in login/signup and shared auth form components; green "Verified" state appears only after successful server-side OTP verification.
+
+## 2026-02 OAuth extensibility + login UX hardening update
+
+- Added generic OAuth provider registration support via `lib/auth/plugins/generic-oauth.ts`, driven by `AUTH_GENERIC_OAUTH_PROVIDERS` JSON config and per-provider secret env fallbacks.
+- Added account-linking policy guards for:
+  - manual linking requirements on mobile user agents,
+  - forced-link provider safeguards requiring step-up verification,
+  - explicit unlink policy evaluation for step-up + alternative-login-method checks (`POST /api/auth/account/unlink`).
+- Added Google One Tap wiring:
+  - client prompt component (`components/auth/google-one-tap.tsx`),
+  - callback verification endpoint (`POST /api/auth/google-one-tap/callback`) with verified-email enforcement.
+- Added OAuth preview-domain proxy callback endpoint (`GET /api/auth/oauth/proxy`) for allowed preview hosts.
+- Added last-login-method tracking surfaced in sign-in UI (`/login` and `components/auth/login-form.tsx`).
+
+### New auth routes added in this update
+
+| Route | File |
+|---|---|
+| `POST /api/auth/google-one-tap/callback` | `app/api/auth/google-one-tap/callback/route.ts` |
+| `GET /api/auth/oauth/proxy` | `app/api/auth/oauth/proxy/route.ts` |
+| `POST /api/auth/account/unlink` | `app/api/auth/account/unlink/route.ts` |

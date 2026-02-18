@@ -210,3 +210,12 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
   - session revoke threshold: `25` per window
   - spike threshold: `200%` vs previous window
 - Structured audit events are recorded for login, permission changes, role changes, admin operations, and forbidden access checks with redacted metadata only.
+
+## 2026-02 OAuth plugin and linking policy update
+
+- Generic OAuth providers can now be loaded from runtime config (`AUTH_GENERIC_OAUTH_PROVIDERS`) without code changes, preserving deny-by-default email-linking behavior.
+- Mobile account linking is now manual-flow only (settings/account-link paths) to reduce silent link risk on constrained-device contexts.
+- Forced-link providers (configured by `AUTH_FORCED_LINK_PROVIDERS`) require step-up verification and provider identity evidence.
+- Unlink attempts must satisfy explicit safeguards: recent step-up verification and at least one remaining login method (`POST /api/auth/account/unlink`).
+- OAuth callback redirection for preview hosts is constrained through allowlisted proxy logic (`GET /api/auth/oauth/proxy`); unknown hosts are denied.
+- Google One Tap callback handling verifies Google token validity and verified email before redirecting into auth sign-in flow.

@@ -1223,3 +1223,13 @@ Auth module consolidation and session helper standardization were completed with
 - Added phone OTP anti-abuse controls in auth flows (identifier/IP throttling + captcha hook integration) to reduce account-takeover risk around payment-capable sessions.
 - Payment API contracts and field names were not changed by this update.
 - Rollback remains isolated to auth phone OTP endpoints and UI state, with no required migration for existing RunAsh Pay request/response payloads.
+
+## 2026-02 Auth linkage safeguards impacting payment-linked identities
+
+To preserve payment-surface account integrity while extending OAuth support:
+
+- OAuth provider onboarding can be configured dynamically through generic provider config while retaining strict account-linking checks.
+- Mobile linking now requires manual user-initiated flows and step-up verification safeguards.
+- Forced-linking providers require verified identity/step-up signals and provider token evidence before link acceptance.
+- Unlink guardrails now require recent step-up and alternative sign-in fallback (`POST /api/auth/account/unlink`) to reduce payment-operator lockout/takeover risk.
+- OAuth preview callback proxying is restricted to allowlisted hosts to avoid open redirect exposure for payment-adjacent auth callbacks.
