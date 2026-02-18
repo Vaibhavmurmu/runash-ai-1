@@ -66,6 +66,7 @@ Related auth routes outside `app/api/auth/**`:
 - `POST /api/v1/auth/register` (`app/api/v1/auth/register/route.ts`)
 - `GET /api/admin/analytics/auth` (`app/api/admin/analytics/auth/route.ts`)
 - `GET /api/admin/analytics/auth/events` (`app/api/admin/analytics/auth/events/route.ts`)
+- `GET /api/admin/analytics/auth/metrics` (`app/api/admin/analytics/auth/metrics/route.ts`)
 
 ## 3) Implemented auth-related UI routes
 
@@ -194,3 +195,11 @@ Role-assignment endpoints continue accepting legacy role inputs, but stored role
   - reject self-targeted permission override mutations,
   - verify target user existence, and
   - verify the permission key exists in `admin_permissions` before applying grants/revokes.
+
+
+## 10) 2026-02 auth security telemetry expansion
+
+- Structured security audit events are now emitted for login attempts/outcomes, admin role changes, permission grant/revoke operations, and privileged admin actions.
+- Admin authorization denials (`401/403`) now emit `auth.forbidden.access` audit events with sanitized reason codes and route metadata.
+- Added health metrics endpoint (`/api/admin/analytics/auth/metrics`) exposing failed auth, forbidden access, and session revoke counters plus previous-window spike detection.
+- Auth analytics dashboard now surfaces auth/security health monitoring panels and alert cards when thresholds/spike rules trigger.

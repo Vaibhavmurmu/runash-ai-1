@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
-import { getScopedAuthMonitoringData, type MonitoringVisibility } from "@/lib/auth-observability"
+import { getAuthSecurityHealthMetrics, getScopedAuthMonitoringData, type MonitoringVisibility } from "@/lib/auth-observability"
 import { RBACManager } from "@/lib/rbac"
 import { logApiRouteError } from "@/lib/api/logging"
 
@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       requestId: auth.requestId,
       monitoring: getScopedAuthMonitoringData(visibility, 24 * 60),
+      metrics: getAuthSecurityHealthMetrics(60),
     })
   } catch (error) {
     logApiRouteError(request, "admin.security.analytics.fetch_failed", error, {

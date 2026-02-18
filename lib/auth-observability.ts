@@ -18,6 +18,12 @@ type AuthMetricName =
   | "admin.permission.granted"
   | "admin.permission.revoked"
 
+type AuthSecurityMetricsWindow = {
+  failedAuth: number
+  forbiddenAccess: number
+  sessionRevokes: number
+}
+
 export type AuthMetricCategory = "authentication" | "authorization" | "session" | "admin" | "security_alert"
 export type AlertCategory = "suspicious_login_behavior" | "permission_abuse"
 
@@ -144,6 +150,102 @@ export function getAuthSecurityDashboardData(windowMinutes = 24 * 60) {
       security_alert: windowedMetrics.filter((metric) => metric.category === "security_alert").length,
     },
     recentMetrics: windowedMetrics.slice(0, 200),
+  }
+}
+
+function getMetricsWindow(windowMinutes: number, offsetWindows = 0): AuthSecurityMetricsWindow {
+  const now = Date.now()
+  const windowMs = windowMinutes * 60 * 1000
+  const windowEnd = now - offsetWindows * windowMs
+  const windowStart = windowEnd - windowMs
+
+  const windowedMetrics = metricBuffer.filter((metric) => {
+    const timestamp = new Date(metric.timestamp).getTime()
+    return timestamp >= windowStart && timestamp < windowEnd
+  })
+
+  return {
+    failedAuth: windowedMetrics.filter((metric) => metric.name === "auth.login.failed").length,
+    forbiddenAccess: windowedMetrics.filter((metric) => metric.name === "auth.forbidden.action").length,
+    sessionRevokes: windowedMetrics.filter((metric) => metric.name === "auth.session.revoked").length,
+  }
+}
+
+function calculateSpike(current: number, previous: number) {
+  if (previous <= 0) {
+    return current > 0 ? 100 : 0
+  }
+
+  return Number((((current - previous) / previous) * 100).toFixed(2))
+}
+
+export function getAuthSecurityHealthMetrics(windowMinutes = 60) {
+  const currentWindow = getMetricsWindow(windowMinutes, 0)
+  const previousWindow = getMetricsWindow(windowMinutes, 1)
+
+  const configuredThresholds = {
+    failedAuth: 20,
+    forbiddenAccess: 15,
+    sessionRevokes: 25,
+    spikePercent: 200,
+  }
+
+  const spikes = {
+    failedAuth: calculateSpike(currentWindow.failedAuth, previousWindow.failedAuth),
+    forbiddenAccess: calculateSpike(currentWindow.forbiddenAccess, previousWindow.forbiddenAccess),
+    sessionRevokes: calculateSpike(currentWindow.sessionRevokes, previousWindow.sessionRevokes),
+  }
+
+  const alerts = [
+    {
+      metric: "failedAuth",
+      severity: currentWindow.failedAuth >= configuredThresholds.failedAuth || spikes.failedAuth >= configuredThresholds.spikePercent ? "high" : "normal",
+      triggered: currentWindow.failedAuth >= configuredThresholds.failedAuth || spikes.failedAuth >= configuredThresholds.spikePercent,
+      reason:
+        currentWindow.failedAuth >= configuredThresholds.failedAuth
+          ? "failed_auth_threshold_exceeded"
+          : spikes.failedAuth >= configuredThresholds.spikePercent
+            ? "failed_auth_spike_detected"
+            : "within_threshold",
+    },
+    {
+      metric: "forbiddenAccess",
+      severity:
+        currentWindow.forbiddenAccess >= configuredThresholds.forbiddenAccess || spikes.forbiddenAccess >= configuredThresholds.spikePercent
+          ? "high"
+          : "normal",
+      triggered:
+        currentWindow.forbiddenAccess >= configuredThresholds.forbiddenAccess || spikes.forbiddenAccess >= configuredThresholds.spikePercent,
+      reason:
+        currentWindow.forbiddenAccess >= configuredThresholds.forbiddenAccess
+          ? "forbidden_access_threshold_exceeded"
+          : spikes.forbiddenAccess >= configuredThresholds.spikePercent
+            ? "forbidden_access_spike_detected"
+            : "within_threshold",
+    },
+    {
+      metric: "sessionRevokes",
+      severity:
+        currentWindow.sessionRevokes >= configuredThresholds.sessionRevokes || spikes.sessionRevokes >= configuredThresholds.spikePercent
+          ? "medium"
+          : "normal",
+      triggered: currentWindow.sessionRevokes >= configuredThresholds.sessionRevokes || spikes.sessionRevokes >= configuredThresholds.spikePercent,
+      reason:
+        currentWindow.sessionRevokes >= configuredThresholds.sessionRevokes
+          ? "session_revoke_threshold_exceeded"
+          : spikes.sessionRevokes >= configuredThresholds.spikePercent
+            ? "session_revoke_spike_detected"
+            : "within_threshold",
+    },
+  ]
+
+  return {
+    windowMinutes,
+    counters: currentWindow,
+    previousWindow,
+    spikes,
+    thresholds: configuredThresholds,
+    alerts,
   }
 }
 

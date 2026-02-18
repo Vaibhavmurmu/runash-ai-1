@@ -1199,3 +1199,10 @@ Auth module consolidation and session helper standardization were completed with
 - Canonical admin baseline roles (`viewer`, `operator`, `admin`) and assignment-endpoint validation hardening were added in auth/admin surfaces.
 - These changes do **not** modify RunAsh Pay API payloads, payment method contracts, or checkout request/response field names.
 - Payment-affecting admin actions continue to depend on existing permission gates; this update only tightens role/permission assignment safety and admin UI/API access enforcement.
+
+
+## Auth/security telemetry compatibility note (2026-02)
+
+- Auth observability now exposes admin metrics for failed authentication, forbidden access, and session revocations.
+- This update does **not** change RunAsh Pay API payloads, field names, or payment flow contracts.
+- Payment-adjacent authorization behavior remains backward compatible; only monitoring/audit coverage is expanded for faster incident response.
