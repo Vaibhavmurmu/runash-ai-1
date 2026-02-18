@@ -4,6 +4,8 @@ export type AuthEndpointRateLimit = {
 }
 
 export const AUTH_ENDPOINT_RATE_LIMITS: Record<string, AuthEndpointRateLimit> = {
+  "sign-in": { limit: 5, windowMs: 15 * 60 * 1000 },
+  "sign-out": { limit: 20, windowMs: 15 * 60 * 1000 },
   register: { limit: 5, windowMs: 15 * 60 * 1000 },
   "forgot-password": { limit: 3, windowMs: 15 * 60 * 1000 },
   "reset-password": { limit: 5, windowMs: 15 * 60 * 1000 },
@@ -37,4 +39,3 @@ export function getAuthEndpointRateLimit(pathname: string): AuthEndpointRateLimi
 
   return AUTH_ENDPOINT_RATE_LIMITS[endpoint] ?? AUTH_ENDPOINT_RATE_LIMITS[endpoint.split("/").slice(-1)[0]] ?? DEFAULT_AUTH_RATE_LIMIT
 }
-

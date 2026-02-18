@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth"
+import { createHash } from "node:crypto"
 import { recordAuthMetric } from "@/lib/auth-observability"
 
 const baseURL =
@@ -25,7 +26,7 @@ export function getLegacySessionSecrets(): string[] {
   return [...new Set(secrets)]
 }
 
-const enforceVerifiedIdentityLinking = (process.env.AUTH_ENFORCE_VERIFIED_IDENTITY_LINKING ?? "true") === "true"
+const enforceVerifiedIdentityLinking = true
 
 type AuthAccountLink = {
   userId: string
@@ -60,6 +61,10 @@ function redactSubject(accountId: string) {
   return `${accountId.slice(0, 3)}***${accountId.slice(-3)}`
 }
 
+function anonymizeUserId(userId: string) {
+  return createHash("sha256").update(userId).digest("hex").slice(0, 12)
+}
+
 function auditAccountLinkEvent(
   event: "account_link_attempt" | "account_link_denied" | "account_link_allowed",
   payload: {
@@ -78,7 +83,7 @@ function auditAccountLinkEvent(
   console.info("[auth.account-link]", {
     event,
     providerId: payload.providerId,
-    userId: payload.userId,
+    userIdHash: anonymizeUserId(payload.userId),
     reason: payload.reason,
     requestPath: payload.requestPath,
     subjectHash: payload.subjectHash,

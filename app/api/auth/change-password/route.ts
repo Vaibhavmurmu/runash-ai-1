@@ -6,6 +6,7 @@ import { logApiRouteError } from "@/lib/api/logging"
 import { getServerAuthSession } from "@/lib/auth/session"
 import { AUTH_ENDPOINT_RATE_LIMITS } from "@/lib/auth-security-config"
 import { recordAuthMetric } from "@/lib/auth-observability"
+import { attachSessionRevocationCookies } from "@/lib/auth/session-hardening"
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required"),
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     await changePassword(Number.parseInt(session.user.id), currentPassword, newPassword)
 
-    return NextResponse.json({ message: "Password changed successfully" })
+    return attachSessionRevocationCookies(NextResponse.json({ message: "Password changed successfully" }))
   } catch (error) {
     recordAuthMetric("auth.suspicious_activity", { endpoint: "change-password", reason: "error" })
     logApiRouteError(request, "auth.change_password.failed", error, { errorCode: "AUTH_CHANGE_PASSWORD_FAILED" })
