@@ -523,3 +523,32 @@ A full inbound-reply architecture is available for provider webhooks and admin r
   - AI draft preview/edit,
   - approve+send and skip controls,
   - per-thread audit trail.
+
+---
+
+## Workflow Kit Email Automation Extensions
+
+The workflow kit now supports operational email automation with auditable execution records.
+
+### Email workflow nodes
+- `email.send_broadcast`
+- `email.send_test`
+- `email.import_contacts`
+- `email.handle_inbound_reply`
+- `email.webhook_event_trigger`
+
+### Trigger model
+Workflows can now run from:
+- `manual` runs from the workflow studio
+- `schedule` runs with cron metadata (`scheduleCron`)
+- `webhook_event` runs for provider lifecycle events (`delivered`, `opened`, `bounced`, `clicked`, `inbound_reply`)
+
+### Auditability and rollback
+Each execution writes workflow and node-level audit events, including rollback entries after failed runs. This gives admins a full trace for automated email actions and post-failure remediation.
+
+### Ready-made templates
+Email automation templates are available for:
+- Welcome sequence
+- Re-engagement
+- Bounce cleanup
+- AI reply triage
