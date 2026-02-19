@@ -83,7 +83,8 @@ type OnboardingSlide = {
 
 const runashChatOnboardingStorageKey = "runash_chat_onboarding_seen"
 const runashChatSidebarCollapsedStorageKey = "runash_chat_sidebar_collapsed"
-const runashChatUpdatesBannerHiddenStorageKey = "runash_updates_banner_hidden"
+const runashChatUpdatesBannerHiddenStorageKey = "runash_chat_updates_hidden"
+const runashChatLegacyUpdatesBannerHiddenStorageKey = "runash_updates_banner_hidden"
 const runashChatDesktopSidebarContentId = "runash-chat-desktop-sidebar-content"
 const runashChatMobileSidebarId = "runash-chat-mobile-sidebar"
 
@@ -249,7 +250,9 @@ export default function RunashChatPage() {
     const savedValue = localStorage.getItem(runashChatSidebarCollapsedStorageKey)
     setIsSidebarCollapsed(savedValue === "true")
 
-    const isBannerHidden = localStorage.getItem(runashChatUpdatesBannerHiddenStorageKey) === "true"
+    const isBannerHidden =
+      localStorage.getItem(runashChatUpdatesBannerHiddenStorageKey) === "true" ||
+      localStorage.getItem(runashChatLegacyUpdatesBannerHiddenStorageKey) === "true"
     setShowUpdatesBanner(!isBannerHidden)
 
     const hasSeenOnboarding = localStorage.getItem(runashChatOnboardingStorageKey) === "true"
@@ -500,6 +503,7 @@ export default function RunashChatPage() {
 
   const dismissUpdatesBanner = () => {
     localStorage.setItem(runashChatUpdatesBannerHiddenStorageKey, "true")
+    localStorage.setItem(runashChatLegacyUpdatesBannerHiddenStorageKey, "true")
     setShowUpdatesBanner(false)
   }
 
@@ -943,29 +947,31 @@ export default function RunashChatPage() {
             )}
 
             {showUpdatesBanner && (
-              <div className="mb-2 flex items-start justify-between gap-2 rounded-md border border-cyan-200/60 bg-cyan-300/10 px-2.5 py-2 text-[11px] text-cyan-50 sm:mb-3 sm:items-center sm:px-3">
-                <div className="flex min-w-0 flex-wrap items-center gap-1.5 leading-tight sm:gap-2">
-                  <span className="rounded-full border border-cyan-100/70 bg-cyan-200/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-50">
+              <div className="mb-3 rounded-lg border border-cyan-300/50 bg-cyan-400/10 p-2.5 text-cyan-50 sm:p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                  <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] leading-tight sm:gap-2 sm:text-xs">
+                    <span className="rounded-full border border-cyan-100/70 bg-cyan-200/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-50">
                     New
-                  </span>
-                  <p className="text-cyan-50">Chat composer updates are live with quicker launch actions.</p>
+                    </span>
+                    <p className="text-cyan-50">Chat composer updates are live with quicker launch actions.</p>
+                    <Button
+                      variant="link"
+                      className="h-auto p-0 text-[11px] font-medium text-cyan-100 underline underline-offset-2 hover:text-cyan-50 sm:text-xs"
+                      onClick={() => router.push("/changelog")}
+                    >
+                      Learn more
+                    </Button>
+                  </div>
                   <Button
-                    variant="link"
-                    className="h-auto p-0 text-[11px] font-medium text-cyan-100 underline underline-offset-2 hover:text-cyan-50"
-                    onClick={() => router.push("/changelog")}
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 shrink-0 self-end text-cyan-100 hover:bg-cyan-400/20 hover:text-cyan-50 sm:self-auto"
+                    onClick={dismissUpdatesBanner}
+                    aria-label="Dismiss updates banner"
                   >
-                    Learn more
+                    <X className="h-3.5 w-3.5" />
                   </Button>
                 </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-5 w-5 shrink-0 text-cyan-100 hover:bg-cyan-400/20 hover:text-cyan-50"
-                  onClick={dismissUpdatesBanner}
-                  aria-label="Dismiss updates banner"
-                >
-                  <X className="h-3 w-3" />
-                </Button>
               </div>
             )}
 
