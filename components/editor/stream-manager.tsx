@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { useStreamManager } from "@/hooks/use-stream-manager"
 
 export default function StreamManager() {
-  const { streams, selectedStream, setSelectedStream, stats, isLoading, isPolling, error, refresh, actions } =
+  const { streams, selectedStream, setSelectedStream, stats, isLoading, isPolling, isRealtimeConnected, error, refresh, actions } =
     useStreamManager()
 
   const formatTime = (seconds: number) => {
@@ -39,7 +39,10 @@ export default function StreamManager() {
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
                 <Radio className="w-4 h-4 text-primary-foreground" />
               </div>
-              <h3 className="font-semibold text-foreground">Stream Manager</h3>
+              <div>
+                <h3 className="font-semibold text-foreground">Stream Manager</h3>
+                <p className="text-xs text-muted-foreground">{isRealtimeConnected ? "Realtime metrics connected" : "Polling metrics fallback"}</p>
+              </div>
             </div>
             <Button variant="ghost" size="icon" onClick={() => void refresh()} aria-label="Refresh stream data">
               <RefreshCcw className={`w-4 h-4 ${isPolling ? "animate-spin" : ""}`} />
