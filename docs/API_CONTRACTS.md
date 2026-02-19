@@ -609,6 +609,9 @@ Success response:
 ### Migration note
 - Apply `scripts/sql/2026-02-19_create_editor_projects.sql` before using editor project endpoints in production.
 
+
+
+
 ## Recording Edits API (`/api/recordings/edit`)
 
 ### `POST /api/recordings/edit`
@@ -628,4 +631,11 @@ Success response:
   - `500` persistence failure
 
 ### Transaction behavior
+
 - The route executes the recording edit insert inside an explicit DB transaction (`BEGIN` / `COMMIT`, rollback on failure).
+
+
+- The route executes the recording edit insert inside an explicit DB transaction (`BEGIN` / `COMMIT`, rollback on failure).
+
+- The route executes the recording edit insert inside an explicit DB transaction (`BEGIN` / `COMMIT`, rollback on fail
+
