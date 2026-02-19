@@ -130,7 +130,7 @@ const sidebarNavItems = [
 
 export default function RunashChatPage() {
   const router = useRouter()
-  const { data: session } = useAuthSession()
+  const { data: session, status: authStatus } = useAuthSession()
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [messagesPreview, setMessagesPreview] = useState<ChatPreviewMessage[]>([])
   const [loadingSession, setLoadingSession] = useState(false)
@@ -184,7 +184,8 @@ export default function RunashChatPage() {
   const overflowMobileHeaderActions = headerActions.slice(2)
 
   const authenticatedUser = session?.user
-  const userDisplayName = authenticatedUser?.name?.trim() || "Guest User"
+  const isAuthenticated = authStatus === "authenticated" && Boolean(authenticatedUser)
+  const userDisplayName = authenticatedUser?.name?.trim() || authenticatedUser?.email?.split("@")[0]?.trim() || "Guest User"
   const userEmail = authenticatedUser?.email?.trim() || ""
   const userAvatar = authenticatedUser?.image?.trim() || ""
   const userInitials = userDisplayName
@@ -195,7 +196,7 @@ export default function RunashChatPage() {
     .join("") || "GU"
 
   const userMenuItems = [
-    { label: "Profile", icon: User, href: "/settings/profile" },
+    { label: "Profile", icon: User, href: "/account" },
     { label: "Settings", icon: Settings, href: "/settings" },
     { label: "Billing", icon: CreditCard, href: "/settings/billing" },
     { label: "Help", icon: LifeBuoy, href: "/support" },
@@ -868,7 +869,18 @@ export default function RunashChatPage() {
                       ))}
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  {renderProfileMenu("h-11 w-11 rounded-full border-zinc-700 bg-zinc-950 p-0 text-zinc-100")}
+                  {isAuthenticated ? (
+                    renderProfileMenu("h-11 w-11 rounded-full border-zinc-700 bg-zinc-950 p-0 text-zinc-100")
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11 rounded-full border-zinc-700 bg-zinc-950 px-4 text-zinc-100"
+                      onClick={() => router.push("/login")}
+                    >
+                      Sign in
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -1029,7 +1041,19 @@ export default function RunashChatPage() {
                   </div>
                 </TooltipProvider>
 
-                {renderProfileMenu("h-9 w-9 rounded-full border-zinc-700 bg-zinc-950 p-0 text-zinc-100")}
+                {isAuthenticated ? (
+                  renderProfileMenu("h-9 w-9 rounded-full border-zinc-700 bg-zinc-950 p-0 text-zinc-100")
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900"
+                    onClick={() => router.push("/login")}
+                  >
+                    Sign in
+                  </Button>
+                )}
               </div>
             </header>
 
