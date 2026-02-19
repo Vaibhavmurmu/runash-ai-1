@@ -24,7 +24,9 @@ test("POST /api/recordings/edit returns 401 when unauthorized", async () => {
     }),
     {
       getSession: async () => null,
-      sql: async () => [],
+      transaction: async () => {
+        throw new Error("Transaction should not run when unauthorized")
+      },
     },
   )
 
@@ -50,8 +52,8 @@ test("POST /api/recordings/edit returns 400 when validation fails", async () => 
     }),
     {
       getSession: async () => ({ user: { id: "user_1" } }),
-      sql: async () => {
-        throw new Error("SQL should not be called for invalid payload")
+      transaction: async () => {
+        throw new Error("Transaction should not be called for invalid payload")
       },
     },
   )
@@ -76,19 +78,19 @@ test("POST /api/recordings/edit persists edit and returns typed success payload"
     }),
     {
       getSession: async () => ({ user: { id: "user_1" } }),
-      sql: async (parts) => {
-        const query = parts.join("${}").trim()
-        queries.push(query)
+      transaction: async (run) => {
+        const tx = async (parts: TemplateStringsArray) => {
+          const query = parts.join("${}").trim()
+          queries.push(query)
 
-        if (query === "BEGIN" || query === "COMMIT") {
-          return []
+          if (query.includes("INSERT INTO recording_edits")) {
+            return [{ id: "edit_1" }]
+          }
+
+          throw new Error(`Unexpected query: ${query}`)
         }
 
-        if (query.includes("INSERT INTO recording_edits")) {
-          return [{ id: "edit_1" }]
-        }
-
-        throw new Error(`Unexpected query: ${query}`)
+        return run(tx)
       },
     },
   )
@@ -99,6 +101,32 @@ test("POST /api/recordings/edit persists edit and returns typed success payload"
   assert.equal(payload.success, true)
   assert.equal(payload.editId, "edit_1")
   assert.equal(payload.message, "Video edit queued for processing")
-  assert.deepEqual(queries, ["BEGIN", queries[1], "COMMIT"])
-  assert.equal(queries[1].includes("INSERT INTO recording_edits"), true)
+  assert.equal(queries.length, 1)
+  assert.equal(queries[0].includes("INSERT INTO recording_edits"), true)
+})
+
+test("POST /api/recordings/edit rejects unknown fields for strict validation", async () => {
+  const payload = {
+    ...createValidPayload(),
+    unexpectedField: "nope",
+  }
+
+  const response = await handleCreateRecordingEdit(
+    new Request("http://localhost/api/recordings/edit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+    {
+      getSession: async () => ({ user: { id: "user_1" } }),
+      transaction: async () => {
+        throw new Error("Transaction should not run for invalid payload")
+      },
+    },
+  )
+
+  const data = await response.json()
+  assert.equal(response.status, 400)
+  assert.equal(data.success, false)
+  assert.equal(data.error, "Invalid recording edit payload")
 })
