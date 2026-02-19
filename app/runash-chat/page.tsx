@@ -1064,16 +1064,20 @@ export default function RunashChatPage() {
             )}
 
             {showUpdatesBanner && (
-              <div className="mb-3 rounded-lg border border-cyan-300/50 bg-cyan-400/10 p-2.5 text-cyan-50 sm:p-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                  <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] leading-tight sm:gap-2 sm:text-xs">
-                    <span className="rounded-full border border-cyan-100/70 bg-cyan-200/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-50">
-                    New
+              <div
+                className="mb-3 rounded-lg border border-cyan-300/40 bg-cyan-300/10 px-3 py-2 text-cyan-50"
+                role="status"
+                aria-live="polite"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 text-xs">
+                    <span className="rounded-full border border-cyan-100/70 bg-cyan-100/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-50">
+                      New
                     </span>
-                    <p className="text-cyan-50">Chat composer updates are live with quicker launch actions.</p>
+                    <p className="text-cyan-50/95">Chat composer updates are live with quicker launch actions.</p>
                     <Button
                       variant="link"
-                      className="h-auto p-0 text-[11px] font-medium text-cyan-100 underline underline-offset-2 hover:text-cyan-50 sm:text-xs"
+                      className="h-auto p-0 text-xs font-medium text-cyan-100 underline underline-offset-2 hover:text-cyan-50"
                       onClick={() => router.push("/changelog")}
                     >
                       Learn more
@@ -1082,7 +1086,7 @@ export default function RunashChatPage() {
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="h-6 w-6 shrink-0 self-end text-cyan-100 hover:bg-cyan-400/20 hover:text-cyan-50 sm:self-auto"
+                    className="h-6 w-6 shrink-0 -translate-y-0.5 text-cyan-100 hover:bg-cyan-400/20 hover:text-cyan-50"
                     onClick={dismissUpdatesBanner}
                     aria-label="Dismiss updates banner"
                   >
