@@ -2,6 +2,17 @@ import { NextResponse } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
 import { sql, touchProject } from "@/lib/editor/repository"
 
+export async function GET(_: Request, { params }: { params: { projectId: string; segmentId: string } }) {
+  const auth = await requireEditorUser()
+  if ("error" in auth) return auth.error
+  const { projectId, segmentId } = params
+
+  const [segment] = await sql`SELECT * FROM editor_segments WHERE id=${segmentId} AND project_id=${projectId} AND owner_id=${auth.userId}`
+  if (!segment) return NextResponse.json({ error: "Segment not found" }, { status: 404 })
+
+  return NextResponse.json({ segment })
+}
+
 export async function PATCH(request: Request, { params }: { params: { projectId: string; segmentId: string } }) {
   const auth = await requireEditorUser()
   if ("error" in auth) return auth.error

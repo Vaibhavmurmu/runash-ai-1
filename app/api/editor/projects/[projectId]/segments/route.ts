@@ -2,6 +2,20 @@ import { NextResponse } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
 import { sql, touchProject } from "@/lib/editor/repository"
 
+export async function GET(request: Request, { params }: { params: { projectId: string } }) {
+  const auth = await requireEditorUser()
+  if ("error" in auth) return auth.error
+  const { projectId } = params
+  const { searchParams } = new URL(request.url)
+  const timelineId = searchParams.get("timelineId")
+
+  const segments = timelineId
+    ? await sql`SELECT * FROM editor_segments WHERE project_id=${projectId} AND timeline_id=${timelineId} AND owner_id=${auth.userId} ORDER BY start_seconds, created_at`
+    : await sql`SELECT * FROM editor_segments WHERE project_id=${projectId} AND owner_id=${auth.userId} ORDER BY start_seconds, created_at`
+
+  return NextResponse.json({ segments })
+}
+
 export async function POST(request: Request, { params }: { params: { projectId: string } }) {
   const auth = await requireEditorUser()
   if ("error" in auth) return auth.error
