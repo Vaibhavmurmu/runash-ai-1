@@ -1126,7 +1126,13 @@ export default function RunashChatPage() {
               <Card className="border-zinc-800 bg-zinc-950 p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-sm font-medium text-zinc-100">Recent chats</h2>
-                  <span className="text-xs text-zinc-500">View all</span>
+                  <button
+                    type="button"
+                    className="text-xs text-zinc-500 transition hover:text-zinc-300"
+                    onClick={() => router.push("/chat")}
+                  >
+                    View all
+                  </button>
                 </div>
                 <ScrollArea className="h-[260px]">
                   <div className="space-y-2 pr-2">
@@ -1165,7 +1171,7 @@ export default function RunashChatPage() {
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="text-sm font-medium text-zinc-100">Recent Projects</h2>
                   <button type="button" className="text-xs text-zinc-500 transition hover:text-zinc-300" onClick={() => router.push("/editor")}>
-                    View All
+                    View all
                   </button>
                 </div>
 
@@ -1207,7 +1213,7 @@ export default function RunashChatPage() {
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="text-sm font-medium text-zinc-100">My Chats</h2>
                   <button type="button" className="text-xs text-zinc-500 transition hover:text-zinc-300" onClick={() => router.push("/chat")}>
-                    View All
+                    View all
                   </button>
                 </div>
 
