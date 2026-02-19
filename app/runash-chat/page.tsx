@@ -412,6 +412,8 @@ export default function RunashChatPage() {
   }
 
   const mobileRecentMatches = recentItems.filter((item) => item.title.toLowerCase().includes(mobileSearchValue.trim().toLowerCase()))
+  const recentProjectItems = recentEntities.filter((item) => item.entityType === "project")
+  const myChatItems = recentEntities.filter((item) => item.entityType === "session")
 
   const dismissUpdatesBanner = () => {
     localStorage.setItem(updatesBannerHiddenKey, "true")
@@ -984,46 +986,51 @@ export default function RunashChatPage() {
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <Card className="border-zinc-800 bg-zinc-950 p-4 lg:col-span-2">
-                <div className="mb-3 flex items-center justify-between">
-                  <h2 className="text-sm font-medium text-zinc-100">Recent entities</h2>
-                  <span className="text-xs text-zinc-500">Latest sessions & projects</span>
+              <Card className="border-zinc-800 bg-zinc-950 p-4">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-sm font-medium text-zinc-100">Recent Projects</h2>
+                  <button type="button" className="text-xs text-zinc-500 transition hover:text-zinc-300">
+                    View All
+                  </button>
                 </div>
 
-                <ScrollArea className="h-[220px] pr-1">
-                  <div className="space-y-2 pr-2">
-                    {loadingRecents && <div className="text-xs text-zinc-500">Loading recent entities…</div>}
-                    {!loadingRecents && recentItemsError && <div className="text-xs text-amber-400">{recentItemsError}</div>}
-                    {!loadingRecents && !recentItemsError && recentEntities.length === 0 && (
-                      <div className="text-xs text-zinc-500">No recent sessions or projects yet.</div>
-                    )}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {(recentProjectItems.length > 0 ? recentProjectItems.slice(0, 4) : Array.from({ length: 4 })).map((item, index) => (
+                    <div
+                      key={typeof item === "object" ? item.id : `project-placeholder-${index}`}
+                      className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3"
+                    >
+                      <div className="mb-2 h-3 w-2/3 rounded bg-zinc-800/80" />
+                      <p className="mb-3 truncate text-xs text-zinc-500">{typeof item === "object" ? item.title : "Project placeholder"}</p>
+                      <div className="h-20 rounded-md border border-dashed border-zinc-800 bg-zinc-900/70" />
+                    </div>
+                  ))}
+                </div>
+              </Card>
 
-                    {recentEntities.map((item) => {
-                      const updatedLabel = item.updatedAt ? new Date(item.updatedAt).toLocaleString() : "Unknown update time"
-                      const canOpenChat = item.entityType === "session" && Boolean(item.sessionId)
+              <Card className="border-zinc-800 bg-zinc-950 p-4">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-sm font-medium text-zinc-100">My Chats</h2>
+                  <button type="button" className="text-xs text-zinc-500 transition hover:text-zinc-300">
+                    View All
+                  </button>
+                </div>
 
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          disabled={!canOpenChat}
-                          onClick={() => {
-                            if (item.sessionId) router.push(`/chat?sessionId=${item.sessionId}`)
-                          }}
-                          className={`w-full rounded-md border border-zinc-800 px-3 py-2 text-left transition ${
-                            canOpenChat ? "bg-zinc-900/70 hover:bg-zinc-900" : "cursor-default bg-zinc-900/40"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="truncate text-xs font-medium text-zinc-200">{item.title}</p>
-                            <span className="shrink-0 text-[10px] uppercase tracking-wide text-zinc-500">{item.entityType}</span>
-                          </div>
-                          <p className="mt-1 text-[11px] text-zinc-500">Updated: {updatedLabel}</p>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </ScrollArea>
+                <div className="space-y-2">
+                  {(myChatItems.length > 0 ? myChatItems.slice(0, 6) : Array.from({ length: 6 })).map((item, index) => (
+                    <div
+                      key={typeof item === "object" ? item.id : `chat-placeholder-${index}`}
+                      className="flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-900/50 px-3 py-2"
+                    >
+                      <div className="h-7 w-7 rounded-full bg-zinc-800/80" />
+                      <div className="flex-1 space-y-2">
+                        <p className="truncate text-xs text-zinc-400">{typeof item === "object" ? item.title : "Chat placeholder"}</p>
+                        <div className="h-2 w-2/5 rounded bg-zinc-800/60" />
+                      </div>
+                      <div className="h-2 w-10 rounded bg-zinc-800/60" />
+                    </div>
+                  ))}
+                </div>
               </Card>
             </div>
           </div>
