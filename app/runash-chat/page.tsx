@@ -78,6 +78,7 @@ type OnboardingSlide = {
 
 const runashChatOnboardingStorageKey = "runash_chat_onboarding_seen"
 const runashChatSidebarCollapsedStorageKey = "runash_chat_sidebar_collapsed"
+const runashChatUpdatesBannerHiddenStorageKey = "runash_updates_banner_hidden"
 
 const onboardingSlides: OnboardingSlide[] = [
   {
@@ -117,7 +118,6 @@ const sidebarNavItems = [
 ]
 
 export default function RunashChatPage() {
-  const updatesBannerHiddenKey = "runash_updates_banner_hidden"
   const router = useRouter()
   const { data: session } = useAuthSession()
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -201,7 +201,7 @@ export default function RunashChatPage() {
     const savedValue = localStorage.getItem(runashChatSidebarCollapsedStorageKey)
     setIsSidebarCollapsed(savedValue === "true")
 
-    const isBannerHidden = localStorage.getItem(updatesBannerHiddenKey) === "true"
+    const isBannerHidden = localStorage.getItem(runashChatUpdatesBannerHiddenStorageKey) === "true"
     setShowUpdatesBanner(!isBannerHidden)
 
     const hasSeenOnboarding = localStorage.getItem(runashChatOnboardingStorageKey) === "true"
@@ -421,7 +421,7 @@ export default function RunashChatPage() {
   const myChatItems = recentEntities.filter((item) => item.entityType === "session")
 
   const dismissUpdatesBanner = () => {
-    localStorage.setItem(updatesBannerHiddenKey, "true")
+    localStorage.setItem(runashChatUpdatesBannerHiddenStorageKey, "true")
     setShowUpdatesBanner(false)
   }
 
@@ -897,15 +897,15 @@ export default function RunashChatPage() {
             )}
 
             {showUpdatesBanner && (
-              <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-cyan-300/50 bg-cyan-300/10 px-2.5 py-2 text-xs text-cyan-50 sm:mb-3 sm:px-3 sm:py-2.5">
-                <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
-                  <span className="rounded-full border border-cyan-200/60 bg-cyan-200/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-50">
+              <div className="mb-2 flex items-start justify-between gap-2 rounded-md border border-cyan-200/60 bg-cyan-300/10 px-2.5 py-2 text-[11px] text-cyan-50 sm:mb-3 sm:items-center sm:px-3">
+                <div className="flex min-w-0 flex-wrap items-center gap-1.5 leading-tight sm:gap-2">
+                  <span className="rounded-full border border-cyan-100/70 bg-cyan-200/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-50">
                     New
                   </span>
-                  <p className="text-cyan-50">Faster workspace flows are now live.</p>
+                  <p className="text-cyan-50">Chat composer updates are live with quicker launch actions.</p>
                   <Button
                     variant="link"
-                    className="h-auto p-0 text-xs text-cyan-100 underline-offset-2 hover:text-cyan-50"
+                    className="h-auto p-0 text-[11px] font-medium text-cyan-100 underline underline-offset-2 hover:text-cyan-50"
                     onClick={() => router.push("/changelog")}
                   >
                     Learn more
