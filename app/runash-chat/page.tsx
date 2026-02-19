@@ -149,6 +149,7 @@ export default function RunashChatPage() {
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
   const [activeOnboardingStep, setActiveOnboardingStep] = useState(0)
   const mobileSidebarTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const desktopSidebarToggleRef = useRef<HTMLButtonElement | null>(null)
   const onboardingTriggerRef = useRef<HTMLElement | null>(null)
   const mainControlsRef = useRef<HTMLInputElement | null>(null)
 
@@ -329,6 +330,29 @@ export default function RunashChatPage() {
       window.removeEventListener("keydown", handleEscape)
     }
   }, [isMobileSidebarOpen])
+
+  useEffect(() => {
+    const handleKeyboardShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "b") return
+
+      event.preventDefault()
+
+      if (window.matchMedia("(min-width: 1024px)").matches) {
+        setIsSidebarCollapsed((previous) => !previous)
+        window.requestAnimationFrame(() => {
+          desktopSidebarToggleRef.current?.focus()
+        })
+        return
+      }
+
+      setIsMobileSidebarOpen((previous) => !previous)
+    }
+
+    window.addEventListener("keydown", handleKeyboardShortcut)
+    return () => {
+      window.removeEventListener("keydown", handleKeyboardShortcut)
+    }
+  }, [])
 
   useEffect(() => {
     if (!startChatError) return
@@ -699,18 +723,29 @@ export default function RunashChatPage() {
           aria-label="Sidebar"
         >
           <div className={`mb-2 flex ${isSidebarCollapsed ? "justify-center" : "justify-end"}`}>
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className="h-8 w-8 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
-              onClick={() => setIsSidebarCollapsed((prev) => !prev)}
-              aria-expanded={!isSidebarCollapsed}
-              aria-controls={runashChatDesktopSidebarContentId}
-              aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              {isSidebarCollapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
-            </Button>
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    ref={desktopSidebarToggleRef}
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
+                    onClick={() => setIsSidebarCollapsed((prev) => !prev)}
+                    aria-expanded={!isSidebarCollapsed}
+                    aria-controls={runashChatDesktopSidebarContentId}
+                    aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                    title="Toggle sidebar (Ctrl/Cmd+B)"
+                  >
+                    {isSidebarCollapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="border-zinc-800 bg-zinc-900 text-zinc-100">
+                  {isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} (Ctrl/Cmd+B)
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           <div id={runashChatDesktopSidebarContentId}>{renderSidebarContent(isSidebarCollapsed)}</div>
         </aside>
@@ -742,8 +777,9 @@ export default function RunashChatPage() {
                         className="h-11 w-11 border-zinc-700 bg-zinc-950 text-zinc-100"
                         aria-expanded={isMobileSidebarOpen}
                         aria-controls={runashChatMobileSidebarId}
-                        aria-label="Open navigation menu"
+                        aria-label={isMobileSidebarOpen ? "Close navigation menu" : "Open navigation menu"}
                         disabled={isOnboardingOpen}
+                        title="Toggle navigation (Ctrl/Cmd+B)"
                       >
                         <Menu className="h-4 w-4" />
                       </Button>
