@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import {
   DropdownMenu,
@@ -516,6 +517,18 @@ export default function RunashChatPage() {
   const handleChatOpen = (chatSessionId?: string) => {
     if (!chatSessionId) return
     router.push(`/chat?sessionId=${chatSessionId}`)
+  }
+
+  const formatRecentTimestamp = (rawValue: string | null) => {
+    if (!rawValue) return "Updated recently"
+
+    const date = new Date(rawValue)
+    if (Number.isNaN(date.getTime())) return "Updated recently"
+
+    return `Updated ${date.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    })}`
   }
 
   const dismissUpdatesBanner = () => {
@@ -1099,10 +1112,10 @@ export default function RunashChatPage() {
                 {loadingRecents ? (
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {Array.from({ length: 4 }).map((_, index) => (
-                      <div key={`project-loading-${index}`} className="animate-pulse rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
-                        <div className="mb-2 h-3 w-2/3 rounded bg-zinc-800/80" />
-                        <div className="mb-3 h-3 w-4/5 rounded bg-zinc-800/70" />
-                        <div className="h-20 rounded-md border border-dashed border-zinc-800 bg-zinc-900/70" />
+                      <div key={`project-loading-${index}`} className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+                        <Skeleton className="mb-2 h-3 w-2/3 bg-zinc-800" />
+                        <Skeleton className="mb-3 h-3 w-4/5 bg-zinc-800" />
+                        <Skeleton className="h-20 rounded-md bg-zinc-800/70" />
                       </div>
                     ))}
                   </div>
@@ -1119,9 +1132,11 @@ export default function RunashChatPage() {
                         onClick={() => handleProjectOpen(item.id.replace("project-", ""))}
                         className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 text-left transition hover:border-zinc-700 hover:bg-zinc-900/70"
                       >
-                        <div className="mb-2 h-3 w-2/3 rounded bg-zinc-800/80" />
-                        <p className="mb-3 truncate text-xs text-zinc-300">{item.title}</p>
-                        <div className="h-20 rounded-md border border-dashed border-zinc-800 bg-zinc-900/70" />
+                        <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
+                          <FolderKanban className="h-3.5 w-3.5" /> Project
+                        </div>
+                        <p className="mb-2 truncate text-xs font-medium text-zinc-200">{item.title}</p>
+                        <p className="text-[11px] text-zinc-500">{formatRecentTimestamp(item.updatedAt)}</p>
                       </button>
                     ))}
                   </div>
@@ -1139,13 +1154,13 @@ export default function RunashChatPage() {
                 {loadingRecents ? (
                   <div className="space-y-2">
                     {Array.from({ length: 6 }).map((_, index) => (
-                      <div key={`chat-loading-${index}`} className="flex animate-pulse items-center gap-3 rounded-md border border-zinc-800 bg-zinc-900/50 px-3 py-2">
-                        <div className="h-7 w-7 rounded-full bg-zinc-800/80" />
+                      <div key={`chat-loading-${index}`} className="flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-900/50 px-3 py-2">
+                        <Skeleton className="h-7 w-7 rounded-full bg-zinc-800" />
                         <div className="flex-1 space-y-2">
-                          <div className="h-2 w-4/5 rounded bg-zinc-800/70" />
-                          <div className="h-2 w-2/5 rounded bg-zinc-800/60" />
+                          <Skeleton className="h-2 w-4/5 bg-zinc-800" />
+                          <Skeleton className="h-2 w-2/5 bg-zinc-800" />
                         </div>
-                        <div className="h-2 w-10 rounded bg-zinc-800/60" />
+                        <Skeleton className="h-2 w-10 bg-zinc-800" />
                       </div>
                     ))}
                   </div>
@@ -1162,11 +1177,14 @@ export default function RunashChatPage() {
                         onClick={() => handleChatOpen(item.sessionId)}
                         className="flex w-full items-center gap-3 rounded-md border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-left transition hover:border-zinc-700 hover:bg-zinc-900"
                       >
-                        <div className="h-7 w-7 rounded-full bg-zinc-800/80" />
+                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800/80 text-zinc-300">
+                          <MessageSquare className="h-3.5 w-3.5" />
+                        </div>
                         <div className="flex-1">
                           <p className="truncate text-xs text-zinc-300">{item.title}</p>
+                          <p className="text-[11px] text-zinc-500">{formatRecentTimestamp(item.updatedAt)}</p>
                         </div>
-                        <span className="text-[10px] uppercase tracking-wide text-zinc-500">Open</span>
+                        <ArrowRight className="h-3.5 w-3.5 text-zinc-500" />
                       </button>
                     ))}
                   </div>
