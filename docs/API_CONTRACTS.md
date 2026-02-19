@@ -608,3 +608,25 @@ Success response:
 
 ### Migration note
 - Apply `scripts/sql/2026-02-19_create_editor_projects.sql` before using editor project endpoints in production.
+
+
+## Recording Edits API (`/api/recordings/edit`)
+
+### `POST /api/recordings/edit`
+- Auth required.
+- Writes edit jobs to `recording_edits` (not `streams`) to keep recording-edit metadata isolated from stream contracts.
+- Request (strict schema):
+  - `originalId` (required string)
+  - `title` (required, trimmed, max 160)
+  - `startTime` / `endTime` (required ISO datetime with timezone, `endTime > startTime`, max span 12h)
+  - `filters` (optional object, defaults `{}`)
+  - `audioLevel` (required number, range `0..2`)
+  - `exportSettings` (optional object, defaults `{}`)
+- Response success: `{ "success": true, "editId": "...", "message": "Video edit queued for processing" }`
+- Response errors:
+  - `401` unauthorized
+  - `400` invalid payload with `details[]`
+  - `500` persistence failure
+
+### Transaction behavior
+- The route executes the recording edit insert inside an explicit DB transaction (`BEGIN` / `COMMIT`, rollback on fail
