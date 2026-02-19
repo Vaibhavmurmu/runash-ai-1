@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { Textarea } from "@/components/ui/textarea"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,6 +24,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   ArrowRight,
   Bot,
+  ChevronDown,
   ChevronsLeft,
   ChevronsRight,
   CreditCard,
@@ -33,7 +35,6 @@ import {
   Menu,
   MessageSquare,
   MoreVertical,
-  PackageSearch,
   PanelsTopLeft,
   LifeBuoy,
   LogOut,
@@ -53,14 +54,6 @@ type ChatPreviewMessage = {
   role: "assistant" | "user"
   content: string
   created_at?: string
-}
-
-type ChatQuickPrompt = {
-  id: string
-  label: string
-  description: string
-  prompt: string
-  icon: React.ComponentType<{ className?: string }>
 }
 
 type RecentItem = {
@@ -147,7 +140,9 @@ export default function RunashChatPage() {
   const mobileSidebarTriggerRef = useRef<HTMLButtonElement | null>(null)
   const desktopSidebarToggleRef = useRef<HTMLButtonElement | null>(null)
   const onboardingTriggerRef = useRef<HTMLElement | null>(null)
-  const mainControlsRef = useRef<HTMLInputElement | null>(null)
+  const mainControlsRef = useRef<HTMLTextAreaElement | null>(null)
+  const [selectedModel, setSelectedModel] = useState<"v0 Mini" | "v0 Max">("v0 Mini")
+  const [selectedProjectLabel, setSelectedProjectLabel] = useState("Select a Project")
 
   const isLastOnboardingStep = activeOnboardingStep === onboardingSlides.length - 1
   const currentOnboardingSlide = onboardingSlides[activeOnboardingStep]
@@ -362,30 +357,6 @@ export default function RunashChatPage() {
     }
   }, [startChatError])
 
-  const quickPrompts: ChatQuickPrompt[] = [
-    {
-      id: "bundle",
-      label: "Build Bundle",
-      description: "Create high-conversion bundles with upsells",
-      prompt: "Create a high-converting organic breakfast bundle and suggest two upsells under $30.",
-      icon: ShoppingCart,
-    },
-    {
-      id: "checkout",
-      label: "Checkout Assist",
-      description: "Guide payment and reduce checkout drop-off",
-      prompt: "Act as checkout assistant and help complete a secure payment with cart summary and next steps.",
-      icon: CreditCard,
-    },
-    {
-      id: "order-followup",
-      label: "Post-Purchase",
-      description: "Handle order updates and support questions",
-      prompt: "Handle a post-purchase support request: order tracking, ETA, and return options.",
-      icon: PackageSearch,
-    },
-  ]
-
   useEffect(() => {
     ;(async () => {
       setLoadingRecents(true)
@@ -568,6 +539,17 @@ export default function RunashChatPage() {
       window.requestAnimationFrame(() => {
         mobileSidebarTriggerRef.current?.focus()
       })
+    }
+  }
+
+  const handlePromptKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
+      return
+    }
+
+    event.preventDefault()
+    if (prompt.trim()) {
+      startChatWithPrompt(prompt)
     }
   }
 
@@ -1111,34 +1093,84 @@ export default function RunashChatPage() {
               </div>
             )}
 
-            <Card className="mb-5 border-zinc-800 bg-zinc-950 p-4">
-              <Input
-                ref={mainControlsRef}
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Ask RunAsh to plan a launch, bundle products, or assist checkout..."
-                className="mb-3 border-zinc-700 bg-zinc-900 text-zinc-200"
-              />
-              <div className="flex flex-wrap gap-2">
-                {quickPrompts.map((item) => {
-                  const Icon = item.icon
-                  return (
-                    <button
-                      key={item.id}
+            <Card className="mb-5 border-zinc-800 bg-zinc-950 p-0">
+              <div className="p-4">
+                <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
+                  <Textarea
+                    ref={mainControlsRef}
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    onKeyDown={handlePromptKeyDown}
+                    placeholder="Ask v0 to build..."
+                    className="min-h-[120px] resize-none border-0 bg-transparent px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-0"
+                  />
+                  <div className="flex items-center justify-between border-t border-zinc-800 px-3 py-2">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="h-8 rounded-full border border-zinc-700 bg-zinc-950 px-3 text-xs text-zinc-200 hover:bg-zinc-800"
+                        >
+                          {selectedModel}
+                          <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="border-zinc-800 bg-zinc-900 text-zinc-100">
+                        <DropdownMenuItem onClick={() => setSelectedModel("v0 Mini")} className="focus:bg-zinc-800 focus:text-zinc-100">
+                          v0 Mini
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setSelectedModel("v0 Max")} className="focus:bg-zinc-800 focus:text-zinc-100">
+                          v0 Max
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    <Button
                       type="button"
-                      onClick={() => startChatWithPrompt(item.prompt)}
-                      className="flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 transition hover:bg-zinc-800"
+                      size="icon"
+                      className="h-8 w-8 rounded-full bg-zinc-100 text-zinc-900 hover:bg-white"
+                      disabled={!prompt.trim()}
+                      onClick={() => startChatWithPrompt(prompt)}
+                      aria-label="Send prompt"
                     >
-                      <Icon className="h-3.5 w-3.5 text-cyan-400" />
-                      {item.label}
-                    </button>
-                  )
-                })}
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-8 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-xs font-normal text-zinc-300 hover:bg-zinc-800"
+                      >
+                        {selectedProjectLabel}
+                        <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="border-zinc-800 bg-zinc-900 text-zinc-100">
+                      <DropdownMenuItem onClick={() => setSelectedProjectLabel("Select a Project")} className="focus:bg-zinc-800 focus:text-zinc-100">
+                        Select a Project
+                      </DropdownMenuItem>
+                      {recentProjectItems.slice(0, 5).map((project) => (
+                        <DropdownMenuItem
+                          key={project.id}
+                          onClick={() => setSelectedProjectLabel(project.title)}
+                          className="focus:bg-zinc-800 focus:text-zinc-100"
+                        >
+                          {project.title}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
-              <div className="mt-4 flex justify-end">
-                <Button className="bg-cyan-600 text-white hover:bg-cyan-500" disabled={!prompt.trim()} onClick={() => startChatWithPrompt(prompt)}>
-                  Continue <ArrowRight className="ml-1 h-4 w-4" />
-                </Button>
+
+              <div className="border-t border-zinc-800/80 bg-zinc-900/40 px-4 py-3 text-xs text-zinc-400">
+                Upgrade to Team for shared projects, model controls, and workspace collaboration.
               </div>
             </Card>
 
