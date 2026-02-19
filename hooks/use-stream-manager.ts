@@ -50,6 +50,16 @@ type StreamMetricsResponse = {
   }
 }
 
+type StreamMetricsSsePayload = {
+  entries?: Array<{
+    streamId: string
+    viewerCount: number
+    bitrate: number
+    fps: number
+    droppedFrames: number
+  }>
+}
+
 function toUiStatus(status: string): StreamChannel["status"] {
   if (status === "live") return "streaming"
   if (status === "paused") return "paused"
@@ -79,8 +89,10 @@ export function useStreamManager(pollIntervalMs = 7000) {
   const [selectedStream, setSelectedStream] = useState<string>("")
   const [isLoading, setIsLoading] = useState(true)
   const [isPolling, setIsPolling] = useState(false)
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const reconnectAttempts = useRef(0)
+  const eventSourceRef = useRef<EventSource | null>(null)
 
   const fetchStreams = useCallback(async () => {
     const response = await fetch("/api/streams", { cache: "no-store" })
@@ -155,7 +167,7 @@ export function useStreamManager(pollIntervalMs = 7000) {
     } finally {
       setIsPolling(false)
     }
-  }, [streams])
+  }, [liveStreamIdsKey])
 
   const refresh = useCallback(async () => {
     try {
@@ -185,11 +197,6 @@ export function useStreamManager(pollIntervalMs = 7000) {
         }
         throw new Error(payload.error?.message ?? `${action} failed`)
       }
-
-      console.info("[stream-manager.mutation]", {
-        action,
-        correlationId: options.correlationId,
-      })
 
       await refresh()
     },
@@ -278,8 +285,70 @@ export function useStreamManager(pollIntervalMs = 7000) {
     void refresh()
   }, [refresh])
 
+
+  const liveStreamIdsKey = useMemo(
+    () =>
+      streams
+        .filter((stream) => stream.status === "streaming")
+        .map((stream) => stream.id)
+        .sort()
+        .join(","),
+    [streams],
+  )
+
   useEffect(() => {
-    if (isLoading) return
+    if (!liveStreamIdsKey) {
+      setIsRealtimeConnected(false)
+      eventSourceRef.current?.close()
+      eventSourceRef.current = null
+      return
+    }
+
+    const streamIds = encodeURIComponent(liveStreamIdsKey)
+    const eventSource = new EventSource(`/api/streams/metrics/stream?streamIds=${streamIds}`)
+    eventSourceRef.current = eventSource
+
+    eventSource.addEventListener("ready", () => {
+      reconnectAttempts.current = 0
+      setIsRealtimeConnected(true)
+      setError(null)
+    })
+
+    eventSource.addEventListener("metrics", (event) => {
+      const payload = JSON.parse((event as MessageEvent<string>).data) as StreamMetricsSsePayload
+      const entries = payload.entries ?? []
+      if (entries.length === 0) return
+
+      setStreams((current) =>
+        current.map((stream) => {
+          const metrics = entries.find((entry) => entry.streamId === stream.id)
+          if (!metrics) return stream
+
+          return {
+            ...stream,
+            viewers: metrics.viewerCount,
+            bitrate: metrics.bitrate,
+            fps: metrics.fps,
+          }
+        }),
+      )
+    })
+
+    eventSource.addEventListener("error", () => {
+      setIsRealtimeConnected(false)
+      reconnectAttempts.current += 1
+    })
+
+    return () => {
+      eventSource.close()
+      if (eventSourceRef.current === eventSource) {
+        eventSourceRef.current = null
+      }
+    }
+  }, [liveStreamIdsKey])
+
+  useEffect(() => {
+    if (isLoading || isRealtimeConnected) return
 
     const interval = setInterval(() => {
       void fetchMetrics().catch(async () => {
@@ -290,7 +359,7 @@ export function useStreamManager(pollIntervalMs = 7000) {
     }, pollIntervalMs)
 
     return () => clearInterval(interval)
-  }, [fetchMetrics, isLoading, pollIntervalMs])
+  }, [fetchMetrics, isLoading, isRealtimeConnected, pollIntervalMs])
 
   const stats = useMemo<StreamStats>(() => {
     const activeStreams = streams.filter((stream) => stream.status === "streaming")
@@ -304,7 +373,7 @@ export function useStreamManager(pollIntervalMs = 7000) {
       avgBitrate,
       droppedFrames: 0,
     }
-  }, [streams])
+  }, [liveStreamIdsKey])
 
   return {
     streams,
@@ -313,6 +382,7 @@ export function useStreamManager(pollIntervalMs = 7000) {
     stats,
     isLoading,
     isPolling,
+    isRealtimeConnected,
     error,
     refresh,
     actions: {
