@@ -423,6 +423,15 @@ export default function RunashChatPage() {
   const recentProjectItems = recentEntities.filter((item) => item.entityType === "project")
   const myChatItems = recentEntities.filter((item) => item.entityType === "session")
 
+  const handleProjectOpen = (projectId: string) => {
+    router.push(`/editor?projectId=${projectId}`)
+  }
+
+  const handleChatOpen = (chatSessionId?: string) => {
+    if (!chatSessionId) return
+    router.push(`/chat?sessionId=${chatSessionId}`)
+  }
+
   const dismissUpdatesBanner = () => {
     localStorage.setItem(runashChatUpdatesBannerHiddenStorageKey, "true")
     setShowUpdatesBanner(false)
@@ -1005,48 +1014,86 @@ export default function RunashChatPage() {
               <Card className="border-zinc-800 bg-zinc-950 p-4">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="text-sm font-medium text-zinc-100">Recent Projects</h2>
-                  <button type="button" className="text-xs text-zinc-500 transition hover:text-zinc-300">
+                  <button type="button" className="text-xs text-zinc-500 transition hover:text-zinc-300" onClick={() => router.push("/editor")}>
                     View All
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {(recentProjectItems.length > 0 ? recentProjectItems.slice(0, 4) : Array.from({ length: 4 })).map((item, index) => (
-                    <div
-                      key={typeof item === "object" ? item.id : `project-placeholder-${index}`}
-                      className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3"
-                    >
-                      <div className="mb-2 h-3 w-2/3 rounded bg-zinc-800/80" />
-                      <p className="mb-3 truncate text-xs text-zinc-500">{typeof item === "object" ? item.title : "Project placeholder"}</p>
-                      <div className="h-20 rounded-md border border-dashed border-zinc-800 bg-zinc-900/70" />
-                    </div>
-                  ))}
-                </div>
+                {loadingRecents ? (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {Array.from({ length: 4 }).map((_, index) => (
+                      <div key={`project-loading-${index}`} className="animate-pulse rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+                        <div className="mb-2 h-3 w-2/3 rounded bg-zinc-800/80" />
+                        <div className="mb-3 h-3 w-4/5 rounded bg-zinc-800/70" />
+                        <div className="h-20 rounded-md border border-dashed border-zinc-800 bg-zinc-900/70" />
+                      </div>
+                    ))}
+                  </div>
+                ) : recentItemsError ? (
+                  <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">{recentItemsError}</div>
+                ) : recentProjectItems.length === 0 ? (
+                  <div className="rounded-md border border-zinc-800 bg-zinc-900/40 px-3 py-4 text-xs text-zinc-500">No recent projects yet.</div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {recentProjectItems.slice(0, 4).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleProjectOpen(item.id.replace("project-", ""))}
+                        className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 text-left transition hover:border-zinc-700 hover:bg-zinc-900/70"
+                      >
+                        <div className="mb-2 h-3 w-2/3 rounded bg-zinc-800/80" />
+                        <p className="mb-3 truncate text-xs text-zinc-300">{item.title}</p>
+                        <div className="h-20 rounded-md border border-dashed border-zinc-800 bg-zinc-900/70" />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </Card>
 
               <Card className="border-zinc-800 bg-zinc-950 p-4">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="text-sm font-medium text-zinc-100">My Chats</h2>
-                  <button type="button" className="text-xs text-zinc-500 transition hover:text-zinc-300">
+                  <button type="button" className="text-xs text-zinc-500 transition hover:text-zinc-300" onClick={() => router.push("/chat")}>
                     View All
                   </button>
                 </div>
 
-                <div className="space-y-2">
-                  {(myChatItems.length > 0 ? myChatItems.slice(0, 6) : Array.from({ length: 6 })).map((item, index) => (
-                    <div
-                      key={typeof item === "object" ? item.id : `chat-placeholder-${index}`}
-                      className="flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-900/50 px-3 py-2"
-                    >
-                      <div className="h-7 w-7 rounded-full bg-zinc-800/80" />
-                      <div className="flex-1 space-y-2">
-                        <p className="truncate text-xs text-zinc-400">{typeof item === "object" ? item.title : "Chat placeholder"}</p>
-                        <div className="h-2 w-2/5 rounded bg-zinc-800/60" />
+                {loadingRecents ? (
+                  <div className="space-y-2">
+                    {Array.from({ length: 6 }).map((_, index) => (
+                      <div key={`chat-loading-${index}`} className="flex animate-pulse items-center gap-3 rounded-md border border-zinc-800 bg-zinc-900/50 px-3 py-2">
+                        <div className="h-7 w-7 rounded-full bg-zinc-800/80" />
+                        <div className="flex-1 space-y-2">
+                          <div className="h-2 w-4/5 rounded bg-zinc-800/70" />
+                          <div className="h-2 w-2/5 rounded bg-zinc-800/60" />
+                        </div>
+                        <div className="h-2 w-10 rounded bg-zinc-800/60" />
                       </div>
-                      <div className="h-2 w-10 rounded bg-zinc-800/60" />
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : recentItemsError ? (
+                  <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">{recentItemsError}</div>
+                ) : myChatItems.length === 0 ? (
+                  <div className="rounded-md border border-zinc-800 bg-zinc-900/40 px-3 py-4 text-xs text-zinc-500">No chats yet. Start one from above.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {myChatItems.slice(0, 6).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleChatOpen(item.sessionId)}
+                        className="flex w-full items-center gap-3 rounded-md border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-left transition hover:border-zinc-700 hover:bg-zinc-900"
+                      >
+                        <div className="h-7 w-7 rounded-full bg-zinc-800/80" />
+                        <div className="flex-1">
+                          <p className="truncate text-xs text-zinc-300">{item.title}</p>
+                        </div>
+                        <span className="text-[10px] uppercase tracking-wide text-zinc-500">Open</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </Card>
             </div>
           </div>
