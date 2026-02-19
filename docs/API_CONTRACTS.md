@@ -195,6 +195,14 @@ Structured API logs include:
 
 Sensitive payload fields in auth/payment/chat context are redacted before logging, including keys such as `password`, `token`, `secret`, `authorization`, `cookie`, `card`, `cvv`, `payment`, `otp`, `message`, `content`, and `prompt`.
 
+## Admin Email Broadcast Queue (`/api/admin/email-broadcasts/*`)
+
+- `POST /api/admin/email-broadcasts` and `PUT /api/admin/email-broadcasts/:id` now enqueue send jobs automatically when `scheduled_at` is provided.
+- `POST /api/admin/email-broadcasts/:id/send` remains a manual trigger, but it now writes into the same queue path as scheduled jobs.
+- Queue workers can be run through `POST /api/admin/email-broadcasts/worker`.
+- Delivery is processed in batches with retry/backoff and idempotency key headers (`X-Idempotency-Key`) to reduce duplicate sends.
+- Realtime progress is emitted through `/api/email/realtime` as `broadcast_progress` events in the SSE `event` envelope.
+
 ## Agent APIs (`/api/agents/*`)
 
 ### Payment Protocol Orchestration (`v1`)
