@@ -220,3 +220,43 @@ export interface EmailAnalyticsQuery {
   campaign_id?: number
   template_id?: number
 }
+
+
+export interface EmailReplyAuditRecord {
+  id: number
+  action_type: string
+  status: "drafted" | "sent" | "skipped" | "failed"
+  reason?: string | null
+  confidence?: number | null
+  requires_human_review: boolean
+  draft_subject?: string | null
+  draft_body?: string | null
+  edited_body?: string | null
+  final_recipient?: string | null
+  actor_type: "system" | "admin"
+  actor_id?: number | null
+  created_at: string
+}
+
+export interface EmailReplyInboxRecord {
+  id: number
+  thread_id: number
+  from_email: string
+  subject?: string | null
+  text_body?: string | null
+  received_at: string
+  contact_email: string
+  broadcast_id?: number | null
+  campaign_id?: number | null
+  latest_status?: string | null
+  requires_human_review?: boolean | null
+  draft_subject?: string | null
+  draft_body?: string | null
+  confidence?: number | null
+  audit: EmailReplyAuditRecord[]
+}
+
+export interface ReplyInboxQuery {
+  limit: number
+  offset: number
+}

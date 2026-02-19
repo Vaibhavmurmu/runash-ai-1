@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Activity, BarChart3, Mail, Plus, RefreshCw, Search, Settings2, Shield, Trash2, Webhook } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { useAnalyticsOverview, useBroadcasts, useContacts, useDelivery, useSuppressions, useTemplates, useWebhooks } from "@/components/email/use-email-management"
+import { useAnalyticsOverview, useBroadcasts, useContacts, useDelivery, useReplyInbox, useSuppressions, useTemplates, useWebhooks } from "@/components/email/use-email-management"
 import type { BroadcastPayload, ContactPayload, TemplatePayload } from "@/components/email/email-management-types"
 
 interface EmailSafetyModeState {
@@ -22,7 +22,7 @@ interface EmailSafetyModeState {
   sinkRecipient?: string
 }
 
-type EmailSection = "emails" | "broadcasts" | "audiences" | "metrics" | "webhooks" | "logs" | "settings"
+type EmailSection = "emails" | "broadcasts" | "audiences" | "replyInbox" | "metrics" | "webhooks" | "logs" | "settings"
 
 function LoadingSkeleton({ rows = 3 }: { rows?: number }) {
   return <div className="space-y-3">{Array.from({ length: rows }).map((_, i) => <div key={i} className="h-10 animate-pulse rounded bg-muted" />)}</div>
@@ -77,6 +77,7 @@ function EmailSidebarNav() {
     { key: "emails", label: "Emails", icon: Mail },
     { key: "broadcasts", label: "Broadcasts", icon: Activity },
     { key: "audiences", label: "Audiences", icon: Shield },
+    { key: "replyInbox", label: "Reply Inbox", icon: Mail },
     { key: "metrics", label: "Metrics", icon: BarChart3 },
     { key: "webhooks", label: "Webhooks", icon: Webhook },
     { key: "logs", label: "Logs", icon: Activity },
@@ -215,6 +216,107 @@ function WebhooksTab() {
   )
 }
 
+
+function ReplyInboxTab() {
+  const { toast } = useToast()
+  const { items, loading, saving, error, fetchInbox, applyAction } = useReplyInbox()
+  const [drafts, setDrafts] = useState<Record<number, string>>({})
+
+  return (
+    <div className="space-y-4">
+      <SectionState loading={loading} error={error} empty={!items.length} onRetry={fetchInbox} emptyTitle="No inbound replies waiting." />
+      {!loading && !error && items.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Inbound Reply Inbox</CardTitle>
+            <CardDescription>Review AI-drafted responses before sending to customers.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {items.map((item) => (
+              <div key={item.id} className="rounded border p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-medium">{item.from_email}</p>
+                    <p className="text-xs text-muted-foreground">{item.subject || "(no subject)"} • {new Date(item.received_at).toLocaleString()}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline">{item.latest_status || "drafted"}</Badge>
+                    {item.requires_human_review && <Badge>Human review</Badge>}
+                  </div>
+                </div>
+
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{item.text_body || "No text content provided."}</p>
+                <Textarea
+                  value={drafts[item.id] ?? item.draft_body ?? ""}
+                  onChange={(event) => setDrafts((previous) => ({ ...previous, [item.id]: event.target.value }))}
+                  placeholder="Draft reply"
+                  rows={5}
+                />
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={saving}
+                    onClick={async () => {
+                      try {
+                        await applyAction(item.id, { action: "save_edit", editedBody: drafts[item.id] ?? item.draft_body ?? "" })
+                        toast({ title: "Draft saved" })
+                      } catch (replyError) {
+                        toast({ title: "Save failed", description: (replyError as Error).message, variant: "destructive" })
+                      }
+                    }}
+                  >
+                    Save edit
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={saving}
+                    onClick={async () => {
+                      try {
+                        await applyAction(item.id, { action: "approve_send", editedBody: drafts[item.id] ?? item.draft_body ?? "" })
+                        toast({ title: "Reply sent" })
+                      } catch (replyError) {
+                        toast({ title: "Send failed", description: (replyError as Error).message, variant: "destructive" })
+                      }
+                    }}
+                  >
+                    Approve & send
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={saving}
+                    onClick={async () => {
+                      try {
+                        await applyAction(item.id, { action: "skip" })
+                        toast({ title: "Reply skipped" })
+                      } catch (replyError) {
+                        toast({ title: "Skip failed", description: (replyError as Error).message, variant: "destructive" })
+                      }
+                    }}
+                  >
+                    Skip
+                  </Button>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Audit trail</p>
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    {item.audit.slice(0, 4).map((auditEvent) => (
+                      <p key={auditEvent.id}>[{new Date(auditEvent.created_at).toLocaleString()}] {auditEvent.actor_type} {auditEvent.action_type} → {auditEvent.status}{auditEvent.reason ? ` (${auditEvent.reason})` : ""}</p>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  )
+}
+
 function SettingsTab({ safety }: { safety: EmailSafetyModeState }) {
   return <Card><CardHeader><CardTitle>Email Delivery Safety</CardTitle><CardDescription>Read-only environment state for delivery guardrails.</CardDescription></CardHeader><CardContent className="space-y-2 text-sm"><p>Safe mode: <Badge variant={safety.safeMode ? "default" : "secondary"}>{safety.safeMode ? "enabled" : "disabled"}</Badge></p><p>Dry run: <Badge variant={safety.dryRun ? "default" : "secondary"}>{safety.dryRun ? "enabled" : "disabled"}</Badge></p><p>Allowlisted test recipients: {safety.testRecipients.length ? safety.testRecipients.join(", ") : "none configured"}</p><p>Sink mailbox: {safety.sinkRecipient || "not configured"}</p></CardContent></Card>
 }
@@ -231,6 +333,7 @@ export function EmailManagementDashboard({ safety }: { safety: EmailSafetyModeSt
           <TabsContent value="emails"><TemplatesTab /></TabsContent>
           <TabsContent value="broadcasts"><BroadcastsTab safety={safety} /></TabsContent>
           <TabsContent value="audiences"><ContactsTab /></TabsContent>
+          <TabsContent value="replyInbox"><ReplyInboxTab /></TabsContent>
           <TabsContent value="metrics"><div className="grid gap-4 lg:grid-cols-3"><EmailDeliverabilityPanel /><EmailEngagementPanel /><EmailTimelineChart /></div></TabsContent>
           <TabsContent value="webhooks"><WebhooksTab /></TabsContent>
           <TabsContent value="logs"><Tabs defaultValue="delivery" className="space-y-3"><TabsList><TabsTrigger value="delivery">Delivery Logs</TabsTrigger><TabsTrigger value="suppressions">Suppression Logs</TabsTrigger></TabsList><TabsContent value="delivery"><DeliveryTab /></TabsContent><TabsContent value="suppressions"><SuppressionsTab /></TabsContent></Tabs></TabsContent>
