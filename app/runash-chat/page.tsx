@@ -15,7 +15,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   ArrowRight,
   Bot,
-  Bell,
   ChevronsLeft,
   ChevronsRight,
   CreditCard,
@@ -440,6 +439,10 @@ export default function RunashChatPage() {
   const handleMobileSidebarOpenChange = (open: boolean) => {
     setIsMobileSidebarOpen(open)
 
+    if (open) {
+      setIsMobileSearchOpen(false)
+    }
+
     if (!open) {
       window.requestAnimationFrame(() => {
         mobileSidebarTriggerRef.current?.focus()
@@ -614,13 +617,13 @@ export default function RunashChatPage() {
         <main className="h-[calc(100vh-24px)] flex-1 rounded-xl border border-zinc-800 bg-[#050607] p-4 sm:p-6">
           <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
             <div className="mb-4 space-y-3 lg:hidden">
-              <div className="grid grid-cols-[auto,1fr,auto] items-center gap-2">
-                <div className="flex items-center gap-2">
+              <div className="relative z-10 grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <Button
                     type="button"
                     size="icon"
                     variant="outline"
-                    className="h-10 w-10 border-zinc-700 bg-zinc-950 text-zinc-100"
+                    className="h-11 w-11 border-zinc-700 bg-zinc-950 text-zinc-100"
                     onClick={() => router.push("/")}
                     aria-label="Go to home"
                     disabled={isOnboardingOpen}
@@ -635,7 +638,7 @@ export default function RunashChatPage() {
                         type="button"
                         size="icon"
                         variant="outline"
-                        className="h-10 w-10 border-zinc-700 bg-zinc-950 text-zinc-100"
+                        className="h-11 w-11 border-zinc-700 bg-zinc-950 text-zinc-100"
                         aria-expanded={isMobileSidebarOpen}
                         aria-controls="runash-chat-mobile-sidebar"
                         aria-label="Open navigation menu"
@@ -662,47 +665,39 @@ export default function RunashChatPage() {
 
                 <button
                   type="button"
-                  onClick={() => setIsMobileSearchOpen((open) => !open)}
+                  onClick={() => {
+                    setIsMobileSearchOpen((open) => !open)
+                    setIsMobileSidebarOpen(false)
+                  }}
                   aria-expanded={isMobileSearchOpen}
                   aria-controls="mobile-chat-search"
-                  className="flex h-10 min-w-0 items-center justify-between rounded-full border border-zinc-700 bg-zinc-950 px-3 text-left"
+                  className="flex h-11 min-w-0 items-center justify-between rounded-full border border-zinc-700 bg-zinc-950 px-3.5 text-left"
                   disabled={isOnboardingOpen}
                 >
-                  <span className="truncate text-sm font-medium text-zinc-100">RunAsh</span>
-                  <span className="ml-2 flex items-center gap-1 rounded-full bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300">
+                  <span className="truncate text-sm font-semibold tracking-tight text-zinc-100">RunAsh</span>
+                  <span className="ml-2 flex shrink-0 items-center gap-1 rounded-full bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300">
                     <Search className="h-3.5 w-3.5" />
                     Search
                   </span>
                 </button>
 
-                <div className="flex items-center justify-end gap-2">
+                <div className="flex items-center justify-end gap-1.5">
                   <Button
                     type="button"
                     size="icon"
-                    className="h-10 w-10 bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
+                    className="h-11 w-11 bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
                     onClick={() => startChatWithPrompt()}
                     aria-label="Start a new chat"
                     disabled={isOnboardingOpen}
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="outline"
-                    className="h-10 w-10 border-zinc-700 bg-zinc-950 text-zinc-100"
-                    onClick={() => router.push("/changelog")}
-                    aria-label="Open notifications"
-                    disabled={isOnboardingOpen}
-                  >
-                    <Bell className="h-4 w-4" />
-                  </Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         size="icon"
                         variant="outline"
-                        className="h-10 w-10 border-zinc-700 bg-zinc-950 text-zinc-100"
+                        className="h-11 w-11 border-zinc-700 bg-zinc-950 text-zinc-100"
                         aria-label="More quick actions"
                         disabled={isOnboardingOpen}
                       >
@@ -719,6 +714,12 @@ export default function RunashChatPage() {
                           {action.label}
                         </DropdownMenuItem>
                       ))}
+                      <DropdownMenuItem
+                        onClick={() => router.push("/changelog")}
+                        className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+                      >
+                        Notifications
+                      </DropdownMenuItem>
                       {userMenuItems.map((item) => (
                         <DropdownMenuItem
                           key={item.label}
