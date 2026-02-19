@@ -2,22 +2,26 @@ import { type NextRequest } from "next/server"
 
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { authorizeRoute, resolveScopedUserId } from "@/lib/api/route-auth"
-import { deleteAIAgent, updateAIAgent } from "@/lib/repositories/ai-agents"
-
+import { deleteAIAgent, updateAIAgent, type UpdateAIAgentInput } from "@/lib/repositories/ai-agents"
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   const auth = await authorizeRoute(request, "write", { writePermissions: ["content:write", "admin:access"] })
   if (!auth.ok) return auth.response
 
   const { id } = params
-  const payload = (await request.json()) as Record<string, unknown>
-  const userId = resolveScopedUserId(request, auth.sessionUser, payload.user_id)
+  const payload = (await request.json()) as UpdateAIAgentInput & { user_id?: string }
+  const userId = resolveScopedUserId(request, auth.sessionUser)
 
   if (!userId) {
     return respondError(request, { code: "AUTH_FORBIDDEN", message: "Forbidden" }, { status: 403, legacy: { error: "Forbidden" } })
   }
 
-  const updatedAgent = await updateAIAgent(id, userId, payload)
+  if (payload.user_id && payload.user_id !== userId) {
+    return respondError(request, { code: "AUTH_FORBIDDEN", message: "Forbidden" }, { status: 403, legacy: { error: "Forbidden" } })
+  }
+
+  const { user_id: _userId, ...updates } = payload
+  const updatedAgent = await updateAIAgent(id, userId, updates)
   if (!updatedAgent) {
     return respondError(
       request,
