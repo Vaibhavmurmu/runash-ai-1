@@ -43,7 +43,7 @@ export default function EditorPage() {
         const createRes = await fetch("/api/editor/projects", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: "Untitled Project" }),
+          body: JSON.stringify({ name: "Untitled Project", metadata: { selectedModel } }),
         })
         if (!createRes.ok) throw new Error("Failed to create project")
         const createJson = await createRes.json()
@@ -53,6 +53,10 @@ export default function EditorPage() {
         if (!res.ok) throw new Error("Failed to load project")
         const json = await res.json()
         setProject(json.project)
+        const savedModel = json.project?.metadata?.selectedModel
+        if (typeof savedModel === "string" && savedModel.length > 0) {
+          setSelectedModel(savedModel)
+        }
       }
     } catch {
       toast({ title: "Editor load failed", description: "Could not load project data.", variant: "destructive" })
@@ -77,7 +81,17 @@ export default function EditorPage() {
 
       if (!res.ok) throw new Error("Failed to save")
       const json = await res.json()
-      setProject(json.project)
+
+      const metaRes = await fetch(`/api/editor/projects/${project.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ metadata: { ...json.project?.metadata, selectedModel } }),
+      })
+
+      if (!metaRes.ok) throw new Error("Failed to save project metadata")
+      const metaJson = await metaRes.json()
+
+      setProject(metaJson.project)
       setIsDirty(false)
       toast({ title: "Project saved" })
     } catch {
@@ -244,6 +258,24 @@ export default function EditorPage() {
       setIsBusy(false)
     }
   }
+
+  useEffect(() => {
+    if (!project) return
+
+    const savedModel = project.metadata?.selectedModel
+    if (savedModel === selectedModel) return
+
+    setProject({
+      ...project,
+      metadata: {
+        ...project.metadata,
+        selectedModel,
+      },
+      updatedAt: new Date().toISOString(),
+    })
+    setIsDirty(true)
+  }, [selectedModel, project])
+
 
   return (
     <EditorLayout>

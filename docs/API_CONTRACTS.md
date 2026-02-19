@@ -573,3 +573,38 @@ Success response:
   "action": "cache.clear"
 }
 ```
+
+## Editor Projects API (`/api/editor/projects`)
+
+### `GET /api/editor/projects`
+- Auth required.
+- Returns projects owned by the authenticated user, sorted by `updatedAt` descending.
+
+### `POST /api/editor/projects`
+- Auth required.
+- Request:
+  - `title` (required, 1-150 chars)
+  - `description` (optional)
+  - `selectedModel` (optional)
+  - `timeline` (optional: `duration`, `fps`, `tracks[]`)
+  - `settings` / `metadata` (optional JSON objects)
+- Response: `201` with created `project`.
+
+### `GET /api/editor/projects/:id`
+- Auth required.
+- Returns one editor project scoped to current user.
+- `404` if not found.
+
+### `PATCH /api/editor/projects/:id`
+- Auth required.
+- Supports partial updates for:
+  - `title`, `description`, `status`, `selectedModel`, `timeline`, `settings`, `metadata`
+- Requires at least one update field; returns `400` on invalid payload.
+
+### `DELETE /api/editor/projects/:id`
+- Auth required.
+- Soft response contract: `{ "success": true }` when deletion succeeds.
+- `404` when the project does not exist for current user.
+
+### Migration note
+- Apply `scripts/sql/2026-02-19_create_editor_projects.sql` before using editor project endpoints in production.
