@@ -7,7 +7,7 @@ import { getServerAuthSession } from "@/lib/auth/session"
 const ROUTE = "/api/streams"
 
 export async function POST(req: NextRequest) {
-  const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID()
+  const requestId = req.headers.get("x-correlation-id") ?? req.headers.get("x-request-id") ?? crypto.randomUUID()
   try {
     const session = await getServerAuthSession()
     if (!session) {
@@ -37,6 +37,14 @@ export async function POST(req: NextRequest) {
       viewer_count: 0,
     })
 
+    logApiEvent("info", "streams.create.success", {
+      requestId,
+      route: ROUTE,
+      method: req.method,
+      userId: session.user.id,
+      details: { operation: "create-stream", streamId: stream.id, platform },
+    })
+
     return respondSuccess(req, { stream }, { requestId })
   } catch (error) {
     logApiEvent("error", "streams.create.failed", {
@@ -51,7 +59,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID()
+  const requestId = req.headers.get("x-correlation-id") ?? req.headers.get("x-request-id") ?? crypto.randomUUID()
   try {
     const session = await getServerAuthSession()
     if (!session) {
@@ -73,7 +81,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID()
+  const requestId = req.headers.get("x-correlation-id") ?? req.headers.get("x-request-id") ?? crypto.randomUUID()
   try {
     const session = await getServerAuthSession()
     if (!session) {
@@ -87,6 +95,15 @@ export async function PATCH(req: NextRequest) {
     }
 
     const stream = await Database.updateStream(id, updateData)
+
+    logApiEvent("info", "streams.update.success", {
+      requestId,
+      route: ROUTE,
+      method: req.method,
+      userId: session.user.id,
+      details: { operation: "update-stream", streamId: id, changedFields: Object.keys(updateData) },
+    })
+
     return respondSuccess(req, { stream }, { requestId })
   } catch (error) {
     logApiEvent("error", "streams.update.failed", {
