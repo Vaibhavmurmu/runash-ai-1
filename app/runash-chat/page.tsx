@@ -169,14 +169,14 @@ export default function RunashChatPage() {
       label: "Feedback",
       tooltip: "Share product feedback",
       icon: MessageSquare,
-      onClick: () => router.push("/contact?topic=feedback&entry=runash-chat"),
+      onClick: () => router.push("/settings?section=workspace&panel=feedback"),
     },
     {
       id: "refer",
       label: "Refer",
       tooltip: "Refer a friend or team",
       icon: Sparkles,
-      onClick: () => router.push("/partners?program=referral"),
+      onClick: () => router.push("/settings?section=usage&panel=refer-earn"),
     },
   ]
 
@@ -1019,6 +1019,7 @@ export default function RunashChatPage() {
                               onClick={() => handleHeaderActionClick(action)}
                               className="focus:bg-zinc-800 focus:text-zinc-100"
                             >
+                              <action.icon className="mr-2 h-4 w-4" aria-hidden="true" />
                               {action.label}
                             </DropdownMenuItem>
                           ))}
