@@ -34,13 +34,13 @@ export default function BottomToolbar({
   const isMobile = useIsMobile()
 
   return (
-    <div className="border-t border-border bg-card px-3 md:px-6 py-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-      <div className="space-y-2 md:space-y-1">
+    <div className="fixed bottom-0 inset-x-0 z-40 border-t border-border bg-card/95 backdrop-blur px-3 md:px-6 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex flex-col gap-3 md:static md:bg-card md:backdrop-blur-none md:pb-3 md:flex-row md:items-center md:justify-between">
+      <div className="space-y-2 md:space-y-1 min-w-0">
         <div className="text-xs text-muted-foreground">
           Frame: <span className="font-semibold text-foreground">{frameLabel}</span> | Duration:{" "}
           <span className="font-semibold text-foreground">{durationLabel}</span>
         </div>
-        <div className="flex items-center gap-2" role="group" aria-label="Timeline playback controls">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1" role="group" aria-label="Timeline playback controls">
           <Button variant="outline" size="icon" className="h-10 w-10" aria-label="Jump to previous marker">
             <SkipBack className="w-4 h-4" />
           </Button>
@@ -56,7 +56,7 @@ export default function BottomToolbar({
             min={0}
             max={100}
             defaultValue={10}
-            className="h-3 w-full max-w-44 md:max-w-52"
+            className="h-3 w-40 md:w-full max-w-44 md:max-w-52 shrink-0"
           />
         </div>
       </div>

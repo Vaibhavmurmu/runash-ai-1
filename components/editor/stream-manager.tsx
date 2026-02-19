@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { useStreamManager } from "@/hooks/use-stream-manager"
 
 export default function StreamManager() {
-  const { streams, selectedStream, setSelectedStream, stats, isLoading, isPolling, error, refresh, actions } =
+  const { streams, selectedStream, setSelectedStream, stats, isLoading, isPolling, isRealtimeConnected, error, refresh, actions } =
     useStreamManager()
 
   const formatTime = (seconds: number) => {
@@ -31,7 +31,7 @@ export default function StreamManager() {
   const selectedStreamData = streams.find((stream) => stream.id === selectedStream)
 
   return (
-    <div className="w-96 bg-card border-l border-border flex flex-col h-full overflow-hidden">
+    <div className="w-full lg:w-96 bg-card border-l border-border flex flex-col h-full overflow-hidden">
       <Tabs defaultValue="streams" className="w-full h-full flex flex-col">
         <div className="border-b border-border px-4 pt-4 pb-0">
           <div className="flex items-center justify-between mb-4">
@@ -39,7 +39,10 @@ export default function StreamManager() {
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
                 <Radio className="w-4 h-4 text-primary-foreground" />
               </div>
-              <h3 className="font-semibold text-foreground">Stream Manager</h3>
+              <div>
+                <h3 className="font-semibold text-foreground">Stream Manager</h3>
+                <p className="text-xs text-muted-foreground">{isRealtimeConnected ? "Realtime metrics connected" : "Polling metrics fallback"}</p>
+              </div>
             </div>
             <Button variant="ghost" size="icon" onClick={() => void refresh()} aria-label="Refresh stream data">
               <RefreshCcw className={`w-4 h-4 ${isPolling ? "animate-spin" : ""}`} />
