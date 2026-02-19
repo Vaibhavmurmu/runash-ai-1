@@ -72,8 +72,7 @@ type RecentEntity = {
 type OnboardingSlide = {
   title: string
   description: string
-  image?: string
-  cta: string
+  media?: string
 }
 
 const runashChatOnboardingStorageKey = "runash_chat_onboarding_seen"
@@ -84,19 +83,16 @@ const onboardingSlides: OnboardingSlide[] = [
   {
     title: "Welcome to RunAsh Chat",
     description: "Plan campaigns, build bundles, and launch storefront workflows from one assistant workspace.",
-    image: "✨",
-    cta: "Next",
+    media: "✨",
   },
   {
     title: "Use guided prompts",
     description: "Start with quick actions for checkout, bundles, and post-purchase support to move faster.",
-    image: "🧭",
-    cta: "Next",
+    media: "🧭",
   },
   {
     title: "Stay in control",
     description: "Track recents, jump back into sessions, and use the sidebar to keep launches organized.",
-    cta: "Get started",
   },
 ]
 
@@ -138,6 +134,7 @@ export default function RunashChatPage() {
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
   const [activeOnboardingStep, setActiveOnboardingStep] = useState(0)
   const mobileSidebarTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const mainControlsRef = useRef<HTMLInputElement | null>(null)
 
   const isLastOnboardingStep = activeOnboardingStep === onboardingSlides.length - 1
   const currentOnboardingSlide = onboardingSlides[activeOnboardingStep]
@@ -212,10 +209,15 @@ export default function RunashChatPage() {
     localStorage.setItem(runashChatOnboardingStorageKey, "true")
   }
 
+  const restoreFocusToMainControls = () => {
+    mainControlsRef.current?.focus()
+  }
+
   const handleOnboardingOpenChange = (open: boolean) => {
     setIsOnboardingOpen(open)
     if (!open) {
       markOnboardingSeen()
+      restoreFocusToMainControls()
     }
   }
 
@@ -223,6 +225,7 @@ export default function RunashChatPage() {
     if (isLastOnboardingStep) {
       markOnboardingSeen()
       setIsOnboardingOpen(false)
+      restoreFocusToMainControls()
       return
     }
 
@@ -525,14 +528,20 @@ export default function RunashChatPage() {
   return (
     <div className="min-h-screen bg-[#030405] text-zinc-100">
       <Dialog open={isOnboardingOpen} onOpenChange={handleOnboardingOpenChange}>
-        <DialogContent className="max-w-md border-zinc-800 bg-zinc-950 p-0 text-zinc-100 motion-reduce:duration-0">
+        <DialogContent
+          className="max-w-md border-zinc-800 bg-zinc-950 p-0 text-zinc-100 motion-reduce:duration-0"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            restoreFocusToMainControls()
+          }}
+        >
           <div className="overflow-hidden rounded-lg">
             <div className="h-44 bg-gradient-to-br from-cyan-500/30 via-blue-500/20 to-zinc-900 p-6">
               <div
                 className="flex h-full items-center justify-center rounded-lg border border-white/10 bg-black/20 text-6xl transition-transform duration-300 motion-reduce:transition-none"
                 key={currentOnboardingSlide.title}
               >
-                <span aria-hidden>{currentOnboardingSlide.image ?? "🚀"}</span>
+                <span aria-hidden>{currentOnboardingSlide.media ?? "🚀"}</span>
               </div>
             </div>
 
@@ -559,7 +568,7 @@ export default function RunashChatPage() {
                 </div>
 
                 <Button className="bg-cyan-600 text-white hover:bg-cyan-500" onClick={handleOnboardingNext}>
-                  {currentOnboardingSlide.cta}
+                  {isLastOnboardingStep ? "Get started" : "Next"}
                   {!isLastOnboardingStep ? <ArrowRight className="ml-1 h-4 w-4" /> : null}
                 </Button>
               </div>
@@ -925,6 +934,7 @@ export default function RunashChatPage() {
 
             <Card className="mb-5 border-zinc-800 bg-zinc-950 p-4">
               <Input
+                ref={mainControlsRef}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder="Ask RunAsh to plan a launch, bundle products, or assist checkout..."
