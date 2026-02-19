@@ -79,6 +79,7 @@ type OnboardingSlide = {
   title: string
   description: string
   media?: string
+  ctaText?: string
 }
 
 const runashChatOnboardingStorageKey = "runash_chat_onboarding_seen"
@@ -93,15 +94,19 @@ const onboardingSlides: OnboardingSlide[] = [
     title: "Welcome to RunAsh Chat",
     description: "Plan campaigns, build bundles, and launch storefront workflows from one assistant workspace.",
     media: "✨",
+    ctaText: "Continue",
   },
   {
     title: "Use guided prompts",
     description: "Start with quick actions for checkout, bundles, and post-purchase support to move faster.",
     media: "🧭",
+    ctaText: "Next tip",
   },
   {
     title: "Stay in control",
     description: "Track recents, jump back into sessions, and use the sidebar to keep launches organized.",
+    media: "🚀",
+    ctaText: "Get started",
   },
 ]
 
@@ -143,6 +148,7 @@ export default function RunashChatPage() {
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
   const [activeOnboardingStep, setActiveOnboardingStep] = useState(0)
   const mobileSidebarTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const onboardingTriggerRef = useRef<HTMLElement | null>(null)
   const mainControlsRef = useRef<HTMLInputElement | null>(null)
 
   const isLastOnboardingStep = activeOnboardingStep === onboardingSlides.length - 1
@@ -264,7 +270,18 @@ export default function RunashChatPage() {
   }
 
   const restoreFocusToMainControls = () => {
+    if (onboardingTriggerRef.current instanceof HTMLElement) {
+      onboardingTriggerRef.current.focus()
+      return
+    }
+
     mainControlsRef.current?.focus()
+  }
+
+  const handleOpenOnboardingFromTrigger = (event: React.MouseEvent<HTMLElement>) => {
+    onboardingTriggerRef.current = event.currentTarget
+    setActiveOnboardingStep(0)
+    setIsOnboardingOpen(true)
   }
 
   const handleOnboardingOpenChange = (open: boolean) => {
@@ -651,7 +668,7 @@ export default function RunashChatPage() {
                 </div>
 
                 <Button className="bg-cyan-600 text-white hover:bg-cyan-500" onClick={handleOnboardingNext}>
-                  {isLastOnboardingStep ? "Get started" : "Next"}
+                  {currentOnboardingSlide.ctaText ?? (isLastOnboardingStep ? "Get started" : "Next")}
                   {!isLastOnboardingStep ? <ArrowRight className="ml-1 h-4 w-4" /> : null}
                 </Button>
               </div>
@@ -857,6 +874,16 @@ export default function RunashChatPage() {
               </div>
               <div className="flex items-center gap-2">
                 <div className="hidden items-center gap-1 md:flex">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
+                    onClick={(event) => handleOpenOnboardingFromTrigger(event)}
+                    aria-label="Open onboarding guide"
+                  >
+                    Guide
+                  </Button>
                   {headerActions.map((action) => {
                     return (
                       <Button
@@ -879,6 +906,22 @@ export default function RunashChatPage() {
 
                 <TooltipProvider delayDuration={150}>
                   <div className="flex items-center gap-1 md:hidden">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
+                          onClick={(event) => handleOpenOnboardingFromTrigger(event)}
+                          aria-label="Open onboarding guide"
+                        >
+                          <Sparkles className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent className="border-zinc-800 bg-zinc-900 text-zinc-100">Onboarding guide</TooltipContent>
+                    </Tooltip>
+
                     {primaryMobileHeaderActions.map((action) => {
                       const Icon = action.icon
                       return (
