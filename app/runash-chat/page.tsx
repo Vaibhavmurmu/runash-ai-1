@@ -809,18 +809,19 @@ export default function RunashChatPage() {
               <div className="flex items-center gap-2">
                 <div className="hidden items-center gap-1 md:flex">
                   {headerActions.map((action) => {
-                    const Icon = action.icon
-
                     return (
                       <Button
                         key={action.id}
                         size="sm"
-                        variant="outline"
-                        className="border-zinc-700 bg-zinc-950 text-zinc-100"
+                        variant={action.id === "upgrade" ? "outline" : "ghost"}
+                        className={
+                          action.id === "upgrade"
+                            ? "border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900"
+                            : "text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
+                        }
                         onClick={() => handleHeaderActionClick(action)}
                         aria-label={action.label}
                       >
-                        <Icon className="mr-2 h-4 w-4" />
                         {action.label}
                       </Button>
                     )
@@ -836,8 +837,12 @@ export default function RunashChatPage() {
                           <TooltipTrigger asChild>
                             <Button
                               size="icon"
-                              variant="outline"
-                              className="h-8 w-8 border-zinc-700 bg-zinc-950 text-zinc-100"
+                              variant={action.id === "upgrade" ? "outline" : "ghost"}
+                              className={
+                                action.id === "upgrade"
+                                  ? "h-8 w-8 border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900"
+                                  : "h-8 w-8 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
+                              }
                               onClick={() => handleHeaderActionClick(action)}
                               aria-label={action.label}
                             >
@@ -856,8 +861,8 @@ export default function RunashChatPage() {
                             <DropdownMenuTrigger asChild>
                               <Button
                                 size="icon"
-                                variant="outline"
-                                className="h-8 w-8 border-zinc-700 bg-zinc-950 text-zinc-100"
+                                variant="ghost"
+                                className="h-8 w-8 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
                                 aria-label="More actions"
                               >
                                 <MoreVertical className="h-4 w-4" />
