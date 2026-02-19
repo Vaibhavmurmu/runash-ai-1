@@ -13,6 +13,28 @@ export async function GET(_: Request, { params }: { params: { projectId: string 
   return NextResponse.json({ timelines: project.timelines, activeTimelineId: project.activeTimelineId })
 }
 
+export async function POST(request: Request, { params }: { params: { projectId: string } }) {
+  const auth = await requireEditorUser()
+  if ("error" in auth) return auth.error
+  const { projectId } = params
+  const body = await request.json().catch(() => ({}))
+
+  const [timeline] = await sql`
+    INSERT INTO editor_timelines (project_id, owner_id, name, frame_rate, duration_seconds, metadata)
+    VALUES (${projectId}, ${auth.userId}, ${body.name || "Timeline"}, ${body.frameRate ?? 30}, ${body.durationSeconds ?? 10}, ${JSON.stringify(body.metadata || {})}::jsonb)
+    RETURNING *
+  `
+
+  await sql`
+    UPDATE editor_projects
+    SET active_timeline_id=COALESCE(${body.activate === false ? null : timeline.id}, active_timeline_id), updated_at=now()
+    WHERE id=${projectId} AND owner_id=${auth.userId}
+  `
+
+  await touchProject(projectId, auth.userId)
+  return NextResponse.json({ timeline }, { status: 201 })
+}
+
 export async function PUT(request: Request, { params }: { params: { projectId: string } }) {
   const auth = await requireEditorUser()
   if ("error" in auth) return auth.error
@@ -56,4 +78,31 @@ export async function PUT(request: Request, { params }: { params: { projectId: s
 
   const project = await getProjectById(auth.userId, projectId)
   return NextResponse.json({ project })
+}
+
+export async function DELETE(request: Request, { params }: { params: { projectId: string } }) {
+  const auth = await requireEditorUser()
+  if ("error" in auth) return auth.error
+  const { projectId } = params
+  const { searchParams } = new URL(request.url)
+  const timelineId = searchParams.get("timelineId")
+
+  if (!timelineId) {
+    return NextResponse.json({ error: "timelineId is required" }, { status: 400 })
+  }
+
+  const rows = await sql`DELETE FROM editor_timelines WHERE id=${timelineId} AND project_id=${projectId} AND owner_id=${auth.userId} RETURNING id`
+  if (!rows.length) {
+    return NextResponse.json({ error: "Timeline not found" }, { status: 404 })
+  }
+
+  await sql`
+    UPDATE editor_projects
+    SET active_timeline_id=(SELECT id FROM editor_timelines WHERE project_id=${projectId} AND owner_id=${auth.userId} ORDER BY created_at LIMIT 1),
+        updated_at=now()
+    WHERE id=${projectId} AND owner_id=${auth.userId}
+  `
+
+  await touchProject(projectId, auth.userId)
+  return NextResponse.json({ deleted: true, timelineId })
 }

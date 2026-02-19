@@ -37,7 +37,7 @@ export default function EditorPage() {
       const listRes = await fetch("/api/editor/projects")
       if (!listRes.ok) throw new Error("Failed to list projects")
       const listJson = await listRes.json()
-      let projectId = listJson.projects?.[0]?.id as string | undefined
+      const projectId = listJson.projects?.[0]?.id as string | undefined
 
       if (!projectId) {
         const createRes = await fetch("/api/editor/projects", {
@@ -54,7 +54,7 @@ export default function EditorPage() {
         const json = await res.json()
         setProject(json.project)
       }
-    } catch (error) {
+    } catch {
       toast({ title: "Editor load failed", description: "Could not load project data.", variant: "destructive" })
     } finally {
       setIsLoading(false)
@@ -62,7 +62,7 @@ export default function EditorPage() {
   }
 
   useEffect(() => {
-    loadProject()
+    void loadProject()
   }, [])
 
   const saveProject = async () => {
@@ -114,19 +114,38 @@ export default function EditorPage() {
       form.append("file", file)
       form.append("projectId", project.id)
       const uploadRes = await fetch("/api/upload", { method: "POST", body: form })
-      if (!uploadRes.ok) throw new Error("Upload failed")
-      const uploadJson = await uploadRes.json()
+
+      let storageKey = ""
+      let accessUrl: string | null = null
+      let uploadFileId: string | null = null
+
+      if (uploadRes.ok) {
+        const uploadJson = await uploadRes.json()
+        uploadFileId = String(uploadJson.file.id)
+        storageKey = uploadJson.file.storageKey
+        accessUrl = uploadJson.access.url
+      } else {
+        const storageForm = new FormData()
+        storageForm.append("action", "upload")
+        storageForm.append("file", file)
+        storageForm.append("folder", `editor/${project.id}`)
+        const storageRes = await fetch("/api/storage", { method: "POST", body: storageForm })
+        if (!storageRes.ok) throw new Error("Upload failed")
+        const storageJson = await storageRes.json()
+        storageKey = storageJson.data.key
+        accessUrl = storageJson.data.url
+      }
 
       const assetRes = await fetch(`/api/editor/projects/${project.id}/assets`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          source: "upload",
-          uploadFileId: String(uploadJson.file.id),
-          storageKey: uploadJson.file.storageKey,
-          accessUrl: uploadJson.access.url,
-          mimeType: uploadJson.file.mimeType,
-          sizeBytes: uploadJson.file.size,
+          source: uploadFileId ? "upload" : "storage",
+          uploadFileId,
+          storageKey,
+          accessUrl,
+          mimeType: file.type,
+          sizeBytes: file.size,
           metadata: { name: file.name },
         }),
       })
@@ -158,6 +177,7 @@ export default function EditorPage() {
         })
       }
 
+      setProject((prev) => (prev ? { ...prev, assets: [assetJson.asset, ...prev.assets] } : prev))
       toast({ title: "Media uploaded", description: `${file.name} is now available in this project.` })
     } catch {
       toast({ title: "Upload failed", description: "Unable to add media right now.", variant: "destructive" })
@@ -169,19 +189,17 @@ export default function EditorPage() {
   const handleDuplicate = async () => {
     if (!project) return
     setIsBusy(true)
-    const snapshot = project
     try {
-      const res = await fetch("/api/editor/projects", {
+      const res = await fetch(`/api/editor/projects/${project.id}/duplicate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: `${project.name} (Copy)`, metadata: project.metadata }),
       })
       if (!res.ok) throw new Error("Duplicate failed")
       const json = await res.json()
       setProject(json.project)
+      setIsDirty(false)
       toast({ title: "Project duplicated" })
     } catch {
-      setProject(snapshot)
       toast({ title: "Duplicate failed", variant: "destructive" })
     } finally {
       setIsBusy(false)
@@ -208,14 +226,23 @@ export default function EditorPage() {
 
   const handleExportMetadata = async () => {
     if (!project) return
-    const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement("a")
-    anchor.href = url
-    anchor.download = `${project.name.replace(/\s+/g, "-").toLowerCase()}-metadata.json`
-    anchor.click()
-    URL.revokeObjectURL(url)
-    toast({ title: "Metadata exported" })
+    setIsBusy(true)
+    try {
+      const res = await fetch(`/api/editor/projects/${project.id}/export`)
+      if (!res.ok) throw new Error("Export failed")
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      anchor.href = url
+      anchor.download = `${project.name.replace(/\s+/g, "-").toLowerCase()}-metadata.json`
+      anchor.click()
+      URL.revokeObjectURL(url)
+      toast({ title: "Metadata exported" })
+    } catch {
+      toast({ title: "Export failed", description: "Could not export metadata.", variant: "destructive" })
+    } finally {
+      setIsBusy(false)
+    }
   }
 
   return (
