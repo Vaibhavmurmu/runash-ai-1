@@ -9,7 +9,14 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
@@ -167,8 +174,10 @@ export default function RunashChatPage() {
   const primaryMobileHeaderActions = headerActions.slice(0, 2)
   const overflowMobileHeaderActions = headerActions.slice(2)
 
-  const userDisplayName = session?.user?.name?.trim() || "Guest User"
-  const userEmail = session?.user?.email?.trim() || ""
+  const authenticatedUser = session?.user
+  const userDisplayName = authenticatedUser?.name?.trim() || "Guest User"
+  const userEmail = authenticatedUser?.email?.trim() || ""
+  const userAvatar = authenticatedUser?.image?.trim() || ""
   const userInitials = userDisplayName
     .split(" ")
     .filter(Boolean)
@@ -181,11 +190,52 @@ export default function RunashChatPage() {
     { label: "Settings", icon: Settings, href: "/settings" },
     { label: "Billing", icon: CreditCard, href: "/settings/billing" },
     { label: "Help", icon: LifeBuoy, href: "/support" },
-  ]
+  ] as const
 
   const handleUserMenuNavigation = (href: string) => {
     router.push(href)
   }
+
+  const renderProfileMenu = (triggerClassName: string) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" variant="outline" className={triggerClassName} aria-label="Open account menu">
+          <Avatar className="h-8 w-8">
+            {userAvatar ? <AvatarImage src={userAvatar} alt={userDisplayName} /> : null}
+            <AvatarFallback className="bg-zinc-800 text-xs text-zinc-100">{userInitials}</AvatarFallback>
+          </Avatar>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56 border-zinc-800 bg-zinc-900 text-zinc-100">
+        <DropdownMenuLabel className="px-2 py-1.5">
+          <p className="truncate text-sm font-medium text-zinc-100">{userDisplayName}</p>
+          {userEmail ? <p className="truncate text-xs font-normal text-zinc-400">{userEmail}</p> : null}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator className="bg-zinc-800" />
+        {userMenuItems.map((item) => {
+          const Icon = item.icon
+          return (
+            <DropdownMenuItem
+              key={item.label}
+              onClick={() => handleUserMenuNavigation(item.href)}
+              className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+            >
+              <Icon className="mr-2 h-4 w-4" />
+              {item.label}
+            </DropdownMenuItem>
+          )
+        })}
+        <DropdownMenuSeparator className="bg-zinc-800" />
+        <DropdownMenuItem
+          onClick={() => signOutWithRedirect("/")}
+          className="cursor-pointer text-rose-300 focus:bg-rose-500/20 focus:text-rose-200"
+        >
+          <LogOut className="mr-2 h-4 w-4" />
+          Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
 
   const handleHeaderActionClick = (action: HeaderAction) => {
     if (action.href) {
@@ -746,14 +796,9 @@ export default function RunashChatPage() {
                           {item.label}
                         </DropdownMenuItem>
                       ))}
-                      <DropdownMenuItem
-                        onClick={() => signOutWithRedirect("/")}
-                        className="cursor-pointer text-rose-300 focus:bg-rose-500/20 focus:text-rose-200"
-                      >
-                        Sign out
-                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
+                  {renderProfileMenu("h-11 w-11 rounded-full border-zinc-700 bg-zinc-950 p-0 text-zinc-100")}
                 </div>
               </div>
 
@@ -887,47 +932,7 @@ export default function RunashChatPage() {
                   </div>
                 </TooltipProvider>
 
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-9 w-9 rounded-full border-zinc-700 bg-zinc-950 p-0 text-zinc-100"
-                      aria-label="Open account menu"
-                    >
-                      <Avatar className="h-8 w-8">
-                        {session?.user?.image ? <AvatarImage src={session.user.image} alt={userDisplayName} /> : null}
-                        <AvatarFallback className="bg-zinc-800 text-xs text-zinc-100">{userInitials}</AvatarFallback>
-                      </Avatar>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56 border-zinc-800 bg-zinc-900 text-zinc-100">
-                    <div className="px-2 py-1.5">
-                      <p className="truncate text-sm font-medium text-zinc-100">{userDisplayName}</p>
-                      {userEmail ? <p className="truncate text-xs text-zinc-400">{userEmail}</p> : null}
-                    </div>
-                    {userMenuItems.map((item) => {
-                      const Icon = item.icon
-                      return (
-                        <DropdownMenuItem
-                          key={item.label}
-                          onClick={() => handleUserMenuNavigation(item.href)}
-                          className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
-                        >
-                          <Icon className="mr-2 h-4 w-4" />
-                          {item.label}
-                        </DropdownMenuItem>
-                      )
-                    })}
-                    <DropdownMenuItem
-                      onClick={() => signOutWithRedirect("/")}
-                      className="cursor-pointer text-rose-300 focus:bg-rose-500/20 focus:text-rose-200"
-                    >
-                      <LogOut className="mr-2 h-4 w-4" />
-                      Sign out
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {renderProfileMenu("h-9 w-9 rounded-full border-zinc-700 bg-zinc-950 p-0 text-zinc-100")}
               </div>
             </header>
 
