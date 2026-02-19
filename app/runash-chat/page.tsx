@@ -79,8 +79,7 @@ type RecentEntity = {
 type OnboardingSlide = {
   title: string
   description: string
-  media?: string
-  ctaText?: string
+  image?: string
 }
 
 const runashChatOnboardingStorageKey = "runash_chat_onboarding_seen"
@@ -94,20 +93,17 @@ const onboardingSlides: OnboardingSlide[] = [
   {
     title: "Welcome to RunAsh Chat",
     description: "Plan campaigns, build bundles, and launch storefront workflows from one assistant workspace.",
-    media: "✨",
-    ctaText: "Continue",
+    image: "✨",
   },
   {
     title: "Use guided prompts",
     description: "Start with quick actions for checkout, bundles, and post-purchase support to move faster.",
-    media: "🧭",
-    ctaText: "Next tip",
+    image: "🧭",
   },
   {
     title: "Stay in control",
     description: "Track recents, jump back into sessions, and use the sidebar to keep launches organized.",
-    media: "🚀",
-    ctaText: "Get started",
+    image: "🚀",
   },
 ]
 
@@ -290,7 +286,6 @@ export default function RunashChatPage() {
   const handleOnboardingOpenChange = (open: boolean) => {
     setIsOnboardingOpen(open)
     if (!open) {
-      markOnboardingSeen()
       restoreFocusToMainControls()
     }
   }
@@ -679,7 +674,7 @@ export default function RunashChatPage() {
                 className="flex h-full items-center justify-center rounded-lg border border-white/10 bg-black/20 text-6xl transition-transform duration-300 motion-reduce:transition-none"
                 key={currentOnboardingSlide.title}
               >
-                <span aria-hidden>{currentOnboardingSlide.media ?? "🚀"}</span>
+                <span aria-hidden>{currentOnboardingSlide.image ?? "🚀"}</span>
               </div>
             </div>
 
@@ -706,7 +701,7 @@ export default function RunashChatPage() {
                 </div>
 
                 <Button className="bg-cyan-600 text-white hover:bg-cyan-500" onClick={handleOnboardingNext}>
-                  {currentOnboardingSlide.ctaText ?? (isLastOnboardingStep ? "Get started" : "Next")}
+                  {isLastOnboardingStep ? "Get started" : "Next"}
                   {!isLastOnboardingStep ? <ArrowRight className="ml-1 h-4 w-4" /> : null}
                 </Button>
               </div>
