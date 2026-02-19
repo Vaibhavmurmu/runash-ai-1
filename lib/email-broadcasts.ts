@@ -1,8 +1,8 @@
 import { neon } from "@neondatabase/serverless"
 import { normalizePagination } from "@/lib/email-filter-utils"
-import { EmailContactManager } from "@/lib/email-contacts"
 import { sendEmail } from "@/lib/email"
 import { listBroadcastTemplates, renderBroadcastTemplate, type BroadcastTemplateProps } from "@/lib/email-broadcast-templates"
+import { enqueueBroadcastJob, processDueBroadcastJobs } from "@/lib/email-broadcast-worker"
 
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -145,6 +145,10 @@ export class EmailBroadcastManager {
       RETURNING *
     `
 
+    if (input.scheduled_at) {
+      await enqueueBroadcastJob(Number(result[0].id), { scheduledAt: input.scheduled_at, triggeredBy: "schedule" })
+    }
+
     return withPreview({
       ...(result[0] as EmailBroadcast),
       template_props: parseJsonField<BroadcastTemplateProps>(result[0].template_props, {}),
@@ -185,6 +189,10 @@ export class EmailBroadcastManager {
       WHERE id = ${id}
     `
 
+    if (nextScheduledAt) {
+      await enqueueBroadcastJob(id, { scheduledAt: String(nextScheduledAt), triggeredBy: "schedule" })
+    }
+
     return this.getBroadcast(id)
   }
 
@@ -220,84 +228,14 @@ export class EmailBroadcastManager {
     if (!broadcast) throw new Error("Broadcast not found")
     if (broadcast.status === "sent") throw new Error("Broadcast already sent")
 
-    const filterStatus = String((broadcast.audience_filter?.status as string) || "subscribed")
-    const contacts = await EmailContactManager.getContacts({
-      status: filterStatus,
-      limit: 1000,
-      offset: 0,
-    })
+    await enqueueBroadcastJob(id, { scheduledAt: new Date().toISOString(), triggeredBy: "manual" })
+    await processDueBroadcastJobs({ jobLimit: 1, batchSize: 200 })
 
-    await sql`
-      UPDATE email_broadcasts
-      SET status = 'sending', started_at = NOW(), total_recipients = ${contacts.total}, sent_count = 0, failed_count = 0, last_error = NULL, updated_at = NOW()
-      WHERE id = ${id}
-    `
-
-    if (contacts.contacts.length > 0) {
-      await Promise.all(
-        contacts.contacts.map((contact) =>
-          sql`
-            INSERT INTO email_broadcast_recipients (broadcast_id, contact_id, recipient_email, status)
-            VALUES (${id}, ${contact.id}, ${contact.email}, 'pending')
-            ON CONFLICT (broadcast_id, recipient_email) DO NOTHING
-          `,
-        ),
-      )
+    const updated = await this.getBroadcast(id)
+    return {
+      sent: updated?.sent_count || 0,
+      failed: updated?.failed_count || 0,
+      total: updated?.total_recipients || 0,
     }
-
-    let sent = 0
-    let failed = 0
-
-    for (const contact of contacts.contacts) {
-      try {
-        const rendered = renderBroadcastTemplate({
-          templateKey: broadcast.template_key,
-          props: broadcast.template_props || {},
-          context: {
-            subject: broadcast.subject,
-            preheader: broadcast.preheader,
-            recipient: { email: contact.email, name: contact.name },
-          },
-        })
-
-        const delivery = await sendEmail({
-          to: contact.email,
-          subject: broadcast.subject,
-          html: rendered.html,
-          text: rendered.text,
-          campaign_id: broadcast.id,
-          recipient_name: contact.name || undefined,
-        })
-
-        await sql`
-          UPDATE email_broadcast_recipients
-          SET status = 'sent', sent_at = NOW(), delivery_message_id = ${delivery.message_id || null}, updated_at = NOW(), error_message = NULL
-          WHERE broadcast_id = ${id} AND recipient_email = ${contact.email}
-        `
-
-        sent += 1
-      } catch (error) {
-        failed += 1
-        await sql`
-          UPDATE email_broadcast_recipients
-          SET status = 'failed', error_message = ${error instanceof Error ? error.message : "Failed to send"}, updated_at = NOW()
-          WHERE broadcast_id = ${id} AND recipient_email = ${contact.email}
-        `
-      }
-    }
-
-    await sql`
-      UPDATE email_broadcasts
-      SET
-        status = 'sent',
-        sent_at = NOW(),
-        sent_count = ${sent},
-        failed_count = ${failed},
-        last_error = ${failed > 0 ? "Some recipients failed during send" : null},
-        updated_at = NOW()
-      WHERE id = ${id}
-    `
-
-    return { sent, failed, total: contacts.total }
   }
 }

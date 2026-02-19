@@ -1,7 +1,7 @@
 import { EventEmitter } from "events"
 
 export interface EmailEvent {
-  type: "delivery_status" | "bounce" | "complaint" | "open" | "click" | "unsubscribe"
+  type: "delivery_status" | "bounce" | "complaint" | "open" | "click" | "unsubscribe" | "broadcast_progress"
   messageId: string
   email: string
   timestamp: Date
@@ -257,5 +257,22 @@ export function triggerClickEvent(messageId: string, email: string, url: string,
     email,
     timestamp: new Date(),
     data: { url, userAgent },
+  })
+}
+
+export function triggerBroadcastProgressEvent(data: {
+  broadcastId: number
+  status: "queued" | "sending" | "retrying" | "sent" | "failed"
+  sentCount: number
+  failedCount: number
+  totalRecipients: number
+  message?: string
+}) {
+  triggerEmailEvent({
+    type: "broadcast_progress",
+    messageId: `broadcast-${data.broadcastId}`,
+    email: "broadcast",
+    timestamp: new Date(),
+    data,
   })
 }
