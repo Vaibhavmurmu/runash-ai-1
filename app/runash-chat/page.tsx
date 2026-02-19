@@ -77,6 +77,7 @@ type OnboardingSlide = {
 }
 
 const runashChatOnboardingStorageKey = "runash_chat_onboarding_seen"
+const runashChatSidebarCollapsedStorageKey = "runash_chat_sidebar_collapsed"
 
 const onboardingSlides: OnboardingSlide[] = [
   {
@@ -193,7 +194,7 @@ export default function RunashChatPage() {
   }
 
   useEffect(() => {
-    const savedValue = localStorage.getItem("runash_sidebar_collapsed")
+    const savedValue = localStorage.getItem(runashChatSidebarCollapsedStorageKey)
     setIsSidebarCollapsed(savedValue === "true")
 
     const isBannerHidden = localStorage.getItem(updatesBannerHiddenKey) === "true"
@@ -225,7 +226,7 @@ export default function RunashChatPage() {
   }
 
   useEffect(() => {
-    localStorage.setItem("runash_sidebar_collapsed", String(isSidebarCollapsed))
+    localStorage.setItem(runashChatSidebarCollapsedStorageKey, String(isSidebarCollapsed))
   }, [isSidebarCollapsed])
 
   useEffect(() => {
@@ -625,6 +626,7 @@ export default function RunashChatPage() {
                       side="left"
                       id="runash-chat-mobile-sidebar"
                       className="w-[280px] border-zinc-800 bg-[#050607] p-3 text-zinc-100"
+                      onEscapeKeyDown={() => setIsMobileSidebarOpen(false)}
                       onCloseAutoFocus={(event) => {
                         event.preventDefault()
                         mobileSidebarTriggerRef.current?.focus()
