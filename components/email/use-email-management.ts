@@ -17,6 +17,8 @@ import type {
   EmailSuppressionRecord,
   EmailTemplateRecord,
   EmailWebhookRecord,
+  EmailReplyInboxRecord,
+  ReplyInboxQuery,
   SuppressionPayload,
   SuppressionQuery,
   TemplatePayload,
@@ -442,4 +444,45 @@ export function useBroadcasts() {
     sendBroadcastTest,
     sendBroadcast,
   }
+}
+
+
+export function useReplyInbox() {
+  const [query, setQuery] = useState<ReplyInboxQuery>({ limit: DEFAULT_LIMIT, offset: 0 })
+  const [items, setItems] = useState<EmailReplyInboxRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchInbox = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await emailAdminApi.getReplyInbox(query)
+      setItems(response.data)
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : "Failed to load reply inbox")
+    } finally {
+      setLoading(false)
+    }
+  }, [query])
+
+  useEffect(() => {
+    fetchInbox()
+  }, [fetchInbox])
+
+  const applyAction = useCallback(
+    async (messageId: number, payload: { action: "approve_send" | "save_edit" | "skip"; editedBody?: string }) => {
+      setSaving(true)
+      try {
+        await emailAdminApi.applyReplyAction(messageId, payload)
+        await fetchInbox()
+      } finally {
+        setSaving(false)
+      }
+    },
+    [fetchInbox],
+  )
+
+  return { query, setQuery, items, loading, saving, error, fetchInbox, applyAction }
 }

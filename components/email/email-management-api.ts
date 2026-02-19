@@ -16,6 +16,8 @@ import type {
   EmailSuppressionRecord,
   EmailTemplateRecord,
   EmailWebhookRecord,
+  EmailReplyInboxRecord,
+  ReplyInboxQuery,
   SuppressionPayload,
   SuppressionQuery,
   TemplatePayload,
@@ -170,6 +172,17 @@ export const emailAdminApi = {
   getAnalytics: (query: EmailAnalyticsQuery = {}) => {
     const queryString = toQueryString(query)
     return request<ApiItemResponse<EmailAnalyticsData>>(`/api/admin/email-analytics${queryString ? `?${queryString}` : ""}`)
+  },
+
+  getReplyInbox: (query: ReplyInboxQuery) => {
+    const queryString = toQueryString(query)
+    return request<ApiListResponse<EmailReplyInboxRecord>>(`/api/admin/email-replies?${queryString}`)
+  },
+  applyReplyAction: (messageId: number, payload: { action: "approve_send" | "save_edit" | "skip"; editedBody?: string }) => {
+    return request<{ success: boolean; data: { status: string } }>(`/api/admin/email-replies/${messageId}/action`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
   },
   getWebhooks: (query: WebhookQuery) => {
     const queryString = toQueryString(query)

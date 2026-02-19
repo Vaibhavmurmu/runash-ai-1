@@ -496,3 +496,30 @@ RunAsh email sends now support a safety gate before provider delivery:
 
 For API surfaces that handle safety policy exceptions, blocked sends return an explicit payload with `error: "EMAIL_SAFETY_BLOCKED"`.
 
+
+## Inbound Email Reply Automation
+
+A full inbound-reply architecture is available for provider webhooks and admin review workflows.
+
+### Endpoints
+- `POST /api/email/inbound/[provider]`: receives inbound reply payloads for `resend`, `sendgrid`, `ses`, and `generic`, verifies signatures, normalizes payloads, and persists messages/threads.
+- `GET /api/admin/email-replies`: loads the reply inbox with latest draft/review metadata and action audit trail.
+- `POST /api/admin/email-replies/[messageId]/action`: supports `save_edit`, `approve_send`, and `skip` admin actions.
+
+### Data model
+- `email_reply_threads`: groups inbound conversations and stores mapped contact/broadcast/campaign context.
+- `email_inbound_messages`: immutable normalized inbound message records.
+- `email_reply_actions`: audit log for drafted/sent/skipped/failed outcomes, including confidence and review flags.
+
+### Policy controls
+- Allow/deny auto-reply by campaign: `EMAIL_REPLY_ALLOW_CAMPAIGN_IDS`, `EMAIL_REPLY_DENY_CAMPAIGN_IDS`.
+- Allow/deny auto-reply by contact tags: `EMAIL_REPLY_ALLOW_TAGS`, `EMAIL_REPLY_DENY_TAGS`.
+- Confidence threshold fallback: `EMAIL_REPLY_CONFIDENCE_THRESHOLD`.
+- Strict safe mode: `EMAIL_REPLY_STRICT_SAFE_MODE=true` forces human review and blocks auto-replies.
+- Global toggle: `EMAIL_REPLY_AUTO_ENABLED=true` enables policy-eligible auto reply progression.
+
+### Admin UI
+- Email Management now includes a **Reply Inbox** tab with:
+  - AI draft preview/edit,
+  - approve+send and skip controls,
+  - per-thread audit trail.
