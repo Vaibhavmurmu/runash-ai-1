@@ -179,11 +179,15 @@ export default function RunashChatPage() {
     .join("") || "GU"
 
   const userMenuItems = [
-    { label: "Profile", icon: User, action: () => router.push("/ecommerce/profile") },
-    { label: "Settings", icon: Settings, action: () => router.push("/settings") },
-    { label: "Billing", icon: CreditCard, action: () => router.push("/payment/subscription") },
-    { label: "Help", icon: LifeBuoy, action: () => router.push("/support") },
+    { label: "Profile", icon: User, href: "/settings/profile" },
+    { label: "Settings", icon: Settings, href: "/settings" },
+    { label: "Billing", icon: CreditCard, href: "/settings/billing" },
+    { label: "Help", icon: LifeBuoy, href: "/support" },
   ]
+
+  const handleUserMenuNavigation = (href: string) => {
+    router.push(href)
+  }
 
   const handleHeaderActionClick = (action: HeaderAction) => {
     if (action.href) {
@@ -700,7 +704,7 @@ export default function RunashChatPage() {
                       {userMenuItems.map((item) => (
                         <DropdownMenuItem
                           key={item.label}
-                          onClick={item.action}
+                          onClick={() => handleUserMenuNavigation(item.href)}
                           className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
                         >
                           {item.label}
@@ -866,7 +870,7 @@ export default function RunashChatPage() {
                       return (
                         <DropdownMenuItem
                           key={item.label}
-                          onClick={item.action}
+                          onClick={() => handleUserMenuNavigation(item.href)}
                           className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
                         >
                           <Icon className="mr-2 h-4 w-4" />
