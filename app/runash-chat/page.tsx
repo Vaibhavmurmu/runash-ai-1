@@ -61,6 +61,14 @@ type RecentItem = {
   title: string
 }
 
+type RecentEntity = {
+  id: string
+  title: string
+  updatedAt: string | null
+  entityType: "session" | "project"
+  sessionId?: string
+}
+
 type OnboardingSlide = {
   title: string
   description: string
@@ -99,46 +107,6 @@ type HeaderAction = {
   onClick?: () => void
 }
 
-type PlaceholderCollectionItem = {
-  id: string
-  title: string
-  subtitle: string
-}
-
-type PlaceholderCollectionSectionProps = {
-  title: string
-  actionLabel?: string
-  items: PlaceholderCollectionItem[]
-}
-
-function PlaceholderCollectionSection({ title, actionLabel = "View all", items }: PlaceholderCollectionSectionProps) {
-  return (
-    <Card className="border-zinc-800 bg-zinc-950 p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-medium text-zinc-100">{title}</h2>
-        <button type="button" className="text-xs text-zinc-500 transition hover:text-zinc-300">
-          {actionLabel}
-        </button>
-      </div>
-
-      <ul className="space-y-2" aria-label={`${title} placeholder list`}>
-        {items.map((item) => (
-          <li key={item.id} className="rounded-md border border-zinc-800 bg-zinc-900/70 p-3">
-            <div className="mb-2 h-3 w-2/3 animate-pulse rounded bg-zinc-700/70" />
-            <div className="mb-2 h-2.5 w-1/2 animate-pulse rounded bg-zinc-800/80" />
-            <div className="h-2 w-full animate-pulse rounded bg-zinc-800/60" />
-
-            <div className="mt-2 space-y-0.5">
-              <p className="text-xs font-medium text-zinc-300">{item.title}</p>
-              <p className="text-[11px] text-zinc-500">{item.subtitle}</p>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </Card>
-  )
-}
-
 const sidebarNavItems = [
   { label: "Home", icon: Home },
   { label: "Library", icon: Library },
@@ -158,6 +126,7 @@ export default function RunashChatPage() {
   const [recentItems, setRecentItems] = useState<RecentItem[]>([])
   const [loadingRecents, setLoadingRecents] = useState(false)
   const [recentItemsError, setRecentItemsError] = useState<string | null>(null)
+  const [recentEntities, setRecentEntities] = useState<RecentEntity[]>([])
   const [prompt, setPrompt] = useState("")
   const [startChatError, setStartChatError] = useState<string | null>(null)
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
@@ -311,6 +280,8 @@ export default function RunashChatPage() {
       try {
         const sessionsResponse = await fetch("/api/sessions")
         const sessionsPayload = await sessionsResponse.json().catch(() => null)
+        const projectsResponse = await fetch("/api/editor/projects")
+        const projectsPayload = await projectsResponse.json().catch(() => null)
 
         if (!sessionsResponse.ok || !sessionsPayload?.success || !Array.isArray(sessionsPayload?.data)) {
           throw new Error(sessionsPayload?.error?.message || "Unable to load recent chats")
@@ -329,9 +300,50 @@ export default function RunashChatPage() {
           .filter((item: RecentItem | null): item is RecentItem => item !== null)
 
         setRecentItems(normalizedRecentItems.slice(0, 8))
+
+        const normalizedRecentEntities: RecentEntity[] = [
+          ...sessionsPayload.data
+            .map((session: { id?: string | number; title?: string; created_at?: string }) => {
+              const id = session?.id != null ? String(session.id) : ""
+              if (!id) return null
+
+              return {
+                id: `session-${id}`,
+                title: typeof session?.title === "string" && session.title.trim() ? session.title.trim() : `Session #${id}`,
+                updatedAt: typeof session?.created_at === "string" ? session.created_at : null,
+                entityType: "session" as const,
+                sessionId: id,
+              }
+            })
+            .filter((item: RecentEntity | null): item is RecentEntity => item !== null),
+          ...(projectsResponse.ok && Array.isArray(projectsPayload?.projects)
+            ? projectsPayload.projects
+                .map((project: { id?: string | number; name?: string; updated_at?: string }) => {
+                  const id = project?.id != null ? String(project.id) : ""
+                  if (!id) return null
+
+                  return {
+                    id: `project-${id}`,
+                    title: typeof project?.name === "string" && project.name.trim() ? project.name.trim() : `Project #${id}`,
+                    updatedAt: typeof project?.updated_at === "string" ? project.updated_at : null,
+                    entityType: "project" as const,
+                  }
+                })
+                .filter((item: RecentEntity | null): item is RecentEntity => item !== null)
+            : []),
+        ]
+          .sort((a, b) => {
+            const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0
+            const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0
+            return bTime - aTime
+          })
+          .slice(0, 12)
+
+        setRecentEntities(normalizedRecentEntities)
       } catch (error) {
         setRecentItemsError(error instanceof Error ? error.message : "Unable to load recent chats")
         setRecentItems([])
+        setRecentEntities([])
       } finally {
         setLoadingRecents(false)
       }
@@ -400,18 +412,6 @@ export default function RunashChatPage() {
   }
 
   const mobileRecentMatches = recentItems.filter((item) => item.title.toLowerCase().includes(mobileSearchValue.trim().toLowerCase()))
-
-  const recentProjectPlaceholders: PlaceholderCollectionItem[] = [
-    { id: "proj-launch", title: "Launch planning workspace", subtitle: "Campaign strategy · Drafting assets" },
-    { id: "proj-ops", title: "Operations dashboard", subtitle: "Orders · Fulfillment checks" },
-    { id: "proj-retention", title: "Retention flow", subtitle: "Post-purchase journeys · Offers" },
-  ]
-
-  const myChatPlaceholders: PlaceholderCollectionItem[] = [
-    { id: "chat-checkout", title: "Checkout support thread", subtitle: "Last active: just now" },
-    { id: "chat-bundle", title: "Bundle optimization", subtitle: "Last active: 2h ago" },
-    { id: "chat-assistant", title: "Assistant mode setup", subtitle: "Last active: yesterday" },
-  ]
 
   const dismissUpdatesBanner = () => {
     localStorage.setItem(updatesBannerHiddenKey, "true")
@@ -984,8 +984,47 @@ export default function RunashChatPage() {
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <PlaceholderCollectionSection title="Recent Projects" items={recentProjectPlaceholders} />
-              <PlaceholderCollectionSection title="My Chats" items={myChatPlaceholders} />
+              <Card className="border-zinc-800 bg-zinc-950 p-4 lg:col-span-2">
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className="text-sm font-medium text-zinc-100">Recent entities</h2>
+                  <span className="text-xs text-zinc-500">Latest sessions & projects</span>
+                </div>
+
+                <ScrollArea className="h-[220px] pr-1">
+                  <div className="space-y-2 pr-2">
+                    {loadingRecents && <div className="text-xs text-zinc-500">Loading recent entities…</div>}
+                    {!loadingRecents && recentItemsError && <div className="text-xs text-amber-400">{recentItemsError}</div>}
+                    {!loadingRecents && !recentItemsError && recentEntities.length === 0 && (
+                      <div className="text-xs text-zinc-500">No recent sessions or projects yet.</div>
+                    )}
+
+                    {recentEntities.map((item) => {
+                      const updatedLabel = item.updatedAt ? new Date(item.updatedAt).toLocaleString() : "Unknown update time"
+                      const canOpenChat = item.entityType === "session" && Boolean(item.sessionId)
+
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          disabled={!canOpenChat}
+                          onClick={() => {
+                            if (item.sessionId) router.push(`/chat?sessionId=${item.sessionId}`)
+                          }}
+                          className={`w-full rounded-md border border-zinc-800 px-3 py-2 text-left transition ${
+                            canOpenChat ? "bg-zinc-900/70 hover:bg-zinc-900" : "cursor-default bg-zinc-900/40"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="truncate text-xs font-medium text-zinc-200">{item.title}</p>
+                            <span className="shrink-0 text-[10px] uppercase tracking-wide text-zinc-500">{item.entityType}</span>
+                          </div>
+                          <p className="mt-1 text-[11px] text-zinc-500">Updated: {updatedLabel}</p>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </ScrollArea>
+              </Card>
             </div>
           </div>
         </main>
