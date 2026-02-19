@@ -77,6 +77,8 @@ type OnboardingSlide = {
 const runashChatOnboardingStorageKey = "runash_chat_onboarding_seen"
 const runashChatSidebarCollapsedStorageKey = "runash_chat_sidebar_collapsed"
 const runashChatUpdatesBannerHiddenStorageKey = "runash_updates_banner_hidden"
+const runashChatDesktopSidebarContentId = "runash-chat-desktop-sidebar-content"
+const runashChatMobileSidebarId = "runash-chat-mobile-sidebar"
 
 const onboardingSlides: OnboardingSlide[] = [
   {
@@ -241,6 +243,21 @@ export default function RunashChatPage() {
     setIsMobileSidebarOpen(false)
     setIsMobileSearchOpen(false)
   }, [isOnboardingOpen])
+
+  useEffect(() => {
+    if (!isMobileSidebarOpen) return
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsMobileSidebarOpen(false)
+      }
+    }
+
+    window.addEventListener("keydown", handleEscape)
+    return () => {
+      window.removeEventListener("keydown", handleEscape)
+    }
+  }, [isMobileSidebarOpen])
 
   useEffect(() => {
     if (!startChatError) return
@@ -593,7 +610,7 @@ export default function RunashChatPage() {
         <aside
           id="runash-chat-sidebar"
           className={`hidden h-[calc(100vh-24px)] shrink-0 rounded-xl border border-zinc-800 bg-black/70 p-3 lg:flex lg:flex-col ${
-            isSidebarCollapsed ? "w-[80px]" : "w-[250px]"
+            isSidebarCollapsed ? "w-16" : "w-[250px]"
           }`}
           aria-label="Sidebar"
         >
@@ -605,13 +622,13 @@ export default function RunashChatPage() {
               className="h-8 w-8 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
               onClick={() => setIsSidebarCollapsed((prev) => !prev)}
               aria-expanded={!isSidebarCollapsed}
-              aria-controls="runash-chat-sidebar"
+              aria-controls={runashChatDesktopSidebarContentId}
               aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
               {isSidebarCollapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
             </Button>
           </div>
-          {renderSidebarContent(isSidebarCollapsed)}
+          <div id={runashChatDesktopSidebarContentId}>{renderSidebarContent(isSidebarCollapsed)}</div>
         </aside>
 
         <main className="h-[calc(100vh-24px)] flex-1 rounded-xl border border-zinc-800 bg-[#050607] p-4 sm:p-6">
@@ -640,7 +657,7 @@ export default function RunashChatPage() {
                         variant="outline"
                         className="h-11 w-11 border-zinc-700 bg-zinc-950 text-zinc-100"
                         aria-expanded={isMobileSidebarOpen}
-                        aria-controls="runash-chat-mobile-sidebar"
+                        aria-controls={runashChatMobileSidebarId}
                         aria-label="Open navigation menu"
                         disabled={isOnboardingOpen}
                       >
@@ -649,7 +666,7 @@ export default function RunashChatPage() {
                     </SheetTrigger>
                     <SheetContent
                       side="left"
-                      id="runash-chat-mobile-sidebar"
+                      id={runashChatMobileSidebarId}
                       className="w-[280px] border-zinc-800 bg-[#050607] p-3 text-zinc-100"
                       onEscapeKeyDown={() => setIsMobileSidebarOpen(false)}
                       onCloseAutoFocus={(event) => {
