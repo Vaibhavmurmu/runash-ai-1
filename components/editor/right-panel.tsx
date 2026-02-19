@@ -1,13 +1,12 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Zap, SlidersHorizontal } from "lucide-react"
 import StreamManager from "./stream-manager"
 import ModelSelector from "./model-selector"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import { useIsMobile } from "@/hooks/use-mobile"
 
 interface RightPanelProps {
   selectedModel: string
@@ -16,10 +15,18 @@ interface RightPanelProps {
 }
 
 export default function RightPanel({ selectedModel, onModelChange, activeTab }: RightPanelProps) {
-  const isMobile = useIsMobile()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [isNarrowViewport, setIsNarrowViewport] = useState(false)
   const showStreamManager = activeTab === "stream"
   const showModelSelector = activeTab === "generate"
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 1023px)")
+    const sync = () => setIsNarrowViewport(query.matches)
+    sync()
+    query.addEventListener("change", sync)
+    return () => query.removeEventListener("change", sync)
+  }, [])
 
   const models = useMemo(
     () => [
@@ -31,7 +38,9 @@ export default function RightPanel({ selectedModel, onModelChange, activeTab }: 
   )
 
   const panelContent = showStreamManager ? (
-    <StreamManager />
+    <div className="h-full min-h-0"> 
+      <StreamManager />
+    </div>
   ) : showModelSelector ? (
     <div className="p-4">
       <ModelSelector selectedModel={selectedModel} onModelChange={onModelChange} />
@@ -126,13 +135,15 @@ export default function RightPanel({ selectedModel, onModelChange, activeTab }: 
 
   return (
     <>
-      <aside className="hidden lg:block w-80 xl:w-96 2xl:w-[28rem] bg-card border-l border-border overflow-y-auto">{panelContent}</aside>
+      <aside className="hidden lg:block w-80 xl:w-96 2xl:w-[28rem] bg-card border-l border-border overflow-y-auto">
+        {panelContent}
+      </aside>
 
-      {isMobile && (
+      {isNarrowViewport && (
         <div className="fixed bottom-36 right-4 z-30">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
-              <Button size="icon" className="h-11 w-11 rounded-full shadow-lg" aria-label="Open model and settings panel">
+              <Button size="icon" className="h-12 w-12 rounded-full shadow-lg" aria-label="Open model and settings panel">
                 <SlidersHorizontal className="w-5 h-5" />
               </Button>
             </SheetTrigger>

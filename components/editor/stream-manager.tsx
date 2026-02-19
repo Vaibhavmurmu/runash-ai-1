@@ -31,7 +31,7 @@ export default function StreamManager() {
   const selectedStreamData = streams.find((stream) => stream.id === selectedStream)
 
   return (
-    <div className="w-96 bg-card border-l border-border flex flex-col h-full overflow-hidden">
+    <div className="w-full lg:w-96 bg-card border-l border-border flex flex-col h-full overflow-hidden">
       <Tabs defaultValue="streams" className="w-full h-full flex flex-col">
         <div className="border-b border-border px-4 pt-4 pb-0">
           <div className="flex items-center justify-between mb-4">

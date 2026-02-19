@@ -611,6 +611,7 @@ Success response:
 
 
 
+
 ## Recording Edits API (`/api/recordings/edit`)
 
 ### `POST /api/recordings/edit`
@@ -633,4 +634,8 @@ Success response:
 
 - The route executes the recording edit insert inside an explicit DB transaction (`BEGIN` / `COMMIT`, rollback on failure).
 
+
+- The route executes the recording edit insert inside an explicit DB transaction (`BEGIN` / `COMMIT`, rollback on failure).
+
 - The route executes the recording edit insert inside an explicit DB transaction (`BEGIN` / `COMMIT`, rollback on fail
+

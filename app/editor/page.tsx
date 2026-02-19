@@ -11,9 +11,12 @@ import AIChatPanel from "@/components/editor/ai-chat-panel"
 import CollaborationPanel from "@/components/editor/collaboration-panel"
 import { useToast } from "@/hooks/use-toast"
 import type { EditorProject, EditorTimeline } from "@/lib/editor/domain"
+import { useIsMobile } from "@/hooks/use-mobile"
+import { Sheet, SheetContent } from "@/components/ui/sheet"
 
 export default function EditorPage() {
   const { toast } = useToast()
+  const isMobile = useIsMobile()
   const [activeTab, setActiveTab] = useState("generate")
   const [selectedModel, setSelectedModel] = useState("wan-2.1")
   const [isRecording, setIsRecording] = useState(false)
@@ -280,7 +283,7 @@ export default function EditorPage() {
   return (
     <EditorLayout>
       <TopBar isRecording={isRecording} onRecordingToggle={setIsRecording} onOpenCollaboration={() => setIsCollaborationOpen(true)} onSave={saveProject} isSaving={isSaving} />
-      <div className="flex flex-1 overflow-hidden bg-background">
+      <div className="flex flex-1 overflow-hidden bg-background pb-24 md:pb-0">
         <LeftSidebar activeTab={activeTab} onTabChange={setActiveTab} isChatOpen={isChatOpen} onChatToggle={setIsChatOpen} />
         <MainCanvas
           selectedModel={selectedModel}
@@ -291,7 +294,15 @@ export default function EditorPage() {
           uploadInProgress={uploadInProgress}
         />
         <RightPanel selectedModel={selectedModel} onModelChange={setSelectedModel} activeTab={activeTab} />
-        {isChatOpen && <AIChatPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />}
+        {isMobile ? (
+          <Sheet open={isChatOpen} onOpenChange={setIsChatOpen}>
+            <SheetContent side="left" className="w-[94vw] max-w-sm p-0">
+              <AIChatPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
+            </SheetContent>
+          </Sheet>
+        ) : (
+          isChatOpen && <AIChatPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
+        )}
       </div>
       <BottomToolbar onDuplicate={handleDuplicate} onDelete={handleDelete} onExportMetadata={handleExportMetadata} isBusy={isBusy || isLoading} />
       <CollaborationPanel isOpen={isCollaborationOpen} onClose={() => setIsCollaborationOpen(false)} />

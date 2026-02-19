@@ -23,7 +23,7 @@ export default function TopBar({ isRecording, onRecordingToggle, onOpenCollabora
 
   return (
     <>
-      <header className="flex items-center justify-between px-3 md:px-6 py-3 md:py-4 border-b border-border bg-card shadow-sm gap-3">
+      <header className="sticky top-0 z-40 flex items-center justify-between px-3 md:px-6 py-3 md:py-4 border-b border-border bg-card shadow-sm gap-3">
         <div className="flex items-center gap-2 md:gap-3 min-w-0">
           <div className="font-bold text-base md:text-lg bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent truncate">RunAsh AI</div>
           <div className="text-xs text-muted-foreground px-2 py-1 bg-muted rounded">Editor</div>
