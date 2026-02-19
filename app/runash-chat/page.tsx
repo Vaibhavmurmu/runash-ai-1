@@ -173,6 +173,7 @@ export default function RunashChatPage() {
 
   const primaryMobileHeaderActions = headerActions.slice(0, 2)
   const overflowMobileHeaderActions = headerActions.slice(2)
+  const creditsBalanceLabel = "5.00"
 
   const authenticatedUser = session?.user
   const isAuthenticated = authStatus === "authenticated" && Boolean(authenticatedUser)
@@ -932,54 +933,38 @@ export default function RunashChatPage() {
               </div>
               <div className="flex items-center gap-2">
                 <div className="hidden items-center gap-1 md:flex">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
-                    onClick={(event) => handleOpenOnboardingFromTrigger(event)}
-                    aria-label="Open onboarding guide"
-                  >
-                    Guide
-                  </Button>
-                  {headerActions.map((action) => {
-                    return (
-                      <Button
-                        key={action.id}
-                        size="sm"
-                        variant={action.id === "upgrade" ? "outline" : "ghost"}
-                        className={
-                          action.id === "upgrade"
-                            ? "border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900"
-                            : "text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
-                        }
-                        onClick={() => handleHeaderActionClick(action)}
-                        aria-label={action.label}
-                      >
-                        {action.label}
-                      </Button>
-                    )
-                  })}
+                  {headerActions.map((action) => (
+                    <Button
+                      key={action.id}
+                      size="sm"
+                      variant={action.id === "upgrade" ? "outline" : "ghost"}
+                      className={
+                        action.id === "upgrade"
+                          ? "border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900"
+                          : "text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
+                      }
+                      onClick={() => handleHeaderActionClick(action)}
+                      aria-label={action.label}
+                    >
+                      {action.label}
+                    </Button>
+                  ))}
                 </div>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="hidden h-8 rounded-full border-zinc-700 bg-zinc-950 px-2.5 text-xs font-medium text-zinc-100 hover:bg-zinc-900 md:inline-flex"
+                  onClick={(event) => handleOpenOnboardingFromTrigger(event)}
+                  aria-label="Open onboarding guide"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
+                  <span>{creditsBalanceLabel}</span>
+                </Button>
 
                 <TooltipProvider delayDuration={150}>
                   <div className="flex items-center gap-1 md:hidden">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
-                          onClick={(event) => handleOpenOnboardingFromTrigger(event)}
-                          aria-label="Open onboarding guide"
-                        >
-                          <Sparkles className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent className="border-zinc-800 bg-zinc-900 text-zinc-100">Onboarding guide</TooltipContent>
-                    </Tooltip>
-
                     {primaryMobileHeaderActions.map((action) => {
                       const Icon = action.icon
                       return (
@@ -1022,6 +1007,14 @@ export default function RunashChatPage() {
                           <TooltipContent className="border-zinc-800 bg-zinc-900 text-zinc-100">More actions</TooltipContent>
                         </Tooltip>
                         <DropdownMenuContent align="end" className="border-zinc-800 bg-zinc-900 text-zinc-100">
+                          <DropdownMenuItem
+                            onClick={(event) => handleOpenOnboardingFromTrigger(event)}
+                            className="focus:bg-zinc-800 focus:text-zinc-100"
+                          >
+                            <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
+                            Credits: {creditsBalanceLabel}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator className="bg-zinc-800" />
                           {overflowMobileHeaderActions.map((action) => (
                             <DropdownMenuItem
                               key={action.id}
