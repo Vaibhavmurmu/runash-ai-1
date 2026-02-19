@@ -259,7 +259,7 @@ export default function EditorPage() {
           uploadInProgress={uploadInProgress}
         />
         <RightPanel selectedModel={selectedModel} onModelChange={setSelectedModel} activeTab={activeTab} />
-        {isChatOpen && <AIChatPanel isOpen={isChatOpen} />}
+        {isChatOpen && <AIChatPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />}
       </div>
       <BottomToolbar onDuplicate={handleDuplicate} onDelete={handleDelete} onExportMetadata={handleExportMetadata} isBusy={isBusy || isLoading} />
       <CollaborationPanel isOpen={isCollaborationOpen} onClose={() => setIsCollaborationOpen(false)} />

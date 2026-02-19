@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Copy, Loader, Send, Sparkles, Trash2 } from "lucide-react"
+import { Copy, Loader, Send, Sparkles, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
@@ -16,6 +16,7 @@ interface Message {
 
 interface AIChatPanelProps {
   isOpen: boolean
+  onClose?: () => void
 }
 
 type StreamEventPayload = {
@@ -25,7 +26,7 @@ type StreamEventPayload = {
   message?: string
 }
 
-export default function AIChatPanel({ isOpen }: AIChatPanelProps) {
+export default function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
@@ -37,12 +38,27 @@ export default function AIChatPanel({ isOpen }: AIChatPanelProps) {
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: "smooth" })
     }
   }, [messages])
+
+  useEffect(() => {
+    if (!isOpen) return
+    inputRef.current?.focus()
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose?.()
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [isOpen, onClose])
 
   const parseStreamChunk = (chunk: string, onEvent: (payload: StreamEventPayload) => void) => {
     const events = chunk.split("\n\n")
@@ -242,7 +258,11 @@ export default function AIChatPanel({ isOpen }: AIChatPanelProps) {
   if (!isOpen) return null
 
   return (
-    <div className="w-80 bg-card border-l border-border flex flex-col h-full overflow-hidden">
+    <aside
+      className="w-full md:w-80 lg:w-[22rem] bg-card border-l border-border flex flex-col h-full overflow-hidden"
+      role="complementary"
+      aria-label="AI Assistant panel"
+    >
       <div className="px-4 py-3 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
@@ -250,12 +270,17 @@ export default function AIChatPanel({ isOpen }: AIChatPanelProps) {
           </div>
           <h3 className="font-semibold text-foreground">AI Assistant</h3>
         </div>
-        <Button variant="ghost" size="sm" onClick={handleClearChat} title="Clear chat">
-          <Trash2 className="w-4 h-4" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={handleClearChat} title="Clear chat" aria-label="Clear chat history">
+            <Trash2 className="w-4 h-4" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onClose} title="Close chat" aria-label="Close chat panel">
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
 
-      <ScrollArea className="flex-1 p-4">
+      <ScrollArea className="flex-1 p-4" tabIndex={0}>
         <div className="space-y-4">
           {messages.map((message) => (
             <div
@@ -290,6 +315,7 @@ export default function AIChatPanel({ isOpen }: AIChatPanelProps) {
                       onClick={() => handleCopyMessage(message.content)}
                       className="opacity-50 hover:opacity-100 transition-opacity"
                       title="Copy message"
+                      aria-label="Copy assistant message"
                     >
                       <Copy className="w-3 h-3" />
                     </button>
@@ -318,6 +344,7 @@ export default function AIChatPanel({ isOpen }: AIChatPanelProps) {
       <div className="border-t border-border p-4 space-y-2">
         <div className="flex gap-2">
           <input
+            ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -328,14 +355,15 @@ export default function AIChatPanel({ isOpen }: AIChatPanelProps) {
               }
             }}
             placeholder="Ask me anything..."
+            aria-label="Message input"
             className="flex-1 px-3 py-2 rounded-lg border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           />
-          <Button onClick={() => void handleSendMessage()} disabled={!input.trim() || isLoading} size="sm" className="gap-2">
+          <Button onClick={() => void handleSendMessage()} disabled={!input.trim() || isLoading} size="sm" className="gap-2" aria-label="Send message">
             <Send className="w-4 h-4" />
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground">Press Enter to send • Shift+Enter for new line</p>
+        <p className="text-xs text-muted-foreground">Press Enter to send • Shift+Enter for new line • Esc to close</p>
       </div>
-    </div>
+    </aside>
   )
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Users, Plus, X, Edit3, Check, AlertCircle, Activity, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -36,6 +36,7 @@ interface CollaborationPanelProps {
 }
 
 export default function CollaborationPanel({ isOpen, onClose }: CollaborationPanelProps) {
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
   const [collaborators, setCollaborators] = useState<Collaborator[]>([
     {
       id: "1",
@@ -104,6 +105,20 @@ export default function CollaborationPanel({ isOpen, onClose }: CollaborationPan
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteRole, setInviteRole] = useState<"editor" | "viewer">("editor")
 
+  useEffect(() => {
+    if (!isOpen) return
+
+    closeButtonRef.current?.focus()
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose()
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [isOpen, onClose])
+
   const handleInviteCollaborator = () => {
     if (!inviteEmail.trim()) return
     // In a real app, this would send an invitation
@@ -140,7 +155,7 @@ export default function CollaborationPanel({ isOpen, onClose }: CollaborationPan
   const onlineCount = collaborators.filter((c) => c.status === "online").length
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Collaboration panel">
       <div className="bg-card border border-border rounded-lg w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
@@ -151,7 +166,7 @@ export default function CollaborationPanel({ isOpen, onClose }: CollaborationPan
               {onlineCount} online
             </Badge>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full">
+          <Button ref={closeButtonRef} variant="ghost" size="icon" onClick={onClose} className="rounded-full" aria-label="Close collaboration panel">
             <X className="w-5 h-5" />
           </Button>
         </div>
@@ -225,13 +240,19 @@ export default function CollaborationPanel({ isOpen, onClose }: CollaborationPan
 
               <div className="flex gap-2">
                 <Input
+                  aria-label="Invite collaborator email"
                   type="email"
                   placeholder="Enter email address"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
                   className="flex-1 bg-background"
                 />
-                <select className="px-3 py-2 rounded-lg border border-border bg-background text-sm">
+                <select
+                  aria-label="Invite role"
+                  value={inviteRole}
+                  onChange={(event) => setInviteRole(event.target.value as "editor" | "viewer")}
+                  className="px-3 py-2 rounded-lg border border-border bg-background text-sm"
+                >
                   <option value="editor">Editor</option>
                   <option value="viewer">Viewer</option>
                 </select>
