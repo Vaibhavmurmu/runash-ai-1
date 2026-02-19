@@ -3,16 +3,11 @@ import { UserManager } from "@/lib/user-management"
 import { z } from "zod"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { ASSIGNABLE_ADMIN_ROLES, normalizeRoleForStorage } from "@/lib/rbac"
+import { recordAdminAuditLog, respondInternalServerError } from "@/lib/api/admin-route-utils"
 
 const getUsersSchema = z.object({
-  page: z
-    .string()
-    .optional()
-    .transform((val) => (val ? Number.parseInt(val) : 1)),
-  limit: z
-    .string()
-    .optional()
-    .transform((val) => (val ? Number.parseInt(val) : 20)),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(200).default(20),
   search: z.string().optional(),
   role: z.string().optional(),
   email_verified: z
@@ -45,8 +40,12 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error("Error fetching users:", error)
-    return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 })
+    return respondInternalServerError(request, error, {
+      event: "admin.users.list.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_USERS_LIST_FAILED",
+    })
   }
 }
 
@@ -69,13 +68,37 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const validatedBody = createUserSchema.parse(body)
 
+    const storedRole = normalizeRoleForStorage(validatedBody.role)
+    const createdUser = await UserManager.createUser(
+      {
+        name: validatedBody.name,
+        username: validatedBody.username,
+        email: validatedBody.email,
+        role: storedRole,
+      },
+      auth.userId,
+    )
+
+    await recordAdminAuditLog({
+      actorUserId: auth.userId,
+      action: "user.created",
+      entityType: "user",
+      entityId: createdUser.id,
+      metadata: { requestedRole: validatedBody.role, storedRole },
+    })
+
     return NextResponse.json({
       message: "User created successfully",
+      user: createdUser,
       requestedRole: validatedBody.role,
-      storedRole: normalizeRoleForStorage(validatedBody.role),
+      storedRole,
     })
   } catch (error) {
-    console.error("Error creating user:", error)
-    return NextResponse.json({ error: "Failed to create user" }, { status: 500 })
+    return respondInternalServerError(request, error, {
+      event: "admin.users.create.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_USER_CREATE_FAILED",
+    })
   }
 }

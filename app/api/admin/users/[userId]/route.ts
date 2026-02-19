@@ -3,6 +3,7 @@ import { UserManager } from "@/lib/user-management"
 import { z } from "zod"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { ASSIGNABLE_ADMIN_ROLES, normalizeRoleForStorage } from "@/lib/rbac"
+import { recordAdminAuditLog, respondInternalServerError } from "@/lib/api/admin-route-utils"
 
 const updateUserSchema = z.object({
   name: z.string().optional(),
@@ -15,6 +16,8 @@ const updateUserSchema = z.object({
   avatar_url: z.string().url().optional(),
 })
 
+const userIdSchema = z.coerce.number().int().positive()
+
 export async function GET(request: NextRequest, { params }: { params: { userId: string } }) {
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:read"],
@@ -23,7 +26,7 @@ export async function GET(request: NextRequest, { params }: { params: { userId: 
   if (!auth.success) return auth.response
 
   try {
-    const userId = Number.parseInt(params.userId)
+    const userId = userIdSchema.parse(params.userId)
     const user = await UserManager.getUserById(userId)
 
     if (!user) {
@@ -32,8 +35,12 @@ export async function GET(request: NextRequest, { params }: { params: { userId: 
 
     return NextResponse.json(user)
   } catch (error) {
-    console.error("Error fetching user:", error)
-    return NextResponse.json({ error: "Failed to fetch user" }, { status: 500 })
+    return respondInternalServerError(request, error, {
+      event: "admin.users.read.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_USER_READ_FAILED",
+    })
   }
 }
 
@@ -45,7 +52,7 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
   if (!auth.success) return auth.response
 
   try {
-    const userId = Number.parseInt(params.userId)
+    const userId = userIdSchema.parse(params.userId)
     const body = await request.json()
     const validatedData = updateUserSchema.parse(body)
     const normalizedData = {
@@ -55,27 +62,50 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
 
     const updatedUser = await UserManager.updateUser(userId, normalizedData, auth.userId)
 
+    await recordAdminAuditLog({
+      actorUserId: auth.userId,
+      action: "user.updated",
+      entityType: "user",
+      entityId: userId,
+      metadata: { fields: Object.keys(validatedData) },
+    })
+
     return NextResponse.json(updatedUser)
   } catch (error) {
-    console.error("Error updating user:", error)
-    return NextResponse.json({ error: "Failed to update user" }, { status: 500 })
+    return respondInternalServerError(request, error, {
+      event: "admin.users.update.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_USER_UPDATE_FAILED",
+    })
   }
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: { userId: string } }) {
   const auth = await requireAdminAuthorization(request, {
-    requiredPermissions: ["users:delete"],
+    requiredPermissions: ["users:delete", "system:control"],
     auditEvent: "admin.users.delete",
   })
   if (!auth.success) return auth.response
 
   try {
-    const userId = Number.parseInt(params.userId)
+    const userId = userIdSchema.parse(params.userId)
     await UserManager.deleteUser(userId, auth.userId)
+
+    await recordAdminAuditLog({
+      actorUserId: auth.userId,
+      action: "user.deleted",
+      entityType: "user",
+      entityId: userId,
+    })
 
     return NextResponse.json({ message: "User deleted successfully" })
   } catch (error) {
-    console.error("Error deleting user:", error)
-    return NextResponse.json({ error: "Failed to delete user" }, { status: 500 })
+    return respondInternalServerError(request, error, {
+      event: "admin.users.delete.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_USER_DELETE_FAILED",
+    })
   }
 }

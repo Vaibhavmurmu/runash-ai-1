@@ -14,12 +14,15 @@ import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
 import { signIn } from "next-auth/react"
+import { PhoneOtpVerification } from "@/components/auth/phone-otp-verification"
+import { PasswordStrengthMeter } from "@/components/auth/password-strength-meter"
 
 export function RegisterForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState(false)
+  const [phoneVerification, setPhoneVerification] = useState({ verified: false, phoneNumber: "" })
   const [formData, setFormData] = useState({
     name: "",
     username: "",
@@ -52,6 +55,7 @@ export function RegisterForm() {
           username: formData.username,
           email: formData.email,
           password: formData.password,
+          phone: phoneVerification.verified ? phoneVerification.phoneNumber : undefined,
         }),
       })
 
@@ -221,10 +225,10 @@ export function RegisterForm() {
                   <span className="sr-only">{showPassword ? "Hide password" : "Show password"}</span>
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Must be at least 8 characters with uppercase, lowercase, number, and special character
-              </p>
+              <PasswordStrengthMeter password={formData.password} />
             </div>
+
+            <PhoneOtpVerification purpose="registration" onVerifiedChange={setPhoneVerification} />
 
             <div className="flex items-start space-x-2">
               <Checkbox

@@ -157,6 +157,16 @@ Set these environment variables to enable live product web search providers:
 - `RUNASH_MCP_SEARCH_ENDPOINT` for custom MCP-compatible search endpoint
 - `RUNASH_MCP_SEARCH_TOKEN` optional bearer token for MCP endpoint auth
 
+### Email delivery safety flags
+Use these env vars in development/staging to prevent accidental live sends:
+
+- `EMAIL_SAFE_MODE=true|false`: enables safety policy checks before provider send calls.
+- `EMAIL_TEST_RECIPIENTS=comma,separated,list`: allowlist used when safe mode is on.
+- `EMAIL_DRY_RUN=true|false`: skips provider delivery and records simulated/pending tracking.
+- `EMAIL_SAFE_SINK_RECIPIENT=qa-inbox@example.com` (optional): rewrites blocked recipients to a sink inbox instead of returning a safety-blocked error.
+
+When safety mode blocks a send in API handlers that surface policy errors, the response uses code `EMAIL_SAFETY_BLOCKED`.
+
 ## Validation commands
 ```bash
 npm run lint

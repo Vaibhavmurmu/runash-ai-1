@@ -1,18 +1,20 @@
 import { type NextRequest } from "next/server"
 import { createUser, generateEmailVerificationToken } from "@/lib/auth-utils"
-import { neon } from "@neondatabase/serverless"
 import { registerSchema } from "@/lib/validations/auth"
 import { rateLimit } from "@/lib/rate-limit"
 import { sendVerificationEmail } from "@/lib/email"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { logApiRouteError } from "@/lib/api/logging"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { AUTH_ENDPOINT_RATE_LIMITS } from "@/lib/auth-security-config"
+import { recordAuthMetric } from "@/lib/auth-observability"
+import { sql } from "@/lib/db"
+import { applyAuthCaptchaMiddleware } from "@/lib/auth/captcha-middleware"
 
 export async function POST(request: NextRequest) {
   try {
-    const rateLimitResult = await rateLimit(request, "register", 5, 900) // 5 attempts per 15 minutes
+    const rateLimitResult = await rateLimit(request, "register", AUTH_ENDPOINT_RATE_LIMITS.register.limit, AUTH_ENDPOINT_RATE_LIMITS.register.windowMs)
     if (!rateLimitResult.success) {
+      recordAuthMetric("auth.rate_limited", { endpoint: "register" })
       return respondError(
         request,
         {
@@ -24,6 +26,16 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
+
+    const captchaFailure = await applyAuthCaptchaMiddleware(request, {
+      endpoint: "register",
+      action: "sign-up",
+      body,
+      identifier: typeof body?.email === "string" ? body.email : undefined,
+    })
+    if (captchaFailure) {
+      return captchaFailure
+    }
 
     const validationResult = registerSchema.safeParse(body)
     if (!validationResult.success) {
@@ -98,6 +110,7 @@ export async function POST(request: NextRequest) {
       },
     )
   } catch (error) {
+    recordAuthMetric("auth.suspicious_activity", { endpoint: "register", reason: "error" })
     logApiRouteError(request, "auth.register.failed", error, { errorCode: "AUTH_REGISTER_FAILED" })
     return respondError(
       request,

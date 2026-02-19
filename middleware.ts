@@ -1,12 +1,84 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { logApiEvent } from "@/lib/api/logging"
+import { getAuthEndpointRateLimit } from "@/lib/auth-security-config"
+import { recordAuthMetric } from "@/lib/auth-observability"
 
-function hasAuthSessionCookie(request: NextRequest): boolean {
-  return Boolean(
-    request.cookies.get("better-auth.session-token")?.value ||
-      request.cookies.get("__Secure-better-auth.session-token")?.value,
-  )
+const publicRoutes = [
+  "/",
+  "/login",
+  "/signup",
+  "/get-started",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+  "/about",
+  "/features",
+  "/pricing",
+  "/contact",
+  "/blog",
+  "/careers",
+  "/press",
+  "/support",
+  "/tutorials",
+  "/integrations",
+  "/privacy",
+  "/terms",
+  "/cookies",
+  "/roadmap",
+  "/status",
+  "/creator",
+  "/business",
+  "/partners",
+  "/changelog",
+  "/forum",
+  "/community",
+  "/pro",
+  "/enterprise",
+  "/ai-overview",
+  "/models",
+  "/company",
+  "/faq",
+  "/docs",
+  "/live",
+] as const
+
+const publicApiRoutes = [
+  "/api/auth",
+  "/api/turn-credentials",
+  "/api/users/search", // Public user search
+] as const
+
+function resolveAuthDecision(pathname: string) {
+  const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + "/"))
+  const isPublicApiRoute = publicApiRoutes.some((route) => pathname.startsWith(route))
+  const isAuthPage = pathname === "/login" || pathname === "/signup" || pathname === "/get-started"
+
+  return {
+    isAuthPage,
+    requiresSessionValidation: !isPublicApiRoute && (!isPublicRoute || isAuthPage),
+  }
+}
+
+async function hasValidAuthSession(request: NextRequest): Promise<boolean> {
+  try {
+    const sessionResponse = await fetch(new URL("/api/auth/get-session", request.url), {
+      method: "GET",
+      headers: {
+        cookie: request.headers.get("cookie") ?? "",
+      },
+      cache: "no-store",
+    })
+
+    if (!sessionResponse.ok) {
+      return false
+    }
+
+    const sessionPayload = await sessionResponse.json()
+    return Boolean(sessionPayload?.user && sessionPayload?.session)
+  } catch {
+    return false
+  }
 }
 
 // Security headers
@@ -60,6 +132,7 @@ function checkRateLimit(request: NextRequest, identifier: string, limit: number,
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+  const { isAuthPage, requiresSessionValidation } = resolveAuthDecision(pathname)
   const response = NextResponse.next()
 
   // Add security headers to all responses
@@ -87,35 +160,42 @@ export async function middleware(request: NextRequest) {
 
   // Rate limiting for sensitive endpoints
   if (pathname.startsWith("/api/auth/")) {
-    const authEndpoint = pathname.split("/").pop()
-    let limit = 10 // default
-    let windowMs = 15 * 60 * 1000 // 15 minutes
-
-    switch (authEndpoint) {
-      case "register":
-        limit = 5
-        windowMs = 15 * 60 * 1000 // 5 attempts per 15 minutes
-        break
-      case "forgot-password":
-        limit = 3
-        windowMs = 15 * 60 * 1000 // 3 attempts per 15 minutes
-        break
-      case "reset-password":
-        limit = 5
-        windowMs = 15 * 60 * 1000 // 5 attempts per 15 minutes
-        break
-      case "verify-email":
-        limit = 10
-        windowMs = 60 * 60 * 1000 // 10 attempts per hour
-        break
-    }
+    const authEndpoint = pathname.replace(/^\/api\/auth\//, "")
+    const { limit, windowMs } = getAuthEndpointRateLimit(pathname)
 
     if (!checkRateLimit(request, `auth-${authEndpoint}`, limit, windowMs)) {
+      recordAuthMetric("auth.rate_limited", { endpoint: authEndpoint })
       return new NextResponse(JSON.stringify({ message: "Too many requests. Please try again later." }), {
         status: 429,
         headers: {
           "Content-Type": "application/json",
-          "Retry-After": "900", // 15 minutes
+          "Retry-After": String(Math.max(1, Math.ceil(windowMs / 1000))),
+        },
+      })
+    }
+  }
+
+  if (pathname.startsWith("/api/admin")) {
+    if (!checkRateLimit(request, "admin-sensitive", 40, 5 * 60 * 1000)) {
+      recordAuthMetric("auth.rate_limited", { endpoint: "admin-sensitive" })
+      return new NextResponse(JSON.stringify({ message: "Admin API rate limit exceeded" }), {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "Retry-After": "300",
+        },
+      })
+    }
+  }
+
+  if (pathname === "/api/settings/actions/regenerate-api-key" || pathname === "/api/settings/actions/revoke-sessions") {
+    if (!checkRateLimit(request, "settings-sensitive", 10, 15 * 60 * 1000)) {
+      recordAuthMetric("auth.rate_limited", { endpoint: "settings-sensitive" })
+      return new NextResponse(JSON.stringify({ message: "Sensitive action rate limit exceeded" }), {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "Retry-After": "900",
         },
       })
     }
@@ -135,63 +215,15 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  const isAuthenticated = hasAuthSessionCookie(request)
+  if (!requiresSessionValidation) {
+    return response
+  }
 
-  // Public routes that don't require authentication
-  const publicRoutes = [
-    "/",
-    "/login",
-    "/signup",
-    "/get-started",
-    "/forgot-password",
-    "/reset-password",
-    "/verify-email",
-    "/about",
-    "/features",
-    "/pricing",
-    "/contact",
-    "/blog",
-    "/careers",
-    "/press",
-    "/support",
-    "/tutorials",
-    "/integrations",
-    "/privacy",
-    "/terms",
-    "/cookies",
-    "/roadmap",
-    "/status",
-    "/creator",
-    "/business",
-    "/partners",
-    "/changelog",
-    "/forum",
-    "/community",
-    "/pro",
-    "/enterprise",
-    "/ai-overview",
-    "/models",
-    "/company",
-    "/faq",
-    "/docs",
-    "/live",
-  ]
+  const isAuthenticated = await hasValidAuthSession(request)
 
-  // API routes that don't require authentication
-  const publicApiRoutes = [
-    "/api/auth",
-    "/api/turn-credentials",
-    "/api/users/search", // Public user search
-  ]
-
-  // Check if the route is public
-  const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + "/"))
-
-  const isPublicApiRoute = publicApiRoutes.some((route) => pathname.startsWith(route))
-
-  if (isPublicRoute || isPublicApiRoute) {
-    // Redirect authenticated users away from auth pages
-    if (isAuthenticated && (pathname === "/login" || pathname === "/signup" || pathname === "/get-started")) {
+  // Redirect authenticated users away from auth pages
+  if (isAuthPage) {
+    if (isAuthenticated) {
       return NextResponse.redirect(new URL("/dashboard", request.url))
     }
     return response
@@ -199,6 +231,7 @@ export async function middleware(request: NextRequest) {
 
   // Check authentication for protected routes
   if (!isAuthenticated) {
+    recordAuthMetric("auth.login.failed", { endpoint: pathname, reason: "missing_or_invalid_session" })
     if (pathname.startsWith("/api/")) {
       return new NextResponse(JSON.stringify({ message: "Unauthorized" }), {
         status: 401,
@@ -210,6 +243,7 @@ export async function middleware(request: NextRequest) {
 
   // Log security events for audit
   if (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) {
+    recordAuthMetric("auth.login.success", { endpoint: pathname.startsWith("/api/") ? "admin_api" : "admin_ui" })
     logApiEvent("info", "security.admin_access", {
       requestId: request.headers.get("x-request-id") ?? crypto.randomUUID(),
       route: pathname,

@@ -25,6 +25,37 @@ import { Shield, Users, AlertTriangle, Activity, Globe, TrendingUp, TrendingDown
 import { toast } from "@/hooks/use-toast"
 import type { AuthAnalyticsData, AuthEvent } from "@/lib/auth-analytics"
 
+type AuthSecurityHealthMetrics = {
+  windowMinutes: number
+  counters: {
+    failedAuth: number
+    forbiddenAccess: number
+    sessionRevokes: number
+  }
+  previousWindow: {
+    failedAuth: number
+    forbiddenAccess: number
+    sessionRevokes: number
+  }
+  spikes: {
+    failedAuth: number
+    forbiddenAccess: number
+    sessionRevokes: number
+  }
+  thresholds: {
+    failedAuth: number
+    forbiddenAccess: number
+    sessionRevokes: number
+    spikePercent: number
+  }
+  alerts: Array<{
+    metric: string
+    severity: "normal" | "medium" | "high"
+    triggered: boolean
+    reason: string
+  }>
+}
+
 export default function AuthAnalyticsDashboard() {
   const [analyticsData, setAnalyticsData] = useState<AuthAnalyticsData | null>(null)
   const [recentEvents, setRecentEvents] = useState<AuthEvent[]>([])
@@ -34,10 +65,12 @@ export default function AuthAnalyticsDashboard() {
     end: new Date().toISOString().split("T")[0],
   })
   const [autoRefresh, setAutoRefresh] = useState(false)
+  const [securityHealth, setSecurityHealth] = useState<AuthSecurityHealthMetrics | null>(null)
 
   useEffect(() => {
     fetchAnalytics()
     fetchRecentEvents()
+    fetchSecurityHealth()
   }, [dateRange])
 
   useEffect(() => {
@@ -46,6 +79,7 @@ export default function AuthAnalyticsDashboard() {
       interval = setInterval(() => {
         fetchAnalytics()
         fetchRecentEvents()
+        fetchSecurityHealth()
       }, 30000) // Refresh every 30 seconds
     }
     return () => {
@@ -92,6 +126,19 @@ export default function AuthAnalyticsDashboard() {
       }
     } catch (error) {
       console.error("Failed to fetch recent events:", error)
+    }
+  }
+
+  const fetchSecurityHealth = async () => {
+    try {
+      const response = await fetch("/api/admin/analytics/auth/metrics?windowMinutes=60")
+      const data = await response.json()
+
+      if (response.ok) {
+        setSecurityHealth(data.metrics)
+      }
+    } catch (error) {
+      console.error("Failed to fetch security health:", error)
     }
   }
 
@@ -163,7 +210,15 @@ export default function AuthAnalyticsDashboard() {
             <RefreshCw className={`h-4 w-4 mr-2 ${autoRefresh ? "animate-spin" : ""}`} />
             {autoRefresh ? "Auto Refresh On" : "Auto Refresh Off"}
           </Button>
-          <Button onClick={fetchAnalytics} variant="outline" size="sm">
+          <Button
+            onClick={() => {
+              fetchAnalytics()
+              fetchRecentEvents()
+              fetchSecurityHealth()
+            }}
+            variant="outline"
+            size="sm"
+          >
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
@@ -229,6 +284,66 @@ export default function AuthAnalyticsDashboard() {
       </div>
 
       {/* Main Analytics */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Auth & Security Health Monitoring</CardTitle>
+          <CardDescription>
+            Failed auth, forbidden access, and session revoke telemetry with spike alerts (60-minute window)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {securityHealth ? (
+            <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-lg border p-4">
+                  <div className="text-sm text-muted-foreground">Failed Auth</div>
+                  <div className="text-2xl font-semibold">{securityHealth.counters.failedAuth}</div>
+                  <div className="text-xs text-muted-foreground">
+                    Spike: {securityHealth.spikes.failedAuth}% • Threshold: {securityHealth.thresholds.failedAuth}
+                  </div>
+                </div>
+                <div className="rounded-lg border p-4">
+                  <div className="text-sm text-muted-foreground">Forbidden Access</div>
+                  <div className="text-2xl font-semibold">{securityHealth.counters.forbiddenAccess}</div>
+                  <div className="text-xs text-muted-foreground">
+                    Spike: {securityHealth.spikes.forbiddenAccess}% • Threshold: {securityHealth.thresholds.forbiddenAccess}
+                  </div>
+                </div>
+                <div className="rounded-lg border p-4">
+                  <div className="text-sm text-muted-foreground">Session Revokes</div>
+                  <div className="text-2xl font-semibold">{securityHealth.counters.sessionRevokes}</div>
+                  <div className="text-xs text-muted-foreground">
+                    Spike: {securityHealth.spikes.sessionRevokes}% • Threshold: {securityHealth.thresholds.sessionRevokes}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Active Alerts</div>
+                {securityHealth.alerts.filter((alert) => alert.triggered).length === 0 ? (
+                  <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
+                    No suspicious spikes detected.
+                  </div>
+                ) : (
+                  securityHealth.alerts
+                    .filter((alert) => alert.triggered)
+                    .map((alert) => (
+                      <div
+                        key={alert.metric}
+                        className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-900 dark:border-yellow-900 dark:bg-yellow-950 dark:text-yellow-100"
+                      >
+                        <span className="font-medium">{alert.metric}:</span> {alert.reason.replaceAll("_", " ")}
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Loading security health metrics…</p>
+          )}
+        </CardContent>
+      </Card>
+
       <Tabs defaultValue="overview" className="space-y-4">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>

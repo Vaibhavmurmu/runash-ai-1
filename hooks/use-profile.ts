@@ -1,11 +1,11 @@
 "use client"
 
-import { useSession } from "next-auth/react"
+import { useAuthSession } from "@/lib/auth/access-client"
 import { useEffect, useState } from "react"
 import type { UserProfile } from "@/lib/profile-utils"
 
 export function useProfile(username?: string) {
-  const { data: session } = useSession()
+  const { data: session } = useAuthSession()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

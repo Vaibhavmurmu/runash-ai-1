@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Eye, EyeOff, CheckCircle, XCircle, ArrowLeft, Shield, Lock } from "lucide-react"
+import { PasswordStrengthMeter } from "@/components/auth/password-strength-meter"
 
 function ResetPasswordForm() {
   const [password, setPassword] = useState("")
@@ -191,6 +192,8 @@ function ResetPasswordForm() {
                   </button>
                 </div>
               </div>
+
+              <PasswordStrengthMeter password={password} />
 
               {/* Password Requirements */}
               <div className="space-y-2">

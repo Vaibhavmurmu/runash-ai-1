@@ -157,6 +157,34 @@ export class UserManager {
     }
   }
 
+
+  static async createUser(input: {
+    name: string
+    username?: string
+    email: string
+    role: string
+  }, adminId: number): Promise<UserWithAdmin> {
+    const result = await sql(
+      `INSERT INTO users (name, username, email, role, email_verified, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, false, NOW(), NOW())
+       RETURNING id`,
+      [input.name, input.username ?? null, input.email, input.role],
+    )
+
+    const createdId = Number(result[0]?.id)
+
+    await this.logActivity(adminId, "create_user", "user", createdId, {
+      email: input.email,
+      role: input.role,
+    })
+
+    const user = await this.getUserById(createdId)
+    if (!user) {
+      throw new Error("Created user could not be loaded")
+    }
+
+    return user
+  }
   static async getUserById(id: number): Promise<UserWithAdmin | null> {
     const query = `
       SELECT 

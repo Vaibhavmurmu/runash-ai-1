@@ -26,6 +26,11 @@ const updateSubscriptionSchema = z
   })
   .strict()
 
+function toNumericUserId(userId: string) {
+  const parsed = Number(userId)
+  return Number.isSafeInteger(parsed) ? parsed : undefined
+}
+
 function buildStripePolicyContext(request: NextRequest, customerRegion?: string) {
   const edgeRouting = resolveEdgeRoutingPolicy({
     merchantRegion: process.env.RUNASH_MERCHANT_REGION,
@@ -197,7 +202,7 @@ export async function POST(request: NextRequest) {
     await persistTaxComputation({
       sourceType: "subscription",
       sourceId: stripeSubscription.id,
-      userId: Number(sessionUser.userId),
+      userId: toNumericUserId(sessionUser.userId),
       currency: String(plan[0].currency || "USD").toUpperCase(),
       computation: taxComputation,
     })

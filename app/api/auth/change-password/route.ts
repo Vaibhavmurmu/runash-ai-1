@@ -4,6 +4,9 @@ import { rateLimit } from "@/lib/rate-limit"
 import { z } from "zod"
 import { logApiRouteError } from "@/lib/api/logging"
 import { getServerAuthSession } from "@/lib/auth/session"
+import { AUTH_ENDPOINT_RATE_LIMITS } from "@/lib/auth-security-config"
+import { recordAuthMetric } from "@/lib/auth-observability"
+import { attachSessionRevocationCookies } from "@/lib/auth/session-hardening"
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required"),
@@ -25,8 +28,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Rate limiting
-    const rateLimitResult = await rateLimit(request, "change-password", 5, 900) // 5 attempts per 15 minutes
+    const rateLimitResult = await rateLimit(
+      request,
+      "change-password",
+      AUTH_ENDPOINT_RATE_LIMITS["change-password"].limit,
+      AUTH_ENDPOINT_RATE_LIMITS["change-password"].windowMs,
+    )
     if (!rateLimitResult.success) {
+      recordAuthMetric("auth.rate_limited", { endpoint: "change-password" })
       return NextResponse.json(
         { message: "Too many password change attempts. Please try again later." },
         { status: 429 },
@@ -50,8 +59,9 @@ export async function POST(request: NextRequest) {
 
     await changePassword(Number.parseInt(session.user.id), currentPassword, newPassword)
 
-    return NextResponse.json({ message: "Password changed successfully" })
+    return attachSessionRevocationCookies(NextResponse.json({ message: "Password changed successfully" }))
   } catch (error) {
+    recordAuthMetric("auth.suspicious_activity", { endpoint: "change-password", reason: "error" })
     logApiRouteError(request, "auth.change_password.failed", error, { errorCode: "AUTH_CHANGE_PASSWORD_FAILED" })
 
     if (error instanceof Error && error.message === "Invalid current password") {

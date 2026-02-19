@@ -195,6 +195,14 @@ Structured API logs include:
 
 Sensitive payload fields in auth/payment/chat context are redacted before logging, including keys such as `password`, `token`, `secret`, `authorization`, `cookie`, `card`, `cvv`, `payment`, `otp`, `message`, `content`, and `prompt`.
 
+## Admin Email Broadcast Queue (`/api/admin/email-broadcasts/*`)
+
+- `POST /api/admin/email-broadcasts` and `PUT /api/admin/email-broadcasts/:id` now enqueue send jobs automatically when `scheduled_at` is provided.
+- `POST /api/admin/email-broadcasts/:id/send` remains a manual trigger, but it now writes into the same queue path as scheduled jobs.
+- Queue workers can be run through `POST /api/admin/email-broadcasts/worker`.
+- Delivery is processed in batches with retry/backoff and idempotency key headers (`X-Idempotency-Key`) to reduce duplicate sends.
+- Realtime progress is emitted through `/api/email/realtime` as `broadcast_progress` events in the SSE `event` envelope.
+
 ## Agent APIs (`/api/agents/*`)
 
 ### Payment Protocol Orchestration (`v1`)
@@ -502,3 +510,66 @@ Returns paginated, customer-owned invoices and aggregated line items.
 Legacy paths remain active as aliases to v1 handlers:
 - `/api/payment/*` → `/api/v1/payment/*`
 - `/api/billing/*` → `/api/v1/billing/*`
+
+
+## Admin API contracts (`/api/admin/*`)
+
+### Standardized auth/system error responses
+
+Admin routes that rely on `requireAdminAuthorization` and `respondInternalServerError` now share the same 401/403/500 response contract:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Unauthorized"
+  },
+  "requestId": "req_123"
+}
+```
+
+`error.code` values:
+- `UNAUTHORIZED` for 401
+- `FORBIDDEN` for 403
+- `INTERNAL_ERROR` for 500
+
+### Monitoring list endpoints
+
+The following list endpoints support pagination with `page` and `limit`, plus filtering/search:
+
+- `GET /api/admin/audit-logs`
+  - filters: `entityType`, `action`, `actorUserId`
+  - search: `search` (matches action/entity type/entity id)
+- `GET /api/admin/sessions`
+  - filters: `userId`, `isActive`, `deviceName`
+  - search: `search` (matches device id/name, user agent, IP)
+- `GET /api/admin/security/events`
+  - filters: `action`, `adminId`
+  - search: `search` (matches action, target id, details)
+
+### Operator actions endpoint
+
+`POST /api/admin/operations` supports operational actions for operator/admin workflows:
+
+Request body:
+
+```json
+{
+  "action": "cache.clear"
+}
+```
+
+Allowed actions:
+- `cache.clear`
+- `jobs.cleanup`
+- `service.restart_hook` (uses `restartUrl` or `OPERATIONS_RESTART_HOOK_URL`)
+
+Success response:
+
+```json
+{
+  "success": true,
+  "action": "cache.clear"
+}
+```

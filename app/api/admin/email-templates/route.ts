@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { EmailTemplateManager } from "@/lib/email-templates"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
+import { FilterValidationError, normalizePagination, parseOptionalBoolean, parseOptionalInteger } from "@/lib/email-filter-utils"
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdminAuthorization(request, {
@@ -12,10 +13,13 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const category = searchParams.get("category") || undefined
-    const is_active = searchParams.get("is_active") ? searchParams.get("is_active") === "true" : undefined
+    const is_active = parseOptionalBoolean(searchParams.get("is_active"), "is_active")
     const search = searchParams.get("search") || undefined
-    const limit = searchParams.get("limit") ? Number.parseInt(searchParams.get("limit")!) : 20
-    const offset = searchParams.get("offset") ? Number.parseInt(searchParams.get("offset")!) : 0
+    const { limit, offset } = normalizePagination(
+      parseOptionalInteger(searchParams.get("limit"), "limit"),
+      parseOptionalInteger(searchParams.get("offset"), "offset"),
+      { defaultLimit: 20, maxLimit: 100 },
+    )
 
     const result = await EmailTemplateManager.getTemplates({ category, is_active, search, limit, offset })
 
@@ -26,6 +30,10 @@ export async function GET(request: NextRequest) {
       pagination: { limit, offset, hasMore: offset + limit < result.total },
     })
   } catch (error) {
+    if (error instanceof FilterValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
     console.error("Error fetching email templates:", error)
     return NextResponse.json({ error: "Failed to fetch email templates" }, { status: 500 })
   }

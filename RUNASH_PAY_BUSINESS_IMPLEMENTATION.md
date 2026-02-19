@@ -1,5 +1,43 @@
 # RunAsh Pay - Business & Startup Implementation Plan
 
+## 2026-02 Auth Transition Dependency Note
+
+- Payment and business APIs continue to rely on stable auth identity/session contracts during the Better Auth single-runtime migration.
+- Existing payment endpoint field names and API signatures remain unchanged in this phase.
+- Production cutover must be gated on auth compatibility checks for existing users/cookies/tokens and a tested rollback plan documented in `RUNASH-AUTH.md`.
+
+
+### Auth feature-flag rollout and payment safety gates (2026-02)
+
+- Better Auth rollout for payment-adjacent traffic uses staged percentages (`10% -> 50% -> 100%`) behind `FEATURE_FLAG_USE_BETTER_AUTH_PERCENT`.
+- Promotion between stages requires stable auth/security metrics: `auth_error_rate`, `session_invalidation_rate`, `admin_403_anomaly_rate`, and `payment_auth_incident_count`.
+- Rollback trigger conditions include sustained auth failures (>2x baseline), privileged access anomalies, or any payment-flow authorization incident.
+- Rollback action is immediate hard-disable (`FEATURE_FLAG_USE_BETTER_AUTH=false`) with verification of legacy session fallback and payment access checks before resuming rollout.
+
+### Payment/Auth policy alignment additions
+
+- Account-linking posture for payment operators follows verified-identity requirements (deny-by-default for unsafe linking paths).
+- Session policy for payment operations is fail-closed and must be server-session derived.
+- RBAC model for finance/admin/operator responsibilities must include organization scope validation for customer-facing payment surfaces.
+- Incident handling for auth anomalies that may affect payment authorization must include rapid session revocation, key rotation, and documented rollback actions.
+
+### 2026-02 auth hardening compatibility update
+
+- Verified OAuth linking, sensitive-session invalidation, and stricter auth/admin throttling remain backward-compatible with existing payment API contracts.
+- No payment payload, field-name, or route signature changes are introduced by this hardening update.
+
+## Auth/RBAC architecture sync (implemented vs planned)
+
+### Implemented
+- Payment/business flows now reference the finalized Better Auth server-session architecture (`middleware.ts` -> `/api/auth/get-session` -> shared session accessors) described in `RUNASH-AUTH.md`.
+- Canonical RBAC tiers (`viewer`, `operator`, `admin`) and legacy-role compatibility mapping are the active authorization contract for payment-adjacent admin/business surfaces.
+- No payment API request/response field names, signatures, or webhook schemas changed in this documentation sync.
+- Auth/admin UX now includes severity-based confirmation prompts around role mutations, user deletion, and identity-provider change requests to reduce accidental payment-authorization impact from privileged actions.
+
+### Planned
+- Continue staged fallback retirement for legacy NextAuth compatibility reads after stability criteria are met.
+- If future payment contract changes are required, ship them as explicitly versioned migrations with rollout communication.
+
 ## Executive Summary
 
 This comprehensive guide outlines the strategy for deploying RunAsh Pay across Business and Startup segments. The implementation focuses on secure payment processing, seamless integrations, enterprise scalability, and compliance requirements specific to each user segment.
@@ -600,6 +638,10 @@ X-RateLimit-Reset: 1640000000
 - Training materials
 
 ---
+
+## Auth Gateway Dependency Note (2026-02)
+
+Payment and business APIs continue to rely on upstream authenticated session context. Middleware now verifies Better Auth session validity before allowing requests into protected routes, reducing forged-cookie bypass risk for downstream billing and analytics handlers. This change is backward compatible and does not alter payment API contracts or payload schemas.
 
 ## Compliance & Security Framework
 
@@ -1771,3 +1813,153 @@ Risk and rollback:
 - Security alignment and redaction constraints remain normative in `SECURITY.md`.
 - Keep payment rollout notes synchronized with these docs per `docs/DOC_GOVERNANCE.md`.
 
+## Reliability updates (2026-02)
+
+- Usage aggregate upserts are now null-safe for `subscription_id` by using a normalized conflict scope key.
+- Monthly usage reads now sum matching aggregate rows to avoid undercounting in environments that previously allowed multiple `NULL subscription_id` rows.
+- Rollback plan: remove the null-safe unique index and revert to the previous conflict target if downstream consumers depend on per-row fragmentation behavior.
+
+
+## Implemented vs Planned (Operational clarity update)
+
+### Implemented
+- Admin-management CRUD APIs now exist for users, roles, permissions, sessions, audit logs, and feature-flag administration.
+- Current payment/business release gates can rely on these implemented admin surfaces for role/permission governance and auditability.
+
+### Planned
+- Full Better Auth route replacement and Drizzle migration artifact rollout remain planned phases and are not prerequisites for current additive payment API flows.
+
+## Phased rollout + rollback policy for auth-dependent business payment flows (2026-02)
+
+### Phase gates
+- **Internal:** business/admin operators only.
+- **10%:** controlled cohort with hourly KPI review.
+- **50%:** maintain stable auth/payment KPIs for at least 24h before expansion.
+- **100%:** only after no Sev1/Sev2 payment-auth incidents in the previous 48h.
+
+### Required KPI checks before each phase
+- Auth error rate remains within baseline control band.
+- Session invalidation rate does not breach 3% threshold.
+- Admin 403 anomaly rate remains below 1%.
+- Payment/auth incident count is zero for release-blocking severities.
+
+### Compatibility and rollback
+- Backward compatibility remains required: no payment payload field rename/removal in this rollout.
+- Rollback path: disable Better Auth flag, preserve existing payment API signatures, and revert only auth gating behavior if anomalies persist.
+
+## Security & reliability addendum — auth/payment observability
+
+To preserve payment and auth reliability under the active service override:
+
+- Payment/auth-adjacent audit trails now rely on structured event logging with sensitive-field redaction before persistence.
+- Monitoring dashboards should consume `GET /api/admin/analytics/security` and `GET /api/admin/analytics/auth` for auth failure and privileged-operation trends that can impact checkout or account access continuity.
+- Raw secrets/credentials/tokens/payment artifacts must never be logged; only sanitized metadata is permitted in audit context.
+
+### Risk and rollback note
+- **Risk:** Low. Changes are additive telemetry + sanitization and preserve existing API contracts.
+- **Rollback:** Disable consumption of new dashboard fields/endpoints and revert structured event emitters if any unforeseen noise/volume issue occurs.
+
+## 2026-02 canonical admin role baseline compatibility note
+
+- Payment-auth-adjacent admin routes now align to canonical RBAC baselines: `viewer` (dashboard read-only), `operator` (restart/cache-clear operational controls), and `admin` (full CRUD/system management).
+- Legacy role values remain accepted for compatibility, but authorization capability evaluation maps them to the baseline matrix to prevent lockouts during migration.
+- Role assignment APIs normalize stored role values to canonical baseline roles, while preserving existing payment API signatures and payload contracts.
+- **Risk:** Low to medium (authorization tightening can surface previously over-permissive access patterns).
+- **Rollback:** Revert canonical role normalization and restore legacy role persistence/mapping paths while keeping payment contract schemas unchanged.
+
+
+## 2026-02 admin governance endpoint reliability note
+
+- Payment-adjacent admin governance APIs now include stricter schema validation and server-side pagination/filtering for users/roles/permissions/sessions/audit/security event datasets.
+- Auth/session support endpoints now include explicit `GET /api/auth/get-session` and `POST /api/auth/refresh` compatibility handlers to reduce rollout mismatch risk for middleware/session checks.
+- Backward compatibility: payment API contracts and field names are unchanged; these are additive auth/admin reliability controls only.
+- Rollback: revert new auth/admin route handlers and RBAC storage table reads while preserving existing payment payload contracts.
+
+## 2026-02 auth observability alignment note (payment reliability)
+
+- Payment contract fields and API signatures remain unchanged.
+- Auth/admin telemetry used by payment-adjacent operations now adds:
+  - structured forbidden-action + session-invalidation counters,
+  - suspicious-login and permission-abuse alert categories,
+  - role-scoped monitoring payload visibility for operational dashboards.
+- Sensitive payment/auth payload elements continue to be redacted prior to logging/audit persistence.
+- Rollback: revert observability emitter changes while keeping payment checkout/refund request/response contracts untouched.
+
+## Auth-related payment impact, risk, and rollback (final)
+
+### Impact summary
+- Business and startup payment flows remain auth-gated by server-session validation and RBAC permission checks.
+- No payment contract changes: existing endpoint signatures and field names remain backward compatible.
+- Auth/RBAC hardening affects access control behavior and rollout operations, not payment payload structure.
+
+### Risk and mitigation summary
+- **Risk:** rollout errors can deny valid operators/admins from payment surfaces.
+- **Risk:** RBAC route-policy mistakes can cause authorization drift on finance/admin operations.
+- **Mitigation:** percentage-gated rollout, metric-based promotion gates, and immediate rollback switch.
+
+### Phased rollout checklist
+- [ ] **Internal-only:** validate auth/session/RBAC behavior for payment create, confirm, refund, billing, and portal actions.
+- [ ] **10% rollout:** enable `FEATURE_FLAG_USE_BETTER_AUTH_PERCENT=10` and monitor for one business cycle.
+- [ ] **50% rollout:** promote only if auth and payment authorization metrics stay healthy.
+- [ ] **Full cutover:** set `FEATURE_FLAG_USE_BETTER_AUTH_PERCENT=100` and keep fallback window active.
+
+### Explicit rollback triggers
+- Auth/session error rate above 2x baseline for 15+ minutes.
+- Any payment-impacting auth incident (unauthorized action or widespread authorization failure).
+- Admin/payment permission-denied anomaly rate above agreed thresholds.
+- Customer checkout/billing funnel degradation attributed to auth failures.
+
+### Rollback actions
+- Disable Better Auth rollout (`FEATURE_FLAG_USE_BETTER_AUTH=false`).
+- Confirm legacy compatibility session behavior and payment access restoration.
+- Re-run payment auth smoke tests before staged re-enable.
+
+
+## Auth/session migration note (no payment contract change)
+
+- The Better Auth migration updates only session validation helpers and client auth access utilities.
+- Payment API field names, request/response contracts, and settlement flows remain unchanged in this change set.
+- Rollback for auth compatibility is feature-flagged via `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK`; payment processing behavior is unaffected by toggling this flag.
+
+## 2026-02 identity protocol expansion impact note (payment compatibility)
+
+- Added enterprise identity capabilities (SSO provider management, SCIM provisioning, OAuth Device Grant, SIWE) to strengthen auth posture around payment-capable accounts.
+- **Payment contract impact:** none. Existing payment API field names, request/response schemas, and settlement contracts remain unchanged.
+- **Risk:** misconfigured identity providers can block operator access to payment tooling.
+- **Rollback:** disable/undo identity-provider configs at admin layer; payment APIs continue to operate with existing auth methods.
+
+## 2026-02 payment/auth linkage implementation note
+
+### Impacted flows
+- Stripe customer creation/update webhooks now attempt deterministic linkage to auth users (`user_id` metadata first, email fallback second).
+- Subscription lifecycle events (`customer.subscription.created|updated|deleted`) now persist payment-auth linkage state for monitoring and reconciliation.
+- Admin operators now have dedicated linkage health visibility at `/admin/payment-auth`.
+
+### Risk assessment
+- **Primary risk:** webhook customer records without `user_id` metadata and non-matching email can remain unlinked.
+- **Mitigation:** keep email fallback enabled, monitor stale/unlinked counts, and run replay/rollback tooling for webhook events.
+- **Security posture:** signed payload verification is enforced before Stripe event construction; no sensitive auth/payment payload fields are logged.
+
+### Rollback plan
+1. Revert webhook-to-linkage plugin wiring while preserving core webhook recording/processing.
+2. Keep additive table in place (safe to retain; does not affect existing payment API contracts).
+3. Re-run webhook replay only after verification settings are restored.
+
+### Operational checks
+- Validate admin endpoint `GET /api/admin/payment-auth/health` as part of release smoke tests.
+- Track these signals during release window:
+  - `unlinkedCustomers`
+  - `usersWithoutCustomer`
+  - `staleLinks`
+- Escalate if `unlinkedCustomers` trend increases across two consecutive webhook batches.
+
+## Auth integration note (Better Auth social expansion)
+
+Payment and subscription flows continue to rely on stable user identifiers.
+Recent auth updates added additional Better Auth social providers (Hugging Face, LinkedIn, Twitter) and shared client helpers, without changing payment API field names or webhook contract payloads.
+
+Rollback strategy:
+
+1. Disable individual social providers by removing their environment variables.
+2. Keep existing payment customer mapping based on immutable internal user IDs.
+3. Revert auth UI routes `/auth/better-signin` and `/auth/better-signup` if operational issues arise.

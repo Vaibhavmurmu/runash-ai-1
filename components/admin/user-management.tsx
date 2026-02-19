@@ -10,9 +10,11 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { CardAlertDialog } from "@/components/ui/card-alert-dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
+import { CardAlert } from "@/components/ui/card-alert"
 import { Search, Edit, Trash2, Shield, MoreHorizontal } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { toast } from "@/hooks/use-toast"
@@ -57,6 +59,8 @@ export default function UserManagement() {
   })
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [showEditDialog, setShowEditDialog] = useState(false)
+  const [deleteCandidate, setDeleteCandidate] = useState<User | null>(null)
+  const [pendingBulkAction, setPendingBulkAction] = useState<string | null>(null)
   const [userStats, setUserStats] = useState<any>(null)
 
   useEffect(() => {
@@ -145,8 +149,6 @@ export default function UserManagement() {
   }
 
   const handleDeleteUser = async (userId: number) => {
-    if (!confirm("Are you sure you want to delete this user?")) return
-
     try {
       const response = await fetch(`/api/admin/users/${userId}`, {
         method: "DELETE",
@@ -185,8 +187,10 @@ export default function UserManagement() {
       return
     }
 
-    // Implement bulk actions
-    console.log(`Bulk action: ${action} for users:`, selectedUsers)
+    toast({
+      title: "Bulk action queued",
+      description: `Action "${action}" requested for ${selectedUsers.length} users. Integrate API endpoint before release.`,
+    })
   }
 
   const getRoleBadgeColor = (role: string | null) => {
@@ -324,7 +328,7 @@ export default function UserManagement() {
               <Button size="sm" variant="outline" onClick={() => handleBulkAction("disable")}>
                 Disable
               </Button>
-              <Button size="sm" variant="outline" onClick={() => handleBulkAction("delete")}>
+              <Button size="sm" variant="outline" onClick={() => setPendingBulkAction("delete")}>
                 Delete
               </Button>
             </div>
@@ -438,7 +442,7 @@ export default function UserManagement() {
                                 <Edit className="h-4 w-4 mr-2" />
                                 Edit
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleDeleteUser(user.id)}>
+                              <DropdownMenuItem onClick={() => setDeleteCandidate(user)}>
                                 <Trash2 className="h-4 w-4 mr-2" />
                                 Delete
                               </DropdownMenuItem>
@@ -488,10 +492,60 @@ export default function UserManagement() {
             <DialogDescription>Update user information and settings</DialogDescription>
           </DialogHeader>
           {editingUser && (
-            <EditUserForm user={editingUser} onSave={handleEditUser} onCancel={() => setShowEditDialog(false)} />
+            <EditUserForm
+              user={editingUser}
+              onSave={handleEditUser}
+              onCancel={() => setShowEditDialog(false)}
+              onRoleChangeWarning={(nextRole) => {
+                toast({
+                  title: "Role update requested",
+                  description: `Changing ${editingUser.email} to ${nextRole} will alter access controls after save.`,
+                })
+              }}
+            />
           )}
         </DialogContent>
       </Dialog>
+
+      <CardAlertDialog
+        open={deleteCandidate !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteCandidate(null)
+          }
+        }}
+        severity="danger"
+        title="Confirm user deletion"
+        description={`Delete ${deleteCandidate?.email ?? "this user"}? This action is permanent and removes profile-level access.`}
+        confirmLabel="Delete user"
+        cancelLabel="Cancel"
+        confirmAriaLabel="Confirm user deletion"
+        onConfirm={() => {
+          if (deleteCandidate) {
+            void handleDeleteUser(deleteCandidate.id)
+            setDeleteCandidate(null)
+          }
+        }}
+      />
+
+      <CardAlertDialog
+        open={pendingBulkAction === "delete"}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingBulkAction(null)
+          }
+        }}
+        severity="warning"
+        title="Confirm bulk deletion"
+        description={`You are about to delete ${selectedUsers.length} selected users. Review selection and proceed only if required.`}
+        confirmLabel="Proceed"
+        cancelLabel="Cancel"
+        confirmAriaLabel="Confirm bulk user deletion"
+        onConfirm={() => {
+          void handleBulkAction("delete")
+          setPendingBulkAction(null)
+        }}
+      />
     </div>
   )
 }
@@ -500,10 +554,12 @@ function EditUserForm({
   user,
   onSave,
   onCancel,
+  onRoleChangeWarning,
 }: {
   user: User
   onSave: (data: Partial<User>) => void
   onCancel: () => void
+  onRoleChangeWarning?: (nextRole: string) => void
 }) {
   const [formData, setFormData] = useState({
     name: user.name || "",
@@ -562,6 +618,14 @@ function EditUserForm({
             <SelectItem value="super_admin">Super Admin (legacy)</SelectItem>
           </SelectContent>
         </Select>
+        {formData.role !== (user.role || "user") ? (
+          <CardAlert
+            severity="warning"
+            title="Role change is a risky action"
+            description="This update can immediately change admin and moderation permissions. Confirm policy alignment before saving."
+            className="mt-3"
+          />
+        ) : null}
       </div>
       <div>
         <Label htmlFor="bio">Bio</Label>
@@ -589,7 +653,16 @@ function EditUserForm({
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit">Save Changes</Button>
+        <Button
+          type="submit"
+          onClick={() => {
+            if (formData.role !== (user.role || "user")) {
+              onRoleChangeWarning?.(formData.role)
+            }
+          }}
+        >
+          Save Changes
+        </Button>
       </div>
     </form>
   )

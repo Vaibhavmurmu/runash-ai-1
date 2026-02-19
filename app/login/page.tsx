@@ -2,8 +2,9 @@
 
 import type React from "react"
 import Image from "next/image"
-import { useState } from "react"
-import { signIn, getSession } from "next-auth/react"
+import { useEffect, useState } from "react"
+import { signIn } from "next-auth/react"
+import { getAuthSession } from "@/lib/auth/access-client"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -14,17 +15,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Eye, EyeOff, Github, Mail, Loader2, AlertCircle } from "lucide-react"
 import ThemeToggle from "@/components/theme-toggle"
+import { PhoneOtpVerification } from "@/components/auth/phone-otp-verification"
+import { GoogleOneTap } from "@/components/auth/google-one-tap"
+import { formatLoginMethodLabel, getLastLoginMethod, setLastLoginMethod, type LoginMethod } from "@/lib/auth/last-login-method"
+import { WebAuthnRoadmapHooks } from "@/components/auth/webauthn-roadmap-hooks"
 
 export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
+  const [phoneVerified, setPhoneVerified] = useState(false)
+  const [lastLoginMethod, setLastLoginMethodState] = useState<LoginMethod>("unknown")
   const [formData, setFormData] = useState({
     email: "",
     password: "",
     rememberMe: false,
   })
   const router = useRouter()
+
+  useEffect(() => {
+    setLastLoginMethodState(getLastLoginMethod())
+  }, [])
 
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -37,6 +48,7 @@ export default function LoginPage() {
     setError("")
 
     try {
+      setLastLoginMethod("password")
       const result = await signIn("credentials", {
         email: formData.email,
         password: formData.password,
@@ -47,7 +59,7 @@ export default function LoginPage() {
         setError("Invalid email or password")
       } else {
         // Check if user has completed onboarding
-        const session = await getSession()
+        const session = await getAuthSession()
         if (session?.user) {
           router.push("/dashboard")
         }
@@ -62,6 +74,7 @@ export default function LoginPage() {
   const handleOAuthSignIn = async (provider: string) => {
     setIsLoading(true)
     try {
+      setLastLoginMethod(provider === "google" || provider === "github" ? provider : "unknown")
       await signIn(provider, { callbackUrl: "/dashboard" })
     } catch (error) {
       setError("Failed to sign in with " + provider)
@@ -168,6 +181,14 @@ export default function LoginPage() {
                   </Alert>
                 )}
 
+                {lastLoginMethod !== "unknown" ? (
+                  <Alert className="border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/20">
+                    <AlertDescription>Last login method: {formatLoginMethodLabel(lastLoginMethod)}</AlertDescription>
+                  </Alert>
+                ) : null}
+
+                <GoogleOneTap callbackUrl="/dashboard" />
+
                 {/* OAuth Buttons */}
                 <div className="space-y-3">
                   <Button
@@ -247,6 +268,11 @@ export default function LoginPage() {
                     </div>
                   </div>
 
+                  <PhoneOtpVerification purpose="login" onVerifiedChange={({ verified }) => setPhoneVerified(verified)} />
+                  {phoneVerified ? (
+                    <p className="text-xs text-green-700 dark:text-green-400">Phone verified by server challenge.</p>
+                  ) : null}
+
                   <div className="flex items-center space-x-2">
                     <Checkbox
                       id="rememberMe"
@@ -289,6 +315,7 @@ export default function LoginPage() {
             </Card>
           </div>
         </div>
+        <div className="px-6 pb-8"><div className="mx-auto max-w-md"><WebAuthnRoadmapHooks /></div></div>
       </main>
 
       {/* Footer */}

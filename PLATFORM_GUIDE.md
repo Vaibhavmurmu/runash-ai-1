@@ -482,3 +482,73 @@ All routes are under `/api/editor/**` and are authenticated per user ownership.
 ### Persistence
 
 SQL migrations for editor persistence are located in `scripts/sql/2026-02-13_create_editor_domain_tables.sql` and include ownership (`owner_id`) and timestamp tracking (`created_at`, `updated_at`) for all editor entities.
+
+
+
+## Email Delivery Safety Layer
+
+RunAsh email sends now support a safety gate before provider delivery:
+
+- `EMAIL_SAFE_MODE=true` blocks non-allowlisted recipients.
+- `EMAIL_TEST_RECIPIENTS=comma,separated,list` defines the allowlist for safe mode.
+- `EMAIL_DRY_RUN=true` skips provider sends while preserving delivery tracking in `pending` simulated state.
+- `EMAIL_SAFE_SINK_RECIPIENT` optionally rewrites non-allowlisted recipients to a sink mailbox.
+
+For API surfaces that handle safety policy exceptions, blocked sends return an explicit payload with `error: "EMAIL_SAFETY_BLOCKED"`.
+
+
+## Inbound Email Reply Automation
+
+A full inbound-reply architecture is available for provider webhooks and admin review workflows.
+
+### Endpoints
+- `POST /api/email/inbound/[provider]`: receives inbound reply payloads for `resend`, `sendgrid`, `ses`, and `generic`, verifies signatures, normalizes payloads, and persists messages/threads.
+- `GET /api/admin/email-replies`: loads the reply inbox with latest draft/review metadata and action audit trail.
+- `POST /api/admin/email-replies/[messageId]/action`: supports `save_edit`, `approve_send`, and `skip` admin actions.
+
+### Data model
+- `email_reply_threads`: groups inbound conversations and stores mapped contact/broadcast/campaign context.
+- `email_inbound_messages`: immutable normalized inbound message records.
+- `email_reply_actions`: audit log for drafted/sent/skipped/failed outcomes, including confidence and review flags.
+
+### Policy controls
+- Allow/deny auto-reply by campaign: `EMAIL_REPLY_ALLOW_CAMPAIGN_IDS`, `EMAIL_REPLY_DENY_CAMPAIGN_IDS`.
+- Allow/deny auto-reply by contact tags: `EMAIL_REPLY_ALLOW_TAGS`, `EMAIL_REPLY_DENY_TAGS`.
+- Confidence threshold fallback: `EMAIL_REPLY_CONFIDENCE_THRESHOLD`.
+- Strict safe mode: `EMAIL_REPLY_STRICT_SAFE_MODE=true` forces human review and blocks auto-replies.
+- Global toggle: `EMAIL_REPLY_AUTO_ENABLED=true` enables policy-eligible auto reply progression.
+
+### Admin UI
+- Email Management now includes a **Reply Inbox** tab with:
+  - AI draft preview/edit,
+  - approve+send and skip controls,
+  - per-thread audit trail.
+
+---
+
+## Workflow Kit Email Automation Extensions
+
+The workflow kit now supports operational email automation with auditable execution records.
+
+### Email workflow nodes
+- `email.send_broadcast`
+- `email.send_test`
+- `email.import_contacts`
+- `email.handle_inbound_reply`
+- `email.webhook_event_trigger`
+
+### Trigger model
+Workflows can now run from:
+- `manual` runs from the workflow studio
+- `schedule` runs with cron metadata (`scheduleCron`)
+- `webhook_event` runs for provider lifecycle events (`delivered`, `opened`, `bounced`, `clicked`, `inbound_reply`)
+
+### Auditability and rollback
+Each execution writes workflow and node-level audit events, including rollback entries after failed runs. This gives admins a full trace for automated email actions and post-failure remediation.
+
+### Ready-made templates
+Email automation templates are available for:
+- Welcome sequence
+- Re-engagement
+- Bounce cleanup
+- AI reply triage

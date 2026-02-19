@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createSMSOTP, verifyOTP } from "@/lib/otp"
 import { z } from "zod"
 import { logApiRouteError } from "@/lib/api/logging"
+import { applyAuthCaptchaMiddleware } from "@/lib/auth/captcha-middleware"
 
 const phoneRegex = /^\+[1-9]\d{1,14}$/
 
@@ -20,6 +21,16 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { phoneNumber, purpose } = sendSMSOTPSchema.parse(body)
+
+    const captchaFailure = await applyAuthCaptchaMiddleware(request, {
+      endpoint: "otp/sms",
+      action: "otp-send",
+      body,
+      identifier: phoneNumber,
+    })
+    if (captchaFailure) {
+      return captchaFailure
+    }
 
     const clientIP = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown"
     const userAgent = request.headers.get("user-agent") || "unknown"

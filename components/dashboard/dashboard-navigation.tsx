@@ -5,7 +5,7 @@ import type React from "react"
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useSession, signOut } from "next-auth/react"
+import { signOutWithRedirect, useAuthSession } from "@/lib/auth/access-client"
 import {
   LayoutDashboard,
   Video,
@@ -66,8 +66,8 @@ export function DashboardNavigation() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [logoAvailable, setLogoAvailable] = useState(true)
 
-  // next-auth session for real user data
-  const { data: session } = useSession()
+  // unified auth session for real user data
+  const { data: session } = useAuthSession()
   const user = session?.user
 
   const navItems = [
@@ -92,8 +92,8 @@ export function DashboardNavigation() {
 
   const handleLogout = async (closeMenu?: boolean) => {
     if (closeMenu) closeMobileMenu()
-    // signOut from next-auth, redirect to homepage
-    await signOut({ callbackUrl: "/" })
+    // sign out and redirect to homepage
+    await signOutWithRedirect("/")
   }
 
   return (

@@ -1,4 +1,5 @@
 import { neon } from "@neondatabase/serverless"
+import { normalizePagination, SafeWhereBuilder } from "@/lib/email-filter-utils"
 
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -44,44 +45,26 @@ export class EmailTemplateManager {
     } = {},
   ): Promise<{ templates: EmailTemplate[]; total: number }> {
     try {
-      let whereClause = "WHERE 1=1"
-      const params: any[] = []
-      let paramIndex = 1
+      const { limit, offset } = normalizePagination(filters.limit, filters.offset, {
+        defaultLimit: 20,
+        maxLimit: 100,
+      })
 
-      if (filters.category) {
-        whereClause += ` AND category = $${paramIndex}`
-        params.push(filters.category)
-        paramIndex++
-      }
-
-      if (filters.is_active !== undefined) {
-        whereClause += ` AND is_active = $${paramIndex}`
-        params.push(filters.is_active)
-        paramIndex++
-      }
-
-      if (filters.search) {
-        whereClause += ` AND (name ILIKE $${paramIndex} OR subject ILIKE $${paramIndex} OR description ILIKE $${paramIndex})`
-        params.push(`%${filters.search}%`)
-        paramIndex++
-      }
+      const { whereClause, params } = new SafeWhereBuilder()
+        .addEquals("category", filters.category)
+        .addEquals("is_active", filters.is_active)
+        .addAnyIlikeContains(["name", "subject", "description"], filters.search)
+        .build()
 
       // Get total count
-      const countResult = await sql`
-        SELECT COUNT(*) as total FROM email_templates ${sql.unsafe(whereClause)}
-      `
+      const countResult = await sql.query(`SELECT COUNT(*) as total FROM email_templates ${whereClause}`, params)
       const total = Number.parseInt(countResult[0].total)
 
       // Get templates with pagination
-      const limit = filters.limit || 20
-      const offset = filters.offset || 0
-
-      const templates = await sql`
-        SELECT * FROM email_templates 
-        ${sql.unsafe(whereClause)}
-        ORDER BY updated_at DESC 
-        LIMIT ${limit} OFFSET ${offset}
-      `
+      const templates = await sql.query(
+        `SELECT * FROM email_templates ${whereClause} ORDER BY updated_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset],
+      )
 
       return { templates: templates as EmailTemplate[], total }
     } catch (error) {
@@ -317,8 +300,8 @@ export class EmailTemplateManager {
 
   // Validate template variables
   static validateTemplate(
-    html: string,
-    text?: string,
+    htmlContent: string,
+    textContent?: string,
   ): {
     variables: string[]
     isValid: boolean
@@ -331,14 +314,14 @@ export class EmailTemplateManager {
 
     // Extract variables from HTML
     let match
-    while ((match = variableRegex.exec(html)) !== null) {
+    while ((match = variableRegex.exec(htmlContent)) !== null) {
       htmlVariables.add(match[1].trim())
     }
 
     // Extract variables from text if provided
-    if (text) {
+    if (textContent) {
       variableRegex.lastIndex = 0
-      while ((match = variableRegex.exec(text)) !== null) {
+      while ((match = variableRegex.exec(textContent)) !== null) {
         textVariables.add(match[1].trim())
       }
 

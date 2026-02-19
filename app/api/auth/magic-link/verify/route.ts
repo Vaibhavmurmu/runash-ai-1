@@ -3,6 +3,8 @@ import { verifyMagicLinkToken } from "@/lib/magic-link"
 import { z } from "zod"
 import { SignJWT } from "jose"
 import { logApiRouteError } from "@/lib/api/logging"
+import { setSessionCookies } from "@/lib/auth/cookies"
+import { getAuthSecret } from "@/lib/auth"
 
 const verifySchema = z.object({
   token: z.string().min(1, "Token is required"),
@@ -21,7 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create JWT session token
-    const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET!)
+    const secret = new TextEncoder().encode(getAuthSecret())
     const sessionToken = await new SignJWT({
       sub: user.id.toString(),
       email: user.email,
@@ -48,13 +50,7 @@ export async function POST(request: NextRequest) {
       { status: 200 },
     )
 
-    response.cookies.set("next-auth.session-token", sessionToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 30 * 24 * 60 * 60, // 30 days
-      path: "/",
-    })
+    setSessionCookies(response, sessionToken)
 
     return response
   } catch (error) {
