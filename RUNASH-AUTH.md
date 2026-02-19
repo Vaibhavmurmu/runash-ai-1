@@ -44,6 +44,12 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 3. Set `EMAIL_PROVIDER` explicitly per environment to avoid accidental provider switching.
 4. Keep legacy aliases only during rollout; remove after secret sync verification.
 
+## AI agents dashboard session-scoping update (2026-02)
+
+- AI agent dashboard now relies on active auth session identity and no longer uses a mock user identifier in client state.
+- Agent API client requests no longer submit mutable `userId` query/body values for self-service flows; user scope is resolved from server session.
+- AI agent create/update/delete routes reject requests attempting to override `user_id` and remain constrained to the authenticated session user unless elevated admin authorization applies.
+
 ## OpenAPI + Scalar auth docs update (2026-02)
 
 - Added generated OpenAPI spec output for auth routes at `docs/openapi/auth.openapi.json`.

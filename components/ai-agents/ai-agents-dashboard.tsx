@@ -1,7 +1,9 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { useAIAgents } from "@/lib/hooks/use-ai-agents"
+import type { CreateAIAgentInput, UpdateAIAgentInput } from "@/lib/repositories/ai-agents"
 import { AgentsList } from "@/components/ai-agents/agents-lists"
 import { CreateAgentDialog } from "@/components/ai-agents/create-agent-dialog"
 import { AgentDetailDialog } from "@/components/ai-agents/agent--detail-dialog"
@@ -10,11 +12,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PlusCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
-// Mock user ID until auth is fully implemented
-const MOCK_USER_ID = "user-123"
-
 export function AIAgentsDashboard() {
-  const { agents, loading, error, createAgent, updateAgent, deleteAgent, toggleAgentStatus } = useAIAgents(MOCK_USER_ID)
+  const { agents, loading, error, isAuthenticated, isAuthLoading, createAgent, updateAgent, deleteAgent, toggleAgentStatus } =
+    useAIAgents()
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("all")
@@ -22,8 +22,8 @@ export function AIAgentsDashboard() {
 
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId)
 
-  const handleCreateAgent = async (agentData: any) => {
-    const { data, error } = await createAgent(agentData)
+  const handleCreateAgent = async (agentData: CreateAIAgentInput) => {
+    const { error } = await createAgent(agentData)
     if (error) {
       toast({
         title: "Error creating agent",
@@ -40,7 +40,7 @@ export function AIAgentsDashboard() {
     setIsCreateDialogOpen(false)
   }
 
-  const handleUpdateAgent = async (id: string, updates: any) => {
+  const handleUpdateAgent = async (id: string, updates: UpdateAIAgentInput) => {
     const { error } = await updateAgent(id, updates)
     if (error) {
       toast({
@@ -104,6 +104,18 @@ export function AIAgentsDashboard() {
     return true
   })
 
+  if (!isAuthLoading && !isAuthenticated) {
+    return (
+      <div className="space-y-4 rounded-lg border p-6">
+        <h1 className="text-2xl font-bold tracking-tight">AI Agents</h1>
+        <p className="text-muted-foreground">{error ?? "Please sign in to manage your AI agents."}</p>
+        <Button asChild>
+          <Link href="/auth/better-signin">Sign in to continue</Link>
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -113,7 +125,7 @@ export function AIAgentsDashboard() {
             Create and manage AI agents to automate tasks during your live streams.
           </p>
         </div>
-        <Button onClick={() => setIsCreateDialogOpen(true)} className="shrink-0">
+        <Button onClick={() => setIsCreateDialogOpen(true)} className="shrink-0" disabled={!isAuthenticated}>
           <PlusCircle className="mr-2 h-4 w-4" />
           Create Agent
         </Button>
