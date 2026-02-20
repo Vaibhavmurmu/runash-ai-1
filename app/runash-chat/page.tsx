@@ -293,7 +293,30 @@ type HeaderAction = {
   onClick?: (triggerElement?: HTMLElement | null) => void
 }
 
-type ActiveOverlay = "upgrade" | "feedback" | "refer" | "credits" | "settings" | null
+type SidebarActionMenuSection = "favorite" | "recent"
+
+type SidebarActionMenuState = {
+  section: SidebarActionMenuSection
+  rowId: string
+}
+
+type ActiveModal =
+  | "rename"
+  | "move"
+  | "deleteConfirm"
+  | "shareRecent"
+  | "feedback"
+  | "upgrade"
+  | "refer"
+  | "credits"
+  | "settings"
+  | "redeem"
+  | null
+
+type OverlayState = {
+  sidebarActionMenu: SidebarActionMenuState | null
+  activeModal: ActiveModal
+}
 
 const settingsSections = [
   "General",
@@ -473,8 +496,10 @@ export default function RunashChatPage() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
   const [isFavoritesExpanded, setIsFavoritesExpanded] = useState(true)
   const [favoriteItems, setFavoriteItems] = useState<SidebarFavoriteItem[]>(sidebarFavoriteItems)
-  const [activeFavoriteMenuId, setActiveFavoriteMenuId] = useState<string | null>(null)
-  const [activeRecentMenuId, setActiveRecentMenuId] = useState<string | null>(null)
+  const [overlayState, setOverlayState] = useState<OverlayState>({
+    sidebarActionMenu: null,
+    activeModal: null,
+  })
   const [isRecentsExpanded, setIsRecentsExpanded] = useState(true)
   const [shareRecentItem, setShareRecentItem] = useState<RecentEntity | null>(null)
   const [moveRecentItem, setMoveRecentItem] = useState<RecentEntity | null>(null)
@@ -485,7 +510,6 @@ export default function RunashChatPage() {
   const [isCopyingRecentLink, setIsCopyingRecentLink] = useState(false)
   const [confirmDeletePayload, setConfirmDeletePayload] = useState<ConfirmDeletePayload | null>(null)
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
-  const [activeOverlay, setActiveOverlay] = useState<ActiveOverlay>(null)
   const [isCopyingLink, setIsCopyingLink] = useState(false)
   const [onboardingStep, setOnboardingStep] = useState(0)
   const [isBannerDismissed, setIsBannerDismissed] = useState<boolean | null>(null)
@@ -502,13 +526,13 @@ export default function RunashChatPage() {
   const lastOverlayTriggerRef = useRef<HTMLElement | null>(null)
   const deleteActionTriggerRef = useRef<HTMLElement | null>(null)
   const rowActionTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const rowActionContentRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [selectedModel, setSelectedModel] = useState<"v0 Mini" | "v0 Max">("v0 Mini")
   const [selectedProjectLabel, setSelectedProjectLabel] = useState("Select a Project")
   const [themePreference, setThemePreference] = useState<RunashThemePreference>("system")
   const [languagePreference, setLanguagePreference] = useState<RunashLanguagePreference>("en")
   const [chatPositionPreference, setChatPositionPreference] = useState<RunashChatPositionPreference>("left")
   const [isComposerUpgradeHelperDismissed, setIsComposerUpgradeHelperDismissed] = useState(false)
-  const [isRedeemDialogOpen, setIsRedeemDialogOpen] = useState(false)
   const [redeemCodeInput, setRedeemCodeInput] = useState("")
   const [redeemCodeError, setRedeemCodeError] = useState<string | null>(null)
   const [isRedeemingCode, setIsRedeemingCode] = useState(false)
@@ -533,11 +557,12 @@ export default function RunashChatPage() {
 
   const isLastOnboardingStep = onboardingStep === onboardingSlides.length - 1
   const currentOnboardingSlide = onboardingSlides[onboardingStep]
-  const isFeedbackOpen = activeOverlay === "feedback"
-  const isReferOpen = activeOverlay === "refer"
-  const isUpgradeModalOpen = activeOverlay === "upgrade"
-  const isCreditsOpen = activeOverlay === "credits"
-  const isSettingsOpen = activeOverlay === "settings"
+  const isFeedbackOpen = overlayState.activeModal === "feedback"
+  const isReferOpen = overlayState.activeModal === "refer"
+  const isUpgradeModalOpen = overlayState.activeModal === "upgrade"
+  const isCreditsOpen = overlayState.activeModal === "credits"
+  const isSettingsOpen = overlayState.activeModal === "settings"
+  const isRedeemDialogOpen = overlayState.activeModal === "redeem"
   const referralProgressPercent =
     referralUiData.rewardCap > 0 ? Math.min(100, Math.round((referralUiData.progressValue / referralUiData.rewardCap) * 100)) : 0
 
@@ -568,8 +593,24 @@ export default function RunashChatPage() {
     }
   }
 
+  const getSidebarActionMenuKey = (section: SidebarActionMenuSection, rowId: string) => `${section}-${rowId}`
+
+  const isSidebarActionMenuOpen = (section: SidebarActionMenuSection, rowId: string) =>
+    overlayState.sidebarActionMenu?.section === section && overlayState.sidebarActionMenu.rowId === rowId
+
+  const closeSidebarActionMenu = () => {
+    setOverlayState((previousState) => ({ ...previousState, sidebarActionMenu: null }))
+  }
+
+  const openSidebarActionMenu = (section: SidebarActionMenuSection, rowId: string) => {
+    setOverlayState({
+      sidebarActionMenu: { section, rowId },
+      activeModal: null,
+    })
+  }
+
   const closeRecentMenu = () => {
-    setActiveRecentMenuId(null)
+    closeSidebarActionMenu()
   }
 
   const handleRecentAddToFavorites = (item: RecentEntity) => {
@@ -603,12 +644,14 @@ export default function RunashChatPage() {
   const handleRecentShare = (item: RecentEntity) => {
     setShareRecentItem(item)
     closeRecentMenu()
+    setOverlayState((previousState) => ({ ...previousState, activeModal: "shareRecent" }))
   }
 
   const handleRecentMove = (item: RecentEntity) => {
     setMoveRecentItem(item)
     setSelectedMoveDestinationId("")
     closeRecentMenu()
+    setOverlayState((previousState) => ({ ...previousState, activeModal: "move" }))
   }
 
   const handleRecentRename = (item: RecentEntity) => {
@@ -620,6 +663,7 @@ export default function RunashChatPage() {
     setRenameInputValue(item.title)
     setRenameInputError(null)
     closeRecentMenu()
+    setOverlayState((previousState) => ({ ...previousState, activeModal: "rename" }))
   }
 
   const handleRecentDelete = (item: RecentEntity) => {
@@ -630,6 +674,7 @@ export default function RunashChatPage() {
       title: item.title,
       description: `Delete ${item.title} from your recents list? This action cannot be undone.`,
     })
+    setOverlayState((previousState) => ({ ...previousState, activeModal: "deleteConfirm" }))
   }
 
   const restoreDeleteActionTriggerFocus = () => {
@@ -643,6 +688,7 @@ export default function RunashChatPage() {
 
   const closeDeleteConfirmModal = (restoreFocus = false) => {
     setConfirmDeletePayload(null)
+    setOverlayState((previousState) => ({ ...previousState, activeModal: null }))
 
     if (restoreFocus) {
       restoreDeleteActionTriggerFocus()
@@ -685,6 +731,7 @@ export default function RunashChatPage() {
         description: `Copied link for ${shareRecentItem.title}.`,
       })
       setShareRecentItem(null)
+      setOverlayState((previousState) => ({ ...previousState, activeModal: null }))
     } catch {
       toast({
         title: "Could not copy link",
@@ -727,12 +774,14 @@ export default function RunashChatPage() {
     })
     setMoveRecentItem(null)
     setSelectedMoveDestinationId("")
+    setOverlayState((previousState) => ({ ...previousState, activeModal: null }))
   }
 
   const closeRenameDialog = () => {
     setRenameDialogTarget(null)
     setRenameInputValue("")
     setRenameInputError(null)
+    setOverlayState((previousState) => ({ ...previousState, activeModal: null }))
   }
 
   const handleRenameSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -774,6 +823,7 @@ export default function RunashChatPage() {
   const closeMoveDialog = () => {
     setMoveRecentItem(null)
     setSelectedMoveDestinationId("")
+    setOverlayState((previousState) => ({ ...previousState, activeModal: null }))
   }
 
   const handleMoveSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -797,13 +847,13 @@ export default function RunashChatPage() {
     restoreFocusToMainControls()
   }
 
-  const openOverlay = (overlay: Exclude<ActiveOverlay, null>, triggerElement?: HTMLElement | null) => {
+  const openModal = (overlay: Exclude<ActiveModal, null>, triggerElement?: HTMLElement | null) => {
     rememberOverlayTrigger(triggerElement)
-    setActiveOverlay(overlay)
+    setOverlayState({ sidebarActionMenu: null, activeModal: overlay })
   }
 
-  const closeOverlay = (restoreFocus = false) => {
-    setActiveOverlay(null)
+  const closeModal = (restoreFocus = false) => {
+    setOverlayState((previousState) => ({ ...previousState, activeModal: null }))
     if (restoreFocus) {
       window.requestAnimationFrame(() => {
         focusOverlayTrigger()
@@ -811,8 +861,8 @@ export default function RunashChatPage() {
     }
   }
 
-  const handleOverlayDismiss = (overlay: Exclude<ActiveOverlay, null>, restoreFocus = true) => {
-    closeOverlay(restoreFocus)
+  const dismissModal = (overlay: Exclude<ActiveModal, null>, restoreFocus = true) => {
+    closeModal(restoreFocus)
 
     if (overlay === "upgrade") {
       setIsPlanActionLoading(false)
@@ -821,6 +871,23 @@ export default function RunashChatPage() {
     if (overlay === "feedback") {
       resetFeedbackDialog()
     }
+
+    if (overlay === "shareRecent") {
+      setShareRecentItem(null)
+      setIsCopyingRecentLink(false)
+    }
+
+    if (overlay === "rename") {
+      closeRenameDialog()
+    }
+
+    if (overlay === "move") {
+      closeMoveDialog()
+    }
+
+    if (overlay === "deleteConfirm") {
+      closeDeleteConfirmModal(restoreFocus)
+    }
   }
 
   function openUpgradeModal(planId?: UpgradePlanId, triggerElement?: HTMLElement | null) {
@@ -828,7 +895,7 @@ export default function RunashChatPage() {
       setSelectedPlan(planId)
     }
     setIsPlanActionLoading(false)
-    openOverlay("upgrade", triggerElement)
+    openModal("upgrade", triggerElement)
   }
 
   const headerActions: HeaderAction[] = [
@@ -844,14 +911,14 @@ export default function RunashChatPage() {
       label: "Feedback",
       tooltip: "Share product feedback",
       icon: MessageSquare,
-      onClick: (triggerElement) => openOverlay("feedback", triggerElement),
+      onClick: (triggerElement) => openModal("feedback", triggerElement),
     },
     {
       id: "refer",
       label: "Refer",
       tooltip: "Refer a friend or team",
       icon: Sparkles,
-      onClick: (triggerElement) => openOverlay("refer", triggerElement),
+      onClick: (triggerElement) => openModal("refer", triggerElement),
     },
   ]
 
@@ -889,7 +956,7 @@ export default function RunashChatPage() {
   }
 
   const openSettingsDialog = () => {
-    openOverlay("settings", profileMenuTriggerRef.current)
+    openModal("settings", profileMenuTriggerRef.current)
   }
 
   const accountMenuItems: UserMenuItem[] = [
@@ -1025,20 +1092,20 @@ export default function RunashChatPage() {
     if (!open && isSubmittingFeedback) return
 
     if (open) {
-      openOverlay("feedback")
+      openModal("feedback")
       return
     }
 
-    handleOverlayDismiss("feedback")
+    dismissModal("feedback")
   }
 
   const handleReferDialogOpenChange = (open: boolean) => {
     if (open) {
-      openOverlay("refer")
+      openModal("refer")
       return
     }
 
-    handleOverlayDismiss("refer")
+    dismissModal("refer")
   }
 
   const handleCopyReferralLink = async () => {
@@ -1062,20 +1129,20 @@ export default function RunashChatPage() {
 
   const handleUpgradeModalOpenChange = (open: boolean) => {
     if (open) {
-      openOverlay("upgrade")
+      openModal("upgrade")
       return
     }
 
-    handleOverlayDismiss("upgrade")
+    dismissModal("upgrade")
   }
 
   const handleSettingsDialogOpenChange = (open: boolean) => {
     if (open) {
-      openOverlay("settings")
+      openModal("settings")
       return
     }
 
-    handleOverlayDismiss("settings")
+    dismissModal("settings")
   }
 
   const handleSettingsSectionKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
@@ -1102,7 +1169,7 @@ export default function RunashChatPage() {
   }
 
   const closeCreditsPanel = (restoreFocus = false) => {
-    handleOverlayDismiss("credits", restoreFocus)
+    dismissModal("credits", restoreFocus)
   }
 
   const openRedeemCodeDialog = (triggerElement?: HTMLElement | null) => {
@@ -1111,11 +1178,16 @@ export default function RunashChatPage() {
     setRedeemCodeInput("")
     setRedeemCodeError(null)
     setIsRedeemingCode(false)
-    setIsRedeemDialogOpen(true)
+    openModal("redeem")
   }
 
   const handleRedeemDialogOpenChange = (open: boolean) => {
-    setIsRedeemDialogOpen(open)
+    if (open) {
+      openModal("redeem")
+      return
+    }
+
+    closeModal(false)
     if (!open) {
       setIsRedeemingCode(false)
       setRedeemCodeError(null)
@@ -1312,7 +1384,8 @@ export default function RunashChatPage() {
 
   const handleOpenOnboardingDialog = (triggerElement?: HTMLElement | null) => {
     setOnboardingStep(0)
-    setActiveOverlay(null)
+    closeModal(false)
+    closeSidebarActionMenu()
     rememberOverlayTrigger(triggerElement)
     setIsOnboardingOpen(true)
   }
@@ -1320,7 +1393,8 @@ export default function RunashChatPage() {
   const handleOnboardingOpenChange = (open: boolean) => {
     if (open) {
       setIsOnboardingOpen(true)
-      setActiveOverlay(null)
+      closeModal(false)
+      closeSidebarActionMenu()
       return
     }
 
@@ -1351,20 +1425,30 @@ export default function RunashChatPage() {
   }, [isRecentsExpanded])
 
   useEffect(() => {
-    if (!activeOverlay && !isOnboardingOpen) return
+    if (!overlayState.activeModal && !overlayState.sidebarActionMenu && !isOnboardingOpen) return
 
     setIsMobileSidebarOpen(false)
     setIsMobileSearchOpen(false)
-  }, [activeOverlay, isOnboardingOpen])
+  }, [overlayState.activeModal, overlayState.sidebarActionMenu, isOnboardingOpen])
 
   useEffect(() => {
-    if (!activeOverlay) return
+    if (!overlayState.activeModal && !overlayState.sidebarActionMenu && !isMobileSidebarOpen) return
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return
-      if (activeOverlay === "feedback" && isSubmittingFeedback) return
+      if (overlayState.sidebarActionMenu) {
+        closeSidebarActionMenu()
+        return
+      }
 
-      handleOverlayDismiss(activeOverlay)
+      if (!overlayState.activeModal) {
+        setIsMobileSidebarOpen(false)
+        return
+      }
+
+      if (overlayState.activeModal === "feedback" && isSubmittingFeedback) return
+
+      dismissModal(overlayState.activeModal)
     }
 
     window.addEventListener("keydown", handleEscape)
@@ -1372,20 +1456,37 @@ export default function RunashChatPage() {
     return () => {
       window.removeEventListener("keydown", handleEscape)
     }
-  }, [activeOverlay, isSubmittingFeedback])
+  }, [overlayState.sidebarActionMenu, overlayState.activeModal, isSubmittingFeedback, isMobileSidebarOpen])
 
   useEffect(() => {
-    if (activeOverlay !== "credits") return
+    if (!overlayState.sidebarActionMenu && overlayState.activeModal !== "credits") return
 
     const handleOutsideInteraction = (event: MouseEvent | TouchEvent) => {
       const targetNode = event.target
       if (!(targetNode instanceof Node)) return
 
+      const activeSidebarActionMenu = overlayState.sidebarActionMenu
+      if (activeSidebarActionMenu) {
+        const menuKey = getSidebarActionMenuKey(activeSidebarActionMenu.section, activeSidebarActionMenu.rowId)
+        const menuTrigger = rowActionTriggerRefs.current[menuKey]
+        const menuContent = rowActionContentRefs.current[menuKey]
+
+        if (menuTrigger?.contains(targetNode) || menuContent?.contains(targetNode)) {
+          return
+        }
+
+        closeSidebarActionMenu()
+      }
+
+      if (overlayState.activeModal !== "credits") {
+        return
+      }
+
       if (creditsPanelRef.current?.contains(targetNode) || creditsTriggerRef.current?.contains(targetNode)) {
         return
       }
 
-      closeOverlay(true)
+      closeModal(true)
     }
 
     window.addEventListener("mousedown", handleOutsideInteraction)
@@ -1395,22 +1496,7 @@ export default function RunashChatPage() {
       window.removeEventListener("mousedown", handleOutsideInteraction)
       window.removeEventListener("touchstart", handleOutsideInteraction)
     }
-  }, [activeOverlay])
-
-  useEffect(() => {
-    if (!isMobileSidebarOpen) return
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setIsMobileSidebarOpen(false)
-      }
-    }
-
-    window.addEventListener("keydown", handleEscape)
-    return () => {
-      window.removeEventListener("keydown", handleEscape)
-    }
-  }, [isMobileSidebarOpen])
+  }, [overlayState.sidebarActionMenu, overlayState.activeModal])
 
   useEffect(() => {
     const handleKeyboardShortcut = (event: KeyboardEvent) => {
@@ -1656,7 +1742,7 @@ export default function RunashChatPage() {
   }
 
   const closeFavoriteMenu = () => {
-    setActiveFavoriteMenuId(null)
+    closeSidebarActionMenu()
   }
 
   const handleFavoriteRemove = (favoriteId: string) => {
@@ -1683,6 +1769,7 @@ export default function RunashChatPage() {
     setRenameInputValue(item.label)
     setRenameInputError(null)
     closeFavoriteMenu()
+    setOverlayState((previousState) => ({ ...previousState, activeModal: "rename" }))
   }
 
   const handleFavoriteDeleteFolder = (favoriteId: string) => {
@@ -1699,6 +1786,7 @@ export default function RunashChatPage() {
       title: item.label,
       description: `Delete ${item.label}? This action cannot be undone.`,
     })
+    setOverlayState((previousState) => ({ ...previousState, activeModal: "deleteConfirm" }))
   }
 
   function renderSidebarContent(collapsed: boolean, isMobileDrawer = false) {
@@ -1780,7 +1868,7 @@ export default function RunashChatPage() {
                     <div className="space-y-1">
                       {favoriteItems.map((item) => {
                         const Icon = item.icon
-                        const isMenuOpen = activeFavoriteMenuId === item.id
+                        const isMenuOpen = isSidebarActionMenuOpen("favorite", item.id)
 
                         return (
                           <div key={item.id} className="flex items-center gap-1 rounded-md px-1 py-0.5 transition hover:bg-zinc-900">
@@ -1803,12 +1891,20 @@ export default function RunashChatPage() {
 
                             <DropdownMenu
                               open={isMenuOpen}
-                              onOpenChange={(open) => setActiveFavoriteMenuId(open ? item.id : null)}
+                              onOpenChange={(open) => {
+                                if (open) {
+                                  openSidebarActionMenu("favorite", item.id)
+                                  return
+                                }
+
+                                closeSidebarActionMenu()
+                              }}
                             >
                               <DropdownMenuTrigger asChild>
                                 <button
                                   ref={(element) => {
-                                    rowActionTriggerRefs.current[`folder-${item.id}`] = element
+                                    const menuKey = getSidebarActionMenuKey("favorite", item.id)
+                                    rowActionTriggerRefs.current[menuKey] = element
                                   }}
                                   type="button"
                                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
@@ -1819,9 +1915,13 @@ export default function RunashChatPage() {
                               </DropdownMenuTrigger>
 
                               <DropdownMenuContent
+                                ref={(element) => {
+                                  const menuKey = getSidebarActionMenuKey("favorite", item.id)
+                                  rowActionContentRefs.current[menuKey] = element
+                                }}
                                 align="end"
                                 sideOffset={6}
-                                className="w-44 border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100"
+                                className="z-40 w-44 border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100"
                               >
                                 <DropdownMenuItem
                                   className="cursor-pointer rounded-sm text-zinc-200 focus:bg-zinc-900 focus:text-zinc-100"
@@ -1838,7 +1938,9 @@ export default function RunashChatPage() {
                                 <DropdownMenuItem
                                   className="cursor-pointer rounded-sm text-red-400 focus:bg-red-950/50 focus:text-red-300"
                                   onClick={() => {
-                                    deleteActionTriggerRef.current = rowActionTriggerRefs.current[`folder-${item.id}`]
+                                    deleteActionTriggerRef.current = rowActionTriggerRefs.current[
+                                      getSidebarActionMenuKey("favorite", item.id)
+                                    ]
                                     handleFavoriteDeleteFolder(item.id)
                                   }}
                                 >
@@ -1924,14 +2026,22 @@ export default function RunashChatPage() {
 
                           {!collapsed ? (
                             <DropdownMenu
-                              open={activeRecentMenuId === item.id}
-                              onOpenChange={(open) => setActiveRecentMenuId(open ? item.id : null)}
+                              open={isSidebarActionMenuOpen("recent", item.id)}
+                              onOpenChange={(open) => {
+                                if (open) {
+                                  openSidebarActionMenu("recent", item.id)
+                                  return
+                                }
+
+                                closeSidebarActionMenu()
+                              }}
                               modal={false}
                             >
                               <DropdownMenuTrigger asChild>
                                 <button
                                   ref={(element) => {
-                                    rowActionTriggerRefs.current[`recent-${item.id}`] = element
+                                    const menuKey = getSidebarActionMenuKey("recent", item.id)
+                                    rowActionTriggerRefs.current[menuKey] = element
                                   }}
                                   type="button"
                                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition hover:bg-zinc-800 hover:text-zinc-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 group-hover:opacity-100"
@@ -1942,13 +2052,17 @@ export default function RunashChatPage() {
                               </DropdownMenuTrigger>
 
                               <DropdownMenuContent
+                                ref={(element) => {
+                                  const menuKey = getSidebarActionMenuKey("recent", item.id)
+                                  rowActionContentRefs.current[menuKey] = element
+                                }}
                                 align="end"
                                 sideOffset={6}
                                 collisionPadding={8}
                                 sticky="always"
                                 hideWhenDetached
                                 collisionBoundary={sidebarScrollAreaRef.current ?? undefined}
-                                className="w-44 border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100"
+                                className="z-40 w-44 border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100"
                               >
                                 <DropdownMenuItem
                                   className="cursor-pointer rounded-sm text-zinc-200 focus:bg-zinc-900 focus:text-zinc-100"
@@ -1977,7 +2091,9 @@ export default function RunashChatPage() {
                                 <DropdownMenuItem
                                   className="cursor-pointer rounded-sm text-red-400 focus:bg-red-950/50 focus:text-red-300"
                                   onClick={() => {
-                                    deleteActionTriggerRef.current = rowActionTriggerRefs.current[`recent-${item.id}`]
+                                    deleteActionTriggerRef.current = rowActionTriggerRefs.current[
+                                      getSidebarActionMenuKey("recent", item.id)
+                                    ]
                                     handleRecentDelete(item)
                                   }}
                                 >
@@ -2001,7 +2117,10 @@ export default function RunashChatPage() {
 
   return (
     <div className="min-h-screen bg-[#030405] text-zinc-100">
-      <Dialog open={Boolean(confirmDeletePayload)} onOpenChange={(open) => !open && closeDeleteConfirmModal(true)}>
+      <Dialog
+        open={overlayState.activeModal === "deleteConfirm" && Boolean(confirmDeletePayload)}
+        onOpenChange={(open) => !open && dismissModal("deleteConfirm")}
+      >
         <DialogContent className={darkDialogContentClassName}>
           <DialogHeader>
             <DialogTitle>Delete {confirmDeletePayload?.title}?</DialogTitle>
@@ -2021,7 +2140,10 @@ export default function RunashChatPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(shareRecentItem)} onOpenChange={(open) => !open && setShareRecentItem(null)}>
+      <Dialog
+        open={overlayState.activeModal === "shareRecent" && Boolean(shareRecentItem)}
+        onOpenChange={(open) => !open && dismissModal("shareRecent")}
+      >
         <DialogContent className={darkDialogContentClassName}>
           <DialogHeader>
             <DialogTitle>Share item</DialogTitle>
@@ -2033,7 +2155,7 @@ export default function RunashChatPage() {
             <Input readOnly value={shareRecentItem ? buildRecentShareLink(shareRecentItem) : ""} className="border-zinc-800 bg-zinc-900 text-zinc-200" />
           </div>
           <DialogFooter>
-            <Button variant="ghost" className="text-zinc-300 hover:bg-zinc-900" onClick={() => setShareRecentItem(null)}>
+            <Button variant="ghost" className="text-zinc-300 hover:bg-zinc-900" onClick={() => dismissModal("shareRecent")}>
               Cancel
             </Button>
             <Button className="bg-cyan-600 text-white hover:bg-cyan-500" onClick={handleCopyRecentShareLink} disabled={!shareRecentItem || isCopyingRecentLink}>
@@ -2043,7 +2165,7 @@ export default function RunashChatPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(moveRecentItem)} onOpenChange={(open) => !open && closeMoveDialog()}>
+      <Dialog open={overlayState.activeModal === "move" && Boolean(moveRecentItem)} onOpenChange={(open) => !open && dismissModal("move")}>
         <DialogContent className={darkDialogContentClassName}>
           <DialogHeader>
             <DialogTitle>Move item</DialogTitle>
@@ -2082,7 +2204,10 @@ export default function RunashChatPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(renameDialogTarget)} onOpenChange={(open) => !open && closeRenameDialog()}>
+      <Dialog
+        open={overlayState.activeModal === "rename" && Boolean(renameDialogTarget)}
+        onOpenChange={(open) => !open && dismissModal("rename")}
+      >
         <DialogContent className={darkDialogContentClassName}>
           <DialogHeader>
             <DialogTitle>Rename</DialogTitle>
@@ -2725,7 +2850,7 @@ export default function RunashChatPage() {
           <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
             <div className="mb-4 space-y-3 lg:hidden">
               <div
-                className={`sticky top-0 ${isMobileSidebarOpen || isOnboardingOpen || activeOverlay ? "z-0" : "z-20"} rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2 backdrop-blur`}
+                className={`sticky top-0 ${isMobileSidebarOpen || isOnboardingOpen || overlayState.activeModal ? "z-0" : "z-20"} rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2 backdrop-blur`}
               >
                 <div className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2">
                   <div className="flex items-center gap-2">
@@ -3058,7 +3183,7 @@ export default function RunashChatPage() {
                         return
                       }
 
-                      openOverlay("credits", event.currentTarget)
+                      openModal("credits", event.currentTarget)
                     }}
                     aria-label="View credit balance details"
                     aria-expanded={isCreditsOpen}
