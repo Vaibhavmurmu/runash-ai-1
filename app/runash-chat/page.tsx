@@ -142,8 +142,10 @@ type HeaderAction = {
   tooltip: string
   icon: React.ComponentType<{ className?: string }>
   href?: string
-  onClick?: () => void
+  onClick?: (triggerElement?: HTMLElement | null) => void
 }
+
+type ActiveModal = "onboarding" | "feedback" | "refer" | "upgrade" | null
 
 type UpgradePlanId = "free" | "premium" | "team" | "business" | "enterprise"
 
@@ -266,12 +268,9 @@ export default function RunashChatPage() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
   const [isFavoritesExpanded, setIsFavoritesExpanded] = useState(true)
   const [isRecentsExpanded, setIsRecentsExpanded] = useState(true)
-  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
+  const [activeModal, setActiveModal] = useState<ActiveModal>(null)
   const [onboardingStep, setOnboardingStep] = useState(0)
   const [isBannerDismissed, setIsBannerDismissed] = useState<boolean | null>(null)
-  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false)
-  const [isReferDialogOpen, setIsReferDialogOpen] = useState(false)
-  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<UpgradePlanId>("team")
   const [isPlanActionLoading, setIsPlanActionLoading] = useState(false)
   const [feedbackText, setFeedbackText] = useState("")
@@ -281,6 +280,7 @@ export default function RunashChatPage() {
   const desktopSidebarToggleRef = useRef<HTMLButtonElement | null>(null)
   const learnMoreTriggerRef = useRef<HTMLButtonElement | null>(null)
   const mainControlsRef = useRef<HTMLTextAreaElement | null>(null)
+  const lastModalTriggerRef = useRef<HTMLElement | null>(null)
   const [selectedModel, setSelectedModel] = useState<"v0 Mini" | "v0 Max">("v0 Mini")
   const [selectedProjectLabel, setSelectedProjectLabel] = useState("Select a Project")
   const [themePreference, setThemePreference] = useState<RunashThemePreference>("system")
@@ -298,16 +298,46 @@ export default function RunashChatPage() {
 
   const isLastOnboardingStep = onboardingStep === onboardingSlides.length - 1
   const currentOnboardingSlide = onboardingSlides[onboardingStep]
+  const isOnboardingOpen = activeModal === "onboarding"
+  const isFeedbackOpen = activeModal === "feedback"
+  const isReferDialogOpen = activeModal === "refer"
+  const isUpgradeModalOpen = activeModal === "upgrade"
 
   const authenticatedUser = session?.user
   const isAuthenticated = authStatus === "authenticated" && Boolean(authenticatedUser)
 
-  function openUpgradeModal(planId?: UpgradePlanId) {
+  const rememberModalTrigger = (triggerElement?: HTMLElement | null) => {
+    if (triggerElement instanceof HTMLElement) {
+      lastModalTriggerRef.current = triggerElement
+      return
+    }
+
+    if (document.activeElement instanceof HTMLElement) {
+      lastModalTriggerRef.current = document.activeElement
+    }
+  }
+
+  const focusModalTrigger = () => {
+    const triggerElement = lastModalTriggerRef.current
+    if (triggerElement && document.contains(triggerElement)) {
+      triggerElement.focus()
+      return
+    }
+
+    restoreFocusToMainControls()
+  }
+
+  const openModal = (modal: Exclude<ActiveModal, null>, triggerElement?: HTMLElement | null) => {
+    rememberModalTrigger(triggerElement)
+    setActiveModal(modal)
+  }
+
+  function openUpgradeModal(planId?: UpgradePlanId, triggerElement?: HTMLElement | null) {
     if (planId) {
       setSelectedPlan(planId)
     }
     setIsPlanActionLoading(false)
-    setIsUpgradeModalOpen(true)
+    openModal("upgrade", triggerElement)
   }
 
   const headerActions: HeaderAction[] = [
@@ -316,27 +346,27 @@ export default function RunashChatPage() {
       label: "Upgrade",
       tooltip: "View upgrade plans",
       icon: Rocket,
-      onClick: () => openUpgradeModal(),
+      onClick: (triggerElement) => openUpgradeModal(undefined, triggerElement),
     },
     {
       id: "feedback",
       label: "Feedback",
       tooltip: "Share product feedback",
       icon: MessageSquare,
-      onClick: () => setIsFeedbackOpen(true),
+      onClick: (triggerElement) => openModal("feedback", triggerElement),
     },
     {
       id: "refer",
       label: "Refer",
       tooltip: "Refer a friend or team",
       icon: Sparkles,
-      onClick: () => {
+      onClick: (triggerElement) => {
         if (isAuthenticated) {
           router.push("/settings?section=usage&panel=refer-earn")
           return
         }
 
-        setIsReferDialogOpen(true)
+        openModal("refer", triggerElement)
       },
     },
   ]
@@ -464,12 +494,12 @@ export default function RunashChatPage() {
     </DropdownMenu>
   )
 
-  const handleHeaderActionClick = (action: HeaderAction) => {
+  const handleHeaderActionClick = (action: HeaderAction, triggerElement?: HTMLElement | null) => {
     if (action.href) {
       router.push(action.href)
       return
     }
-    action.onClick?.()
+    action.onClick?.(triggerElement)
   }
 
   const handlePlanCtaClick = () => {
@@ -486,9 +516,23 @@ export default function RunashChatPage() {
   const handleFeedbackOpenChange = (open: boolean) => {
     if (!open && isSubmittingFeedback) return
 
-    setIsFeedbackOpen(open)
+    if (open) {
+      setActiveModal("feedback")
+      return
+    }
+
+    setActiveModal(null)
+    resetFeedbackDialog()
+  }
+
+  const handleReferDialogOpenChange = (open: boolean) => {
+    setActiveModal(open ? "refer" : null)
+  }
+
+  const handleUpgradeModalOpenChange = (open: boolean) => {
+    setActiveModal(open ? "upgrade" : null)
     if (!open) {
-      resetFeedbackDialog()
+      setIsPlanActionLoading(false)
     }
   }
 
@@ -531,8 +575,7 @@ export default function RunashChatPage() {
           description: "Your feedback helps us improve RunAsh Chat.",
         })
 
-        setIsFeedbackOpen(false)
-        resetFeedbackDialog()
+        handleFeedbackOpenChange(false)
         return
       } else {
         router.push(`/support?feedback=${encodeURIComponent(trimmedFeedback)}`)
@@ -540,8 +583,7 @@ export default function RunashChatPage() {
           title: "Continue on Support",
           description: "We redirected you to Support so you can finish sharing your feedback.",
         })
-        setIsFeedbackOpen(false)
-        resetFeedbackDialog()
+        handleFeedbackOpenChange(false)
         return
       }
     } catch {
@@ -551,8 +593,7 @@ export default function RunashChatPage() {
       })
 
       router.push(`/support?feedback=${encodeURIComponent(trimmedFeedback)}`)
-      setIsFeedbackOpen(false)
-      resetFeedbackDialog()
+      handleFeedbackOpenChange(false)
     }
   }
 
@@ -616,24 +657,25 @@ export default function RunashChatPage() {
     mainControlsRef.current?.focus()
   }
 
-  const handleOpenOnboardingDialog = () => {
+  const handleOpenOnboardingDialog = (triggerElement?: HTMLElement | null) => {
     setOnboardingStep(0)
-    setIsOnboardingOpen(true)
+    openModal("onboarding", triggerElement)
   }
 
   const handleOnboardingOpenChange = (open: boolean) => {
-    setIsOnboardingOpen(open)
-    if (!open) {
-      restoreFocusToMainControls()
+    if (open) {
+      setActiveModal("onboarding")
+      return
     }
+
+    setActiveModal(null)
   }
 
   const handleOnboardingNext = () => {
     if (isLastOnboardingStep) {
       markOnboardingSeen()
-      setIsOnboardingOpen(false)
+      setActiveModal(null)
       setIsBannerDismissed(true)
-      restoreFocusToMainControls()
       return
     }
 
@@ -645,11 +687,11 @@ export default function RunashChatPage() {
   }, [isSidebarCollapsed])
 
   useEffect(() => {
-    if (!isOnboardingOpen) return
+    if (!activeModal) return
 
     setIsMobileSidebarOpen(false)
     setIsMobileSearchOpen(false)
-  }, [isOnboardingOpen])
+  }, [activeModal])
 
   useEffect(() => {
     if (!isMobileSidebarOpen) return
@@ -1091,10 +1133,10 @@ export default function RunashChatPage() {
     <div className="min-h-screen bg-[#030405] text-zinc-100">
       <Dialog open={isOnboardingOpen} onOpenChange={handleOnboardingOpenChange}>
         <DialogContent
-          className="w-[min(92vw,32rem)] max-w-[32rem] overflow-hidden border-zinc-800 bg-zinc-950 p-0 text-zinc-100 motion-reduce:duration-0"
+          className="z-[60] w-[min(92vw,32rem)] max-w-[32rem] overflow-hidden border-zinc-800 bg-zinc-950 p-0 text-zinc-100 motion-reduce:duration-0"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
-            restoreFocusToMainControls()
+            focusModalTrigger()
           }}
         >
           <div className="max-h-[min(88vh,42rem)] overflow-y-auto rounded-lg">
@@ -1140,7 +1182,13 @@ export default function RunashChatPage() {
       </Dialog>
 
       <Dialog open={isFeedbackOpen} onOpenChange={handleFeedbackOpenChange}>
-        <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-[520px]">
+        <DialogContent
+          className="z-[60] w-[min(92vw,520px)] max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-[520px]"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            focusModalTrigger()
+          }}
+        >
           <DialogHeader className="space-y-2 text-left">
             <DialogTitle>Give feedback</DialogTitle>
             <DialogDescription className="text-zinc-400">
@@ -1206,8 +1254,14 @@ export default function RunashChatPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isReferDialogOpen} onOpenChange={setIsReferDialogOpen}>
-        <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
+      <Dialog open={isReferDialogOpen} onOpenChange={handleReferDialogOpenChange}>
+        <DialogContent
+          className="z-[60] w-[min(92vw,28rem)] max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            focusModalTrigger()
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Refer & Earn</DialogTitle>
             <DialogDescription className="text-zinc-400">
@@ -1215,13 +1269,13 @@ export default function RunashChatPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:justify-end">
-            <Button type="button" variant="outline" onClick={() => setIsReferDialogOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => handleReferDialogOpenChange(false)}>
               Maybe later
             </Button>
             <Button
               type="button"
               onClick={() => {
-                setIsReferDialogOpen(false)
+                handleReferDialogOpenChange(false)
                 router.push("/login")
               }}
             >
@@ -1231,16 +1285,14 @@ export default function RunashChatPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={isUpgradeModalOpen}
-        onOpenChange={(open) => {
-          setIsUpgradeModalOpen(open)
-          if (!open) {
-            setIsPlanActionLoading(false)
-          }
-        }}
-      >
-        <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-2xl">
+      <Dialog open={isUpgradeModalOpen} onOpenChange={handleUpgradeModalOpenChange}>
+        <DialogContent
+          className="z-[60] w-[min(94vw,48rem)] max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-2xl"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            focusModalTrigger()
+          }}
+        >
           <DialogHeader className="space-y-2 text-left">
             <DialogTitle>Explore More Plans</DialogTitle>
             <DialogDescription className="text-zinc-400">
@@ -1344,7 +1396,7 @@ export default function RunashChatPage() {
           <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
             <div className="mb-4 space-y-3 lg:hidden">
               <div
-                className={`sticky top-0 ${isMobileSidebarOpen || isOnboardingOpen ? "z-0" : "z-20"} rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2 backdrop-blur`}
+                className={`sticky top-0 ${isMobileSidebarOpen || activeModal ? "z-0" : "z-20"} rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2 backdrop-blur`}
               >
                 <div className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2">
                   <div className="flex items-center gap-2">
@@ -1456,7 +1508,7 @@ export default function RunashChatPage() {
                         return (
                         <DropdownMenuItem
                           key={action.id}
-                          onClick={() => handleHeaderActionClick(action)}
+                          onClick={(event) => handleHeaderActionClick(action, event.currentTarget)}
                           className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
                         >
                           <Icon className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -1564,7 +1616,7 @@ export default function RunashChatPage() {
                         variant="link"
                         ref={learnMoreTriggerRef}
                         className="h-auto p-0 text-xs font-medium text-cyan-300 underline underline-offset-2 hover:text-cyan-200 sm:text-sm"
-                        onClick={handleOpenOnboardingDialog}
+                        onClick={(event) => handleOpenOnboardingDialog(event.currentTarget)}
                       >
                         Learn More
                       </Button>
@@ -1605,7 +1657,7 @@ export default function RunashChatPage() {
                           ? upgradeCtaClassName
                           : "text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
                       }
-                      onClick={() => handleHeaderActionClick(action)}
+                      onClick={(event) => handleHeaderActionClick(action, event.currentTarget)}
                       aria-label={action.label}
                     >
                       <action.icon className="mr-1.5 h-3.5 w-3.5" />
@@ -1625,7 +1677,7 @@ export default function RunashChatPage() {
                           ? upgradeCtaClassName
                           : "text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
                       }
-                      onClick={() => handleHeaderActionClick(action)}
+                      onClick={(event) => handleHeaderActionClick(action, event.currentTarget)}
                       aria-label={action.label}
                     >
                       <action.icon className="mr-1.5 h-3.5 w-3.5" />
@@ -1643,7 +1695,7 @@ export default function RunashChatPage() {
                         {overflowTabletHeaderActions.map((action) => (
                           <DropdownMenuItem
                             key={action.id}
-                            onClick={() => handleHeaderActionClick(action)}
+                            onClick={(event) => handleHeaderActionClick(action, event.currentTarget)}
                             className="focus:bg-zinc-800 focus:text-zinc-100"
                           >
                             <action.icon className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -1660,7 +1712,7 @@ export default function RunashChatPage() {
                   size="sm"
                   variant="outline"
                   className="hidden h-8 rounded-full border-zinc-700 bg-zinc-950 px-2.5 text-xs font-medium text-zinc-100 hover:bg-zinc-900 md:inline-flex"
-                  onClick={handleOpenOnboardingDialog}
+                  onClick={(event) => handleOpenOnboardingDialog(event.currentTarget)}
                   aria-label="Open onboarding guide"
                 >
                   <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
@@ -1682,7 +1734,7 @@ export default function RunashChatPage() {
                                   ? `h-8 w-8 ${upgradeCtaClassName}`
                                   : "h-8 w-8 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
                               }
-                              onClick={() => handleHeaderActionClick(action)}
+                              onClick={(event) => handleHeaderActionClick(action, event.currentTarget)}
                               aria-label={action.label}
                             >
                               <Icon className="h-4 w-4" />
@@ -1714,7 +1766,7 @@ export default function RunashChatPage() {
                           {overflowMobileHeaderActions.map((action) => (
                             <DropdownMenuItem
                               key={action.id}
-                              onClick={() => handleHeaderActionClick(action)}
+                              onClick={(event) => handleHeaderActionClick(action, event.currentTarget)}
                               className="focus:bg-zinc-800 focus:text-zinc-100"
                             >
                               <action.icon className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -1723,7 +1775,7 @@ export default function RunashChatPage() {
                           ))}
                           <DropdownMenuSeparator className="bg-zinc-800" />
                           <DropdownMenuItem
-                            onClick={handleOpenOnboardingDialog}
+                            onClick={(event) => handleOpenOnboardingDialog(event.currentTarget)}
                             className="focus:bg-zinc-800 focus:text-zinc-100"
                           >
                             <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -1856,7 +1908,7 @@ export default function RunashChatPage() {
                         variant="outline"
                         size="sm"
                         className={`ml-2 h-7 rounded-full px-2.5 text-[11px] ${upgradeCtaClassName}`}
-                        onClick={() => openUpgradeModal("team")}
+                        onClick={(event) => openUpgradeModal("team", event.currentTarget)}
                       >
                         Upgrade Plan
                       </Button>
