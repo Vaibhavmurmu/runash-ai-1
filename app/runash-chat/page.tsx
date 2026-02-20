@@ -3689,53 +3689,55 @@ ${instructionStarter}` : instructionStarter
               )}
             </div>
 
-            <div className="relative z-20 mb-4 min-h-[52px]">
+            <div
+              className={`sticky top-0 mb-5 space-y-3 rounded-2xl border border-transparent bg-gradient-to-b from-[#050607]/95 via-[#050607]/92 to-transparent px-1 pt-1 backdrop-blur-sm sm:mb-6 ${
+                isMobileSidebarOpen || isOnboardingOpen || overlayState.activeModal ? "z-0" : "z-20"
+              }`}
+            >
               {isBannerDismissed === false && (
                 <div
-                  className="rounded-lg border border-zinc-700/70 bg-zinc-900/85 px-3 py-2 text-zinc-100 shadow-[0_10px_28px_-22px_rgba(34,211,238,0.55)] backdrop-blur-sm"
+                  className="relative mx-auto w-full max-w-3xl rounded-lg border border-zinc-700/70 bg-zinc-900/85 px-9 py-2 text-zinc-100 shadow-[0_10px_28px_-22px_rgba(34,211,238,0.55)] backdrop-blur-sm sm:px-10"
                   role="status"
                   aria-live="polite"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-relaxed sm:text-sm">
-                      <span className="rounded-full border border-zinc-600 bg-zinc-800/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-200">
-                        New
-                      </span>
-                      <p className="text-zinc-300">Chat composer updates are live with quicker launch actions.</p>
-                      <Button
-                        variant="link"
-                        ref={learnMoreTriggerRef}
-                        className="h-auto p-0 text-xs font-medium text-cyan-300 underline underline-offset-2 hover:text-cyan-200 sm:text-sm"
-                        onClick={(event) => handleOpenOnboardingDialog(event.currentTarget)}
-                      >
-                        Learn More
-                      </Button>
-                    </div>
+                  <div className="flex min-w-0 flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-xs leading-relaxed sm:text-sm">
+                    <span className="rounded-full border border-zinc-600 bg-zinc-800/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-200">
+                      New
+                    </span>
+                    <p className="text-zinc-300">Chat composer updates are live with quicker launch actions.</p>
                     <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-6 w-6 shrink-0 -translate-y-0.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-                      onClick={dismissUpdatesBanner}
-                      aria-label="Dismiss updates banner"
+                      variant="link"
+                      ref={learnMoreTriggerRef}
+                      className="h-auto p-0 text-xs font-medium text-cyan-300 underline underline-offset-2 hover:text-cyan-200 sm:text-sm"
+                      onClick={(event) => handleOpenOnboardingDialog(event.currentTarget)}
                     >
-                      <X className="h-3.5 w-3.5" />
+                      Learn More
                     </Button>
                   </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="absolute right-2 top-1/2 h-6 w-6 -translate-y-1/2 shrink-0 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                    onClick={dismissUpdatesBanner}
+                    aria-label="Dismiss updates banner"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
               )}
-            </div>
 
-            <header className="relative z-10 mb-5 flex items-start justify-between gap-3 sm:mb-6 sm:items-center">
-              <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+            <header className="relative grid grid-cols-1 items-center gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+              <div className="hidden md:block" aria-hidden="true" />
+              <div className="flex min-w-0 items-center justify-center gap-2.5 text-center sm:gap-3">
                 <div className="rounded-md bg-gradient-to-r from-cyan-500 to-blue-500 p-1.5 sm:p-2">
                   <Bot className="h-4 w-4 text-white sm:h-5 sm:w-5" />
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-xs text-zinc-400 sm:text-sm">RunAsh Agent Workspace</p>
-                  <h1 className="truncate text-lg font-semibold sm:text-xl">What do you want to create?</h1>
+                  <h1 className="truncate text-lg font-semibold text-zinc-100 sm:text-xl">What do you want to create?</h1>
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2 sm:gap-2.5">
+              <div className="flex shrink-0 items-center justify-end gap-2 sm:gap-2.5 md:col-start-3">
                 <div className="hidden items-center gap-1.5 lg:flex">
                   {headerActions.map((action) => (
                     <Button
@@ -3967,6 +3969,7 @@ ${instructionStarter}` : instructionStarter
                 )}
               </div>
             </header>
+            </div>
 
             {startChatError && (
               <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
