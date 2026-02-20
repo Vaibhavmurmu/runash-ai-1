@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Switch } from "@/components/ui/switch"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
@@ -46,6 +48,7 @@ import {
   LifeBuoy,
   LogOut,
   Plus,
+  Play,
   Rocket,
   Search,
   Smile,
@@ -397,6 +400,13 @@ export default function RunashChatPage() {
   const [redeemCodeError, setRedeemCodeError] = useState<string | null>(null)
   const [isRedeemingCode, setIsRedeemingCode] = useState(false)
   const [activeSettingsSection, setActiveSettingsSection] = useState<SettingsSection>("General")
+  const [appearancePreference, setAppearancePreference] = useState<RunashThemePreference>("system")
+  const [accentColorPreference, setAccentColorPreference] = useState("violet")
+  const [settingsLanguagePreference, setSettingsLanguagePreference] = useState<RunashLanguagePreference>("en")
+  const [spokenLanguagePreference, setSpokenLanguagePreference] = useState("en-US")
+  const [voicePreference, setVoicePreference] = useState("alloy")
+  const [isSeparateVoiceEnabled, setIsSeparateVoiceEnabled] = useState(false)
+  const [isAdditionalModelsShown, setIsAdditionalModelsShown] = useState(false)
   const upgradeCtaClassName =
     "border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900 focus-visible:ring-1 focus-visible:ring-zinc-500"
   const creditsPanelId = "runash-chat-credits-panel"
@@ -1617,10 +1627,110 @@ export default function RunashChatPage() {
               </div>
               <div className="border-b border-zinc-800/80" />
               <div className="flex-1 space-y-4 px-6 py-5 text-sm text-zinc-400">
-                <p>Use this section to review and update your {activeSettingsSection.toLowerCase()} settings.</p>
-                <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-4 text-zinc-300">
-                  Additional controls for <span className="font-medium text-zinc-100">{activeSettingsSection}</span> will appear here.
-                </div>
+                {activeSettingsSection === "General" ? (
+                  <div className="space-y-5">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
+                      <span className="text-zinc-200">Appearance</span>
+                      <Select value={appearancePreference} onValueChange={(value) => setAppearancePreference(value as RunashThemePreference)}>
+                        <SelectTrigger className="h-8 w-[170px] border-zinc-700 bg-zinc-900 text-zinc-100">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="system">System</SelectItem>
+                          <SelectItem value="light">Light</SelectItem>
+                          <SelectItem value="dark">Dark</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
+                      <span className="text-zinc-200">Accent color</span>
+                      <Select value={accentColorPreference} onValueChange={setAccentColorPreference}>
+                        <SelectTrigger className="h-8 w-[170px] border-zinc-700 bg-zinc-900 text-zinc-100">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="violet">Violet</SelectItem>
+                          <SelectItem value="blue">Blue</SelectItem>
+                          <SelectItem value="emerald">Emerald</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
+                      <span className="text-zinc-200">Language</span>
+                      <Select
+                        value={settingsLanguagePreference}
+                        onValueChange={(value) => setSettingsLanguagePreference(value as RunashLanguagePreference)}
+                      >
+                        <SelectTrigger className="h-8 w-[170px] border-zinc-700 bg-zinc-900 text-zinc-100">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="en">English</SelectItem>
+                          <SelectItem value="es">Español</SelectItem>
+                          <SelectItem value="fr">Français</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+                      <div className="space-y-1">
+                        <p className="text-zinc-200">Spoken language</p>
+                        <p className="text-xs text-zinc-500">Controls transcription and voice response language defaults.</p>
+                      </div>
+                      <Select value={spokenLanguagePreference} onValueChange={setSpokenLanguagePreference}>
+                        <SelectTrigger className="h-8 w-[170px] border-zinc-700 bg-zinc-900 text-zinc-100">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="en-US">English (US)</SelectItem>
+                          <SelectItem value="en-IN">English (India)</SelectItem>
+                          <SelectItem value="es-ES">Spanish</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
+                      <span className="text-zinc-200">Voice</span>
+                      <div className="flex items-center gap-2">
+                        <Select value={voicePreference} onValueChange={setVoicePreference}>
+                          <SelectTrigger className="h-8 w-[124px] border-zinc-700 bg-zinc-900 text-zinc-100">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="alloy">Alloy</SelectItem>
+                            <SelectItem value="verse">Verse</SelectItem>
+                            <SelectItem value="willow">Willow</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button type="button" size="icon" variant="outline" className="h-8 w-8 border-zinc-700 bg-zinc-900" aria-label="Play selected voice sample" disabled>
+                          <Play className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+                      <div className="space-y-1">
+                        <p className="text-zinc-200">Separate Voice</p>
+                        <p className="text-xs text-zinc-500">Use a distinct voice profile for generated speech output.</p>
+                      </div>
+                      <Switch checked={isSeparateVoiceEnabled} onCheckedChange={setIsSeparateVoiceEnabled} />
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
+                      <span className="text-zinc-200">Show additional models</span>
+                      <Switch checked={isAdditionalModelsShown} onCheckedChange={setIsAdditionalModelsShown} />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p>Use this section to review and update your {activeSettingsSection.toLowerCase()} settings.</p>
+                    <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-4 text-zinc-300">
+                      Additional controls for <span className="font-medium text-zinc-100">{activeSettingsSection}</span> will appear here.
+                    </div>
+                  </>
+                )}
                 <Button type="button" variant="outline" className="w-fit" onClick={() => router.push("/settings")}>Open full settings page</Button>
               </div>
             </section>
