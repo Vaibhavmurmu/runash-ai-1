@@ -191,7 +191,7 @@ type HeaderAction = {
   onClick?: (triggerElement?: HTMLElement | null) => void
 }
 
-type ActiveOverlay = "upgrade" | "feedback" | "refer" | "credits" | null
+type ActiveOverlay = "upgrade" | "feedback" | "refer" | "credits" | "settings" | null
 
 type UpgradePlanId = "free" | "premium" | "team" | "business" | "enterprise"
 
@@ -390,6 +390,7 @@ export default function RunashChatPage() {
   const creditsTriggerRef = useRef<HTMLButtonElement | null>(null)
   const creditsPanelRef = useRef<HTMLDivElement | null>(null)
   const redeemDialogTriggerRef = useRef<HTMLElement | null>(null)
+  const profileMenuTriggerRef = useRef<HTMLButtonElement | null>(null)
 
   const feedbackRatingOptions: { value: number; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
     { value: 5, label: "Loved it", Icon: Smile },
@@ -403,6 +404,7 @@ export default function RunashChatPage() {
   const isReferOpen = activeOverlay === "refer"
   const isUpgradeModalOpen = activeOverlay === "upgrade"
   const isCreditsOpen = activeOverlay === "credits"
+  const isSettingsOpen = activeOverlay === "settings"
   const referralProgressPercent =
     referralUiData.rewardCap > 0 ? Math.min(100, Math.round((referralUiData.progressValue / referralUiData.rewardCap) * 100)) : 0
 
@@ -506,11 +508,16 @@ export default function RunashChatPage() {
     icon: React.ComponentType<{ className?: string }>
     href: string
     external?: boolean
+    onSelect?: () => void
+  }
+
+  const openSettingsDialog = () => {
+    openOverlay("settings", profileMenuTriggerRef.current)
   }
 
   const accountMenuItems: UserMenuItem[] = [
     { label: "Profile", icon: User, href: "/account" },
-    { label: "Settings", icon: Settings, href: "/settings" },
+    { label: "Settings", icon: Settings, href: "/settings", onSelect: openSettingsDialog },
     { label: "Pricing", icon: CreditCard, href: "/pricing" },
     { label: "Documentation", icon: Library, href: "https://docs.runash.io", external: true },
     { label: "Community Forum", icon: LifeBuoy, href: "https://community.runash.io", external: true },
@@ -536,11 +543,15 @@ export default function RunashChatPage() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
+          ref={profileMenuTriggerRef}
           type="button"
           variant="outline"
           className={triggerClassName}
           aria-label="Open account menu"
           aria-haspopup="menu"
+          onClick={(event) => {
+            profileMenuTriggerRef.current = event.currentTarget
+          }}
         >
           <Avatar className="h-8 w-8">
             {userAvatar ? <AvatarImage src={userAvatar} alt={userDisplayName} /> : null}
@@ -561,7 +572,14 @@ export default function RunashChatPage() {
             return (
               <DropdownMenuItem
                 key={item.label}
-                onSelect={() => handleUserMenuNavigation(item)}
+                onSelect={() => {
+                  if (item.onSelect) {
+                    item.onSelect()
+                    return
+                  }
+
+                  handleUserMenuNavigation(item)
+                }}
                 className="cursor-pointer py-2 focus:bg-zinc-800 focus:text-zinc-100"
               >
                 <Icon className="mr-2 h-4 w-4" />
@@ -676,6 +694,15 @@ export default function RunashChatPage() {
     if (!open) {
       setIsPlanActionLoading(false)
     }
+  }
+
+  const handleSettingsDialogOpenChange = (open: boolean) => {
+    if (open) {
+      setActiveOverlay("settings")
+      return
+    }
+
+    closeOverlay(true)
   }
 
   const closeCreditsPanel = (restoreFocus = false) => {
@@ -1510,6 +1537,45 @@ export default function RunashChatPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isSettingsOpen} onOpenChange={handleSettingsDialogOpenChange}>
+        <DialogContent
+          className="z-[60] w-[min(92vw,520px)] border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-[520px]"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            if (profileMenuTriggerRef.current && document.contains(profileMenuTriggerRef.current)) {
+              profileMenuTriggerRef.current.focus()
+              return
+            }
+
+            focusOverlayTrigger()
+          }}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute left-3 top-3 h-8 w-8 rounded-full text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+            onClick={() => handleSettingsDialogOpenChange(false)}
+            aria-label="Close settings dialog"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+
+          <DialogHeader className="space-y-2 text-left pt-6">
+            <DialogTitle>Settings</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Manage your profile preferences, billing details, and workspace defaults.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <Button type="button" variant="outline" className="w-full justify-start" onClick={() => router.push("/settings")}>General settings</Button>
+            <Button type="button" variant="outline" className="w-full justify-start" onClick={() => router.push("/settings?section=preferences")}>Preferences</Button>
+            <Button type="button" variant="outline" className="w-full justify-start" onClick={() => router.push("/settings/billing")}>Billing & credits</Button>
+          </div>
         </DialogContent>
       </Dialog>
 
