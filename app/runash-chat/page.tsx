@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { useTheme } from "next-themes"
 import {
   ArrowRight,
   Bot,
@@ -81,6 +82,32 @@ const runashChatUpdatesBannerHiddenStorageKey = "runash_chat_updates_hidden"
 const runashChatLegacyUpdatesBannerHiddenStorageKey = "runash_updates_banner_hidden"
 const runashChatDesktopSidebarContentId = "runash-chat-desktop-sidebar-content"
 const runashChatMobileSidebarId = "runash-chat-mobile-sidebar"
+const runashChatThemeStorageKey = "runash_chat_preference_theme"
+const runashChatLanguageStorageKey = "runash_chat_preference_language"
+const runashChatPositionStorageKey = "runash_chat_preference_chat_position"
+
+const themeOptions = ["system", "dark", "light"] as const
+const languageOptions = [
+  { value: "en", label: "English" },
+  { value: "es", label: "Español" },
+  { value: "fr", label: "Français" },
+  { value: "de", label: "Deutsch" },
+  { value: "hi", label: "हिन्दी" },
+] as const
+const chatPositionOptions = ["left", "right"] as const
+
+type RunashThemePreference = (typeof themeOptions)[number]
+type RunashLanguagePreference = (typeof languageOptions)[number]["value"]
+type RunashChatPositionPreference = (typeof chatPositionOptions)[number]
+
+const isValidThemePreference = (value: string | null): value is RunashThemePreference =>
+  Boolean(value && themeOptions.includes(value as RunashThemePreference))
+
+const isValidLanguagePreference = (value: string | null): value is RunashLanguagePreference =>
+  Boolean(value && languageOptions.some((languageOption) => languageOption.value === value))
+
+const isValidChatPositionPreference = (value: string | null): value is RunashChatPositionPreference =>
+  Boolean(value && chatPositionOptions.includes(value as RunashChatPositionPreference))
 
 const onboardingSlides: OnboardingSlide[] = [
   {
@@ -119,6 +146,7 @@ const sidebarNavItems = [
 
 export default function RunashChatPage() {
   const router = useRouter()
+  const { setTheme } = useTheme()
   const { data: session, status: authStatus } = useAuthSession()
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [messagesPreview, setMessagesPreview] = useState<ChatPreviewMessage[]>([])
@@ -143,6 +171,9 @@ export default function RunashChatPage() {
   const mainControlsRef = useRef<HTMLTextAreaElement | null>(null)
   const [selectedModel, setSelectedModel] = useState<"v0 Mini" | "v0 Max">("v0 Mini")
   const [selectedProjectLabel, setSelectedProjectLabel] = useState("Select a Project")
+  const [themePreference, setThemePreference] = useState<RunashThemePreference>("system")
+  const [languagePreference, setLanguagePreference] = useState<RunashLanguagePreference>("en")
+  const [chatPositionPreference, setChatPositionPreference] = useState<RunashChatPositionPreference>("left")
 
   const isLastOnboardingStep = activeOnboardingStep === onboardingSlides.length - 1
   const currentOnboardingSlide = onboardingSlides[activeOnboardingStep]
@@ -228,6 +259,56 @@ export default function RunashChatPage() {
           )
         })}
         <DropdownMenuSeparator className="bg-zinc-800" />
+        <div className="space-y-2 px-2 py-2">
+          <div className="flex items-center justify-between gap-2 rounded-md px-2 py-1 hover:bg-zinc-800/60">
+            <span className="text-xs text-zinc-400">Theme</span>
+            <select
+              value={themePreference}
+              onChange={(event) => setThemePreference(event.target.value as RunashThemePreference)}
+              className="h-7 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100 outline-none"
+              aria-label="Select theme"
+            >
+              {themeOptions.map((themeOption) => (
+                <option key={themeOption} value={themeOption}>
+                  {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center justify-between gap-2 rounded-md px-2 py-1 hover:bg-zinc-800/60">
+            <span className="text-xs text-zinc-400">Language</span>
+            <select
+              value={languagePreference}
+              onChange={(event) => setLanguagePreference(event.target.value as RunashLanguagePreference)}
+              className="h-7 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100 outline-none"
+              aria-label="Select language"
+            >
+              {languageOptions.map((languageOption) => (
+                <option key={languageOption.value} value={languageOption.value}>
+                  {languageOption.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center justify-between gap-2 rounded-md px-2 py-1 hover:bg-zinc-800/60">
+            <span className="text-xs text-zinc-400">Chat position</span>
+            <div className="inline-flex rounded-md border border-zinc-700 bg-zinc-950 p-0.5">
+              {chatPositionOptions.map((positionOption) => (
+                <button
+                  key={positionOption}
+                  type="button"
+                  onClick={() => setChatPositionPreference(positionOption)}
+                  className={`rounded px-2 py-1 text-[11px] ${
+                    chatPositionPreference === positionOption ? "bg-zinc-700 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  {positionOption === "left" ? "Left" : "Right"}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <DropdownMenuSeparator className="bg-zinc-800" />
         <DropdownMenuItem
           onClick={() => signOutWithRedirect("/")}
           className="cursor-pointer text-rose-300 focus:bg-rose-500/20 focus:text-rose-200"
@@ -258,7 +339,31 @@ export default function RunashChatPage() {
 
     const hasSeenOnboarding = localStorage.getItem(runashChatOnboardingStorageKey) === "true"
     setIsOnboardingOpen(!hasSeenOnboarding)
-  }, [])
+
+    const storedThemePreference = localStorage.getItem(runashChatThemeStorageKey)
+    const safeThemePreference: RunashThemePreference = isValidThemePreference(storedThemePreference) ? storedThemePreference : "system"
+    setThemePreference(safeThemePreference)
+    setTheme(safeThemePreference)
+
+    const storedLanguagePreference = localStorage.getItem(runashChatLanguageStorageKey)
+    setLanguagePreference(isValidLanguagePreference(storedLanguagePreference) ? storedLanguagePreference : "en")
+
+    const storedChatPositionPreference = localStorage.getItem(runashChatPositionStorageKey)
+    setChatPositionPreference(isValidChatPositionPreference(storedChatPositionPreference) ? storedChatPositionPreference : "left")
+  }, [setTheme])
+
+  useEffect(() => {
+    localStorage.setItem(runashChatThemeStorageKey, themePreference)
+    setTheme(themePreference)
+  }, [themePreference, setTheme])
+
+  useEffect(() => {
+    localStorage.setItem(runashChatLanguageStorageKey, languagePreference)
+  }, [languagePreference])
+
+  useEffect(() => {
+    localStorage.setItem(runashChatPositionStorageKey, chatPositionPreference)
+  }, [chatPositionPreference])
 
   const markOnboardingSeen = () => {
     localStorage.setItem(runashChatOnboardingStorageKey, "true")
@@ -693,7 +798,9 @@ export default function RunashChatPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="mx-auto flex w-full max-w-[1400px] gap-4 px-3 py-3">
+      <div
+        className={`mx-auto flex w-full max-w-[1400px] gap-4 px-3 py-3 ${chatPositionPreference === "right" ? "lg:flex-row-reverse" : "lg:flex-row"}`}
+      >
         <aside
           id="runash-chat-sidebar"
           className={`hidden h-[calc(100vh-24px)] shrink-0 rounded-xl border border-zinc-800 bg-black/70 p-3 lg:flex lg:flex-col ${
@@ -767,7 +874,7 @@ export default function RunashChatPage() {
                       </Button>
                     </SheetTrigger>
                     <SheetContent
-                      side="left"
+                      side={chatPositionPreference === "right" ? "right" : "left"}
                       id={runashChatMobileSidebarId}
                       className="w-[280px] border-zinc-800 bg-[#050607] p-3 text-zinc-100"
                       onEscapeKeyDown={() => setIsMobileSidebarOpen(false)}
