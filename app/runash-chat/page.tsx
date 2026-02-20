@@ -91,6 +91,10 @@ import {
   Frown,
   X,
 } from "lucide-react";
+import {
+  SuggestionCardGrid,
+  type SuggestionCardItem,
+} from "@/components/chat/shared-chat-primitives";
 
 type ChatPreviewMessage = {
   id: string | number;
@@ -1405,6 +1409,16 @@ export default function RunashChatPage() {
   const visiblePromptSuggestionCards = promptSuggestionCards.filter(
     (card) => !dismissedPromptSuggestionCardIds.includes(card.id),
   );
+  const promptSuggestionItems: SuggestionCardItem[] =
+    visiblePromptSuggestionCards.map((card) => ({
+      id: card.id,
+      title: card.title,
+      description: card.guidance,
+      actionLabel: card.ctaText,
+      icon: card.icon,
+      onAction: () => handlePromptSuggestionCardClick(card),
+      onDismiss: () => handleDismissPromptSuggestionCard(card.id),
+    }));
   const referralProgressPercent =
     referralUiData.rewardCap > 0
       ? Math.min(
@@ -6709,73 +6723,13 @@ ${instructionStarter}`
                   </div>
                 </div>
 
-                <section
-                  className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 sm:p-4"
-                  aria-label="Prompt suggestions"
-                >
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
-                      Prompt suggestions
-                    </h2>
-                  </div>
-
-                  {visiblePromptSuggestionCards.length > 0 ? (
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {visiblePromptSuggestionCards.map((card) => {
-                        const SuggestionIcon = card.icon;
-                        return (
-                          <article
-                            key={card.id}
-                            className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3"
-                          >
-                            <div className="mb-2 flex items-start justify-between gap-2">
-                              <div className="flex items-start gap-2">
-                                <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-md bg-zinc-800 text-zinc-200">
-                                  <SuggestionIcon className="h-3.5 w-3.5" />
-                                </span>
-                                <div>
-                                  <h3 className="text-sm font-medium text-zinc-100">
-                                    {card.title}
-                                  </h3>
-                                  <p className="mt-1 text-xs text-zinc-400">
-                                    {card.guidance}
-                                  </p>
-                                </div>
-                              </div>
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="ghost"
-                                className="h-6 w-6 rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-                                aria-label={`Dismiss ${card.title} suggestion`}
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  handleDismissPromptSuggestionCard(card.id);
-                                }}
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-8 border-zinc-700 bg-zinc-900 text-xs text-zinc-100 hover:bg-zinc-800"
-                              onClick={() => handlePromptSuggestionCardClick(card)}
-                            >
-                              {card.ctaText}
-                            </Button>
-                          </article>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-zinc-500">
-                      All suggestions dismissed. Use Settings → General to show
-                      them again.
-                    </p>
-                  )}
-                </section>
+                <div className="mt-3">
+                  <SuggestionCardGrid
+                    title="Prompt suggestions"
+                    items={promptSuggestionItems}
+                    emptyMessage="All suggestions dismissed. Use Settings → General to show them again."
+                  />
+                </div>
               </div>
 
               {isGetStartedVisible && (
