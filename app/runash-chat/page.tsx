@@ -28,9 +28,11 @@ import { useTheme } from "next-themes"
 import {
   ArrowRight,
   Bot,
+  Check,
   ChevronDown,
   ChevronsLeft,
   ChevronsRight,
+  Copy,
   CreditCard,
   ExternalLink,
   FolderKanban,
@@ -269,6 +271,10 @@ export default function RunashChatPage() {
   const [isFavoritesExpanded, setIsFavoritesExpanded] = useState(true)
   const [isRecentsExpanded, setIsRecentsExpanded] = useState(true)
   const [activeModal, setActiveModal] = useState<ActiveModal>(null)
+  const [isReferModalOpen, setIsReferModalOpen] = useState(false)
+  const [referralLink] = useState("https://runash.in/refer?code=RUNASH-CHAT")
+  const [monthlyProgress] = useState({ current: 3, max: 10 })
+  const [isCopyingLink, setIsCopyingLink] = useState(false)
   const [onboardingStep, setOnboardingStep] = useState(0)
   const [isBannerDismissed, setIsBannerDismissed] = useState<boolean | null>(null)
   const [selectedPlan, setSelectedPlan] = useState<UpgradePlanId>("team")
@@ -300,8 +306,8 @@ export default function RunashChatPage() {
   const currentOnboardingSlide = onboardingSlides[onboardingStep]
   const isOnboardingOpen = activeModal === "onboarding"
   const isFeedbackOpen = activeModal === "feedback"
-  const isReferDialogOpen = activeModal === "refer"
   const isUpgradeModalOpen = activeModal === "upgrade"
+  const referralProgressPercent = Math.min(100, Math.round((monthlyProgress.current / monthlyProgress.max) * 100))
 
   const authenticatedUser = session?.user
   const isAuthenticated = authStatus === "authenticated" && Boolean(authenticatedUser)
@@ -361,12 +367,8 @@ export default function RunashChatPage() {
       tooltip: "Refer a friend or team",
       icon: Sparkles,
       onClick: (triggerElement) => {
-        if (isAuthenticated) {
-          router.push("/settings?section=usage&panel=refer-earn")
-          return
-        }
-
-        openModal("refer", triggerElement)
+        rememberModalTrigger(triggerElement)
+        setIsReferModalOpen(true)
       },
     },
   ]
@@ -526,7 +528,26 @@ export default function RunashChatPage() {
   }
 
   const handleReferDialogOpenChange = (open: boolean) => {
-    setActiveModal(open ? "refer" : null)
+    setIsReferModalOpen(open)
+  }
+
+  const handleCopyReferralLink = async () => {
+    try {
+      setIsCopyingLink(true)
+      await navigator.clipboard.writeText(referralLink)
+      toast({
+        title: "Referral link copied",
+        description: "Share it with friends to start earning rewards.",
+      })
+    } catch {
+      toast({
+        title: "Could not copy link",
+        description: "Please copy your referral link manually.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsCopyingLink(false)
+    }
   }
 
   const handleUpgradeModalOpenChange = (open: boolean) => {
@@ -1254,33 +1275,78 @@ export default function RunashChatPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isReferDialogOpen} onOpenChange={handleReferDialogOpenChange}>
+      <Dialog open={isReferModalOpen} onOpenChange={handleReferDialogOpenChange}>
         <DialogContent
-          className="z-[60] w-[min(92vw,28rem)] max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md"
+          className="z-[60] w-[min(92vw,32rem)] max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-lg"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
             focusModalTrigger()
           }}
         >
-          <DialogHeader>
-            <DialogTitle>Refer & Earn</DialogTitle>
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle className="flex items-center gap-2 text-zinc-100">
+              <Sparkles className="h-5 w-5 text-emerald-400" aria-hidden="true" />
+              Invite & earn rewards
+            </DialogTitle>
             <DialogDescription className="text-zinc-400">
-              Your referral dashboard is available after sign in. Create a referral link, track rewards, and manage invites from your usage settings.
+              Share your referral link and unlock monthly credits for every verified signup.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2 sm:justify-end">
-            <Button type="button" variant="outline" onClick={() => handleReferDialogOpenChange(false)}>
-              Maybe later
-            </Button>
+
+          <div className="space-y-5">
+            <section className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+              <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-zinc-400">
+                <span>Monthly progress</span>
+                <span>{monthlyProgress.current} / {monthlyProgress.max} invites</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-zinc-800" role="progressbar" aria-valuemin={0} aria-valuemax={monthlyProgress.max} aria-valuenow={monthlyProgress.current}>
+                <div className="h-full rounded-full bg-emerald-500" style={{ width: `${referralProgressPercent}%` }} />
+              </div>
+              <div className="flex justify-between text-xs text-zinc-500">
+                <span>0 invites</span>
+                <span>{monthlyProgress.max} invites</span>
+              </div>
+            </section>
+
+            <section className="space-y-2">
+              <p className="text-sm font-medium text-zinc-200">Referral link</p>
+              <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 p-2">
+                <code className="flex-1 truncate rounded bg-zinc-950 px-3 py-2 text-xs text-zinc-300">{referralLink}</code>
+                <Button type="button" size="sm" onClick={handleCopyReferralLink} disabled={isCopyingLink}>
+                  {isCopyingLink ? (
+                    <>
+                      <Check className="mr-2 h-4 w-4" aria-hidden="true" />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="mr-2 h-4 w-4" aria-hidden="true" />
+                      Copy
+                    </>
+                  )}
+                </Button>
+              </div>
+            </section>
+
+            <section className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+              <p className="text-sm font-medium text-zinc-200">How it works</p>
+              <ul className="list-disc space-y-1 pl-5 text-sm text-zinc-400">
+                <li>Share your link with creators, teammates, or storefront operators.</li>
+                <li>They sign up and launch their first RunAsh Chat workflow.</li>
+                <li>You both receive reward credits automatically each month.</li>
+              </ul>
+            </section>
+          </div>
+
+          <DialogFooter className="gap-2 sm:justify-between">
             <Button
               type="button"
-              onClick={() => {
-                handleReferDialogOpenChange(false)
-                router.push("/login")
-              }}
+              variant="outline"
+              onClick={() => handleReferDialogOpenChange(false)}
             >
-              Sign in to continue
+              Maybe later
             </Button>
+            <Button type="button" onClick={() => router.push("/pricing?tab=roi")}>Run the numbers</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
