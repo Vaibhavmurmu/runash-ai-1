@@ -90,6 +90,15 @@ type SidebarFavoriteItem = {
   href: string
 }
 
+type ConfirmDeleteEntityType = "chat" | "folder" | "recent"
+
+type ConfirmDeletePayload = {
+  entityType: ConfirmDeleteEntityType
+  entityId: string
+  title: string
+  description: string
+}
+
 type OnboardingSlide = {
   title: string
   description: string
@@ -463,6 +472,7 @@ export default function RunashChatPage() {
   const [shareRecentItem, setShareRecentItem] = useState<RecentEntity | null>(null)
   const [moveRecentItem, setMoveRecentItem] = useState<RecentEntity | null>(null)
   const [isCopyingRecentLink, setIsCopyingRecentLink] = useState(false)
+  const [confirmDeletePayload, setConfirmDeletePayload] = useState<ConfirmDeletePayload | null>(null)
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
   const [activeOverlay, setActiveOverlay] = useState<ActiveOverlay>(null)
   const [isCopyingLink, setIsCopyingLink] = useState(false)
@@ -479,6 +489,8 @@ export default function RunashChatPage() {
   const learnMoreTriggerRef = useRef<HTMLButtonElement | null>(null)
   const mainControlsRef = useRef<HTMLTextAreaElement | null>(null)
   const lastOverlayTriggerRef = useRef<HTMLElement | null>(null)
+  const deleteActionTriggerRef = useRef<HTMLElement | null>(null)
+  const rowActionTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({})
   const [selectedModel, setSelectedModel] = useState<"v0 Mini" | "v0 Max">("v0 Mini")
   const [selectedProjectLabel, setSelectedProjectLabel] = useState("Select a Project")
   const [themePreference, setThemePreference] = useState<RunashThemePreference>("system")
@@ -605,19 +617,55 @@ export default function RunashChatPage() {
   }
 
   const handleRecentDelete = (item: RecentEntity) => {
-    const isConfirmed = window.confirm(`Delete ${item.title}? This action cannot be undone.`)
-    if (!isConfirmed) {
-      closeRecentMenu()
-      return
+    closeRecentMenu()
+    setConfirmDeletePayload({
+      entityType: item.entityType === "session" ? "chat" : "recent",
+      entityId: item.id,
+      title: item.title,
+      description: `Delete ${item.title} from your recents list? This action cannot be undone.`,
+    })
+  }
+
+  const restoreDeleteActionTriggerFocus = () => {
+    const triggerElement = deleteActionTriggerRef.current
+    if (triggerElement && document.contains(triggerElement)) {
+      window.setTimeout(() => {
+        triggerElement.focus()
+      }, 0)
+    }
+  }
+
+  const closeDeleteConfirmModal = (restoreFocus = false) => {
+    setConfirmDeletePayload(null)
+
+    if (restoreFocus) {
+      restoreDeleteActionTriggerFocus()
+    }
+  }
+
+  const handleDeleteConfirm = () => {
+    if (!confirmDeletePayload) return
+
+    if (confirmDeletePayload.entityType === "folder") {
+      setFavoriteItems((previousItems) => previousItems.filter((favoriteItem) => favoriteItem.id !== confirmDeletePayload.entityId))
+      toast({
+        title: "Folder deleted",
+        description: `${confirmDeletePayload.title} was removed from your workspace list.`,
+        variant: "destructive",
+      })
+    } else {
+      setRecentEntities((previousItems) => previousItems.filter((recentItem) => recentItem.id !== confirmDeletePayload.entityId))
+      toast({
+        title: "Item deleted",
+        description:
+          confirmDeletePayload.entityType === "chat"
+            ? `${confirmDeletePayload.title} chat was removed from Recents.`
+            : `${confirmDeletePayload.title} was removed from Recents.`,
+        variant: "destructive",
+      })
     }
 
-    setRecentEntities((previousItems) => previousItems.filter((recentItem) => recentItem.id !== item.id))
-    closeRecentMenu()
-    toast({
-      title: "Item deleted",
-      description: `${item.title} was removed from Recents.`,
-      variant: "destructive",
-    })
+    closeDeleteConfirmModal(true)
   }
 
   const handleCopyRecentShareLink = async () => {
@@ -1562,18 +1610,12 @@ export default function RunashChatPage() {
       return
     }
 
-    const isConfirmed = window.confirm(`Delete ${item.label}? This action cannot be undone.`)
-    if (!isConfirmed) {
-      closeFavoriteMenu()
-      return
-    }
-
-    setFavoriteItems((previousItems) => previousItems.filter((favoriteItem) => favoriteItem.id !== favoriteId))
     closeFavoriteMenu()
-    toast({
-      title: "Folder deleted",
-      description: `${item.label} was removed from your workspace list.`,
-      variant: "destructive",
+    setConfirmDeletePayload({
+      entityType: "folder",
+      entityId: favoriteId,
+      title: item.label,
+      description: `Delete ${item.label}? This action cannot be undone.`,
     })
   }
 
@@ -1680,6 +1722,9 @@ export default function RunashChatPage() {
                             >
                               <DropdownMenuTrigger asChild>
                                 <button
+                                  ref={(element) => {
+                                    rowActionTriggerRefs.current[`folder-${item.id}`] = element
+                                  }}
                                   type="button"
                                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
                                   aria-label={`Open actions for ${item.label}`}
@@ -1707,7 +1752,10 @@ export default function RunashChatPage() {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   className="cursor-pointer rounded-sm text-red-400 focus:bg-red-950/50 focus:text-red-300"
-                                  onClick={() => handleFavoriteDeleteFolder(item.id)}
+                                  onClick={() => {
+                                    deleteActionTriggerRef.current = rowActionTriggerRefs.current[`folder-${item.id}`]
+                                    handleFavoriteDeleteFolder(item.id)
+                                  }}
                                 >
                                   Delete folder
                                 </DropdownMenuItem>
@@ -1794,6 +1842,9 @@ export default function RunashChatPage() {
                             >
                               <DropdownMenuTrigger asChild>
                                 <button
+                                  ref={(element) => {
+                                    rowActionTriggerRefs.current[`recent-${item.id}`] = element
+                                  }}
                                   type="button"
                                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition hover:bg-zinc-800 hover:text-zinc-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 group-hover:opacity-100"
                                   aria-label={`Open actions for ${item.title}`}
@@ -1837,7 +1888,10 @@ export default function RunashChatPage() {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   className="cursor-pointer rounded-sm text-red-400 focus:bg-red-950/50 focus:text-red-300"
-                                  onClick={() => handleRecentDelete(item)}
+                                  onClick={() => {
+                                    deleteActionTriggerRef.current = rowActionTriggerRefs.current[`recent-${item.id}`]
+                                    handleRecentDelete(item)
+                                  }}
                                 >
                                   Delete
                                 </DropdownMenuItem>
@@ -1859,6 +1913,26 @@ export default function RunashChatPage() {
 
   return (
     <div className="min-h-screen bg-[#030405] text-zinc-100">
+      <Dialog open={Boolean(confirmDeletePayload)} onOpenChange={(open) => !open && closeDeleteConfirmModal(true)}>
+        <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete {confirmDeletePayload?.title}?</DialogTitle>
+            <DialogDescription className="text-zinc-400">{confirmDeletePayload?.description}</DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border border-red-900/40 bg-red-950/20 px-3 py-2 text-xs text-red-200">
+            This action is permanent and cannot be undone.
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" className="text-zinc-300 hover:bg-zinc-900" onClick={() => closeDeleteConfirmModal(true)}>
+              Cancel
+            </Button>
+            <Button className="bg-red-600 text-white hover:bg-red-500" onClick={handleDeleteConfirm}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={Boolean(shareRecentItem)} onOpenChange={(open) => !open && setShareRecentItem(null)}>
         <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
           <DialogHeader>
