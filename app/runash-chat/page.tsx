@@ -498,6 +498,9 @@ type SidebarActionMenuState = {
   rowId: string
 }
 
+type FavoriteMenuActionId = "removeFavorite" | "renameFavorite" | "deleteFavorite"
+type RecentMenuActionId = "shareRecent" | "moveRecent" | "toggleFavoriteRecent" | "renameRecent" | "deleteRecent"
+
 type ActiveModal =
   | "rename"
   | "move"
@@ -711,8 +714,12 @@ export default function RunashChatPage() {
   const [renameDialogTarget, setRenameDialogTarget] = useState<RenameDialogTarget | null>(null)
   const [renameInputValue, setRenameInputValue] = useState("")
   const [renameInputError, setRenameInputError] = useState<string | null>(null)
+  const [isSubmittingRename, setIsSubmittingRename] = useState(false)
   const [isCopyingRecentLink, setIsCopyingRecentLink] = useState(false)
   const [confirmDeletePayload, setConfirmDeletePayload] = useState<ConfirmDeletePayload | null>(null)
+  const [isDeletingEntity, setIsDeletingEntity] = useState(false)
+  const [isMovingRecent, setIsMovingRecent] = useState(false)
+  const [favoriteMutationById, setFavoriteMutationById] = useState<Record<string, boolean>>({})
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
   const [isCopyingLink, setIsCopyingLink] = useState(false)
   const [onboardingStep, setOnboardingStep] = useState(0)
@@ -1069,32 +1076,118 @@ export default function RunashChatPage() {
     closeSidebarActionMenu()
   }
 
-  const handleRecentAddToFavorites = (item: RecentEntity) => {
-    const nextFavorite = mapRecentEntityToFavorite(item)
+  const persistSidebarMutation = async (action: string, payload: Record<string, string>) => {
+    if (!isAuthenticated) {
+      return
+    }
 
-    setFavoriteItems((previousItems) => {
-      if (previousItems.some((favoriteItem) => favoriteItem.id === nextFavorite.id)) {
-        return previousItems
-      }
-
-      return [nextFavorite, ...previousItems]
+    const response = await fetchWithRetryAndTimeout("/api/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "settings",
+        action: "update",
+        timestamp: new Date().toISOString(),
+        data: {
+          id: `sidebar-${action}-${payload.entityId ?? "unknown"}`,
+          scope: "runash-chat-sidebar",
+          action,
+          ...payload,
+        },
+      }),
     })
 
-    closeRecentMenu()
-    toast({
-      title: "Added to Favorites",
-      description: `${item.title} is now pinned in your favorites list.`,
+    if (!response.ok) {
+      throw new Error("Sidebar update failed")
+    }
+  }
+
+  const setFavoriteMutationLoading = (favoriteId: string, isLoading: boolean) => {
+    setFavoriteMutationById((previousState) => {
+      if (!isLoading && !previousState[favoriteId]) {
+        return previousState
+      }
+
+      if (!isLoading) {
+        const nextState = { ...previousState }
+        delete nextState[favoriteId]
+        return nextState
+      }
+
+      return { ...previousState, [favoriteId]: true }
     })
   }
 
-  const buildRecentShareLink = (item: RecentEntity): string => {
-    const baseUrl = typeof window !== "undefined" ? window.location.origin : ""
+  const addFavoriteFromRecent = async (item: RecentEntity) => {
+    const nextFavorite = mapRecentEntityToFavorite(item)
+    const previousItems = favoriteItems
 
-    if (item.entityType === "project") {
-      return `${baseUrl}/editor?projectId=${item.id.replace("project-", "")}`
+    if (previousItems.some((favoriteItem) => favoriteItem.id === nextFavorite.id)) {
+      closeRecentMenu()
+      toast({
+        title: "Already in Favorites",
+        description: `${item.title} is already pinned.`,
+      })
+      return
     }
 
-    return `${baseUrl}/runash-chat?session=${item.sessionId ?? item.id}`
+    setFavoriteMutationLoading(nextFavorite.id, true)
+    setFavoriteItems((currentItems) => [nextFavorite, ...currentItems])
+
+    try {
+      await persistSidebarMutation("favorite.add", {
+        entityId: nextFavorite.id,
+        sourceEntityId: item.id,
+        sourceType: item.entityType,
+      })
+      closeRecentMenu()
+      toast({
+        title: "Added to Favorites",
+        description: `${item.title} is now pinned in your favorites list.`,
+      })
+    } catch {
+      setFavoriteItems(previousItems)
+      toast({
+        title: "Could not update Favorites",
+        description: "We restored your previous Favorites list. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setFavoriteMutationLoading(nextFavorite.id, false)
+    }
+  }
+
+  const removeFavorite = async (favoriteId: string, sourceLabel?: string) => {
+    const previousItems = favoriteItems
+    const nextItems = previousItems.filter((item) => item.id !== favoriteId)
+    const hasChanged = nextItems.length !== previousItems.length
+
+    if (!hasChanged) {
+      return
+    }
+
+    setFavoriteMutationLoading(favoriteId, true)
+    setFavoriteItems(nextItems)
+
+    try {
+      await persistSidebarMutation("favorite.remove", {
+        entityId: favoriteId,
+      })
+      closeFavoriteMenu()
+      toast({
+        title: "Removed from favorites",
+        description: sourceLabel ? `${sourceLabel} is no longer pinned to Favorites.` : "This item is no longer pinned to Favorites.",
+      })
+    } catch {
+      setFavoriteItems(previousItems)
+      toast({
+        title: "Could not remove favorite",
+        description: "We restored your previous Favorites list. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setFavoriteMutationLoading(favoriteId, false)
+    }
   }
 
   const handleRecentShare = (item: RecentEntity) => {
@@ -1133,6 +1226,28 @@ export default function RunashChatPage() {
     setOverlayState((previousState) => ({ ...previousState, activeModal: "deleteConfirm" }))
   }
 
+  const isRecentFavorited = (item: RecentEntity) => favoriteItems.some((favoriteItem) => favoriteItem.id === `favorite-${item.id}`)
+
+  const toggleRecentFavorite = async (item: RecentEntity) => {
+    if (isRecentFavorited(item)) {
+      await removeFavorite(`favorite-${item.id}`, item.title)
+      closeRecentMenu()
+      return
+    }
+
+    await addFavoriteFromRecent(item)
+  }
+
+  const buildRecentShareLink = (item: RecentEntity): string => {
+    const baseUrl = typeof window !== "undefined" ? window.location.origin : ""
+
+    if (item.entityType === "project") {
+      return `${baseUrl}/editor?projectId=${item.id.replace("project-", "")}`
+    }
+
+    return `${baseUrl}/runash-chat?session=${item.sessionId ?? item.id}`
+  }
+
   const restoreDeleteActionTriggerFocus = () => {
     const triggerElement = deleteActionTriggerRef.current
     if (triggerElement && document.contains(triggerElement)) {
@@ -1151,29 +1266,49 @@ export default function RunashChatPage() {
     }
   }
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (!confirmDeletePayload) return
 
-    if (confirmDeletePayload.entityType === "folder") {
-      setFavoriteItems((previousItems) => previousItems.filter((favoriteItem) => favoriteItem.id !== confirmDeletePayload.entityId))
-      toast({
-        title: "Folder deleted",
-        description: `${confirmDeletePayload.title} was removed from your workspace list.`,
-        variant: "destructive",
-      })
+    const payload = confirmDeletePayload
+    const previousFavorites = favoriteItems
+    const previousRecents = recentEntities
+
+    if (payload.entityType === "folder") {
+      setFavoriteItems((previousItems) => previousItems.filter((favoriteItem) => favoriteItem.id !== payload.entityId))
     } else {
-      setRecentEntities((previousItems) => previousItems.filter((recentItem) => recentItem.id !== confirmDeletePayload.entityId))
-      toast({
-        title: "Item deleted",
-        description:
-          confirmDeletePayload.entityType === "chat"
-            ? `${confirmDeletePayload.title} chat was removed from Recents.`
-            : `${confirmDeletePayload.title} was removed from Recents.`,
-        variant: "destructive",
-      })
+      setRecentEntities((previousItems) => previousItems.filter((recentItem) => recentItem.id !== payload.entityId))
     }
 
-    closeDeleteConfirmModal(true)
+    setIsDeletingEntity(true)
+
+    try {
+      await persistSidebarMutation("entity.delete", {
+        entityId: payload.entityId,
+        entityType: payload.entityType,
+      })
+
+      toast({
+        title: payload.entityType === "folder" ? "Folder deleted" : "Item deleted",
+        description:
+          payload.entityType === "folder"
+            ? `${payload.title} was removed from your workspace list.`
+            : payload.entityType === "chat"
+              ? `${payload.title} chat was removed from Recents.`
+              : `${payload.title} was removed from Recents.`,
+        variant: "destructive",
+      })
+      closeDeleteConfirmModal(true)
+    } catch {
+      setFavoriteItems(previousFavorites)
+      setRecentEntities(previousRecents)
+      toast({
+        title: "Delete failed",
+        description: "We could not delete this item and restored your previous data.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsDeletingEntity(false)
+    }
   }
 
   const handleCopyRecentShareLink = async () => {
@@ -1208,11 +1343,15 @@ export default function RunashChatPage() {
     })),
   ]
 
-  const handleRecentMoveDestinationSelect = (destination: RecentMoveDestination) => {
+  const handleRecentMoveDestinationSelect = async (destination: RecentMoveDestination) => {
     if (!moveRecentItem) return
 
+    const activeItem = moveRecentItem
+    const previousFavorites = favoriteItems
+    const previousRecents = recentEntities
+
     if (destination.id === "favorites") {
-      const nextFavorite = mapRecentEntityToFavorite(moveRecentItem)
+      const nextFavorite = mapRecentEntityToFavorite(activeItem)
       setFavoriteItems((previousItems) => {
         if (previousItems.some((favoriteItem) => favoriteItem.id === nextFavorite.id)) {
           return previousItems
@@ -1222,15 +1361,33 @@ export default function RunashChatPage() {
       })
     }
 
-    setRecentEntities((previousItems) => previousItems.filter((recentItem) => recentItem.id !== moveRecentItem.id))
+    setRecentEntities((previousItems) => previousItems.filter((recentItem) => recentItem.id !== activeItem.id))
 
-    toast({
-      title: "Item moved",
-      description: `${moveRecentItem.title} moved to ${destination.label}.`,
-    })
-    setMoveRecentItem(null)
-    setSelectedMoveDestinationId("")
-    setOverlayState((previousState) => ({ ...previousState, activeModal: null }))
+    setIsMovingRecent(true)
+    try {
+      await persistSidebarMutation("recent.move", {
+        entityId: activeItem.id,
+        destinationId: destination.id,
+      })
+
+      toast({
+        title: "Item moved",
+        description: `${activeItem.title} moved to ${destination.label}.`,
+      })
+      setMoveRecentItem(null)
+      setSelectedMoveDestinationId("")
+      setOverlayState((previousState) => ({ ...previousState, activeModal: null }))
+    } catch {
+      setFavoriteItems(previousFavorites)
+      setRecentEntities(previousRecents)
+      toast({
+        title: "Move failed",
+        description: "We restored the previous location for this item.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsMovingRecent(false)
+    }
   }
 
   const closeRenameDialog = () => {
@@ -1240,16 +1397,47 @@ export default function RunashChatPage() {
     setOverlayState((previousState) => ({ ...previousState, activeModal: null }))
   }
 
-  const handleRenameSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const validateRenameInput = (value: string, target: RenameDialogTarget): string | null => {
+    const trimmedLabel = value.trim()
+
+    if (!trimmedLabel) return "Please enter a name."
+    if (trimmedLabel.length < 2) return "Name must be at least 2 characters."
+    if (trimmedLabel.length > 80) return "Name cannot exceed 80 characters."
+    if (trimmedLabel === target.currentName.trim()) return "Enter a different name."
+
+    const normalizedLabel = trimmedLabel.toLowerCase()
+
+    if (target.entityType === "favorite") {
+      const hasDuplicate = favoriteItems.some(
+        (favoriteItem) => favoriteItem.id !== target.entityId && favoriteItem.label.trim().toLowerCase() === normalizedLabel,
+      )
+      if (hasDuplicate) return "A favorite with this name already exists."
+    } else {
+      const hasDuplicate = recentEntities.some(
+        (recentItem) => recentItem.id !== target.entityId && recentItem.title.trim().toLowerCase() === normalizedLabel,
+      )
+      if (hasDuplicate) return "A recent item with this name already exists."
+    }
+
+    return null
+  }
+
+  const handleRenameSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
     if (!renameDialogTarget) return
 
-    const trimmedLabel = renameInputValue.trim()
-    if (!trimmedLabel) {
-      setRenameInputError("Please enter a name.")
+    const validationError = validateRenameInput(renameInputValue, renameDialogTarget)
+    if (validationError) {
+      setRenameInputError(validationError)
       return
     }
+
+    const trimmedLabel = renameInputValue.trim()
+    const previousFavorites = favoriteItems
+    const previousRecents = recentEntities
+
+    setIsSubmittingRename(true)
 
     if (renameDialogTarget.entityType === "favorite") {
       setFavoriteItems((previousItems) =>
@@ -1257,23 +1445,37 @@ export default function RunashChatPage() {
           favoriteItem.id === renameDialogTarget.entityId ? { ...favoriteItem, label: trimmedLabel } : favoriteItem,
         ),
       )
-      toast({
-        title: "Favorite renamed",
-        description: `Updated to \"${trimmedLabel}\".`,
-      })
     } else {
       setRecentEntities((previousItems) =>
         previousItems.map((recentItem) =>
           recentItem.id === renameDialogTarget.entityId ? { ...recentItem, title: trimmedLabel } : recentItem,
         ),
       )
-      toast({
-        title: "Item renamed",
-        description: `Updated to \"${trimmedLabel}\".`,
-      })
     }
 
-    closeRenameDialog()
+    try {
+      await persistSidebarMutation("entity.rename", {
+        entityId: renameDialogTarget.entityId,
+        entityType: renameDialogTarget.entityType,
+        label: trimmedLabel,
+      })
+
+      toast({
+        title: renameDialogTarget.entityType === "favorite" ? "Favorite renamed" : "Item renamed",
+        description: `Updated to "${trimmedLabel}".`,
+      })
+      closeRenameDialog()
+    } catch {
+      setFavoriteItems(previousFavorites)
+      setRecentEntities(previousRecents)
+      toast({
+        title: "Rename failed",
+        description: "We restored the previous name. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmittingRename(false)
+    }
   }
 
   const closeMoveDialog = () => {
@@ -1282,7 +1484,7 @@ export default function RunashChatPage() {
     setOverlayState((previousState) => ({ ...previousState, activeModal: null }))
   }
 
-  const handleMoveSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleMoveSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
     const destination = recentMoveDestinations.find((recentDestination) => recentDestination.id === selectedMoveDestinationId)
@@ -1290,7 +1492,7 @@ export default function RunashChatPage() {
       return
     }
 
-    handleRecentMoveDestinationSelect(destination)
+    await handleRecentMoveDestinationSelect(destination)
   }
 
   const focusOverlayTrigger = () => {
@@ -2483,13 +2685,9 @@ ${instructionStarter}` : instructionStarter
     closeSidebarActionMenu()
   }
 
-  const handleFavoriteRemove = (favoriteId: string) => {
-    setFavoriteItems((previousItems) => previousItems.filter((item) => item.id !== favoriteId))
-    closeFavoriteMenu()
-    toast({
-      title: "Removed from favorites",
-      description: "This item is no longer pinned to Favorites.",
-    })
+  const handleFavoriteRemove = async (favoriteId: string) => {
+    const item = favoriteItems.find((favoriteItem) => favoriteItem.id === favoriteId)
+    await removeFavorite(favoriteId, item?.label)
   }
 
   const handleFavoriteRename = (favoriteId: string) => {
@@ -2526,6 +2724,72 @@ ${instructionStarter}` : instructionStarter
     })
     setOverlayState((previousState) => ({ ...previousState, activeModal: "deleteConfirm" }))
   }
+
+  const getFavoriteMenuActions = (item: SidebarFavoriteItem): Array<{ id: FavoriteMenuActionId; label: string; danger?: boolean; onSelect: () => void }> => [
+    {
+      id: "removeFavorite",
+      label: "Remove from Favorites",
+      onSelect: () => {
+        void handleFavoriteRemove(item.id)
+      },
+    },
+    {
+      id: "renameFavorite",
+      label: "Rename",
+      onSelect: () => {
+        handleFavoriteRename(item.id)
+      },
+    },
+    {
+      id: "deleteFavorite",
+      label: "Delete folder",
+      danger: true,
+      onSelect: () => {
+        deleteActionTriggerRef.current = rowActionTriggerRefs.current[getSidebarActionMenuKey("favorite", item.id)]
+        handleFavoriteDeleteFolder(item.id)
+      },
+    },
+  ]
+
+  const getRecentMenuActions = (item: RecentEntity): Array<{ id: RecentMenuActionId; label: string; danger?: boolean; onSelect: () => void }> => [
+    {
+      id: "shareRecent",
+      label: "Share",
+      onSelect: () => {
+        handleRecentShare(item)
+      },
+    },
+    {
+      id: "moveRecent",
+      label: "Move...",
+      onSelect: () => {
+        handleRecentMove(item)
+      },
+    },
+    {
+      id: "toggleFavoriteRecent",
+      label: isRecentFavorited(item) ? "Remove from Favorites" : "Add to Favorites",
+      onSelect: () => {
+        void toggleRecentFavorite(item)
+      },
+    },
+    {
+      id: "renameRecent",
+      label: "Rename",
+      onSelect: () => {
+        handleRecentRename(item)
+      },
+    },
+    {
+      id: "deleteRecent",
+      label: "Delete",
+      danger: true,
+      onSelect: () => {
+        deleteActionTriggerRef.current = rowActionTriggerRefs.current[getSidebarActionMenuKey("recent", item.id)]
+        handleRecentDelete(item)
+      },
+    },
+  ]
 
   function renderSidebarContent(collapsed: boolean, isMobileDrawer = false) {
     return (
@@ -2608,6 +2872,7 @@ ${instructionStarter}` : instructionStarter
                       {favoriteItems.map((item) => {
                         const Icon = item.icon
                         const isMenuOpen = isSidebarActionMenuOpen("favorite", item.id)
+                        const isFavoriteMutating = Boolean(favoriteMutationById[item.id])
 
                         return (
                           <div key={item.id} className="flex items-center gap-1 rounded-md px-1 py-0.5 transition hover:bg-zinc-900">
@@ -2618,6 +2883,7 @@ ${instructionStarter}` : instructionStarter
                                 if (isMobileDrawer) setIsMobileSidebarOpen(false)
                               }}
                               className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left"
+                              disabled={isFavoriteMutating}
                             >
                               <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-900 text-zinc-300">
                                 <Icon className="h-3.5 w-3.5" />
@@ -2648,6 +2914,7 @@ ${instructionStarter}` : instructionStarter
                                   type="button"
                                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
                                   aria-label={`Open actions for ${item.label}`}
+                                  disabled={isFavoriteMutating}
                                 >
                                   <span className="text-sm leading-none">...</span>
                                 </button>
@@ -2662,29 +2929,15 @@ ${instructionStarter}` : instructionStarter
                                 sideOffset={6}
                                 className={actionMenuContentClassName}
                               >
-                                <DropdownMenuItem
-                                  className={actionMenuItemClassName}
-                                  onClick={() => handleFavoriteRemove(item.id)}
-                                >
-                                  Remove from Favorites
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className={actionMenuItemClassName}
-                                  onClick={() => handleFavoriteRename(item.id)}
-                                >
-                                  Rename
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className={actionMenuDangerItemClassName}
-                                  onClick={() => {
-                                    deleteActionTriggerRef.current = rowActionTriggerRefs.current[
-                                      getSidebarActionMenuKey("favorite", item.id)
-                                    ]
-                                    handleFavoriteDeleteFolder(item.id)
-                                  }}
-                                >
-                                  Delete folder
-                                </DropdownMenuItem>
+                                {getFavoriteMenuActions(item).map((action) => (
+                                  <DropdownMenuItem
+                                    key={action.id}
+                                    className={action.danger ? actionMenuDangerItemClassName : actionMenuItemClassName}
+                                    onClick={action.onSelect}
+                                  >
+                                    {action.label}
+                                  </DropdownMenuItem>
+                                ))}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>
@@ -2803,41 +3056,15 @@ ${instructionStarter}` : instructionStarter
                                 collisionBoundary={sidebarScrollAreaRef.current ?? undefined}
                                 className={actionMenuContentClassName}
                               >
-                                <DropdownMenuItem
-                                  className={actionMenuItemClassName}
-                                  onClick={() => handleRecentShare(item)}
-                                >
-                                  Share
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className={actionMenuItemClassName}
-                                  onClick={() => handleRecentMove(item)}
-                                >
-                                  Move...
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className={actionMenuItemClassName}
-                                  onClick={() => handleRecentAddToFavorites(item)}
-                                >
-                                  Add to Favorites
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className={actionMenuItemClassName}
-                                  onClick={() => handleRecentRename(item)}
-                                >
-                                  Rename
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className={actionMenuDangerItemClassName}
-                                  onClick={() => {
-                                    deleteActionTriggerRef.current = rowActionTriggerRefs.current[
-                                      getSidebarActionMenuKey("recent", item.id)
-                                    ]
-                                    handleRecentDelete(item)
-                                  }}
-                                >
-                                  Delete
-                                </DropdownMenuItem>
+                                {getRecentMenuActions(item).map((action) => (
+                                  <DropdownMenuItem
+                                    key={action.id}
+                                    className={action.danger ? actionMenuDangerItemClassName : actionMenuItemClassName}
+                                    onClick={action.onSelect}
+                                  >
+                                    {action.label}
+                                  </DropdownMenuItem>
+                                ))}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           ) : null}
@@ -2872,8 +3099,12 @@ ${instructionStarter}` : instructionStarter
             <Button variant="ghost" className="text-zinc-300 hover:bg-zinc-900" onClick={() => closeDeleteConfirmModal(true)}>
               Cancel
             </Button>
-            <Button className="bg-red-600 text-white hover:bg-red-500 focus-visible:ring-red-400" onClick={handleDeleteConfirm}>
-              Delete
+            <Button
+              className="bg-red-600 text-white hover:bg-red-500 focus-visible:ring-red-400"
+              onClick={() => void handleDeleteConfirm()}
+              disabled={isDeletingEntity}
+            >
+              {isDeletingEntity ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2935,8 +3166,8 @@ ${instructionStarter}` : instructionStarter
               <Button variant="ghost" className="text-zinc-300 hover:bg-zinc-900" onClick={closeMoveDialog} type="button">
                 Cancel
               </Button>
-              <Button className="bg-cyan-600 text-white hover:bg-cyan-500" type="submit" disabled={!selectedMoveDestinationId}>
-                Move
+              <Button className="bg-cyan-600 text-white hover:bg-cyan-500" type="submit" disabled={!selectedMoveDestinationId || isMovingRecent}>
+                {isMovingRecent ? "Moving..." : "Move"}
               </Button>
             </DialogFooter>
           </form>
@@ -2975,8 +3206,8 @@ ${instructionStarter}` : instructionStarter
               <Button variant="ghost" className="text-zinc-300 hover:bg-zinc-900" onClick={closeRenameDialog} type="button">
                 Cancel
               </Button>
-              <Button className="bg-cyan-600 text-white hover:bg-cyan-500" type="submit">
-                Save
+              <Button className="bg-cyan-600 text-white hover:bg-cyan-500" type="submit" disabled={isSubmittingRename}>
+                {isSubmittingRename ? "Saving..." : "Save"}
               </Button>
             </DialogFooter>
           </form>
