@@ -20,6 +20,9 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuTrigger,
@@ -48,6 +51,7 @@ import {
   PanelsTopLeft,
   LifeBuoy,
   LogOut,
+  Loader2,
   Plus,
   Play,
   PlugZap,
@@ -337,6 +341,30 @@ type HeaderAction = {
 
 type PromptActionType = "route" | "modal" | "service" | "handler"
 type PromptActionId = "enhance" | "create" | "upload" | "search" | "go-live" | "talk" | "generate-video" | "mcp" | "editor"
+type ComposerMenuActionId =
+  | "import-github"
+  | "import-figma"
+  | "upload-from-computer"
+  | "generate-images"
+  | "design-system-library"
+  | "design-system-create"
+  | "folder-new"
+  | "folder-open"
+  | "instructions"
+  | "mcps-manage"
+  | "mcps-explore"
+
+const allowedUploadMimeTypes = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+  "text/plain",
+  "application/json",
+])
+
+const allowedUploadExtensions = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".pdf", ".txt", ".json"]
 
 type PromptActionConfig = {
   id: PromptActionId
@@ -679,6 +707,7 @@ export default function RunashChatPage() {
   const desktopSidebarToggleRef = useRef<HTMLButtonElement | null>(null)
   const learnMoreTriggerRef = useRef<HTMLButtonElement | null>(null)
   const mainControlsRef = useRef<HTMLTextAreaElement | null>(null)
+  const composerUploadInputRef = useRef<HTMLInputElement | null>(null)
   const lastOverlayTriggerRef = useRef<HTMLElement | null>(null)
   const deleteActionTriggerRef = useRef<HTMLElement | null>(null)
   const rowActionTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({})
@@ -691,6 +720,11 @@ export default function RunashChatPage() {
   const [selectedProjectLabel, setSelectedProjectLabel] = useState("Select a Project")
   const [activePromptActionId, setActivePromptActionId] = useState<PromptActionId | null>(null)
   const [isPromptActionLoading, setIsPromptActionLoading] = useState(false)
+  const [isComposerMenuOpen, setIsComposerMenuOpen] = useState(false)
+  const [composerMenuActionLoadingId, setComposerMenuActionLoadingId] = useState<ComposerMenuActionId | null>(null)
+  const [composerMenuError, setComposerMenuError] = useState<string | null>(null)
+  const [uploadedAssetName, setUploadedAssetName] = useState<string | null>(null)
+  const [generateImagesEnabled, setGenerateImagesEnabled] = useState(false)
   const [themePreference, setThemePreference] = useState<RunashThemePreference>("system")
   const [languagePreference, setLanguagePreference] = useState<RunashLanguagePreference>("en")
   const [chatPositionPreference, setChatPositionPreference] = useState<RunashChatPositionPreference>("left")
@@ -734,7 +768,13 @@ export default function RunashChatPage() {
 
   const authenticatedUser = session?.user
   const isAuthenticated = authStatus === "authenticated" && Boolean(authenticatedUser)
-  const commandActionGroups: PromptActionConfig["commandGroup"][] = ["Prompt", "Create", "Tools"]
+  const allowedUploadTypesLabel = "PNG, JPG, WEBP, GIF, PDF, TXT, or JSON"
+
+  const isFileTypeAllowed = (file: File) => {
+    const normalizedFileName = file.name.toLowerCase()
+    const hasAllowedExtension = allowedUploadExtensions.some((extension) => normalizedFileName.endsWith(extension))
+    return allowedUploadMimeTypes.has(file.type) || hasAllowedExtension
+  }
 
   const getSpeechRecognitionConstructor = (): BrowserSpeechRecognitionConstructor | null => {
     if (typeof window === "undefined") {
@@ -2001,18 +2041,27 @@ export default function RunashChatPage() {
   function startChatWithPrompt(initialPrompt?: string) {
     ;(async () => {
       const cleanPrompt = initialPrompt?.trim()
+      const promptContext = {
+        generateImagesEnabled,
+        selectedModel,
+        selectedProjectLabel: selectedProjectLabel === "Select a Project" ? null : selectedProjectLabel,
+        uploadedAssetName,
+      }
+
       try {
         let sid = sessionId
         if (!sid) {
           const res = await fetch("/api/sessions", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ title: "RunAsh Chat" }),
+            body: JSON.stringify({ title: "RunAsh Chat", promptContext }),
           })
           const created = await res.json()
           sid = created?.id ? String(created.id) : null
           setSessionId(sid ?? null)
         }
+
+        localStorage.setItem("runash_initial_prompt_context", JSON.stringify(promptContext))
 
         if (cleanPrompt) {
           localStorage.setItem("runash_initial_prompt", cleanPrompt)
@@ -2121,6 +2170,129 @@ export default function RunashChatPage() {
     }
   }
 
+
+  const runComposerMenuAsyncAction = async (actionId: ComposerMenuActionId, run: () => Promise<void> | void) => {
+    setComposerMenuError(null)
+    setComposerMenuActionLoadingId(actionId)
+
+    try {
+      await run()
+      setIsComposerMenuOpen(false)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to complete this action right now."
+      setComposerMenuError(message)
+      toast({
+        title: "Action failed",
+        description: message,
+        variant: "destructive",
+      })
+    } finally {
+      setComposerMenuActionLoadingId(null)
+    }
+  }
+
+  const handleMenuRouteAction = (actionId: ComposerMenuActionId, route: string, successMessage: string) => {
+    void runComposerMenuAsyncAction(actionId, async () => {
+      router.push(route)
+      toast({ title: successMessage })
+    })
+  }
+
+  const handleComposerFileSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0]
+    event.target.value = ""
+
+    if (!selectedFile) {
+      return
+    }
+
+    if (!isFileTypeAllowed(selectedFile)) {
+      setComposerMenuError(`Unsupported file type. Please upload ${allowedUploadTypesLabel}.`)
+      toast({
+        title: "Upload blocked",
+        description: `Unsupported file type. Please upload ${allowedUploadTypesLabel}.`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    setUploadedAssetName(selectedFile.name)
+    setComposerMenuError(null)
+    setIsComposerMenuOpen(false)
+    toast({
+      title: "File attached",
+      description: `${selectedFile.name} will be included with your next prompt.`,
+    })
+  }
+
+  const handleComposerMenuAction = (actionId: ComposerMenuActionId) => {
+    switch (actionId) {
+      case "import-github":
+        handleMenuRouteAction(actionId, "/integrations?provider=github", "Opening GitHub import")
+        return
+      case "import-figma":
+        handleMenuRouteAction(actionId, "/integrations?provider=figma", "Opening Figma import")
+        return
+      case "upload-from-computer":
+        setComposerMenuError(null)
+        setIsComposerMenuOpen(false)
+        composerUploadInputRef.current?.click()
+        return
+      case "generate-images":
+        setGenerateImagesEnabled((previousValue) => {
+          const nextValue = !previousValue
+          toast({
+            title: nextValue ? "Generate Images enabled" : "Generate Images disabled",
+            description: nextValue
+              ? "Your next prompt will request image generation output."
+              : "Prompts will not include image generation instructions.",
+          })
+          return nextValue
+        })
+        setIsComposerMenuOpen(false)
+        return
+      case "design-system-library":
+        handleMenuRouteAction(actionId, "/editor?mode=design-system", "Opening design system library")
+        return
+      case "design-system-create":
+        setPrompt((previousPrompt) => {
+          const starter = "Create a reusable design system with color tokens, typography, spacing scale, and UI components."
+          return previousPrompt.trim() ? `${previousPrompt}
+
+${starter}` : starter
+        })
+        setIsComposerMenuOpen(false)
+        toast({ title: "Design system instructions added" })
+        return
+      case "folder-new":
+        handleMenuRouteAction(actionId, "/editor?intent=create-folder", "Opening new folder flow")
+        return
+      case "folder-open":
+        handleMenuRouteAction(actionId, "/editor", "Opening projects and folders")
+        return
+      case "instructions":
+        setPrompt((previousPrompt) => {
+          const instructionStarter = `Instructions:
+- Goal:
+- Brand constraints:
+- Expected output format:`
+          return previousPrompt.trim() ? `${previousPrompt}
+
+${instructionStarter}` : instructionStarter
+        })
+        setIsComposerMenuOpen(false)
+        toast({ title: "Instruction template inserted" })
+        return
+      case "mcps-manage":
+        handleMenuRouteAction(actionId, "/integrations?tab=mcps", "Opening MCP configuration")
+        return
+      case "mcps-explore":
+        handleMenuRouteAction(actionId, "/integrations", "Opening MCP integrations")
+        return
+      default:
+        return
+    }
+  }
 
   const mobileRecentMatches = recentEntities.filter((item) => item.title.toLowerCase().includes(mobileSearchValue.trim().toLowerCase()))
   const recentProjectItems = recentEntities.filter((item) => item.entityType === "project")
@@ -3816,7 +3988,7 @@ export default function RunashChatPage() {
                   <div className="border-t border-zinc-800 px-3 py-2.5 sm:px-4">
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <p className="text-[11px] uppercase tracking-wide text-zinc-500">Prompt actions</p>
-                      <DropdownMenu>
+                      <DropdownMenu open={isComposerMenuOpen} onOpenChange={setIsComposerMenuOpen}>
                         <DropdownMenuTrigger asChild>
                           <Button
                             type="button"
@@ -3828,35 +4000,109 @@ export default function RunashChatPage() {
                             <Plus className="h-3.5 w-3.5" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" className="w-64 border-zinc-800 bg-zinc-900 text-zinc-100">
-                          {commandActionGroups.map((group) => (
-                            <React.Fragment key={group}>
-                              <DropdownMenuLabel className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">{group}</DropdownMenuLabel>
-                              {promptActionConfigs
-                                .filter((promptAction) => promptAction.commandGroup === group)
-                                .map((action) => {
-                                  const actionDisabled = isPromptActionDisabled(action)
-                                  return (
-                                    <DropdownMenuItem
-                                      key={`${group}-${action.id}`}
-                                      onClick={() => void handlePromptAction(action)}
-                                      disabled={actionDisabled}
-                                      className="focus:bg-zinc-800 focus:text-zinc-100"
-                                    >
-                                      <action.icon className="mr-2 h-4 w-4" aria-hidden="true" />
-                                      <span>{action.label}</span>
-                                      {action.requiresPlan && (
-                                        <DropdownMenuShortcut className="text-[10px] uppercase text-amber-300">Pro</DropdownMenuShortcut>
-                                      )}
-                                    </DropdownMenuItem>
-                                  )
-                                })}
-                              {group !== "Tools" && <DropdownMenuSeparator className="bg-zinc-800" />}
-                            </React.Fragment>
-                          ))}
+                        <DropdownMenuContent align="start" className="w-72 border-zinc-800 bg-zinc-900 text-zinc-100">
+                          <DropdownMenuLabel className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">Import</DropdownMenuLabel>
+                          <DropdownMenuItem onSelect={() => handleComposerMenuAction("import-github")} className="focus:bg-zinc-800 focus:text-zinc-100">
+                            <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
+                            <span>Import GitHub</span>
+                            {composerMenuActionLoadingId === "import-github" && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => handleComposerMenuAction("import-figma")} className="focus:bg-zinc-800 focus:text-zinc-100">
+                            <LayoutTemplate className="mr-2 h-4 w-4" aria-hidden="true" />
+                            <span>Import Figma</span>
+                            {composerMenuActionLoadingId === "import-figma" && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => handleComposerMenuAction("upload-from-computer")} className="focus:bg-zinc-800 focus:text-zinc-100">
+                            <Upload className="mr-2 h-4 w-4" aria-hidden="true" />
+                            <span>Upload from computer</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator className="bg-zinc-800" />
+
+                          <DropdownMenuItem onSelect={() => handleComposerMenuAction("generate-images")} className="focus:bg-zinc-800 focus:text-zinc-100">
+                            <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
+                            <span>Generate Images</span>
+                            <Switch checked={generateImagesEnabled} aria-label="Enable generate images" className="ml-auto" />
+                          </DropdownMenuItem>
+
+                          <DropdownMenuSub>
+                            <DropdownMenuSubTrigger className="focus:bg-zinc-800 focus:text-zinc-100">
+                              <PanelsTopLeft className="mr-2 h-4 w-4" aria-hidden="true" />
+                              <span>Design System</span>
+                            </DropdownMenuSubTrigger>
+                            <DropdownMenuSubContent className="w-60 border-zinc-800 bg-zinc-900 text-zinc-100">
+                              <DropdownMenuItem onSelect={() => handleComposerMenuAction("design-system-library")} className="focus:bg-zinc-800 focus:text-zinc-100">
+                                <Library className="mr-2 h-4 w-4" aria-hidden="true" />
+                                <span>Open library</span>
+                                {composerMenuActionLoadingId === "design-system-library" && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => handleComposerMenuAction("design-system-create")} className="focus:bg-zinc-800 focus:text-zinc-100">
+                                <Pencil className="mr-2 h-4 w-4" aria-hidden="true" />
+                                <span>Create from prompt</span>
+                              </DropdownMenuItem>
+                            </DropdownMenuSubContent>
+                          </DropdownMenuSub>
+
+                          <DropdownMenuSub>
+                            <DropdownMenuSubTrigger className="focus:bg-zinc-800 focus:text-zinc-100">
+                              <FolderKanban className="mr-2 h-4 w-4" aria-hidden="true" />
+                              <span>Folder</span>
+                            </DropdownMenuSubTrigger>
+                            <DropdownMenuSubContent className="w-60 border-zinc-800 bg-zinc-900 text-zinc-100">
+                              <DropdownMenuItem onSelect={() => handleComposerMenuAction("folder-new")} className="focus:bg-zinc-800 focus:text-zinc-100">
+                                <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+                                <span>New folder</span>
+                                {composerMenuActionLoadingId === "folder-new" && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => handleComposerMenuAction("folder-open")} className="focus:bg-zinc-800 focus:text-zinc-100">
+                                <FolderKanban className="mr-2 h-4 w-4" aria-hidden="true" />
+                                <span>Browse folders</span>
+                                {composerMenuActionLoadingId === "folder-open" && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />}
+                              </DropdownMenuItem>
+                            </DropdownMenuSubContent>
+                          </DropdownMenuSub>
+
+                          <DropdownMenuItem onSelect={() => handleComposerMenuAction("instructions")} className="focus:bg-zinc-800 focus:text-zinc-100">
+                            <MessageSquare className="mr-2 h-4 w-4" aria-hidden="true" />
+                            <span>Instructions</span>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuSub>
+                            <DropdownMenuSubTrigger className="focus:bg-zinc-800 focus:text-zinc-100">
+                              <PlugZap className="mr-2 h-4 w-4" aria-hidden="true" />
+                              <span>MCPs</span>
+                            </DropdownMenuSubTrigger>
+                            <DropdownMenuSubContent className="w-60 border-zinc-800 bg-zinc-900 text-zinc-100">
+                              <DropdownMenuItem onSelect={() => handleComposerMenuAction("mcps-manage")} className="focus:bg-zinc-800 focus:text-zinc-100">
+                                <Settings className="mr-2 h-4 w-4" aria-hidden="true" />
+                                <span>Manage MCPs</span>
+                                {composerMenuActionLoadingId === "mcps-manage" && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => handleComposerMenuAction("mcps-explore")} className="focus:bg-zinc-800 focus:text-zinc-100">
+                                <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
+                                <span>Explore integrations</span>
+                                {composerMenuActionLoadingId === "mcps-explore" && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />}
+                              </DropdownMenuItem>
+                            </DropdownMenuSubContent>
+                          </DropdownMenuSub>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
+                    <input
+                      ref={composerUploadInputRef}
+                      type="file"
+                      accept={allowedUploadExtensions.join(",")}
+                      className="hidden"
+                      onChange={handleComposerFileSelection}
+                      aria-label="Upload prompt attachment"
+                    />
+                    {composerMenuActionLoadingId && (
+                      <p className="mb-2 inline-flex items-center gap-2 text-xs text-zinc-400">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Processing menu action…
+                      </p>
+                    )}
+                    {uploadedAssetName && <p className="mb-2 text-xs text-cyan-300">Attached file: {uploadedAssetName}</p>}
+                    {composerMenuError && <p className="mb-2 text-xs text-amber-300">{composerMenuError}</p>}
                     <TooltipProvider delayDuration={120}>
                       <div className="flex flex-wrap items-center gap-1.5">
                         <button
