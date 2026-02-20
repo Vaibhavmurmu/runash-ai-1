@@ -162,6 +162,50 @@ type PlanConfigurationEntry = {
   features: string[]
 }
 
+type ReferralUiData = {
+  headline: string
+  rewardCap: number
+  progressValue: number
+  referralLink: string
+  steps: string[]
+}
+
+const defaultReferralUiData: ReferralUiData = {
+  headline: "Invite & earn rewards",
+  rewardCap: 10,
+  progressValue: 3,
+  referralLink: "https://runash.in/refer?code=RUNASH-CHAT",
+  steps: [
+    "Share your link with creators, teammates, or storefront operators.",
+    "They sign up and launch their first RunAsh Chat workflow.",
+    "You both receive reward credits automatically each month.",
+  ],
+}
+
+const referralUiDataOverrides: Partial<ReferralUiData> = {
+  ...defaultReferralUiData,
+}
+
+const buildReferralUiData = (overrides?: Partial<ReferralUiData>): ReferralUiData => {
+  const rewardCap = Number.isFinite(overrides?.rewardCap)
+    ? Math.max(0, Math.trunc(overrides?.rewardCap ?? defaultReferralUiData.rewardCap))
+    : defaultReferralUiData.rewardCap
+  const progressValue = Number.isFinite(overrides?.progressValue)
+    ? Math.min(rewardCap, Math.max(0, Math.trunc(overrides?.progressValue ?? defaultReferralUiData.progressValue)))
+    : Math.min(defaultReferralUiData.progressValue, rewardCap)
+  const steps = overrides?.steps?.filter((step): step is string => Boolean(step?.trim().length)) ?? defaultReferralUiData.steps
+
+  return {
+    headline: overrides?.headline?.trim() || defaultReferralUiData.headline,
+    rewardCap,
+    progressValue,
+    referralLink: overrides?.referralLink?.trim() || defaultReferralUiData.referralLink,
+    steps: steps.length > 0 ? steps : defaultReferralUiData.steps,
+  }
+}
+
+const referralUiData = buildReferralUiData(referralUiDataOverrides)
+
 const sidebarNavItems = [
   { label: "Home", icon: Home },
   { label: "Library", icon: Library },
@@ -272,8 +316,6 @@ export default function RunashChatPage() {
   const [isRecentsExpanded, setIsRecentsExpanded] = useState(true)
   const [activeModal, setActiveModal] = useState<ActiveModal>(null)
   const [isReferModalOpen, setIsReferModalOpen] = useState(false)
-  const [referralLink] = useState("https://runash.in/refer?code=RUNASH-CHAT")
-  const [monthlyProgress] = useState({ current: 3, max: 10 })
   const [isCopyingLink, setIsCopyingLink] = useState(false)
   const [onboardingStep, setOnboardingStep] = useState(0)
   const [isBannerDismissed, setIsBannerDismissed] = useState<boolean | null>(null)
@@ -307,7 +349,8 @@ export default function RunashChatPage() {
   const isOnboardingOpen = activeModal === "onboarding"
   const isFeedbackOpen = activeModal === "feedback"
   const isUpgradeModalOpen = activeModal === "upgrade"
-  const referralProgressPercent = Math.min(100, Math.round((monthlyProgress.current / monthlyProgress.max) * 100))
+  const referralProgressPercent =
+    referralUiData.rewardCap > 0 ? Math.min(100, Math.round((referralUiData.progressValue / referralUiData.rewardCap) * 100)) : 0
 
   const authenticatedUser = session?.user
   const isAuthenticated = authStatus === "authenticated" && Boolean(authenticatedUser)
@@ -534,7 +577,7 @@ export default function RunashChatPage() {
   const handleCopyReferralLink = async () => {
     try {
       setIsCopyingLink(true)
-      await navigator.clipboard.writeText(referralLink)
+      await navigator.clipboard.writeText(referralUiData.referralLink)
       toast({
         title: "Referral link copied",
         description: "Share it with friends to start earning rewards.",
@@ -1286,7 +1329,7 @@ export default function RunashChatPage() {
           <DialogHeader className="space-y-2 text-left">
             <DialogTitle className="flex items-center gap-2 text-zinc-100">
               <Sparkles className="h-5 w-5 text-emerald-400" aria-hidden="true" />
-              Invite & earn rewards
+              {referralUiData.headline}
             </DialogTitle>
             <DialogDescription className="text-zinc-400">
               Share your referral link and unlock monthly credits for every verified signup.
@@ -1297,21 +1340,27 @@ export default function RunashChatPage() {
             <section className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
               <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-zinc-400">
                 <span>Monthly progress</span>
-                <span>{monthlyProgress.current} / {monthlyProgress.max} invites</span>
+                <span>{referralUiData.progressValue} / {referralUiData.rewardCap} invites</span>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-zinc-800" role="progressbar" aria-valuemin={0} aria-valuemax={monthlyProgress.max} aria-valuenow={monthlyProgress.current}>
+              <div
+                className="h-2 overflow-hidden rounded-full bg-zinc-800"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={referralUiData.rewardCap}
+                aria-valuenow={referralUiData.progressValue}
+              >
                 <div className="h-full rounded-full bg-emerald-500" style={{ width: `${referralProgressPercent}%` }} />
               </div>
               <div className="flex justify-between text-xs text-zinc-500">
                 <span>0 invites</span>
-                <span>{monthlyProgress.max} invites</span>
+                <span>{referralUiData.rewardCap} invites</span>
               </div>
             </section>
 
             <section className="space-y-2">
               <p className="text-sm font-medium text-zinc-200">Referral link</p>
               <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 p-2">
-                <code className="flex-1 truncate rounded bg-zinc-950 px-3 py-2 text-xs text-zinc-300">{referralLink}</code>
+                <code className="flex-1 truncate rounded bg-zinc-950 px-3 py-2 text-xs text-zinc-300">{referralUiData.referralLink}</code>
                 <Button type="button" size="sm" onClick={handleCopyReferralLink} disabled={isCopyingLink}>
                   {isCopyingLink ? (
                     <>
@@ -1331,9 +1380,9 @@ export default function RunashChatPage() {
             <section className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
               <p className="text-sm font-medium text-zinc-200">How it works</p>
               <ul className="list-disc space-y-1 pl-5 text-sm text-zinc-400">
-                <li>Share your link with creators, teammates, or storefront operators.</li>
-                <li>They sign up and launch their first RunAsh Chat workflow.</li>
-                <li>You both receive reward credits automatically each month.</li>
+                {referralUiData.steps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
               </ul>
             </section>
           </div>
