@@ -224,6 +224,8 @@ export default function RunashChatPage() {
 
   const primaryMobileHeaderActions = headerActions.slice(0, 2)
   const overflowMobileHeaderActions = headerActions.slice(2)
+  const primaryTabletHeaderActions = headerActions.slice(0, 1)
+  const overflowTabletHeaderActions = headerActions.slice(1)
   const creditsBalanceLabel = "5.00"
 
   const authenticatedUser = session?.user
@@ -272,7 +274,13 @@ export default function RunashChatPage() {
   const renderProfileMenu = (triggerClassName: string) => (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="outline" className={triggerClassName} aria-label="Open account menu">
+        <Button
+          type="button"
+          variant="outline"
+          className={triggerClassName}
+          aria-label="Open account menu"
+          aria-haspopup="menu"
+        >
           <Avatar className="h-8 w-8">
             {userAvatar ? <AvatarImage src={userAvatar} alt={userDisplayName} /> : null}
             <AvatarFallback className="bg-zinc-800 text-xs text-zinc-100">{userInitials}</AvatarFallback>
@@ -1079,7 +1087,7 @@ export default function RunashChatPage() {
                   <span className="truncate text-sm font-semibold tracking-tight text-zinc-100">RunAsh Workspace</span>
                   <span className="ml-2 flex shrink-0 items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300">
                     <Sparkles className="h-3.5 w-3.5 stroke-[1.75]" />
-                    Search
+                    <span className="hidden sm:inline">Search</span>
                   </span>
                 </button>
 
@@ -1239,18 +1247,18 @@ export default function RunashChatPage() {
               )}
             </div>
 
-            <header className="mb-6 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="rounded-md bg-gradient-to-r from-cyan-500 to-blue-500 p-2">
-                  <Bot className="h-5 w-5 text-white" />
+            <header className="mb-5 flex items-start justify-between gap-3 sm:mb-6 sm:items-center">
+              <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+                <div className="rounded-md bg-gradient-to-r from-cyan-500 to-blue-500 p-1.5 sm:p-2">
+                  <Bot className="h-4 w-4 text-white sm:h-5 sm:w-5" />
                 </div>
-                <div>
-                  <p className="text-sm text-zinc-400">RunAsh Agent Workspace</p>
-                  <h1 className="text-xl font-semibold">What do you want to create?</h1>
+                <div className="min-w-0">
+                  <p className="truncate text-xs text-zinc-400 sm:text-sm">RunAsh Agent Workspace</p>
+                  <h1 className="truncate text-lg font-semibold sm:text-xl">What do you want to create?</h1>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="hidden items-center gap-1 md:flex">
+              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                <div className="hidden items-center gap-1 lg:flex">
                   {headerActions.map((action) => (
                     <Button
                       key={action.id}
@@ -1267,6 +1275,46 @@ export default function RunashChatPage() {
                       {action.label}
                     </Button>
                   ))}
+                </div>
+
+                <div className="hidden items-center gap-1 md:flex lg:hidden">
+                  {primaryTabletHeaderActions.map((action) => (
+                    <Button
+                      key={action.id}
+                      size="sm"
+                      variant={action.id === "upgrade" ? "outline" : "ghost"}
+                      className={
+                        action.id === "upgrade"
+                          ? "border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900"
+                          : "text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
+                      }
+                      onClick={() => handleHeaderActionClick(action)}
+                      aria-label={action.label}
+                    >
+                      {action.label}
+                    </Button>
+                  ))}
+                  {overflowTabletHeaderActions.length > 0 && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100" aria-label="More header actions">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="border-zinc-800 bg-zinc-900 text-zinc-100">
+                        {overflowTabletHeaderActions.map((action) => (
+                          <DropdownMenuItem
+                            key={action.id}
+                            onClick={() => handleHeaderActionClick(action)}
+                            className="focus:bg-zinc-800 focus:text-zinc-100"
+                          >
+                            <action.icon className="mr-2 h-4 w-4" aria-hidden="true" />
+                            {action.label}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
 
                 <Button
@@ -1350,7 +1398,7 @@ export default function RunashChatPage() {
                 </TooltipProvider>
 
                 {isAuthenticated ? (
-                  renderProfileMenu("h-9 w-9 rounded-full border-zinc-700 bg-zinc-950 p-0 text-zinc-100")
+                  renderProfileMenu("h-10 w-10 rounded-full border-zinc-700 bg-zinc-950 p-0 text-zinc-100 md:h-9 md:w-9")
                 ) : (
                   <Button
                     type="button"
@@ -1372,7 +1420,7 @@ export default function RunashChatPage() {
             )}
 
             <Card className="mb-5 border-zinc-800 bg-zinc-950 p-0">
-              <div className="p-4">
+              <div className="p-3 sm:p-4">
                 <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
                   <Textarea
                     ref={mainControlsRef}
@@ -1380,17 +1428,17 @@ export default function RunashChatPage() {
                     onChange={(e) => setPrompt(e.target.value)}
                     onKeyDown={handlePromptKeyDown}
                     placeholder="Ask v0 to build..."
-                    className="min-h-[120px] resize-none border-0 bg-transparent px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-0"
+                    className="min-h-[120px] resize-none border-0 bg-transparent px-3 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-0 sm:px-4"
                   />
-                  <div className="flex items-center justify-between border-t border-zinc-800 px-3 py-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-800 px-3 py-2">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
                           type="button"
                           variant="ghost"
-                          className="h-8 rounded-full border border-zinc-700 bg-zinc-950 px-3 text-xs text-zinc-200 hover:bg-zinc-800"
+                          className="h-8 max-w-[200px] rounded-full border border-zinc-700 bg-zinc-950 px-3 text-xs text-zinc-200 hover:bg-zinc-800"
                         >
-                          {selectedModel}
+                          <span className="truncate">{selectedModel}</span>
                           <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -1423,9 +1471,9 @@ export default function RunashChatPage() {
                       <Button
                         type="button"
                         variant="ghost"
-                        className="h-8 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-xs font-normal text-zinc-300 hover:bg-zinc-800"
+                        className="h-8 w-full justify-between gap-1 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-xs font-normal text-zinc-300 hover:bg-zinc-800 sm:w-auto sm:max-w-[280px]"
                       >
-                        {selectedProjectLabel}
+                        <span className="truncate">{selectedProjectLabel}</span>
                         <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
                       </Button>
                     </DropdownMenuTrigger>
