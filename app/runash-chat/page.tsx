@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { signOutWithRedirect, useAuthSession } from "@/lib/auth/access-client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -242,9 +242,13 @@ const getUpgradePlanConfiguration = (planId: UpgradePlanId): PlanConfigurationEn
 const formatPlanPriceLabel = (plan: PlanConfigurationEntry) =>
   plan.billingPeriod ? `${plan.price} ${plan.billingPeriod}` : plan.price
 
+const isUpgradePlanId = (value: string | null): value is UpgradePlanId =>
+  Boolean(value && Object.prototype.hasOwnProperty.call(upgradePlanConfigurations, value))
+
 
 export default function RunashChatPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
   const { setTheme } = useTheme()
   const { data: session, status: authStatus } = useAuthSession()
@@ -284,6 +288,8 @@ export default function RunashChatPage() {
   const [languagePreference, setLanguagePreference] = useState<RunashLanguagePreference>("en")
   const [chatPositionPreference, setChatPositionPreference] = useState<RunashChatPositionPreference>("left")
   const [isComposerUpgradeHelperDismissed, setIsComposerUpgradeHelperDismissed] = useState(false)
+  const upgradeCtaClassName =
+    "border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900 focus-visible:ring-1 focus-visible:ring-zinc-500"
 
   const feedbackMoodOptions: { value: FeedbackMood; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
     { value: "positive", label: "Loved it", Icon: Smile },
@@ -297,13 +303,21 @@ export default function RunashChatPage() {
   const authenticatedUser = session?.user
   const isAuthenticated = authStatus === "authenticated" && Boolean(authenticatedUser)
 
+  function openUpgradeModal(planId?: UpgradePlanId) {
+    if (planId) {
+      setSelectedPlan(planId)
+    }
+    setIsPlanActionLoading(false)
+    setIsUpgradeModalOpen(true)
+  }
+
   const headerActions: HeaderAction[] = [
     {
       id: "upgrade",
       label: "Upgrade",
       tooltip: "View upgrade plans",
       icon: Rocket,
-      onClick: () => setIsUpgradeModalOpen(true),
+      onClick: () => openUpgradeModal(),
     },
     {
       id: "feedback",
@@ -538,6 +552,13 @@ export default function RunashChatPage() {
       resetFeedbackDialog()
     }
   }
+
+  useEffect(() => {
+    const planFromQuery = searchParams.get("plan")
+    if (isUpgradePlanId(planFromQuery)) {
+      setSelectedPlan(planFromQuery)
+    }
+  }, [searchParams])
 
   useEffect(() => {
     const savedValue = localStorage.getItem(runashChatSidebarCollapsedStorageKey)
@@ -1578,7 +1599,7 @@ export default function RunashChatPage() {
                       variant={action.id === "upgrade" ? "outline" : "ghost"}
                       className={
                         action.id === "upgrade"
-                          ? "border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900"
+                          ? upgradeCtaClassName
                           : "text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
                       }
                       onClick={() => handleHeaderActionClick(action)}
@@ -1598,7 +1619,7 @@ export default function RunashChatPage() {
                       variant={action.id === "upgrade" ? "outline" : "ghost"}
                       className={
                         action.id === "upgrade"
-                          ? "border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900"
+                          ? upgradeCtaClassName
                           : "text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
                       }
                       onClick={() => handleHeaderActionClick(action)}
@@ -1655,7 +1676,7 @@ export default function RunashChatPage() {
                               variant={action.id === "upgrade" ? "outline" : "ghost"}
                               className={
                                 action.id === "upgrade"
-                                  ? "h-8 w-8 border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900"
+                                  ? `h-8 w-8 ${upgradeCtaClassName}`
                                   : "h-8 w-8 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
                               }
                               onClick={() => handleHeaderActionClick(action)}
@@ -1825,13 +1846,14 @@ export default function RunashChatPage() {
               {!isComposerUpgradeHelperDismissed && (
                 <div className="border-t border-zinc-800/80 bg-zinc-900/40 px-3 py-2.5 text-xs text-zinc-400 sm:px-4">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="leading-relaxed">
-                      Upgrade for shared projects, model controls, and workspace collaboration.
+                    <p className="leading-relaxed text-zinc-300">
+                      Upgrade to Team for shared projects, model controls, and workspace collaboration.
                       <Button
                         type="button"
-                        variant="link"
-                        className="ml-1 h-auto p-0 text-xs font-medium text-zinc-200 underline underline-offset-2 hover:text-zinc-100"
-                        onClick={() => router.push("/pricing")}
+                        variant="outline"
+                        size="sm"
+                        className={`ml-2 h-7 rounded-full px-2.5 text-[11px] ${upgradeCtaClassName}`}
+                        onClick={() => openUpgradeModal("team")}
                       >
                         Upgrade Plan
                       </Button>
