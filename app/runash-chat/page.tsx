@@ -315,7 +315,6 @@ export default function RunashChatPage() {
   const [isFavoritesExpanded, setIsFavoritesExpanded] = useState(true)
   const [isRecentsExpanded, setIsRecentsExpanded] = useState(true)
   const [activeModal, setActiveModal] = useState<ActiveModal>(null)
-  const [isReferModalOpen, setIsReferModalOpen] = useState(false)
   const [isCopyingLink, setIsCopyingLink] = useState(false)
   const [onboardingStep, setOnboardingStep] = useState(0)
   const [isBannerDismissed, setIsBannerDismissed] = useState<boolean | null>(null)
@@ -348,6 +347,7 @@ export default function RunashChatPage() {
   const currentOnboardingSlide = onboardingSlides[onboardingStep]
   const isOnboardingOpen = activeModal === "onboarding"
   const isFeedbackOpen = activeModal === "feedback"
+  const isReferOpen = activeModal === "refer"
   const isUpgradeModalOpen = activeModal === "upgrade"
   const referralProgressPercent =
     referralUiData.rewardCap > 0 ? Math.min(100, Math.round((referralUiData.progressValue / referralUiData.rewardCap) * 100)) : 0
@@ -409,10 +409,7 @@ export default function RunashChatPage() {
       label: "Refer",
       tooltip: "Refer a friend or team",
       icon: Sparkles,
-      onClick: (triggerElement) => {
-        rememberModalTrigger(triggerElement)
-        setIsReferModalOpen(true)
-      },
+      onClick: (triggerElement) => openModal("refer", triggerElement),
     },
   ]
 
@@ -571,7 +568,7 @@ export default function RunashChatPage() {
   }
 
   const handleReferDialogOpenChange = (open: boolean) => {
-    setIsReferModalOpen(open)
+    setActiveModal(open ? "refer" : null)
   }
 
   const handleCopyReferralLink = async () => {
@@ -1318,7 +1315,7 @@ export default function RunashChatPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isReferModalOpen} onOpenChange={handleReferDialogOpenChange}>
+      <Dialog open={isReferOpen} onOpenChange={handleReferDialogOpenChange}>
         <DialogContent
           className="z-[60] w-[min(92vw,32rem)] max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-lg"
           onCloseAutoFocus={(event) => {
