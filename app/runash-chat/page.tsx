@@ -541,6 +541,9 @@ export default function RunashChatPage() {
   const settingsSectionButtonRefs = useRef<Array<HTMLButtonElement | null>>([])
   const upgradeCtaClassName =
     "border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900 focus-visible:ring-1 focus-visible:ring-zinc-500"
+  const actionMenuContentClassName = "z-40 w-48 border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100"
+  const actionMenuItemClassName = "cursor-pointer rounded-sm px-2.5 py-1.5 text-zinc-200 focus:bg-zinc-900 focus:text-zinc-100"
+  const actionMenuDangerItemClassName = "cursor-pointer rounded-sm px-2.5 py-1.5 text-red-300 focus:bg-red-950/60 focus:text-red-200"
   const creditsPanelId = "runash-chat-credits-panel"
   const redeemCodeInputId = "runash-chat-redeem-code-input"
   const creditsTriggerRef = useRef<HTMLButtonElement | null>(null)
@@ -548,6 +551,7 @@ export default function RunashChatPage() {
   const redeemDialogTriggerRef = useRef<HTMLElement | null>(null)
   const profileMenuTriggerRef = useRef<HTMLButtonElement | null>(null)
   const darkDialogContentClassName = "border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md"
+  const compactDarkDialogContentClassName = "w-[min(92vw,26rem)] border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-[26rem]"
 
   const feedbackRatingOptions: { value: number; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
     { value: 5, label: "Loved it", Icon: Smile },
@@ -1883,7 +1887,7 @@ export default function RunashChatPage() {
                               <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-900 text-zinc-300">
                                 <Icon className="h-3.5 w-3.5" />
                               </div>
-                              <div className="min-w-0 flex-1">
+                              <div className="min-w-0 flex-1 pr-1">
                                 <p className="truncate text-xs font-medium text-zinc-200">{item.label}</p>
                                 <p className="truncate text-[11px] text-zinc-500">{item.description}</p>
                               </div>
@@ -1921,22 +1925,22 @@ export default function RunashChatPage() {
                                 }}
                                 align="end"
                                 sideOffset={6}
-                                className="z-40 w-44 border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100"
+                                className={actionMenuContentClassName}
                               >
                                 <DropdownMenuItem
-                                  className="cursor-pointer rounded-sm text-zinc-200 focus:bg-zinc-900 focus:text-zinc-100"
+                                  className={actionMenuItemClassName}
                                   onClick={() => handleFavoriteRemove(item.id)}
                                 >
                                   Remove from Favorites
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                  className="cursor-pointer rounded-sm text-zinc-200 focus:bg-zinc-900 focus:text-zinc-100"
+                                  className={actionMenuItemClassName}
                                   onClick={() => handleFavoriteRename(item.id)}
                                 >
                                   Rename
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                  className="cursor-pointer rounded-sm text-red-400 focus:bg-red-950/50 focus:text-red-300"
+                                  className={actionMenuDangerItemClassName}
                                   onClick={() => {
                                     deleteActionTriggerRef.current = rowActionTriggerRefs.current[
                                       getSidebarActionMenuKey("favorite", item.id)
@@ -2014,7 +2018,7 @@ export default function RunashChatPage() {
                                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-900/70 text-zinc-300">
                                   <Icon className="h-3.5 w-3.5" />
                                 </span>
-                                <span className="min-w-0 flex-1">
+                                <span className="min-w-0 flex-1 pr-1">
                                   <span className="block truncate text-xs font-medium text-zinc-200">{item.title}</span>
                                   <span className="block truncate text-[11px] text-zinc-500">
                                     {itemLabel} · {formatRecentTimestamp(item.updatedAt)}
@@ -2062,34 +2066,34 @@ export default function RunashChatPage() {
                                 sticky="always"
                                 hideWhenDetached
                                 collisionBoundary={sidebarScrollAreaRef.current ?? undefined}
-                                className="z-40 w-44 border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100"
+                                className={actionMenuContentClassName}
                               >
                                 <DropdownMenuItem
-                                  className="cursor-pointer rounded-sm text-zinc-200 focus:bg-zinc-900 focus:text-zinc-100"
+                                  className={actionMenuItemClassName}
                                   onClick={() => handleRecentShare(item)}
                                 >
                                   Share
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                  className="cursor-pointer rounded-sm text-zinc-200 focus:bg-zinc-900 focus:text-zinc-100"
+                                  className={actionMenuItemClassName}
                                   onClick={() => handleRecentMove(item)}
                                 >
                                   Move...
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                  className="cursor-pointer rounded-sm text-zinc-200 focus:bg-zinc-900 focus:text-zinc-100"
+                                  className={actionMenuItemClassName}
                                   onClick={() => handleRecentAddToFavorites(item)}
                                 >
                                   Add to Favorites
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                  className="cursor-pointer rounded-sm text-zinc-200 focus:bg-zinc-900 focus:text-zinc-100"
+                                  className={actionMenuItemClassName}
                                   onClick={() => handleRecentRename(item)}
                                 >
                                   Rename
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                  className="cursor-pointer rounded-sm text-red-400 focus:bg-red-950/50 focus:text-red-300"
+                                  className={actionMenuDangerItemClassName}
                                   onClick={() => {
                                     deleteActionTriggerRef.current = rowActionTriggerRefs.current[
                                       getSidebarActionMenuKey("recent", item.id)
@@ -2121,19 +2125,19 @@ export default function RunashChatPage() {
         open={overlayState.activeModal === "deleteConfirm" && Boolean(confirmDeletePayload)}
         onOpenChange={(open) => !open && dismissModal("deleteConfirm")}
       >
-        <DialogContent className={darkDialogContentClassName}>
-          <DialogHeader>
-            <DialogTitle>Delete {confirmDeletePayload?.title}?</DialogTitle>
-            <DialogDescription className="text-zinc-400">{confirmDeletePayload?.description}</DialogDescription>
+        <DialogContent className={compactDarkDialogContentClassName}>
+          <DialogHeader className="space-y-2">
+            <DialogTitle className="text-base font-semibold text-zinc-100">Delete {confirmDeletePayload?.title}?</DialogTitle>
+            <DialogDescription className="text-sm text-zinc-400">{confirmDeletePayload?.description}</DialogDescription>
           </DialogHeader>
-          <div className="rounded-md border border-red-900/40 bg-red-950/20 px-3 py-2 text-xs text-red-200">
+          <div className="rounded-md border border-red-900/40 bg-red-950/20 px-3 py-2 text-xs leading-relaxed text-red-200">
             This action is permanent and cannot be undone.
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-row justify-end gap-2">
             <Button variant="ghost" className="text-zinc-300 hover:bg-zinc-900" onClick={() => closeDeleteConfirmModal(true)}>
               Cancel
             </Button>
-            <Button className="bg-red-600 text-white hover:bg-red-500" onClick={handleDeleteConfirm}>
+            <Button className="bg-red-600 text-white hover:bg-red-500 focus-visible:ring-red-400" onClick={handleDeleteConfirm}>
               Delete
             </Button>
           </DialogFooter>
@@ -3604,15 +3608,15 @@ export default function RunashChatPage() {
                               <MoreVertical className="h-3.5 w-3.5" />
                             </button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-40 border-zinc-800 bg-zinc-900 text-zinc-100">
+                          <DropdownMenuContent align="end" className="w-48 border-zinc-800 bg-zinc-900 p-1.5 text-zinc-100">
                             <DropdownMenuItem
-                              className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+                              className="cursor-pointer rounded-sm px-2.5 py-1.5 focus:bg-zinc-800 focus:text-zinc-100"
                               onClick={() => handleChatOpen(item.sessionId)}
                             >
                               Open chat
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+                              className="cursor-pointer rounded-sm px-2.5 py-1.5 focus:bg-zinc-800 focus:text-zinc-100"
                               onClick={() => startChatWithPrompt(`Continue chat: ${item.title}`)}
                             >
                               Continue
