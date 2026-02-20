@@ -73,6 +73,14 @@ type RecentEntity = {
   sessionId?: string
 }
 
+type SidebarFavoriteItem = {
+  id: string
+  label: string
+  description: string
+  icon: React.ComponentType<{ className?: string }>
+  href: string
+}
+
 type OnboardingSlide = {
   title: string
   description: string
@@ -147,6 +155,12 @@ const sidebarNavItems = [
   { label: "Templates", icon: LayoutTemplate },
 ]
 
+const sidebarFavoriteItems: SidebarFavoriteItem[] = [
+  { id: "projects", label: "Projects", description: "Continue building", icon: FolderKanban, href: "/editor" },
+  { id: "templates", label: "Templates", description: "Start from a base", icon: LayoutTemplate, href: "/templates" },
+  { id: "library", label: "Library", description: "Saved assets", icon: Library, href: "/library" },
+]
+
 export default function RunashChatPage() {
   const router = useRouter()
   const { setTheme } = useTheme()
@@ -165,6 +179,8 @@ export default function RunashChatPage() {
   const [mobileSearchValue, setMobileSearchValue] = useState("")
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
+  const [isFavoritesExpanded, setIsFavoritesExpanded] = useState(true)
+  const [isRecentsExpanded, setIsRecentsExpanded] = useState(true)
   const [showUpdatesBanner, setShowUpdatesBanner] = useState(false)
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
   const [activeOnboardingStep, setActiveOnboardingStep] = useState(0)
@@ -657,6 +673,7 @@ export default function RunashChatPage() {
   const mobileRecentMatches = recentItems.filter((item) => item.title.toLowerCase().includes(mobileSearchValue.trim().toLowerCase()))
   const recentProjectItems = recentEntities.filter((item) => item.entityType === "project")
   const myChatItems = recentEntities.filter((item) => item.entityType === "session")
+  const sidebarRecents = recentEntities.slice(0, 20)
 
   const handleProjectOpen = (projectId: string) => {
     router.push(`/editor?projectId=${projectId}`)
@@ -767,31 +784,122 @@ export default function RunashChatPage() {
           </nav>
         </TooltipProvider>
 
-        <div className="mt-5 border-t border-zinc-800 pt-4">
-          {!collapsed && <div className="mb-2 text-xs font-medium text-zinc-500">Recents</div>}
-          <div className="space-y-1">
-            {loadingRecents && <div className={`py-1.5 text-xs text-zinc-500 ${collapsed ? "text-center" : "px-2"}`}>Loading recent chats…</div>}
-            {!loadingRecents && recentItemsError && (
-              <div className={`py-1.5 text-xs text-amber-400 ${collapsed ? "text-center" : "px-2"}`}>{recentItemsError}</div>
-            )}
-            {!loadingRecents && !recentItemsError && recentItems.length === 0 && (
-              <div className={`py-1.5 text-xs text-zinc-500 ${collapsed ? "text-center" : "px-2"}`}>No recent chats yet</div>
-            )}
-            {recentItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  router.push(`/chat?sessionId=${item.id}`)
-                  if (isMobileDrawer) setIsMobileSidebarOpen(false)
-                }}
-                className={`w-full truncate rounded-md py-1.5 text-xs text-zinc-400 hover:bg-zinc-900 ${collapsed ? "px-1 text-center" : "px-2 text-left"}`}
-                title={collapsed ? item.title : undefined}
-              >
-                {collapsed ? item.title.slice(0, 1).toUpperCase() : item.title}
-              </button>
-            ))}
-          </div>
+        <div className="mt-5 min-h-0 flex-1 border-t border-zinc-800 pt-4">
+          <ScrollArea className="h-full">
+            <div className="space-y-4 pr-2">
+              {!collapsed ? (
+                <section>
+                  <button
+                    type="button"
+                    className="mb-2 flex w-full items-center justify-between rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 hover:bg-zinc-900/80 hover:text-zinc-300"
+                    onClick={() => setIsFavoritesExpanded((prev) => !prev)}
+                    aria-expanded={isFavoritesExpanded}
+                  >
+                    Favorites
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isFavoritesExpanded ? "rotate-0" : "-rotate-90"}`} />
+                  </button>
+
+                  {isFavoritesExpanded ? (
+                    <div className="space-y-1">
+                      {sidebarFavoriteItems.map((item) => {
+                        const Icon = item.icon
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              router.push(item.href)
+                              if (isMobileDrawer) setIsMobileSidebarOpen(false)
+                            }}
+                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition hover:bg-zinc-900"
+                          >
+                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-900 text-zinc-300">
+                              <Icon className="h-3.5 w-3.5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-medium text-zinc-200">{item.label}</p>
+                              <p className="truncate text-[11px] text-zinc-500">{item.description}</p>
+                            </div>
+                            <MoreVertical className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
+
+              <section>
+                {!collapsed ? (
+                  <button
+                    type="button"
+                    className="mb-2 flex w-full items-center justify-between rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 hover:bg-zinc-900/80 hover:text-zinc-300"
+                    onClick={() => setIsRecentsExpanded((prev) => !prev)}
+                    aria-expanded={isRecentsExpanded}
+                  >
+                    Recents
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isRecentsExpanded ? "rotate-0" : "-rotate-90"}`} />
+                  </button>
+                ) : null}
+
+                {(collapsed || isRecentsExpanded) && (
+                  <div className="space-y-1">
+                    {loadingRecents && (
+                      <div className={`py-1.5 text-xs text-zinc-500 ${collapsed ? "text-center" : "px-2"}`}>Loading recent workspace items…</div>
+                    )}
+                    {!loadingRecents && recentItemsError && (
+                      <div className={`py-1.5 text-xs text-amber-400 ${collapsed ? "text-center" : "px-2"}`}>{recentItemsError}</div>
+                    )}
+                    {!loadingRecents && !recentItemsError && sidebarRecents.length === 0 && (
+                      <div className={`py-1.5 text-xs text-zinc-500 ${collapsed ? "text-center" : "px-2"}`}>No recent chats or projects</div>
+                    )}
+
+                    {sidebarRecents.map((item) => {
+                      const isProject = item.entityType === "project"
+                      const itemLabel = isProject ? "Project" : "Chat"
+                      const Icon = isProject ? FolderKanban : MessageSquare
+
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            if (isProject) {
+                              handleProjectOpen(item.id.replace("project-", ""))
+                            } else {
+                              handleChatOpen(item.sessionId)
+                            }
+                            if (isMobileDrawer) setIsMobileSidebarOpen(false)
+                          }}
+                          className={`w-full rounded-md py-1.5 transition hover:bg-zinc-900 ${collapsed ? "px-1 text-center" : "px-2 text-left"}`}
+                          title={collapsed ? item.title : undefined}
+                        >
+                          {collapsed ? (
+                            <span className="text-xs text-zinc-400">{item.title.slice(0, 1).toUpperCase()}</span>
+                          ) : (
+                            <span className="flex items-center gap-2">
+                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-900/70 text-zinc-300">
+                                <Icon className="h-3.5 w-3.5" />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-xs font-medium text-zinc-200">{item.title}</span>
+                                <span className="block truncate text-[11px] text-zinc-500">
+                                  {itemLabel} · {formatRecentTimestamp(item.updatedAt)}
+                                </span>
+                              </span>
+                              <span className="shrink-0 rounded p-1 text-zinc-600" aria-hidden>
+                                <MoreVertical className="h-3.5 w-3.5" />
+                              </span>
+                            </span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </section>
+            </div>
+          </ScrollArea>
         </div>
       </>
     )
