@@ -126,6 +126,44 @@ type CreditSummaryRow = {
   label: string
 }
 
+type SpeechTranscriptInsertMode = "append" | "replace"
+
+type BrowserSpeechRecognitionResult = {
+  transcript: string
+}
+
+type BrowserSpeechRecognitionResultList = {
+  [index: number]: BrowserSpeechRecognitionResult
+  isFinal?: boolean
+  length: number
+}
+
+type BrowserSpeechRecognitionEvent = {
+  resultIndex: number
+  results: {
+    [index: number]: BrowserSpeechRecognitionResultList
+    length: number
+  }
+}
+
+type BrowserSpeechRecognitionErrorEvent = {
+  error: string
+}
+
+type BrowserSpeechRecognition = {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null
+  onerror: ((event: BrowserSpeechRecognitionErrorEvent) => void) | null
+  onend: (() => void) | null
+  start: () => void
+  stop: () => void
+  abort: () => void
+}
+
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition
+
 const creditSummaryRows: CreditSummaryRow[] = [
   { key: "gifted", label: "Gifted credits" },
   { key: "monthly", label: "Monthly credits" },
@@ -602,6 +640,11 @@ export default function RunashChatPage() {
   const [recentItemsError, setRecentItemsError] = useState<string | null>(null)
   const [recentEntities, setRecentEntities] = useState<RecentEntity[]>([])
   const [prompt, setPrompt] = useState("")
+  const [isSpeechRecognitionSupported, setIsSpeechRecognitionSupported] = useState(false)
+  const [isRecordingPrompt, setIsRecordingPrompt] = useState(false)
+  const [speechTranscriptPreview, setSpeechTranscriptPreview] = useState("")
+  const [speechErrorMessage, setSpeechErrorMessage] = useState<string | null>(null)
+  const [speechInsertMode, setSpeechInsertMode] = useState<SpeechTranscriptInsertMode>("append")
   const [startChatError, setStartChatError] = useState<string | null>(null)
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
   const [mobileSearchValue, setMobileSearchValue] = useState("")
@@ -640,6 +683,10 @@ export default function RunashChatPage() {
   const deleteActionTriggerRef = useRef<HTMLElement | null>(null)
   const rowActionTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({})
   const rowActionContentRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null)
+  const speechCommitReadyRef = useRef(false)
+  const speechTranscriptFinalRef = useRef("")
+  const speechTimeoutRef = useRef<number | null>(null)
   const [selectedModel, setSelectedModel] = useState<"v0 Mini" | "v0 Max">("v0 Mini")
   const [selectedProjectLabel, setSelectedProjectLabel] = useState("Select a Project")
   const [activePromptActionId, setActivePromptActionId] = useState<PromptActionId | null>(null)
@@ -688,6 +735,167 @@ export default function RunashChatPage() {
   const authenticatedUser = session?.user
   const isAuthenticated = authStatus === "authenticated" && Boolean(authenticatedUser)
   const commandActionGroups: PromptActionConfig["commandGroup"][] = ["Prompt", "Create", "Tools"]
+
+  const getSpeechRecognitionConstructor = (): BrowserSpeechRecognitionConstructor | null => {
+    if (typeof window === "undefined") {
+      return null
+    }
+
+    const speechWindow = window as Window & {
+      SpeechRecognition?: BrowserSpeechRecognitionConstructor
+      webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor
+    }
+
+    return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null
+  }
+
+  const clearSpeechTimeout = () => {
+    if (speechTimeoutRef.current === null) {
+      return
+    }
+
+    window.clearTimeout(speechTimeoutRef.current)
+    speechTimeoutRef.current = null
+  }
+
+  const resetSpeechTimeout = () => {
+    clearSpeechTimeout()
+    speechTimeoutRef.current = window.setTimeout(() => {
+      setSpeechErrorMessage("Voice input timed out. Try again and speak right after starting.")
+      setIsRecordingPrompt(false)
+      speechCommitReadyRef.current = false
+      speechRecognitionRef.current?.abort()
+      speechRecognitionRef.current = null
+    }, 12000)
+  }
+
+  const applyTranscriptToPrompt = (transcript: string, insertMode: SpeechTranscriptInsertMode) => {
+    const normalizedTranscript = transcript.trim()
+    if (!normalizedTranscript) {
+      return
+    }
+
+    setPrompt((previousPrompt) => {
+      if (insertMode === "replace") {
+        return normalizedTranscript
+      }
+
+      if (!previousPrompt.trim()) {
+        return normalizedTranscript
+      }
+
+      const separator = previousPrompt.endsWith("\n") || previousPrompt.endsWith(" ") ? "" : " "
+      return `${previousPrompt}${separator}${normalizedTranscript}`
+    })
+    window.requestAnimationFrame(() => {
+      mainControlsRef.current?.focus()
+    })
+  }
+
+  const stopPromptRecording = () => {
+    setSpeechErrorMessage(null)
+    speechCommitReadyRef.current = true
+    speechRecognitionRef.current?.stop()
+  }
+
+  const cancelPromptRecording = () => {
+    speechCommitReadyRef.current = false
+    setSpeechTranscriptPreview("")
+    setSpeechErrorMessage(null)
+    clearSpeechTimeout()
+    speechRecognitionRef.current?.abort()
+    speechRecognitionRef.current = null
+    setIsRecordingPrompt(false)
+  }
+
+  const startPromptRecording = () => {
+    const SpeechRecognitionConstructor = getSpeechRecognitionConstructor()
+
+    if (!SpeechRecognitionConstructor) {
+      setSpeechErrorMessage("Voice input is not supported in this browser. Try Chrome, Edge, or Safari.")
+      return
+    }
+
+    const recognition = new SpeechRecognitionConstructor()
+    speechRecognitionRef.current = recognition
+    speechCommitReadyRef.current = true
+    speechTranscriptFinalRef.current = ""
+    setSpeechTranscriptPreview("")
+    setSpeechErrorMessage(null)
+    setIsRecordingPrompt(true)
+
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = generalSettings.spokenLanguage
+
+    recognition.onresult = (event) => {
+      let interimTranscript = ""
+
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index]
+        const segment = result?.[0]?.transcript ?? ""
+
+        if (result?.isFinal) {
+          const leadingSpacer = speechTranscriptFinalRef.current ? " " : ""
+          speechTranscriptFinalRef.current = `${speechTranscriptFinalRef.current}${leadingSpacer}${segment.trim()}`.trim()
+        } else {
+          interimTranscript = `${interimTranscript}${segment}`
+        }
+      }
+
+      setSpeechTranscriptPreview(`${speechTranscriptFinalRef.current} ${interimTranscript}`.trim())
+      resetSpeechTimeout()
+    }
+
+    recognition.onerror = (event) => {
+      const errorMessageMap: Record<string, string> = {
+        "not-allowed": "Microphone permission was denied. Allow access and try again.",
+        "service-not-allowed": "Microphone access is blocked by browser settings.",
+        "audio-capture": "No microphone was detected. Check your input device and try again.",
+        "no-speech": "No speech was detected. Try speaking closer to your microphone.",
+        aborted: "",
+      }
+
+      const mappedMessage = errorMessageMap[event.error] ?? "Voice input failed. Please try again."
+      setSpeechErrorMessage(mappedMessage || null)
+      setIsRecordingPrompt(false)
+      clearSpeechTimeout()
+    }
+
+    recognition.onend = () => {
+      clearSpeechTimeout()
+      setIsRecordingPrompt(false)
+
+      if (speechCommitReadyRef.current && speechTranscriptFinalRef.current.trim()) {
+        applyTranscriptToPrompt(speechTranscriptFinalRef.current, speechInsertMode)
+      }
+
+      setSpeechTranscriptPreview("")
+      speechTranscriptFinalRef.current = ""
+      speechCommitReadyRef.current = false
+      speechRecognitionRef.current = null
+    }
+
+    resetSpeechTimeout()
+
+    try {
+      recognition.start()
+    } catch {
+      clearSpeechTimeout()
+      setIsRecordingPrompt(false)
+      setSpeechErrorMessage("Unable to start voice input right now. Please try again.")
+      speechRecognitionRef.current = null
+    }
+  }
+
+  const togglePromptRecording = () => {
+    if (isRecordingPrompt) {
+      stopPromptRecording()
+      return
+    }
+
+    startPromptRecording()
+  }
 
   const trackPromptAction = (action: PromptActionConfig, status: "opened" | "success" | "error" | "disabled") => {
     if (typeof window === "undefined") return
@@ -1446,6 +1654,28 @@ export default function RunashChatPage() {
       handleFeedbackOpenChange(false)
     }
   }
+
+  useEffect(() => {
+    setIsSpeechRecognitionSupported(Boolean(getSpeechRecognitionConstructor()))
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      clearSpeechTimeout()
+      speechRecognitionRef.current?.abort()
+      speechRecognitionRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isRecordingPrompt) {
+      return
+    }
+
+    if (speechRecognitionRef.current) {
+      speechRecognitionRef.current.lang = generalSettings.spokenLanguage
+    }
+  }, [generalSettings.spokenLanguage, isRecordingPrompt])
 
   useEffect(() => {
     const planFromQuery = searchParams.get("plan")
@@ -3629,6 +3859,56 @@ export default function RunashChatPage() {
                     </div>
                     <TooltipProvider delayDuration={120}>
                       <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={togglePromptRecording}
+                          disabled={!isSpeechRecognitionSupported}
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 ${
+                            isRecordingPrompt
+                              ? "border-red-500/80 bg-red-500/15 text-red-200"
+                              : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          }`}
+                          aria-label={isRecordingPrompt ? "Stop voice input" : "Start voice input"}
+                          aria-pressed={isRecordingPrompt}
+                        >
+                          <Mic className="h-3.5 w-3.5" />
+                          <span>{isRecordingPrompt ? "Stop" : "Voice"}</span>
+                        </button>
+                        {isRecordingPrompt && (
+                          <button
+                            type="button"
+                            onClick={cancelPromptRecording}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-xs text-zinc-300 transition hover:border-zinc-500 hover:bg-zinc-800 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+                            aria-label="Cancel voice input"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                            <span>Cancel</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setSpeechInsertMode("append")}
+                          className={`inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition ${
+                            speechInsertMode === "append"
+                              ? "border-cyan-500/80 bg-cyan-500/15 text-cyan-200"
+                              : "border-zinc-700 bg-zinc-950 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                          }`}
+                          aria-pressed={speechInsertMode === "append"}
+                        >
+                          Append
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSpeechInsertMode("replace")}
+                          className={`inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition ${
+                            speechInsertMode === "replace"
+                              ? "border-cyan-500/80 bg-cyan-500/15 text-cyan-200"
+                              : "border-zinc-700 bg-zinc-950 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                          }`}
+                          aria-pressed={speechInsertMode === "replace"}
+                        >
+                          Replace
+                        </button>
                         {promptActionConfigs.map((action) => {
                           const actionDisabled = isPromptActionDisabled(action)
                           const actionIsActive = activePromptActionId === action.id
@@ -3662,6 +3942,19 @@ export default function RunashChatPage() {
                         })}
                       </div>
                     </TooltipProvider>
+                    {!isSpeechRecognitionSupported && (
+                      <p className="mt-2 text-xs text-amber-300">Voice input is unavailable in this browser. Use Chrome, Edge, or Safari.</p>
+                    )}
+                    {isRecordingPrompt && (
+                      <p className="mt-2 inline-flex items-center gap-2 text-xs text-red-300">
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-red-400" aria-hidden="true" />
+                        Recording… speak now.
+                      </p>
+                    )}
+                    {isRecordingPrompt && speechTranscriptPreview && (
+                      <p className="mt-1 text-xs text-zinc-400">{speechTranscriptPreview}</p>
+                    )}
+                    {speechErrorMessage && <p className="mt-2 text-xs text-amber-300">{speechErrorMessage}</p>}
                   </div>
                   <div className="border-t border-zinc-800 px-3 py-2.5 sm:px-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
