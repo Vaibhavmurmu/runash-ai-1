@@ -145,7 +145,6 @@ type HeaderAction = {
   onClick?: () => void
 }
 
-type FeedbackMood = "positive" | "neutral" | "negative"
 type UpgradePlanId = "free" | "premium" | "team" | "business" | "enterprise"
 
 type PlanConfigurationEntry = {
@@ -276,7 +275,7 @@ export default function RunashChatPage() {
   const [selectedPlan, setSelectedPlan] = useState<UpgradePlanId>("team")
   const [isPlanActionLoading, setIsPlanActionLoading] = useState(false)
   const [feedbackText, setFeedbackText] = useState("")
-  const [feedbackMood, setFeedbackMood] = useState<FeedbackMood | null>(null)
+  const [feedbackRating, setFeedbackRating] = useState<number | null>(null)
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false)
   const mobileSidebarTriggerRef = useRef<HTMLButtonElement | null>(null)
   const desktopSidebarToggleRef = useRef<HTMLButtonElement | null>(null)
@@ -291,10 +290,10 @@ export default function RunashChatPage() {
   const upgradeCtaClassName =
     "border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900 focus-visible:ring-1 focus-visible:ring-zinc-500"
 
-  const feedbackMoodOptions: { value: FeedbackMood; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
-    { value: "positive", label: "Loved it", Icon: Smile },
-    { value: "neutral", label: "It was okay", Icon: Meh },
-    { value: "negative", label: "Needs work", Icon: Frown },
+  const feedbackRatingOptions: { value: number; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
+    { value: 5, label: "Loved it", Icon: Smile },
+    { value: 3, label: "It was okay", Icon: Meh },
+    { value: 1, label: "Needs work", Icon: Frown },
   ]
 
   const isLastOnboardingStep = onboardingStep === onboardingSlides.length - 1
@@ -480,7 +479,7 @@ export default function RunashChatPage() {
 
   const resetFeedbackDialog = () => {
     setFeedbackText("")
-    setFeedbackMood(null)
+    setFeedbackRating(null)
     setIsSubmittingFeedback(false)
   }
 
@@ -506,12 +505,6 @@ export default function RunashChatPage() {
       return
     }
 
-    const scoreMap: Record<FeedbackMood, number> = {
-      positive: 5,
-      neutral: 3,
-      negative: 1,
-    }
-
     setIsSubmittingFeedback(true)
 
     try {
@@ -524,7 +517,7 @@ export default function RunashChatPage() {
           body: JSON.stringify({
             sessionId,
             signal: "quality",
-            score: feedbackMood ? scoreMap[feedbackMood] : 3,
+            score: feedbackRating ?? 3,
             reason: trimmedFeedback,
           }),
         })
@@ -532,22 +525,32 @@ export default function RunashChatPage() {
         if (!response.ok) {
           throw new Error("Feedback endpoint unavailable")
         }
+
+        toast({
+          title: "Thanks for your feedback",
+          description: "Your feedback helps us improve RunAsh Chat.",
+        })
+
+        setIsFeedbackOpen(false)
+        resetFeedbackDialog()
+        return
       } else {
-        await new Promise((resolve) => window.setTimeout(resolve, 350))
+        router.push(`/support?feedback=${encodeURIComponent(trimmedFeedback)}`)
+        toast({
+          title: "Continue on Support",
+          description: "We redirected you to Support so you can finish sharing your feedback.",
+        })
+        setIsFeedbackOpen(false)
+        resetFeedbackDialog()
+        return
       }
-
-      toast({
-        title: "Thanks for your feedback",
-        description: "Your feedback helps us improve RunAsh Chat.",
-      })
-
-      setIsFeedbackOpen(false)
-      resetFeedbackDialog()
     } catch {
       toast({
-        title: "Thanks for your feedback",
-        description: "Saved locally for now. We’ll sync this once feedback services are available.",
+        title: "Feedback service unavailable",
+        description: "We redirected you to Support so your message is not lost.",
       })
+
+      router.push(`/support?feedback=${encodeURIComponent(trimmedFeedback)}`)
       setIsFeedbackOpen(false)
       resetFeedbackDialog()
     }
@@ -1171,14 +1174,14 @@ export default function RunashChatPage() {
             <fieldset className="space-y-2">
               <legend className="text-sm font-medium text-zinc-200">Quick reaction (optional)</legend>
               <div className="flex items-center gap-2" role="radiogroup" aria-label="Select feedback sentiment">
-                {feedbackMoodOptions.map(({ value, label, Icon }) => {
-                  const isSelected = feedbackMood === value
+                {feedbackRatingOptions.map(({ value, label, Icon }) => {
+                  const isSelected = feedbackRating === value
                   return (
                     <Button
                       key={value}
                       type="button"
                       variant="outline"
-                      onClick={() => setFeedbackMood(value)}
+                      onClick={() => setFeedbackRating(value)}
                       aria-pressed={isSelected}
                       className={`h-10 border-zinc-700 px-3 text-zinc-200 hover:bg-zinc-900 ${isSelected ? "border-zinc-500 bg-zinc-900" : ""}`}
                       disabled={isSubmittingFeedback}
