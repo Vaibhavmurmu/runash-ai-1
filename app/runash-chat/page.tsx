@@ -334,8 +334,12 @@ export default function RunashChatPage() {
   const [languagePreference, setLanguagePreference] = useState<RunashLanguagePreference>("en")
   const [chatPositionPreference, setChatPositionPreference] = useState<RunashChatPositionPreference>("left")
   const [isComposerUpgradeHelperDismissed, setIsComposerUpgradeHelperDismissed] = useState(false)
+  const [isCreditsOpen, setIsCreditsOpen] = useState(false)
   const upgradeCtaClassName =
     "border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900 focus-visible:ring-1 focus-visible:ring-zinc-500"
+  const creditsPanelId = "runash-chat-credits-panel"
+  const creditsTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const creditsPanelRef = useRef<HTMLDivElement | null>(null)
 
   const feedbackRatingOptions: { value: number; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
     { value: 5, label: "Loved it", Icon: Smile },
@@ -418,6 +422,9 @@ export default function RunashChatPage() {
   const primaryTabletHeaderActions = headerActions.slice(0, 2)
   const overflowTabletHeaderActions = headerActions.slice(2)
   const creditsBalanceLabel = "5.00"
+  const giftedCreditsLabel = "1.00"
+  const monthlyCreditsLabel = "3.00"
+  const purchasedCreditsLabel = "1.00"
   const selectedUpgradePlan = getUpgradePlanConfiguration(selectedPlan)
 
   const userDisplayName = authenticatedUser?.name?.trim() || authenticatedUser?.email?.split("@")[0]?.trim() || "Guest User"
@@ -750,9 +757,41 @@ export default function RunashChatPage() {
   useEffect(() => {
     if (!activeModal) return
 
+    setIsCreditsOpen(false)
     setIsMobileSidebarOpen(false)
     setIsMobileSearchOpen(false)
   }, [activeModal])
+
+  useEffect(() => {
+    if (!isCreditsOpen) return
+
+    const handleOutsideInteraction = (event: MouseEvent | TouchEvent) => {
+      const targetNode = event.target
+      if (!(targetNode instanceof Node)) return
+
+      if (creditsPanelRef.current?.contains(targetNode) || creditsTriggerRef.current?.contains(targetNode)) {
+        return
+      }
+
+      setIsCreditsOpen(false)
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return
+      setIsCreditsOpen(false)
+      creditsTriggerRef.current?.focus()
+    }
+
+    window.addEventListener("mousedown", handleOutsideInteraction)
+    window.addEventListener("touchstart", handleOutsideInteraction)
+    window.addEventListener("keydown", handleEscape)
+
+    return () => {
+      window.removeEventListener("mousedown", handleOutsideInteraction)
+      window.removeEventListener("touchstart", handleOutsideInteraction)
+      window.removeEventListener("keydown", handleEscape)
+    }
+  }, [isCreditsOpen])
 
   useEffect(() => {
     if (!isMobileSidebarOpen) return
@@ -1825,17 +1864,73 @@ export default function RunashChatPage() {
                   )}
                 </div>
 
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="hidden h-8 rounded-full border-zinc-700 bg-zinc-950 px-2.5 text-xs font-medium text-zinc-100 hover:bg-zinc-900 md:inline-flex"
-                  onClick={(event) => handleOpenOnboardingDialog(event.currentTarget)}
-                  aria-label="Open onboarding guide"
-                >
-                  <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
-                  <span>{creditsBalanceLabel}</span>
-                </Button>
+                <div className="relative hidden md:block">
+                  <Button
+                    ref={creditsTriggerRef}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 rounded-full border-zinc-700 bg-zinc-950 px-2.5 text-xs font-medium text-zinc-100 hover:bg-zinc-900"
+                    onClick={() => setIsCreditsOpen((previous) => !previous)}
+                    aria-label="View credit balance details"
+                    aria-expanded={isCreditsOpen}
+                    aria-controls={creditsPanelId}
+                  >
+                    <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
+                    <span>{creditsBalanceLabel}</span>
+                  </Button>
+
+                  {isCreditsOpen && (
+                    <div
+                      ref={creditsPanelRef}
+                      id={creditsPanelId}
+                      role="dialog"
+                      aria-label="Credit balance"
+                      className="absolute right-0 top-full z-30 mt-2 w-72 rounded-xl border border-zinc-800 bg-zinc-950/95 p-3 text-sm text-zinc-100 shadow-2xl shadow-black/40 backdrop-blur"
+                    >
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">Credit Balance</p>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between rounded-md bg-zinc-900/80 px-2 py-1.5">
+                          <span className="text-zinc-300">Gifted credits</span>
+                          <span className="font-medium text-zinc-100">{giftedCreditsLabel}</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-md bg-zinc-900/80 px-2 py-1.5">
+                          <span className="text-zinc-300">Monthly credits</span>
+                          <span className="font-medium text-zinc-100">{monthlyCreditsLabel}</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-md bg-zinc-900/80 px-2 py-1.5">
+                          <span className="text-zinc-300">Purchased credits</span>
+                          <span className="font-medium text-zinc-100">{purchasedCreditsLabel}</span>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 border-zinc-700 bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
+                          onClick={() => {
+                            setIsCreditsOpen(false)
+                            router.push("/settings/billing?section=redeem")
+                          }}
+                        >
+                          Redeem Code
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-8 bg-cyan-600 text-zinc-950 hover:bg-cyan-500"
+                          onClick={() => {
+                            setIsCreditsOpen(false)
+                            router.push("/pricing")
+                          }}
+                        >
+                          Buy Credits
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <TooltipProvider delayDuration={150}>
                   <div className="flex items-center gap-1 md:hidden">
