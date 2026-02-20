@@ -83,7 +83,7 @@ type SidebarFavoriteItem = {
 type OnboardingSlide = {
   title: string
   description: string
-  image?: string
+  imageSrc?: string
 }
 
 const runashChatOnboardingStorageKey = "runash_chat_onboarding_seen"
@@ -124,17 +124,17 @@ const onboardingSlides: OnboardingSlide[] = [
   {
     title: "Welcome to RunAsh Chat",
     description: "Plan campaigns, build bundles, and launch storefront workflows from one assistant workspace.",
-    image: "✨",
+    imageSrc: "✨",
   },
   {
     title: "Use guided prompts",
     description: "Start with quick actions for checkout, bundles, and post-purchase support to move faster.",
-    image: "🧭",
+    imageSrc: "🧭",
   },
   {
     title: "Stay in control",
     description: "Track recents, jump back into sessions, and use the sidebar to keep launches organized.",
-    image: "🚀",
+    imageSrc: "🚀",
   },
 ]
 
@@ -183,7 +183,7 @@ export default function RunashChatPage() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
   const [isFavoritesExpanded, setIsFavoritesExpanded] = useState(true)
   const [isRecentsExpanded, setIsRecentsExpanded] = useState(true)
-  const [isLearnMoreDialogOpen, setIsLearnMoreDialogOpen] = useState(false)
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
   const [onboardingStep, setOnboardingStep] = useState(0)
   const [isBannerDismissed, setIsBannerDismissed] = useState<boolean | null>(null)
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false)
@@ -494,13 +494,13 @@ export default function RunashChatPage() {
     mainControlsRef.current?.focus()
   }
 
-  const handleOpenLearnMoreDialog = () => {
+  const handleOpenOnboardingDialog = () => {
     setOnboardingStep(0)
-    setIsLearnMoreDialogOpen(true)
+    setIsOnboardingOpen(true)
   }
 
   const handleOnboardingOpenChange = (open: boolean) => {
-    setIsLearnMoreDialogOpen(open)
+    setIsOnboardingOpen(open)
     if (!open) {
       restoreFocusToMainControls()
     }
@@ -509,7 +509,7 @@ export default function RunashChatPage() {
   const handleOnboardingNext = () => {
     if (isLastOnboardingStep) {
       markOnboardingSeen()
-      setIsLearnMoreDialogOpen(false)
+      setIsOnboardingOpen(false)
       setIsBannerDismissed(true)
       restoreFocusToMainControls()
       return
@@ -523,11 +523,11 @@ export default function RunashChatPage() {
   }, [isSidebarCollapsed])
 
   useEffect(() => {
-    if (!isLearnMoreDialogOpen) return
+    if (!isOnboardingOpen) return
 
     setIsMobileSidebarOpen(false)
     setIsMobileSearchOpen(false)
-  }, [isLearnMoreDialogOpen])
+  }, [isOnboardingOpen])
 
   useEffect(() => {
     if (!isMobileSidebarOpen) return
@@ -967,25 +967,25 @@ export default function RunashChatPage() {
 
   return (
     <div className="min-h-screen bg-[#030405] text-zinc-100">
-      <Dialog open={isLearnMoreDialogOpen} onOpenChange={handleOnboardingOpenChange}>
+      <Dialog open={isOnboardingOpen} onOpenChange={handleOnboardingOpenChange}>
         <DialogContent
-          className="max-w-md border-zinc-800 bg-zinc-950 p-0 text-zinc-100 motion-reduce:duration-0"
+          className="w-[min(92vw,32rem)] max-w-[32rem] overflow-hidden border-zinc-800 bg-zinc-950 p-0 text-zinc-100 motion-reduce:duration-0"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
             restoreFocusToMainControls()
           }}
         >
-          <div className="overflow-hidden rounded-lg">
-            <div className="h-44 bg-gradient-to-br from-cyan-500/30 via-blue-500/20 to-zinc-900 p-6">
+          <div className="max-h-[min(88vh,42rem)] overflow-y-auto rounded-lg">
+            <div className="h-44 bg-gradient-to-br from-cyan-500/30 via-blue-500/20 to-zinc-900 p-4 sm:p-6">
               <div
                 className="flex h-full items-center justify-center rounded-lg border border-white/10 bg-black/20 text-6xl transition-transform duration-300 motion-reduce:transition-none"
                 key={currentOnboardingSlide.title}
               >
-                <span aria-hidden>{currentOnboardingSlide.image ?? "🚀"}</span>
+                <span aria-hidden>{currentOnboardingSlide.imageSrc ?? "🚀"}</span>
               </div>
             </div>
 
-            <div className="space-y-5 p-6">
+            <div className="space-y-5 p-4 sm:p-6">
               <DialogHeader className="space-y-2 text-left">
                 <DialogTitle>{currentOnboardingSlide.title}</DialogTitle>
                 <DialogDescription className="text-zinc-300">{currentOnboardingSlide.description}</DialogDescription>
@@ -1126,7 +1126,7 @@ export default function RunashChatPage() {
           <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
             <div className="mb-4 space-y-3 lg:hidden">
               <div
-                className={`sticky top-0 ${isMobileSidebarOpen || isLearnMoreDialogOpen ? "z-0" : "z-20"} rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2 backdrop-blur`}
+                className={`sticky top-0 ${isMobileSidebarOpen || isOnboardingOpen ? "z-0" : "z-20"} rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2 backdrop-blur`}
               >
                 <div className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2">
                   <div className="flex items-center gap-2">
@@ -1137,7 +1137,7 @@ export default function RunashChatPage() {
                     className="h-[42px] w-[42px] rounded-xl border-zinc-800 bg-zinc-950 text-zinc-100"
                     onClick={() => router.push("/")}
                     aria-label="Go to home"
-                    disabled={isLearnMoreDialogOpen}
+                    disabled={isOnboardingOpen}
                   >
                     <Home className="h-[18px] w-[18px] stroke-[1.75]" />
                   </Button>
@@ -1153,7 +1153,7 @@ export default function RunashChatPage() {
                         aria-expanded={isMobileSidebarOpen}
                         aria-controls={runashChatMobileSidebarId}
                         aria-label={isMobileSidebarOpen ? "Close navigation menu" : "Open navigation menu"}
-                        disabled={isLearnMoreDialogOpen}
+                        disabled={isOnboardingOpen}
                         title="Toggle navigation (Ctrl/Cmd+B)"
                       >
                         <Menu className="h-[18px] w-[18px] stroke-[1.75]" />
@@ -1184,7 +1184,7 @@ export default function RunashChatPage() {
                   aria-expanded={isMobileSearchOpen}
                   aria-controls="mobile-chat-search"
                   className="flex h-[42px] min-w-0 items-center justify-between rounded-full border border-zinc-800 bg-zinc-950 px-3.5 text-left"
-                  disabled={isLearnMoreDialogOpen}
+                  disabled={isOnboardingOpen}
                 >
                   <span className="truncate text-sm font-semibold tracking-tight text-zinc-100">RunAsh Workspace</span>
                   <span className="ml-2 flex shrink-0 items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300">
@@ -1206,7 +1206,7 @@ export default function RunashChatPage() {
                       aria-label="Toggle mobile search"
                       aria-expanded={isMobileSearchOpen}
                       aria-controls="mobile-chat-search"
-                      disabled={isLearnMoreDialogOpen}
+                      disabled={isOnboardingOpen}
                     >
                       <Search className="h-[18px] w-[18px] stroke-[1.75]" />
                     </Button>
@@ -1216,7 +1216,7 @@ export default function RunashChatPage() {
                     className="h-[42px] w-[42px] rounded-xl bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
                     onClick={() => startChatWithPrompt()}
                     aria-label="Start a new chat"
-                    disabled={isLearnMoreDialogOpen}
+                    disabled={isOnboardingOpen}
                   >
                     <Plus className="h-[18px] w-[18px] stroke-[1.75]" />
                   </Button>
@@ -1227,7 +1227,7 @@ export default function RunashChatPage() {
                         variant="outline"
                         className="h-[42px] w-[42px] rounded-xl border-zinc-800 bg-zinc-950 text-zinc-100"
                         aria-label="More quick actions"
-                        disabled={isLearnMoreDialogOpen}
+                        disabled={isOnboardingOpen}
                       >
                         <MoreVertical className="h-[18px] w-[18px] stroke-[1.75]" />
                       </Button>
@@ -1346,7 +1346,7 @@ export default function RunashChatPage() {
                         variant="link"
                         ref={learnMoreTriggerRef}
                         className="h-auto p-0 text-xs font-medium text-cyan-300 underline underline-offset-2 hover:text-cyan-200 sm:text-sm"
-                        onClick={handleOpenLearnMoreDialog}
+                        onClick={handleOpenOnboardingDialog}
                       >
                         Learn More
                       </Button>
@@ -1442,7 +1442,7 @@ export default function RunashChatPage() {
                   size="sm"
                   variant="outline"
                   className="hidden h-8 rounded-full border-zinc-700 bg-zinc-950 px-2.5 text-xs font-medium text-zinc-100 hover:bg-zinc-900 md:inline-flex"
-                  onClick={handleOpenLearnMoreDialog}
+                  onClick={handleOpenOnboardingDialog}
                   aria-label="Open onboarding guide"
                 >
                   <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
@@ -1494,7 +1494,7 @@ export default function RunashChatPage() {
                         </Tooltip>
                         <DropdownMenuContent align="end" className="border-zinc-800 bg-zinc-900 text-zinc-100">
                           <DropdownMenuItem
-                            onClick={handleOpenLearnMoreDialog}
+                            onClick={handleOpenOnboardingDialog}
                             className="focus:bg-zinc-800 focus:text-zinc-100"
                           >
                             <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
