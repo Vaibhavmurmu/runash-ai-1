@@ -32,7 +32,6 @@ import {
   Bot,
   Check,
   ChevronDown,
-  ChevronRight,
   ChevronsLeft,
   ChevronsRight,
   Copy,
@@ -97,6 +96,12 @@ type ConfirmDeletePayload = {
   entityId: string
   title: string
   description: string
+}
+
+type RenameDialogTarget = {
+  entityType: "favorite" | "recent"
+  entityId: string
+  currentName: string
 }
 
 type OnboardingSlide = {
@@ -471,6 +476,10 @@ export default function RunashChatPage() {
   const [isRecentsExpanded, setIsRecentsExpanded] = useState(true)
   const [shareRecentItem, setShareRecentItem] = useState<RecentEntity | null>(null)
   const [moveRecentItem, setMoveRecentItem] = useState<RecentEntity | null>(null)
+  const [selectedMoveDestinationId, setSelectedMoveDestinationId] = useState<string>("")
+  const [renameDialogTarget, setRenameDialogTarget] = useState<RenameDialogTarget | null>(null)
+  const [renameInputValue, setRenameInputValue] = useState("")
+  const [renameInputError, setRenameInputError] = useState<string | null>(null)
   const [isCopyingRecentLink, setIsCopyingRecentLink] = useState(false)
   const [confirmDeletePayload, setConfirmDeletePayload] = useState<ConfirmDeletePayload | null>(null)
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
@@ -512,6 +521,7 @@ export default function RunashChatPage() {
   const creditsPanelRef = useRef<HTMLDivElement | null>(null)
   const redeemDialogTriggerRef = useRef<HTMLElement | null>(null)
   const profileMenuTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const darkDialogContentClassName = "border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md"
 
   const feedbackRatingOptions: { value: number; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
     { value: 5, label: "Loved it", Icon: Smile },
@@ -595,25 +605,19 @@ export default function RunashChatPage() {
 
   const handleRecentMove = (item: RecentEntity) => {
     setMoveRecentItem(item)
+    setSelectedMoveDestinationId("")
     closeRecentMenu()
   }
 
   const handleRecentRename = (item: RecentEntity) => {
-    const proposedName = window.prompt("Rename item", item.title)?.trim()
-    if (!proposedName) {
-      closeRecentMenu()
-      return
-    }
-
-    setRecentEntities((previousItems) =>
-      previousItems.map((recentItem) => (recentItem.id === item.id ? { ...recentItem, title: proposedName } : recentItem)),
-    )
-
-    closeRecentMenu()
-    toast({
-      title: "Item renamed",
-      description: `Updated to \"${proposedName}\".`,
+    setRenameDialogTarget({
+      entityType: "recent",
+      entityId: item.id,
+      currentName: item.title,
     })
+    setRenameInputValue(item.title)
+    setRenameInputError(null)
+    closeRecentMenu()
   }
 
   const handleRecentDelete = (item: RecentEntity) => {
@@ -702,11 +706,83 @@ export default function RunashChatPage() {
   const handleRecentMoveDestinationSelect = (destination: RecentMoveDestination) => {
     if (!moveRecentItem) return
 
+    if (destination.id === "favorites") {
+      const nextFavorite = mapRecentEntityToFavorite(moveRecentItem)
+      setFavoriteItems((previousItems) => {
+        if (previousItems.some((favoriteItem) => favoriteItem.id === nextFavorite.id)) {
+          return previousItems
+        }
+
+        return [nextFavorite, ...previousItems]
+      })
+    }
+
+    setRecentEntities((previousItems) => previousItems.filter((recentItem) => recentItem.id !== moveRecentItem.id))
+
     toast({
       title: "Item moved",
       description: `${moveRecentItem.title} moved to ${destination.label}.`,
     })
     setMoveRecentItem(null)
+    setSelectedMoveDestinationId("")
+  }
+
+  const closeRenameDialog = () => {
+    setRenameDialogTarget(null)
+    setRenameInputValue("")
+    setRenameInputError(null)
+  }
+
+  const handleRenameSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!renameDialogTarget) return
+
+    const trimmedLabel = renameInputValue.trim()
+    if (!trimmedLabel) {
+      setRenameInputError("Please enter a name.")
+      return
+    }
+
+    if (renameDialogTarget.entityType === "favorite") {
+      setFavoriteItems((previousItems) =>
+        previousItems.map((favoriteItem) =>
+          favoriteItem.id === renameDialogTarget.entityId ? { ...favoriteItem, label: trimmedLabel } : favoriteItem,
+        ),
+      )
+      toast({
+        title: "Favorite renamed",
+        description: `Updated to \"${trimmedLabel}\".`,
+      })
+    } else {
+      setRecentEntities((previousItems) =>
+        previousItems.map((recentItem) =>
+          recentItem.id === renameDialogTarget.entityId ? { ...recentItem, title: trimmedLabel } : recentItem,
+        ),
+      )
+      toast({
+        title: "Item renamed",
+        description: `Updated to \"${trimmedLabel}\".`,
+      })
+    }
+
+    closeRenameDialog()
+  }
+
+  const closeMoveDialog = () => {
+    setMoveRecentItem(null)
+    setSelectedMoveDestinationId("")
+  }
+
+  const handleMoveSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    const destination = recentMoveDestinations.find((recentDestination) => recentDestination.id === selectedMoveDestinationId)
+    if (!destination) {
+      return
+    }
+
+    handleRecentMoveDestinationSelect(destination)
   }
 
   const focusOverlayTrigger = () => {
@@ -1585,22 +1661,14 @@ export default function RunashChatPage() {
       return
     }
 
-    const proposedLabel = window.prompt("Rename favorite", item.label)?.trim()
-    if (!proposedLabel) {
-      closeFavoriteMenu()
-      return
-    }
-
-    setFavoriteItems((previousItems) =>
-      previousItems.map((favoriteItem) =>
-        favoriteItem.id === favoriteId ? { ...favoriteItem, label: proposedLabel } : favoriteItem,
-      ),
-    )
-    closeFavoriteMenu()
-    toast({
-      title: "Favorite renamed",
-      description: `Updated to \"${proposedLabel}\".`,
+    setRenameDialogTarget({
+      entityType: "favorite",
+      entityId: favoriteId,
+      currentName: item.label,
     })
+    setRenameInputValue(item.label)
+    setRenameInputError(null)
+    closeFavoriteMenu()
   }
 
   const handleFavoriteDeleteFolder = (favoriteId: string) => {
@@ -1914,7 +1982,7 @@ export default function RunashChatPage() {
   return (
     <div className="min-h-screen bg-[#030405] text-zinc-100">
       <Dialog open={Boolean(confirmDeletePayload)} onOpenChange={(open) => !open && closeDeleteConfirmModal(true)}>
-        <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
+        <DialogContent className={darkDialogContentClassName}>
           <DialogHeader>
             <DialogTitle>Delete {confirmDeletePayload?.title}?</DialogTitle>
             <DialogDescription className="text-zinc-400">{confirmDeletePayload?.description}</DialogDescription>
@@ -1934,7 +2002,7 @@ export default function RunashChatPage() {
       </Dialog>
 
       <Dialog open={Boolean(shareRecentItem)} onOpenChange={(open) => !open && setShareRecentItem(null)}>
-        <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
+        <DialogContent className={darkDialogContentClassName}>
           <DialogHeader>
             <DialogTitle>Share item</DialogTitle>
             <DialogDescription className="text-zinc-400">
@@ -1955,28 +2023,79 @@ export default function RunashChatPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(moveRecentItem)} onOpenChange={(open) => !open && setMoveRecentItem(null)}>
-        <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
+      <Dialog open={Boolean(moveRecentItem)} onOpenChange={(open) => !open && closeMoveDialog()}>
+        <DialogContent className={darkDialogContentClassName}>
           <DialogHeader>
             <DialogTitle>Move item</DialogTitle>
             <DialogDescription className="text-zinc-400">Choose where to move {moveRecentItem?.title}.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            {recentMoveDestinations.map((destination) => (
-              <button
-                key={destination.id}
-                type="button"
-                onClick={() => handleRecentMoveDestinationSelect(destination)}
-                className="flex w-full items-center justify-between rounded-md border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-left transition hover:border-zinc-700 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
-              >
-                <span>
-                  <span className="block text-sm font-medium text-zinc-100">{destination.label}</span>
-                  <span className="block text-xs text-zinc-500">{destination.description}</span>
-                </span>
-                <ChevronRight className="h-4 w-4 text-zinc-500" />
-              </button>
-            ))}
-          </div>
+          <form className="space-y-4" onSubmit={handleMoveSubmit}>
+            <div className="space-y-2">
+              <label className="block text-xs font-medium uppercase tracking-wide text-zinc-400" htmlFor="move-destination-select">
+                Destination
+              </label>
+              <Select value={selectedMoveDestinationId} onValueChange={setSelectedMoveDestinationId}>
+                <SelectTrigger id="move-destination-select" className="border-zinc-800 bg-zinc-900 text-zinc-200">
+                  <SelectValue placeholder="Select folder or project" />
+                </SelectTrigger>
+                <SelectContent className="border-zinc-800 bg-zinc-950 text-zinc-100">
+                  {recentMoveDestinations.map((destination) => (
+                    <SelectItem key={destination.id} value={destination.id} className="focus:bg-zinc-900 focus:text-zinc-100">
+                      <div className="flex flex-col text-left">
+                        <span className="text-sm font-medium text-zinc-100">{destination.label}</span>
+                        <span className="text-xs text-zinc-500">{destination.description}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" className="text-zinc-300 hover:bg-zinc-900" onClick={closeMoveDialog} type="button">
+                Cancel
+              </Button>
+              <Button className="bg-cyan-600 text-white hover:bg-cyan-500" type="submit" disabled={!selectedMoveDestinationId}>
+                Move
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(renameDialogTarget)} onOpenChange={(open) => !open && closeRenameDialog()}>
+        <DialogContent className={darkDialogContentClassName}>
+          <DialogHeader>
+            <DialogTitle>Rename</DialogTitle>
+            <DialogDescription className="text-zinc-400">Enter a new name for {renameDialogTarget?.currentName}.</DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={handleRenameSubmit}>
+            <div className="space-y-2">
+              <label className="block text-xs font-medium uppercase tracking-wide text-zinc-400" htmlFor="rename-item-input">
+                Name
+              </label>
+              <Input
+                id="rename-item-input"
+                value={renameInputValue}
+                onChange={(event) => {
+                  setRenameInputValue(event.target.value)
+                  if (renameInputError) {
+                    setRenameInputError(null)
+                  }
+                }}
+                className="border-zinc-800 bg-zinc-900 text-zinc-200"
+                autoFocus
+              />
+              {renameInputError ? <p className="text-xs text-red-300">{renameInputError}</p> : null}
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" className="text-zinc-300 hover:bg-zinc-900" onClick={closeRenameDialog} type="button">
+                Cancel
+              </Button>
+              <Button className="bg-cyan-600 text-white hover:bg-cyan-500" type="submit">
+                Save
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
