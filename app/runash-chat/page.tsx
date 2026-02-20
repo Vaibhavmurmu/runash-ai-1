@@ -449,6 +449,8 @@ export default function RunashChatPage() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
   const [isFavoritesExpanded, setIsFavoritesExpanded] = useState(true)
+  const [favoriteItems, setFavoriteItems] = useState<SidebarFavoriteItem[]>(sidebarFavoriteItems)
+  const [activeFavoriteMenuId, setActiveFavoriteMenuId] = useState<string | null>(null)
   const [isRecentsExpanded, setIsRecentsExpanded] = useState(true)
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
   const [activeOverlay, setActiveOverlay] = useState<ActiveOverlay>(null)
@@ -1373,6 +1375,66 @@ export default function RunashChatPage() {
     }
   }
 
+  const closeFavoriteMenu = () => {
+    setActiveFavoriteMenuId(null)
+  }
+
+  const handleFavoriteRemove = (favoriteId: string) => {
+    setFavoriteItems((previousItems) => previousItems.filter((item) => item.id !== favoriteId))
+    closeFavoriteMenu()
+    toast({
+      title: "Removed from favorites",
+      description: "This item is no longer pinned to Favorites.",
+    })
+  }
+
+  const handleFavoriteRename = (favoriteId: string) => {
+    const item = favoriteItems.find((favoriteItem) => favoriteItem.id === favoriteId)
+    if (!item) {
+      closeFavoriteMenu()
+      return
+    }
+
+    const proposedLabel = window.prompt("Rename favorite", item.label)?.trim()
+    if (!proposedLabel) {
+      closeFavoriteMenu()
+      return
+    }
+
+    setFavoriteItems((previousItems) =>
+      previousItems.map((favoriteItem) =>
+        favoriteItem.id === favoriteId ? { ...favoriteItem, label: proposedLabel } : favoriteItem,
+      ),
+    )
+    closeFavoriteMenu()
+    toast({
+      title: "Favorite renamed",
+      description: `Updated to \"${proposedLabel}\".`,
+    })
+  }
+
+  const handleFavoriteDeleteFolder = (favoriteId: string) => {
+    const item = favoriteItems.find((favoriteItem) => favoriteItem.id === favoriteId)
+    if (!item) {
+      closeFavoriteMenu()
+      return
+    }
+
+    const isConfirmed = window.confirm(`Delete ${item.label}? This action cannot be undone.`)
+    if (!isConfirmed) {
+      closeFavoriteMenu()
+      return
+    }
+
+    setFavoriteItems((previousItems) => previousItems.filter((favoriteItem) => favoriteItem.id !== favoriteId))
+    closeFavoriteMenu()
+    toast({
+      title: "Folder deleted",
+      description: `${item.label} was removed from your workspace list.`,
+      variant: "destructive",
+    })
+  }
+
   function renderSidebarContent(collapsed: boolean, isMobileDrawer = false) {
     return (
       <>
@@ -1447,27 +1509,69 @@ export default function RunashChatPage() {
 
                   {isFavoritesExpanded ? (
                     <div className="space-y-1">
-                      {sidebarFavoriteItems.map((item) => {
+                      {favoriteItems.map((item) => {
                         const Icon = item.icon
+                        const isMenuOpen = activeFavoriteMenuId === item.id
+
                         return (
-                          <button
-                            key={item.id}
-                            type="button"
-                            onClick={() => {
-                              router.push(item.href)
-                              if (isMobileDrawer) setIsMobileSidebarOpen(false)
-                            }}
-                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition hover:bg-zinc-900"
-                          >
-                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-900 text-zinc-300">
-                              <Icon className="h-3.5 w-3.5" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-xs font-medium text-zinc-200">{item.label}</p>
-                              <p className="truncate text-[11px] text-zinc-500">{item.description}</p>
-                            </div>
-                            <MoreVertical className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
-                          </button>
+                          <div key={item.id} className="flex items-center gap-1 rounded-md px-1 py-0.5 transition hover:bg-zinc-900">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                router.push(item.href)
+                                if (isMobileDrawer) setIsMobileSidebarOpen(false)
+                              }}
+                              className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left"
+                            >
+                              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-900 text-zinc-300">
+                                <Icon className="h-3.5 w-3.5" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-xs font-medium text-zinc-200">{item.label}</p>
+                                <p className="truncate text-[11px] text-zinc-500">{item.description}</p>
+                              </div>
+                            </button>
+
+                            <DropdownMenu
+                              open={isMenuOpen}
+                              onOpenChange={(open) => setActiveFavoriteMenuId(open ? item.id : null)}
+                            >
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+                                  aria-label={`Open actions for ${item.label}`}
+                                >
+                                  <span className="text-sm leading-none">...</span>
+                                </button>
+                              </DropdownMenuTrigger>
+
+                              <DropdownMenuContent
+                                align="end"
+                                sideOffset={6}
+                                className="w-44 border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100"
+                              >
+                                <DropdownMenuItem
+                                  className="cursor-pointer rounded-sm text-zinc-200 focus:bg-zinc-900 focus:text-zinc-100"
+                                  onClick={() => handleFavoriteRemove(item.id)}
+                                >
+                                  Remove from Favorites
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="cursor-pointer rounded-sm text-zinc-200 focus:bg-zinc-900 focus:text-zinc-100"
+                                  onClick={() => handleFavoriteRename(item.id)}
+                                >
+                                  Rename
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="cursor-pointer rounded-sm text-red-400 focus:bg-red-950/50 focus:text-red-300"
+                                  onClick={() => handleFavoriteDeleteFolder(item.id)}
+                                >
+                                  Delete folder
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         )
                       })}
                     </div>
