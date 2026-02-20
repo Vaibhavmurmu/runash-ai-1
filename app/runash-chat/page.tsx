@@ -540,6 +540,18 @@ export default function RunashChatPage() {
     }
   }
 
+  const handleOverlayDismiss = (overlay: Exclude<ActiveOverlay, null>, restoreFocus = true) => {
+    closeOverlay(restoreFocus)
+
+    if (overlay === "upgrade") {
+      setIsPlanActionLoading(false)
+    }
+
+    if (overlay === "feedback") {
+      resetFeedbackDialog()
+    }
+  }
+
   function openUpgradeModal(planId?: UpgradePlanId, triggerElement?: HTMLElement | null) {
     if (planId) {
       setSelectedPlan(planId)
@@ -742,21 +754,20 @@ export default function RunashChatPage() {
     if (!open && isSubmittingFeedback) return
 
     if (open) {
-      setActiveOverlay("feedback")
+      openOverlay("feedback")
       return
     }
 
-    closeOverlay(true)
-    resetFeedbackDialog()
+    handleOverlayDismiss("feedback")
   }
 
   const handleReferDialogOpenChange = (open: boolean) => {
     if (open) {
-      setActiveOverlay("refer")
+      openOverlay("refer")
       return
     }
 
-    closeOverlay(true)
+    handleOverlayDismiss("refer")
   }
 
   const handleCopyReferralLink = async () => {
@@ -780,27 +791,24 @@ export default function RunashChatPage() {
 
   const handleUpgradeModalOpenChange = (open: boolean) => {
     if (open) {
-      setActiveOverlay("upgrade")
+      openOverlay("upgrade")
       return
     }
 
-    closeOverlay(true)
-    if (!open) {
-      setIsPlanActionLoading(false)
-    }
+    handleOverlayDismiss("upgrade")
   }
 
   const handleSettingsDialogOpenChange = (open: boolean) => {
     if (open) {
-      setActiveOverlay("settings")
+      openOverlay("settings")
       return
     }
 
-    closeOverlay(true)
+    handleOverlayDismiss("settings")
   }
 
   const closeCreditsPanel = (restoreFocus = false) => {
-    closeOverlay(restoreFocus)
+    handleOverlayDismiss("credits", restoreFocus)
   }
 
   const openRedeemCodeDialog = (triggerElement?: HTMLElement | null) => {
@@ -1050,13 +1058,7 @@ export default function RunashChatPage() {
       if (event.key !== "Escape") return
       if (activeOverlay === "feedback" && isSubmittingFeedback) return
 
-      closeOverlay(true)
-      if (activeOverlay === "upgrade") {
-        setIsPlanActionLoading(false)
-      }
-      if (activeOverlay === "feedback") {
-        resetFeedbackDialog()
-      }
+      handleOverlayDismiss(activeOverlay)
     }
 
     window.addEventListener("keydown", handleEscape)
@@ -1585,6 +1587,18 @@ export default function RunashChatPage() {
             focusOverlayTrigger()
           }}
         >
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-3 top-3 h-8 w-8 rounded-full text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+            onClick={() => handleFeedbackOpenChange(false)}
+            aria-label="Close feedback dialog"
+            disabled={isSubmittingFeedback}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+
           <DialogHeader className="space-y-2 text-left">
             <DialogTitle>Give feedback</DialogTitle>
             <DialogDescription className="text-zinc-400">
@@ -1652,14 +1666,9 @@ export default function RunashChatPage() {
 
       <Dialog open={isSettingsOpen} onOpenChange={handleSettingsDialogOpenChange}>
         <DialogContent
-          className="z-[60] w-[min(94vw,720px)] overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950 p-0 text-zinc-100 shadow-2xl shadow-black/40 sm:max-w-[720px]"
+          className="z-[80] w-[min(94vw,720px)] overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950 p-0 text-zinc-100 shadow-2xl shadow-black/40 sm:max-w-[720px]"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
-            if (profileMenuTriggerRef.current && document.contains(profileMenuTriggerRef.current)) {
-              profileMenuTriggerRef.current.focus()
-              return
-            }
-
             focusOverlayTrigger()
           }}
         >
@@ -1860,6 +1869,17 @@ export default function RunashChatPage() {
             focusOverlayTrigger()
           }}
         >
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-3 top-3 h-8 w-8 rounded-full text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+            onClick={() => handleReferDialogOpenChange(false)}
+            aria-label="Close refer dialog"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+
           <DialogHeader className="space-y-2 border-b border-zinc-800/80 px-6 pb-4 pt-6 text-left">
             <DialogTitle className="flex items-center gap-2 text-zinc-100">
               <Sparkles className="h-5 w-5 text-emerald-400" aria-hidden="true" />
@@ -1948,6 +1968,17 @@ export default function RunashChatPage() {
             focusOverlayTrigger()
           }}
         >
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-3 top-3 h-8 w-8 rounded-full text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+            onClick={() => handleUpgradeModalOpenChange(false)}
+            aria-label="Close upgrade dialog"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+
           <DialogHeader className="space-y-2 text-left">
             <DialogTitle>Explore More Plans</DialogTitle>
             <DialogDescription className="text-zinc-400">
@@ -2405,6 +2436,15 @@ export default function RunashChatPage() {
                 </div>
 
                 <div className="relative hidden md:block">
+                  {isCreditsOpen && (
+                    <button
+                      type="button"
+                      aria-label="Close credit balance panel"
+                      className="fixed inset-0 z-20 hidden bg-black/40 md:block"
+                      onClick={() => closeCreditsPanel(true)}
+                    />
+                  )}
+
                   <Button
                     ref={creditsTriggerRef}
                     type="button"
@@ -2435,7 +2475,19 @@ export default function RunashChatPage() {
                       aria-label="Credit balance"
                       className="absolute right-0 top-full z-30 mt-2.5 w-72 rounded-xl border border-zinc-800 bg-zinc-950/95 p-3 text-sm text-zinc-100 shadow-2xl shadow-black/40 backdrop-blur"
                     >
-                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">Credit Balance</p>
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Credit Balance</p>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                          onClick={() => closeCreditsPanel(true)}
+                          aria-label="Close credit balance panel"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
                       <div className="space-y-1.5">
                         {creditSummaryRows.map((row) => (
                           <div key={row.key} className="flex items-center justify-between rounded-md bg-zinc-900/80 px-2 py-1.5">
