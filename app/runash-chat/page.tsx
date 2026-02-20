@@ -197,7 +197,7 @@ type CreditSummaryRow = {
   label: string;
 };
 
-type SpeechTranscriptInsertMode = "append" | "replace";
+type VoiceCaptureState = "idle" | "recording" | "processing" | "error";
 
 type BrowserSpeechRecognitionResult = {
   transcript: string;
@@ -1128,13 +1128,12 @@ export default function RunashChatPage() {
   const [prompt, setPrompt] = useState("");
   const [isSpeechRecognitionSupported, setIsSpeechRecognitionSupported] =
     useState(false);
-  const [isRecordingPrompt, setIsRecordingPrompt] = useState(false);
+  const [voiceCaptureState, setVoiceCaptureState] =
+    useState<VoiceCaptureState>("idle");
   const [speechTranscriptPreview, setSpeechTranscriptPreview] = useState("");
   const [speechErrorMessage, setSpeechErrorMessage] = useState<string | null>(
     null,
   );
-  const [speechInsertMode, setSpeechInsertMode] =
-    useState<SpeechTranscriptInsertMode>("append");
   const [startChatError, setStartChatError] = useState<string | null>(null);
   const [isStartingChat, setIsStartingChat] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
@@ -1462,27 +1461,20 @@ export default function RunashChatPage() {
       setSpeechErrorMessage(
         "Voice input timed out. Try again and speak right after starting.",
       );
-      setIsRecordingPrompt(false);
+      setVoiceCaptureState("error");
       speechCommitReadyRef.current = false;
       speechRecognitionRef.current?.abort();
       speechRecognitionRef.current = null;
     }, 12000);
   };
 
-  const applyTranscriptToPrompt = (
-    transcript: string,
-    insertMode: SpeechTranscriptInsertMode,
-  ) => {
+  const applyTranscriptToPrompt = (transcript: string) => {
     const normalizedTranscript = transcript.trim();
     if (!normalizedTranscript) {
       return;
     }
 
     setPrompt((previousPrompt) => {
-      if (insertMode === "replace") {
-        return normalizedTranscript;
-      }
-
       if (!previousPrompt.trim()) {
         return normalizedTranscript;
       }
@@ -1499,10 +1491,15 @@ export default function RunashChatPage() {
   };
 
   const stopPromptRecording = () => {
+    if (voiceCaptureState !== "recording") {
+      return;
+    }
+
     setSpeechErrorMessage(null);
+    setVoiceCaptureState("processing");
     speechCommitReadyRef.current = true;
     speechRecognitionRef.current?.stop();
-    trackAnalyticsEvent("voice.stop", { mode: speechInsertMode });
+    trackAnalyticsEvent("voice.stop", { mode: "append" });
   };
 
   const cancelPromptRecording = () => {
@@ -1512,7 +1509,7 @@ export default function RunashChatPage() {
     clearSpeechTimeout();
     speechRecognitionRef.current?.abort();
     speechRecognitionRef.current = null;
-    setIsRecordingPrompt(false);
+    setVoiceCaptureState("idle");
   };
 
   const startPromptRecording = () => {
@@ -1522,6 +1519,7 @@ export default function RunashChatPage() {
       setSpeechErrorMessage(
         "Voice input is not supported in this browser. Try Chrome, Edge, or Safari.",
       );
+      setVoiceCaptureState("error");
       return;
     }
 
@@ -1531,7 +1529,7 @@ export default function RunashChatPage() {
     speechTranscriptFinalRef.current = "";
     setSpeechTranscriptPreview("");
     setSpeechErrorMessage(null);
-    setIsRecordingPrompt(true);
+    setVoiceCaptureState("recording");
 
     recognition.continuous = true;
     recognition.interimResults = true;
@@ -1579,28 +1577,29 @@ export default function RunashChatPage() {
       const mappedMessage =
         errorMessageMap[event.error] ?? "Voice input failed. Please try again.";
       setSpeechErrorMessage(mappedMessage || null);
-      setIsRecordingPrompt(false);
+      if (mappedMessage) {
+        setVoiceCaptureState("error");
+      }
       clearSpeechTimeout();
     };
 
     recognition.onend = () => {
       clearSpeechTimeout();
-      setIsRecordingPrompt(false);
 
       if (
         speechCommitReadyRef.current &&
         speechTranscriptFinalRef.current.trim()
       ) {
-        applyTranscriptToPrompt(
-          speechTranscriptFinalRef.current,
-          speechInsertMode,
-        );
+        applyTranscriptToPrompt(speechTranscriptFinalRef.current);
       }
 
       setSpeechTranscriptPreview("");
       speechTranscriptFinalRef.current = "";
       speechCommitReadyRef.current = false;
       speechRecognitionRef.current = null;
+      setVoiceCaptureState((previousState) =>
+        previousState === "error" ? "error" : "idle",
+      );
     };
 
     resetSpeechTimeout();
@@ -1609,7 +1608,7 @@ export default function RunashChatPage() {
       recognition.start();
     } catch {
       clearSpeechTimeout();
-      setIsRecordingPrompt(false);
+      setVoiceCaptureState("error");
       setSpeechErrorMessage(
         "Unable to start voice input right now. Please try again.",
       );
@@ -1618,12 +1617,12 @@ export default function RunashChatPage() {
   };
 
   const togglePromptRecording = () => {
-    if (isRecordingPrompt) {
+    if (voiceCaptureState === "recording") {
       stopPromptRecording();
       return;
     }
 
-    trackAnalyticsEvent("voice.start", { mode: speechInsertMode });
+    trackAnalyticsEvent("voice.start", { mode: "append" });
     startPromptRecording();
   };
 
@@ -2940,14 +2939,14 @@ export default function RunashChatPage() {
   }, []);
 
   useEffect(() => {
-    if (!isRecordingPrompt) {
+    if (voiceCaptureState === "idle" || voiceCaptureState === "error") {
       return;
     }
 
     if (speechRecognitionRef.current) {
       speechRecognitionRef.current.lang = generalSettings.spokenLanguage;
     }
-  }, [generalSettings.spokenLanguage, isRecordingPrompt]);
+  }, [generalSettings.spokenLanguage, voiceCaptureState]);
 
   useEffect(() => {
     const planFromQuery = searchParams.get("plan");
@@ -6484,23 +6483,38 @@ ${instructionStarter}`
                         <button
                           type="button"
                           onClick={togglePromptRecording}
-                          disabled={!isSpeechRecognitionSupported}
+                          disabled={
+                            !isSpeechRecognitionSupported ||
+                            voiceCaptureState === "processing"
+                          }
                           className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 ${
-                            isRecordingPrompt
+                            voiceCaptureState === "recording" ||
+                            voiceCaptureState === "processing"
                               ? "border-red-500/80 bg-red-500/15 text-red-200"
                               : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
                           }`}
                           aria-label={
-                            isRecordingPrompt
+                            voiceCaptureState === "recording"
                               ? "Stop voice input"
                               : "Start voice input"
                           }
-                          aria-pressed={isRecordingPrompt}
+                          aria-pressed={voiceCaptureState === "recording"}
                         >
-                          <Mic className="h-3.5 w-3.5" />
-                          <span>{isRecordingPrompt ? "Stop" : "Voice"}</span>
+                          {voiceCaptureState === "processing" ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Mic className="h-3.5 w-3.5" />
+                          )}
+                          <span>
+                            {voiceCaptureState === "recording"
+                              ? "Stop"
+                              : voiceCaptureState === "processing"
+                                ? "Stopping"
+                                : "Voice"}
+                          </span>
                         </button>
-                        {isRecordingPrompt && (
+                        {(voiceCaptureState === "recording" ||
+                          voiceCaptureState === "processing") && (
                           <button
                             type="button"
                             onClick={cancelPromptRecording}
@@ -6511,30 +6525,6 @@ ${instructionStarter}`
                             <span>Cancel</span>
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => setSpeechInsertMode("append")}
-                          className={`inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition ${
-                            speechInsertMode === "append"
-                              ? "border-cyan-500/80 bg-cyan-500/15 text-cyan-200"
-                              : "border-zinc-700 bg-zinc-950 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-                          }`}
-                          aria-pressed={speechInsertMode === "append"}
-                        >
-                          Append
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSpeechInsertMode("replace")}
-                          className={`inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition ${
-                            speechInsertMode === "replace"
-                              ? "border-cyan-500/80 bg-cyan-500/15 text-cyan-200"
-                              : "border-zinc-700 bg-zinc-950 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-                          }`}
-                          aria-pressed={speechInsertMode === "replace"}
-                        >
-                          Replace
-                        </button>
                         {promptActionConfigs.map((action) => {
                           const actionDisabled = isPromptActionDisabled(action);
                           const actionIsActive =
@@ -6597,7 +6587,7 @@ ${instructionStarter}`
                         Edge, or Safari.
                       </p>
                     )}
-                    {isRecordingPrompt && (
+                    {voiceCaptureState === "recording" && (
                       <p className="mt-2 inline-flex items-center gap-2 text-xs text-red-300">
                         <span
                           className="h-2 w-2 animate-pulse rounded-full bg-red-400"
@@ -6606,7 +6596,9 @@ ${instructionStarter}`
                         Recording… speak now.
                       </p>
                     )}
-                    {isRecordingPrompt && speechTranscriptPreview && (
+                    {(voiceCaptureState === "recording" ||
+                      voiceCaptureState === "processing") &&
+                      speechTranscriptPreview && (
                       <p className="mt-1 text-xs text-zinc-400">
                         {speechTranscriptPreview}
                       </p>
