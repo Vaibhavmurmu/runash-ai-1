@@ -112,6 +112,24 @@ const formatCreditValue = (value?: number | null): string => {
   return value.toFixed(2)
 }
 
+const sanitizeRedeemCode = (value: string): string => value.replace(/[^a-zA-Z0-9_-]/g, "").toUpperCase()
+
+const validateRedeemCode = (value: string): string | null => {
+  if (!value) {
+    return "Please enter a credit code."
+  }
+
+  if (value.length < 4) {
+    return "Code must be at least 4 characters."
+  }
+
+  if (value.length > 32) {
+    return "Code cannot exceed 32 characters."
+  }
+
+  return null
+}
+
 const runashChatOnboardingStorageKey = "runash_chat_onboarding_seen"
 const runashChatSidebarCollapsedStorageKey = "runash_chat_sidebar_collapsed"
 const runashChatBannerHiddenStorageKey = "runash_chat_banner_hidden"
@@ -361,11 +379,17 @@ export default function RunashChatPage() {
   const [chatPositionPreference, setChatPositionPreference] = useState<RunashChatPositionPreference>("left")
   const [isComposerUpgradeHelperDismissed, setIsComposerUpgradeHelperDismissed] = useState(false)
   const [isCreditsOpen, setIsCreditsOpen] = useState(false)
+  const [isRedeemDialogOpen, setIsRedeemDialogOpen] = useState(false)
+  const [redeemCodeInput, setRedeemCodeInput] = useState("")
+  const [redeemCodeError, setRedeemCodeError] = useState<string | null>(null)
+  const [isRedeemingCode, setIsRedeemingCode] = useState(false)
   const upgradeCtaClassName =
     "border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900 focus-visible:ring-1 focus-visible:ring-zinc-500"
   const creditsPanelId = "runash-chat-credits-panel"
+  const redeemCodeInputId = "runash-chat-redeem-code-input"
   const creditsTriggerRef = useRef<HTMLButtonElement | null>(null)
   const creditsPanelRef = useRef<HTMLDivElement | null>(null)
+  const redeemDialogTriggerRef = useRef<HTMLElement | null>(null)
 
   const feedbackRatingOptions: { value: number; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
     { value: 5, label: "Loved it", Icon: Smile },
@@ -635,6 +659,83 @@ export default function RunashChatPage() {
     }
   }
 
+  const focusCreditsTrigger = () => {
+    window.requestAnimationFrame(() => {
+      creditsTriggerRef.current?.focus()
+    })
+  }
+
+  const closeCreditsPanel = (restoreFocus = false) => {
+    setIsCreditsOpen(false)
+    if (restoreFocus) {
+      focusCreditsTrigger()
+    }
+  }
+
+  const openRedeemCodeDialog = (triggerElement?: HTMLElement | null) => {
+    redeemDialogTriggerRef.current = triggerElement ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null)
+    closeCreditsPanel(false)
+    setRedeemCodeInput("")
+    setRedeemCodeError(null)
+    setIsRedeemingCode(false)
+    setIsRedeemDialogOpen(true)
+  }
+
+  const handleRedeemDialogOpenChange = (open: boolean) => {
+    setIsRedeemDialogOpen(open)
+    if (!open) {
+      setIsRedeemingCode(false)
+      setRedeemCodeError(null)
+      setRedeemCodeInput("")
+      window.requestAnimationFrame(() => {
+        if (redeemDialogTriggerRef.current && document.contains(redeemDialogTriggerRef.current)) {
+          redeemDialogTriggerRef.current.focus()
+          return
+        }
+
+        creditsTriggerRef.current?.focus()
+      })
+    }
+  }
+
+  const handleRedeemCodeSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    const sanitizedCode = sanitizeRedeemCode(redeemCodeInput.trim())
+    const validationMessage = validateRedeemCode(sanitizedCode)
+    if (validationMessage) {
+      setRedeemCodeError(validationMessage)
+      toast({
+        title: "Invalid code",
+        description: validationMessage,
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsRedeemingCode(true)
+    setRedeemCodeError(null)
+
+    try {
+      router.push(`/settings/billing?section=redeem&code=${encodeURIComponent(sanitizedCode)}`)
+      toast({
+        title: "Code ready to redeem",
+        description: "We opened Billing so you can complete your credit redemption.",
+      })
+      handleRedeemDialogOpenChange(false)
+    } catch {
+      const errorMessage = "We could not open billing. Please try again."
+      setRedeemCodeError(errorMessage)
+      toast({
+        title: "Redeem failed",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setIsRedeemingCode(false)
+    }
+  }
+
   const handleFeedbackSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
@@ -810,7 +911,7 @@ export default function RunashChatPage() {
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return
       setIsCreditsOpen(false)
-      creditsTriggerRef.current?.focus()
+      focusCreditsTrigger()
     }
 
     window.addEventListener("mousedown", handleOutsideInteraction)
@@ -1542,6 +1643,48 @@ export default function RunashChatPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={isRedeemDialogOpen} onOpenChange={handleRedeemDialogOpenChange}>
+        <DialogContent className="w-[92vw] max-w-sm border-zinc-800 bg-zinc-950 text-zinc-100">
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle>Redeem Credit Code</DialogTitle>
+            <DialogDescription className="text-zinc-400">Enter your code to apply credits in billing.</DialogDescription>
+          </DialogHeader>
+
+          <form className="space-y-3" onSubmit={handleRedeemCodeSubmit}>
+            <div className="space-y-1.5">
+              <label htmlFor={redeemCodeInputId} className="text-xs font-medium uppercase tracking-wide text-zinc-300">
+                Code
+              </label>
+              <Input
+                id={redeemCodeInputId}
+                value={redeemCodeInput}
+                onChange={(event) => {
+                  const sanitizedValue = sanitizeRedeemCode(event.target.value)
+                  setRedeemCodeInput(sanitizedValue)
+                  if (redeemCodeError) {
+                    setRedeemCodeError(null)
+                  }
+                }}
+                placeholder="RUNASH-2026"
+                autoComplete="off"
+                maxLength={32}
+                className="border-zinc-700 bg-zinc-900 text-zinc-100 placeholder:text-zinc-500"
+              />
+              {redeemCodeError ? <p className="text-xs text-rose-300">{redeemCodeError}</p> : null}
+            </div>
+
+            <DialogFooter className="gap-2 sm:justify-end">
+              <Button type="button" variant="outline" onClick={() => handleRedeemDialogOpenChange(false)} disabled={isRedeemingCode}>
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-cyan-600 text-zinc-950 hover:bg-cyan-500" disabled={isRedeemingCode}>
+                {isRedeemingCode ? "Redeeming..." : "Submit"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <div
         className={`mx-auto flex w-full max-w-[1400px] gap-4 px-3 py-3 ${chatPositionPreference === "right" ? "lg:flex-row-reverse" : "lg:flex-row"}`}
       >
@@ -1934,10 +2077,7 @@ export default function RunashChatPage() {
                           size="sm"
                           variant="outline"
                           className="h-8 border-zinc-700 bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
-                          onClick={() => {
-                            setIsCreditsOpen(false)
-                            router.push("/settings/billing?section=redeem")
-                          }}
+                          onClick={(event) => openRedeemCodeDialog(event.currentTarget)}
                         >
                           Redeem Code
                         </Button>
@@ -1946,8 +2086,8 @@ export default function RunashChatPage() {
                           size="sm"
                           className="h-8 bg-cyan-600 text-zinc-950 hover:bg-cyan-500"
                           onClick={() => {
-                            setIsCreditsOpen(false)
-                            router.push("/pricing")
+                            closeCreditsPanel(false)
+                            router.push("/pricing?intent=credits")
                           }}
                         >
                           Buy Credits

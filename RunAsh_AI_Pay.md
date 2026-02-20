@@ -1,5 +1,11 @@
 # 🏦 RunAsh AI Pay 
 
+## Credits quick-action routing note (2026-02)
+
+- The RunAsh Chat credits panel now connects **Redeem Code** to an in-app redeem dialog with input sanitization/validation before handing off to billing redemption flow.
+- **Buy Credits** now routes directly to pricing with a credits purchase context query (`/pricing?intent=credits`) to preserve existing billing contracts while improving purchase intent routing.
+- This is a UI flow reliability update only; no payment API schema fields, webhook contracts, or auth/payment signatures were changed.
+
 
 ## Auth email transport reliability note (2026-02)
 
