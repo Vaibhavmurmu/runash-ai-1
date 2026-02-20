@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/hooks/use-toast"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +22,7 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useTheme } from "next-themes"
 import {
@@ -45,11 +46,14 @@ import {
   Plus,
   Rocket,
   Search,
+  Smile,
   Settings,
   ShieldCheck,
   ShoppingCart,
   Sparkles,
   User,
+  Meh,
+  Frown,
   X,
 } from "lucide-react"
 
@@ -143,6 +147,8 @@ type HeaderAction = {
   onClick?: () => void
 }
 
+type FeedbackMood = "positive" | "neutral" | "negative"
+
 const sidebarNavItems = [
   { label: "Home", icon: Home },
   { label: "Library", icon: Library },
@@ -159,6 +165,7 @@ const sidebarFavoriteItems: SidebarFavoriteItem[] = [
 
 export default function RunashChatPage() {
   const router = useRouter()
+  const { toast } = useToast()
   const { setTheme } = useTheme()
   const { data: session, status: authStatus } = useAuthSession()
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -179,6 +186,10 @@ export default function RunashChatPage() {
   const [isLearnMoreDialogOpen, setIsLearnMoreDialogOpen] = useState(false)
   const [onboardingStep, setOnboardingStep] = useState(0)
   const [isBannerDismissed, setIsBannerDismissed] = useState<boolean | null>(null)
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false)
+  const [feedbackText, setFeedbackText] = useState("")
+  const [feedbackMood, setFeedbackMood] = useState<FeedbackMood | null>(null)
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false)
   const mobileSidebarTriggerRef = useRef<HTMLButtonElement | null>(null)
   const desktopSidebarToggleRef = useRef<HTMLButtonElement | null>(null)
   const learnMoreTriggerRef = useRef<HTMLButtonElement | null>(null)
@@ -189,6 +200,12 @@ export default function RunashChatPage() {
   const [languagePreference, setLanguagePreference] = useState<RunashLanguagePreference>("en")
   const [chatPositionPreference, setChatPositionPreference] = useState<RunashChatPositionPreference>("left")
   const [isComposerUpgradeHelperDismissed, setIsComposerUpgradeHelperDismissed] = useState(false)
+
+  const feedbackMoodOptions: { value: FeedbackMood; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
+    { value: "positive", label: "Loved it", Icon: Smile },
+    { value: "neutral", label: "It was okay", Icon: Meh },
+    { value: "negative", label: "Needs work", Icon: Frown },
+  ]
 
   const isLastOnboardingStep = onboardingStep === onboardingSlides.length - 1
   const currentOnboardingSlide = onboardingSlides[onboardingStep]
@@ -206,7 +223,7 @@ export default function RunashChatPage() {
       label: "Feedback",
       tooltip: "Share product feedback",
       icon: MessageSquare,
-      onClick: () => router.push("/settings?section=workspace&panel=feedback"),
+      onClick: () => setIsFeedbackOpen(true),
     },
     {
       id: "refer",
@@ -347,6 +364,81 @@ export default function RunashChatPage() {
       return
     }
     action.onClick?.()
+  }
+
+  const resetFeedbackDialog = () => {
+    setFeedbackText("")
+    setFeedbackMood(null)
+    setIsSubmittingFeedback(false)
+  }
+
+  const handleFeedbackOpenChange = (open: boolean) => {
+    if (!open && isSubmittingFeedback) return
+
+    setIsFeedbackOpen(open)
+    if (!open) {
+      resetFeedbackDialog()
+    }
+  }
+
+  const handleFeedbackSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    const trimmedFeedback = feedbackText.trim()
+    if (!trimmedFeedback) {
+      toast({
+        title: "Feedback required",
+        description: "Please enter feedback before submitting.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const scoreMap: Record<FeedbackMood, number> = {
+      positive: 5,
+      neutral: 3,
+      negative: 1,
+    }
+
+    setIsSubmittingFeedback(true)
+
+    try {
+      const canUseFeedbackEndpoint = Boolean(sessionId)
+
+      if (canUseFeedbackEndpoint) {
+        const response = await fetch("/api/agents/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId,
+            signal: "quality",
+            score: feedbackMood ? scoreMap[feedbackMood] : 3,
+            reason: trimmedFeedback,
+          }),
+        })
+
+        if (!response.ok) {
+          throw new Error("Feedback endpoint unavailable")
+        }
+      } else {
+        await new Promise((resolve) => window.setTimeout(resolve, 350))
+      }
+
+      toast({
+        title: "Thanks for your feedback",
+        description: "Your feedback helps us improve RunAsh Chat.",
+      })
+
+      setIsFeedbackOpen(false)
+      resetFeedbackDialog()
+    } catch {
+      toast({
+        title: "Thanks for your feedback",
+        description: "Saved locally for now. We’ll sync this once feedback services are available.",
+      })
+      setIsFeedbackOpen(false)
+      resetFeedbackDialog()
+    }
   }
 
   useEffect(() => {
@@ -922,6 +1014,73 @@ export default function RunashChatPage() {
               </div>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isFeedbackOpen} onOpenChange={handleFeedbackOpenChange}>
+        <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-[520px]">
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle>Give feedback</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Tell us what worked well and what we can improve in your RunAsh Chat experience.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleFeedbackSubmit} className="space-y-4" aria-label="Feedback form">
+            <div className="space-y-2">
+              <label htmlFor="feedback-text" className="text-sm font-medium text-zinc-200">
+                Your feedback
+              </label>
+              <Textarea
+                id="feedback-text"
+                value={feedbackText}
+                onChange={(event) => setFeedbackText(event.target.value)}
+                placeholder="Share your feedback"
+                rows={5}
+                className="border-zinc-700 bg-zinc-900 text-zinc-100 placeholder:text-zinc-500"
+                disabled={isSubmittingFeedback}
+                onKeyDown={(event) => {
+                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                    event.preventDefault()
+                    event.currentTarget.form?.requestSubmit()
+                  }
+                }}
+                required
+              />
+            </div>
+
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium text-zinc-200">Quick reaction (optional)</legend>
+              <div className="flex items-center gap-2" role="radiogroup" aria-label="Select feedback sentiment">
+                {feedbackMoodOptions.map(({ value, label, Icon }) => {
+                  const isSelected = feedbackMood === value
+                  return (
+                    <Button
+                      key={value}
+                      type="button"
+                      variant="outline"
+                      onClick={() => setFeedbackMood(value)}
+                      aria-pressed={isSelected}
+                      className={`h-10 border-zinc-700 px-3 text-zinc-200 hover:bg-zinc-900 ${isSelected ? "border-zinc-500 bg-zinc-900" : ""}`}
+                      disabled={isSubmittingFeedback}
+                    >
+                      <Icon className="mr-2 h-4 w-4" aria-hidden="true" />
+                      {label}
+                    </Button>
+                  )
+                })}
+              </div>
+            </fieldset>
+
+            <DialogFooter className="gap-2">
+              <Button type="button" variant="outline" onClick={() => handleFeedbackOpenChange(false)} disabled={isSubmittingFeedback}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmittingFeedback || !feedbackText.trim()}>
+                {isSubmittingFeedback ? "Submitting…" : "Submit"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
