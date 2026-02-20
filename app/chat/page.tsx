@@ -7,8 +7,7 @@ import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Card } from "@/components/ui/card"
-import { Send, Sparkles, Leaf, Settings, History, Bot, Mic, Search } from "lucide-react"
+import { Send, Sparkles, Leaf, Settings, History, Bot, Mic, Search, Zap, WandSparkles } from "lucide-react"
 import type { ChatMessage, ChatSession, UserPreferences, QuickAction } from "@/types/runash-chat"
 import ChatMessageComponent from "@/components/chat/chat-message"
 import QuickActions from "@/components/chat/quick-actions"
@@ -16,6 +15,7 @@ import ChatSidebar from "@/components/chat/chat-sidebar"
 import UserPreferencesDialog from "@/components/chat/user-preferences-dialog"
 import CartDrawer from "@/components/cart/cart-drawer"
 import VoiceControls from "@/components/chat/voice-controls"
+import { ChatPageFrame, ChatSurfaceCard, SuggestionCardGrid, type SuggestionCardItem } from "@/components/chat/shared-chat-primitives"
  
 import { getRecommendedProducts, shouldRecommendProducts } from "@/lib/chat-product-recommendations"
 
@@ -795,51 +795,83 @@ export default function RunAshChatPage() {
     handleSendMessage(transcript)
   }
 
+  const suggestionItems: SuggestionCardItem[] = [
+    {
+      id: "starter-campaign",
+      title: "Launch promo campaign",
+      description: "Build a short promotional sequence with hooks, CTA moments, and follow-up prompts.",
+      actionLabel: "Create campaign prompt",
+      icon: Sparkles,
+      onAction: () => handleSendMessage("Create a short promo campaign workflow with 3 hooks and a follow-up sequence"),
+    },
+    {
+      id: "voice-script",
+      title: "Voice-first script",
+      description: "Generate a conversational script optimized for live voice interactions.",
+      actionLabel: "Generate voice script",
+      icon: Mic,
+      onAction: () => handleSendMessage("Generate a voice-friendly script for a live product walkthrough"),
+    },
+    {
+      id: "inventory-automation",
+      title: "Inventory automation",
+      description: "Create reorder and low-stock automations for high-velocity SKUs.",
+      actionLabel: "Draft automation plan",
+      icon: Zap,
+      onAction: () => handleSendMessage("Draft an inventory automation plan with reorder thresholds and alerts"),
+    },
+    {
+      id: "prompt-improve",
+      title: "Improve my prompt",
+      description: "Rewrite a basic prompt into an outcome-focused RunAsh instruction set.",
+      actionLabel: "Enhance prompt",
+      icon: WandSparkles,
+      onAction: () => setInputValue("Rewrite my prompt to include audience, offer, constraints, and CTA."),
+    },
+  ]
+
+  const showEmptyState = messages.length === 1 && !inputValue.trim() && !isTyping
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-orange-50 dark:from-gray-950 dark:to-gray-900">
-      {/* Header */}
-      <div className="border-b bg-white/80 dark:bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="rounded-lg bg-gradient-to-r from-orange-600 to-yellow-500 p-2">
-                <Bot className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold bg-gradient-to-r from-orange-600 to-yellow-500 text-transparent bg-clip-text">
-                  RunAshChat
-                </h1>
-                <p className="text-sm text-gray-600 dark:text-gray-400">AI Assistant</p>
-              </div>
+    <ChatPageFrame>
+      <div className="sticky top-0 z-50 mb-4 rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2.5 backdrop-blur sm:p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center space-x-3">
+            <div className="rounded-xl bg-gradient-to-r from-orange-600 to-yellow-500 p-2">
+              <Bot className="h-5 w-5 text-white" />
             </div>
-            <div className="flex items-center space-x-2">
-              <CartDrawer />
-              <Button variant="outline" size="sm" onClick={() => setShowPreferences(true)}>
-                <Settings className="h-4 w-4 mr-2" />
-                Preferences
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setSidebarOpen(!sidebarOpen)}>
-                <History className="h-4 w-4 mr-2" />
-                History
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setVoiceEnabled(!voiceEnabled)}
-                className={voiceEnabled ? "bg-green-100 text-green-700" : ""}
-              >
-                <Mic className="h-4 w-4 mr-2" />
-                {voiceEnabled ? "Voice On" : "Voice Off"}
-              </Button>
+            <div>
+              <h1 className="text-base font-semibold tracking-tight text-zinc-100 sm:text-lg">RunAshChat</h1>
+              <p className="text-xs text-zinc-400">AI Assistant</p>
             </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <CartDrawer />
+            <Button variant="outline" size="sm" onClick={() => setShowPreferences(true)} className="h-8 rounded-full border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-100 hover:bg-zinc-800">
+              <Settings className="h-3.5 w-3.5 mr-1.5" />
+              Preferences
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setSidebarOpen(!sidebarOpen)} className="h-8 rounded-full border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-100 hover:bg-zinc-800">
+              <History className="h-3.5 w-3.5 mr-1.5" />
+              History
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setVoiceEnabled(!voiceEnabled)}
+              className={`h-8 rounded-full border-zinc-700 px-3 text-xs text-zinc-100 hover:bg-zinc-800 ${voiceEnabled ? "bg-green-950 text-green-300" : "bg-zinc-900"}`}
+              aria-pressed={voiceEnabled}
+            >
+              <Mic className="h-3.5 w-3.5 mr-1.5" />
+              {voiceEnabled ? "Voice On" : "Voice Off"}
+            </Button>
           </div>
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-6 flex gap-6">
-        {/* Sidebar */}
+      <div className="flex gap-4">
         {sidebarOpen && (
-          <div className="w-80">
+          <div className="w-full lg:w-80">
             <ChatSidebar
               sessions={chatSessions}
               onSessionSelect={loadSession}
@@ -850,24 +882,31 @@ export default function RunAshChatPage() {
           </div>
         )}
 
-        {/* Main Chat Area */}
-        <div className="flex-1 max-w-4xl mx-auto">
-          <Card className="h-[calc(100vh-200px)] flex flex-col">
-            {/* Quick Actions */}
-            <div className="p-4 border-b">
+        <div className="flex-1">
+          <ChatSurfaceCard className="flex h-[calc(100vh-128px)] flex-col overflow-hidden">
+            <div className="border-b border-zinc-800 p-3 sm:p-4">
               <QuickActions actions={quickActions} />
             </div>
 
-            {/* Messages */}
-            <ScrollArea className="flex-1 p-4">
+            {showEmptyState ? (
+              <div className="border-b border-zinc-800 p-3 sm:p-4">
+                <SuggestionCardGrid
+                  title="Prompt suggestions"
+                  items={suggestionItems}
+                  emptyMessage="No suggestions available right now."
+                />
+              </div>
+            ) : null}
+
+            <ScrollArea className="flex-1 p-3 sm:p-4">
               <div className="space-y-4">
                 {messages.map((message) => (
                   <ChatMessageComponent key={message.id} message={message} />
                 ))}
 
                 {isTyping && (
-                  <div className="flex items-center space-x-2 text-gray-500">
-                    <div className="rounded-lg bg-gray-100 dark:bg-gray-800 p-3">
+                  <div className="flex items-center space-x-2 text-zinc-400" aria-live="polite">
+                    <div className="rounded-lg bg-zinc-900 p-3">
                       <div className="flex space-x-1">
                         <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
                         <div
@@ -887,15 +926,14 @@ export default function RunAshChatPage() {
               </div>
             </ScrollArea>
 
-            {/* Voice Controls */}
             {voiceEnabled && (
-              <div className="p-4 border-t space-y-3">
+              <div className="border-t border-zinc-800 p-3 space-y-3 sm:p-4">
                 {voiceTranscriptHistory.length > 0 && (
-                  <div className="rounded-md border bg-green-50/60 p-2 text-xs dark:bg-green-900/20">
-                    <div className="mb-1 flex items-center font-medium text-green-700 dark:text-green-400">
+                  <div className="rounded-md border border-green-900/70 bg-green-950/20 p-2 text-xs">
+                    <div className="mb-1 flex items-center font-medium text-green-300">
                       <Search className="mr-1 h-3 w-3" /> Recent voice intents
                     </div>
-                    <ul className="space-y-1 text-gray-700 dark:text-gray-300">
+                    <ul className="space-y-1 text-zinc-300">
                       {voiceTranscriptHistory.map((item, index) => (
                         <li key={`${item}-${index}`} className="line-clamp-1">
                           • {item}
@@ -912,8 +950,7 @@ export default function RunAshChatPage() {
               </div>
             )}
 
-            {/* Input */}
-            <div className="p-4 border-t">
+            <div className="border-t border-zinc-800 p-3 sm:p-4">
               <div className="flex space-x-2">
                 <Input
                   ref={inputRef}
@@ -921,7 +958,7 @@ export default function RunAshChatPage() {
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder="Ask about organic products, recipes, sustainability tips, or retail automation..."
-                  className="flex-1"
+                  className="flex-1 border-zinc-700 bg-zinc-900 text-zinc-100 placeholder:text-zinc-500"
                 />
                 <Button
                   onClick={() => handleSendMessage()}
@@ -931,7 +968,7 @@ export default function RunAshChatPage() {
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
-              <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
+              <div className="flex items-center justify-between mt-2 text-xs text-zinc-500">
                 <span>Press Enter to send, Shift+Enter for new line</span>
                 <div className="flex items-center space-x-4">
                   <span className="flex items-center">
@@ -940,12 +977,12 @@ export default function RunAshChatPage() {
                   </span>
                   <span className="flex items-center">
                     <Sparkles className="h-3 w-3 mr-1 text-orange-500" />
-                    RunAsh AI 
+                    RunAsh AI
                   </span>
                 </div>
               </div>
             </div>
-          </Card>
+          </ChatSurfaceCard>
         </div>
       </div>
 
@@ -957,6 +994,6 @@ export default function RunAshChatPage() {
           onClose={() => setShowPreferences(false)}
         />
       )}
-    </div>
+    </ChatPageFrame>
   )
 }
