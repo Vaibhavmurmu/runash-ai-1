@@ -501,7 +501,7 @@ type SidebarActionMenuState = {
 type FavoriteMenuActionId = "removeFavorite" | "renameFavorite" | "deleteFavorite"
 type RecentMenuActionId = "shareRecent" | "moveRecent" | "toggleFavoriteRecent" | "renameRecent" | "deleteRecent"
 
-type ActiveModal =
+type ModalOverlayId =
   | "rename"
   | "move"
   | "deleteConfirm"
@@ -512,12 +512,12 @@ type ActiveModal =
   | "credits"
   | "settings"
   | "redeem"
-  | null
 
-type OverlayState = {
-  sidebarActionMenu: SidebarActionMenuState | null
-  activeModal: ActiveModal
-}
+type ActiveOverlay =
+  | { type: null }
+  | { type: "modal"; payload: { id: ModalOverlayId } }
+  | { type: "sidebarActionMenu"; payload: SidebarActionMenuState }
+  | { type: "promptMenu" }
 
 const settingsSections = [
   "General",
@@ -703,10 +703,7 @@ export default function RunashChatPage() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
   const [isFavoritesExpanded, setIsFavoritesExpanded] = useState(true)
   const [favoriteItems, setFavoriteItems] = useState<SidebarFavoriteItem[]>(sidebarFavoriteItems)
-  const [overlayState, setOverlayState] = useState<OverlayState>({
-    sidebarActionMenu: null,
-    activeModal: null,
-  })
+  const [activeOverlay, setActiveOverlay] = useState<ActiveOverlay>({ type: null })
   const [isRecentsExpanded, setIsRecentsExpanded] = useState(true)
   const [shareRecentItem, setShareRecentItem] = useState<RecentEntity | null>(null)
   const [moveRecentItem, setMoveRecentItem] = useState<RecentEntity | null>(null)
@@ -735,6 +732,8 @@ export default function RunashChatPage() {
   const learnMoreTriggerRef = useRef<HTMLButtonElement | null>(null)
   const mainControlsRef = useRef<HTMLTextAreaElement | null>(null)
   const composerUploadInputRef = useRef<HTMLInputElement | null>(null)
+  const composerMenuTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const composerMenuContentRef = useRef<HTMLDivElement | null>(null)
   const lastOverlayTriggerRef = useRef<HTMLElement | null>(null)
   const deleteActionTriggerRef = useRef<HTMLElement | null>(null)
   const rowActionTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({})
@@ -748,7 +747,6 @@ export default function RunashChatPage() {
   const [selectedProjectLabel, setSelectedProjectLabel] = useState("Select a Project")
   const [activePromptActionId, setActivePromptActionId] = useState<PromptActionId | null>(null)
   const [isPromptActionLoading, setIsPromptActionLoading] = useState(false)
-  const [isComposerMenuOpen, setIsComposerMenuOpen] = useState(false)
   const [composerMenuActionLoadingId, setComposerMenuActionLoadingId] = useState<ComposerMenuActionId | null>(null)
   const [composerMenuError, setComposerMenuError] = useState<string | null>(null)
   const [uploadedAssetName, setUploadedAssetName] = useState<string | null>(null)
@@ -765,7 +763,10 @@ export default function RunashChatPage() {
   const settingsSectionButtonRefs = useRef<Array<HTMLButtonElement | null>>([])
   const upgradeCtaClassName =
     "border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900 focus-visible:ring-1 focus-visible:ring-zinc-500"
-  const actionMenuContentClassName = "z-40 w-48 border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100"
+  const menuOverlayClassName = "z-40"
+  const popoverOverlayClassName = "z-50"
+  const modalOverlayClassName = "z-[60]"
+  const actionMenuContentClassName = `${menuOverlayClassName} w-48 border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100`
   const actionMenuItemClassName = "cursor-pointer rounded-sm px-2.5 py-1.5 text-zinc-200 focus:bg-zinc-900 focus:text-zinc-100"
   const actionMenuDangerItemClassName = "cursor-pointer rounded-sm px-2.5 py-1.5 text-red-300 focus:bg-red-950/60 focus:text-red-200"
   const creditsPanelId = "runash-chat-credits-panel"
@@ -774,8 +775,8 @@ export default function RunashChatPage() {
   const creditsPanelRef = useRef<HTMLDivElement | null>(null)
   const redeemDialogTriggerRef = useRef<HTMLElement | null>(null)
   const profileMenuTriggerRef = useRef<HTMLButtonElement | null>(null)
-  const darkDialogContentClassName = "border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md"
-  const compactDarkDialogContentClassName = "w-[min(92vw,26rem)] border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-[26rem]"
+  const darkDialogContentClassName = `${modalOverlayClassName} border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md`
+  const compactDarkDialogContentClassName = `${modalOverlayClassName} w-[min(92vw,26rem)] border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-[26rem]`
 
   const feedbackRatingOptions: { value: number; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
     { value: 5, label: "Loved it", Icon: Smile },
@@ -827,12 +828,14 @@ export default function RunashChatPage() {
 
   const isLastOnboardingStep = onboardingStep === onboardingSlides.length - 1
   const currentOnboardingSlide = onboardingSlides[onboardingStep]
-  const isFeedbackOpen = overlayState.activeModal === "feedback"
-  const isReferOpen = overlayState.activeModal === "refer"
-  const isUpgradeModalOpen = overlayState.activeModal === "upgrade"
-  const isCreditsOpen = overlayState.activeModal === "credits"
-  const isSettingsOpen = overlayState.activeModal === "settings"
-  const isRedeemDialogOpen = overlayState.activeModal === "redeem"
+  const activeModalId = activeOverlay.type === "modal" ? activeOverlay.payload.id : null
+  const isFeedbackOpen = activeModalId === "feedback"
+  const isReferOpen = activeModalId === "refer"
+  const isUpgradeModalOpen = activeModalId === "upgrade"
+  const isCreditsOpen = activeModalId === "credits"
+  const isSettingsOpen = activeModalId === "settings"
+  const isRedeemDialogOpen = activeModalId === "redeem"
+  const isPromptMenuOpen = activeOverlay.type === "promptMenu"
   const referralProgressPercent =
     referralUiData.rewardCap > 0 ? Math.min(100, Math.round((referralUiData.progressValue / referralUiData.rewardCap) * 100)) : 0
 
@@ -1059,21 +1062,42 @@ export default function RunashChatPage() {
   const getSidebarActionMenuKey = (section: SidebarActionMenuSection, rowId: string) => `${section}-${rowId}`
 
   const isSidebarActionMenuOpen = (section: SidebarActionMenuSection, rowId: string) =>
-    overlayState.sidebarActionMenu?.section === section && overlayState.sidebarActionMenu.rowId === rowId
+    activeOverlay.type === "sidebarActionMenu" && activeOverlay.payload.section === section && activeOverlay.payload.rowId === rowId
 
-  const closeSidebarActionMenu = () => {
-    setOverlayState((previousState) => ({ ...previousState, sidebarActionMenu: null }))
+  const openOverlay = (overlay: Exclude<ActiveOverlay, { type: null }>, triggerElement?: HTMLElement | null) => {
+    rememberOverlayTrigger(triggerElement)
+    setActiveOverlay(overlay)
   }
 
-  const openSidebarActionMenu = (section: SidebarActionMenuSection, rowId: string) => {
-    setOverlayState({
-      sidebarActionMenu: { section, rowId },
-      activeModal: null,
-    })
+  const closeOverlay = (restoreFocus = false) => {
+    setActiveOverlay({ type: null })
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => {
+        focusOverlayTrigger()
+      })
+    }
+  }
+
+  const closeSidebarActionMenu = (restoreFocus = false) => {
+    closeOverlay(restoreFocus)
+  }
+
+  const openSidebarActionMenu = (section: SidebarActionMenuSection, rowId: string, triggerElement?: HTMLElement | null) => {
+    openOverlay({ type: "sidebarActionMenu", payload: { section, rowId } }, triggerElement)
   }
 
   const closeRecentMenu = () => {
     closeSidebarActionMenu()
+  }
+
+  const openPromptMenu = (triggerElement?: HTMLElement | null) => {
+    openOverlay({ type: "promptMenu" }, triggerElement)
+  }
+
+  const closePromptMenu = (restoreFocus = false) => {
+    if (activeOverlay.type === "promptMenu") {
+      closeOverlay(restoreFocus)
+    }
   }
 
   const persistSidebarMutation = async (action: string, payload: Record<string, string>) => {
@@ -1193,14 +1217,14 @@ export default function RunashChatPage() {
   const handleRecentShare = (item: RecentEntity) => {
     setShareRecentItem(item)
     closeRecentMenu()
-    setOverlayState((previousState) => ({ ...previousState, activeModal: "shareRecent" }))
+    openModal("shareRecent")
   }
 
   const handleRecentMove = (item: RecentEntity) => {
     setMoveRecentItem(item)
     setSelectedMoveDestinationId("")
     closeRecentMenu()
-    setOverlayState((previousState) => ({ ...previousState, activeModal: "move" }))
+    openModal("move")
   }
 
   const handleRecentRename = (item: RecentEntity) => {
@@ -1212,7 +1236,7 @@ export default function RunashChatPage() {
     setRenameInputValue(item.title)
     setRenameInputError(null)
     closeRecentMenu()
-    setOverlayState((previousState) => ({ ...previousState, activeModal: "rename" }))
+    openModal("rename")
   }
 
   const handleRecentDelete = (item: RecentEntity) => {
@@ -1223,7 +1247,7 @@ export default function RunashChatPage() {
       title: item.title,
       description: `Delete ${item.title} from your recents list? This action cannot be undone.`,
     })
-    setOverlayState((previousState) => ({ ...previousState, activeModal: "deleteConfirm" }))
+    openModal("deleteConfirm")
   }
 
   const isRecentFavorited = (item: RecentEntity) => favoriteItems.some((favoriteItem) => favoriteItem.id === `favorite-${item.id}`)
@@ -1259,7 +1283,7 @@ export default function RunashChatPage() {
 
   const closeDeleteConfirmModal = (restoreFocus = false) => {
     setConfirmDeletePayload(null)
-    setOverlayState((previousState) => ({ ...previousState, activeModal: null }))
+    closeOverlay(false)
 
     if (restoreFocus) {
       restoreDeleteActionTriggerFocus()
@@ -1322,7 +1346,7 @@ export default function RunashChatPage() {
         description: `Copied link for ${shareRecentItem.title}.`,
       })
       setShareRecentItem(null)
-      setOverlayState((previousState) => ({ ...previousState, activeModal: null }))
+      closeOverlay(false)
     } catch {
       toast({
         title: "Could not copy link",
@@ -1376,7 +1400,7 @@ export default function RunashChatPage() {
       })
       setMoveRecentItem(null)
       setSelectedMoveDestinationId("")
-      setOverlayState((previousState) => ({ ...previousState, activeModal: null }))
+      closeOverlay(false)
     } catch {
       setFavoriteItems(previousFavorites)
       setRecentEntities(previousRecents)
@@ -1394,7 +1418,7 @@ export default function RunashChatPage() {
     setRenameDialogTarget(null)
     setRenameInputValue("")
     setRenameInputError(null)
-    setOverlayState((previousState) => ({ ...previousState, activeModal: null }))
+    closeOverlay(false)
   }
 
   const validateRenameInput = (value: string, target: RenameDialogTarget): string | null => {
@@ -1481,7 +1505,7 @@ export default function RunashChatPage() {
   const closeMoveDialog = () => {
     setMoveRecentItem(null)
     setSelectedMoveDestinationId("")
-    setOverlayState((previousState) => ({ ...previousState, activeModal: null }))
+    closeOverlay(false)
   }
 
   const handleMoveSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -1505,22 +1529,12 @@ export default function RunashChatPage() {
     restoreFocusToMainControls()
   }
 
-  const openModal = (overlay: Exclude<ActiveModal, null>, triggerElement?: HTMLElement | null) => {
-    rememberOverlayTrigger(triggerElement)
-    setOverlayState({ sidebarActionMenu: null, activeModal: overlay })
+  const openModal = (overlay: ModalOverlayId, triggerElement?: HTMLElement | null) => {
+    openOverlay({ type: "modal", payload: { id: overlay } }, triggerElement)
   }
 
-  const closeModal = (restoreFocus = false) => {
-    setOverlayState((previousState) => ({ ...previousState, activeModal: null }))
-    if (restoreFocus) {
-      window.requestAnimationFrame(() => {
-        focusOverlayTrigger()
-      })
-    }
-  }
-
-  const dismissModal = (overlay: Exclude<ActiveModal, null>, restoreFocus = true) => {
-    closeModal(restoreFocus)
+  const dismissModal = (overlay: ModalOverlayId, restoreFocus = true) => {
+    closeOverlay(restoreFocus)
 
     if (overlay === "upgrade") {
       setIsPlanActionLoading(false)
@@ -1845,7 +1859,7 @@ export default function RunashChatPage() {
       return
     }
 
-    closeModal(false)
+    closeOverlay(false)
     if (!open) {
       setIsRedeemingCode(false)
       setRedeemCodeError(null)
@@ -2073,7 +2087,7 @@ export default function RunashChatPage() {
 
   const handleOpenOnboardingDialog = (triggerElement?: HTMLElement | null) => {
     setOnboardingStep(0)
-    closeModal(false)
+    closeOverlay(false)
     closeSidebarActionMenu()
     rememberOverlayTrigger(triggerElement)
     setIsOnboardingOpen(true)
@@ -2082,7 +2096,7 @@ export default function RunashChatPage() {
   const handleOnboardingOpenChange = (open: boolean) => {
     if (open) {
       setIsOnboardingOpen(true)
-      closeModal(false)
+      closeOverlay(false)
       closeSidebarActionMenu()
       return
     }
@@ -2116,30 +2130,30 @@ export default function RunashChatPage() {
   }, [isRecentsExpanded])
 
   useEffect(() => {
-    if (!overlayState.activeModal && !overlayState.sidebarActionMenu && !isOnboardingOpen) return
+    if (activeOverlay.type === null && !isOnboardingOpen) return
 
     setIsMobileSidebarOpen(false)
     setIsMobileSearchOpen(false)
-  }, [overlayState.activeModal, overlayState.sidebarActionMenu, isOnboardingOpen])
+  }, [activeOverlay, isOnboardingOpen])
 
   useEffect(() => {
-    if (!overlayState.activeModal && !overlayState.sidebarActionMenu && !isMobileSidebarOpen) return
+    if (activeOverlay.type === null && !isMobileSidebarOpen) return
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return
-      if (overlayState.sidebarActionMenu) {
-        closeSidebarActionMenu()
+
+      if (activeOverlay.type === "modal") {
+        if (activeOverlay.payload.id === "feedback" && isSubmittingFeedback) return
+        dismissModal(activeOverlay.payload.id)
         return
       }
 
-      if (!overlayState.activeModal) {
-        setIsMobileSidebarOpen(false)
+      if (activeOverlay.type !== null) {
+        closeOverlay(true)
         return
       }
 
-      if (overlayState.activeModal === "feedback" && isSubmittingFeedback) return
-
-      dismissModal(overlayState.activeModal)
+      setIsMobileSidebarOpen(false)
     }
 
     window.addEventListener("keydown", handleEscape)
@@ -2147,18 +2161,22 @@ export default function RunashChatPage() {
     return () => {
       window.removeEventListener("keydown", handleEscape)
     }
-  }, [overlayState.sidebarActionMenu, overlayState.activeModal, isSubmittingFeedback, isMobileSidebarOpen])
+  }, [activeOverlay, isSubmittingFeedback, isMobileSidebarOpen])
 
   useEffect(() => {
-    if (!overlayState.sidebarActionMenu && overlayState.activeModal !== "credits") return
+    const sidebarActionMenuOverlay = activeOverlay.type === "sidebarActionMenu" ? activeOverlay.payload : null
+    const isSidebarMenuOverlay = Boolean(sidebarActionMenuOverlay)
+    const isCreditsPopoverOverlay = activeOverlay.type === "modal" && activeOverlay.payload.id === "credits"
+    const isPromptMenuOverlay = activeOverlay.type === "promptMenu"
+
+    if (!isSidebarMenuOverlay && !isCreditsPopoverOverlay && !isPromptMenuOverlay) return
 
     const handleOutsideInteraction = (event: MouseEvent | TouchEvent) => {
       const targetNode = event.target
       if (!(targetNode instanceof Node)) return
 
-      const activeSidebarActionMenu = overlayState.sidebarActionMenu
-      if (activeSidebarActionMenu) {
-        const menuKey = getSidebarActionMenuKey(activeSidebarActionMenu.section, activeSidebarActionMenu.rowId)
+      if (sidebarActionMenuOverlay) {
+        const menuKey = getSidebarActionMenuKey(sidebarActionMenuOverlay.section, sidebarActionMenuOverlay.rowId)
         const menuTrigger = rowActionTriggerRefs.current[menuKey]
         const menuContent = rowActionContentRefs.current[menuKey]
 
@@ -2166,10 +2184,16 @@ export default function RunashChatPage() {
           return
         }
 
-        closeSidebarActionMenu()
+        closeOverlay(true)
+        return
       }
 
-      if (overlayState.activeModal !== "credits") {
+      if (isPromptMenuOverlay) {
+        if (composerMenuTriggerRef.current?.contains(targetNode) || composerMenuContentRef.current?.contains(targetNode)) {
+          return
+        }
+
+        closeOverlay(true)
         return
       }
 
@@ -2177,7 +2201,7 @@ export default function RunashChatPage() {
         return
       }
 
-      closeModal(true)
+      dismissModal("credits", true)
     }
 
     window.addEventListener("mousedown", handleOutsideInteraction)
@@ -2187,7 +2211,7 @@ export default function RunashChatPage() {
       window.removeEventListener("mousedown", handleOutsideInteraction)
       window.removeEventListener("touchstart", handleOutsideInteraction)
     }
-  }, [overlayState.sidebarActionMenu, overlayState.activeModal])
+  }, [activeOverlay])
 
   useEffect(() => {
     const handleKeyboardShortcut = (event: KeyboardEvent) => {
@@ -2411,7 +2435,7 @@ export default function RunashChatPage() {
       }
 
       if (action.type === "modal") {
-        openModal(action.routeOrHandler as Exclude<ActiveModal, null>, mainControlsRef.current)
+        openModal(action.routeOrHandler as ModalOverlayId, mainControlsRef.current)
         trackPromptAction(action, "success")
         return
       }
@@ -2483,7 +2507,7 @@ export default function RunashChatPage() {
 
     try {
       await run()
-      setIsComposerMenuOpen(false)
+      closePromptMenu(false)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to complete this action right now."
       setComposerMenuError(message)
@@ -2524,7 +2548,7 @@ export default function RunashChatPage() {
 
     setUploadedAssetName(selectedFile.name)
     setComposerMenuError(null)
-    setIsComposerMenuOpen(false)
+    closePromptMenu(false)
     toast({
       title: "File attached",
       description: `${selectedFile.name} will be included with your next prompt.`,
@@ -2541,7 +2565,7 @@ export default function RunashChatPage() {
         return
       case "upload-from-computer":
         setComposerMenuError(null)
-        setIsComposerMenuOpen(false)
+        closePromptMenu(false)
         composerUploadInputRef.current?.click()
         return
       case "generate-images":
@@ -2555,7 +2579,7 @@ export default function RunashChatPage() {
           })
           return nextValue
         })
-        setIsComposerMenuOpen(false)
+        closePromptMenu(false)
         return
       case "design-system-library":
         handleMenuRouteAction(actionId, "/editor?mode=design-system", "Opening design system library")
@@ -2567,7 +2591,7 @@ export default function RunashChatPage() {
 
 ${starter}` : starter
         })
-        setIsComposerMenuOpen(false)
+        closePromptMenu(false)
         toast({ title: "Design system instructions added" })
         return
       case "folder-new":
@@ -2586,7 +2610,7 @@ ${starter}` : starter
 
 ${instructionStarter}` : instructionStarter
         })
-        setIsComposerMenuOpen(false)
+        closePromptMenu(false)
         toast({ title: "Instruction template inserted" })
         return
       case "mcps-manage":
@@ -2705,7 +2729,7 @@ ${instructionStarter}` : instructionStarter
     setRenameInputValue(item.label)
     setRenameInputError(null)
     closeFavoriteMenu()
-    setOverlayState((previousState) => ({ ...previousState, activeModal: "rename" }))
+    openModal("rename")
   }
 
   const handleFavoriteDeleteFolder = (favoriteId: string) => {
@@ -2722,7 +2746,7 @@ ${instructionStarter}` : instructionStarter
       title: item.label,
       description: `Delete ${item.label}? This action cannot be undone.`,
     })
-    setOverlayState((previousState) => ({ ...previousState, activeModal: "deleteConfirm" }))
+    openModal("deleteConfirm")
   }
 
   const getFavoriteMenuActions = (item: SidebarFavoriteItem): Array<{ id: FavoriteMenuActionId; label: string; danger?: boolean; onSelect: () => void }> => [
@@ -3084,7 +3108,7 @@ ${instructionStarter}` : instructionStarter
   return (
     <div className="min-h-screen bg-[#030405] text-zinc-100">
       <Dialog
-        open={overlayState.activeModal === "deleteConfirm" && Boolean(confirmDeletePayload)}
+        open={activeModalId === "deleteConfirm" && Boolean(confirmDeletePayload)}
         onOpenChange={(open) => !open && dismissModal("deleteConfirm")}
       >
         <DialogContent className={compactDarkDialogContentClassName}>
@@ -3111,7 +3135,7 @@ ${instructionStarter}` : instructionStarter
       </Dialog>
 
       <Dialog
-        open={overlayState.activeModal === "shareRecent" && Boolean(shareRecentItem)}
+        open={activeModalId === "shareRecent" && Boolean(shareRecentItem)}
         onOpenChange={(open) => !open && dismissModal("shareRecent")}
       >
         <DialogContent className={darkDialogContentClassName}>
@@ -3135,7 +3159,7 @@ ${instructionStarter}` : instructionStarter
         </DialogContent>
       </Dialog>
 
-      <Dialog open={overlayState.activeModal === "move" && Boolean(moveRecentItem)} onOpenChange={(open) => !open && dismissModal("move")}>
+      <Dialog open={activeModalId === "move" && Boolean(moveRecentItem)} onOpenChange={(open) => !open && dismissModal("move")}>
         <DialogContent className={darkDialogContentClassName}>
           <DialogHeader>
             <DialogTitle>Move item</DialogTitle>
@@ -3175,7 +3199,7 @@ ${instructionStarter}` : instructionStarter
       </Dialog>
 
       <Dialog
-        open={overlayState.activeModal === "rename" && Boolean(renameDialogTarget)}
+        open={activeModalId === "rename" && Boolean(renameDialogTarget)}
         onOpenChange={(open) => !open && dismissModal("rename")}
       >
         <DialogContent className={darkDialogContentClassName}>
@@ -3833,7 +3857,7 @@ ${instructionStarter}` : instructionStarter
           <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
             <div className="mb-4 space-y-3 lg:hidden">
               <div
-                className={`sticky top-0 ${isMobileSidebarOpen || isOnboardingOpen || overlayState.activeModal ? "z-0" : "z-20"} rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2 backdrop-blur`}
+                className={`sticky top-0 ${isMobileSidebarOpen || isOnboardingOpen || activeOverlay.type === "modal" ? "z-0" : "z-20"} rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2 backdrop-blur`}
               >
                 <div className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2">
                   <div className="flex items-center gap-2">
@@ -4038,7 +4062,7 @@ ${instructionStarter}` : instructionStarter
 
             <div
               className={`sticky top-0 mb-5 space-y-3 rounded-2xl border border-transparent bg-gradient-to-b from-[#050607]/95 via-[#050607]/92 to-transparent px-1 pt-1 backdrop-blur-sm sm:mb-6 ${
-                isMobileSidebarOpen || isOnboardingOpen || overlayState.activeModal ? "z-0" : "z-20"
+                isMobileSidebarOpen || isOnboardingOpen || activeOverlay.type === "modal" ? "z-0" : "z-20"
               }`}
             >
               {isBannerDismissed === false && (
@@ -4151,7 +4175,7 @@ ${instructionStarter}` : instructionStarter
                     <button
                       type="button"
                       aria-label="Close credit balance panel"
-                      className="fixed inset-0 z-20 hidden bg-black/40 md:block"
+                      className="fixed inset-0 z-40 hidden bg-black/40 md:block"
                       onClick={() => closeCreditsPanel(true)}
                     />
                   )}
@@ -4184,7 +4208,7 @@ ${instructionStarter}` : instructionStarter
                       id={creditsPanelId}
                       role="dialog"
                       aria-label="Credit balance"
-                      className="absolute right-0 top-full z-30 mt-2.5 w-72 rounded-xl border border-zinc-800 bg-zinc-950/95 p-3 text-sm text-zinc-100 shadow-2xl shadow-black/40 backdrop-blur"
+                      className={`${popoverOverlayClassName} absolute right-0 top-full mt-2.5 w-72 rounded-xl border border-zinc-800 bg-zinc-950/95 p-3 text-sm text-zinc-100 shadow-2xl shadow-black/40 backdrop-blur`}
                     >
                       <div className="mb-2 flex items-center justify-between">
                         <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Credit Balance</p>
@@ -4338,9 +4362,20 @@ ${instructionStarter}` : instructionStarter
                   <div className="border-t border-zinc-800 px-3 py-2.5 sm:px-4">
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <p className="text-[11px] uppercase tracking-wide text-zinc-500">Prompt actions</p>
-                      <DropdownMenu open={isComposerMenuOpen} onOpenChange={setIsComposerMenuOpen}>
+                      <DropdownMenu
+                        open={isPromptMenuOpen}
+                        onOpenChange={(open) => {
+                          if (open) {
+                            openPromptMenu(composerMenuTriggerRef.current)
+                            return
+                          }
+
+                          closePromptMenu(false)
+                        }}
+                      >
                         <DropdownMenuTrigger asChild>
                           <Button
+                            ref={composerMenuTriggerRef}
                             type="button"
                             size="icon"
                             variant="ghost"
@@ -4350,7 +4385,11 @@ ${instructionStarter}` : instructionStarter
                             <Plus className="h-3.5 w-3.5" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" className="w-72 border-zinc-800 bg-zinc-900 text-zinc-100">
+                        <DropdownMenuContent
+                          ref={composerMenuContentRef}
+                          align="start"
+                          className={`${menuOverlayClassName} w-72 border-zinc-800 bg-zinc-900 text-zinc-100`}
+                        >
                           <DropdownMenuLabel className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">Import</DropdownMenuLabel>
                           <DropdownMenuItem onSelect={() => handleComposerMenuAction("import-github")} className="focus:bg-zinc-800 focus:text-zinc-100">
                             <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
