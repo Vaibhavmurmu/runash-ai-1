@@ -43,17 +43,21 @@ import {
   Library,
   Menu,
   MessageSquare,
+  Mic,
   MoreVertical,
   PanelsTopLeft,
   LifeBuoy,
   LogOut,
   Plus,
   Play,
+  PlugZap,
+  Pencil,
   Rocket,
   Search,
   Smile,
   Settings,
   Sparkles,
+  Upload,
   User,
   Meh,
   Frown,
@@ -293,6 +297,115 @@ type HeaderAction = {
   onClick?: (triggerElement?: HTMLElement | null) => void
 }
 
+type PromptActionType = "route" | "modal" | "service" | "handler"
+type PromptActionId = "enhance" | "create" | "upload" | "search" | "go-live" | "talk" | "generate-video" | "mcp" | "editor"
+
+type PromptActionConfig = {
+  id: PromptActionId
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+  type: PromptActionType
+  requiresPlan: UpgradePlanId | null
+  routeOrHandler: string
+  description: string
+  commandGroup: "Prompt" | "Create" | "Tools"
+  unavailableReason?: string
+}
+
+const promptActionConfigs: PromptActionConfig[] = [
+  {
+    id: "enhance",
+    label: "Enhance",
+    icon: Sparkles,
+    type: "handler",
+    requiresPlan: null,
+    routeOrHandler: "enhancePrompt",
+    description: "Improve your prompt before sending.",
+    commandGroup: "Prompt",
+  },
+  {
+    id: "create",
+    label: "Create",
+    icon: Plus,
+    type: "handler",
+    requiresPlan: null,
+    routeOrHandler: "startChatWithPrompt",
+    description: "Start a new run with your current prompt.",
+    commandGroup: "Prompt",
+  },
+  {
+    id: "upload",
+    label: "Upload",
+    icon: Upload,
+    type: "route",
+    requiresPlan: null,
+    routeOrHandler: "/upload",
+    description: "Upload product or campaign assets.",
+    commandGroup: "Create",
+  },
+  {
+    id: "search",
+    label: "Search",
+    icon: Search,
+    type: "service",
+    requiresPlan: null,
+    routeOrHandler: "/api/web-search",
+    description: "Run a product web search from the prompt.",
+    commandGroup: "Prompt",
+  },
+  {
+    id: "go-live",
+    label: "Go Live",
+    icon: Rocket,
+    type: "route",
+    requiresPlan: "team",
+    routeOrHandler: "/live",
+    description: "Launch a live commerce session.",
+    commandGroup: "Create",
+  },
+  {
+    id: "talk",
+    label: "Talk",
+    icon: Mic,
+    type: "modal",
+    requiresPlan: null,
+    routeOrHandler: "settings",
+    description: "Open voice preferences in settings.",
+    commandGroup: "Tools",
+  },
+  {
+    id: "generate-video",
+    label: "Generate Video",
+    icon: Play,
+    type: "route",
+    requiresPlan: "premium",
+    routeOrHandler: "/editor?mode=video",
+    description: "Jump to video generation workspace.",
+    commandGroup: "Create",
+  },
+  {
+    id: "mcp",
+    label: "MCP",
+    icon: PlugZap,
+    type: "route",
+    requiresPlan: "team",
+    routeOrHandler: "/integrations",
+    description: "Manage MCP integrations.",
+    commandGroup: "Tools",
+    unavailableReason: "MCP setup is currently managed in the integrations dashboard.",
+  },
+  {
+    id: "editor",
+    label: "Editor",
+    icon: Pencil,
+    type: "route",
+    requiresPlan: null,
+    routeOrHandler: "/editor",
+    description: "Open the RunAsh editor.",
+    commandGroup: "Tools",
+  },
+]
+
 type SidebarActionMenuSection = "favorite" | "recent"
 
 type SidebarActionMenuState = {
@@ -529,6 +642,8 @@ export default function RunashChatPage() {
   const rowActionContentRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [selectedModel, setSelectedModel] = useState<"v0 Mini" | "v0 Max">("v0 Mini")
   const [selectedProjectLabel, setSelectedProjectLabel] = useState("Select a Project")
+  const [activePromptActionId, setActivePromptActionId] = useState<PromptActionId | null>(null)
+  const [isPromptActionLoading, setIsPromptActionLoading] = useState(false)
   const [themePreference, setThemePreference] = useState<RunashThemePreference>("system")
   const [languagePreference, setLanguagePreference] = useState<RunashLanguagePreference>("en")
   const [chatPositionPreference, setChatPositionPreference] = useState<RunashChatPositionPreference>("left")
@@ -572,6 +687,32 @@ export default function RunashChatPage() {
 
   const authenticatedUser = session?.user
   const isAuthenticated = authStatus === "authenticated" && Boolean(authenticatedUser)
+  const commandActionGroups: PromptActionConfig["commandGroup"][] = ["Prompt", "Create", "Tools"]
+
+  const trackPromptAction = (action: PromptActionConfig, status: "opened" | "success" | "error" | "disabled") => {
+    if (typeof window === "undefined") return
+
+    window.dispatchEvent(
+      new CustomEvent("runash-chat:prompt-action", {
+        detail: { actionId: action.id, actionType: action.type, status },
+      }),
+    )
+  }
+
+  const isPromptActionDisabled = (action: PromptActionConfig) =>
+    Boolean(action.unavailableReason) || (action.requiresPlan !== null && !isAuthenticated)
+
+  const getPromptActionTooltip = (action: PromptActionConfig) => {
+    if (action.unavailableReason) {
+      return action.unavailableReason
+    }
+
+    if (action.requiresPlan && !isAuthenticated) {
+      return `${action.label} requires a ${action.requiresPlan} plan. Sign in to continue.`
+    }
+
+    return action.description
+  }
 
   const rememberOverlayTrigger = (triggerElement?: HTMLElement | null) => {
     if (triggerElement instanceof HTMLElement) {
@@ -1661,6 +1802,95 @@ export default function RunashChatPage() {
       }
     })()
   }
+
+  const handlePromptAction = async (action: PromptActionConfig) => {
+    const isDisabled = isPromptActionDisabled(action)
+
+    if (isDisabled) {
+      trackPromptAction(action, "disabled")
+      toast({
+        title: `${action.label} unavailable`,
+        description: getPromptActionTooltip(action),
+      })
+      return
+    }
+
+    setActivePromptActionId(action.id)
+    trackPromptAction(action, "opened")
+
+    try {
+      if (action.type === "route") {
+        router.push(action.routeOrHandler)
+        trackPromptAction(action, "success")
+        return
+      }
+
+      if (action.type === "modal") {
+        openModal(action.routeOrHandler as Exclude<ActiveModal, null>, mainControlsRef.current)
+        trackPromptAction(action, "success")
+        return
+      }
+
+      if (action.type === "service" && action.id === "search") {
+        const searchQuery = prompt.trim()
+        if (!searchQuery) {
+          toast({
+            title: "Enter a prompt first",
+            description: "Add a search query in the composer, then run Search.",
+          })
+          return
+        }
+
+        setIsPromptActionLoading(true)
+        const response = await fetch(`${action.routeOrHandler}?query=${encodeURIComponent(searchQuery)}`)
+        const payload = await response.json().catch(() => null)
+
+        if (!response.ok || !payload?.success) {
+          throw new Error(payload?.error?.message || "Unable to run search")
+        }
+
+        const resultCount = Array.isArray(payload?.data?.results) ? payload.data.results.length : 0
+        toast({
+          title: `Search complete (${resultCount})`,
+          description: resultCount > 0 ? "Search results are ready in your workflow." : "No results found for this query.",
+        })
+        trackPromptAction(action, "success")
+        return
+      }
+
+      if (action.id === "enhance") {
+        const trimmedPrompt = prompt.trim()
+        if (!trimmedPrompt) {
+          toast({
+            title: "Add text to enhance",
+            description: "Type a prompt first, then run Enhance.",
+          })
+          return
+        }
+
+        const enhancedPrompt = `Enhance this brief with clear goals, audience, and output format: ${trimmedPrompt}`
+        setPrompt(enhancedPrompt)
+        toast({ title: "Prompt enhanced", description: "Added structure to your prompt." })
+        trackPromptAction(action, "success")
+        return
+      }
+
+      if (action.id === "create") {
+        startChatWithPrompt(prompt)
+        trackPromptAction(action, "success")
+      }
+    } catch (error) {
+      trackPromptAction(action, "error")
+      toast({
+        title: `${action.label} failed`,
+        description: error instanceof Error ? error.message : "Something went wrong.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsPromptActionLoading(false)
+    }
+  }
+
 
   const mobileRecentMatches = recentEntities.filter((item) => item.title.toLowerCase().includes(mobileSearchValue.trim().toLowerCase()))
   const recentProjectItems = recentEntities.filter((item) => item.entityType === "project")
@@ -3353,6 +3583,86 @@ export default function RunashChatPage() {
                     placeholder="Ask v0 to build..."
                     className="min-h-[120px] resize-none border-0 bg-transparent px-3 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-0 sm:px-4"
                   />
+                  <div className="border-t border-zinc-800 px-3 py-2.5 sm:px-4">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <p className="text-[11px] uppercase tracking-wide text-zinc-500">Prompt actions</p>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 rounded-full border border-zinc-700 bg-zinc-950 text-zinc-200 hover:bg-zinc-800"
+                            aria-label="Open command launcher"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="w-64 border-zinc-800 bg-zinc-900 text-zinc-100">
+                          {commandActionGroups.map((group) => (
+                            <React.Fragment key={group}>
+                              <DropdownMenuLabel className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">{group}</DropdownMenuLabel>
+                              {promptActionConfigs
+                                .filter((promptAction) => promptAction.commandGroup === group)
+                                .map((action) => {
+                                  const actionDisabled = isPromptActionDisabled(action)
+                                  return (
+                                    <DropdownMenuItem
+                                      key={`${group}-${action.id}`}
+                                      onClick={() => void handlePromptAction(action)}
+                                      disabled={actionDisabled}
+                                      className="focus:bg-zinc-800 focus:text-zinc-100"
+                                    >
+                                      <action.icon className="mr-2 h-4 w-4" aria-hidden="true" />
+                                      <span>{action.label}</span>
+                                      {action.requiresPlan && (
+                                        <DropdownMenuShortcut className="text-[10px] uppercase text-amber-300">Pro</DropdownMenuShortcut>
+                                      )}
+                                    </DropdownMenuItem>
+                                  )
+                                })}
+                              {group !== "Tools" && <DropdownMenuSeparator className="bg-zinc-800" />}
+                            </React.Fragment>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    <TooltipProvider delayDuration={120}>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {promptActionConfigs.map((action) => {
+                          const actionDisabled = isPromptActionDisabled(action)
+                          const actionIsActive = activePromptActionId === action.id
+
+                          return (
+                            <Tooltip key={action.id}>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  onClick={() => void handlePromptAction(action)}
+                                  disabled={actionDisabled || isPromptActionLoading}
+                                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 ${
+                                    actionIsActive
+                                      ? "border-cyan-500/80 bg-cyan-500/15 text-cyan-200"
+                                      : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800 hover:text-zinc-100"
+                                  } ${actionDisabled ? "cursor-not-allowed border-zinc-800 text-zinc-600" : ""}`}
+                                  aria-pressed={actionIsActive}
+                                >
+                                  <action.icon className="h-3.5 w-3.5" />
+                                  <span>{action.label}</span>
+                                  {action.requiresPlan && (
+                                    <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                                      Pro
+                                    </span>
+                                  )}
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent className="border-zinc-800 bg-zinc-900 text-zinc-100">{getPromptActionTooltip(action)}</TooltipContent>
+                            </Tooltip>
+                          )
+                        })}
+                      </div>
+                    </TooltipProvider>
+                  </div>
                   <div className="border-t border-zinc-800 px-3 py-2.5 sm:px-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
