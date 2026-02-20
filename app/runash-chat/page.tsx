@@ -194,6 +194,7 @@ export default function RunashChatPage() {
   const [themePreference, setThemePreference] = useState<RunashThemePreference>("system")
   const [languagePreference, setLanguagePreference] = useState<RunashLanguagePreference>("en")
   const [chatPositionPreference, setChatPositionPreference] = useState<RunashChatPositionPreference>("left")
+  const [isComposerUpgradeHelperDismissed, setIsComposerUpgradeHelperDismissed] = useState(false)
 
   const isLastOnboardingStep = onboardingStep === onboardingSlides.length - 1
   const currentOnboardingSlide = onboardingSlides[onboardingStep]
@@ -1433,13 +1434,13 @@ export default function RunashChatPage() {
                     placeholder="Ask v0 to build..."
                     className="min-h-[120px] resize-none border-0 bg-transparent px-3 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-0 sm:px-4"
                   />
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-800 px-3 py-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-800 px-3 py-2 sm:px-4">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
                           type="button"
                           variant="ghost"
-                          className="h-8 max-w-[200px] rounded-full border border-zinc-700 bg-zinc-950 px-3 text-xs text-zinc-200 hover:bg-zinc-800"
+                          className="h-8 max-w-[200px] rounded-full border border-zinc-700 bg-zinc-950 px-3 text-xs font-medium text-zinc-200 hover:bg-zinc-800"
                         >
                           <span className="truncate">{selectedModel}</span>
                           <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
@@ -1457,50 +1458,72 @@ export default function RunashChatPage() {
 
                     <Button
                       type="button"
-                      size="icon"
-                      className="h-8 w-8 rounded-full bg-zinc-100 text-zinc-900 hover:bg-white"
+                      className="h-8 rounded-full bg-zinc-100 px-3 text-xs font-medium text-zinc-900 hover:bg-white"
                       disabled={!prompt.trim()}
                       onClick={() => startChatWithPrompt(prompt)}
                       aria-label="Send prompt"
                     >
+                      Send
                       <ArrowRight className="h-4 w-4" />
                     </Button>
                   </div>
+                  <div className="border-t border-zinc-800 px-3 py-2 sm:px-4">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="h-8 w-full justify-between gap-1 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-xs font-normal text-zinc-300 hover:bg-zinc-800 sm:w-auto sm:min-w-[220px]"
+                        >
+                          <span className="truncate">{selectedProjectLabel}</span>
+                          <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="border-zinc-800 bg-zinc-900 text-zinc-100">
+                        <DropdownMenuItem onClick={() => setSelectedProjectLabel("Select a Project")} className="focus:bg-zinc-800 focus:text-zinc-100">
+                          Select a Project
+                        </DropdownMenuItem>
+                        {recentProjectItems.slice(0, 5).map((project) => (
+                          <DropdownMenuItem
+                            key={project.id}
+                            onClick={() => setSelectedProjectLabel(project.title)}
+                            className="focus:bg-zinc-800 focus:text-zinc-100"
+                          >
+                            {project.title}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
+              </div>
 
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
+              {!isComposerUpgradeHelperDismissed && (
+                <div className="border-t border-zinc-800/80 bg-zinc-900/40 px-3 py-2.5 text-xs text-zinc-400 sm:px-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="leading-relaxed">
+                      Upgrade for shared projects, model controls, and workspace collaboration.
                       <Button
                         type="button"
-                        variant="ghost"
-                        className="h-8 w-full justify-between gap-1 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-xs font-normal text-zinc-300 hover:bg-zinc-800 sm:w-auto sm:max-w-[280px]"
+                        variant="link"
+                        className="ml-1 h-auto p-0 text-xs font-medium text-zinc-200 underline underline-offset-2 hover:text-zinc-100"
+                        onClick={() => router.push("/pricing")}
                       >
-                        <span className="truncate">{selectedProjectLabel}</span>
-                        <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
+                        Upgrade Plan
                       </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="border-zinc-800 bg-zinc-900 text-zinc-100">
-                      <DropdownMenuItem onClick={() => setSelectedProjectLabel("Select a Project")} className="focus:bg-zinc-800 focus:text-zinc-100">
-                        Select a Project
-                      </DropdownMenuItem>
-                      {recentProjectItems.slice(0, 5).map((project) => (
-                        <DropdownMenuItem
-                          key={project.id}
-                          onClick={() => setSelectedProjectLabel(project.title)}
-                          className="focus:bg-zinc-800 focus:text-zinc-100"
-                        >
-                          {project.title}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 self-start px-2 text-[11px] text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 sm:self-auto"
+                      onClick={() => setIsComposerUpgradeHelperDismissed(true)}
+                    >
+                      Dismiss
+                    </Button>
+                  </div>
                 </div>
-              </div>
-
-              <div className="border-t border-zinc-800/80 bg-zinc-900/40 px-4 py-3 text-xs text-zinc-400">
-                Upgrade to Team for shared projects, model controls, and workspace collaboration.
-              </div>
+              )}
             </Card>
 
             <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-2">
