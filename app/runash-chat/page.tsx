@@ -60,11 +60,6 @@ type ChatPreviewMessage = {
   created_at?: string
 }
 
-type RecentItem = {
-  id: string
-  title: string
-}
-
 type RecentEntity = {
   id: string
   title: string
@@ -170,7 +165,6 @@ export default function RunashChatPage() {
   const [messagesPreview, setMessagesPreview] = useState<ChatPreviewMessage[]>([])
   const [loadingSession, setLoadingSession] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
-  const [recentItems, setRecentItems] = useState<RecentItem[]>([])
   const [loadingRecents, setLoadingRecents] = useState(false)
   const [recentItemsError, setRecentItemsError] = useState<string | null>(null)
   const [recentEntities, setRecentEntities] = useState<RecentEntity[]>([])
@@ -509,20 +503,6 @@ export default function RunashChatPage() {
           throw new Error(sessionsPayload?.error?.message || "Unable to load recent chats")
         }
 
-        const normalizedRecentItems = sessionsPayload.data
-          .map((session: { id?: string | number; title?: string }) => {
-            const id = session?.id != null ? String(session.id) : ""
-            const title = typeof session?.title === "string" ? session.title.trim() : ""
-            if (!id) return null
-            return {
-              id,
-              title: title || `Session #${id}`,
-            }
-          })
-          .filter((item: RecentItem | null): item is RecentItem => item !== null)
-
-        setRecentItems(normalizedRecentItems.slice(0, 8))
-
         const normalizedRecentEntities: RecentEntity[] = [
           ...sessionsPayload.data
             .map((session: { id?: string | number; title?: string; created_at?: string }) => {
@@ -564,7 +544,6 @@ export default function RunashChatPage() {
         setRecentEntities(normalizedRecentEntities)
       } catch (error) {
         setRecentItemsError(error instanceof Error ? error.message : "Unable to load recent chats")
-        setRecentItems([])
         setRecentEntities([])
       } finally {
         setLoadingRecents(false)
@@ -633,7 +612,7 @@ export default function RunashChatPage() {
     })()
   }
 
-  const mobileRecentMatches = recentItems.filter((item) => item.title.toLowerCase().includes(mobileSearchValue.trim().toLowerCase()))
+  const mobileRecentMatches = recentEntities.filter((item) => item.title.toLowerCase().includes(mobileSearchValue.trim().toLowerCase()))
   const recentProjectItems = recentEntities.filter((item) => item.entityType === "project")
   const myChatItems = recentEntities.filter((item) => item.entityType === "session")
   const sidebarRecents = recentEntities.slice(0, 20)
@@ -671,6 +650,17 @@ export default function RunashChatPage() {
       month: "short",
       day: "numeric",
     })}`
+  }
+
+  const getRecentStatus = (rawValue: string | null) => {
+    if (!rawValue) return "Idle"
+    const timestamp = new Date(rawValue).getTime()
+    if (Number.isNaN(timestamp)) return "Idle"
+
+    const diffHours = (Date.now() - timestamp) / (1000 * 60 * 60)
+    if (diffHours < 24) return "Active"
+    if (diffHours < 72) return "Recent"
+    return "Idle"
   }
 
   const dismissUpdatesBanner = () => {
@@ -1149,17 +1139,28 @@ export default function RunashChatPage() {
                   />
                   {mobileSearchValue.trim() && (
                     <div className="max-h-28 space-y-1 overflow-y-auto">
-                      {mobileRecentMatches.length > 0 ? (
-                        mobileRecentMatches.slice(0, 4).map((item) => (
-                          <button
-                            key={item.id}
-                            type="button"
-                            onClick={() => router.push(`/chat?sessionId=${item.id}`)}
-                            className="w-full truncate rounded-md px-2 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-900"
-                          >
-                            {item.title}
-                          </button>
-                        ))
+                      {loadingRecents ? (
+                        <p className="px-1 text-xs text-zinc-500">Loading recents…</p>
+                      ) : recentItemsError ? (
+                        <p className="px-1 text-xs text-amber-400">{recentItemsError}</p>
+                      ) : mobileRecentMatches.length > 0 ? (
+                        mobileRecentMatches.slice(0, 6).map((item) => {
+                          const isProject = item.entityType === "project"
+
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => (isProject ? handleProjectOpen(item.id.replace("project-", "")) : handleChatOpen(item.sessionId))}
+                              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-900"
+                            >
+                              <span className="rounded border border-zinc-700 px-1 py-0.5 text-[10px] uppercase text-zinc-500">
+                                {isProject ? "Project" : "Chat"}
+                              </span>
+                              <span className="min-w-0 truncate">{item.title}</span>
+                            </button>
+                          )
+                        })
                       ) : (
                         <p className="px-1 text-xs text-zinc-500">No matches found.</p>
                       )}
@@ -1531,7 +1532,7 @@ export default function RunashChatPage() {
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="text-sm font-medium text-zinc-100">Recent Projects</h2>
                   <button type="button" className="text-xs text-zinc-500 transition hover:text-zinc-300" onClick={() => router.push("/editor")}>
-                    View all
+                    View All
                   </button>
                 </div>
 
@@ -1574,11 +1575,15 @@ export default function RunashChatPage() {
                         >
                           <div className="rounded bg-zinc-950/70 px-1.5 py-0.5 text-[10px] text-zinc-200">Preview</div>
                         </div>
-                        <div className="mb-1 flex items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
-                          <FolderKanban className="h-3.5 w-3.5" /> Project
+                        <div className="mb-1 flex items-center justify-between gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
+                          <span className="flex items-center gap-2">
+                            <FolderKanban className="h-3.5 w-3.5" /> Project
+                          </span>
+                          <span className="rounded border border-zinc-700 px-1 py-0.5 text-[10px] text-zinc-400">#{item.id.replace("project-", "")}</span>
                         </div>
                         <p className="mb-1 truncate text-xs font-medium text-zinc-200">{item.title}</p>
-                        <p className="text-[11px] text-zinc-500">Last updated · {formatRecentTimestamp(item.updatedAt).replace("Updated ", "")}</p>
+                        <p className="text-[11px] text-zinc-500">{formatRecentTimestamp(item.updatedAt)}</p>
+                        <p className="mt-2 text-[11px] text-cyan-300">Open in editor</p>
                       </button>
                     ))}
                   </div>
@@ -1589,7 +1594,7 @@ export default function RunashChatPage() {
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="text-sm font-medium text-zinc-100">My Chats</h2>
                   <button type="button" className="text-xs text-zinc-500 transition hover:text-zinc-300" onClick={() => router.push("/chat")}>
-                    View all
+                    View All
                   </button>
                 </div>
 
@@ -1623,7 +1628,7 @@ export default function RunashChatPage() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {myChatItems.slice(0, 6).map((item, index) => (
+                    {myChatItems.slice(0, 6).map((item) => (
                       <div key={item.id} className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/50 px-2.5 py-2 transition hover:border-zinc-700 hover:bg-zinc-900">
                         <button
                           type="button"
@@ -1631,10 +1636,10 @@ export default function RunashChatPage() {
                           className="flex min-w-0 flex-1 items-center gap-3 text-left"
                         >
                           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-zinc-800/90 text-zinc-300">
-                            {index % 2 === 0 ? <Bot className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />}
+                            <MessageSquare className="h-3.5 w-3.5" />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-xs text-zinc-300">{index % 2 === 0 ? "RunAsh Agent" : "Project Chat"}</p>
+                            <p className="truncate text-xs text-zinc-300">RunAsh Agent</p>
                             <p className="truncate text-[11px] text-zinc-500">{item.title}</p>
                           </div>
                           <p className="shrink-0 text-[11px] text-zinc-500">{formatRecentTimestamp(item.updatedAt).replace("Updated ", "")}</p>
@@ -1643,15 +1648,41 @@ export default function RunashChatPage() {
                           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800 text-[10px] font-medium text-zinc-300">
                             {getInitials(item.title)}
                           </div>
-                          <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-zinc-950 bg-emerald-400" />
+                          <span
+                            className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-zinc-950 ${
+                              getRecentStatus(item.updatedAt) === "Active"
+                                ? "bg-emerald-400"
+                                : getRecentStatus(item.updatedAt) === "Recent"
+                                  ? "bg-amber-400"
+                                  : "bg-zinc-500"
+                            }`}
+                          />
                         </div>
-                        <button
-                          type="button"
-                          className="rounded p-1 text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-300"
-                          aria-label={`Open actions for ${item.title}`}
-                        >
-                          <MoreVertical className="h-3.5 w-3.5" />
-                        </button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="rounded p-1 text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-300"
+                              aria-label={`Open actions for ${item.title}`}
+                            >
+                              <MoreVertical className="h-3.5 w-3.5" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-40 border-zinc-800 bg-zinc-900 text-zinc-100">
+                            <DropdownMenuItem
+                              className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+                              onClick={() => handleChatOpen(item.sessionId)}
+                            >
+                              Open chat
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+                              onClick={() => startChatWithPrompt(`Continue chat: ${item.title}`)}
+                            >
+                              Continue
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     ))}
                   </div>
