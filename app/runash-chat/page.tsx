@@ -139,6 +139,8 @@ type CreditMetrics = {
   total?: number
 }
 
+type InteractiveActionKind = "route" | "api-call" | "local-only"
+
 type CreditSummaryRow = {
   key: keyof Omit<CreditMetrics, "total">
   label: string
@@ -228,6 +230,39 @@ const runashChatThemeStorageKey = "runash_chat_preference_theme"
 const runashChatLanguageStorageKey = "runash_chat_preference_language"
 const runashChatPositionStorageKey = "runash_chat_preference_chat_position"
 const runashChatSettingsStorageKey = "runash_chat_settings"
+
+const interactiveActionInventory: Record<string, InteractiveActionKind> = {
+  "prompt.create": "api-call",
+  "prompt.search": "api-call",
+  "prompt.enhance": "local-only",
+  "prompt.upload": "route",
+  "prompt.go-live": "route",
+  "prompt.talk": "local-only",
+  "prompt.generate-video": "route",
+  "prompt.mcp": "route",
+  "prompt.editor": "route",
+  "header.upgrade": "local-only",
+  "header.feedback": "local-only",
+  "header.refer": "local-only",
+  "composer.import-github": "api-call",
+  "composer.import-figma": "api-call",
+  "composer.upload-from-computer": "local-only",
+  "composer.generate-images": "local-only",
+  "composer.design-system-library": "route",
+  "composer.design-system-create": "local-only",
+  "composer.folder-new": "api-call",
+  "composer.folder-open": "route",
+  "composer.instructions": "local-only",
+  "composer.mcps-manage": "route",
+  "composer.mcps-explore": "route",
+  "feedback.submit": "api-call",
+  "referral.copy-link": "api-call",
+  "credits.refresh": "api-call",
+  "credits.redeem": "route",
+  "upgrade.confirm": "api-call",
+  "voice.start": "local-only",
+  "voice.stop": "local-only",
+}
 
 const themeOptions = ["system", "dark", "light"] as const
 const languageOptions = [
@@ -565,10 +600,6 @@ const defaultReferralUiData: ReferralUiData = {
   ],
 }
 
-const referralUiDataOverrides: Partial<ReferralUiData> = {
-  ...defaultReferralUiData,
-}
-
 const buildReferralUiData = (overrides?: Partial<ReferralUiData>): ReferralUiData => {
   const rewardCap = Number.isFinite(overrides?.rewardCap)
     ? Math.max(0, Math.trunc(overrides?.rewardCap ?? defaultReferralUiData.rewardCap))
@@ -586,8 +617,6 @@ const buildReferralUiData = (overrides?: Partial<ReferralUiData>): ReferralUiDat
     steps: steps.length > 0 ? steps : defaultReferralUiData.steps,
   }
 }
-
-const referralUiData = buildReferralUiData(referralUiDataOverrides)
 
 const sidebarNavItems = [
   { label: "Home", icon: Home },
@@ -726,6 +755,8 @@ export default function RunashChatPage() {
   const [feedbackText, setFeedbackText] = useState("")
   const [feedbackRating, setFeedbackRating] = useState<number | null>(null)
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false)
+  const [creditMetrics, setCreditMetrics] = useState<CreditMetrics>({ gifted: 1, monthly: 3, purchased: 1, total: 5 })
+  const [referralUiData, setReferralUiData] = useState<ReferralUiData>(() => buildReferralUiData())
   const mobileSidebarTriggerRef = useRef<HTMLButtonElement | null>(null)
   const sidebarScrollAreaRef = useRef<HTMLDivElement | null>(null)
   const desktopSidebarToggleRef = useRef<HTMLButtonElement | null>(null)
@@ -826,6 +857,36 @@ export default function RunashChatPage() {
     throw lastError ?? new Error("Network request failed")
   }, [])
 
+  const sanitizeAnalyticsPayload = (payload: Record<string, unknown>) =>
+    Object.fromEntries(
+      Object.entries(payload)
+        .filter(([, value]) => ["string", "number", "boolean"].includes(typeof value) || value === null)
+        .map(([key, value]) => [key, typeof value === "string" ? value.slice(0, 120) : value]),
+    )
+
+  const trackAnalyticsEvent = useCallback((eventName: string, payload: Record<string, unknown> = {}) => {
+    if (typeof window === "undefined") return
+
+    window.dispatchEvent(
+      new CustomEvent("runash-chat:analytics", {
+        detail: {
+          eventName,
+          actionKind: interactiveActionInventory[eventName] ?? "local-only",
+          payload: sanitizeAnalyticsPayload(payload),
+        },
+      }),
+    )
+  }, [])
+
+  const handleServiceError = useCallback((title: string, fallbackMessage: string, error: unknown) => {
+    const description = error instanceof Error ? error.message : fallbackMessage
+    toast({
+      title,
+      description,
+      variant: "destructive",
+    })
+  }, [toast])
+
   const isLastOnboardingStep = onboardingStep === onboardingSlides.length - 1
   const currentOnboardingSlide = onboardingSlides[onboardingStep]
   const activeModalId = activeOverlay.type === "modal" ? activeOverlay.payload.id : null
@@ -909,6 +970,7 @@ export default function RunashChatPage() {
     setSpeechErrorMessage(null)
     speechCommitReadyRef.current = true
     speechRecognitionRef.current?.stop()
+    trackAnalyticsEvent("voice.stop", { mode: speechInsertMode })
   }
 
   const cancelPromptRecording = () => {
@@ -1007,6 +1069,7 @@ export default function RunashChatPage() {
       return
     }
 
+    trackAnalyticsEvent("voice.start", { mode: speechInsertMode })
     startPromptRecording()
   }
 
@@ -1530,6 +1593,7 @@ export default function RunashChatPage() {
   }
 
   const openModal = (overlay: ModalOverlayId, triggerElement?: HTMLElement | null) => {
+    trackAnalyticsEvent("modal.open", { modalId: overlay })
     openOverlay({ type: "modal", payload: { id: overlay } }, triggerElement)
   }
 
@@ -1563,6 +1627,7 @@ export default function RunashChatPage() {
   }
 
   function openUpgradeModal(planId?: UpgradePlanId, triggerElement?: HTMLElement | null) {
+    trackAnalyticsEvent("header.upgrade", { planId: planId ?? selectedPlan })
     if (planId) {
       setSelectedPlan(planId)
     }
@@ -1598,12 +1663,6 @@ export default function RunashChatPage() {
   const overflowMobileHeaderActions = headerActions.slice(1)
   const primaryTabletHeaderActions = headerActions.slice(0, 2)
   const overflowTabletHeaderActions = headerActions.slice(2)
-  const [creditMetrics] = useState<CreditMetrics>({
-    gifted: 1,
-    monthly: 3,
-    purchased: 1,
-    total: 5,
-  })
   const creditsBalanceLabel = formatCreditValue(
     creditMetrics.total ?? creditMetrics.gifted + creditMetrics.monthly + creditMetrics.purchased,
   )
@@ -1750,9 +1809,69 @@ export default function RunashChatPage() {
   }
 
   const handlePlanCtaClick = () => {
+    trackAnalyticsEvent("upgrade.confirm", { planId: selectedPlan })
     setIsPlanActionLoading(true)
-    router.push(selectedUpgradePlan.ctaHref)
+
+    void (async () => {
+      try {
+        const response = await fetchWithRetryAndTimeout("/api/settings/actions/upgrade-plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ confirm: true }),
+        })
+
+        if (!response.ok) {
+          throw new Error("Unable to confirm plan upgrade.")
+        }
+
+        toast({
+          title: "Plan selection saved",
+          description: `Continuing to ${selectedUpgradePlan.label} checkout.`,
+        })
+        router.push(selectedUpgradePlan.ctaHref)
+      } catch (error) {
+        setIsPlanActionLoading(false)
+        handleServiceError("Upgrade unavailable", "We could not start checkout right now.", error)
+      }
+    })()
   }
+
+  const loadCreditsBalance = useCallback(async () => {
+    const response = await fetchWithRetryAndTimeout("/api/settings/actions/credits-balance", { method: "POST" }, 1)
+    const payload = await response.json().catch(() => null)
+
+    if (!response.ok || typeof payload?.data?.creditsBalance !== "number") {
+      throw new Error(payload?.error || "Unable to fetch credits.")
+    }
+
+    const total = payload.data.creditsBalance
+    setCreditMetrics((previous) => ({
+      ...previous,
+      total,
+    }))
+  }, [fetchWithRetryAndTimeout])
+
+  const loadReferralData = useCallback(async (): Promise<string> => {
+    const response = await fetchWithRetryAndTimeout("/api/settings/actions/refer-earn", { method: "POST" }, 1)
+    const payload = await response.json().catch(() => null)
+
+    if (!response.ok || typeof payload?.data?.referralCode !== "string") {
+      throw new Error(payload?.error || "Unable to load referral data.")
+    }
+
+    const referralCode = payload.data.referralCode.trim()
+    const referralLink = referralCode
+      ? `https://runash.in/refer?code=${encodeURIComponent(referralCode)}`
+      : defaultReferralUiData.referralLink
+
+    setReferralUiData((previous) =>
+      buildReferralUiData({
+        ...previous,
+        referralLink,
+      }),
+    )
+    return referralLink
+  }, [fetchWithRetryAndTimeout])
 
   const resetFeedbackDialog = () => {
     setFeedbackText("")
@@ -1783,17 +1902,18 @@ export default function RunashChatPage() {
   const handleCopyReferralLink = async () => {
     try {
       setIsCopyingLink(true)
-      await navigator.clipboard.writeText(referralUiData.referralLink)
+      let referralLink = referralUiData.referralLink
+      if (isAuthenticated) {
+        referralLink = await loadReferralData()
+      }
+      await navigator.clipboard.writeText(referralLink)
+      trackAnalyticsEvent("referral.copy-link", { hasAuth: isAuthenticated })
       toast({
         title: "Referral link copied",
         description: "Share it with friends to start earning rewards.",
       })
-    } catch {
-      toast({
-        title: "Could not copy link",
-        description: "Please copy your referral link manually.",
-        variant: "destructive",
-      })
+    } catch (error) {
+      handleServiceError("Could not copy link", "Please copy your referral link manually.", error)
     } finally {
       setIsCopyingLink(false)
     }
@@ -1894,6 +2014,7 @@ export default function RunashChatPage() {
     setRedeemCodeError(null)
 
     try {
+      trackAnalyticsEvent("credits.redeem", { hasAuth: isAuthenticated })
       router.push(`/settings/billing?section=redeem&code=${encodeURIComponent(sanitizedCode)}`)
       toast({
         title: "Code ready to redeem",
@@ -1916,7 +2037,7 @@ export default function RunashChatPage() {
   const handleFeedbackSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
-    const trimmedFeedback = feedbackText.trim()
+    const trimmedFeedback = feedbackText.trim().slice(0, 500)
     if (!trimmedFeedback) {
       toast({
         title: "Feedback required",
@@ -1951,6 +2072,7 @@ export default function RunashChatPage() {
           title: "Thanks for your feedback",
           description: "Your feedback helps us improve RunAsh Chat.",
         })
+        trackAnalyticsEvent("feedback.submit", { via: "api" })
 
         handleFeedbackOpenChange(false)
         return
@@ -1960,6 +2082,7 @@ export default function RunashChatPage() {
           title: "Continue on Support",
           description: "We redirected you to Support so you can finish sharing your feedback.",
         })
+        trackAnalyticsEvent("feedback.submit", { via: "route" })
         handleFeedbackOpenChange(false)
         return
       }
@@ -1970,13 +2093,30 @@ export default function RunashChatPage() {
       })
 
       router.push(`/support?feedback=${encodeURIComponent(trimmedFeedback)}`)
+      trackAnalyticsEvent("feedback.submit", { via: "fallback" })
       handleFeedbackOpenChange(false)
+    } finally {
+      setIsSubmittingFeedback(false)
     }
   }
 
   useEffect(() => {
     setIsSpeechRecognitionSupported(Boolean(getSpeechRecognitionConstructor()))
   }, [])
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return
+    }
+
+    void loadCreditsBalance().catch((error) => {
+      handleServiceError("Credits unavailable", "We could not refresh your credits balance.", error)
+    })
+
+    void loadReferralData().catch((error) => {
+      handleServiceError("Referral unavailable", "We could not load your referral link.", error)
+    })
+  }, [handleServiceError, isAuthenticated, loadCreditsBalance, loadReferralData])
 
   useEffect(() => {
     return () => {
@@ -2348,6 +2488,10 @@ export default function RunashChatPage() {
     setIsStartingChat(true)
 
     const cleanPrompt = initialPrompt?.trim()
+    trackAnalyticsEvent("prompt.create", {
+      hasPrompt: Boolean(cleanPrompt),
+      actionId: metadata?.actionId ?? activePromptActionId ?? "unknown",
+    })
     const promptContext = {
       generateImagesEnabled,
       selectedModel,
@@ -2399,7 +2543,7 @@ export default function RunashChatPage() {
         title: "Session unavailable",
         description: "We couldn’t create a session, so you were redirected to chat directly.",
       })
-      console.warn("Failed to start chat session; using direct chat fallback", {
+      trackAnalyticsEvent("prompt.create.error", {
         hasSessionId: Boolean(sessionId),
         hasInitialPrompt: Boolean(cleanPrompt),
         errorType: error instanceof Error ? error.name : "unknown",
@@ -2528,6 +2672,38 @@ export default function RunashChatPage() {
     })
   }
 
+  const handleComposerProjectCreateAction = (actionId: ComposerMenuActionId, title: string, provider?: "github" | "figma") => {
+    void runComposerMenuAsyncAction(actionId, async () => {
+      const response = await fetchWithRetryAndTimeout("/api/editor/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          selectedModel,
+          metadata: {
+            source: "runash-chat",
+            provider: provider ?? "manual",
+          },
+        }),
+      })
+
+      const payload = await response.json().catch(() => null)
+      const projectId = payload?.project?.id
+
+      if (!response.ok || !projectId) {
+        throw new Error(payload?.error || "Unable to create a project.")
+      }
+
+      toast({
+        title: provider ? `Draft project ready for ${provider}` : "Project created",
+        description: provider ? "Continue to complete your import." : "Opening your new project workspace.",
+      })
+
+      const query = provider ? `&provider=${encodeURIComponent(provider)}` : ""
+      router.push(`/editor?projectId=${encodeURIComponent(String(projectId))}${query}`)
+    })
+  }
+
   const handleComposerFileSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0]
     event.target.value = ""
@@ -2558,10 +2734,10 @@ export default function RunashChatPage() {
   const handleComposerMenuAction = (actionId: ComposerMenuActionId) => {
     switch (actionId) {
       case "import-github":
-        handleMenuRouteAction(actionId, "/integrations?provider=github", "Opening GitHub import")
+        handleComposerProjectCreateAction(actionId, "GitHub Import Draft", "github")
         return
       case "import-figma":
-        handleMenuRouteAction(actionId, "/integrations?provider=figma", "Opening Figma import")
+        handleComposerProjectCreateAction(actionId, "Figma Import Draft", "figma")
         return
       case "upload-from-computer":
         setComposerMenuError(null)
@@ -2595,7 +2771,7 @@ ${starter}` : starter
         toast({ title: "Design system instructions added" })
         return
       case "folder-new":
-        handleMenuRouteAction(actionId, "/editor?intent=create-folder", "Opening new folder flow")
+        handleComposerProjectCreateAction(actionId, "New RunAsh Project")
         return
       case "folder-open":
         handleMenuRouteAction(actionId, "/editor", "Opening projects and folders")
@@ -4192,6 +4368,12 @@ ${instructionStarter}` : instructionStarter
                         return
                       }
 
+                      if (isAuthenticated) {
+                        void loadCreditsBalance().catch((error) => {
+                          handleServiceError("Credits unavailable", "We could not refresh your credits balance.", error)
+                        })
+                      }
+                      trackAnalyticsEvent("credits.refresh", { source: "credits-panel" })
                       openModal("credits", event.currentTarget)
                     }}
                     aria-label="View credit balance details"
