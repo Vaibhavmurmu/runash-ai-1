@@ -55,6 +55,7 @@ import {
 import { useTheme } from "next-themes";
 import {
   ArrowRight,
+  Archive,
   Bot,
   Check,
   ChevronDown,
@@ -162,6 +163,17 @@ type OnboardingSlide = {
   };
 };
 
+type GetStartedTabId = "tasks" | "reviews" | "archive";
+
+type OnboardingQuickCard = {
+  id: string;
+  title: string;
+  description: string;
+  actionLabel: string;
+  actionType: "task" | "review" | "archive";
+  icon: React.ComponentType<{ className?: string }>;
+};
+
 type CreditMetrics = {
   gifted: number;
   monthly: number;
@@ -248,6 +260,8 @@ const validateRedeemCode = (value: string): string | null => {
 };
 
 const runashChatOnboardingStorageKey = "runash_chat_onboarding_seen";
+const runashChatGetStartedDismissedStorageKey =
+  "runash_chat_get_started_dismissed";
 const runashChatSidebarCollapsedStorageKey = "runash_chat_sidebar_collapsed";
 const runashChatBannerHiddenStorageKey = "runash_chat_banner_hidden";
 const runashChatUpdatesBannerHiddenStorageKey = "runash_chat_updates_hidden";
@@ -447,6 +461,87 @@ const onboardingSlides: OnboardingSlide[] = [
     media: { label: "Rocket", value: "🚀" },
   },
 ];
+
+const getStartedTabs: Array<{ id: GetStartedTabId; label: string }> = [
+  { id: "tasks", label: "Tasks" },
+  { id: "reviews", label: "Reviews" },
+  { id: "archive", label: "Archive" },
+];
+
+const getStartedQuickOptions: Array<{
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}> = [
+  { id: "try-pwas", label: "Try PWAs", icon: PanelsTopLeft },
+  { id: "try-browser", label: "Try Browser", icon: ExternalLink },
+  { id: "task", label: "Task", icon: FolderKanban },
+  { id: "review", label: "Review", icon: Check },
+  { id: "manage", label: "Manage", icon: Settings },
+];
+
+const getStartedQuickCards: Record<GetStartedTabId, OnboardingQuickCard[]> = {
+  tasks: [
+    {
+      id: "task-brief",
+      title: "Start your first task",
+      description:
+        "Create a launch-ready task brief with goals, owners, and due dates.",
+      actionLabel: "Start",
+      actionType: "task",
+      icon: FolderKanban,
+    },
+    {
+      id: "task-follow-up",
+      title: "Create a follow-up task",
+      description:
+        "Turn pending notes into an actionable checklist for your next run.",
+      actionLabel: "Start",
+      actionType: "task",
+      icon: Rocket,
+    },
+  ],
+  reviews: [
+    {
+      id: "review-checklist",
+      title: "Start your first task review",
+      description:
+        "Review deliverables with a quality checklist before shipping.",
+      actionLabel: "Start",
+      actionType: "review",
+      icon: Check,
+    },
+    {
+      id: "review-feedback",
+      title: "Collect review feedback",
+      description:
+        "Capture reviewer comments and convert them into next-step tasks.",
+      actionLabel: "Start",
+      actionType: "review",
+      icon: MessageSquare,
+    },
+  ],
+  archive: [
+    {
+      id: "archive-save",
+      title: "Start your first archive",
+      description:
+        "Save completed chat outcomes so your team can reuse proven prompts.",
+      actionLabel: "Start",
+      actionType: "archive",
+      icon: Archive,
+    },
+    {
+      id: "archive-cleanup",
+      title: "Manage archived work",
+      description:
+        "Group and label archived runs to keep your workspace organized.",
+      actionLabel: "Start",
+      actionType: "archive",
+      icon: Library,
+    },
+  ],
+};
 
 type HeaderAction = {
   id: "upgrade" | "feedback" | "refer";
@@ -941,6 +1036,9 @@ export default function RunashChatPage() {
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [isCopyingLink, setIsCopyingLink] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
+  const [isGetStartedVisible, setIsGetStartedVisible] = useState(true);
+  const [activeGetStartedTab, setActiveGetStartedTab] =
+    useState<GetStartedTabId>("tasks");
   const [isBannerDismissed, setIsBannerDismissed] = useState<boolean | null>(
     null,
   );
@@ -976,6 +1074,9 @@ export default function RunashChatPage() {
   );
   const promptActionButtonRefs = useRef<
     Partial<Record<PromptActionId, HTMLButtonElement | null>>
+  >({});
+  const getStartedTabButtonRefs = useRef<
+    Partial<Record<GetStartedTabId, HTMLButtonElement | null>>
   >({});
   const recentItemsRequestIdRef = useRef(0);
   const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
@@ -1149,6 +1250,7 @@ export default function RunashChatPage() {
 
   const isLastOnboardingStep = onboardingStep === onboardingSlides.length - 1;
   const currentOnboardingSlide = onboardingSlides[onboardingStep];
+  const activeGetStartedCards = getStartedQuickCards[activeGetStartedTab];
   const activeModalId =
     activeOverlay.type === "modal" ? activeOverlay.payload.id : null;
   const isFeedbackOpen = activeModalId === "feedback";
@@ -2737,6 +2839,10 @@ export default function RunashChatPage() {
       setOnboardingStep(onboardingSlides.length - 1);
     }
 
+    setIsGetStartedVisible(
+      localStorage.getItem(runashChatGetStartedDismissedStorageKey) !== "true",
+    );
+
     const storedThemePreference = localStorage.getItem(
       runashChatThemeStorageKey,
     );
@@ -2876,6 +2982,36 @@ export default function RunashChatPage() {
     localStorage.setItem(runashChatBannerHiddenStorageKey, "true");
     localStorage.setItem(runashChatUpdatesBannerHiddenStorageKey, "true");
     localStorage.setItem(runashChatLegacyUpdatesBannerHiddenStorageKey, "true");
+  };
+
+  const handleDismissGetStarted = () => {
+    setIsGetStartedVisible(false);
+    localStorage.setItem(runashChatGetStartedDismissedStorageKey, "true");
+  };
+
+  const handleGetStartedTabChange = (tabId: GetStartedTabId) => {
+    setActiveGetStartedTab(tabId);
+    getStartedTabButtonRefs.current[tabId]?.focus();
+  };
+
+  const handleGetStartedTabKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    currentTabId: GetStartedTabId,
+  ) => {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") {
+      return;
+    }
+
+    event.preventDefault();
+    const currentIndex = getStartedTabs.findIndex((tab) => tab.id === currentTabId);
+    const nextIndex =
+      event.key === "ArrowRight"
+        ? (currentIndex + 1) % getStartedTabs.length
+        : (currentIndex - 1 + getStartedTabs.length) % getStartedTabs.length;
+    const nextTabId = getStartedTabs[nextIndex]?.id;
+    if (nextTabId) {
+      handleGetStartedTabChange(nextTabId);
+    }
   };
 
   const restoreFocusToMainControls = () => {
@@ -6500,6 +6636,135 @@ ${instructionStarter}`
                   </div>
                 </div>
               </div>
+
+              {isGetStartedVisible && (
+                <section
+                  className="border-t border-zinc-800 px-3 py-3 sm:px-4"
+                  aria-label="Get started with RunAshChat"
+                >
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <h2 className="text-sm font-medium text-zinc-100">
+                      Get started with RunAshChat
+                    </h2>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                      onClick={handleDismissGetStarted}
+                      aria-label="Dismiss get started module"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {getStartedQuickOptions.map((option) => {
+                      const OptionIcon = option.icon;
+                      const nextTab: GetStartedTabId | null =
+                        option.id === "task"
+                          ? "tasks"
+                          : option.id === "review"
+                            ? "reviews"
+                            : option.id === "manage"
+                              ? "archive"
+                              : null;
+
+                      return (
+                        <Button
+                          key={option.id}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 rounded-full border-zinc-800 bg-zinc-900/60 px-3 text-xs text-zinc-200 hover:bg-zinc-800"
+                          onClick={() => {
+                            if (nextTab) {
+                              setActiveGetStartedTab(nextTab);
+                            }
+                          }}
+                        >
+                          <OptionIcon className="mr-1.5 h-3.5 w-3.5" />
+                          {option.label}
+                        </Button>
+                      );
+                    })}
+                  </div>
+
+                  <div>
+                    <div
+                      role="tablist"
+                      aria-label="Get started tabs"
+                      className="mb-3 flex flex-wrap gap-2"
+                    >
+                      {getStartedTabs.map((tab) => {
+                        const isActiveTab = tab.id === activeGetStartedTab;
+                        return (
+                          <button
+                            key={tab.id}
+                            ref={(element) => {
+                              getStartedTabButtonRefs.current[tab.id] = element;
+                            }}
+                            type="button"
+                            role="tab"
+                            id={`get-started-tab-${tab.id}`}
+                            aria-selected={isActiveTab}
+                            aria-controls={`get-started-panel-${tab.id}`}
+                            tabIndex={isActiveTab ? 0 : -1}
+                            onClick={() => handleGetStartedTabChange(tab.id)}
+                            onKeyDown={(event) =>
+                              handleGetStartedTabKeyDown(event, tab.id)
+                            }
+                            className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                              isActiveTab
+                                ? "border-zinc-600 bg-zinc-100 text-zinc-900"
+                                : "border-zinc-800 bg-zinc-900/40 text-zinc-300 hover:bg-zinc-800"
+                            }`}
+                          >
+                            {tab.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div
+                      role="tabpanel"
+                      id={`get-started-panel-${activeGetStartedTab}`}
+                      aria-labelledby={`get-started-tab-${activeGetStartedTab}`}
+                    >
+                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                        {activeGetStartedCards.map((card) => {
+                          const CardIcon = card.icon;
+                          return (
+                            <div
+                              key={card.id}
+                              className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3"
+                            >
+                              <div className="mb-2 flex items-center gap-2 text-zinc-200">
+                                <CardIcon className="h-4 w-4" />
+                                <h3 className="text-xs font-medium">{card.title}</h3>
+                              </div>
+                              <p className="mb-3 text-xs text-zinc-400">
+                                {card.description}
+                              </p>
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="h-7 rounded-full bg-zinc-100 px-3 text-xs font-medium text-zinc-900 hover:bg-white"
+                                onClick={() => {
+                                  setPrompt(`Start a ${card.actionType} workflow for me.`);
+                                  mainControlsRef.current?.focus();
+                                }}
+                              >
+                                {card.actionLabel}
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              )}
 
               {!isComposerUpgradeHelperDismissed && (
                 <div className="border-t border-zinc-800/80 bg-zinc-900/40 px-3 py-2.5 text-xs text-zinc-400 sm:px-4">
