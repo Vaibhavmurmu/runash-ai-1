@@ -89,6 +89,7 @@ type OnboardingSlide = {
 
 const runashChatOnboardingStorageKey = "runash_chat_onboarding_seen"
 const runashChatSidebarCollapsedStorageKey = "runash_chat_sidebar_collapsed"
+const runashChatBannerHiddenStorageKey = "runash_chat_banner_hidden"
 const runashChatUpdatesBannerHiddenStorageKey = "runash_chat_updates_hidden"
 const runashChatLegacyUpdatesBannerHiddenStorageKey = "runash_updates_banner_hidden"
 const runashChatDesktopSidebarContentId = "runash-chat-desktop-sidebar-content"
@@ -181,7 +182,7 @@ export default function RunashChatPage() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
   const [isFavoritesExpanded, setIsFavoritesExpanded] = useState(true)
   const [isRecentsExpanded, setIsRecentsExpanded] = useState(true)
-  const [showUpdatesBanner, setShowUpdatesBanner] = useState(false)
+  const [showUpdatesBanner, setShowUpdatesBanner] = useState<boolean | null>(null)
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
   const [activeOnboardingStep, setActiveOnboardingStep] = useState(0)
   const mobileSidebarTriggerRef = useRef<HTMLButtonElement | null>(null)
@@ -400,6 +401,7 @@ export default function RunashChatPage() {
     setIsSidebarCollapsed(savedValue === "true")
 
     const isBannerHidden =
+      localStorage.getItem(runashChatBannerHiddenStorageKey) === "true" ||
       localStorage.getItem(runashChatUpdatesBannerHiddenStorageKey) === "true" ||
       localStorage.getItem(runashChatLegacyUpdatesBannerHiddenStorageKey) === "true"
     setShowUpdatesBanner(!isBannerHidden)
@@ -711,6 +713,7 @@ export default function RunashChatPage() {
   }
 
   const dismissUpdatesBanner = () => {
+    localStorage.setItem(runashChatBannerHiddenStorageKey, "true")
     localStorage.setItem(runashChatUpdatesBannerHiddenStorageKey, "true")
     localStorage.setItem(runashChatLegacyUpdatesBannerHiddenStorageKey, "true")
     setShowUpdatesBanner(false)
@@ -1201,6 +1204,41 @@ export default function RunashChatPage() {
               )}
             </div>
 
+            <div className="mb-4 min-h-[52px]">
+              {showUpdatesBanner && (
+                <div
+                  className="rounded-xl border border-zinc-700/70 bg-zinc-900/75 px-3 py-2 text-zinc-100 backdrop-blur-sm"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 text-xs leading-relaxed sm:text-sm">
+                      <span className="rounded-full border border-zinc-600 bg-zinc-800/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-200">
+                        New
+                      </span>
+                      <p className="text-zinc-300">Chat composer updates are live with quicker launch actions.</p>
+                      <Button
+                        variant="link"
+                        className="h-auto p-0 text-xs font-medium text-cyan-300 underline underline-offset-2 hover:text-cyan-200 sm:text-sm"
+                        onClick={() => router.push("/changelog")}
+                      >
+                        Learn more
+                      </Button>
+                    </div>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 shrink-0 -translate-y-0.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                      onClick={dismissUpdatesBanner}
+                      aria-label="Dismiss updates banner"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <header className="mb-6 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="rounded-md bg-gradient-to-r from-cyan-500 to-blue-500 p-2">
@@ -1330,39 +1368,6 @@ export default function RunashChatPage() {
             {startChatError && (
               <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
                 {startChatError}
-              </div>
-            )}
-
-            {showUpdatesBanner && (
-              <div
-                className="mb-3 rounded-lg border border-cyan-300/40 bg-cyan-300/10 px-3 py-2 text-cyan-50"
-                role="status"
-                aria-live="polite"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 text-xs">
-                    <span className="rounded-full border border-cyan-100/70 bg-cyan-100/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-50">
-                      New
-                    </span>
-                    <p className="text-cyan-50/95">Chat composer updates are live with quicker launch actions.</p>
-                    <Button
-                      variant="link"
-                      className="h-auto p-0 text-xs font-medium text-cyan-100 underline underline-offset-2 hover:text-cyan-50"
-                      onClick={() => router.push("/changelog")}
-                    >
-                      Learn more
-                    </Button>
-                  </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6 shrink-0 -translate-y-0.5 text-cyan-100 hover:bg-cyan-400/20 hover:text-cyan-50"
-                    onClick={dismissUpdatesBanner}
-                    aria-label="Dismiss updates banner"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
               </div>
             )}
 
