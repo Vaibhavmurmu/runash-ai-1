@@ -674,6 +674,12 @@ export default function RunashChatPage() {
   const recentProjectItems = recentEntities.filter((item) => item.entityType === "project")
   const myChatItems = recentEntities.filter((item) => item.entityType === "session")
   const sidebarRecents = recentEntities.slice(0, 20)
+  const projectThumbnailClasses = [
+    "from-cyan-500/30 via-sky-500/20 to-indigo-500/30",
+    "from-violet-500/30 via-fuchsia-500/20 to-pink-500/30",
+    "from-emerald-500/30 via-teal-500/20 to-cyan-500/30",
+    "from-orange-500/30 via-amber-500/20 to-yellow-500/30",
+  ]
 
   const handleProjectOpen = (projectId: string) => {
     router.push(`/editor?projectId=${projectId}`)
@@ -683,6 +689,14 @@ export default function RunashChatPage() {
     if (!chatSessionId) return
     router.push(`/chat?sessionId=${chatSessionId}`)
   }
+
+  const getInitials = (value: string) =>
+    value
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((word) => word[0]?.toUpperCase())
+      .join("") || "RA"
 
   const formatRecentTimestamp = (rawValue: string | null) => {
     if (!rawValue) return "Updated recently"
@@ -1499,7 +1513,18 @@ export default function RunashChatPage() {
                 ) : recentItemsError ? (
                   <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">{recentItemsError}</div>
                 ) : recentProjectItems.length === 0 ? (
-                  <div className="rounded-md border border-zinc-800 bg-zinc-900/40 px-3 py-4 text-xs text-zinc-500">No recent projects yet.</div>
+                  <div className="rounded-md border border-dashed border-zinc-800 bg-zinc-900/30 px-3 py-6 text-center">
+                    <p className="text-xs text-zinc-400">No recent projects yet.</p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="mt-2 h-7 text-xs text-zinc-300 hover:bg-zinc-800"
+                      onClick={() => router.push("/editor")}
+                    >
+                      Create your first project
+                    </Button>
+                  </div>
                 ) : (
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {recentProjectItems.slice(0, 4).map((item) => (
@@ -1509,11 +1534,16 @@ export default function RunashChatPage() {
                         onClick={() => handleProjectOpen(item.id.replace("project-", ""))}
                         className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 text-left transition hover:border-zinc-700 hover:bg-zinc-900/70"
                       >
-                        <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
+                        <div
+                          className={`mb-3 flex h-20 items-end rounded-md border border-zinc-700/70 bg-gradient-to-br p-2 ${projectThumbnailClasses[Number(item.id.length) % projectThumbnailClasses.length]}`}
+                        >
+                          <div className="rounded bg-zinc-950/70 px-1.5 py-0.5 text-[10px] text-zinc-200">Preview</div>
+                        </div>
+                        <div className="mb-1 flex items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
                           <FolderKanban className="h-3.5 w-3.5" /> Project
                         </div>
-                        <p className="mb-2 truncate text-xs font-medium text-zinc-200">{item.title}</p>
-                        <p className="text-[11px] text-zinc-500">{formatRecentTimestamp(item.updatedAt)}</p>
+                        <p className="mb-1 truncate text-xs font-medium text-zinc-200">{item.title}</p>
+                        <p className="text-[11px] text-zinc-500">Last updated · {formatRecentTimestamp(item.updatedAt).replace("Updated ", "")}</p>
                       </button>
                     ))}
                   </div>
@@ -1544,25 +1574,50 @@ export default function RunashChatPage() {
                 ) : recentItemsError ? (
                   <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">{recentItemsError}</div>
                 ) : myChatItems.length === 0 ? (
-                  <div className="rounded-md border border-zinc-800 bg-zinc-900/40 px-3 py-4 text-xs text-zinc-500">No chats yet. Start one from above.</div>
+                  <div className="rounded-md border border-dashed border-zinc-800 bg-zinc-900/30 px-3 py-6 text-center">
+                    <p className="text-xs text-zinc-400">No chats yet. Start one from above.</p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="mt-2 h-7 text-xs text-zinc-300 hover:bg-zinc-800"
+                      onClick={() => startChatWithPrompt()}
+                    >
+                      Start a chat
+                    </Button>
+                  </div>
                 ) : (
                   <div className="space-y-2">
-                    {myChatItems.slice(0, 6).map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => handleChatOpen(item.sessionId)}
-                        className="flex w-full items-center gap-3 rounded-md border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-left transition hover:border-zinc-700 hover:bg-zinc-900"
-                      >
-                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800/80 text-zinc-300">
-                          <MessageSquare className="h-3.5 w-3.5" />
+                    {myChatItems.slice(0, 6).map((item, index) => (
+                      <div key={item.id} className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/50 px-2.5 py-2 transition hover:border-zinc-700 hover:bg-zinc-900">
+                        <button
+                          type="button"
+                          onClick={() => handleChatOpen(item.sessionId)}
+                          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        >
+                          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-zinc-800/90 text-zinc-300">
+                            {index % 2 === 0 ? <Bot className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs text-zinc-300">{index % 2 === 0 ? "RunAsh Agent" : "Project Chat"}</p>
+                            <p className="truncate text-[11px] text-zinc-500">{item.title}</p>
+                          </div>
+                          <p className="shrink-0 text-[11px] text-zinc-500">{formatRecentTimestamp(item.updatedAt).replace("Updated ", "")}</p>
+                        </button>
+                        <div className="relative mr-1 h-7 w-7">
+                          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800 text-[10px] font-medium text-zinc-300">
+                            {getInitials(item.title)}
+                          </div>
+                          <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-zinc-950 bg-emerald-400" />
                         </div>
-                        <div className="flex-1">
-                          <p className="truncate text-xs text-zinc-300">{item.title}</p>
-                          <p className="text-[11px] text-zinc-500">{formatRecentTimestamp(item.updatedAt)}</p>
-                        </div>
-                        <ArrowRight className="h-3.5 w-3.5 text-zinc-500" />
-                      </button>
+                        <button
+                          type="button"
+                          className="rounded p-1 text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-300"
+                          aria-label={`Open actions for ${item.title}`}
+                        >
+                          <MoreVertical className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
