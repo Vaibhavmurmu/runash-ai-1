@@ -86,6 +86,32 @@ type OnboardingSlide = {
   imageSrc?: string
 }
 
+type CreditMetrics = {
+  gifted: number
+  monthly: number
+  purchased: number
+  total?: number
+}
+
+type CreditSummaryRow = {
+  key: keyof Omit<CreditMetrics, "total">
+  label: string
+}
+
+const creditSummaryRows: CreditSummaryRow[] = [
+  { key: "gifted", label: "Gifted credits" },
+  { key: "monthly", label: "Monthly credits" },
+  { key: "purchased", label: "Purchased credits" },
+]
+
+const formatCreditValue = (value?: number | null): string => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "0.00"
+  }
+
+  return value.toFixed(2)
+}
+
 const runashChatOnboardingStorageKey = "runash_chat_onboarding_seen"
 const runashChatSidebarCollapsedStorageKey = "runash_chat_sidebar_collapsed"
 const runashChatBannerHiddenStorageKey = "runash_chat_banner_hidden"
@@ -421,10 +447,15 @@ export default function RunashChatPage() {
   const overflowMobileHeaderActions = headerActions.slice(1)
   const primaryTabletHeaderActions = headerActions.slice(0, 2)
   const overflowTabletHeaderActions = headerActions.slice(2)
-  const creditsBalanceLabel = "5.00"
-  const giftedCreditsLabel = "1.00"
-  const monthlyCreditsLabel = "3.00"
-  const purchasedCreditsLabel = "1.00"
+  const [creditMetrics] = useState<CreditMetrics>({
+    gifted: 1,
+    monthly: 3,
+    purchased: 1,
+    total: 5,
+  })
+  const creditsBalanceLabel = formatCreditValue(
+    creditMetrics.total ?? creditMetrics.gifted + creditMetrics.monthly + creditMetrics.purchased,
+  )
   const selectedUpgradePlan = getUpgradePlanConfiguration(selectedPlan)
 
   const userDisplayName = authenticatedUser?.name?.trim() || authenticatedUser?.email?.split("@")[0]?.trim() || "Guest User"
@@ -1890,18 +1921,12 @@ export default function RunashChatPage() {
                     >
                       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">Credit Balance</p>
                       <div className="space-y-1.5">
-                        <div className="flex items-center justify-between rounded-md bg-zinc-900/80 px-2 py-1.5">
-                          <span className="text-zinc-300">Gifted credits</span>
-                          <span className="font-medium text-zinc-100">{giftedCreditsLabel}</span>
-                        </div>
-                        <div className="flex items-center justify-between rounded-md bg-zinc-900/80 px-2 py-1.5">
-                          <span className="text-zinc-300">Monthly credits</span>
-                          <span className="font-medium text-zinc-100">{monthlyCreditsLabel}</span>
-                        </div>
-                        <div className="flex items-center justify-between rounded-md bg-zinc-900/80 px-2 py-1.5">
-                          <span className="text-zinc-300">Purchased credits</span>
-                          <span className="font-medium text-zinc-100">{purchasedCreditsLabel}</span>
-                        </div>
+                        {creditSummaryRows.map((row) => (
+                          <div key={row.key} className="flex items-center justify-between rounded-md bg-zinc-900/80 px-2 py-1.5">
+                            <span className="text-zinc-300">{row.label}</span>
+                            <span className="font-medium text-zinc-100">{formatCreditValue(creditMetrics[row.key])}</span>
+                          </div>
+                        ))}
                       </div>
                       <div className="mt-3 grid grid-cols-2 gap-2">
                         <Button
