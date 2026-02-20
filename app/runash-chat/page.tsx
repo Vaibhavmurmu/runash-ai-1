@@ -182,12 +182,12 @@ export default function RunashChatPage() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
   const [isFavoritesExpanded, setIsFavoritesExpanded] = useState(true)
   const [isRecentsExpanded, setIsRecentsExpanded] = useState(true)
-  const [showUpdatesBanner, setShowUpdatesBanner] = useState<boolean | null>(null)
-  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
-  const [activeOnboardingStep, setActiveOnboardingStep] = useState(0)
+  const [isLearnMoreDialogOpen, setIsLearnMoreDialogOpen] = useState(false)
+  const [onboardingStep, setOnboardingStep] = useState(0)
+  const [isBannerDismissed, setIsBannerDismissed] = useState<boolean | null>(null)
   const mobileSidebarTriggerRef = useRef<HTMLButtonElement | null>(null)
   const desktopSidebarToggleRef = useRef<HTMLButtonElement | null>(null)
-  const onboardingTriggerRef = useRef<HTMLElement | null>(null)
+  const learnMoreTriggerRef = useRef<HTMLButtonElement | null>(null)
   const mainControlsRef = useRef<HTMLTextAreaElement | null>(null)
   const [selectedModel, setSelectedModel] = useState<"v0 Mini" | "v0 Max">("v0 Mini")
   const [selectedProjectLabel, setSelectedProjectLabel] = useState("Select a Project")
@@ -195,8 +195,8 @@ export default function RunashChatPage() {
   const [languagePreference, setLanguagePreference] = useState<RunashLanguagePreference>("en")
   const [chatPositionPreference, setChatPositionPreference] = useState<RunashChatPositionPreference>("left")
 
-  const isLastOnboardingStep = activeOnboardingStep === onboardingSlides.length - 1
-  const currentOnboardingSlide = onboardingSlides[activeOnboardingStep]
+  const isLastOnboardingStep = onboardingStep === onboardingSlides.length - 1
+  const currentOnboardingSlide = onboardingSlides[onboardingStep]
 
   const headerActions: HeaderAction[] = [
     {
@@ -412,10 +412,12 @@ export default function RunashChatPage() {
       localStorage.getItem(runashChatBannerHiddenStorageKey) === "true" ||
       localStorage.getItem(runashChatUpdatesBannerHiddenStorageKey) === "true" ||
       localStorage.getItem(runashChatLegacyUpdatesBannerHiddenStorageKey) === "true"
-    setShowUpdatesBanner(!isBannerHidden)
-
     const hasSeenOnboarding = localStorage.getItem(runashChatOnboardingStorageKey) === "true"
-    setIsOnboardingOpen(!hasSeenOnboarding)
+    setIsBannerDismissed(isBannerHidden || hasSeenOnboarding)
+
+    if (hasSeenOnboarding) {
+      setOnboardingStep(onboardingSlides.length - 1)
+    }
 
     const storedThemePreference = localStorage.getItem(runashChatThemeStorageKey)
     const safeThemePreference: RunashThemePreference = isValidThemePreference(storedThemePreference) ? storedThemePreference : "system"
@@ -447,22 +449,21 @@ export default function RunashChatPage() {
   }
 
   const restoreFocusToMainControls = () => {
-    if (onboardingTriggerRef.current instanceof HTMLElement) {
-      onboardingTriggerRef.current.focus()
+    if (learnMoreTriggerRef.current instanceof HTMLElement) {
+      learnMoreTriggerRef.current.focus()
       return
     }
 
     mainControlsRef.current?.focus()
   }
 
-  const handleOpenOnboardingFromTrigger = (event: React.MouseEvent<HTMLElement>) => {
-    onboardingTriggerRef.current = event.currentTarget
-    setActiveOnboardingStep(0)
-    setIsOnboardingOpen(true)
+  const handleOpenLearnMoreDialog = () => {
+    setOnboardingStep(0)
+    setIsLearnMoreDialogOpen(true)
   }
 
   const handleOnboardingOpenChange = (open: boolean) => {
-    setIsOnboardingOpen(open)
+    setIsLearnMoreDialogOpen(open)
     if (!open) {
       restoreFocusToMainControls()
     }
@@ -471,12 +472,13 @@ export default function RunashChatPage() {
   const handleOnboardingNext = () => {
     if (isLastOnboardingStep) {
       markOnboardingSeen()
-      setIsOnboardingOpen(false)
+      setIsLearnMoreDialogOpen(false)
+      setIsBannerDismissed(true)
       restoreFocusToMainControls()
       return
     }
 
-    setActiveOnboardingStep((previousStep) => Math.min(previousStep + 1, onboardingSlides.length - 1))
+    setOnboardingStep((previousStep) => Math.min(previousStep + 1, onboardingSlides.length - 1))
   }
 
   useEffect(() => {
@@ -484,11 +486,11 @@ export default function RunashChatPage() {
   }, [isSidebarCollapsed])
 
   useEffect(() => {
-    if (!isOnboardingOpen) return
+    if (!isLearnMoreDialogOpen) return
 
     setIsMobileSidebarOpen(false)
     setIsMobileSearchOpen(false)
-  }, [isOnboardingOpen])
+  }, [isLearnMoreDialogOpen])
 
   useEffect(() => {
     if (!isMobileSidebarOpen) return
@@ -724,7 +726,7 @@ export default function RunashChatPage() {
     localStorage.setItem(runashChatBannerHiddenStorageKey, "true")
     localStorage.setItem(runashChatUpdatesBannerHiddenStorageKey, "true")
     localStorage.setItem(runashChatLegacyUpdatesBannerHiddenStorageKey, "true")
-    setShowUpdatesBanner(false)
+    setIsBannerDismissed(true)
   }
 
   const handleMobileSidebarOpenChange = (open: boolean) => {
@@ -932,7 +934,7 @@ export default function RunashChatPage() {
 
   return (
     <div className="min-h-screen bg-[#030405] text-zinc-100">
-      <Dialog open={isOnboardingOpen} onOpenChange={handleOnboardingOpenChange}>
+      <Dialog open={isLearnMoreDialogOpen} onOpenChange={handleOnboardingOpenChange}>
         <DialogContent
           className="max-w-md border-zinc-800 bg-zinc-950 p-0 text-zinc-100 motion-reduce:duration-0"
           onCloseAutoFocus={(event) => {
@@ -962,12 +964,12 @@ export default function RunashChatPage() {
                     <button
                       key={slide.title}
                       type="button"
-                      onClick={() => setActiveOnboardingStep(index)}
+                      onClick={() => setOnboardingStep(index)}
                       className={`h-2.5 w-2.5 rounded-full transition-colors duration-200 motion-reduce:transition-none ${
-                        index === activeOnboardingStep ? "bg-cyan-400" : "bg-zinc-600 hover:bg-zinc-500"
+                        index === onboardingStep ? "bg-cyan-400" : "bg-zinc-600 hover:bg-zinc-500"
                       }`}
                       aria-label={`Go to onboarding step ${index + 1}`}
-                      aria-current={index === activeOnboardingStep ? "step" : undefined}
+                      aria-current={index === onboardingStep ? "step" : undefined}
                     />
                   ))}
                 </div>
@@ -1024,7 +1026,7 @@ export default function RunashChatPage() {
           <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
             <div className="mb-4 space-y-3 lg:hidden">
               <div
-                className={`sticky top-0 ${isMobileSidebarOpen || isOnboardingOpen ? "z-0" : "z-20"} rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2 backdrop-blur`}
+                className={`sticky top-0 ${isMobileSidebarOpen || isLearnMoreDialogOpen ? "z-0" : "z-20"} rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2 backdrop-blur`}
               >
                 <div className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2">
                   <div className="flex items-center gap-2">
@@ -1035,7 +1037,7 @@ export default function RunashChatPage() {
                     className="h-[42px] w-[42px] rounded-xl border-zinc-800 bg-zinc-950 text-zinc-100"
                     onClick={() => router.push("/")}
                     aria-label="Go to home"
-                    disabled={isOnboardingOpen}
+                    disabled={isLearnMoreDialogOpen}
                   >
                     <Home className="h-[18px] w-[18px] stroke-[1.75]" />
                   </Button>
@@ -1051,7 +1053,7 @@ export default function RunashChatPage() {
                         aria-expanded={isMobileSidebarOpen}
                         aria-controls={runashChatMobileSidebarId}
                         aria-label={isMobileSidebarOpen ? "Close navigation menu" : "Open navigation menu"}
-                        disabled={isOnboardingOpen}
+                        disabled={isLearnMoreDialogOpen}
                         title="Toggle navigation (Ctrl/Cmd+B)"
                       >
                         <Menu className="h-[18px] w-[18px] stroke-[1.75]" />
@@ -1082,7 +1084,7 @@ export default function RunashChatPage() {
                   aria-expanded={isMobileSearchOpen}
                   aria-controls="mobile-chat-search"
                   className="flex h-[42px] min-w-0 items-center justify-between rounded-full border border-zinc-800 bg-zinc-950 px-3.5 text-left"
-                  disabled={isOnboardingOpen}
+                  disabled={isLearnMoreDialogOpen}
                 >
                   <span className="truncate text-sm font-semibold tracking-tight text-zinc-100">RunAsh Workspace</span>
                   <span className="ml-2 flex shrink-0 items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300">
@@ -1104,7 +1106,7 @@ export default function RunashChatPage() {
                       aria-label="Toggle mobile search"
                       aria-expanded={isMobileSearchOpen}
                       aria-controls="mobile-chat-search"
-                      disabled={isOnboardingOpen}
+                      disabled={isLearnMoreDialogOpen}
                     >
                       <Search className="h-[18px] w-[18px] stroke-[1.75]" />
                     </Button>
@@ -1114,7 +1116,7 @@ export default function RunashChatPage() {
                     className="h-[42px] w-[42px] rounded-xl bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
                     onClick={() => startChatWithPrompt()}
                     aria-label="Start a new chat"
-                    disabled={isOnboardingOpen}
+                    disabled={isLearnMoreDialogOpen}
                   >
                     <Plus className="h-[18px] w-[18px] stroke-[1.75]" />
                   </Button>
@@ -1125,7 +1127,7 @@ export default function RunashChatPage() {
                         variant="outline"
                         className="h-[42px] w-[42px] rounded-xl border-zinc-800 bg-zinc-950 text-zinc-100"
                         aria-label="More quick actions"
-                        disabled={isOnboardingOpen}
+                        disabled={isLearnMoreDialogOpen}
                       >
                         <MoreVertical className="h-[18px] w-[18px] stroke-[1.75]" />
                       </Button>
@@ -1213,24 +1215,25 @@ export default function RunashChatPage() {
             </div>
 
             <div className="mb-4 min-h-[52px]">
-              {showUpdatesBanner && (
+              {isBannerDismissed === false && (
                 <div
-                  className="rounded-xl border border-zinc-700/70 bg-zinc-900/75 px-3 py-2 text-zinc-100 backdrop-blur-sm"
+                  className="rounded-lg border border-zinc-700/70 bg-zinc-900/80 px-3 py-2 text-zinc-100 backdrop-blur-sm"
                   role="status"
                   aria-live="polite"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 text-xs leading-relaxed sm:text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-relaxed sm:text-sm">
                       <span className="rounded-full border border-zinc-600 bg-zinc-800/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-200">
                         New
                       </span>
                       <p className="text-zinc-300">Chat composer updates are live with quicker launch actions.</p>
                       <Button
                         variant="link"
+                        ref={learnMoreTriggerRef}
                         className="h-auto p-0 text-xs font-medium text-cyan-300 underline underline-offset-2 hover:text-cyan-200 sm:text-sm"
-                        onClick={() => router.push("/changelog")}
+                        onClick={handleOpenLearnMoreDialog}
                       >
-                        Learn more
+                        Learn More
                       </Button>
                     </div>
                     <Button
@@ -1322,7 +1325,7 @@ export default function RunashChatPage() {
                   size="sm"
                   variant="outline"
                   className="hidden h-8 rounded-full border-zinc-700 bg-zinc-950 px-2.5 text-xs font-medium text-zinc-100 hover:bg-zinc-900 md:inline-flex"
-                  onClick={(event) => handleOpenOnboardingFromTrigger(event)}
+                  onClick={handleOpenLearnMoreDialog}
                   aria-label="Open onboarding guide"
                 >
                   <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
@@ -1374,7 +1377,7 @@ export default function RunashChatPage() {
                         </Tooltip>
                         <DropdownMenuContent align="end" className="border-zinc-800 bg-zinc-900 text-zinc-100">
                           <DropdownMenuItem
-                            onClick={(event) => handleOpenOnboardingFromTrigger(event)}
+                            onClick={handleOpenLearnMoreDialog}
                             className="focus:bg-zinc-800 focus:text-zinc-100"
                           >
                             <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
