@@ -159,6 +159,8 @@ const runashChatSidebarCollapsedStorageKey = "runash_chat_sidebar_collapsed"
 const runashChatBannerHiddenStorageKey = "runash_chat_banner_hidden"
 const runashChatUpdatesBannerHiddenStorageKey = "runash_chat_updates_hidden"
 const runashChatLegacyUpdatesBannerHiddenStorageKey = "runash_updates_banner_hidden"
+const runashChatFavoritesCollapsedStorageKey = "runash_chat_favorites_collapsed"
+const runashChatRecentsCollapsedStorageKey = "runash_chat_recents_collapsed"
 const runashChatDesktopSidebarContentId = "runash-chat-desktop-sidebar-content"
 const runashChatMobileSidebarId = "runash-chat-mobile-sidebar"
 const runashChatThemeStorageKey = "runash_chat_preference_theme"
@@ -1238,6 +1240,10 @@ export default function RunashChatPage() {
   useEffect(() => {
     const savedValue = localStorage.getItem(runashChatSidebarCollapsedStorageKey)
     setIsSidebarCollapsed(savedValue === "true")
+    const savedFavoritesCollapsedValue = localStorage.getItem(runashChatFavoritesCollapsedStorageKey)
+    setIsFavoritesExpanded(savedFavoritesCollapsedValue !== "true")
+    const savedRecentsCollapsedValue = localStorage.getItem(runashChatRecentsCollapsedStorageKey)
+    setIsRecentsExpanded(savedRecentsCollapsedValue !== "true")
 
     const isBannerHidden =
       localStorage.getItem(runashChatBannerHiddenStorageKey) === "true" ||
@@ -1335,6 +1341,14 @@ export default function RunashChatPage() {
   useEffect(() => {
     localStorage.setItem(runashChatSidebarCollapsedStorageKey, String(isSidebarCollapsed))
   }, [isSidebarCollapsed])
+
+  useEffect(() => {
+    localStorage.setItem(runashChatFavoritesCollapsedStorageKey, String(!isFavoritesExpanded))
+  }, [isFavoritesExpanded])
+
+  useEffect(() => {
+    localStorage.setItem(runashChatRecentsCollapsedStorageKey, String(!isRecentsExpanded))
+  }, [isRecentsExpanded])
 
   useEffect(() => {
     if (!activeOverlay && !isOnboardingOpen) return
@@ -1751,12 +1765,15 @@ export default function RunashChatPage() {
                 <section>
                   <button
                     type="button"
-                    className="mb-2 flex w-full items-center justify-between rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 hover:bg-zinc-900/80 hover:text-zinc-300"
+                    className="mb-2 flex w-full items-center justify-between rounded-full border border-zinc-800 bg-zinc-900/60 px-2.5 py-1.5 text-[11px] font-semibold text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-900"
                     onClick={() => setIsFavoritesExpanded((prev) => !prev)}
                     aria-expanded={isFavoritesExpanded}
                   >
-                    Favorites
-                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isFavoritesExpanded ? "rotate-0" : "-rotate-90"}`} />
+                    <span className="flex items-center gap-2">
+                      <span>Favorites</span>
+                      <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] leading-none text-zinc-400">{favoriteItems.length}</span>
+                    </span>
+                    <ChevronDown className={`h-3.5 w-3.5 text-zinc-400 transition-transform ${isFavoritesExpanded ? "rotate-0" : "-rotate-90"}`} />
                   </button>
 
                   {isFavoritesExpanded ? (
@@ -1841,12 +1858,15 @@ export default function RunashChatPage() {
                 {!collapsed ? (
                   <button
                     type="button"
-                    className="mb-2 flex w-full items-center justify-between rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 hover:bg-zinc-900/80 hover:text-zinc-300"
+                    className="mb-2 flex w-full items-center justify-between rounded-full border border-zinc-800 bg-zinc-900/60 px-2.5 py-1.5 text-[11px] font-semibold text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-900"
                     onClick={() => setIsRecentsExpanded((prev) => !prev)}
                     aria-expanded={isRecentsExpanded}
                   >
-                    Recents
-                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isRecentsExpanded ? "rotate-0" : "-rotate-90"}`} />
+                    <span className="flex items-center gap-2">
+                      <span>Recents</span>
+                      <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] leading-none text-zinc-400">{sidebarRecents.length}</span>
+                    </span>
+                    <ChevronDown className={`h-3.5 w-3.5 text-zinc-400 transition-transform ${isRecentsExpanded ? "rotate-0" : "-rotate-90"}`} />
                   </button>
                 ) : null}
 
