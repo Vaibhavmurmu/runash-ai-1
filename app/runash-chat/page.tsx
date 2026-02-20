@@ -1317,13 +1317,13 @@ export default function RunashChatPage() {
 
       <Dialog open={isReferOpen} onOpenChange={handleReferDialogOpenChange}>
         <DialogContent
-          className="z-[60] w-[min(92vw,32rem)] max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-lg"
+          className="z-[60] w-[min(94vw,34rem)] max-h-[90dvh] overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-950 text-zinc-100 shadow-2xl shadow-black/40 sm:max-w-xl"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
             focusModalTrigger()
           }}
         >
-          <DialogHeader className="space-y-2 text-left">
+          <DialogHeader className="space-y-2 border-b border-zinc-800/80 px-6 pb-4 pt-6 text-left">
             <DialogTitle className="flex items-center gap-2 text-zinc-100">
               <Sparkles className="h-5 w-5 text-emerald-400" aria-hidden="true" />
               {referralUiData.headline}
@@ -1333,32 +1333,35 @@ export default function RunashChatPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-5">
-            <section className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+          <div className="space-y-0 overflow-y-auto px-6 py-4">
+            <section className="space-y-3 rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-4">
               <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-zinc-400">
                 <span>Monthly progress</span>
                 <span>{referralUiData.progressValue} / {referralUiData.rewardCap} invites</span>
               </div>
               <div
-                className="h-2 overflow-hidden rounded-full bg-zinc-800"
+                className="h-2.5 overflow-hidden rounded-full border border-zinc-700/70 bg-zinc-900"
                 role="progressbar"
                 aria-valuemin={0}
                 aria-valuemax={referralUiData.rewardCap}
                 aria-valuenow={referralUiData.progressValue}
               >
-                <div className="h-full rounded-full bg-emerald-500" style={{ width: `${referralProgressPercent}%` }} />
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-emerald-400 to-cyan-400"
+                  style={{ width: `${referralProgressPercent}%` }}
+                />
               </div>
-              <div className="flex justify-between text-xs text-zinc-500">
-                <span>0 invites</span>
-                <span>{referralUiData.rewardCap} invites</span>
+              <div className="flex justify-between text-[11px] uppercase tracking-wide text-zinc-500">
+                <span>Start · 0 invites</span>
+                <span>Goal · {referralUiData.rewardCap} invites</span>
               </div>
             </section>
 
-            <section className="space-y-2">
+            <section className="space-y-3 border-t border-zinc-800/80 py-4">
               <p className="text-sm font-medium text-zinc-200">Referral link</p>
-              <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 p-2">
+              <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
                 <code className="flex-1 truncate rounded bg-zinc-950 px-3 py-2 text-xs text-zinc-300">{referralUiData.referralLink}</code>
-                <Button type="button" size="sm" onClick={handleCopyReferralLink} disabled={isCopyingLink}>
+                <Button type="button" className="h-10 px-4" onClick={handleCopyReferralLink} disabled={isCopyingLink}>
                   {isCopyingLink ? (
                     <>
                       <Check className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -1374,25 +1377,28 @@ export default function RunashChatPage() {
               </div>
             </section>
 
-            <section className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
-              <p className="text-sm font-medium text-zinc-200">How it works</p>
-              <ul className="list-disc space-y-1 pl-5 text-sm text-zinc-400">
-                {referralUiData.steps.map((step) => (
-                  <li key={step}>{step}</li>
-                ))}
-              </ul>
+            <section className="space-y-2 border-t border-zinc-800/80 py-4">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+                <p className="text-sm font-medium text-zinc-200">How it works</p>
+                <ul className="list-disc space-y-1 pl-5 text-sm text-zinc-400">
+                  {referralUiData.steps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ul>
+              </div>
             </section>
           </div>
 
-          <DialogFooter className="gap-2 sm:justify-between">
+          <DialogFooter className="gap-2 border-t border-zinc-800/80 px-6 py-4 sm:justify-between">
             <Button
               type="button"
               variant="outline"
+              className="h-10 px-4"
               onClick={() => handleReferDialogOpenChange(false)}
             >
               Maybe later
             </Button>
-            <Button type="button" onClick={() => router.push("/pricing?tab=roi")}>Run the numbers</Button>
+            <Button type="button" className="h-10 px-4" onClick={() => router.push("/pricing?tab=roi")}>Run the numbers</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
