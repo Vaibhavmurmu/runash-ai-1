@@ -1,63 +1,70 @@
-import { NextResponse } from "next/server"
-import { requireEditorUser } from "@/app/api/editor/_lib"
-import { getProjectById, sql } from "@/lib/editor/repository"
+import { type NextRequest, NextResponse } from "next/server"
+import { z } from "zod"
+import { getServerAuthSession } from "@/lib/auth/session"
+import { EditorProjectsService } from "@/lib/editor-projects"
 
-export async function GET(request: Request) {
-  const auth = await requireEditorUser()
-  if ("error" in auth) return auth.error
+const timelineSchema = z.object({
+  duration: z.number().min(1).max(7200),
+  fps: z.number().min(1).max(120),
+  tracks: z.array(
+    z.object({
+      id: z.string().min(1),
+      name: z.string().min(1).max(100),
+      type: z.enum(["video", "audio", "text", "overlay"]),
+      segments: z.array(
+        z.object({
+          id: z.string().min(1),
+          start: z.number().min(0),
+          duration: z.number().min(0),
+          label: z.string().min(1).max(200),
+          assetId: z.string().optional(),
+          config: z.record(z.string(), z.unknown()).optional(),
+        }),
+      ),
+    }),
+  ),
+})
 
-  const { searchParams } = new URL(request.url)
-  const projectId = searchParams.get("projectId")
+const createProjectSchema = z.object({
+  title: z.string().min(1).max(150),
+  description: z.string().max(2000).optional(),
+  selectedModel: z.string().min(1).max(100).optional(),
+  timeline: timelineSchema.optional(),
+  settings: z.record(z.string(), z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+})
 
-  if (projectId) {
-    const project = await getProjectById(auth.userId, projectId)
-    if (!project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 })
-    }
-
-    return NextResponse.json({ project })
+export async function GET() {
+  const session = await getServerAuthSession()
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const projects = await sql`
-    SELECT id, owner_id, name, status, active_timeline_id, created_at, updated_at
-    FROM editor_projects
-    WHERE owner_id=${auth.userId}
-    ORDER BY updated_at DESC
-  `
-
-  return NextResponse.json({ projects })
+  try {
+    const projects = await EditorProjectsService.listByUser(session.user.id)
+    return NextResponse.json({ projects })
+  } catch {
+    return NextResponse.json({ error: "Failed to fetch editor projects" }, { status: 500 })
+  }
 }
 
-export async function POST(request: Request) {
-  const auth = await requireEditorUser()
-  if ("error" in auth) return auth.error
+export async function POST(request: NextRequest) {
+  const session = await getServerAuthSession()
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
 
-  const body = await request.json().catch(() => ({}))
-  const name = (body.name || "Untitled Project").toString()
+  const json = await request.json().catch(() => null)
+  const parsed = createProjectSchema.safeParse(json)
 
-  const [project] = await sql`
-    INSERT INTO editor_projects (owner_id, name, status, metadata)
-    VALUES (${auth.userId}, ${name}, 'draft', ${JSON.stringify(body.metadata || {})}::jsonb)
-    RETURNING *
-  `
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid request payload", issues: parsed.error.flatten() }, { status: 400 })
+  }
 
-  const [timeline] = await sql`
-    INSERT INTO editor_timelines (project_id, owner_id, name, frame_rate, duration_seconds, metadata)
-    VALUES (${project.id}, ${auth.userId}, 'Main Timeline', 30, 10, '{}'::jsonb)
-    RETURNING *
-  `
-
-  await sql`
-    INSERT INTO editor_tracks (timeline_id, project_id, owner_id, label, order_index, track_type, metadata)
-    VALUES (${timeline.id}, ${project.id}, ${auth.userId}, 'Primary', 0, 'video', '{}'::jsonb)
-  `
-
-  await sql`
-    UPDATE editor_projects
-    SET active_timeline_id=${timeline.id}, updated_at=now()
-    WHERE id=${project.id}
-  `
-
-  const hydrated = await getProjectById(auth.userId, project.id)
-  return NextResponse.json({ project: hydrated }, { status: 201 })
+  try {
+    const project = await EditorProjectsService.create(session.user.id, parsed.data)
+    return NextResponse.json({ project }, { status: 201 })
+  } catch {
+    return NextResponse.json({ error: "Failed to create editor project" }, { status: 500 })
+  }
 }

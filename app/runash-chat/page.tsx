@@ -14,9 +14,11 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -29,6 +31,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   CreditCard,
+  ExternalLink,
   FolderKanban,
   Home,
   LayoutTemplate,
@@ -218,15 +221,35 @@ export default function RunashChatPage() {
     .map((namePart) => namePart[0]?.toUpperCase())
     .join("") || "GU"
 
-  const userMenuItems = [
+  type UserMenuItem = {
+    label: string
+    icon: React.ComponentType<{ className?: string }>
+    href: string
+    external?: boolean
+  }
+
+  const accountMenuItems: UserMenuItem[] = [
     { label: "Profile", icon: User, href: "/account" },
     { label: "Settings", icon: Settings, href: "/settings" },
-    { label: "Billing", icon: CreditCard, href: "/settings/billing" },
-    { label: "Help", icon: LifeBuoy, href: "/support" },
-  ] as const
+    { label: "Pricing", icon: CreditCard, href: "/pricing" },
+    { label: "Documentation", icon: Library, href: "https://docs.runash.io", external: true },
+    { label: "Community Forum", icon: LifeBuoy, href: "https://community.runash.io", external: true },
+    { label: "Credits", icon: Sparkles, href: "/settings/billing" },
+  ]
 
-  const handleUserMenuNavigation = (href: string) => {
-    router.push(href)
+  const preferenceMenuItems: UserMenuItem[] = [
+    { label: "Theme", icon: PanelsTopLeft, href: "/settings?section=preferences&panel=theme" },
+    { label: "Language", icon: MessageSquare, href: "/settings?section=preferences&panel=language" },
+    { label: "Chat Position", icon: LayoutTemplate, href: "/settings?section=preferences&panel=chat-position" },
+  ]
+
+  const handleUserMenuNavigation = (item: UserMenuItem) => {
+    if (item.external) {
+      window.open(item.href, "_blank", "noopener,noreferrer")
+      return
+    }
+
+    router.push(item.href)
   }
 
   const renderProfileMenu = (triggerClassName: string) => (
@@ -239,25 +262,50 @@ export default function RunashChatPage() {
           </Avatar>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56 border-zinc-800 bg-zinc-900 text-zinc-100">
+      <DropdownMenuContent align="end" className="w-64 border-zinc-800 bg-zinc-900 text-zinc-100">
         <DropdownMenuLabel className="px-2 py-1.5">
           <p className="truncate text-sm font-medium text-zinc-100">{userDisplayName}</p>
           {userEmail ? <p className="truncate text-xs font-normal text-zinc-400">{userEmail}</p> : null}
         </DropdownMenuLabel>
         <DropdownMenuSeparator className="bg-zinc-800" />
-        {userMenuItems.map((item) => {
-          const Icon = item.icon
-          return (
-            <DropdownMenuItem
-              key={item.label}
-              onClick={() => handleUserMenuNavigation(item.href)}
-              className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
-            >
-              <Icon className="mr-2 h-4 w-4" />
-              {item.label}
-            </DropdownMenuItem>
-          )
-        })}
+        <DropdownMenuLabel className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-zinc-400">Account</DropdownMenuLabel>
+        <DropdownMenuGroup>
+          {accountMenuItems.map((item) => {
+            const Icon = item.icon
+            return (
+              <DropdownMenuItem
+                key={item.label}
+                onSelect={() => handleUserMenuNavigation(item)}
+                className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+              >
+                <Icon className="mr-2 h-4 w-4" />
+                {item.label}
+                {item.external ? (
+                  <DropdownMenuShortcut>
+                    <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                  </DropdownMenuShortcut>
+                ) : null}
+              </DropdownMenuItem>
+            )
+          })}
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator className="bg-zinc-800" />
+        <DropdownMenuLabel className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-zinc-400">Preferences</DropdownMenuLabel>
+        <DropdownMenuGroup>
+          {preferenceMenuItems.map((item) => {
+            const Icon = item.icon
+            return (
+              <DropdownMenuItem
+                key={item.label}
+                onSelect={() => handleUserMenuNavigation(item)}
+                className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+              >
+                <Icon className="mr-2 h-4 w-4" />
+                {item.label}
+              </DropdownMenuItem>
+            )
+          })}
+        </DropdownMenuGroup>
         <DropdownMenuSeparator className="bg-zinc-800" />
         <div className="space-y-2 px-2 py-2">
           <div className="flex items-center justify-between gap-2 rounded-md px-2 py-1 hover:bg-zinc-800/60">
@@ -309,12 +357,15 @@ export default function RunashChatPage() {
           </div>
         </div>
         <DropdownMenuSeparator className="bg-zinc-800" />
+
+        <DropdownMenuLabel className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-zinc-400">Session</DropdownMenuLabel>
+
         <DropdownMenuItem
           onClick={() => signOutWithRedirect("/")}
           className="cursor-pointer text-rose-300 focus:bg-rose-500/20 focus:text-rose-200"
         >
           <LogOut className="mr-2 h-4 w-4" />
-          Sign out
+          Sign Out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -962,10 +1013,10 @@ export default function RunashChatPage() {
                       >
                         Notifications
                       </DropdownMenuItem>
-                      {userMenuItems.map((item) => (
+                      {accountMenuItems.map((item) => (
                         <DropdownMenuItem
                           key={item.label}
-                          onClick={() => handleUserMenuNavigation(item.href)}
+                          onSelect={() => handleUserMenuNavigation(item)}
                           className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
                         >
                           {item.label}
