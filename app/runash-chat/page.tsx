@@ -587,6 +587,19 @@ type ComposerMenuActionId =
   | "mcps-manage"
   | "mcps-explore";
 
+type ComposerMenuActionNode = {
+  id?: ComposerMenuActionId;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  children?: readonly ComposerMenuActionNode[];
+};
+
+type ComposerMenuActionSection = {
+  id: string;
+  label: string;
+  actions: readonly ComposerMenuActionNode[];
+};
+
 const allowedUploadMimeTypes = new Set([
   "image/png",
   "image/jpeg",
@@ -759,6 +772,76 @@ const promptActionConfigs: PromptActionConfig[] = [
     routeOrHandler: "/editor",
     description: "Open the RunAsh editor.",
     commandGroup: "Tools",
+  },
+];
+
+const composerMenuActionSections: readonly ComposerMenuActionSection[] = [
+  {
+    id: "import",
+    label: "Import",
+    actions: [
+      { id: "import-github", label: "Import GitHub", icon: ExternalLink },
+      { id: "import-figma", label: "Import Figma", icon: LayoutTemplate },
+      {
+        id: "upload-from-computer",
+        label: "Upload from computer",
+        icon: Upload,
+      },
+    ],
+  },
+  {
+    id: "create",
+    label: "Create",
+    actions: [
+      {
+        id: "generate-images",
+        label: "Generate Images",
+        icon: Sparkles,
+      },
+      {
+        label: "Design System",
+        icon: PanelsTopLeft,
+        children: [
+          {
+            id: "design-system-library",
+            label: "Open library",
+            icon: Library,
+          },
+          {
+            id: "design-system-create",
+            label: "Create from prompt",
+            icon: Plus,
+          },
+        ],
+      },
+      {
+        label: "Folder",
+        icon: FolderKanban,
+        children: [
+          { id: "folder-new", label: "New folder", icon: Plus },
+          { id: "folder-open", label: "Browse folders", icon: FolderKanban },
+        ],
+      },
+      { id: "instructions", label: "Instructions", icon: MessageSquare },
+    ],
+  },
+  {
+    id: "mcps",
+    label: "MCP",
+    actions: [
+      {
+        label: "MCPs",
+        icon: PlugZap,
+        children: [
+          { id: "mcps-manage", label: "Manage MCPs", icon: Settings },
+          {
+            id: "mcps-explore",
+            label: "Explore integrations",
+            icon: ExternalLink,
+          },
+        ],
+      },
+    ],
   },
 ];
 
@@ -1145,7 +1228,11 @@ export default function RunashChatPage() {
     useState("Select a Project");
   const [activePromptActionId, setActivePromptActionId] =
     useState<PromptActionId | null>(null);
-  const [isPromptActionLoading, setIsPromptActionLoading] = useState(false);
+  const [promptActionLoadingId, setPromptActionLoadingId] =
+    useState<PromptActionId | null>(null);
+  const [promptActionError, setPromptActionError] = useState<string | null>(
+    null,
+  );
   const [composerMenuActionLoadingId, setComposerMenuActionLoadingId] =
     useState<ComposerMenuActionId | null>(null);
   const [composerMenuError, setComposerMenuError] = useState<string | null>(
@@ -3633,7 +3720,9 @@ export default function RunashChatPage() {
       return;
     }
 
+    setPromptActionError(null);
     setActivePromptActionId(action.id);
+    setPromptActionLoadingId(action.id);
     trackPromptAction(action, "opened");
 
     try {
@@ -3655,14 +3744,16 @@ export default function RunashChatPage() {
       if (action.type === "service" && action.id === "search") {
         const searchQuery = prompt.trim();
         if (!searchQuery) {
+          const message =
+            "Add a search query in the composer, then run Search.";
+          setPromptActionError(message);
           toast({
             title: "Enter a prompt first",
-            description: "Add a search query in the composer, then run Search.",
+            description: message,
           });
           return;
         }
 
-        setIsPromptActionLoading(true);
         const response = await fetch(
           `${action.routeOrHandler}?query=${encodeURIComponent(searchQuery)}`,
         );
@@ -3689,9 +3780,11 @@ export default function RunashChatPage() {
       if (action.id === "enhance") {
         const trimmedPrompt = prompt.trim();
         if (!trimmedPrompt) {
+          const message = "Type a prompt first, then run Enhance.";
+          setPromptActionError(message);
           toast({
             title: "Add text to enhance",
-            description: "Type a prompt first, then run Enhance.",
+            description: message,
           });
           return;
         }
@@ -3711,15 +3804,17 @@ export default function RunashChatPage() {
         trackPromptAction(action, "success");
       }
     } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Something went wrong.";
+      setPromptActionError(message);
       trackPromptAction(action, "error");
       toast({
         title: `${action.label} failed`,
-        description:
-          error instanceof Error ? error.message : "Something went wrong.",
+        description: message,
         variant: "destructive",
       });
     } finally {
-      setIsPromptActionLoading(false);
+      setPromptActionLoadingId(null);
     }
   };
 
@@ -3929,8 +4024,50 @@ ${instructionStarter}`
         );
         return;
       default:
+        setComposerMenuError("Unsupported menu action selected.");
+        toast({
+          title: "Action unavailable",
+          description: "This action is not currently supported.",
+          variant: "destructive",
+        });
+        closePromptMenu(false);
         return;
     }
+  };
+
+
+  const renderComposerMenuActionNode = (node: ComposerMenuActionNode) => {
+    if (node.children && node.children.length > 0) {
+      return (
+        <DropdownMenuSub key={node.label}>
+          <DropdownMenuSubTrigger className="focus:bg-zinc-800 focus:text-zinc-100">
+            <node.icon className="mr-2 h-4 w-4" aria-hidden="true" />
+            <span>{node.label}</span>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-60 border-zinc-800 bg-zinc-900 text-zinc-100">
+            {node.children.map((child) => renderComposerMenuActionNode(child))}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      );
+    }
+
+    if (!node.id) {
+      return null;
+    }
+
+    return (
+      <DropdownMenuItem
+        key={node.id}
+        onSelect={() => handleComposerMenuAction(node.id as ComposerMenuActionId)}
+        className="focus:bg-zinc-800 focus:text-zinc-100"
+      >
+        <node.icon className="mr-2 h-4 w-4" aria-hidden="true" />
+        <span>{node.label}</span>
+        {composerMenuActionLoadingId === node.id && (
+          <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />
+        )}
+      </DropdownMenuItem>
+    );
   };
 
   const mobileRecentMatches = recentEntities.filter((item) =>
@@ -6302,216 +6439,19 @@ ${instructionStarter}`
                           align="start"
                           className={`${menuOverlayClassName} w-72 border-zinc-800 bg-zinc-900 text-zinc-100`}
                         >
-                          <DropdownMenuLabel className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">
-                            Import
-                          </DropdownMenuLabel>
-                          <DropdownMenuItem
-                            onSelect={() =>
-                              handleComposerMenuAction("import-github")
-                            }
-                            className="focus:bg-zinc-800 focus:text-zinc-100"
-                          >
-                            <ExternalLink
-                              className="mr-2 h-4 w-4"
-                              aria-hidden="true"
-                            />
-                            <span>Import GitHub</span>
-                            {composerMenuActionLoadingId ===
-                              "import-github" && (
-                              <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />
-                            )}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onSelect={() =>
-                              handleComposerMenuAction("import-figma")
-                            }
-                            className="focus:bg-zinc-800 focus:text-zinc-100"
-                          >
-                            <LayoutTemplate
-                              className="mr-2 h-4 w-4"
-                              aria-hidden="true"
-                            />
-                            <span>Import Figma</span>
-                            {composerMenuActionLoadingId === "import-figma" && (
-                              <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />
-                            )}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onSelect={() =>
-                              handleComposerMenuAction("upload-from-computer")
-                            }
-                            className="focus:bg-zinc-800 focus:text-zinc-100"
-                          >
-                            <Upload
-                              className="mr-2 h-4 w-4"
-                              aria-hidden="true"
-                            />
-                            <span>Upload from computer</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator className="bg-zinc-800" />
-
-                          <DropdownMenuItem
-                            onSelect={() =>
-                              handleComposerMenuAction("generate-images")
-                            }
-                            className="focus:bg-zinc-800 focus:text-zinc-100"
-                          >
-                            <Sparkles
-                              className="mr-2 h-4 w-4"
-                              aria-hidden="true"
-                            />
-                            <span>Generate Images</span>
-                            <Switch
-                              checked={generateImagesEnabled}
-                              aria-label="Enable generate images"
-                              className="ml-auto"
-                            />
-                          </DropdownMenuItem>
-
-                          <DropdownMenuSub>
-                            <DropdownMenuSubTrigger className="focus:bg-zinc-800 focus:text-zinc-100">
-                              <PanelsTopLeft
-                                className="mr-2 h-4 w-4"
-                                aria-hidden="true"
-                              />
-                              <span>Design System</span>
-                            </DropdownMenuSubTrigger>
-                            <DropdownMenuSubContent className="w-60 border-zinc-800 bg-zinc-900 text-zinc-100">
-                              <DropdownMenuItem
-                                onSelect={() =>
-                                  handleComposerMenuAction(
-                                    "design-system-library",
-                                  )
-                                }
-                                className="focus:bg-zinc-800 focus:text-zinc-100"
-                              >
-                                <Library
-                                  className="mr-2 h-4 w-4"
-                                  aria-hidden="true"
-                                />
-                                <span>Open library</span>
-                                {composerMenuActionLoadingId ===
-                                  "design-system-library" && (
-                                  <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />
-                                )}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onSelect={() =>
-                                  handleComposerMenuAction(
-                                    "design-system-create",
-                                  )
-                                }
-                                className="focus:bg-zinc-800 focus:text-zinc-100"
-                              >
-                                <Pencil
-                                  className="mr-2 h-4 w-4"
-                                  aria-hidden="true"
-                                />
-                                <span>Create from prompt</span>
-                              </DropdownMenuItem>
-                            </DropdownMenuSubContent>
-                          </DropdownMenuSub>
-
-                          <DropdownMenuSub>
-                            <DropdownMenuSubTrigger className="focus:bg-zinc-800 focus:text-zinc-100">
-                              <FolderKanban
-                                className="mr-2 h-4 w-4"
-                                aria-hidden="true"
-                              />
-                              <span>Folder</span>
-                            </DropdownMenuSubTrigger>
-                            <DropdownMenuSubContent className="w-60 border-zinc-800 bg-zinc-900 text-zinc-100">
-                              <DropdownMenuItem
-                                onSelect={() =>
-                                  handleComposerMenuAction("folder-new")
-                                }
-                                className="focus:bg-zinc-800 focus:text-zinc-100"
-                              >
-                                <Plus
-                                  className="mr-2 h-4 w-4"
-                                  aria-hidden="true"
-                                />
-                                <span>New folder</span>
-                                {composerMenuActionLoadingId ===
-                                  "folder-new" && (
-                                  <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />
-                                )}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onSelect={() =>
-                                  handleComposerMenuAction("folder-open")
-                                }
-                                className="focus:bg-zinc-800 focus:text-zinc-100"
-                              >
-                                <FolderKanban
-                                  className="mr-2 h-4 w-4"
-                                  aria-hidden="true"
-                                />
-                                <span>Browse folders</span>
-                                {composerMenuActionLoadingId ===
-                                  "folder-open" && (
-                                  <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />
-                                )}
-                              </DropdownMenuItem>
-                            </DropdownMenuSubContent>
-                          </DropdownMenuSub>
-
-                          <DropdownMenuItem
-                            onSelect={() =>
-                              handleComposerMenuAction("instructions")
-                            }
-                            className="focus:bg-zinc-800 focus:text-zinc-100"
-                          >
-                            <MessageSquare
-                              className="mr-2 h-4 w-4"
-                              aria-hidden="true"
-                            />
-                            <span>Instructions</span>
-                          </DropdownMenuItem>
-
-                          <DropdownMenuSub>
-                            <DropdownMenuSubTrigger className="focus:bg-zinc-800 focus:text-zinc-100">
-                              <PlugZap
-                                className="mr-2 h-4 w-4"
-                                aria-hidden="true"
-                              />
-                              <span>MCPs</span>
-                            </DropdownMenuSubTrigger>
-                            <DropdownMenuSubContent className="w-60 border-zinc-800 bg-zinc-900 text-zinc-100">
-                              <DropdownMenuItem
-                                onSelect={() =>
-                                  handleComposerMenuAction("mcps-manage")
-                                }
-                                className="focus:bg-zinc-800 focus:text-zinc-100"
-                              >
-                                <Settings
-                                  className="mr-2 h-4 w-4"
-                                  aria-hidden="true"
-                                />
-                                <span>Manage MCPs</span>
-                                {composerMenuActionLoadingId ===
-                                  "mcps-manage" && (
-                                  <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />
-                                )}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onSelect={() =>
-                                  handleComposerMenuAction("mcps-explore")
-                                }
-                                className="focus:bg-zinc-800 focus:text-zinc-100"
-                              >
-                                <ExternalLink
-                                  className="mr-2 h-4 w-4"
-                                  aria-hidden="true"
-                                />
-                                <span>Explore integrations</span>
-                                {composerMenuActionLoadingId ===
-                                  "mcps-explore" && (
-                                  <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />
-                                )}
-                              </DropdownMenuItem>
-                            </DropdownMenuSubContent>
-                          </DropdownMenuSub>
+                          {composerMenuActionSections.map((section, sectionIndex) => (
+                            <React.Fragment key={section.id}>
+                              {sectionIndex > 0 && (
+                                <DropdownMenuSeparator className="bg-zinc-800" />
+                              )}
+                              <DropdownMenuLabel className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">
+                                {section.label}
+                              </DropdownMenuLabel>
+                              {section.actions.map((node) =>
+                                renderComposerMenuActionNode(node),
+                              )}
+                            </React.Fragment>
+                          ))}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -6617,7 +6557,7 @@ ${instructionStarter}`
                                   }
                                   disabled={
                                     actionDisabled ||
-                                    isPromptActionLoading ||
+                                    Boolean(promptActionLoadingId) ||
                                     isStartingChat
                                   }
                                   className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 ${
@@ -6627,7 +6567,11 @@ ${instructionStarter}`
                                   } ${actionDisabled ? "cursor-not-allowed border-zinc-800 text-zinc-600" : ""}`}
                                   aria-pressed={actionIsActive}
                                 >
-                                  <action.icon className="h-3.5 w-3.5" />
+                                  {promptActionLoadingId === action.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <action.icon className="h-3.5 w-3.5" />
+                                  )}
                                   <span>{action.label}</span>
                                   {action.requiresPlan && (
                                     <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
@@ -6644,6 +6588,9 @@ ${instructionStarter}`
                         })}
                       </div>
                     </TooltipProvider>
+                    {promptActionError && (
+                      <p className="mt-2 text-xs text-amber-300">{promptActionError}</p>
+                    )}
                     {!isSpeechRecognitionSupported && (
                       <p className="mt-2 text-xs text-amber-300">
                         Voice input is unavailable in this browser. Use Chrome,
