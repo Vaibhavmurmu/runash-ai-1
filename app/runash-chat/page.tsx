@@ -288,7 +288,7 @@ export default function RunashChatPage() {
           </Avatar>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64 border-zinc-800 bg-zinc-900 text-zinc-100">
+      <DropdownMenuContent align="end" className="w-72 border-zinc-800 bg-zinc-900 text-zinc-100">
         <DropdownMenuLabel className="px-2 py-1.5">
           <p className="truncate text-sm font-medium text-zinc-100">{userDisplayName}</p>
           {userEmail ? <p className="truncate text-xs font-normal text-zinc-400">{userEmail}</p> : null}
@@ -302,7 +302,7 @@ export default function RunashChatPage() {
               <DropdownMenuItem
                 key={item.label}
                 onSelect={() => handleUserMenuNavigation(item)}
-                className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+                className="cursor-pointer py-2 focus:bg-zinc-800 focus:text-zinc-100"
               >
                 <Icon className="mr-2 h-4 w-4" />
                 {item.label}
@@ -324,7 +324,7 @@ export default function RunashChatPage() {
               <DropdownMenuItem
                 key={item.label}
                 onSelect={() => handleUserMenuNavigation(item)}
-                className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+                className="cursor-pointer py-2 focus:bg-zinc-800 focus:text-zinc-100"
               >
                 <Icon className="mr-2 h-4 w-4" />
                 {item.label}
@@ -333,62 +333,12 @@ export default function RunashChatPage() {
           })}
         </DropdownMenuGroup>
         <DropdownMenuSeparator className="bg-zinc-800" />
-        <div className="space-y-2 px-2 py-2">
-          <div className="flex items-center justify-between gap-2 rounded-md px-2 py-1 hover:bg-zinc-800/60">
-            <span className="text-xs text-zinc-400">Theme</span>
-            <select
-              value={themePreference}
-              onChange={(event) => setThemePreference(event.target.value as RunashThemePreference)}
-              className="h-7 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100 outline-none"
-              aria-label="Select theme"
-            >
-              {themeOptions.map((themeOption) => (
-                <option key={themeOption} value={themeOption}>
-                  {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center justify-between gap-2 rounded-md px-2 py-1 hover:bg-zinc-800/60">
-            <span className="text-xs text-zinc-400">Language</span>
-            <select
-              value={languagePreference}
-              onChange={(event) => setLanguagePreference(event.target.value as RunashLanguagePreference)}
-              className="h-7 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100 outline-none"
-              aria-label="Select language"
-            >
-              {languageOptions.map((languageOption) => (
-                <option key={languageOption.value} value={languageOption.value}>
-                  {languageOption.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center justify-between gap-2 rounded-md px-2 py-1 hover:bg-zinc-800/60">
-            <span className="text-xs text-zinc-400">Chat position</span>
-            <div className="inline-flex rounded-md border border-zinc-700 bg-zinc-950 p-0.5">
-              {chatPositionOptions.map((positionOption) => (
-                <button
-                  key={positionOption}
-                  type="button"
-                  onClick={() => setChatPositionPreference(positionOption)}
-                  className={`rounded px-2 py-1 text-[11px] ${
-                    chatPositionPreference === positionOption ? "bg-zinc-700 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
-                  {positionOption === "left" ? "Left" : "Right"}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-        <DropdownMenuSeparator className="bg-zinc-800" />
 
         <DropdownMenuLabel className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-zinc-400">Session</DropdownMenuLabel>
 
         <DropdownMenuItem
           onClick={() => signOutWithRedirect("/")}
-          className="cursor-pointer text-rose-300 focus:bg-rose-500/20 focus:text-rose-200"
+          className="cursor-pointer py-2 text-rose-300 focus:bg-rose-500/20 focus:text-rose-200"
         >
           <LogOut className="mr-2 h-4 w-4" />
           Sign Out
@@ -1134,15 +1084,19 @@ export default function RunashChatPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56 border-zinc-800 bg-zinc-900 text-zinc-100">
-                      {headerActions.map((action) => (
+                      {headerActions.map((action) => {
+                        const Icon = action.icon
+                        return (
                         <DropdownMenuItem
                           key={action.id}
                           onClick={() => handleHeaderActionClick(action)}
                           className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
                         >
+                          <Icon className="mr-2 h-4 w-4" aria-hidden="true" />
                           {action.label}
                         </DropdownMenuItem>
-                      ))}
+                        )
+                      })}
                       <DropdownMenuItem
                         onClick={() => router.push("/changelog")}
                         className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
@@ -1276,6 +1230,7 @@ export default function RunashChatPage() {
                       onClick={() => handleHeaderActionClick(action)}
                       aria-label={action.label}
                     >
+                      <action.icon className="mr-1.5 h-3.5 w-3.5" />
                       {action.label}
                     </Button>
                   ))}
@@ -1295,6 +1250,7 @@ export default function RunashChatPage() {
                       onClick={() => handleHeaderActionClick(action)}
                       aria-label={action.label}
                     >
+                      <action.icon className="mr-1.5 h-3.5 w-3.5" />
                       {action.label}
                     </Button>
                   ))}
