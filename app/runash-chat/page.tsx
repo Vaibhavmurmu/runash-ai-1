@@ -148,12 +148,14 @@ type HeaderAction = {
 type FeedbackMood = "positive" | "neutral" | "negative"
 type UpgradePlanId = "free" | "premium" | "team" | "business" | "enterprise"
 
-type UpgradePlan = {
+type PlanConfigurationEntry = {
   id: UpgradePlanId
   label: string
-  priceLabel: string
+  price: string
+  billingPeriod: string
   description: string
   ctaLabel: string
+  ctaHref: string
   features: string[]
 }
 
@@ -171,48 +173,75 @@ const sidebarFavoriteItems: SidebarFavoriteItem[] = [
   { id: "library", label: "Library", description: "Saved assets", icon: Library, href: "/library" },
 ]
 
-const upgradePlans: UpgradePlan[] = [
-  {
+const upgradePlanConfigurations: Record<UpgradePlanId, PlanConfigurationEntry> = {
+  free: {
     id: "free",
     label: "Free",
-    priceLabel: "$0 / month",
+    price: "$0",
+    billingPeriod: "/ month",
     description: "Try core RunAsh Chat workflows and launch your first guided tasks.",
     ctaLabel: "Stay on Free",
+    ctaHref: "/pricing?plan=free",
     features: ["Basic prompt workflows", "Limited monthly credits", "Community support"],
   },
-  {
+  premium: {
     id: "premium",
     label: "Premium",
-    priceLabel: "$29 / month",
+    price: "$29",
+    billingPeriod: "/ month",
     description: "Unlock deeper automations for growing creators and solo stores.",
     ctaLabel: "Choose Premium",
+    ctaHref: "/pricing?plan=premium",
     features: ["Higher usage limits", "Priority model access", "Email support"],
   },
-  {
+  team: {
     id: "team",
     label: "Team",
-    priceLabel: "$99 / month",
+    price: "$99",
+    billingPeriod: "/ month",
     description: "Coordinate campaigns with shared workspaces and role-based access.",
     ctaLabel: "Choose Team",
+    ctaHref: "/pricing?plan=team",
     features: ["Shared projects", "Team seats and permissions", "Workflow collaboration"],
   },
-  {
+  business: {
     id: "business",
     label: "Business",
-    priceLabel: "$299 / month",
+    price: "$299",
+    billingPeriod: "/ month",
     description: "Scale live commerce operations with advanced controls and analytics.",
     ctaLabel: "Choose Business",
+    ctaHref: "/pricing?plan=business",
     features: ["Advanced automations", "Business dashboards", "Priority onboarding"],
   },
-  {
+  enterprise: {
     id: "enterprise",
     label: "Enterprise",
-    priceLabel: "Custom pricing",
+    price: "Custom pricing",
+    billingPeriod: "",
     description: "Get custom governance, integrations, and success planning.",
     ctaLabel: "Contact Sales",
+    ctaHref: "/pricing?plan=enterprise",
     features: ["Custom integrations", "Dedicated success manager", "Enterprise security controls"],
   },
+}
+
+const defaultUpgradePlanId: UpgradePlanId = "team"
+
+const upgradePlans: PlanConfigurationEntry[] = [
+  upgradePlanConfigurations.free,
+  upgradePlanConfigurations.premium,
+  upgradePlanConfigurations.team,
+  upgradePlanConfigurations.business,
+  upgradePlanConfigurations.enterprise,
 ]
+
+const getUpgradePlanConfiguration = (planId: UpgradePlanId): PlanConfigurationEntry =>
+  upgradePlanConfigurations[planId] ?? upgradePlanConfigurations[defaultUpgradePlanId]
+
+const formatPlanPriceLabel = (plan: PlanConfigurationEntry) =>
+  plan.billingPeriod ? `${plan.price} ${plan.billingPeriod}` : plan.price
+
 
 export default function RunashChatPage() {
   const router = useRouter()
@@ -304,7 +333,7 @@ export default function RunashChatPage() {
   const primaryTabletHeaderActions = headerActions.slice(0, 2)
   const overflowTabletHeaderActions = headerActions.slice(2)
   const creditsBalanceLabel = "5.00"
-  const selectedUpgradePlan = upgradePlans.find((plan) => plan.id === selectedPlan) ?? upgradePlans[2]
+  const selectedUpgradePlan = getUpgradePlanConfiguration(selectedPlan)
 
   const userDisplayName = authenticatedUser?.name?.trim() || authenticatedUser?.email?.split("@")[0]?.trim() || "Guest User"
   const userEmail = authenticatedUser?.email?.trim() || ""
@@ -432,7 +461,7 @@ export default function RunashChatPage() {
 
   const handlePlanCtaClick = () => {
     setIsPlanActionLoading(true)
-    router.push(`/pricing?plan=${selectedPlan}`)
+    router.push(selectedUpgradePlan.ctaHref)
   }
 
   const resetFeedbackDialog = () => {
@@ -1219,7 +1248,7 @@ export default function RunashChatPage() {
               <div className="space-y-3">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-zinc-400">{selectedUpgradePlan.label} plan</p>
-                  <p className="mt-1 text-2xl font-semibold text-zinc-100">{selectedUpgradePlan.priceLabel}</p>
+                  <p className="mt-1 text-2xl font-semibold text-zinc-100">{formatPlanPriceLabel(selectedUpgradePlan)}</p>
                 </div>
                 <p className="text-sm text-zinc-300">{selectedUpgradePlan.description}</p>
                 <ul className="space-y-2">
