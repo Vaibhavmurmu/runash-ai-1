@@ -1267,7 +1267,7 @@ export default function RunashChatPage() {
           </nav>
         </TooltipProvider>
 
-        <div className="mt-5 min-h-0 flex-1 border-t border-zinc-800 pt-4">
+        <div className="mt-4 min-h-0 flex-1 border-t border-zinc-800 pt-3.5">
           <ScrollArea className="h-full">
             <div className="space-y-4 pr-2">
               {!collapsed ? (
@@ -1717,12 +1717,12 @@ export default function RunashChatPage() {
       >
         <aside
           id="runash-chat-sidebar"
-          className={`hidden h-[calc(100vh-24px)] shrink-0 rounded-xl border border-zinc-800 bg-black/70 p-3 lg:flex lg:flex-col ${
+          className={`hidden h-[calc(100vh-24px)] shrink-0 rounded-xl border border-zinc-800 bg-black/70 p-2.5 lg:flex lg:flex-col ${
             isSidebarCollapsed ? "w-16" : "w-[250px]"
           }`}
           aria-label="Sidebar"
         >
-          <div className={`mb-2 flex ${isSidebarCollapsed ? "justify-center" : "justify-end"}`}>
+          <div className={`mb-1.5 flex ${isSidebarCollapsed ? "justify-center" : "justify-end"}`}>
             <TooltipProvider delayDuration={150}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1957,10 +1957,10 @@ export default function RunashChatPage() {
               )}
             </div>
 
-            <div className="mb-4 min-h-[52px]">
+            <div className="relative z-20 mb-4 min-h-[52px]">
               {isBannerDismissed === false && (
                 <div
-                  className="rounded-lg border border-zinc-700/70 bg-zinc-900/80 px-3 py-2 text-zinc-100 backdrop-blur-sm"
+                  className="rounded-lg border border-zinc-700/70 bg-zinc-900/85 px-3 py-2 text-zinc-100 shadow-[0_10px_28px_-22px_rgba(34,211,238,0.55)] backdrop-blur-sm"
                   role="status"
                   aria-live="polite"
                 >
@@ -1993,7 +1993,7 @@ export default function RunashChatPage() {
               )}
             </div>
 
-            <header className="mb-5 flex items-start justify-between gap-3 sm:mb-6 sm:items-center">
+            <header className="relative z-10 mb-5 flex items-start justify-between gap-3 sm:mb-6 sm:items-center">
               <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
                 <div className="rounded-md bg-gradient-to-r from-cyan-500 to-blue-500 p-1.5 sm:p-2">
                   <Bot className="h-4 w-4 text-white sm:h-5 sm:w-5" />
@@ -2003,8 +2003,8 @@ export default function RunashChatPage() {
                   <h1 className="truncate text-lg font-semibold sm:text-xl">What do you want to create?</h1>
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-                <div className="hidden items-center gap-1 lg:flex">
+              <div className="flex shrink-0 items-center gap-2 sm:gap-2.5">
+                <div className="hidden items-center gap-1.5 lg:flex">
                   {headerActions.map((action) => (
                     <Button
                       key={action.id}
@@ -2024,7 +2024,7 @@ export default function RunashChatPage() {
                   ))}
                 </div>
 
-                <div className="hidden items-center gap-1 md:flex lg:hidden">
+                <div className="hidden items-center gap-1.5 md:flex lg:hidden">
                   {primaryTabletHeaderActions.map((action) => (
                     <Button
                       key={action.id}
@@ -2094,7 +2094,7 @@ export default function RunashChatPage() {
                       id={creditsPanelId}
                       role="dialog"
                       aria-label="Credit balance"
-                      className="absolute right-0 top-full z-30 mt-2 w-72 rounded-xl border border-zinc-800 bg-zinc-950/95 p-3 text-sm text-zinc-100 shadow-2xl shadow-black/40 backdrop-blur"
+                      className="absolute right-0 top-full z-30 mt-2.5 w-72 rounded-xl border border-zinc-800 bg-zinc-950/95 p-3 text-sm text-zinc-100 shadow-2xl shadow-black/40 backdrop-blur"
                     >
                       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">Credit Balance</p>
                       <div className="space-y-1.5">
@@ -2232,7 +2232,7 @@ export default function RunashChatPage() {
                     placeholder="Ask v0 to build..."
                     className="min-h-[120px] resize-none border-0 bg-transparent px-3 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-0 sm:px-4"
                   />
-                  <div className="border-t border-zinc-800 px-3 py-2 sm:px-4">
+                  <div className="border-t border-zinc-800 px-3 py-2.5 sm:px-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
                         <Bot className="h-3.5 w-3.5" />
@@ -2260,7 +2260,7 @@ export default function RunashChatPage() {
                       </DropdownMenu>
                     </div>
                   </div>
-                  <div className="border-t border-zinc-800 px-3 py-2 sm:px-4">
+                  <div className="border-t border-zinc-800 px-3 py-2.5 sm:px-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
                         <FolderKanban className="h-3.5 w-3.5" />
@@ -2271,7 +2271,7 @@ export default function RunashChatPage() {
                           <Button
                             type="button"
                             variant="ghost"
-                            className="h-8 w-full justify-between gap-1 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-xs font-normal text-zinc-300 hover:bg-zinc-800 sm:w-auto sm:min-w-[220px]"
+                            className="h-8 w-full justify-between gap-1 rounded-full border border-zinc-800 bg-zinc-900 px-3 text-xs font-normal text-zinc-300 hover:bg-zinc-800 sm:w-auto sm:min-w-[220px]"
                           >
                             <span className="truncate">{selectedProjectLabel}</span>
                             <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
@@ -2294,7 +2294,7 @@ export default function RunashChatPage() {
                       </DropdownMenu>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between border-t border-zinc-800 px-3 py-2 sm:px-4">
+                  <div className="flex items-center justify-between border-t border-zinc-800 px-3 py-2.5 sm:px-4">
                     <Button
                       type="button"
                       className="h-8 rounded-full bg-zinc-100 px-3 text-xs font-medium text-zinc-900 hover:bg-white"
@@ -2341,7 +2341,7 @@ export default function RunashChatPage() {
 
             <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
               <Card className="border-zinc-800 bg-zinc-950 p-4">
-                <div className="mb-4 flex items-center justify-between">
+                <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-sm font-medium text-zinc-100">Recent Projects</h2>
                   <button type="button" className="text-xs text-zinc-500 transition hover:text-zinc-300" onClick={() => router.push("/editor")}>
                     View All
@@ -2349,7 +2349,7 @@ export default function RunashChatPage() {
                 </div>
 
                 {loadingRecents ? (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     {Array.from({ length: 4 }).map((_, index) => (
                       <div key={`project-loading-${index}`} className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
                         <Skeleton className="mb-2 h-3 w-2/3 bg-zinc-800" />
@@ -2380,10 +2380,10 @@ export default function RunashChatPage() {
                         key={item.id}
                         type="button"
                         onClick={() => handleProjectOpen(item.id.replace("project-", ""))}
-                        className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 text-left transition hover:border-zinc-700 hover:bg-zinc-900/70"
+                        className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-2.5 text-left transition hover:border-zinc-700 hover:bg-zinc-900/70"
                       >
                         <div
-                          className={`mb-3 flex h-20 items-end rounded-md border border-zinc-700/70 bg-gradient-to-br p-2 ${projectThumbnailClasses[Number(item.id.length) % projectThumbnailClasses.length]}`}
+                          className={`mb-2.5 flex h-20 items-end rounded-md border border-zinc-700/70 bg-gradient-to-br p-2 ${projectThumbnailClasses[Number(item.id.length) % projectThumbnailClasses.length]}`}
                         >
                           <div className="rounded bg-zinc-950/70 px-1.5 py-0.5 text-[10px] text-zinc-200">Preview</div>
                         </div>
@@ -2403,19 +2403,19 @@ export default function RunashChatPage() {
               </Card>
 
               <Card className="border-zinc-800 bg-zinc-950 p-4">
-                <div className="mb-2 flex items-center justify-between">
+                <div className="mb-1.5 flex items-center justify-between">
                   <h2 className="text-sm font-medium text-zinc-100">My Chats</h2>
                   <button type="button" className="text-xs text-zinc-500 transition hover:text-zinc-300" onClick={() => router.push("/chat")}>
                     View All
                   </button>
                 </div>
-                <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-zinc-800/80 bg-zinc-900/30 px-2.5 py-1.5 text-[11px] text-zinc-500">
+                <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-zinc-800/80 bg-zinc-900/30 px-2.5 py-1.5 text-[11px] text-zinc-500">
                   <span>{loadingSession ? "Syncing previews…" : `${messagesPreview.length} preview snippets loaded`}</span>
                   {previewError ? <span className="text-amber-300">Preview unavailable</span> : <span className="text-zinc-400">Workspace sync</span>}
                 </div>
 
                 {loadingRecents ? (
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     {Array.from({ length: 6 }).map((_, index) => (
                       <div key={`chat-loading-${index}`} className="flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-900/50 px-3 py-2">
                         <Skeleton className="h-7 w-7 rounded-full bg-zinc-800" />
