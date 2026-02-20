@@ -115,7 +115,10 @@ type RenameDialogTarget = {
 type OnboardingSlide = {
   title: string
   description: string
-  imageSrc?: string
+  media: {
+    label: string
+    value: string
+  }
 }
 
 type CreditMetrics = {
@@ -205,6 +208,7 @@ const runashChatSidebarCollapsedStorageKey = "runash_chat_sidebar_collapsed"
 const runashChatBannerHiddenStorageKey = "runash_chat_banner_hidden"
 const runashChatUpdatesBannerHiddenStorageKey = "runash_chat_updates_hidden"
 const runashChatLegacyUpdatesBannerHiddenStorageKey = "runash_updates_banner_hidden"
+const runashChatUpdatesBannerSeenStorageKey = "runash_chat_updates_seen"
 const runashChatFavoritesCollapsedStorageKey = "runash_chat_favorites_collapsed"
 const runashChatRecentsCollapsedStorageKey = "runash_chat_recents_collapsed"
 const runashChatDesktopSidebarContentId = "runash-chat-desktop-sidebar-content"
@@ -316,17 +320,17 @@ const onboardingSlides: OnboardingSlide[] = [
   {
     title: "Welcome to RunAsh Chat",
     description: "Plan campaigns, build bundles, and launch storefront workflows from one assistant workspace.",
-    imageSrc: "✨",
+    media: { label: "Sparkles", value: "✨" },
   },
   {
     title: "Use guided prompts",
     description: "Start with quick actions for checkout, bundles, and post-purchase support to move faster.",
-    imageSrc: "🧭",
+    media: { label: "Compass", value: "🧭" },
   },
   {
     title: "Stay in control",
     description: "Track recents, jump back into sessions, and use the sidebar to keep launches organized.",
-    imageSrc: "🚀",
+    media: { label: "Rocket", value: "🚀" },
   },
 ]
 
@@ -1736,7 +1740,9 @@ export default function RunashChatPage() {
       localStorage.getItem(runashChatBannerHiddenStorageKey) === "true" ||
       localStorage.getItem(runashChatUpdatesBannerHiddenStorageKey) === "true" ||
       localStorage.getItem(runashChatLegacyUpdatesBannerHiddenStorageKey) === "true"
-    const hasSeenOnboarding = localStorage.getItem(runashChatOnboardingStorageKey) === "true"
+    const hasSeenOnboarding =
+      localStorage.getItem(runashChatOnboardingStorageKey) === "true" ||
+      localStorage.getItem(runashChatUpdatesBannerSeenStorageKey) === "true"
     setIsBannerDismissed(isBannerHidden || hasSeenOnboarding)
 
     if (hasSeenOnboarding) {
@@ -1786,6 +1792,13 @@ export default function RunashChatPage() {
 
   const markOnboardingSeen = () => {
     localStorage.setItem(runashChatOnboardingStorageKey, "true")
+    localStorage.setItem(runashChatUpdatesBannerSeenStorageKey, "true")
+  }
+
+  const markOnboardingDismissed = () => {
+    localStorage.setItem(runashChatBannerHiddenStorageKey, "true")
+    localStorage.setItem(runashChatUpdatesBannerHiddenStorageKey, "true")
+    localStorage.setItem(runashChatLegacyUpdatesBannerHiddenStorageKey, "true")
   }
 
   const restoreFocusToMainControls = () => {
@@ -1814,6 +1827,8 @@ export default function RunashChatPage() {
     }
 
     setIsOnboardingOpen(false)
+    setIsBannerDismissed(true)
+    markOnboardingDismissed()
   }
 
   const handleOnboardingNext = () => {
@@ -2346,9 +2361,7 @@ ${instructionStarter}` : instructionStarter
   }
 
   const dismissUpdatesBanner = () => {
-    localStorage.setItem(runashChatBannerHiddenStorageKey, "true")
-    localStorage.setItem(runashChatUpdatesBannerHiddenStorageKey, "true")
-    localStorage.setItem(runashChatLegacyUpdatesBannerHiddenStorageKey, "true")
+    markOnboardingDismissed()
     setIsBannerDismissed(true)
   }
 
@@ -2883,18 +2896,31 @@ ${instructionStarter}` : instructionStarter
       <Dialog open={isOnboardingOpen} onOpenChange={handleOnboardingOpenChange}>
         <DialogContent
           className="z-[60] w-[min(92vw,32rem)] max-w-[32rem] overflow-hidden border-zinc-800 bg-zinc-950 p-0 text-zinc-100 motion-reduce:duration-0"
+          aria-label="RunAsh chat updates"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
             focusOverlayTrigger()
           }}
         >
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-3 top-3 z-10 h-8 w-8 rounded-full text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+            onClick={() => handleOnboardingOpenChange(false)}
+            aria-label="Close updates dialog"
+          >
+            <X className="h-4 w-4" />
+          </Button>
           <div className="max-h-[min(88vh,42rem)] overflow-y-auto rounded-lg">
             <div className="h-44 bg-gradient-to-br from-cyan-500/30 via-blue-500/20 to-zinc-900 p-4 sm:p-6">
               <div
                 className="flex h-full items-center justify-center rounded-lg border border-white/10 bg-black/20 text-6xl transition-transform duration-300 motion-reduce:transition-none"
                 key={currentOnboardingSlide.title}
               >
-                <span aria-hidden>{currentOnboardingSlide.imageSrc ?? "🚀"}</span>
+                <span role="img" aria-label={currentOnboardingSlide.media.label}>
+                  {currentOnboardingSlide.media.value}
+                </span>
               </div>
             </div>
 
@@ -2905,7 +2931,7 @@ ${instructionStarter}` : instructionStarter
               </DialogHeader>
 
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2" aria-label="Onboarding progress">
+                <div className="flex items-center gap-2" aria-label="Onboarding progress" role="group">
                   {onboardingSlides.map((slide, index) => (
                     <button
                       key={slide.title}
