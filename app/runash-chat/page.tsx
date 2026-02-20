@@ -882,6 +882,19 @@ type ModalOverlayId =
 type ActiveOverlay =
   | { type: null }
   | { type: "modal"; payload: { id: ModalOverlayId } }
+  | {
+      type: "menu";
+      payload: {
+        id:
+          | "account"
+          | "mobileQuickActions"
+          | "tabletHeaderActions"
+          | "mobileHeaderActions"
+          | "modelPicker"
+          | "projectPicker";
+      };
+    }
+  | { type: "chatCardActions"; payload: { rowId: string } }
   | { type: "sidebarActionMenu"; payload: SidebarActionMenuState }
   | { type: "promptMenu" };
 
@@ -1715,6 +1728,20 @@ export default function RunashChatPage() {
     activeOverlay.payload.section === section &&
     activeOverlay.payload.rowId === rowId;
 
+  const isMenuOverlayOpen = (
+    menuId:
+      | "account"
+      | "mobileQuickActions"
+      | "tabletHeaderActions"
+      | "mobileHeaderActions"
+      | "modelPicker"
+      | "projectPicker",
+  ) => activeOverlay.type === "menu" && activeOverlay.payload.id === menuId;
+
+  const isChatCardActionsOpen = (rowId: string) =>
+    activeOverlay.type === "chatCardActions" &&
+    activeOverlay.payload.rowId === rowId;
+
   const openOverlay = (
     overlay: Exclude<ActiveOverlay, { type: null }>,
     triggerElement?: HTMLElement | null,
@@ -1753,6 +1780,26 @@ export default function RunashChatPage() {
 
   const openPromptMenu = (triggerElement?: HTMLElement | null) => {
     openOverlay({ type: "promptMenu" }, triggerElement);
+  };
+
+  const openMenuOverlay = (
+    menuId:
+      | "account"
+      | "mobileQuickActions"
+      | "tabletHeaderActions"
+      | "mobileHeaderActions"
+      | "modelPicker"
+      | "projectPicker",
+    triggerElement?: HTMLElement | null,
+  ) => {
+    openOverlay({ type: "menu", payload: { id: menuId } }, triggerElement);
+  };
+
+  const openChatCardActionsMenu = (
+    rowId: string,
+    triggerElement?: HTMLElement | null,
+  ) => {
+    openOverlay({ type: "chatCardActions", payload: { rowId } }, triggerElement);
   };
 
   const closePromptMenu = (restoreFocus = false) => {
@@ -2411,8 +2458,27 @@ export default function RunashChatPage() {
     router.push(item.href);
   };
 
+  const handleUserMenuItemSelect = (item: UserMenuItem) => {
+    if (item.onSelect) {
+      item.onSelect();
+      return;
+    }
+
+    handleUserMenuNavigation(item);
+  };
+
   const renderProfileMenu = (triggerClassName: string) => (
-    <DropdownMenu>
+    <DropdownMenu
+      open={isMenuOverlayOpen("account")}
+      onOpenChange={(open) => {
+        if (open) {
+          openMenuOverlay("account", profileMenuTriggerRef.current);
+          return;
+        }
+
+        closeOverlay(false);
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <Button
           ref={profileMenuTriggerRef}
@@ -2437,7 +2503,7 @@ export default function RunashChatPage() {
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="w-72 border-zinc-800 bg-zinc-900 text-zinc-100"
+        className="z-40 w-72 border-zinc-800 bg-zinc-900 text-zinc-100"
       >
         <DropdownMenuLabel className="px-2 py-1.5">
           <p className="truncate text-sm font-medium text-zinc-100">
@@ -2460,12 +2526,7 @@ export default function RunashChatPage() {
               <DropdownMenuItem
                 key={item.label}
                 onSelect={() => {
-                  if (item.onSelect) {
-                    item.onSelect();
-                    return;
-                  }
-
-                  handleUserMenuNavigation(item);
+                  handleUserMenuItemSelect(item);
                 }}
                 className="cursor-pointer py-2 focus:bg-zinc-800 focus:text-zinc-100"
               >
@@ -2490,7 +2551,7 @@ export default function RunashChatPage() {
             return (
               <DropdownMenuItem
                 key={item.label}
-                onSelect={() => handleUserMenuNavigation(item)}
+                onSelect={() => handleUserMenuItemSelect(item)}
                 className="cursor-pointer py-2 focus:bg-zinc-800 focus:text-zinc-100"
               >
                 <Icon className="mr-2 h-4 w-4" />
@@ -4049,6 +4110,66 @@ ${instructionStarter}`
   };
 
 
+  const handleModelSelection = (model: "v0 Mini" | "v0 Max") => {
+    setSelectedModel(model);
+    closeOverlay(false);
+    toast({
+      title: `Model switched to ${model}`,
+      description: "New prompts will use the selected model.",
+    });
+  };
+
+  const handleProjectSelection = (label: string) => {
+    setSelectedProjectLabel(label);
+    closeOverlay(false);
+  };
+
+  const handleRecentCardMenuAction = (
+    item: RecentEntity,
+    action:
+      | "open"
+      | "continue"
+      | "share"
+      | "move"
+      | "toggleFavorite"
+      | "rename"
+      | "delete",
+  ) => {
+    closeOverlay(false);
+
+    if (action === "open") {
+      handleChatOpen(item.sessionId);
+      return;
+    }
+
+    if (action === "continue") {
+      void startChatWithPrompt(`Continue chat: ${item.title}`);
+      return;
+    }
+
+    if (action === "share") {
+      handleRecentShare(item);
+      return;
+    }
+
+    if (action === "move") {
+      handleRecentMove(item);
+      return;
+    }
+
+    if (action === "toggleFavorite") {
+      void toggleRecentFavorite(item);
+      return;
+    }
+
+    if (action === "rename") {
+      handleRecentRename(item);
+      return;
+    }
+
+    handleRecentDelete(item);
+  };
+
   const renderComposerMenuActionNode = (node: ComposerMenuActionNode) => {
     if (node.children && node.children.length > 0) {
       return (
@@ -4057,7 +4178,7 @@ ${instructionStarter}`
             <node.icon className="mr-2 h-4 w-4" aria-hidden="true" />
             <span>{node.label}</span>
           </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className="w-60 border-zinc-800 bg-zinc-900 text-zinc-100">
+          <DropdownMenuSubContent className="z-40 w-60 border-zinc-800 bg-zinc-900 text-zinc-100">
             {node.children.map((child) => renderComposerMenuActionNode(child))}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
@@ -4387,7 +4508,7 @@ ${instructionStarter}`
                   <TooltipTrigger asChild>{navButton}</TooltipTrigger>
                   <TooltipContent
                     side="right"
-                    className="border-zinc-800 bg-zinc-900 text-zinc-100"
+                    className="z-40 border-zinc-800 bg-zinc-900 text-zinc-100"
                   >
                     {item.label}
                   </TooltipContent>
@@ -5769,7 +5890,7 @@ ${instructionStarter}`
                 </TooltipTrigger>
                 <TooltipContent
                   side="right"
-                  className="border-zinc-800 bg-zinc-900 text-zinc-100"
+                  className="z-40 border-zinc-800 bg-zinc-900 text-zinc-100"
                 >
                   {isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}{" "}
                   (Ctrl/Cmd+B)
@@ -5893,7 +6014,17 @@ ${instructionStarter}`
                     >
                       <Plus className="h-[18px] w-[18px] stroke-[1.75]" />
                     </Button>
-                    <DropdownMenu>
+                    <DropdownMenu
+                      open={isMenuOverlayOpen("mobileQuickActions")}
+                      onOpenChange={(open) => {
+                        if (open) {
+                          openMenuOverlay("mobileQuickActions");
+                          return;
+                        }
+
+                        closeOverlay(false);
+                      }}
+                    >
                       <DropdownMenuTrigger asChild>
                         <Button
                           size="icon"
@@ -5907,7 +6038,7 @@ ${instructionStarter}`
                       </DropdownMenuTrigger>
                       <DropdownMenuContent
                         align="end"
-                        className="w-56 border-zinc-800 bg-zinc-900 text-zinc-100"
+                        className="z-40 w-56 border-zinc-800 bg-zinc-900 text-zinc-100"
                       >
                         {headerActions.map((action) => {
                           const Icon = action.icon;
@@ -5939,7 +6070,7 @@ ${instructionStarter}`
                         {accountMenuItems.map((item) => (
                           <DropdownMenuItem
                             key={item.label}
-                            onSelect={() => handleUserMenuNavigation(item)}
+                            onSelect={() => handleUserMenuItemSelect(item)}
                             className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
                           >
                             {item.label}
@@ -6142,7 +6273,17 @@ ${instructionStarter}`
                       </Button>
                     ))}
                     {overflowTabletHeaderActions.length > 0 && (
-                      <DropdownMenu>
+                      <DropdownMenu
+                        open={isMenuOverlayOpen("tabletHeaderActions")}
+                        onOpenChange={(open) => {
+                          if (open) {
+                            openMenuOverlay("tabletHeaderActions");
+                            return;
+                          }
+
+                          closeOverlay(false);
+                        }}
+                      >
                         <DropdownMenuTrigger asChild>
                           <Button
                             size="icon"
@@ -6155,7 +6296,7 @@ ${instructionStarter}`
                         </DropdownMenuTrigger>
                         <DropdownMenuContent
                           align="end"
-                          className="border-zinc-800 bg-zinc-900 text-zinc-100"
+                          className="z-40 border-zinc-800 bg-zinc-900 text-zinc-100"
                         >
                           {overflowTabletHeaderActions.map((action) => (
                             <DropdownMenuItem
@@ -6316,7 +6457,7 @@ ${instructionStarter}`
                                 <Icon className="h-4 w-4" />
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent className="border-zinc-800 bg-zinc-900 text-zinc-100">
+                            <TooltipContent className="z-40 border-zinc-800 bg-zinc-900 text-zinc-100">
                               {action.tooltip}
                             </TooltipContent>
                           </Tooltip>
@@ -6324,7 +6465,17 @@ ${instructionStarter}`
                       })}
 
                       {overflowMobileHeaderActions.length > 0 && (
-                        <DropdownMenu>
+                        <DropdownMenu
+                          open={isMenuOverlayOpen("mobileHeaderActions")}
+                          onOpenChange={(open) => {
+                            if (open) {
+                              openMenuOverlay("mobileHeaderActions");
+                              return;
+                            }
+
+                            closeOverlay(false);
+                          }}
+                        >
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <DropdownMenuTrigger asChild>
@@ -6338,13 +6489,13 @@ ${instructionStarter}`
                                 </Button>
                               </DropdownMenuTrigger>
                             </TooltipTrigger>
-                            <TooltipContent className="border-zinc-800 bg-zinc-900 text-zinc-100">
+                            <TooltipContent className="z-40 border-zinc-800 bg-zinc-900 text-zinc-100">
                               More actions
                             </TooltipContent>
                           </Tooltip>
                           <DropdownMenuContent
                             align="end"
-                            className="border-zinc-800 bg-zinc-900 text-zinc-100"
+                            className="z-40 border-zinc-800 bg-zinc-900 text-zinc-100"
                           >
                             {overflowMobileHeaderActions.map((action) => (
                               <DropdownMenuItem
@@ -6584,7 +6735,7 @@ ${instructionStarter}`
                                   )}
                                 </button>
                               </TooltipTrigger>
-                              <TooltipContent className="border-zinc-800 bg-zinc-900 text-zinc-100">
+                              <TooltipContent className="z-40 border-zinc-800 bg-zinc-900 text-zinc-100">
                                 {getPromptActionTooltip(action)}
                               </TooltipContent>
                             </Tooltip>
@@ -6629,7 +6780,17 @@ ${instructionStarter}`
                         <Bot className="h-3.5 w-3.5" />
                         Model
                       </div>
-                      <DropdownMenu>
+                      <DropdownMenu
+                        open={isMenuOverlayOpen("modelPicker")}
+                        onOpenChange={(open) => {
+                          if (open) {
+                            openMenuOverlay("modelPicker", mainControlsRef.current);
+                            return;
+                          }
+
+                          closeOverlay(false);
+                        }}
+                      >
                         <DropdownMenuTrigger asChild>
                           <Button
                             type="button"
@@ -6642,16 +6803,16 @@ ${instructionStarter}`
                         </DropdownMenuTrigger>
                         <DropdownMenuContent
                           align="end"
-                          className="border-zinc-800 bg-zinc-900 text-zinc-100"
+                          className="z-40 border-zinc-800 bg-zinc-900 text-zinc-100"
                         >
                           <DropdownMenuItem
-                            onClick={() => setSelectedModel("v0 Mini")}
+                            onClick={() => handleModelSelection("v0 Mini")}
                             className="focus:bg-zinc-800 focus:text-zinc-100"
                           >
                             v0 Mini
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            onClick={() => setSelectedModel("v0 Max")}
+                            onClick={() => handleModelSelection("v0 Max")}
                             className="focus:bg-zinc-800 focus:text-zinc-100"
                           >
                             v0 Max
@@ -6666,7 +6827,17 @@ ${instructionStarter}`
                         <FolderKanban className="h-3.5 w-3.5" />
                         Project
                       </div>
-                      <DropdownMenu>
+                      <DropdownMenu
+                        open={isMenuOverlayOpen("projectPicker")}
+                        onOpenChange={(open) => {
+                          if (open) {
+                            openMenuOverlay("projectPicker", mainControlsRef.current);
+                            return;
+                          }
+
+                          closeOverlay(false);
+                        }}
+                      >
                         <DropdownMenuTrigger asChild>
                           <Button
                             type="button"
@@ -6681,12 +6852,10 @@ ${instructionStarter}`
                         </DropdownMenuTrigger>
                         <DropdownMenuContent
                           align="end"
-                          className="border-zinc-800 bg-zinc-900 text-zinc-100"
+                          className="z-40 border-zinc-800 bg-zinc-900 text-zinc-100"
                         >
                           <DropdownMenuItem
-                            onClick={() =>
-                              setSelectedProjectLabel("Select a Project")
-                            }
+                            onClick={() => handleProjectSelection("Select a Project")}
                             className="focus:bg-zinc-800 focus:text-zinc-100"
                           >
                             Select a Project
@@ -6694,9 +6863,7 @@ ${instructionStarter}`
                           {recentProjectItems.slice(0, 5).map((project) => (
                             <DropdownMenuItem
                               key={project.id}
-                              onClick={() =>
-                                setSelectedProjectLabel(project.title)
-                              }
+                              onClick={() => handleProjectSelection(project.title)}
                               className="focus:bg-zinc-800 focus:text-zinc-100"
                             >
                               {project.title}
@@ -7092,7 +7259,17 @@ ${instructionStarter}`
                             }`}
                           />
                         </div>
-                        <DropdownMenu>
+                        <DropdownMenu
+                          open={isChatCardActionsOpen(item.id)}
+                          onOpenChange={(open) => {
+                            if (open) {
+                              openChatCardActionsMenu(item.id);
+                              return;
+                            }
+
+                            closeOverlay(false);
+                          }}
+                        >
                           <DropdownMenuTrigger asChild>
                             <button
                               type="button"
@@ -7108,19 +7285,61 @@ ${instructionStarter}`
                           >
                             <DropdownMenuItem
                               className="cursor-pointer rounded-sm px-2.5 py-1.5 focus:bg-zinc-800 focus:text-zinc-100"
-                              onClick={() => handleChatOpen(item.sessionId)}
+                              onClick={() =>
+                                handleRecentCardMenuAction(item, "open")
+                              }
                             >
                               Open chat
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="cursor-pointer rounded-sm px-2.5 py-1.5 focus:bg-zinc-800 focus:text-zinc-100"
                               onClick={() =>
-                                void startChatWithPrompt(
-                                  `Continue chat: ${item.title}`,
-                                )
+                                handleRecentCardMenuAction(item, "continue")
                               }
                             >
                               Continue
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer rounded-sm px-2.5 py-1.5 focus:bg-zinc-800 focus:text-zinc-100"
+                              onClick={() =>
+                                handleRecentCardMenuAction(item, "share")
+                              }
+                            >
+                              Share
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer rounded-sm px-2.5 py-1.5 focus:bg-zinc-800 focus:text-zinc-100"
+                              onClick={() =>
+                                handleRecentCardMenuAction(item, "move")
+                              }
+                            >
+                              Move...
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer rounded-sm px-2.5 py-1.5 focus:bg-zinc-800 focus:text-zinc-100"
+                              onClick={() =>
+                                handleRecentCardMenuAction(item, "toggleFavorite")
+                              }
+                            >
+                              {isRecentFavorited(item)
+                                ? "Remove from Favorites"
+                                : "Add to Favorites"}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer rounded-sm px-2.5 py-1.5 focus:bg-zinc-800 focus:text-zinc-100"
+                              onClick={() =>
+                                handleRecentCardMenuAction(item, "rename")
+                              }
+                            >
+                              Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer rounded-sm px-2.5 py-1.5 text-red-300 focus:bg-red-950/60 focus:text-red-200"
+                              onClick={() =>
+                                handleRecentCardMenuAction(item, "delete")
+                              }
+                            >
+                              Delete
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
