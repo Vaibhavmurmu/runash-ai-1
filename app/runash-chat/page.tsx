@@ -48,8 +48,6 @@ import {
   Search,
   Smile,
   Settings,
-  ShieldCheck,
-  ShoppingCart,
   Sparkles,
   User,
   Meh,
@@ -1584,28 +1582,69 @@ export default function RunashChatPage() {
                     placeholder="Ask v0 to build..."
                     className="min-h-[120px] resize-none border-0 bg-transparent px-3 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-0 sm:px-4"
                   />
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-800 px-3 py-2 sm:px-4">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="h-8 max-w-[200px] rounded-full border border-zinc-700 bg-zinc-950 px-3 text-xs font-medium text-zinc-200 hover:bg-zinc-800"
-                        >
-                          <span className="truncate">{selectedModel}</span>
-                          <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="border-zinc-800 bg-zinc-900 text-zinc-100">
-                        <DropdownMenuItem onClick={() => setSelectedModel("v0 Mini")} className="focus:bg-zinc-800 focus:text-zinc-100">
-                          v0 Mini
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setSelectedModel("v0 Max")} className="focus:bg-zinc-800 focus:text-zinc-100">
-                          v0 Max
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-
+                  <div className="border-t border-zinc-800 px-3 py-2 sm:px-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
+                        <Bot className="h-3.5 w-3.5" />
+                        Model
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="h-8 max-w-[220px] rounded-full border border-zinc-700 bg-zinc-950 px-3 text-xs font-medium text-zinc-200 hover:bg-zinc-800"
+                          >
+                            <span className="truncate">{selectedModel}</span>
+                            <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="border-zinc-800 bg-zinc-900 text-zinc-100">
+                          <DropdownMenuItem onClick={() => setSelectedModel("v0 Mini")} className="focus:bg-zinc-800 focus:text-zinc-100">
+                            v0 Mini
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setSelectedModel("v0 Max")} className="focus:bg-zinc-800 focus:text-zinc-100">
+                            v0 Max
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                  <div className="border-t border-zinc-800 px-3 py-2 sm:px-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
+                        <FolderKanban className="h-3.5 w-3.5" />
+                        Project
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="h-8 w-full justify-between gap-1 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-xs font-normal text-zinc-300 hover:bg-zinc-800 sm:w-auto sm:min-w-[220px]"
+                          >
+                            <span className="truncate">{selectedProjectLabel}</span>
+                            <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="border-zinc-800 bg-zinc-900 text-zinc-100">
+                          <DropdownMenuItem onClick={() => setSelectedProjectLabel("Select a Project")} className="focus:bg-zinc-800 focus:text-zinc-100">
+                            Select a Project
+                          </DropdownMenuItem>
+                          {recentProjectItems.slice(0, 5).map((project) => (
+                            <DropdownMenuItem
+                              key={project.id}
+                              onClick={() => setSelectedProjectLabel(project.title)}
+                              className="focus:bg-zinc-800 focus:text-zinc-100"
+                            >
+                              {project.title}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-zinc-800 px-3 py-2 sm:px-4">
                     <Button
                       type="button"
                       className="h-8 rounded-full bg-zinc-100 px-3 text-xs font-medium text-zinc-900 hover:bg-white"
@@ -1616,34 +1655,7 @@ export default function RunashChatPage() {
                       Send
                       <ArrowRight className="h-4 w-4" />
                     </Button>
-                  </div>
-                  <div className="border-t border-zinc-800 px-3 py-2 sm:px-4">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="h-8 w-full justify-between gap-1 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-xs font-normal text-zinc-300 hover:bg-zinc-800 sm:w-auto sm:min-w-[220px]"
-                        >
-                          <span className="truncate">{selectedProjectLabel}</span>
-                          <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="border-zinc-800 bg-zinc-900 text-zinc-100">
-                        <DropdownMenuItem onClick={() => setSelectedProjectLabel("Select a Project")} className="focus:bg-zinc-800 focus:text-zinc-100">
-                          Select a Project
-                        </DropdownMenuItem>
-                        {recentProjectItems.slice(0, 5).map((project) => (
-                          <DropdownMenuItem
-                            key={project.id}
-                            onClick={() => setSelectedProjectLabel(project.title)}
-                            className="focus:bg-zinc-800 focus:text-zinc-100"
-                          >
-                            {project.title}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <p className="hidden text-[11px] text-zinc-500 sm:block">Press Enter to send, Shift+Enter for a new line.</p>
                   </div>
                 </div>
               </div>
@@ -1676,51 +1688,7 @@ export default function RunashChatPage() {
               )}
             </Card>
 
-            <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-2">
-              <Card className="border-zinc-800 bg-zinc-950 p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <h2 className="text-sm font-medium text-zinc-100">Recent chats</h2>
-                  <button
-                    type="button"
-                    className="text-xs text-zinc-500 transition hover:text-zinc-300"
-                    onClick={() => router.push("/chat")}
-                  >
-                    View all
-                  </button>
-                </div>
-                <ScrollArea className="h-[260px]">
-                  <div className="space-y-2 pr-2">
-                    {loadingSession && <div className="text-sm text-zinc-500">Loading preview…</div>}
-                    {!loadingSession && previewError && <div className="text-sm text-amber-400">{previewError}</div>}
-                    {!loadingSession && !previewError && messagesPreview.length === 0 && (
-                      <div className="text-sm text-zinc-500">No messages yet. Start a chat to see history.</div>
-                    )}
-                    {messagesPreview.map((message) => (
-                      <div key={message.id} className="rounded-md border border-zinc-800 bg-zinc-900 p-2">
-                        <div className="mb-1 text-xs font-medium text-cyan-400">{message.role === "assistant" ? "RunAsh Agent" : "You"}</div>
-                        <p className="line-clamp-2 text-xs text-zinc-300">{message.content}</p>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </Card>
-
-              <Card className="border-zinc-800 bg-zinc-950 p-4">
-                <h2 className="mb-3 text-sm font-medium text-zinc-100">Commerce assistant modes</h2>
-                <ul className="space-y-2 text-sm text-zinc-300">
-                  <li className="flex items-center gap-2"><ShoppingCart className="h-4 w-4 text-emerald-400" /> Product discovery & bundling</li>
-                  <li className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-blue-400" /> Checkout guidance</li>
-                  <li className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-green-400" /> Safe payment handoff</li>
-                  <li className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-orange-400" /> Personalized upsells</li>
-                </ul>
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                  <Button variant="outline" className="border-zinc-700 bg-zinc-900 text-zinc-100" onClick={() => router.push("/payment/runash-pay")}>RunAsh Pay</Button>
-                  <Button className="bg-zinc-100 text-zinc-900 hover:bg-white" onClick={() => startChatWithPrompt("Help me complete checkout with best payment option and order confirmation steps.")}>Launch flow</Button>
-                </div>
-              </Card>
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
               <Card className="border-zinc-800 bg-zinc-950 p-4">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="text-sm font-medium text-zinc-100">Recent Projects</h2>
@@ -1784,11 +1752,15 @@ export default function RunashChatPage() {
               </Card>
 
               <Card className="border-zinc-800 bg-zinc-950 p-4">
-                <div className="mb-4 flex items-center justify-between">
+                <div className="mb-2 flex items-center justify-between">
                   <h2 className="text-sm font-medium text-zinc-100">My Chats</h2>
                   <button type="button" className="text-xs text-zinc-500 transition hover:text-zinc-300" onClick={() => router.push("/chat")}>
                     View All
                   </button>
+                </div>
+                <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-zinc-800/80 bg-zinc-900/30 px-2.5 py-1.5 text-[11px] text-zinc-500">
+                  <span>{loadingSession ? "Syncing previews…" : `${messagesPreview.length} preview snippets loaded`}</span>
+                  {previewError ? <span className="text-amber-300">Preview unavailable</span> : <span className="text-zinc-400">Workspace sync</span>}
                 </div>
 
                 {loadingRecents ? (
@@ -1834,8 +1806,11 @@ export default function RunashChatPage() {
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-xs text-zinc-300">RunAsh Agent</p>
                             <p className="truncate text-[11px] text-zinc-500">{item.title}</p>
+                            <div className="mt-1 flex items-center gap-2 text-[10px] text-zinc-500">
+                              <span className="rounded border border-zinc-700 px-1.5 py-0.5">{getRecentStatus(item.updatedAt)}</span>
+                              <span>{formatRecentTimestamp(item.updatedAt)}</span>
+                            </div>
                           </div>
-                          <p className="shrink-0 text-[11px] text-zinc-500">{formatRecentTimestamp(item.updatedAt).replace("Updated ", "")}</p>
                         </button>
                         <div className="relative mr-1 h-7 w-7">
                           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800 text-[10px] font-medium text-zinc-300">
