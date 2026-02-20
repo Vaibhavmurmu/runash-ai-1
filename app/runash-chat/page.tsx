@@ -187,6 +187,7 @@ export default function RunashChatPage() {
   const [onboardingStep, setOnboardingStep] = useState(0)
   const [isBannerDismissed, setIsBannerDismissed] = useState<boolean | null>(null)
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false)
+  const [isReferDialogOpen, setIsReferDialogOpen] = useState(false)
   const [feedbackText, setFeedbackText] = useState("")
   const [feedbackMood, setFeedbackMood] = useState<FeedbackMood | null>(null)
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false)
@@ -210,6 +211,9 @@ export default function RunashChatPage() {
   const isLastOnboardingStep = onboardingStep === onboardingSlides.length - 1
   const currentOnboardingSlide = onboardingSlides[onboardingStep]
 
+  const authenticatedUser = session?.user
+  const isAuthenticated = authStatus === "authenticated" && Boolean(authenticatedUser)
+
   const headerActions: HeaderAction[] = [
     {
       id: "upgrade",
@@ -230,18 +234,23 @@ export default function RunashChatPage() {
       label: "Refer",
       tooltip: "Refer a friend or team",
       icon: Sparkles,
-      onClick: () => router.push("/settings?section=usage&panel=refer-earn"),
+      onClick: () => {
+        if (isAuthenticated) {
+          router.push("/settings?section=usage&panel=refer-earn")
+          return
+        }
+
+        setIsReferDialogOpen(true)
+      },
     },
   ]
 
-  const primaryMobileHeaderActions = headerActions.slice(0, 2)
-  const overflowMobileHeaderActions = headerActions.slice(2)
-  const primaryTabletHeaderActions = headerActions.slice(0, 1)
-  const overflowTabletHeaderActions = headerActions.slice(1)
+  const primaryMobileHeaderActions = headerActions.slice(0, 1)
+  const overflowMobileHeaderActions = headerActions.slice(1)
+  const primaryTabletHeaderActions = headerActions.slice(0, 2)
+  const overflowTabletHeaderActions = headerActions.slice(2)
   const creditsBalanceLabel = "5.00"
 
-  const authenticatedUser = session?.user
-  const isAuthenticated = authStatus === "authenticated" && Boolean(authenticatedUser)
   const userDisplayName = authenticatedUser?.name?.trim() || authenticatedUser?.email?.split("@")[0]?.trim() || "Guest User"
   const userEmail = authenticatedUser?.email?.trim() || ""
   const userAvatar = authenticatedUser?.image?.trim() || ""
@@ -1084,6 +1093,31 @@ export default function RunashChatPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={isReferDialogOpen} onOpenChange={setIsReferDialogOpen}>
+        <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Refer & Earn</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Your referral dashboard is available after sign in. Create a referral link, track rewards, and manage invites from your usage settings.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:justify-end">
+            <Button type="button" variant="outline" onClick={() => setIsReferDialogOpen(false)}>
+              Maybe later
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setIsReferDialogOpen(false)
+                router.push("/login")
+              }}
+            >
+              Sign in to continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div
         className={`mx-auto flex w-full max-w-[1400px] gap-4 px-3 py-3 ${chatPositionPreference === "right" ? "lg:flex-row-reverse" : "lg:flex-row"}`}
       >
@@ -1493,14 +1527,6 @@ export default function RunashChatPage() {
                           <TooltipContent className="border-zinc-800 bg-zinc-900 text-zinc-100">More actions</TooltipContent>
                         </Tooltip>
                         <DropdownMenuContent align="end" className="border-zinc-800 bg-zinc-900 text-zinc-100">
-                          <DropdownMenuItem
-                            onClick={handleOpenOnboardingDialog}
-                            className="focus:bg-zinc-800 focus:text-zinc-100"
-                          >
-                            <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
-                            Credits: {creditsBalanceLabel}
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator className="bg-zinc-800" />
                           {overflowMobileHeaderActions.map((action) => (
                             <DropdownMenuItem
                               key={action.id}
@@ -1511,6 +1537,14 @@ export default function RunashChatPage() {
                               {action.label}
                             </DropdownMenuItem>
                           ))}
+                          <DropdownMenuSeparator className="bg-zinc-800" />
+                          <DropdownMenuItem
+                            onClick={handleOpenOnboardingDialog}
+                            className="focus:bg-zinc-800 focus:text-zinc-100"
+                          >
+                            <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
+                            Credits: {creditsBalanceLabel}
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     )}
