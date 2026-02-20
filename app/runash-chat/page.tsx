@@ -143,6 +143,7 @@ const runashChatMobileSidebarId = "runash-chat-mobile-sidebar"
 const runashChatThemeStorageKey = "runash_chat_preference_theme"
 const runashChatLanguageStorageKey = "runash_chat_preference_language"
 const runashChatPositionStorageKey = "runash_chat_preference_chat_position"
+const runashChatSettingsStorageKey = "runash_chat_settings"
 
 const themeOptions = ["system", "dark", "light"] as const
 const languageOptions = [
@@ -153,10 +154,36 @@ const languageOptions = [
   { value: "hi", label: "हिन्दी" },
 ] as const
 const chatPositionOptions = ["left", "right"] as const
+const accentColorOptions = ["violet", "blue", "emerald"] as const
+const spokenLanguageOptions = ["en-US", "en-IN", "es-ES"] as const
+const voiceOptions = ["alloy", "verse", "willow"] as const
 
 type RunashThemePreference = (typeof themeOptions)[number]
 type RunashLanguagePreference = (typeof languageOptions)[number]["value"]
 type RunashChatPositionPreference = (typeof chatPositionOptions)[number]
+type RunashAccentColorPreference = (typeof accentColorOptions)[number]
+type RunashSpokenLanguagePreference = (typeof spokenLanguageOptions)[number]
+type RunashVoicePreference = (typeof voiceOptions)[number]
+
+type RunashGeneralSettings = {
+  appearance: RunashThemePreference
+  accentColor: RunashAccentColorPreference
+  language: RunashLanguagePreference
+  spokenLanguage: RunashSpokenLanguagePreference
+  voice: RunashVoicePreference
+  separateVoiceEnabled: boolean
+  showAdditionalModels: boolean
+}
+
+const defaultRunashGeneralSettings: RunashGeneralSettings = {
+  appearance: "system",
+  accentColor: "violet",
+  language: "en",
+  spokenLanguage: "en-US",
+  voice: "alloy",
+  separateVoiceEnabled: false,
+  showAdditionalModels: false,
+}
 
 const isValidThemePreference = (value: string | null): value is RunashThemePreference =>
   Boolean(value && themeOptions.includes(value as RunashThemePreference))
@@ -166,6 +193,55 @@ const isValidLanguagePreference = (value: string | null): value is RunashLanguag
 
 const isValidChatPositionPreference = (value: string | null): value is RunashChatPositionPreference =>
   Boolean(value && chatPositionOptions.includes(value as RunashChatPositionPreference))
+
+const isValidAccentColorPreference = (value: unknown): value is RunashAccentColorPreference =>
+  typeof value === "string" && accentColorOptions.includes(value as RunashAccentColorPreference)
+
+const isValidSpokenLanguagePreference = (value: unknown): value is RunashSpokenLanguagePreference =>
+  typeof value === "string" && spokenLanguageOptions.includes(value as RunashSpokenLanguagePreference)
+
+const isValidVoicePreference = (value: unknown): value is RunashVoicePreference =>
+  typeof value === "string" && voiceOptions.includes(value as RunashVoicePreference)
+
+const parseRunashGeneralSettings = (raw: string | null): { settings: RunashGeneralSettings; isValid: boolean } => {
+  if (!raw) {
+    return { settings: defaultRunashGeneralSettings, isValid: true }
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<RunashGeneralSettings>
+    const normalizedSettings: RunashGeneralSettings = {
+      appearance: isValidThemePreference(parsed.appearance ?? null) ? parsed.appearance : defaultRunashGeneralSettings.appearance,
+      accentColor: isValidAccentColorPreference(parsed.accentColor) ? parsed.accentColor : defaultRunashGeneralSettings.accentColor,
+      language: isValidLanguagePreference(parsed.language ?? null) ? parsed.language : defaultRunashGeneralSettings.language,
+      spokenLanguage: isValidSpokenLanguagePreference(parsed.spokenLanguage)
+        ? parsed.spokenLanguage
+        : defaultRunashGeneralSettings.spokenLanguage,
+      voice: isValidVoicePreference(parsed.voice) ? parsed.voice : defaultRunashGeneralSettings.voice,
+      separateVoiceEnabled:
+        typeof parsed.separateVoiceEnabled === "boolean"
+          ? parsed.separateVoiceEnabled
+          : defaultRunashGeneralSettings.separateVoiceEnabled,
+      showAdditionalModels:
+        typeof parsed.showAdditionalModels === "boolean"
+          ? parsed.showAdditionalModels
+          : defaultRunashGeneralSettings.showAdditionalModels,
+    }
+
+    const isValid =
+      normalizedSettings.appearance === parsed.appearance &&
+      normalizedSettings.accentColor === parsed.accentColor &&
+      normalizedSettings.language === parsed.language &&
+      normalizedSettings.spokenLanguage === parsed.spokenLanguage &&
+      normalizedSettings.voice === parsed.voice &&
+      normalizedSettings.separateVoiceEnabled === parsed.separateVoiceEnabled &&
+      normalizedSettings.showAdditionalModels === parsed.showAdditionalModels
+
+    return { settings: normalizedSettings, isValid }
+  } catch {
+    return { settings: defaultRunashGeneralSettings, isValid: false }
+  }
+}
 
 const onboardingSlides: OnboardingSlide[] = [
   {
@@ -400,13 +476,7 @@ export default function RunashChatPage() {
   const [redeemCodeError, setRedeemCodeError] = useState<string | null>(null)
   const [isRedeemingCode, setIsRedeemingCode] = useState(false)
   const [activeSettingsSection, setActiveSettingsSection] = useState<SettingsSection>("General")
-  const [appearancePreference, setAppearancePreference] = useState<RunashThemePreference>("system")
-  const [accentColorPreference, setAccentColorPreference] = useState("violet")
-  const [settingsLanguagePreference, setSettingsLanguagePreference] = useState<RunashLanguagePreference>("en")
-  const [spokenLanguagePreference, setSpokenLanguagePreference] = useState("en-US")
-  const [voicePreference, setVoicePreference] = useState("alloy")
-  const [isSeparateVoiceEnabled, setIsSeparateVoiceEnabled] = useState(false)
-  const [isAdditionalModelsShown, setIsAdditionalModelsShown] = useState(false)
+  const [generalSettings, setGeneralSettings] = useState<RunashGeneralSettings>(defaultRunashGeneralSettings)
   const upgradeCtaClassName =
     "border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900 focus-visible:ring-1 focus-visible:ring-zinc-500"
   const creditsPanelId = "runash-chat-credits-panel"
@@ -890,6 +960,14 @@ export default function RunashChatPage() {
 
     const storedChatPositionPreference = localStorage.getItem(runashChatPositionStorageKey)
     setChatPositionPreference(isValidChatPositionPreference(storedChatPositionPreference) ? storedChatPositionPreference : "left")
+
+    const storedGeneralSettings = localStorage.getItem(runashChatSettingsStorageKey)
+    const { settings: restoredGeneralSettings, isValid } = parseRunashGeneralSettings(storedGeneralSettings)
+    if (!isValid) {
+      localStorage.setItem(runashChatSettingsStorageKey, JSON.stringify(restoredGeneralSettings))
+    }
+    setGeneralSettings(restoredGeneralSettings)
+    setTheme(restoredGeneralSettings.appearance)
   }, [setTheme])
 
   useEffect(() => {
@@ -904,6 +982,14 @@ export default function RunashChatPage() {
   useEffect(() => {
     localStorage.setItem(runashChatPositionStorageKey, chatPositionPreference)
   }, [chatPositionPreference])
+
+  useEffect(() => {
+    localStorage.setItem(runashChatSettingsStorageKey, JSON.stringify(generalSettings))
+  }, [generalSettings])
+
+  useEffect(() => {
+    setTheme(generalSettings.appearance)
+  }, [generalSettings.appearance, setTheme])
 
   const markOnboardingSeen = () => {
     localStorage.setItem(runashChatOnboardingStorageKey, "true")
@@ -1631,7 +1717,12 @@ export default function RunashChatPage() {
                   <div className="space-y-5">
                     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
                       <span className="text-zinc-200">Appearance</span>
-                      <Select value={appearancePreference} onValueChange={(value) => setAppearancePreference(value as RunashThemePreference)}>
+                      <Select
+                        value={generalSettings.appearance}
+                        onValueChange={(value) =>
+                          setGeneralSettings((prev) => ({ ...prev, appearance: value as RunashThemePreference }))
+                        }
+                      >
                         <SelectTrigger className="h-8 w-[170px] border-zinc-700 bg-zinc-900 text-zinc-100">
                           <SelectValue />
                         </SelectTrigger>
@@ -1645,7 +1736,12 @@ export default function RunashChatPage() {
 
                     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
                       <span className="text-zinc-200">Accent color</span>
-                      <Select value={accentColorPreference} onValueChange={setAccentColorPreference}>
+                      <Select
+                        value={generalSettings.accentColor}
+                        onValueChange={(value) =>
+                          setGeneralSettings((prev) => ({ ...prev, accentColor: value as RunashAccentColorPreference }))
+                        }
+                      >
                         <SelectTrigger className="h-8 w-[170px] border-zinc-700 bg-zinc-900 text-zinc-100">
                           <SelectValue />
                         </SelectTrigger>
@@ -1660,8 +1756,10 @@ export default function RunashChatPage() {
                     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
                       <span className="text-zinc-200">Language</span>
                       <Select
-                        value={settingsLanguagePreference}
-                        onValueChange={(value) => setSettingsLanguagePreference(value as RunashLanguagePreference)}
+                        value={generalSettings.language}
+                        onValueChange={(value) =>
+                          setGeneralSettings((prev) => ({ ...prev, language: value as RunashLanguagePreference }))
+                        }
                       >
                         <SelectTrigger className="h-8 w-[170px] border-zinc-700 bg-zinc-900 text-zinc-100">
                           <SelectValue />
@@ -1679,7 +1777,12 @@ export default function RunashChatPage() {
                         <p className="text-zinc-200">Spoken language</p>
                         <p className="text-xs text-zinc-500">Controls transcription and voice response language defaults.</p>
                       </div>
-                      <Select value={spokenLanguagePreference} onValueChange={setSpokenLanguagePreference}>
+                      <Select
+                        value={generalSettings.spokenLanguage}
+                        onValueChange={(value) =>
+                          setGeneralSettings((prev) => ({ ...prev, spokenLanguage: value as RunashSpokenLanguagePreference }))
+                        }
+                      >
                         <SelectTrigger className="h-8 w-[170px] border-zinc-700 bg-zinc-900 text-zinc-100">
                           <SelectValue />
                         </SelectTrigger>
@@ -1694,7 +1797,12 @@ export default function RunashChatPage() {
                     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
                       <span className="text-zinc-200">Voice</span>
                       <div className="flex items-center gap-2">
-                        <Select value={voicePreference} onValueChange={setVoicePreference}>
+                        <Select
+                          value={generalSettings.voice}
+                          onValueChange={(value) =>
+                            setGeneralSettings((prev) => ({ ...prev, voice: value as RunashVoicePreference }))
+                          }
+                        >
                           <SelectTrigger className="h-8 w-[124px] border-zinc-700 bg-zinc-900 text-zinc-100">
                             <SelectValue />
                           </SelectTrigger>
@@ -1715,12 +1823,18 @@ export default function RunashChatPage() {
                         <p className="text-zinc-200">Separate Voice</p>
                         <p className="text-xs text-zinc-500">Use a distinct voice profile for generated speech output.</p>
                       </div>
-                      <Switch checked={isSeparateVoiceEnabled} onCheckedChange={setIsSeparateVoiceEnabled} />
+                      <Switch
+                        checked={generalSettings.separateVoiceEnabled}
+                        onCheckedChange={(checked) => setGeneralSettings((prev) => ({ ...prev, separateVoiceEnabled: checked }))}
+                      />
                     </div>
 
                     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
                       <span className="text-zinc-200">Show additional models</span>
-                      <Switch checked={isAdditionalModelsShown} onCheckedChange={setIsAdditionalModelsShown} />
+                      <Switch
+                        checked={generalSettings.showAdditionalModels}
+                        onCheckedChange={(checked) => setGeneralSettings((prev) => ({ ...prev, showAdditionalModels: checked }))}
+                      />
                     </div>
                   </div>
                 ) : (
