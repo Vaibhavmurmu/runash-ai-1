@@ -174,6 +174,15 @@ type OnboardingQuickCard = {
   icon: React.ComponentType<{ className?: string }>;
 };
 
+type PromptSuggestionCard = {
+  id: string;
+  title: string;
+  guidance: string;
+  ctaText: string;
+  promptPayload: string;
+  icon: React.ComponentType<{ className?: string }>;
+};
+
 type CreditMetrics = {
   gifted: number;
   monthly: number;
@@ -278,6 +287,8 @@ const runashChatThemeStorageKey = "runash_chat_preference_theme";
 const runashChatLanguageStorageKey = "runash_chat_preference_language";
 const runashChatPositionStorageKey = "runash_chat_preference_chat_position";
 const runashChatSettingsStorageKey = "runash_chat_settings";
+const runashChatPromptSuggestionDismissedStorageKey =
+  "runash_chat_prompt_suggestion_dismissed";
 
 const interactiveActionInventory: Record<string, InteractiveActionKind> = {
   "prompt.create": "api-call",
@@ -612,6 +623,49 @@ type PromptActionConfig = {
 type StartChatMetadata = {
   actionId?: PromptActionId;
 };
+
+const promptSuggestionCards: PromptSuggestionCard[] = [
+  {
+    id: "showcase-video",
+    title: "Real-time product demo showcase video",
+    guidance:
+      "Generate a polished live-demo script with camera cues, highlights, and audience callouts.",
+    ctaText: "Create showcase prompt",
+    promptPayload:
+      "Create a real-time product demonstration showcase video plan with timeline beats, presenter script, feature close-ups, and a final CTA to buy.",
+    icon: Play,
+  },
+  {
+    id: "agentic-runbook",
+    title: "Agentic live commerce assistant runbook",
+    guidance:
+      "Build an operator-ready runbook for launch, moderation, engagement, and escalation workflows.",
+    ctaText: "Draft runbook",
+    promptPayload:
+      "Draft an agentic live commerce assistant runbook covering pre-live setup, audience engagement loops, moderation guardrails, fallback handling, and post-live reporting.",
+    icon: Rocket,
+  },
+  {
+    id: "interactive-qa",
+    title: "Interactive product Q&A stream",
+    guidance:
+      "Design an interactive Q&A format with question routing, answer templates, and pacing cues.",
+    ctaText: "Build Q&A flow",
+    promptPayload:
+      "Design an interactive product Q&A live stream format with segments, audience question prompts, concise answer templates, and follow-up engagement hooks.",
+    icon: MessageSquare,
+  },
+  {
+    id: "checkout-assist",
+    title: "Checkout-assist live flow",
+    guidance:
+      "Create a conversion-focused checkout assist script with objection handling and urgency timing.",
+    ctaText: "Plan checkout assist",
+    promptPayload:
+      "Create a checkout-assist live commerce flow that guides viewers from intent to payment completion, including objection handling, trust signals, and conversion checkpoints.",
+    icon: CreditCard,
+  },
+];
 
 const promptActionConfigs: PromptActionConfig[] = [
   {
@@ -1119,6 +1173,8 @@ export default function RunashChatPage() {
   const [generalSettings, setGeneralSettings] = useState<RunashGeneralSettings>(
     defaultRunashGeneralSettings,
   );
+  const [dismissedPromptSuggestionCardIds, setDismissedPromptSuggestionCardIds] =
+    useState<string[]>([]);
   const settingsSectionButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const upgradeCtaClassName =
     "border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900 focus-visible:ring-1 focus-visible:ring-zinc-500";
@@ -1260,6 +1316,9 @@ export default function RunashChatPage() {
   const isSettingsOpen = activeModalId === "settings";
   const isRedeemDialogOpen = activeModalId === "redeem";
   const isPromptMenuOpen = activeOverlay.type === "promptMenu";
+  const visiblePromptSuggestionCards = promptSuggestionCards.filter(
+    (card) => !dismissedPromptSuggestionCardIds.includes(card.id),
+  );
   const referralProgressPercent =
     referralUiData.rewardCap > 0
       ? Math.min(
@@ -2887,6 +2946,33 @@ export default function RunashChatPage() {
     setTheme(restoredGeneralSettings.appearance);
 
     try {
+      const storedDismissedPromptSuggestions = localStorage.getItem(
+        runashChatPromptSuggestionDismissedStorageKey,
+      );
+      if (!storedDismissedPromptSuggestions) {
+        setDismissedPromptSuggestionCardIds([]);
+      } else {
+        const parsedDismissedPromptSuggestions = JSON.parse(
+          storedDismissedPromptSuggestions,
+        );
+        if (!Array.isArray(parsedDismissedPromptSuggestions)) {
+          throw new Error("Invalid prompt suggestion state");
+        }
+
+        const validDismissedPromptSuggestions =
+          parsedDismissedPromptSuggestions.filter(
+            (suggestionId): suggestionId is string =>
+              typeof suggestionId === "string" &&
+              promptSuggestionCards.some((card) => card.id === suggestionId),
+          );
+        setDismissedPromptSuggestionCardIds(validDismissedPromptSuggestions);
+      }
+    } catch {
+      setDismissedPromptSuggestionCardIds([]);
+      localStorage.removeItem(runashChatPromptSuggestionDismissedStorageKey);
+    }
+
+    try {
       const storedFavorites = localStorage.getItem(
         runashChatFavoritesStorageKey,
       );
@@ -2968,6 +3054,13 @@ export default function RunashChatPage() {
       JSON.stringify(generalSettings),
     );
   }, [generalSettings]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      runashChatPromptSuggestionDismissedStorageKey,
+      JSON.stringify(dismissedPromptSuggestionCardIds),
+    );
+  }, [dismissedPromptSuggestionCardIds]);
 
   useEffect(() => {
     setTheme(generalSettings.appearance);
@@ -3931,6 +4024,25 @@ ${instructionStarter}`
     if (prompt.trim()) {
       void startChatWithPrompt(prompt);
     }
+  };
+
+  const handlePromptSuggestionCardClick = (card: PromptSuggestionCard) => {
+    setPrompt(card.promptPayload);
+    void startChatWithPrompt(card.promptPayload, { actionId: "create" });
+  };
+
+  const handleDismissPromptSuggestionCard = (cardId: string) => {
+    setDismissedPromptSuggestionCardIds((previousIds) => {
+      if (previousIds.includes(cardId)) {
+        return previousIds;
+      }
+
+      return [...previousIds, cardId];
+    });
+  };
+
+  const handleResetPromptSuggestionCards = () => {
+    setDismissedPromptSuggestionCardIds([]);
   };
 
   const closeFavoriteMenu = () => {
@@ -5111,7 +5223,7 @@ ${instructionStarter}`
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 px-4 py-3">
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 border-b border-zinc-800 px-4 py-3">
                       <span className="text-zinc-200">
                         Show additional models
                       </span>
@@ -5125,6 +5237,28 @@ ${instructionStarter}`
                             }))
                           }
                         />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 px-4 py-3">
+                      <div className="space-y-1">
+                        <p className="text-zinc-200">Prompt suggestions</p>
+                        <p className="text-xs text-zinc-500">
+                          Restore dismissed suggestion cards beneath the chat
+                          composer.
+                        </p>
+                      </div>
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 border-zinc-700 bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
+                          onClick={handleResetPromptSuggestionCards}
+                          disabled={dismissedPromptSuggestionCardIds.length === 0}
+                        >
+                          Show again
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -6635,6 +6769,74 @@ ${instructionStarter}`
                     </p>
                   </div>
                 </div>
+
+                <section
+                  className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 sm:p-4"
+                  aria-label="Prompt suggestions"
+                >
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                      Prompt suggestions
+                    </h2>
+                  </div>
+
+                  {visiblePromptSuggestionCards.length > 0 ? (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {visiblePromptSuggestionCards.map((card) => {
+                        const SuggestionIcon = card.icon;
+                        return (
+                          <article
+                            key={card.id}
+                            className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3"
+                          >
+                            <div className="mb-2 flex items-start justify-between gap-2">
+                              <div className="flex items-start gap-2">
+                                <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-md bg-zinc-800 text-zinc-200">
+                                  <SuggestionIcon className="h-3.5 w-3.5" />
+                                </span>
+                                <div>
+                                  <h3 className="text-sm font-medium text-zinc-100">
+                                    {card.title}
+                                  </h3>
+                                  <p className="mt-1 text-xs text-zinc-400">
+                                    {card.guidance}
+                                  </p>
+                                </div>
+                              </div>
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                                aria-label={`Dismiss ${card.title} suggestion`}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  handleDismissPromptSuggestionCard(card.id);
+                                }}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 border-zinc-700 bg-zinc-900 text-xs text-zinc-100 hover:bg-zinc-800"
+                              onClick={() => handlePromptSuggestionCardClick(card)}
+                            >
+                              {card.ctaText}
+                            </Button>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-zinc-500">
+                      All suggestions dismissed. Use Settings → General to show
+                      them again.
+                    </p>
+                  )}
+                </section>
               </div>
 
               {isGetStartedVisible && (
