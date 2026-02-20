@@ -193,6 +193,19 @@ type HeaderAction = {
 
 type ActiveOverlay = "upgrade" | "feedback" | "refer" | "credits" | "settings" | null
 
+const settingsSections = [
+  "General",
+  "Notifications",
+  "Personalization",
+  "Apps",
+  "Schedules",
+  "Data controls",
+  "Security",
+  "Account",
+] as const
+
+type SettingsSection = (typeof settingsSections)[number]
+
 type UpgradePlanId = "free" | "premium" | "team" | "business" | "enterprise"
 
 type PlanConfigurationEntry = {
@@ -383,6 +396,7 @@ export default function RunashChatPage() {
   const [redeemCodeInput, setRedeemCodeInput] = useState("")
   const [redeemCodeError, setRedeemCodeError] = useState<string | null>(null)
   const [isRedeemingCode, setIsRedeemingCode] = useState(false)
+  const [activeSettingsSection, setActiveSettingsSection] = useState<SettingsSection>("General")
   const upgradeCtaClassName =
     "border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900 focus-visible:ring-1 focus-visible:ring-zinc-500"
   const creditsPanelId = "runash-chat-credits-panel"
@@ -1542,7 +1556,7 @@ export default function RunashChatPage() {
 
       <Dialog open={isSettingsOpen} onOpenChange={handleSettingsDialogOpenChange}>
         <DialogContent
-          className="z-[60] w-[min(92vw,520px)] border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-[520px]"
+          className="z-[60] w-[min(94vw,720px)] overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950 p-0 text-zinc-100 shadow-2xl shadow-black/40 sm:max-w-[720px]"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
             if (profileMenuTriggerRef.current && document.contains(profileMenuTriggerRef.current)) {
@@ -1564,17 +1578,52 @@ export default function RunashChatPage() {
             <X className="h-4 w-4" />
           </Button>
 
-          <DialogHeader className="space-y-2 text-left pt-6">
+          <DialogHeader className="sr-only">
             <DialogTitle>Settings</DialogTitle>
-            <DialogDescription className="text-zinc-400">
-              Manage your profile preferences, billing details, and workspace defaults.
-            </DialogDescription>
+            <DialogDescription>Manage workspace settings from categorized controls.</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
-            <Button type="button" variant="outline" className="w-full justify-start" onClick={() => router.push("/settings")}>General settings</Button>
-            <Button type="button" variant="outline" className="w-full justify-start" onClick={() => router.push("/settings?section=preferences")}>Preferences</Button>
-            <Button type="button" variant="outline" className="w-full justify-start" onClick={() => router.push("/settings/billing")}>Billing & credits</Button>
+          <div className="grid max-h-[78dvh] grid-cols-1 sm:grid-cols-[220px_minmax(0,1fr)]">
+            <aside className="border-b border-zinc-800/70 bg-zinc-900/30 sm:border-b-0 sm:border-r">
+              <div className="border-b border-zinc-800/70 px-4 py-4">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">Settings</h2>
+              </div>
+              <ScrollArea className="h-[220px] sm:h-[calc(78dvh-57px)]">
+                <nav aria-label="Settings sections" className="space-y-1 p-2">
+                  {settingsSections.map((section) => {
+                    const isActive = activeSettingsSection === section
+                    return (
+                      <button
+                        key={section}
+                        type="button"
+                        onClick={() => setActiveSettingsSection(section)}
+                        className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                          isActive
+                            ? "bg-zinc-800 text-zinc-50"
+                            : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+                        }`}
+                      >
+                        {section}
+                      </button>
+                    )
+                  })}
+                </nav>
+              </ScrollArea>
+            </aside>
+
+            <section className="flex min-h-[320px] flex-col bg-zinc-950">
+              <div className="px-6 pb-4 pt-10 sm:pt-6">
+                <h3 className="text-xl font-semibold text-zinc-100">{activeSettingsSection}</h3>
+              </div>
+              <div className="border-b border-zinc-800/80" />
+              <div className="flex-1 space-y-4 px-6 py-5 text-sm text-zinc-400">
+                <p>Use this section to review and update your {activeSettingsSection.toLowerCase()} settings.</p>
+                <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-4 text-zinc-300">
+                  Additional controls for <span className="font-medium text-zinc-100">{activeSettingsSection}</span> will appear here.
+                </div>
+                <Button type="button" variant="outline" className="w-fit" onClick={() => router.push("/settings")}>Open full settings page</Button>
+              </div>
+            </section>
           </div>
         </DialogContent>
       </Dialog>
