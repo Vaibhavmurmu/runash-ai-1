@@ -146,6 +146,16 @@ type HeaderAction = {
 }
 
 type FeedbackMood = "positive" | "neutral" | "negative"
+type UpgradePlanId = "free" | "premium" | "team" | "business" | "enterprise"
+
+type UpgradePlan = {
+  id: UpgradePlanId
+  label: string
+  priceLabel: string
+  description: string
+  ctaLabel: string
+  features: string[]
+}
 
 const sidebarNavItems = [
   { label: "Home", icon: Home },
@@ -159,6 +169,49 @@ const sidebarFavoriteItems: SidebarFavoriteItem[] = [
   { id: "projects", label: "Projects", description: "Continue building", icon: FolderKanban, href: "/editor" },
   { id: "templates", label: "Templates", description: "Start from a base", icon: LayoutTemplate, href: "/templates" },
   { id: "library", label: "Library", description: "Saved assets", icon: Library, href: "/library" },
+]
+
+const upgradePlans: UpgradePlan[] = [
+  {
+    id: "free",
+    label: "Free",
+    priceLabel: "$0 / month",
+    description: "Try core RunAsh Chat workflows and launch your first guided tasks.",
+    ctaLabel: "Stay on Free",
+    features: ["Basic prompt workflows", "Limited monthly credits", "Community support"],
+  },
+  {
+    id: "premium",
+    label: "Premium",
+    priceLabel: "$29 / month",
+    description: "Unlock deeper automations for growing creators and solo stores.",
+    ctaLabel: "Choose Premium",
+    features: ["Higher usage limits", "Priority model access", "Email support"],
+  },
+  {
+    id: "team",
+    label: "Team",
+    priceLabel: "$99 / month",
+    description: "Coordinate campaigns with shared workspaces and role-based access.",
+    ctaLabel: "Choose Team",
+    features: ["Shared projects", "Team seats and permissions", "Workflow collaboration"],
+  },
+  {
+    id: "business",
+    label: "Business",
+    priceLabel: "$299 / month",
+    description: "Scale live commerce operations with advanced controls and analytics.",
+    ctaLabel: "Choose Business",
+    features: ["Advanced automations", "Business dashboards", "Priority onboarding"],
+  },
+  {
+    id: "enterprise",
+    label: "Enterprise",
+    priceLabel: "Custom pricing",
+    description: "Get custom governance, integrations, and success planning.",
+    ctaLabel: "Contact Sales",
+    features: ["Custom integrations", "Dedicated success manager", "Enterprise security controls"],
+  },
 ]
 
 export default function RunashChatPage() {
@@ -186,6 +239,9 @@ export default function RunashChatPage() {
   const [isBannerDismissed, setIsBannerDismissed] = useState<boolean | null>(null)
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false)
   const [isReferDialogOpen, setIsReferDialogOpen] = useState(false)
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false)
+  const [selectedPlan, setSelectedPlan] = useState<UpgradePlanId>("team")
+  const [isPlanActionLoading, setIsPlanActionLoading] = useState(false)
   const [feedbackText, setFeedbackText] = useState("")
   const [feedbackMood, setFeedbackMood] = useState<FeedbackMood | null>(null)
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false)
@@ -218,7 +274,7 @@ export default function RunashChatPage() {
       label: "Upgrade",
       tooltip: "View upgrade plans",
       icon: Rocket,
-      href: "/pricing",
+      onClick: () => setIsUpgradeModalOpen(true),
     },
     {
       id: "feedback",
@@ -248,6 +304,7 @@ export default function RunashChatPage() {
   const primaryTabletHeaderActions = headerActions.slice(0, 2)
   const overflowTabletHeaderActions = headerActions.slice(2)
   const creditsBalanceLabel = "5.00"
+  const selectedUpgradePlan = upgradePlans.find((plan) => plan.id === selectedPlan) ?? upgradePlans[2]
 
   const userDisplayName = authenticatedUser?.name?.trim() || authenticatedUser?.email?.split("@")[0]?.trim() || "Guest User"
   const userEmail = authenticatedUser?.email?.trim() || ""
@@ -371,6 +428,11 @@ export default function RunashChatPage() {
       return
     }
     action.onClick?.()
+  }
+
+  const handlePlanCtaClick = () => {
+    setIsPlanActionLoading(true)
+    router.push(`/pricing?plan=${selectedPlan}`)
   }
 
   const resetFeedbackDialog = () => {
@@ -1112,6 +1174,77 @@ export default function RunashChatPage() {
             >
               Sign in to continue
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isUpgradeModalOpen}
+        onOpenChange={(open) => {
+          setIsUpgradeModalOpen(open)
+          if (!open) {
+            setIsPlanActionLoading(false)
+          }
+        }}
+      >
+        <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-2xl">
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle>Explore More Plans</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Pick a plan to preview pricing and key benefits for your current stage.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-1 sm:grid-cols-5" role="tablist" aria-label="Select plan tier">
+              {upgradePlans.map((plan) => {
+                const isSelected = selectedPlan === plan.id
+                return (
+                  <Button
+                    key={plan.id}
+                    type="button"
+                    variant={isSelected ? "default" : "ghost"}
+                    className={`h-9 px-2 text-xs sm:text-sm ${isSelected ? "bg-zinc-100 text-zinc-950 hover:bg-zinc-200" : "text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"}`}
+                    onClick={() => setSelectedPlan(plan.id)}
+                    role="tab"
+                    aria-selected={isSelected}
+                  >
+                    {plan.label}
+                  </Button>
+                )
+              })}
+            </div>
+
+            <Card className="border-zinc-800 bg-zinc-900/60 p-5">
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-zinc-400">{selectedUpgradePlan.label} plan</p>
+                  <p className="mt-1 text-2xl font-semibold text-zinc-100">{selectedUpgradePlan.priceLabel}</p>
+                </div>
+                <p className="text-sm text-zinc-300">{selectedUpgradePlan.description}</p>
+                <ul className="space-y-2">
+                  {selectedUpgradePlan.features.map((feature) => (
+                    <li key={feature} className="flex items-center gap-2 text-sm text-zinc-200">
+                      <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" aria-hidden="true" />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+                <Button type="button" className="w-full sm:w-auto" onClick={handlePlanCtaClick} disabled={isPlanActionLoading}>
+                  {isPlanActionLoading ? "Opening…" : selectedUpgradePlan.ctaLabel}
+                </Button>
+              </div>
+            </Card>
+          </div>
+
+          <DialogFooter className="sm:justify-between">
+            <button
+              type="button"
+              className="text-sm text-cyan-300 underline-offset-4 hover:underline"
+              onClick={() => router.push("/pricing")}
+            >
+              See full plan comparison on pricing page
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
