@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useRef, useState } from "react"
+import React, { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { signOutWithRedirect, useAuthSession } from "@/lib/auth/access-client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -73,6 +73,17 @@ type ChatPreviewMessage = {
   role: "assistant" | "user"
   content: string
   created_at?: string
+}
+
+type SessionBootstrapPayload = {
+  success?: boolean
+  data?: {
+    id?: string | number
+  }
+  id?: string | number
+  error?: {
+    message?: string
+  }
 }
 
 type RecentEntity = {
@@ -382,6 +393,10 @@ type PromptActionConfig = {
   unavailableReason?: string
 }
 
+type StartChatMetadata = {
+  actionId?: PromptActionId
+}
+
 const promptActionConfigs: PromptActionConfig[] = [
   {
     id: "enhance",
@@ -678,6 +693,7 @@ export default function RunashChatPage() {
   const [speechErrorMessage, setSpeechErrorMessage] = useState<string | null>(null)
   const [speechInsertMode, setSpeechInsertMode] = useState<SpeechTranscriptInsertMode>("append")
   const [startChatError, setStartChatError] = useState<string | null>(null)
+  const [isStartingChat, setIsStartingChat] = useState(false)
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
   const [mobileSearchValue, setMobileSearchValue] = useState("")
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
@@ -717,6 +733,7 @@ export default function RunashChatPage() {
   const rowActionTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({})
   const rowActionContentRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null)
+  const startChatInFlightRef = useRef(false)
   const speechCommitReadyRef = useRef(false)
   const speechTranscriptFinalRef = useRef("")
   const speechTimeoutRef = useRef<number | null>(null)
@@ -758,6 +775,48 @@ export default function RunashChatPage() {
     { value: 3, label: "It was okay", Icon: Meh },
     { value: 1, label: "Needs work", Icon: Frown },
   ]
+
+  const SESSION_FETCH_TIMEOUT_MS = 7000
+  const SESSION_FETCH_RETRIES = 2
+
+  const readSessionIdFromPayload = useCallback((payload: SessionBootstrapPayload): string | null => {
+    const rawId = payload?.data?.id ?? payload?.id
+    if (rawId == null) {
+      return null
+    }
+
+    const normalizedId = String(rawId).trim()
+    return normalizedId || null
+  }, [])
+
+  const fetchWithRetryAndTimeout = useCallback(async (input: RequestInfo | URL, init?: RequestInit, retries = SESSION_FETCH_RETRIES) => {
+    let lastError: Error | null = null
+
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      const controller = new AbortController()
+      const timeoutId = window.setTimeout(() => {
+        controller.abort()
+      }, SESSION_FETCH_TIMEOUT_MS)
+
+      try {
+        const response = await fetch(input, {
+          ...init,
+          signal: controller.signal,
+        })
+        window.clearTimeout(timeoutId)
+        return response
+      } catch (error) {
+        window.clearTimeout(timeoutId)
+        lastError = error instanceof Error ? error : new Error("Network request failed")
+
+        if (attempt >= retries) {
+          throw lastError
+        }
+      }
+    }
+
+    throw lastError ?? new Error("Network request failed")
+  }, [])
 
   const isLastOnboardingStep = onboardingStep === onboardingSlides.length - 1
   const currentOnboardingSlide = onboardingSlides[onboardingStep]
@@ -2026,16 +2085,17 @@ export default function RunashChatPage() {
       }
 
       try {
-        const res = await fetch("/api/sessions/recent")
-        const payload = await res.json()
-        if (!res.ok || !payload?.success || !payload?.data?.id) {
+        const res = await fetchWithRetryAndTimeout("/api/sessions/recent")
+        const payload = (await res.json().catch(() => null)) as SessionBootstrapPayload | null
+        const recentSessionId = payload ? readSessionIdFromPayload(payload) : null
+
+        if (!res.ok || !payload?.success || !recentSessionId) {
           throw new Error(payload?.error?.message || "No recent session")
         }
 
-        const recentSession = payload.data
-        setSessionId(String(recentSession.id))
+        setSessionId(recentSessionId)
 
-        const msgs = await fetch(`/api/messages/session/${recentSession.id}?limit=6`)
+        const msgs = await fetchWithRetryAndTimeout(`/api/messages/session/${recentSessionId}?limit=6`, undefined, 1)
         if (!msgs.ok) {
           const messagePayload = await msgs.json().catch(() => null)
           throw new Error(messagePayload?.error?.message || "Unable to load message preview")
@@ -2051,51 +2111,80 @@ export default function RunashChatPage() {
         setLoadingSession(false)
       }
     })()
-  }, [])
+  }, [fetchWithRetryAndTimeout, readSessionIdFromPayload])
 
-  function startChatWithPrompt(initialPrompt?: string) {
-    ;(async () => {
-      const cleanPrompt = initialPrompt?.trim()
-      const promptContext = {
-        generateImagesEnabled,
-        selectedModel,
-        selectedProjectLabel: selectedProjectLabel === "Select a Project" ? null : selectedProjectLabel,
-        uploadedAssetName,
-      }
+  async function startChatWithPrompt(initialPrompt?: string, metadata?: StartChatMetadata) {
+    if (startChatInFlightRef.current) {
+      return
+    }
 
-      try {
-        let sid = sessionId
-        if (!sid) {
-          const res = await fetch("/api/sessions", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ title: "RunAsh Chat", promptContext }),
-          })
-          const created = await res.json()
-          sid = created?.id ? String(created.id) : null
-          setSessionId(sid ?? null)
-        }
+    startChatInFlightRef.current = true
+    setIsStartingChat(true)
 
-        localStorage.setItem("runash_initial_prompt_context", JSON.stringify(promptContext))
+    const cleanPrompt = initialPrompt?.trim()
+    const promptContext = {
+      generateImagesEnabled,
+      selectedModel,
+      selectedProjectLabel: selectedProjectLabel === "Select a Project" ? null : selectedProjectLabel,
+      uploadedAssetName,
+    }
 
-        if (cleanPrompt) {
-          localStorage.setItem("runash_initial_prompt", cleanPrompt)
-        }
-
-        setStartChatError(null)
-
-        router.push(sid ? `/chat?sessionId=${sid}` : "/chat")
-      } catch (error) {
-        setStartChatError("Couldn’t resume session, opening chat directly.")
-        console.warn("Failed to start chat session; using direct chat fallback", {
-          hasSessionId: Boolean(sessionId),
-          hasInitialPrompt: Boolean(cleanPrompt),
-          errorType: error instanceof Error ? error.name : "unknown",
+    try {
+      let sid = sessionId
+      if (!sid) {
+        const res = await fetchWithRetryAndTimeout("/api/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "RunAsh Chat", promptContext }),
         })
-        router.push("/chat")
+
+        const created = (await res.json().catch(() => null)) as SessionBootstrapPayload | null
+        const createdSessionId = created ? readSessionIdFromPayload(created) : null
+
+        if (!res.ok || !createdSessionId) {
+          throw new Error(created?.error?.message || "Unable to create session")
+        }
+
+        sid = createdSessionId
+        setSessionId(createdSessionId)
       }
-    })()
+
+      const navigationPayload = {
+        source: "runash-chat",
+        sessionId: sid,
+        prompt: cleanPrompt ?? null,
+        promptActionId: metadata?.actionId ?? activePromptActionId,
+        promptContext,
+        createdAt: new Date().toISOString(),
+      }
+
+      localStorage.setItem("runash_initial_prompt_context", JSON.stringify(promptContext))
+      localStorage.setItem("runash_chat_navigation_payload", JSON.stringify(navigationPayload))
+
+      if (cleanPrompt) {
+        localStorage.setItem("runash_initial_prompt", cleanPrompt)
+      }
+
+      setStartChatError(null)
+      router.push(sid ? `/chat?sessionId=${encodeURIComponent(sid)}&source=runash-chat` : "/chat?source=runash-chat")
+    } catch (error) {
+      setStartChatError("Couldn’t create or resume a chat session. Opened chat directly.")
+      toast({
+        title: "Session unavailable",
+        description: "We couldn’t create a session, so you were redirected to chat directly.",
+      })
+      console.warn("Failed to start chat session; using direct chat fallback", {
+        hasSessionId: Boolean(sessionId),
+        hasInitialPrompt: Boolean(cleanPrompt),
+        errorType: error instanceof Error ? error.name : "unknown",
+      })
+      router.push("/chat?source=runash-chat&fallback=1")
+    } finally {
+      startChatInFlightRef.current = false
+      setIsStartingChat(false)
+    }
   }
+
 
   const handlePromptAction = async (action: PromptActionConfig) => {
     const isDisabled = isPromptActionDisabled(action)
@@ -2170,7 +2259,7 @@ export default function RunashChatPage() {
       }
 
       if (action.id === "create") {
-        startChatWithPrompt(prompt)
+        await startChatWithPrompt(prompt, { actionId: action.id })
         trackPromptAction(action, "success")
       }
     } catch (error) {
@@ -2386,7 +2475,7 @@ ${instructionStarter}` : instructionStarter
 
     event.preventDefault()
     if (prompt.trim()) {
-      startChatWithPrompt(prompt)
+      void startChatWithPrompt(prompt)
     }
   }
 
@@ -2444,10 +2533,11 @@ ${instructionStarter}` : instructionStarter
         <Button
           className={`mb-3 ${collapsed ? "justify-center px-0" : "justify-start"} bg-zinc-900 hover:bg-zinc-800`}
           onClick={() => {
-            startChatWithPrompt()
+            void startChatWithPrompt()
             if (isMobileDrawer) setIsMobileSidebarOpen(false)
           }}
           aria-label="Start a new chat"
+          disabled={isStartingChat}
         >
           <Plus className={`h-4 w-4 ${collapsed ? "mr-0" : "mr-2"}`} />
           {!collapsed && "New Chat"}
@@ -3523,7 +3613,7 @@ ${instructionStarter}` : instructionStarter
                     className="h-[42px] w-[42px] rounded-xl border-zinc-800 bg-zinc-950 text-zinc-100"
                     onClick={() => router.push("/")}
                     aria-label="Go to home"
-                    disabled={isOnboardingOpen}
+                    disabled={isOnboardingOpen || isStartingChat}
                   >
                     <Home className="h-[18px] w-[18px] stroke-[1.75]" />
                   </Button>
@@ -3539,7 +3629,7 @@ ${instructionStarter}` : instructionStarter
                         aria-expanded={isMobileSidebarOpen}
                         aria-controls={runashChatMobileSidebarId}
                         aria-label={isMobileSidebarOpen ? "Close navigation menu" : "Open navigation menu"}
-                        disabled={isOnboardingOpen}
+                        disabled={isOnboardingOpen || isStartingChat}
                         title="Toggle navigation (Ctrl/Cmd+B)"
                       >
                         <Menu className="h-[18px] w-[18px] stroke-[1.75]" />
@@ -3600,9 +3690,9 @@ ${instructionStarter}` : instructionStarter
                     type="button"
                     size="icon"
                     className="h-[42px] w-[42px] rounded-xl bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
-                    onClick={() => startChatWithPrompt()}
+                    onClick={() => void startChatWithPrompt()}
                     aria-label="Start a new chat"
-                    disabled={isOnboardingOpen}
+                    disabled={isOnboardingOpen || isStartingChat}
                   >
                     <Plus className="h-[18px] w-[18px] stroke-[1.75]" />
                   </Button>
@@ -4194,7 +4284,7 @@ ${instructionStarter}` : instructionStarter
                                 <button
                                   type="button"
                                   onClick={() => void handlePromptAction(action)}
-                                  disabled={actionDisabled || isPromptActionLoading}
+                                  disabled={actionDisabled || isPromptActionLoading || isStartingChat}
                                   className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 ${
                                     actionIsActive
                                       ? "border-cyan-500/80 bg-cyan-500/15 text-cyan-200"
@@ -4297,8 +4387,8 @@ ${instructionStarter}` : instructionStarter
                     <Button
                       type="button"
                       className="h-8 rounded-full bg-zinc-100 px-3 text-xs font-medium text-zinc-900 hover:bg-white"
-                      disabled={!prompt.trim()}
-                      onClick={() => startChatWithPrompt(prompt)}
+                      disabled={!prompt.trim() || isStartingChat}
+                      onClick={() => void startChatWithPrompt(prompt)}
                       aria-label="Send prompt"
                     >
                       Send
@@ -4436,7 +4526,8 @@ ${instructionStarter}` : instructionStarter
                       variant="ghost"
                       size="sm"
                       className="mt-2 h-7 text-xs text-zinc-300 hover:bg-zinc-800"
-                      onClick={() => startChatWithPrompt()}
+                      onClick={() => void startChatWithPrompt()}
+                      disabled={isStartingChat}
                     >
                       Start a chat
                     </Button>
@@ -4495,7 +4586,7 @@ ${instructionStarter}` : instructionStarter
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="cursor-pointer rounded-sm px-2.5 py-1.5 focus:bg-zinc-800 focus:text-zinc-100"
-                              onClick={() => startChatWithPrompt(`Continue chat: ${item.title}`)}
+                              onClick={() => void startChatWithPrompt(`Continue chat: ${item.title}`)}
                             >
                               Continue
                             </DropdownMenuItem>
