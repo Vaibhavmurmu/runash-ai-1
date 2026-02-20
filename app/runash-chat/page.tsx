@@ -477,6 +477,7 @@ export default function RunashChatPage() {
   const [isRedeemingCode, setIsRedeemingCode] = useState(false)
   const [activeSettingsSection, setActiveSettingsSection] = useState<SettingsSection>("General")
   const [generalSettings, setGeneralSettings] = useState<RunashGeneralSettings>(defaultRunashGeneralSettings)
+  const settingsSectionButtonRefs = useRef<Array<HTMLButtonElement | null>>([])
   const upgradeCtaClassName =
     "border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900 focus-visible:ring-1 focus-visible:ring-zinc-500"
   const creditsPanelId = "runash-chat-credits-panel"
@@ -805,6 +806,29 @@ export default function RunashChatPage() {
     }
 
     handleOverlayDismiss("settings")
+  }
+
+  const handleSettingsSectionKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
+    const lastIndex = settingsSections.length - 1
+    let nextIndex: number | null = null
+
+    if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+      nextIndex = currentIndex === lastIndex ? 0 : currentIndex + 1
+    } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+      nextIndex = currentIndex === 0 ? lastIndex : currentIndex - 1
+    } else if (event.key === "Home") {
+      nextIndex = 0
+    } else if (event.key === "End") {
+      nextIndex = lastIndex
+    }
+
+    if (nextIndex === null) {
+      return
+    }
+
+    event.preventDefault()
+    setActiveSettingsSection(settingsSections[nextIndex])
+    settingsSectionButtonRefs.current[nextIndex]?.focus()
   }
 
   const closeCreditsPanel = (restoreFocus = false) => {
@@ -1666,7 +1690,7 @@ export default function RunashChatPage() {
 
       <Dialog open={isSettingsOpen} onOpenChange={handleSettingsDialogOpenChange}>
         <DialogContent
-          className="z-[80] w-[min(94vw,720px)] overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950 p-0 text-zinc-100 shadow-2xl shadow-black/40 sm:max-w-[720px]"
+          className="z-[80] w-[min(96vw,840px)] overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 p-0 text-zinc-100 shadow-2xl shadow-black/40 sm:max-w-[840px]"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
             focusOverlayTrigger()
@@ -1688,24 +1712,31 @@ export default function RunashChatPage() {
             <DialogDescription>Manage workspace settings from categorized controls.</DialogDescription>
           </DialogHeader>
 
-          <div className="grid max-h-[78dvh] grid-cols-1 sm:grid-cols-[220px_minmax(0,1fr)]">
-            <aside className="border-b border-zinc-800/70 bg-zinc-900/30 sm:border-b-0 sm:border-r">
-              <div className="border-b border-zinc-800/70 px-4 py-4">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">Settings</h2>
+          <div className="grid max-h-[82dvh] grid-cols-1 sm:grid-cols-[248px_minmax(0,1fr)]">
+            <aside className="border-b border-zinc-800 bg-zinc-900/40 sm:border-b-0 sm:border-r sm:bg-zinc-900/25">
+              <div className="hidden border-b border-zinc-800 px-4 py-4 sm:block">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-400">Settings</h2>
               </div>
-              <ScrollArea className="h-[220px] sm:h-[calc(78dvh-57px)]">
-                <nav aria-label="Settings sections" className="space-y-1 p-2">
-                  {settingsSections.map((section) => {
+              <ScrollArea className="w-full sm:h-[calc(82dvh-57px)]">
+                <nav aria-label="Settings sections" role="tablist" className="flex min-w-max gap-1 p-2 sm:block sm:min-w-0 sm:space-y-1">
+                  {settingsSections.map((section, index) => {
                     const isActive = activeSettingsSection === section
                     return (
                       <button
                         key={section}
+                        ref={(element) => {
+                          settingsSectionButtonRefs.current[index] = element
+                        }}
                         type="button"
                         onClick={() => setActiveSettingsSection(section)}
-                        className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                        onKeyDown={(event) => handleSettingsSectionKeyDown(event, index)}
+                        role="tab"
+                        aria-selected={isActive}
+                        tabIndex={isActive ? 0 : -1}
+                        className={`flex shrink-0 items-center rounded-lg border px-3 py-2 text-left text-sm transition-colors sm:w-full ${
                           isActive
-                            ? "bg-zinc-800 text-zinc-50"
-                            : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+                            ? "border-zinc-700 bg-zinc-800 text-zinc-50"
+                            : "border-transparent text-zinc-400 hover:border-zinc-800 hover:bg-zinc-900 hover:text-zinc-200"
                         }`}
                       >
                         {section}
@@ -1717,14 +1748,14 @@ export default function RunashChatPage() {
             </aside>
 
             <section className="flex min-h-[320px] flex-col bg-zinc-950">
-              <div className="px-6 pb-4 pt-10 sm:pt-6">
-                <h3 className="text-xl font-semibold text-zinc-100">{activeSettingsSection}</h3>
+              <div className="px-5 pb-4 pt-4 sm:px-6 sm:pt-6">
+                <h3 className="text-lg font-semibold text-zinc-100 sm:text-xl">{activeSettingsSection}</h3>
               </div>
-              <div className="border-b border-zinc-800/80" />
-              <div className="flex-1 space-y-4 px-6 py-5 text-sm text-zinc-400">
+              <div className="border-b border-zinc-800" />
+              <div className="flex-1 space-y-4 px-5 py-5 text-sm text-zinc-400 sm:px-6">
                 {activeSettingsSection === "General" ? (
-                  <div className="space-y-5">
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
+                  <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/30">
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 border-b border-zinc-800 px-4 py-3">
                       <span className="text-zinc-200">Appearance</span>
                       <Select
                         value={generalSettings.appearance}
@@ -1732,7 +1763,7 @@ export default function RunashChatPage() {
                           setGeneralSettings((prev) => ({ ...prev, appearance: value as RunashThemePreference }))
                         }
                       >
-                        <SelectTrigger className="h-8 w-[170px] border-zinc-700 bg-zinc-900 text-zinc-100">
+                        <SelectTrigger className="h-8 w-full border-zinc-700 bg-zinc-900 text-zinc-100">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1743,7 +1774,7 @@ export default function RunashChatPage() {
                       </Select>
                     </div>
 
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 border-b border-zinc-800 px-4 py-3">
                       <span className="text-zinc-200">Accent color</span>
                       <Select
                         value={generalSettings.accentColor}
@@ -1751,7 +1782,7 @@ export default function RunashChatPage() {
                           setGeneralSettings((prev) => ({ ...prev, accentColor: value as RunashAccentColorPreference }))
                         }
                       >
-                        <SelectTrigger className="h-8 w-[170px] border-zinc-700 bg-zinc-900 text-zinc-100">
+                        <SelectTrigger className="h-8 w-full border-zinc-700 bg-zinc-900 text-zinc-100">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1762,7 +1793,7 @@ export default function RunashChatPage() {
                       </Select>
                     </div>
 
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 border-b border-zinc-800 px-4 py-3">
                       <span className="text-zinc-200">Language</span>
                       <Select
                         value={generalSettings.language}
@@ -1770,7 +1801,7 @@ export default function RunashChatPage() {
                           setGeneralSettings((prev) => ({ ...prev, language: value as RunashLanguagePreference }))
                         }
                       >
-                        <SelectTrigger className="h-8 w-[170px] border-zinc-700 bg-zinc-900 text-zinc-100">
+                        <SelectTrigger className="h-8 w-full border-zinc-700 bg-zinc-900 text-zinc-100">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1781,7 +1812,7 @@ export default function RunashChatPage() {
                       </Select>
                     </div>
 
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-start gap-4 border-b border-zinc-800 px-4 py-3">
                       <div className="space-y-1">
                         <p className="text-zinc-200">Spoken language</p>
                         <p className="text-xs text-zinc-500">Controls transcription and voice response language defaults.</p>
@@ -1792,7 +1823,7 @@ export default function RunashChatPage() {
                           setGeneralSettings((prev) => ({ ...prev, spokenLanguage: value as RunashSpokenLanguagePreference }))
                         }
                       >
-                        <SelectTrigger className="h-8 w-[170px] border-zinc-700 bg-zinc-900 text-zinc-100">
+                        <SelectTrigger className="h-8 w-full border-zinc-700 bg-zinc-900 text-zinc-100">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1803,16 +1834,16 @@ export default function RunashChatPage() {
                       </Select>
                     </div>
 
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 border-b border-zinc-800 px-4 py-3">
                       <span className="text-zinc-200">Voice</span>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center justify-end gap-2">
                         <Select
                           value={generalSettings.voice}
                           onValueChange={(value) =>
                             setGeneralSettings((prev) => ({ ...prev, voice: value as RunashVoicePreference }))
                           }
                         >
-                          <SelectTrigger className="h-8 w-[124px] border-zinc-700 bg-zinc-900 text-zinc-100">
+                          <SelectTrigger className="h-8 w-[132px] border-zinc-700 bg-zinc-900 text-zinc-100">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -1827,23 +1858,27 @@ export default function RunashChatPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-start gap-4 border-b border-zinc-800 px-4 py-3">
                       <div className="space-y-1">
                         <p className="text-zinc-200">Separate Voice</p>
                         <p className="text-xs text-zinc-500">Use a distinct voice profile for generated speech output.</p>
                       </div>
-                      <Switch
-                        checked={generalSettings.separateVoiceEnabled}
-                        onCheckedChange={(checked) => setGeneralSettings((prev) => ({ ...prev, separateVoiceEnabled: checked }))}
-                      />
+                      <div className="flex justify-end">
+                        <Switch
+                          checked={generalSettings.separateVoiceEnabled}
+                          onCheckedChange={(checked) => setGeneralSettings((prev) => ({ ...prev, separateVoiceEnabled: checked }))}
+                        />
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 px-4 py-3">
                       <span className="text-zinc-200">Show additional models</span>
-                      <Switch
-                        checked={generalSettings.showAdditionalModels}
-                        onCheckedChange={(checked) => setGeneralSettings((prev) => ({ ...prev, showAdditionalModels: checked }))}
-                      />
+                      <div className="flex justify-end">
+                        <Switch
+                          checked={generalSettings.showAdditionalModels}
+                          onCheckedChange={(checked) => setGeneralSettings((prev) => ({ ...prev, showAdditionalModels: checked }))}
+                        />
+                      </div>
                     </div>
                   </div>
                 ) : (
