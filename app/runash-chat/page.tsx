@@ -191,7 +191,7 @@ type HeaderAction = {
   onClick?: (triggerElement?: HTMLElement | null) => void
 }
 
-type ActiveModal = "onboarding" | "feedback" | "refer" | "upgrade" | null
+type ActiveOverlay = "upgrade" | "feedback" | "refer" | "credits" | null
 
 type UpgradePlanId = "free" | "premium" | "team" | "business" | "enterprise"
 
@@ -358,7 +358,8 @@ export default function RunashChatPage() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
   const [isFavoritesExpanded, setIsFavoritesExpanded] = useState(true)
   const [isRecentsExpanded, setIsRecentsExpanded] = useState(true)
-  const [activeModal, setActiveModal] = useState<ActiveModal>(null)
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
+  const [activeOverlay, setActiveOverlay] = useState<ActiveOverlay>(null)
   const [isCopyingLink, setIsCopyingLink] = useState(false)
   const [onboardingStep, setOnboardingStep] = useState(0)
   const [isBannerDismissed, setIsBannerDismissed] = useState<boolean | null>(null)
@@ -371,14 +372,13 @@ export default function RunashChatPage() {
   const desktopSidebarToggleRef = useRef<HTMLButtonElement | null>(null)
   const learnMoreTriggerRef = useRef<HTMLButtonElement | null>(null)
   const mainControlsRef = useRef<HTMLTextAreaElement | null>(null)
-  const lastModalTriggerRef = useRef<HTMLElement | null>(null)
+  const lastOverlayTriggerRef = useRef<HTMLElement | null>(null)
   const [selectedModel, setSelectedModel] = useState<"v0 Mini" | "v0 Max">("v0 Mini")
   const [selectedProjectLabel, setSelectedProjectLabel] = useState("Select a Project")
   const [themePreference, setThemePreference] = useState<RunashThemePreference>("system")
   const [languagePreference, setLanguagePreference] = useState<RunashLanguagePreference>("en")
   const [chatPositionPreference, setChatPositionPreference] = useState<RunashChatPositionPreference>("left")
   const [isComposerUpgradeHelperDismissed, setIsComposerUpgradeHelperDismissed] = useState(false)
-  const [isCreditsOpen, setIsCreditsOpen] = useState(false)
   const [isRedeemDialogOpen, setIsRedeemDialogOpen] = useState(false)
   const [redeemCodeInput, setRedeemCodeInput] = useState("")
   const [redeemCodeError, setRedeemCodeError] = useState<string | null>(null)
@@ -399,29 +399,29 @@ export default function RunashChatPage() {
 
   const isLastOnboardingStep = onboardingStep === onboardingSlides.length - 1
   const currentOnboardingSlide = onboardingSlides[onboardingStep]
-  const isOnboardingOpen = activeModal === "onboarding"
-  const isFeedbackOpen = activeModal === "feedback"
-  const isReferOpen = activeModal === "refer"
-  const isUpgradeModalOpen = activeModal === "upgrade"
+  const isFeedbackOpen = activeOverlay === "feedback"
+  const isReferOpen = activeOverlay === "refer"
+  const isUpgradeModalOpen = activeOverlay === "upgrade"
+  const isCreditsOpen = activeOverlay === "credits"
   const referralProgressPercent =
     referralUiData.rewardCap > 0 ? Math.min(100, Math.round((referralUiData.progressValue / referralUiData.rewardCap) * 100)) : 0
 
   const authenticatedUser = session?.user
   const isAuthenticated = authStatus === "authenticated" && Boolean(authenticatedUser)
 
-  const rememberModalTrigger = (triggerElement?: HTMLElement | null) => {
+  const rememberOverlayTrigger = (triggerElement?: HTMLElement | null) => {
     if (triggerElement instanceof HTMLElement) {
-      lastModalTriggerRef.current = triggerElement
+      lastOverlayTriggerRef.current = triggerElement
       return
     }
 
     if (document.activeElement instanceof HTMLElement) {
-      lastModalTriggerRef.current = document.activeElement
+      lastOverlayTriggerRef.current = document.activeElement
     }
   }
 
-  const focusModalTrigger = () => {
-    const triggerElement = lastModalTriggerRef.current
+  const focusOverlayTrigger = () => {
+    const triggerElement = lastOverlayTriggerRef.current
     if (triggerElement && document.contains(triggerElement)) {
       triggerElement.focus()
       return
@@ -430,9 +430,18 @@ export default function RunashChatPage() {
     restoreFocusToMainControls()
   }
 
-  const openModal = (modal: Exclude<ActiveModal, null>, triggerElement?: HTMLElement | null) => {
-    rememberModalTrigger(triggerElement)
-    setActiveModal(modal)
+  const openOverlay = (overlay: Exclude<ActiveOverlay, null>, triggerElement?: HTMLElement | null) => {
+    rememberOverlayTrigger(triggerElement)
+    setActiveOverlay(overlay)
+  }
+
+  const closeOverlay = (restoreFocus = false) => {
+    setActiveOverlay(null)
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => {
+        focusOverlayTrigger()
+      })
+    }
   }
 
   function openUpgradeModal(planId?: UpgradePlanId, triggerElement?: HTMLElement | null) {
@@ -440,7 +449,7 @@ export default function RunashChatPage() {
       setSelectedPlan(planId)
     }
     setIsPlanActionLoading(false)
-    openModal("upgrade", triggerElement)
+    openOverlay("upgrade", triggerElement)
   }
 
   const headerActions: HeaderAction[] = [
@@ -456,14 +465,14 @@ export default function RunashChatPage() {
       label: "Feedback",
       tooltip: "Share product feedback",
       icon: MessageSquare,
-      onClick: (triggerElement) => openModal("feedback", triggerElement),
+      onClick: (triggerElement) => openOverlay("feedback", triggerElement),
     },
     {
       id: "refer",
       label: "Refer",
       tooltip: "Refer a friend or team",
       icon: Sparkles,
-      onClick: (triggerElement) => openModal("refer", triggerElement),
+      onClick: (triggerElement) => openOverlay("refer", triggerElement),
     },
   ]
 
@@ -621,16 +630,21 @@ export default function RunashChatPage() {
     if (!open && isSubmittingFeedback) return
 
     if (open) {
-      setActiveModal("feedback")
+      setActiveOverlay("feedback")
       return
     }
 
-    setActiveModal(null)
+    closeOverlay(true)
     resetFeedbackDialog()
   }
 
   const handleReferDialogOpenChange = (open: boolean) => {
-    setActiveModal(open ? "refer" : null)
+    if (open) {
+      setActiveOverlay("refer")
+      return
+    }
+
+    closeOverlay(true)
   }
 
   const handleCopyReferralLink = async () => {
@@ -653,23 +667,19 @@ export default function RunashChatPage() {
   }
 
   const handleUpgradeModalOpenChange = (open: boolean) => {
-    setActiveModal(open ? "upgrade" : null)
+    if (open) {
+      setActiveOverlay("upgrade")
+      return
+    }
+
+    closeOverlay(true)
     if (!open) {
       setIsPlanActionLoading(false)
     }
   }
 
-  const focusCreditsTrigger = () => {
-    window.requestAnimationFrame(() => {
-      creditsTriggerRef.current?.focus()
-    })
-  }
-
   const closeCreditsPanel = (restoreFocus = false) => {
-    setIsCreditsOpen(false)
-    if (restoreFocus) {
-      focusCreditsTrigger()
-    }
+    closeOverlay(restoreFocus)
   }
 
   const openRedeemCodeDialog = (triggerElement?: HTMLElement | null) => {
@@ -859,22 +869,25 @@ export default function RunashChatPage() {
 
   const handleOpenOnboardingDialog = (triggerElement?: HTMLElement | null) => {
     setOnboardingStep(0)
-    openModal("onboarding", triggerElement)
+    setActiveOverlay(null)
+    rememberOverlayTrigger(triggerElement)
+    setIsOnboardingOpen(true)
   }
 
   const handleOnboardingOpenChange = (open: boolean) => {
     if (open) {
-      setActiveModal("onboarding")
+      setIsOnboardingOpen(true)
+      setActiveOverlay(null)
       return
     }
 
-    setActiveModal(null)
+    setIsOnboardingOpen(false)
   }
 
   const handleOnboardingNext = () => {
     if (isLastOnboardingStep) {
       markOnboardingSeen()
-      setActiveModal(null)
+      setIsOnboardingOpen(false)
       setIsBannerDismissed(true)
       return
     }
@@ -887,15 +900,37 @@ export default function RunashChatPage() {
   }, [isSidebarCollapsed])
 
   useEffect(() => {
-    if (!activeModal) return
+    if (!activeOverlay && !isOnboardingOpen) return
 
-    setIsCreditsOpen(false)
     setIsMobileSidebarOpen(false)
     setIsMobileSearchOpen(false)
-  }, [activeModal])
+  }, [activeOverlay, isOnboardingOpen])
 
   useEffect(() => {
-    if (!isCreditsOpen) return
+    if (!activeOverlay) return
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return
+      if (activeOverlay === "feedback" && isSubmittingFeedback) return
+
+      closeOverlay(true)
+      if (activeOverlay === "upgrade") {
+        setIsPlanActionLoading(false)
+      }
+      if (activeOverlay === "feedback") {
+        resetFeedbackDialog()
+      }
+    }
+
+    window.addEventListener("keydown", handleEscape)
+
+    return () => {
+      window.removeEventListener("keydown", handleEscape)
+    }
+  }, [activeOverlay, isSubmittingFeedback])
+
+  useEffect(() => {
+    if (activeOverlay !== "credits") return
 
     const handleOutsideInteraction = (event: MouseEvent | TouchEvent) => {
       const targetNode = event.target
@@ -905,25 +940,17 @@ export default function RunashChatPage() {
         return
       }
 
-      setIsCreditsOpen(false)
-    }
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return
-      setIsCreditsOpen(false)
-      focusCreditsTrigger()
+      closeOverlay(true)
     }
 
     window.addEventListener("mousedown", handleOutsideInteraction)
     window.addEventListener("touchstart", handleOutsideInteraction)
-    window.addEventListener("keydown", handleEscape)
 
     return () => {
       window.removeEventListener("mousedown", handleOutsideInteraction)
       window.removeEventListener("touchstart", handleOutsideInteraction)
-      window.removeEventListener("keydown", handleEscape)
     }
-  }, [isCreditsOpen])
+  }, [activeOverlay])
 
   useEffect(() => {
     if (!isMobileSidebarOpen) return
@@ -1368,7 +1395,7 @@ export default function RunashChatPage() {
           className="z-[60] w-[min(92vw,32rem)] max-w-[32rem] overflow-hidden border-zinc-800 bg-zinc-950 p-0 text-zinc-100 motion-reduce:duration-0"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
-            focusModalTrigger()
+            focusOverlayTrigger()
           }}
         >
           <div className="max-h-[min(88vh,42rem)] overflow-y-auto rounded-lg">
@@ -1418,7 +1445,7 @@ export default function RunashChatPage() {
           className="z-[60] w-[min(92vw,520px)] max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-[520px]"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
-            focusModalTrigger()
+            focusOverlayTrigger()
           }}
         >
           <DialogHeader className="space-y-2 text-left">
@@ -1491,7 +1518,7 @@ export default function RunashChatPage() {
           className="z-[60] w-[min(94vw,34rem)] max-h-[90dvh] overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-950 text-zinc-100 shadow-2xl shadow-black/40 sm:max-w-xl"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
-            focusModalTrigger()
+            focusOverlayTrigger()
           }}
         >
           <DialogHeader className="space-y-2 border-b border-zinc-800/80 px-6 pb-4 pt-6 text-left">
@@ -1579,7 +1606,7 @@ export default function RunashChatPage() {
           className="z-[60] w-[min(94vw,48rem)] max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-2xl"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
-            focusModalTrigger()
+            focusOverlayTrigger()
           }}
         >
           <DialogHeader className="space-y-2 text-left">
@@ -1727,7 +1754,7 @@ export default function RunashChatPage() {
           <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
             <div className="mb-4 space-y-3 lg:hidden">
               <div
-                className={`sticky top-0 ${isMobileSidebarOpen || activeModal ? "z-0" : "z-20"} rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2 backdrop-blur`}
+                className={`sticky top-0 ${isMobileSidebarOpen || isOnboardingOpen || activeOverlay ? "z-0" : "z-20"} rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2 backdrop-blur`}
               >
                 <div className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2">
                   <div className="flex items-center gap-2">
@@ -2045,7 +2072,14 @@ export default function RunashChatPage() {
                     size="sm"
                     variant="outline"
                     className="h-8 rounded-full border-zinc-700 bg-zinc-950 px-2.5 text-xs font-medium text-zinc-100 hover:bg-zinc-900"
-                    onClick={() => setIsCreditsOpen((previous) => !previous)}
+                    onClick={(event) => {
+                      if (isCreditsOpen) {
+                        closeCreditsPanel(true)
+                        return
+                      }
+
+                      openOverlay("credits", event.currentTarget)
+                    }}
                     aria-label="View credit balance details"
                     aria-expanded={isCreditsOpen}
                     aria-controls={creditsPanelId}
