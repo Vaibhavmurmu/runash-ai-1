@@ -32,6 +32,7 @@ import {
   Bot,
   Check,
   ChevronDown,
+  ChevronRight,
   ChevronsLeft,
   ChevronsRight,
   Copy,
@@ -73,6 +74,12 @@ type RecentEntity = {
   updatedAt: string | null
   entityType: "session" | "project"
   sessionId?: string
+}
+
+type RecentMoveDestination = {
+  id: string
+  label: string
+  description: string
 }
 
 type SidebarFavoriteItem = {
@@ -451,7 +458,11 @@ export default function RunashChatPage() {
   const [isFavoritesExpanded, setIsFavoritesExpanded] = useState(true)
   const [favoriteItems, setFavoriteItems] = useState<SidebarFavoriteItem[]>(sidebarFavoriteItems)
   const [activeFavoriteMenuId, setActiveFavoriteMenuId] = useState<string | null>(null)
+  const [activeRecentMenuId, setActiveRecentMenuId] = useState<string | null>(null)
   const [isRecentsExpanded, setIsRecentsExpanded] = useState(true)
+  const [shareRecentItem, setShareRecentItem] = useState<RecentEntity | null>(null)
+  const [moveRecentItem, setMoveRecentItem] = useState<RecentEntity | null>(null)
+  const [isCopyingRecentLink, setIsCopyingRecentLink] = useState(false)
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
   const [activeOverlay, setActiveOverlay] = useState<ActiveOverlay>(null)
   const [isCopyingLink, setIsCopyingLink] = useState(false)
@@ -463,6 +474,7 @@ export default function RunashChatPage() {
   const [feedbackRating, setFeedbackRating] = useState<number | null>(null)
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false)
   const mobileSidebarTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const sidebarScrollAreaRef = useRef<HTMLDivElement | null>(null)
   const desktopSidebarToggleRef = useRef<HTMLButtonElement | null>(null)
   const learnMoreTriggerRef = useRef<HTMLButtonElement | null>(null)
   const mainControlsRef = useRef<HTMLTextAreaElement | null>(null)
@@ -517,6 +529,136 @@ export default function RunashChatPage() {
     if (document.activeElement instanceof HTMLElement) {
       lastOverlayTriggerRef.current = document.activeElement
     }
+  }
+
+  const mapRecentEntityToFavorite = (item: RecentEntity): SidebarFavoriteItem => {
+    const isProject = item.entityType === "project"
+    const fallbackSlug = item.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "recent"
+
+    return {
+      id: `favorite-${item.id}`,
+      label: item.title,
+      description: isProject ? "From recents · project" : "From recents · chat",
+      icon: isProject ? FolderKanban : MessageSquare,
+      href: isProject ? `/editor?projectId=${item.id.replace("project-", "")}` : `/runash-chat?session=${item.sessionId ?? fallbackSlug}`,
+    }
+  }
+
+  const closeRecentMenu = () => {
+    setActiveRecentMenuId(null)
+  }
+
+  const handleRecentAddToFavorites = (item: RecentEntity) => {
+    const nextFavorite = mapRecentEntityToFavorite(item)
+
+    setFavoriteItems((previousItems) => {
+      if (previousItems.some((favoriteItem) => favoriteItem.id === nextFavorite.id)) {
+        return previousItems
+      }
+
+      return [nextFavorite, ...previousItems]
+    })
+
+    closeRecentMenu()
+    toast({
+      title: "Added to Favorites",
+      description: `${item.title} is now pinned in your favorites list.`,
+    })
+  }
+
+  const buildRecentShareLink = (item: RecentEntity): string => {
+    const baseUrl = typeof window !== "undefined" ? window.location.origin : ""
+
+    if (item.entityType === "project") {
+      return `${baseUrl}/editor?projectId=${item.id.replace("project-", "")}`
+    }
+
+    return `${baseUrl}/runash-chat?session=${item.sessionId ?? item.id}`
+  }
+
+  const handleRecentShare = (item: RecentEntity) => {
+    setShareRecentItem(item)
+    closeRecentMenu()
+  }
+
+  const handleRecentMove = (item: RecentEntity) => {
+    setMoveRecentItem(item)
+    closeRecentMenu()
+  }
+
+  const handleRecentRename = (item: RecentEntity) => {
+    const proposedName = window.prompt("Rename item", item.title)?.trim()
+    if (!proposedName) {
+      closeRecentMenu()
+      return
+    }
+
+    setRecentEntities((previousItems) =>
+      previousItems.map((recentItem) => (recentItem.id === item.id ? { ...recentItem, title: proposedName } : recentItem)),
+    )
+
+    closeRecentMenu()
+    toast({
+      title: "Item renamed",
+      description: `Updated to \"${proposedName}\".`,
+    })
+  }
+
+  const handleRecentDelete = (item: RecentEntity) => {
+    const isConfirmed = window.confirm(`Delete ${item.title}? This action cannot be undone.`)
+    if (!isConfirmed) {
+      closeRecentMenu()
+      return
+    }
+
+    setRecentEntities((previousItems) => previousItems.filter((recentItem) => recentItem.id !== item.id))
+    closeRecentMenu()
+    toast({
+      title: "Item deleted",
+      description: `${item.title} was removed from Recents.`,
+      variant: "destructive",
+    })
+  }
+
+  const handleCopyRecentShareLink = async () => {
+    if (!shareRecentItem) return
+
+    try {
+      setIsCopyingRecentLink(true)
+      await navigator.clipboard.writeText(buildRecentShareLink(shareRecentItem))
+      toast({
+        title: "Share link copied",
+        description: `Copied link for ${shareRecentItem.title}.`,
+      })
+      setShareRecentItem(null)
+    } catch {
+      toast({
+        title: "Could not copy link",
+        description: "Please copy the share link manually.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsCopyingRecentLink(false)
+    }
+  }
+
+  const recentMoveDestinations: RecentMoveDestination[] = [
+    { id: "favorites", label: "Favorites", description: "Pin this item for faster access." },
+    ...favoriteItems.map((favoriteItem) => ({
+      id: favoriteItem.id,
+      label: favoriteItem.label,
+      description: favoriteItem.description,
+    })),
+  ]
+
+  const handleRecentMoveDestinationSelect = (destination: RecentMoveDestination) => {
+    if (!moveRecentItem) return
+
+    toast({
+      title: "Item moved",
+      description: `${moveRecentItem.title} moved to ${destination.label}.`,
+    })
+    setMoveRecentItem(null)
   }
 
   const focusOverlayTrigger = () => {
@@ -1493,7 +1635,7 @@ export default function RunashChatPage() {
         </TooltipProvider>
 
         <div className="mt-4 min-h-0 flex-1 border-t border-zinc-800 pt-3.5">
-          <ScrollArea className="h-full">
+          <ScrollArea className="h-full" ref={sidebarScrollAreaRef}>
             <div className="space-y-4 pr-2">
               {!collapsed ? (
                 <section>
@@ -1610,39 +1752,99 @@ export default function RunashChatPage() {
                       const Icon = isProject ? FolderKanban : MessageSquare
 
                       return (
-                        <button
+                        <div
                           key={item.id}
-                          type="button"
-                          onClick={() => {
-                            if (isProject) {
-                              handleProjectOpen(item.id.replace("project-", ""))
-                            } else {
-                              handleChatOpen(item.sessionId)
-                            }
-                            if (isMobileDrawer) setIsMobileSidebarOpen(false)
-                          }}
-                          className={`w-full rounded-md py-1.5 transition hover:bg-zinc-900 ${collapsed ? "px-1 text-center" : "px-2 text-left"}`}
-                          title={collapsed ? item.title : undefined}
+                          className={`group flex items-center gap-1 rounded-md transition hover:bg-zinc-900 focus-within:bg-zinc-900 ${collapsed ? "px-1" : "px-2"}`}
                         >
-                          {collapsed ? (
-                            <span className="text-xs text-zinc-400">{item.title.slice(0, 1).toUpperCase()}</span>
-                          ) : (
-                            <span className="flex items-center gap-2">
-                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-900/70 text-zinc-300">
-                                <Icon className="h-3.5 w-3.5" />
-                              </span>
-                              <span className="min-w-0 flex-1">
-                                <span className="block truncate text-xs font-medium text-zinc-200">{item.title}</span>
-                                <span className="block truncate text-[11px] text-zinc-500">
-                                  {itemLabel} · {formatRecentTimestamp(item.updatedAt)}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isProject) {
+                                handleProjectOpen(item.id.replace("project-", ""))
+                              } else {
+                                handleChatOpen(item.sessionId)
+                              }
+                              if (isMobileDrawer) setIsMobileSidebarOpen(false)
+                            }}
+                            className={`min-w-0 flex-1 rounded-md py-1.5 text-left transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 ${collapsed ? "px-0 text-center" : ""}`}
+                            title={collapsed ? item.title : undefined}
+                          >
+                            {collapsed ? (
+                              <span className="text-xs text-zinc-400">{item.title.slice(0, 1).toUpperCase()}</span>
+                            ) : (
+                              <span className="flex items-center gap-2">
+                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-900/70 text-zinc-300">
+                                  <Icon className="h-3.5 w-3.5" />
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-xs font-medium text-zinc-200">{item.title}</span>
+                                  <span className="block truncate text-[11px] text-zinc-500">
+                                    {itemLabel} · {formatRecentTimestamp(item.updatedAt)}
+                                  </span>
                                 </span>
                               </span>
-                              <span className="shrink-0 rounded p-1 text-zinc-600" aria-hidden>
-                                <MoreVertical className="h-3.5 w-3.5" />
-                              </span>
-                            </span>
-                          )}
-                        </button>
+                            )}
+                          </button>
+
+                          {!collapsed ? (
+                            <DropdownMenu
+                              open={activeRecentMenuId === item.id}
+                              onOpenChange={(open) => setActiveRecentMenuId(open ? item.id : null)}
+                              modal={false}
+                            >
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition hover:bg-zinc-800 hover:text-zinc-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 group-hover:opacity-100"
+                                  aria-label={`Open actions for ${item.title}`}
+                                >
+                                  <span className="text-sm leading-none">...</span>
+                                </button>
+                              </DropdownMenuTrigger>
+
+                              <DropdownMenuContent
+                                align="end"
+                                sideOffset={6}
+                                collisionPadding={8}
+                                sticky="always"
+                                hideWhenDetached
+                                collisionBoundary={sidebarScrollAreaRef.current ?? undefined}
+                                className="w-44 border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100"
+                              >
+                                <DropdownMenuItem
+                                  className="cursor-pointer rounded-sm text-zinc-200 focus:bg-zinc-900 focus:text-zinc-100"
+                                  onClick={() => handleRecentShare(item)}
+                                >
+                                  Share
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="cursor-pointer rounded-sm text-zinc-200 focus:bg-zinc-900 focus:text-zinc-100"
+                                  onClick={() => handleRecentMove(item)}
+                                >
+                                  Move...
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="cursor-pointer rounded-sm text-zinc-200 focus:bg-zinc-900 focus:text-zinc-100"
+                                  onClick={() => handleRecentAddToFavorites(item)}
+                                >
+                                  Add to Favorites
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="cursor-pointer rounded-sm text-zinc-200 focus:bg-zinc-900 focus:text-zinc-100"
+                                  onClick={() => handleRecentRename(item)}
+                                >
+                                  Rename
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="cursor-pointer rounded-sm text-red-400 focus:bg-red-950/50 focus:text-red-300"
+                                  onClick={() => handleRecentDelete(item)}
+                                >
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : null}
+                        </div>
                       )
                     })}
                   </div>
@@ -1657,6 +1859,53 @@ export default function RunashChatPage() {
 
   return (
     <div className="min-h-screen bg-[#030405] text-zinc-100">
+      <Dialog open={Boolean(shareRecentItem)} onOpenChange={(open) => !open && setShareRecentItem(null)}>
+        <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Share item</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Share <span className="font-medium text-zinc-200">{shareRecentItem?.title}</span> using this link.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Input readOnly value={shareRecentItem ? buildRecentShareLink(shareRecentItem) : ""} className="border-zinc-800 bg-zinc-900 text-zinc-200" />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" className="text-zinc-300 hover:bg-zinc-900" onClick={() => setShareRecentItem(null)}>
+              Cancel
+            </Button>
+            <Button className="bg-cyan-600 text-white hover:bg-cyan-500" onClick={handleCopyRecentShareLink} disabled={!shareRecentItem || isCopyingRecentLink}>
+              {isCopyingRecentLink ? "Copying..." : "Copy link"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(moveRecentItem)} onOpenChange={(open) => !open && setMoveRecentItem(null)}>
+        <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Move item</DialogTitle>
+            <DialogDescription className="text-zinc-400">Choose where to move {moveRecentItem?.title}.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {recentMoveDestinations.map((destination) => (
+              <button
+                key={destination.id}
+                type="button"
+                onClick={() => handleRecentMoveDestinationSelect(destination)}
+                className="flex w-full items-center justify-between rounded-md border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-left transition hover:border-zinc-700 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+              >
+                <span>
+                  <span className="block text-sm font-medium text-zinc-100">{destination.label}</span>
+                  <span className="block text-xs text-zinc-500">{destination.description}</span>
+                </span>
+                <ChevronRight className="h-4 w-4 text-zinc-500" />
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={isOnboardingOpen} onOpenChange={handleOnboardingOpenChange}>
         <DialogContent
           className="z-[60] w-[min(92vw,32rem)] max-w-[32rem] overflow-hidden border-zinc-800 bg-zinc-950 p-0 text-zinc-100 motion-reduce:duration-0"
