@@ -1,21 +1,18 @@
 import type { LucideIcon } from "lucide-react"
 import {
-  BarChart3,
-  Bell,
-  Calendar,
   Clapperboard,
-  HelpCircle,
+  FolderKanban,
   LayoutDashboard,
+  ListOrdered,
   MessageSquare,
-  Settings,
+  Radio,
+  Receipt,
   ShoppingBag,
   Store,
-  Upload,
-  Users,
-  Video,
+  Wallet,
 } from "lucide-react"
 
-export type DashboardNavSection = "primary" | "secondary"
+export type DashboardNavSection = "primary"
 
 export interface DashboardNavItem {
   label: string
@@ -26,12 +23,19 @@ export interface DashboardNavItem {
   activeMatch?: (pathname: string) => boolean
 }
 
+export interface DashboardQuickLinkGroup {
+  label: string
+  icon: LucideIcon
+  items: DashboardNavItem[]
+}
+
 export const dashboardNavItems: DashboardNavItem[] = [
   {
     label: "Dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
     section: "primary",
+    activeMatch: (pathname) => pathname === "/dashboard",
   },
   {
     label: "RunAsh Chat",
@@ -48,75 +52,75 @@ export const dashboardNavItems: DashboardNavItem[] = [
     activeMatch: (pathname) => pathname.startsWith("/editor"),
   },
   {
-    label: "Store",
-    href: "/ecommerce/dashboard",
-    icon: Store,
+    label: "Streaming Studio",
+    href: "/stream",
+    icon: Radio,
     section: "primary",
-    activeMatch: (pathname) => pathname.startsWith("/ecommerce"),
+    activeMatch: (pathname) => pathname.startsWith("/stream"),
   },
   {
-    label: "Seller Dashboard",
+    label: "Seller Studio",
     href: "/seller/dashboard",
     icon: ShoppingBag,
     section: "primary",
     activeMatch: (pathname) => pathname.startsWith("/seller"),
   },
   {
-    label: "Go Live",
-    href: "/stream",
-    icon: Video,
-    section: "secondary",
-    badge: "New",
-    activeMatch: (pathname) => pathname.startsWith("/stream"),
+    label: "Store",
+    href: "/ecommerce/dashboard",
+    icon: Store,
+    section: "primary",
+    activeMatch: (pathname) => pathname.startsWith("/ecommerce"),
+  },
+]
+
+export const dashboardQuickLinkGroups: DashboardQuickLinkGroup[] = [
+  {
+    label: "Editor",
+    icon: Clapperboard,
+    items: [
+      {
+        label: "Editor Projects",
+        href: "/editor/dashboard",
+        icon: FolderKanban,
+        section: "primary",
+        activeMatch: (pathname) => pathname.startsWith("/editor/dashboard"),
+      },
+    ],
   },
   {
-    label: "Schedule",
-    href: "/schedule",
-    icon: Calendar,
-    section: "secondary",
+    label: "Store",
+    icon: Store,
+    items: [
+      {
+        label: "Store Orders",
+        href: "/ecommerce/history",
+        icon: ListOrdered,
+        section: "primary",
+        activeMatch: (pathname) => pathname.startsWith("/ecommerce/history"),
+      },
+    ],
   },
   {
-    label: "Analytics",
-    href: "/analytics",
-    icon: BarChart3,
-    section: "secondary",
-    activeMatch: (pathname) => pathname.startsWith("/analytics"),
-  },
-  {
-    label: "Upload",
-    href: "/upload",
-    icon: Upload,
-    section: "secondary",
-  },
-  {
-    label: "Recordings",
-    href: "/recordings",
-    icon: Video,
-    section: "secondary",
-  },
-  {
-    label: "Alerts",
-    href: "/alerts",
-    icon: Bell,
-    section: "secondary",
-  },
-  {
-    label: "Settings",
-    href: "/settings",
-    icon: Settings,
-    section: "secondary",
-  },
-  {
-    label: "Community",
-    href: "/community",
-    icon: Users,
-    section: "secondary",
-  },
-  {
-    label: "Help & Support",
-    href: "/support",
-    icon: HelpCircle,
-    section: "secondary",
+    label: "Seller",
+    icon: ShoppingBag,
+    items: [
+      {
+        label: "Seller Payouts",
+        href: "/seller/dashboard",
+        icon: Wallet,
+        section: "primary",
+        activeMatch: (pathname) => pathname.startsWith("/seller"),
+        badge: "Soon",
+      },
+      {
+        label: "Seller Receipts",
+        href: "/ecommerce/invoices",
+        icon: Receipt,
+        section: "primary",
+        activeMatch: (pathname) => pathname.startsWith("/ecommerce/invoices"),
+      },
+    ],
   },
 ]
 
