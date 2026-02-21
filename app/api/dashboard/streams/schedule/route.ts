@@ -21,7 +21,7 @@ type ExtendedScheduleRequest = ScheduleStreamRequest & {
 };
 
 export async function POST(request: Request) {
-  const scopedUserId = requireStreamDashboardUserId(request);
+  const scopedUserId = await requireStreamDashboardUserId(request);
   if (scopedUserId instanceof NextResponse) return scopedUserId;
 
   const body = (await request

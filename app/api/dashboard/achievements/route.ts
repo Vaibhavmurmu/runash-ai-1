@@ -2,14 +2,13 @@ import { type NextRequest } from "next/server"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { logApiEvent } from "@/lib/api/logging"
 import { DashboardService } from "@/lib/dashboard-service"
+import { requireDashboardSessionUserId } from "../_auth"
 
 export async function GET(request: NextRequest) {
   const requestId = request.headers.get("x-request-id") ?? crypto.randomUUID()
   try {
-    const userId = request.headers.get("x-user-id")
-    if (!userId) {
-      return respondError(request, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401, requestId })
-    }
+    const userId = await requireDashboardSessionUserId(request)
+    if (userId instanceof Response) return userId
 
     const achievements = await DashboardService.getAchievements(Number.parseInt(userId))
     return respondSuccess(request, achievements, { requestId })

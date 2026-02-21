@@ -463,3 +463,10 @@ These pages include:
 - Passkey sign-in action
 - Social provider buttons (Google, GitHub, Hugging Face, LinkedIn, Twitter)
 - Card alert feedback states and password strength indicator
+
+
+## Dashboard authenticated data access + realtime subscriptions (2026-02)
+
+- Dashboard APIs now resolve identity from `getServerAuthSession` on the server boundary and reject mismatched `x-user-id` headers when present.
+- UI dashboard fetches no longer rely on client-provided identity fallbacks; `x-user-id` is retained only for internal contracts and is derived from verified session identity.
+- Dashboard refresh orchestration moved from polling-only behavior to an SSE subscription fan-in for `stream`, `chat`, `editor`, and `store` invalidation channels.

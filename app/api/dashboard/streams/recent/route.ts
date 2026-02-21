@@ -4,7 +4,7 @@ import { getCanonicalStreamUrl, requireStreamDashboardUserId } from "../utils"
 import type { DashboardRecentStreamsResponse } from "@/lib/types/dashboard-streams"
 
 export async function GET(request: NextRequest) {
-  const scopedUserId = requireStreamDashboardUserId(request)
+  const scopedUserId = await requireStreamDashboardUserId(request)
   if (scopedUserId instanceof NextResponse) return scopedUserId
 
   const { searchParams } = new URL(request.url)
