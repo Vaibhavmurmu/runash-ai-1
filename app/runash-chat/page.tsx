@@ -6169,7 +6169,7 @@ ${instructionStarter}`
             </div>
 
             <div
-              className={`sticky top-0 mb-5 space-y-3 rounded-2xl border border-transparent bg-gradient-to-b from-[#050607]/95 via-[#050607]/92 to-transparent px-1 pt-1 backdrop-blur-sm sm:mb-6 ${
+              className={`sticky top-0 mb-4 space-y-4 rounded-2xl border border-transparent bg-gradient-to-b from-[#050607]/95 via-[#050607]/92 to-transparent px-1 pt-1 backdrop-blur-sm sm:mb-5 ${
                 isMobileSidebarOpen ||
                 isOnboardingOpen ||
                 activeOverlay.type === "modal"
@@ -6179,7 +6179,7 @@ ${instructionStarter}`
             >
               {isBannerDismissed === false && (
                 <div
-                  className="relative mx-auto w-full max-w-3xl rounded-lg border border-zinc-700/70 bg-zinc-900/85 px-9 py-2 text-zinc-100 shadow-[0_10px_28px_-22px_rgba(34,211,238,0.55)] backdrop-blur-sm sm:px-10"
+                  className="relative mx-auto w-full max-w-3xl rounded-lg border border-zinc-700/80 bg-zinc-900/90 px-10 py-2.5 text-zinc-100 shadow-[0_10px_28px_-22px_rgba(34,211,238,0.55)] backdrop-blur-sm sm:px-12"
                   role="status"
                   aria-live="polite"
                 >
@@ -6187,7 +6187,7 @@ ${instructionStarter}`
                     <span className="rounded-full border border-zinc-600 bg-zinc-800/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-200">
                       New
                     </span>
-                    <p className="text-zinc-300">
+                    <p className="text-zinc-200">
                       Chat composer updates are live with quicker launch
                       actions.
                     </p>
@@ -6205,18 +6205,17 @@ ${instructionStarter}`
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="absolute right-2 top-1/2 h-6 w-6 -translate-y-1/2 shrink-0 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                    className="absolute right-2 top-1/2 h-8 w-8 -translate-y-1/2 shrink-0 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
                     onClick={dismissUpdatesBanner}
                     aria-label="Dismiss updates banner"
                   >
-                    <X className="h-3.5 w-3.5" />
+                    <X className="h-4 w-4" />
                   </Button>
                 </div>
               )}
 
-              <header className="relative grid grid-cols-1 items-center gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
-                <div className="hidden md:block" aria-hidden="true" />
-                <div className="flex min-w-0 items-center justify-center gap-2.5 text-center sm:gap-3">
+              <header className="relative flex flex-col items-center gap-3 pb-1 md:min-h-[3.5rem] md:justify-center">
+                <div className="flex min-w-0 items-center justify-center gap-2.5 text-center sm:gap-3 md:px-28 lg:px-40 xl:px-52">
                   <div className="rounded-md bg-gradient-to-r from-cyan-500 to-blue-500 p-1.5 sm:p-2">
                     <Bot className="h-4 w-4 text-white sm:h-5 sm:w-5" />
                   </div>
@@ -6229,7 +6228,7 @@ ${instructionStarter}`
                     </h1>
                   </div>
                 </div>
-                <div className="flex shrink-0 items-center justify-end gap-2 sm:gap-2.5 md:col-start-3">
+                <div className="flex shrink-0 items-center justify-end gap-2 sm:gap-2.5 md:absolute md:right-0 md:top-1/2 md:w-auto md:-translate-y-1/2">
                   <div className="hidden items-center gap-1.5 lg:flex">
                     {headerActions.map((action) => (
                       <Button
@@ -6559,7 +6558,7 @@ ${instructionStarter}`
               </div>
             )}
 
-            <Card className="mb-5 border-zinc-800 bg-zinc-950 p-0">
+            <Card className="mx-auto mb-5 w-full max-w-4xl border-zinc-800 bg-zinc-950 p-0 sm:mb-6">
               <div className="p-3 sm:p-4">
                 <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
                   <Textarea
@@ -6890,7 +6889,7 @@ ${instructionStarter}`
                   </div>
                 </div>
 
-                <div className="mt-3">
+                <div className="mt-4">
                   <SuggestionCardGrid
                     title="Prompt suggestions"
                     items={promptSuggestionItems}
@@ -6901,7 +6900,7 @@ ${instructionStarter}`
 
               {isGetStartedVisible && (
                 <section
-                  className="border-t border-zinc-800 px-3 py-3 sm:px-4"
+                  className="border-t border-zinc-800 px-3 py-4 sm:px-4"
                   aria-label="Get started with RunAshChat"
                 >
                   <div className="mb-3 flex items-start justify-between gap-3">
@@ -7355,5 +7354,4 @@ ${instructionStarter}`
     </div>
   );
 }
-
 
