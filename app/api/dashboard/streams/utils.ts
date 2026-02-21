@@ -1,6 +1,7 @@
 import { promises as fs } from "fs"
 import path from "path"
 import { NextResponse } from "next/server"
+import { requireDashboardSessionUserId } from "../_auth"
 import { listDashboardRecentStreams, listDashboardScheduledStreams } from "@/lib/repositories/streams"
 import type { DashboardStreamsStore } from "@/lib/types/dashboard-streams"
 
@@ -13,12 +14,8 @@ export function getCanonicalStreamUrl(id: string) {
   return `${base}/stream/${id}`
 }
 
-export function requireStreamDashboardUserId(request: Request): string | NextResponse {
-  const userId = request.headers.get("x-user-id")?.trim()
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-  return userId
+export async function requireStreamDashboardUserId(request: Request): Promise<string | NextResponse> {
+  return requireDashboardSessionUserId(request)
 }
 
 async function readFallbackFile(): Promise<DashboardStreamsStore> {

@@ -5,7 +5,7 @@ import { getCanonicalStreamUrl, requireStreamDashboardUserId } from "../utils"
 import type { DashboardRecentStream, StartStreamRequest, StartStreamResponse } from "@/lib/types/dashboard-streams"
 
 export async function POST(request: Request) {
-  const scopedUserId = requireStreamDashboardUserId(request)
+  const scopedUserId = await requireStreamDashboardUserId(request)
   if (scopedUserId instanceof NextResponse) return scopedUserId
 
   const body = (await request.json().catch(() => null)) as StartStreamRequest | null
