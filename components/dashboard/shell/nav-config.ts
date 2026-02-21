@@ -29,6 +29,11 @@ export interface DashboardQuickLinkGroup {
   items: DashboardNavItem[]
 }
 
+export interface DashboardNavContext {
+  currentSection: string
+  breadcrumbs: { label: string; href?: string }[]
+}
+
 export const dashboardNavItems: DashboardNavItem[] = [
   {
     label: "Dashboard",
@@ -130,4 +135,52 @@ export function getNavItemsBySection(section: DashboardNavSection) {
 
 export function isNavItemActive(pathname: string, item: DashboardNavItem) {
   return item.activeMatch ? item.activeMatch(pathname) : pathname === item.href
+}
+
+const dashboardPathLabels: Record<string, string> = {
+  dashboard: "Dashboard",
+  runash: "RunAsh",
+  chat: "Chat",
+  editor: "Editor",
+  stream: "Streaming Studio",
+  seller: "Seller Studio",
+  ecommerce: "Store",
+  history: "Order History",
+  invoices: "Invoices",
+}
+
+function formatSegmentLabel(segment: string) {
+  const knownLabel = dashboardPathLabels[segment]
+
+  if (knownLabel) {
+    return knownLabel
+  }
+
+  return segment
+    .split("-")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
+}
+
+export function resolveDashboardNavContext(pathname: string): DashboardNavContext {
+  const matchedItem = dashboardNavItems.find((item) => isNavItemActive(pathname, item))
+  const sectionLabel = matchedItem?.label ?? "Workspace"
+  const pathSegments = pathname.split("/").filter(Boolean)
+
+  const breadcrumbs = pathSegments.length
+    ? pathSegments.map((segment, index) => {
+        const href = `/${pathSegments.slice(0, index + 1).join("/")}`
+        const isLastSegment = index === pathSegments.length - 1
+
+        return {
+          label: formatSegmentLabel(segment),
+          href: isLastSegment ? undefined : href,
+        }
+      })
+    : [{ label: "Dashboard" }]
+
+  return {
+    currentSection: sectionLabel,
+    breadcrumbs,
+  }
 }
