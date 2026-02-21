@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1327,6 +1328,7 @@ export default function RunashChatPage() {
     useState<ConfirmDeletePayload | null>(null);
   const [isDeletingEntity, setIsDeletingEntity] = useState(false);
   const [isMovingRecent, setIsMovingRecent] = useState(false);
+  const [moveInputError, setMoveInputError] = useState<string | null>(null);
   const [favoriteMutationById, setFavoriteMutationById] = useState<
     Record<string, boolean>
   >({});
@@ -1369,6 +1371,7 @@ export default function RunashChatPage() {
   const composerMenuContentRef = useRef<HTMLDivElement | null>(null);
   const lastOverlayTriggerRef = useRef<HTMLElement | null>(null);
   const deleteActionTriggerRef = useRef<HTMLElement | null>(null);
+  const pendingDeleteTimeoutRef = useRef<number | null>(null);
   const rowActionTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>(
     {},
   );
@@ -1382,6 +1385,14 @@ export default function RunashChatPage() {
     Partial<Record<GetStartedTabId, HTMLButtonElement | null>>
   >({});
   const recentItemsRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      if (pendingDeleteTimeoutRef.current) {
+        window.clearTimeout(pendingDeleteTimeoutRef.current);
+      }
+    };
+  }, []);
   const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const startChatInFlightRef = useRef(false);
   const speechCommitReadyRef = useRef(false);
@@ -1434,7 +1445,7 @@ export default function RunashChatPage() {
   const menuOverlayClassName = overlayLayerClassNames.menu;
   const popoverOverlayClassName = overlayLayerClassNames.popover;
   const modalOverlayClassName = overlayLayerClassNames.dialog;
-  const actionMenuContentClassName = `${menuOverlayClassName} w-48 border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100`;
+  const actionMenuContentClassName = `${menuOverlayClassName} w-48 max-w-[calc(100vw-2rem)] border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100`;
   const actionMenuItemClassName =
     "cursor-pointer rounded-sm px-2.5 py-1.5 text-zinc-200 focus:bg-zinc-900 focus:text-zinc-100";
   const actionMenuDangerItemClassName =
@@ -2093,6 +2104,7 @@ export default function RunashChatPage() {
   const handleRecentMove = (item: RecentEntity) => {
     setMoveRecentItem(item);
     setSelectedMoveDestinationId("");
+    setMoveInputError(null);
     closeRecentMenu();
     openModal("move");
   };
@@ -2169,6 +2181,7 @@ export default function RunashChatPage() {
     const payload = confirmDeletePayload;
     const previousFavorites = favoriteItems;
     const previousRecents = recentEntities;
+    let undone = false;
 
     if (payload.entityType === "folder") {
       setFavoriteItems((previousItems) =>
@@ -2184,38 +2197,72 @@ export default function RunashChatPage() {
       );
     }
 
+    closeDeleteConfirmModal(true);
+
+    toast({
+      title: "Deletion queued",
+      description: `Deleting ${payload.title} in 5 seconds.`,
+      variant: "destructive",
+      action: (
+        <ToastAction
+          altText={`Undo deleting ${payload.title}`}
+          onClick={() => {
+            undone = true;
+            if (pendingDeleteTimeoutRef.current) {
+              window.clearTimeout(pendingDeleteTimeoutRef.current);
+              pendingDeleteTimeoutRef.current = null;
+            }
+            setFavoriteItems(previousFavorites);
+            setRecentEntities(previousRecents);
+            toast({
+              title: "Delete cancelled",
+              description: `${payload.title} was restored.`,
+            });
+          }}
+        >
+          Undo
+        </ToastAction>
+      ),
+    });
+
     setIsDeletingEntity(true);
+    pendingDeleteTimeoutRef.current = window.setTimeout(async () => {
+      if (undone) {
+        setIsDeletingEntity(false);
+        return;
+      }
 
-    try {
-      await persistSidebarMutation("entity.delete", {
-        entityId: payload.entityId,
-        entityType: payload.entityType,
-      });
+      try {
+        await persistSidebarMutation("entity.delete", {
+          entityId: payload.entityId,
+          entityType: payload.entityType,
+        });
 
-      toast({
-        title:
-          payload.entityType === "folder" ? "Folder deleted" : "Item deleted",
-        description:
-          payload.entityType === "folder"
-            ? `${payload.title} was removed from your workspace list.`
-            : payload.entityType === "chat"
-              ? `${payload.title} chat was removed from Recents.`
-              : `${payload.title} was removed from Recents.`,
-        variant: "destructive",
-      });
-      closeDeleteConfirmModal(true);
-    } catch {
-      setFavoriteItems(previousFavorites);
-      setRecentEntities(previousRecents);
-      toast({
-        title: "Delete failed",
-        description:
-          "We could not delete this item and restored your previous data.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsDeletingEntity(false);
-    }
+        toast({
+          title:
+            payload.entityType === "folder" ? "Folder deleted" : "Item deleted",
+          description:
+            payload.entityType === "folder"
+              ? `${payload.title} was removed from your workspace list.`
+              : payload.entityType === "chat"
+                ? `${payload.title} chat was removed from Recents.`
+                : `${payload.title} was removed from Recents.`,
+          variant: "destructive",
+        });
+      } catch {
+        setFavoriteItems(previousFavorites);
+        setRecentEntities(previousRecents);
+        toast({
+          title: "Delete failed",
+          description:
+            "We could not delete this item and restored your previous data.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsDeletingEntity(false);
+        pendingDeleteTimeoutRef.current = null;
+      }
+    }, 5000);
   };
 
   const handleCopyRecentShareLink = async () => {
@@ -2422,19 +2469,27 @@ export default function RunashChatPage() {
   const closeMoveDialog = () => {
     setMoveRecentItem(null);
     setSelectedMoveDestinationId("");
+    setMoveInputError(null);
     closeOverlay(false);
   };
 
   const handleMoveSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
+    if (!selectedMoveDestinationId) {
+      setMoveInputError("Choose a destination before moving this item.");
+      return;
+    }
+
     const destination = recentMoveDestinations.find(
       (recentDestination) => recentDestination.id === selectedMoveDestinationId,
     );
     if (!destination) {
+      setMoveInputError("The selected destination is no longer available.");
       return;
     }
 
+    setMoveInputError(null);
     await handleRecentMoveDestinationSelect(destination);
   };
 
@@ -4947,7 +5002,7 @@ ${instructionStarter}`
                         return (
                           <div
                             key={item.id}
-                            className="flex items-center gap-1 rounded-md px-1 py-0.5 transition hover:bg-zinc-900"
+                            className="group flex items-center gap-1 rounded-md px-1 py-0.5 transition hover:bg-zinc-900"
                           >
                             <button
                               type="button"
@@ -4962,7 +5017,7 @@ ${instructionStarter}`
                               <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-900 text-zinc-300">
                                 <Icon className="h-3.5 w-3.5" />
                               </div>
-                              <div className="min-w-0 flex-1 pr-1">
+                              <div className="w-0 min-w-0 flex-1 pr-1">
                                 <p
                                   className="truncate text-xs font-medium text-zinc-200"
                                   title={item.label}
@@ -5000,13 +5055,11 @@ ${instructionStarter}`
                                       element;
                                   }}
                                   type="button"
-                                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+                                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition hover:bg-zinc-800 hover:text-zinc-200 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 group-hover:opacity-100"
                                   aria-label={`Open actions for ${item.label}`}
                                   disabled={isFavoriteMutating}
                                 >
-                                  <span className="text-sm leading-none">
-                                    ...
-                                  </span>
+                                  <MoreVertical className="h-3.5 w-3.5" />
                                 </button>
                               </DropdownMenuTrigger>
 
@@ -5133,7 +5186,7 @@ ${instructionStarter}`
                                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-900/70 text-zinc-300">
                                   <Icon className="h-3.5 w-3.5" />
                                 </span>
-                                <span className="min-w-0 flex-1 pr-1">
+                                <span className="w-0 min-w-0 flex-1 pr-1">
                                   <span
                                     className="block truncate text-xs font-medium text-zinc-200"
                                     title={item.title}
@@ -5176,9 +5229,7 @@ ${instructionStarter}`
                                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition hover:bg-zinc-800 hover:text-zinc-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 group-hover:opacity-100"
                                   aria-label={`Open actions for ${item.title}`}
                                 >
-                                  <span className="text-sm leading-none">
-                                    ...
-                                  </span>
+                                  <MoreVertical className="h-3.5 w-3.5" />
                                 </button>
                               </DropdownMenuTrigger>
 
@@ -5248,7 +5299,7 @@ ${instructionStarter}`
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-md border border-red-900/40 bg-red-950/20 px-3 py-2 text-xs leading-relaxed text-red-200">
-            This action is permanent and cannot be undone.
+            This action is destructive. You'll have a short undo window after confirming.
           </div>
           <DialogFooter className="flex-row justify-end gap-2">
             <Button
@@ -5333,7 +5384,10 @@ ${instructionStarter}`
               </label>
               <Select
                 value={selectedMoveDestinationId}
-                onValueChange={setSelectedMoveDestinationId}
+                onValueChange={(value) => {
+                  setSelectedMoveDestinationId(value);
+                  setMoveInputError(null);
+                }}
               >
                 <SelectTrigger
                   id="move-destination-select"
@@ -5361,6 +5415,9 @@ ${instructionStarter}`
                 </SelectContent>
               </Select>
             </div>
+            {moveInputError ? (
+              <p className="text-xs text-red-300">{moveInputError}</p>
+            ) : null}
             <DialogFooter>
               <Button
                 variant="ghost"
@@ -5417,6 +5474,9 @@ ${instructionStarter}`
                 <p className="text-xs text-red-300">{renameInputError}</p>
               ) : null}
             </div>
+            {moveInputError ? (
+              <p className="text-xs text-red-300">{moveInputError}</p>
+            ) : null}
             <DialogFooter>
               <Button
                 variant="ghost"
