@@ -309,6 +309,23 @@ const validatePromptInput = (value: string): string | null => {
   return null;
 };
 
+const buildEnhancedPrompt = (input: string): string => {
+  const trimmedInput = input.trim();
+  if (!trimmedInput) {
+    return "";
+  }
+
+  return [
+    "Enhance this prompt for execution readiness:",
+    "- Clarify objective and target audience.",
+    "- Add a concise step-by-step structure.",
+    "- Include expected output format and success criteria.",
+    "- Keep the original intent and key details unchanged.",
+    "",
+    `Original prompt: ${trimmedInput}`,
+  ].join("\n");
+};
+
 const validateReferralLink = (value: string): boolean => {
   try {
     const parsed = new URL(value);
@@ -1708,6 +1725,11 @@ export default function RunashChatPage() {
         "Voice input is not supported in this browser. Try Chrome, Edge, or Safari.",
       );
       setVoiceCaptureState("error");
+      toast({
+        title: "Voice input unavailable",
+        description:
+          "Your browser does not support speech recognition. Type your prompt manually.",
+      });
       return;
     }
 
@@ -1767,6 +1789,11 @@ export default function RunashChatPage() {
       setSpeechErrorMessage(mappedMessage || null);
       if (mappedMessage) {
         setVoiceCaptureState("error");
+        toast({
+          title: "Voice input error",
+          description: mappedMessage,
+          variant: "destructive",
+        });
       }
       clearSpeechTimeout();
     };
@@ -1805,6 +1832,10 @@ export default function RunashChatPage() {
   };
 
   const togglePromptRecording = () => {
+    if (voiceCaptureState === "processing") {
+      return;
+    }
+
     if (voiceCaptureState === "recording") {
       stopPromptRecording();
       return;
@@ -4233,11 +4264,11 @@ export default function RunashChatPage() {
           return;
         }
 
-        const enhancedPrompt = `Enhance this brief with clear goals, audience, and output format: ${trimmedPrompt}`;
+        const enhancedPrompt = buildEnhancedPrompt(trimmedPrompt);
         setPrompt(enhancedPrompt);
         toast({
           title: "Prompt enhanced",
-          description: "Added structure to your prompt.",
+          description: "Added clearer goals, structure, and output guidance.",
         });
         trackPromptAction(action, "success");
         return;
@@ -4713,6 +4744,10 @@ ${instructionStarter}`
     }
 
     event.preventDefault();
+    if (isStartingChat || startChatInFlightRef.current) {
+      return;
+    }
+
     if (prompt.trim()) {
       void startChatWithPrompt(prompt);
     }
@@ -7121,11 +7156,15 @@ ${instructionStarter}`
                             voiceCaptureState === "recording" ||
                             voiceCaptureState === "processing"
                               ? "border-red-500/80 bg-red-500/15 text-red-200"
+                              : voiceCaptureState === "error"
+                                ? "border-amber-500/80 bg-amber-500/15 text-amber-200"
                               : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
                           }`}
                           aria-label={
                             voiceCaptureState === "recording"
                               ? "Stop voice input"
+                              : voiceCaptureState === "error"
+                                ? "Retry voice input"
                               : "Start voice input"
                           }
                           aria-pressed={voiceCaptureState === "recording"}
@@ -7140,6 +7179,8 @@ ${instructionStarter}`
                               ? "Stop"
                               : voiceCaptureState === "processing"
                                 ? "Stopping"
+                                : voiceCaptureState === "error"
+                                  ? "Retry voice"
                                 : "Voice"}
                           </span>
                         </button>
