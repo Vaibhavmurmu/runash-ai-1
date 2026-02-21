@@ -19,6 +19,10 @@ import {
   LogOut,
   Menu,
   X,
+  Store,
+  MessageSquare,
+  Clapperboard,
+  ShoppingBag,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
@@ -35,6 +39,127 @@ interface NavItemProps {
   isActive?: boolean
   onClick?: () => void
 }
+
+type NavCapability = "core" | "chat" | "editor" | "store" | "seller"
+type NavSection = "primary" | "secondary"
+
+interface DashboardNavItem {
+  label: string
+  href: string
+  icon: React.ReactNode
+  badge?: string | number
+  capabilities: NavCapability[]
+  section: NavSection
+  activeMatch?: (pathname: string) => boolean
+}
+
+const dashboardNavigationConfig: DashboardNavItem[] = [
+  {
+    label: "Dashboard",
+    href: "/dashboard",
+    icon: <LayoutDashboard className="h-4 w-4" />,
+    capabilities: ["core"],
+    section: "primary",
+  },
+  {
+    label: "RunAsh Chat",
+    href: "/runash-chat",
+    icon: <MessageSquare className="h-4 w-4" />,
+    capabilities: ["chat"],
+    section: "primary",
+    activeMatch: (pathname) => pathname.startsWith("/runash-chat"),
+  },
+  {
+    label: "Editor",
+    href: "/editor",
+    icon: <Clapperboard className="h-4 w-4" />,
+    capabilities: ["editor"],
+    section: "primary",
+    activeMatch: (pathname) => pathname.startsWith("/editor"),
+  },
+  {
+    label: "Store",
+    href: "/ecommerce/dashboard",
+    icon: <Store className="h-4 w-4" />,
+    capabilities: ["store"],
+    section: "primary",
+    activeMatch: (pathname) => pathname.startsWith("/ecommerce"),
+  },
+  {
+    label: "Seller Dashboard",
+    href: "/seller/dashboard",
+    icon: <ShoppingBag className="h-4 w-4" />,
+    capabilities: ["seller"],
+    section: "primary",
+    activeMatch: (pathname) => pathname.startsWith("/seller"),
+  },
+  {
+    label: "Go Live",
+    href: "/stream",
+    icon: <Video className="h-4 w-4" />,
+    badge: "New",
+    capabilities: ["core"],
+    section: "secondary",
+    activeMatch: (pathname) => pathname.startsWith("/stream"),
+  },
+  {
+    label: "Schedule",
+    href: "/schedule",
+    icon: <Calendar className="h-4 w-4" />,
+    capabilities: ["core"],
+    section: "secondary",
+  },
+  {
+    label: "Analytics",
+    href: "/analytics",
+    icon: <BarChart3 className="h-4 w-4" />,
+    capabilities: ["core"],
+    section: "secondary",
+    activeMatch: (pathname) => pathname.startsWith("/analytics"),
+  },
+  {
+    label: "Upload",
+    href: "/upload",
+    icon: <Upload className="h-4 w-4" />,
+    capabilities: ["core"],
+    section: "secondary",
+  },
+  {
+    label: "Recordings",
+    href: "/recordings",
+    icon: <Video className="h-4 w-4" />,
+    capabilities: ["core"],
+    section: "secondary",
+  },
+  {
+    label: "Alerts",
+    href: "/alerts",
+    icon: <Bell className="h-4 w-4" />,
+    capabilities: ["core"],
+    section: "secondary",
+  },
+  {
+    label: "Settings",
+    href: "/settings",
+    icon: <Settings className="h-4 w-4" />,
+    capabilities: ["core"],
+    section: "secondary",
+  },
+  {
+    label: "Community",
+    href: "/community",
+    icon: <Users className="h-4 w-4" />,
+    capabilities: ["core"],
+    section: "secondary",
+  },
+  {
+    label: "Help & Support",
+    href: "/support",
+    icon: <HelpCircle className="h-4 w-4" />,
+    capabilities: ["core"],
+    section: "secondary",
+  },
+]
 
 function NavItem({ href, icon, label, badge, isActive, onClick }: NavItemProps) {
   return (
@@ -70,21 +195,11 @@ export function DashboardNavigation() {
   const { data: session } = useAuthSession()
   const user = session?.user
 
-  const navItems = [
-    { href: "/dashboard", icon: <LayoutDashboard className="h-4 w-4" />, label: "Dashboard" },
-    { href: "/stream", icon: <Video className="h-4 w-4" />, label: "Go Live", badge: "New" },
-    { href: "/schedule", icon: <Calendar className="h-4 w-4" />, label: "Schedule" },
-    { href: "/analytics", icon: <BarChart3 className="h-4 w-4" />, label: "Analytics" },
-    { href: "/upload", icon: <Upload className="h-4 w-4" />, label: "Upload" },
-    { href: "/recordings", icon: <Video className="h-4 w-4" />, label: "Recordings" },
-    { href: "/alerts", icon: <Bell className="h-4 w-4" />, label: "Alerts" },
-  ]
+  const primaryNavItems = dashboardNavigationConfig.filter((item) => item.section === "primary")
+  const secondaryNavItems = dashboardNavigationConfig.filter((item) => item.section === "secondary")
 
-  const secondaryNavItems = [
-    { href: "/settings", icon: <Settings className="h-4 w-4" />, label: "Settings" },
-    { href: "/community", icon: <Users className="h-4 w-4" />, label: "Community" },
-    { href: "/support", icon: <HelpCircle className="h-4 w-4" />, label: "Help & Support" },
-  ]
+  const isActiveRoute = (item: DashboardNavItem) =>
+    item.activeMatch ? item.activeMatch(pathname) : pathname === item.href
 
   const closeMobileMenu = () => {
     setIsMobileMenuOpen(false)
@@ -126,14 +241,14 @@ export function DashboardNavigation() {
 
           <div className="mt-6 flex flex-col flex-1 px-3">
             <div className="space-y-1">
-              {navItems.map((item) => (
+              {primaryNavItems.map((item) => (
                 <NavItem
                   key={item.href}
                   href={item.href}
                   icon={item.icon}
                   label={item.label}
                   badge={item.badge}
-                  isActive={pathname === item.href}
+                  isActive={isActiveRoute(item)}
                 />
               ))}
             </div>
@@ -147,7 +262,7 @@ export function DashboardNavigation() {
                   href={item.href}
                   icon={item.icon}
                   label={item.label}
-                  isActive={pathname === item.href}
+                  isActive={isActiveRoute(item)}
                 />
               ))}
             </div>
@@ -240,14 +355,14 @@ export function DashboardNavigation() {
 
                 <div className="flex-1 overflow-y-auto py-4 px-3">
                   <div className="space-y-1">
-                    {navItems.map((item) => (
+                    {primaryNavItems.map((item) => (
                       <NavItem
                         key={item.href}
                         href={item.href}
                         icon={item.icon}
                         label={item.label}
                         badge={item.badge}
-                        isActive={pathname === item.href}
+                        isActive={isActiveRoute(item)}
                         onClick={closeMobileMenu}
                       />
                     ))}
@@ -262,7 +377,7 @@ export function DashboardNavigation() {
                         href={item.href}
                         icon={item.icon}
                         label={item.label}
-                        isActive={pathname === item.href}
+                        isActive={isActiveRoute(item)}
                         onClick={closeMobileMenu}
                       />
                     ))}
