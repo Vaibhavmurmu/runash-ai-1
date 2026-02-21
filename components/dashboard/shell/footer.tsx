@@ -30,26 +30,26 @@ export function DashboardFooter() {
   const year = useMemo(() => new Date().getFullYear(), [])
 
   return (
-    <footer className="sticky bottom-0 z-20 border-t bg-card/95 px-4 py-3 text-xs text-muted-foreground backdrop-blur supports-[backdrop-filter]:bg-card/80 md:static md:px-6">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-3">
+    <footer className="sticky bottom-0 z-20 border-t border-border/70 bg-card/85 px-4 py-4 text-xs text-muted-foreground backdrop-blur-xl supports-[backdrop-filter]:bg-card/70 md:static md:px-6 md:py-5 dark:bg-card/60">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1">
             <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
-            <span className="font-medium text-foreground">System healthy</span>
+            <span className="text-[11px] font-medium text-foreground">System healthy</span>
           </div>
           <p className="text-[11px]">Last sync: {lastSync}</p>
         </div>
 
         <div className="hidden items-center justify-between gap-3 sm:flex">
-          <nav aria-label="Dashboard footer links" className="flex items-center gap-4">
+          <nav aria-label="Dashboard footer links" className="flex items-center gap-5 text-xs font-medium">
             {FOOTER_LINKS.map(({ label, href }) => (
-              <Link key={label} href={href} className="transition-colors hover:text-foreground">
+              <Link key={label} href={href} className="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60">
                 {label}
               </Link>
             ))}
           </nav>
 
-          <p>Shortcuts: ⌘K Search · G then D Dashboard</p>
+          <p className="text-[11px]">Shortcuts: ⌘K Search · G then D Dashboard</p>
         </div>
 
         <nav aria-label="Dashboard quick actions" className="grid grid-cols-4 gap-2 sm:hidden">
@@ -57,7 +57,7 @@ export function DashboardFooter() {
             <Link
               key={label}
               href={href}
-              className="inline-flex items-center justify-center gap-1 rounded-md border border-border/80 px-2 py-1.5 text-[11px] text-foreground/90"
+              className="inline-flex items-center justify-center gap-1 rounded-lg border border-border/80 bg-background/80 px-2 py-2 text-[11px] font-medium text-foreground/90 transition-colors hover:bg-card"
             >
               <Icon className="h-3.5 w-3.5" aria-hidden="true" />
               {label}
@@ -65,7 +65,7 @@ export function DashboardFooter() {
           ))}
         </nav>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-2 text-[11px]">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3 text-[11px]">
           <p>© {year} RunAsh.AI</p>
           <p>{APP_VERSION}</p>
         </div>

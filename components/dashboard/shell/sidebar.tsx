@@ -33,14 +33,14 @@ function NavLink({ href, label, icon: Icon, isActive, badge, onClick }: NavLinkP
       href={href}
       className={
         isActive
-          ? "flex items-center gap-3 rounded-md bg-orange-50 px-3 py-2 text-sm font-medium text-orange-900 transition-colors dark:bg-orange-950/20 dark:text-orange-50"
-          : "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          ? "flex items-center gap-3 rounded-lg border border-orange-500/20 bg-orange-100/70 px-3 py-2.5 text-sm font-medium text-orange-950 shadow-sm transition-all dark:border-orange-400/30 dark:bg-orange-500/15 dark:text-orange-100"
+          : "flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-border/70 hover:bg-card/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
       }
       onClick={onClick}
     >
-      <Icon className={isActive ? "h-4 w-4 text-orange-500" : "h-4 w-4"} />
+      <Icon className={isActive ? "h-4 w-4 text-orange-500 dark:text-orange-300" : "h-4 w-4"} />
       <span className="flex-1">{label}</span>
-      {badge ? <Badge className={isActive ? "bg-orange-500" : ""}>{badge}</Badge> : null}
+      {badge ? <Badge className={isActive ? "bg-orange-500 text-white dark:bg-orange-400 dark:text-orange-950" : ""}>{badge}</Badge> : null}
     </Link>
   )
 }
@@ -50,8 +50,8 @@ function UserCard({ mobile = false }: { mobile?: boolean }) {
   const user = session?.user
 
   return (
-    <div className={mobile ? "border-t p-4" : "px-3 py-2"}>
-      <div className="flex items-center gap-3">
+    <div className={mobile ? "border-t border-border/70 p-4" : "px-3 py-2"}>
+      <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-card/70 p-3 backdrop-blur-sm">
         <Avatar>
           {user?.image ? (
             <AvatarImage src={user.image} />
@@ -70,7 +70,7 @@ function UserCard({ mobile = false }: { mobile?: boolean }) {
           <p className="truncate text-xs text-muted-foreground">{user?.email ?? "guest@runash.ai"}</p>
         </div>
 
-        <Button variant="ghost" size="icon" className="text-muted-foreground" onClick={() => signOutWithRedirect("/")}>
+        <Button variant="ghost" size="icon" className="text-muted-foreground hover:bg-muted/70" onClick={() => signOutWithRedirect("/")}>
           <LogOut className="h-4 w-4" />
           <span className="sr-only">Sign out</span>
         </Button>
@@ -84,7 +84,7 @@ function SidebarContents({ onNavigate }: { onNavigate?: () => void }) {
   const primaryNavItems = getNavItemsBySection("primary")
 
   return (
-    <div className="mt-6 flex flex-1 flex-col px-3">
+    <div className="mt-6 flex flex-1 flex-col gap-4 px-3">
       <div className="space-y-1">
         {primaryNavItems.map((item) => (
           <NavLink
@@ -99,7 +99,7 @@ function SidebarContents({ onNavigate }: { onNavigate?: () => void }) {
         ))}
       </div>
 
-      <Separator className="my-4" />
+      <Separator className="bg-border/70" />
 
       <div className="space-y-1">
         {dashboardQuickLinkGroups.map((group) => {
@@ -110,7 +110,7 @@ function SidebarContents({ onNavigate }: { onNavigate?: () => void }) {
               <CollapsibleTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="w-full justify-between px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                  className="w-full justify-between rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-card hover:text-foreground"
                 >
                   <span className="flex items-center gap-3">
                     <group.icon className="h-4 w-4" />
@@ -119,7 +119,7 @@ function SidebarContents({ onNavigate }: { onNavigate?: () => void }) {
                   <ChevronDown className="h-4 w-4" />
                 </Button>
               </CollapsibleTrigger>
-              <CollapsibleContent className="space-y-1 pt-1">
+              <CollapsibleContent className="space-y-1 pt-1.5">
                 {group.items.map((item) => (
                   <div key={item.href} className="pl-3">
                     <NavLink
@@ -146,7 +146,7 @@ export function DashboardSidebar({ mobileOpen, onMobileOpenChange }: DashboardSi
 
   return (
     <>
-      <aside className="fixed inset-y-0 hidden w-64 flex-col border-r bg-card/50 pt-5 backdrop-blur md:flex">
+      <aside className="fixed inset-y-0 hidden w-64 flex-col border-r border-border/70 bg-card/55 pt-6 backdrop-blur-xl md:flex dark:bg-card/35">
         <div className="flex items-center px-4">
           {logoAvailable ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -156,7 +156,7 @@ export function DashboardSidebar({ mobileOpen, onMobileOpenChange }: DashboardSi
               R
             </div>
           )}
-          <Link href="/" className="ml-2 text-xl font-bold text-transparent bg-gradient-to-r from-orange-500 to-amber-400 bg-clip-text">
+          <Link href="/" className="ml-2 text-xl font-semibold tracking-tight text-transparent bg-gradient-to-r from-orange-500 to-amber-400 bg-clip-text">
             RunAsh
           </Link>
         </div>
@@ -164,16 +164,16 @@ export function DashboardSidebar({ mobileOpen, onMobileOpenChange }: DashboardSi
         <div className="flex flex-1 flex-col overflow-y-auto">
           <SidebarContents />
           <div className="mt-auto pb-4">
-            <Separator className="my-4" />
+            <Separator className="my-4 bg-border/70" />
             <UserCard />
           </div>
         </div>
       </aside>
 
       <Sheet open={mobileOpen} onOpenChange={onMobileOpenChange}>
-        <SheetContent side="left" className="w-64 p-0 md:hidden">
+        <SheetContent side="left" className="w-64 border-r border-border/70 bg-card/95 p-0 backdrop-blur-xl md:hidden dark:bg-card/90">
           <div className="flex h-full flex-col">
-            <div className="flex items-center justify-between border-b p-4">
+            <div className="flex items-center justify-between border-b border-border/70 p-4">
               <div className="flex items-center">
                 {logoAvailable ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -183,7 +183,7 @@ export function DashboardSidebar({ mobileOpen, onMobileOpenChange }: DashboardSi
                     R
                   </div>
                 )}
-                <Link href="/" className="ml-2 text-xl font-bold text-transparent bg-gradient-to-r from-orange-500 to-amber-400 bg-clip-text">
+                <Link href="/" className="ml-2 text-xl font-semibold tracking-tight text-transparent bg-gradient-to-r from-orange-500 to-amber-400 bg-clip-text">
                   RunAsh
                 </Link>
               </div>
