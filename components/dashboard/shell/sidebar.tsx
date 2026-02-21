@@ -3,14 +3,15 @@
 import { useState, type ComponentType } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LogOut, X } from "lucide-react"
+import { ChevronDown, LogOut, X } from "lucide-react"
 import { signOutWithRedirect, useAuthSession } from "@/lib/auth/access-client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import { getNavItemsBySection, isNavItemActive } from "./nav-config"
+import { dashboardQuickLinkGroups, getNavItemsBySection, isNavItemActive } from "./nav-config"
 
 interface DashboardSidebarProps {
   mobileOpen: boolean
@@ -81,7 +82,6 @@ function UserCard({ mobile = false }: { mobile?: boolean }) {
 function SidebarContents({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
   const primaryNavItems = getNavItemsBySection("primary")
-  const secondaryNavItems = getNavItemsBySection("secondary")
 
   return (
     <div className="mt-6 flex flex-1 flex-col px-3">
@@ -102,16 +102,40 @@ function SidebarContents({ onNavigate }: { onNavigate?: () => void }) {
       <Separator className="my-4" />
 
       <div className="space-y-1">
-        {secondaryNavItems.map((item) => (
-          <NavLink
-            key={item.href}
-            href={item.href}
-            label={item.label}
-            icon={item.icon}
-            isActive={isNavItemActive(pathname, item)}
-            onClick={onNavigate}
-          />
-        ))}
+        {dashboardQuickLinkGroups.map((group) => {
+          const groupIsActive = group.items.some((item) => isNavItemActive(pathname, item))
+
+          return (
+            <Collapsible key={group.label} defaultOpen={groupIsActive}>
+              <CollapsibleTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-between px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <span className="flex items-center gap-3">
+                    <group.icon className="h-4 w-4" />
+                    {group.label}
+                  </span>
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-1 pt-1">
+                {group.items.map((item) => (
+                  <div key={item.href} className="pl-3">
+                    <NavLink
+                      href={item.href}
+                      label={item.label}
+                      icon={item.icon}
+                      badge={item.badge}
+                      isActive={isNavItemActive(pathname, item)}
+                      onClick={onNavigate}
+                    />
+                  </div>
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          )
+        })}
       </div>
     </div>
   )
