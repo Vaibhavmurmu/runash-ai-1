@@ -19,8 +19,8 @@ export function DashboardShell({ children, footer }: DashboardShellProps) {
 
       <div className="flex min-h-screen flex-col md:pl-64">
         <DashboardNavbar onOpenMobileMenu={() => setMobileOpen(true)} />
-        <main className="flex-1 p-4 md:p-6">{children}</main>
-        {footer}
+        <main className="mx-auto flex w-full max-w-7xl flex-1 p-4 md:p-6">{children}</main>
+        {footer ? <div className="w-full">{footer}</div> : null}
       </div>
     </div>
   )
