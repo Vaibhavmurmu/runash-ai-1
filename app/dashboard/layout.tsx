@@ -1,6 +1,7 @@
 import type React from "react"
 import type { Metadata } from "next"
 import { DashboardShell } from "@/components/dashboard/shell/dashboard-shell"
+import { DashboardFooter } from "@/components/dashboard/shell/footer"
 
 export const metadata: Metadata = {
   title: {
@@ -15,5 +16,5 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  return <DashboardShell>{children}</DashboardShell>
+  return <DashboardShell footer={<DashboardFooter />}>{children}</DashboardShell>
 }
