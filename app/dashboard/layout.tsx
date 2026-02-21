@@ -1,5 +1,14 @@
 import type React from "react"
+import type { Metadata } from "next"
 import { DashboardNavigation } from "@/components/dashboard/dashboard-navigation"
+
+export const metadata: Metadata = {
+  title: {
+    default: "Dashboard | RunAsh AI",
+    template: "%s | RunAsh AI Dashboard",
+  },
+  description: "RunAsh AI dashboard for workspace control, analytics insights, automation workflows, and AI agent operations.",
+}
 
 export default function DashboardLayout({
   children,
