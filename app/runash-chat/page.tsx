@@ -338,6 +338,8 @@ const runashChatPositionStorageKey = "runash_chat_preference_chat_position";
 const runashChatSettingsStorageKey = "runash_chat_settings";
 const runashChatPromptSuggestionDismissedStorageKey =
   "runash_chat_prompt_suggestion_dismissed";
+const runashChatGetStartedActiveTabStorageKey =
+  "runash_chat_get_started_active_tab";
 
 const interactiveActionInventory: Record<string, InteractiveActionKind> = {
   "prompt.create": "api-call",
@@ -535,7 +537,7 @@ const getStartedQuickOptions: Array<{
 }> = [
   { id: "try-pwas", label: "Try PWAs", icon: PanelsTopLeft },
   { id: "try-browser", label: "Try Browser", icon: ExternalLink },
-  { id: "task", label: "Task", icon: FolderKanban },
+  { id: "task", label: "Tasks", icon: FolderKanban },
   { id: "review", label: "Review", icon: Check },
   { id: "manage", label: "Manage", icon: Settings },
 ];
@@ -547,7 +549,7 @@ const getStartedQuickCards: Record<GetStartedTabId, OnboardingQuickCard[]> = {
       title: "Start your first task",
       description:
         "Create a launch-ready task brief with goals, owners, and due dates.",
-      actionLabel: "Start",
+      actionLabel: "Start task flow",
       actionType: "task",
       icon: FolderKanban,
     },
@@ -556,7 +558,7 @@ const getStartedQuickCards: Record<GetStartedTabId, OnboardingQuickCard[]> = {
       title: "Create a follow-up task",
       description:
         "Turn pending notes into an actionable checklist for your next run.",
-      actionLabel: "Start",
+      actionLabel: "Start task flow",
       actionType: "task",
       icon: Rocket,
     },
@@ -567,7 +569,7 @@ const getStartedQuickCards: Record<GetStartedTabId, OnboardingQuickCard[]> = {
       title: "Start your first task review",
       description:
         "Review deliverables with a quality checklist before shipping.",
-      actionLabel: "Start",
+      actionLabel: "Start review flow",
       actionType: "review",
       icon: Check,
     },
@@ -576,7 +578,7 @@ const getStartedQuickCards: Record<GetStartedTabId, OnboardingQuickCard[]> = {
       title: "Collect review feedback",
       description:
         "Capture reviewer comments and convert them into next-step tasks.",
-      actionLabel: "Start",
+      actionLabel: "Start review flow",
       actionType: "review",
       icon: MessageSquare,
     },
@@ -587,7 +589,7 @@ const getStartedQuickCards: Record<GetStartedTabId, OnboardingQuickCard[]> = {
       title: "Start your first archive",
       description:
         "Save completed chat outcomes so your team can reuse proven prompts.",
-      actionLabel: "Start",
+      actionLabel: "Start archive flow",
       actionType: "archive",
       icon: Archive,
     },
@@ -596,7 +598,7 @@ const getStartedQuickCards: Record<GetStartedTabId, OnboardingQuickCard[]> = {
       title: "Manage archived work",
       description:
         "Group and label archived runs to keep your workspace organized.",
-      actionLabel: "Start",
+      actionLabel: "Open archive manager",
       actionType: "archive",
       icon: Library,
     },
@@ -2681,6 +2683,18 @@ export default function RunashChatPage() {
             );
           })}
         </DropdownMenuGroup>
+        {isGetStartedVisible ? null : (
+          <>
+            <DropdownMenuSeparator className="bg-zinc-800" />
+            <DropdownMenuItem
+              onSelect={handleReopenGetStarted}
+              className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+            >
+              <Rocket className="mr-2 h-4 w-4 text-zinc-300" />
+              Show task starter
+            </DropdownMenuItem>
+          </>
+        )}
         <DropdownMenuSeparator className="bg-zinc-800" />
         <DropdownMenuLabel className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
           Preferences
@@ -3305,6 +3319,16 @@ export default function RunashChatPage() {
     setIsGetStartedVisible(
       localStorage.getItem(runashChatGetStartedDismissedStorageKey) !== "true",
     );
+    const storedGetStartedTab = localStorage.getItem(
+      runashChatGetStartedActiveTabStorageKey,
+    );
+    if (
+      storedGetStartedTab === "tasks" ||
+      storedGetStartedTab === "reviews" ||
+      storedGetStartedTab === "archive"
+    ) {
+      setActiveGetStartedTab(storedGetStartedTab);
+    }
 
     const storedThemePreference = localStorage.getItem(
       runashChatThemeStorageKey,
@@ -3489,10 +3513,16 @@ export default function RunashChatPage() {
     localStorage.setItem(runashChatGetStartedDismissedStorageKey, "true");
   };
 
+  const handleReopenGetStarted = () => {
+    setIsGetStartedVisible(true);
+    localStorage.setItem(runashChatGetStartedDismissedStorageKey, "false");
+  };
+
   const handleGetStartedTabChange = (tabId: GetStartedTabId) => {
     trackAnalyticsEvent("onboarding.get-started.tab-change", { tabId });
     setActiveGetStartedTab(tabId);
     getStartedTabButtonRefs.current[tabId]?.focus();
+    localStorage.setItem(runashChatGetStartedActiveTabStorageKey, tabId);
   };
 
   const handleGetStartedTabKeyDown = (
@@ -5818,7 +5848,7 @@ ${instructionStarter}`
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 px-4 py-3">
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 border-b border-zinc-800 px-4 py-3">
                       <div className="space-y-1">
                         <p className="text-zinc-200">Prompt suggestions</p>
                         <p className="text-xs text-zinc-500">
@@ -5836,6 +5866,28 @@ ${instructionStarter}`
                           disabled={dismissedPromptSuggestionCardIds.length === 0}
                         >
                           Show again
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 px-4 py-3">
+                      <div className="space-y-1">
+                        <p className="text-zinc-200">Task starter module</p>
+                        <p className="text-xs text-zinc-500">
+                          Reopen the onboarding block with quick links and
+                          starter cards.
+                        </p>
+                      </div>
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 border-zinc-700 bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
+                          onClick={handleReopenGetStarted}
+                          disabled={isGetStartedVisible}
+                        >
+                          Show module
                         </Button>
                       </div>
                     </div>
@@ -7229,11 +7281,11 @@ ${instructionStarter}`
               {isGetStartedVisible && (
                 <section
                   className="border-t border-zinc-800 px-3 py-4 sm:px-4"
-                  aria-label="Get started with RunAshChat"
+                  aria-label="Task starter onboarding"
                 >
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <h2 className="text-sm font-medium text-zinc-100">
-                      Get started with RunAshChat
+                      Task starter
                     </h2>
                     <Button
                       type="button"
@@ -7247,7 +7299,11 @@ ${instructionStarter}`
                     </Button>
                   </div>
 
-                  <div className="mb-3 flex flex-wrap gap-2">
+                  <div
+                    className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
+                    role="navigation"
+                    aria-label="Task starter quick links"
+                  >
                     {getStartedQuickOptions.map((option) => {
                       const OptionIcon = option.icon;
                       const nextTab: GetStartedTabId | null =
@@ -7268,9 +7324,10 @@ ${instructionStarter}`
                           className="h-8 rounded-full border-zinc-800 bg-zinc-900/60 px-3 text-xs text-zinc-200 hover:bg-zinc-800"
                           onClick={() => {
                             if (nextTab) {
-                              setActiveGetStartedTab(nextTab);
+                              handleGetStartedTabChange(nextTab);
                             }
                           }}
+                          aria-pressed={nextTab ? nextTab === activeGetStartedTab : undefined}
                         >
                           <OptionIcon className="mr-1.5 h-3.5 w-3.5" />
                           {option.label}
@@ -7320,6 +7377,9 @@ ${instructionStarter}`
                       id={`get-started-panel-${activeGetStartedTab}`}
                       aria-labelledby={`get-started-tab-${activeGetStartedTab}`}
                     >
+                      <p className="mb-2 text-xs text-zinc-400">
+                        Start your first task flows using one of these guided cards.
+                      </p>
                       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                         {activeGetStartedCards.map((card) => {
                           const CardIcon = card.icon;
