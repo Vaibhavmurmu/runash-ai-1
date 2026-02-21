@@ -326,6 +326,7 @@ const runashChatUpdatesBannerHiddenStorageKey = "runash_chat_updates_hidden";
 const runashChatLegacyUpdatesBannerHiddenStorageKey =
   "runash_updates_banner_hidden";
 const runashChatUpdatesBannerSeenStorageKey = "runash_chat_updates_seen";
+const runashChatAnnouncementSeenStorageKey = "runash_chat_announcement_seen";
 const runashChatFavoritesCollapsedStorageKey =
   "runash_chat_favorites_collapsed";
 const runashChatRecentsCollapsedStorageKey = "runash_chat_recents_collapsed";
@@ -3309,7 +3310,8 @@ export default function RunashChatPage() {
         "true";
     const hasSeenOnboarding =
       localStorage.getItem(runashChatOnboardingStorageKey) === "true" ||
-      localStorage.getItem(runashChatUpdatesBannerSeenStorageKey) === "true";
+      localStorage.getItem(runashChatUpdatesBannerSeenStorageKey) === "true" ||
+      localStorage.getItem(runashChatAnnouncementSeenStorageKey) === "true";
     setIsBannerDismissed(isBannerHidden || hasSeenOnboarding);
 
     if (hasSeenOnboarding) {
@@ -3497,12 +3499,20 @@ export default function RunashChatPage() {
   const markOnboardingSeen = () => {
     localStorage.setItem(runashChatOnboardingStorageKey, "true");
     localStorage.setItem(runashChatUpdatesBannerSeenStorageKey, "true");
+    localStorage.setItem(runashChatAnnouncementSeenStorageKey, "true");
   };
 
   const markOnboardingDismissed = () => {
     localStorage.setItem(runashChatBannerHiddenStorageKey, "true");
     localStorage.setItem(runashChatUpdatesBannerHiddenStorageKey, "true");
     localStorage.setItem(runashChatLegacyUpdatesBannerHiddenStorageKey, "true");
+    localStorage.setItem(runashChatAnnouncementSeenStorageKey, "true");
+  };
+
+  const handleLearnMoreClick = (
+    event: React.MouseEvent<HTMLButtonElement>,
+  ) => {
+    handleOpenOnboardingDialog(event.currentTarget);
   };
 
   const handleDismissGetStarted = () => {
@@ -5434,10 +5444,15 @@ ${instructionStarter}`
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isOnboardingOpen} onOpenChange={handleOnboardingOpenChange}>
+      <Dialog
+        open={isOnboardingOpen}
+        onOpenChange={handleOnboardingOpenChange}
+        modal
+      >
         <DialogContent
           className="z-[60] w-[min(92vw,32rem)] max-w-[32rem] overflow-hidden border-zinc-800 bg-zinc-950 p-0 text-zinc-100 motion-reduce:duration-0"
           aria-label="RunAsh chat updates"
+          onEscapeKeyDown={() => handleOnboardingOpenChange(false)}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             focusOverlayTrigger();
@@ -5470,6 +5485,9 @@ ${instructionStarter}`
 
             <div className="space-y-5 p-4 sm:p-6">
               <DialogHeader className="space-y-2 text-left">
+                <p className="text-xs font-medium uppercase tracking-wide text-cyan-300">
+                  Step {onboardingStep + 1} of {onboardingSlides.length}
+                </p>
                 <DialogTitle>{currentOnboardingSlide.title}</DialogTitle>
                 <DialogDescription className="text-zinc-300">
                   {currentOnboardingSlide.description}
@@ -5500,15 +5518,25 @@ ${instructionStarter}`
                   ))}
                 </div>
 
-                <Button
-                  className="bg-cyan-600 text-white hover:bg-cyan-500"
-                  onClick={handleOnboardingNext}
-                >
-                  {isLastOnboardingStep ? "Get started" : "Next"}
-                  {!isLastOnboardingStep ? (
-                    <ArrowRight className="ml-1 h-4 w-4" />
-                  ) : null}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="text-zinc-300 hover:bg-zinc-900"
+                    onClick={() => handleOnboardingOpenChange(false)}
+                  >
+                    Dismiss
+                  </Button>
+                  <Button
+                    className="bg-cyan-600 text-white hover:bg-cyan-500"
+                    onClick={handleOnboardingNext}
+                  >
+                    {isLastOnboardingStep ? "Get started" : "Next"}
+                    {!isLastOnboardingStep ? (
+                      <ArrowRight className="ml-1 h-4 w-4" />
+                    ) : null}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
@@ -6560,9 +6588,7 @@ ${instructionStarter}`
                       variant="link"
                       ref={learnMoreTriggerRef}
                       className="h-auto p-0 text-xs font-medium text-cyan-300 underline underline-offset-2 hover:text-cyan-200 sm:text-sm"
-                      onClick={(event) =>
-                        handleOpenOnboardingDialog(event.currentTarget)
-                      }
+                      onClick={handleLearnMoreClick}
                     >
                       Learn More
                     </Button>
