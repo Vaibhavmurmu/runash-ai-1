@@ -363,6 +363,7 @@ const runashChatGetStartedActiveTabStorageKey =
   "runash_chat_get_started_active_tab";
 
 const interactiveActionInventory: Record<string, InteractiveActionKind> = {
+  "prompt.submit": "api-call",
   "prompt.create": "api-call",
   "prompt.search": "api-call",
   "prompt.enhance": "local-only",
@@ -721,6 +722,7 @@ type PromptActionConfig = {
 
 type StartChatMetadata = {
   actionId?: PromptActionId;
+  source?: "composer-enter" | "composer-send" | "prompt-card" | "new-chat";
 };
 
 const promptSuggestionCards: PromptSuggestionCard[] = [
@@ -1414,6 +1416,8 @@ export default function RunashChatPage() {
   }, []);
   const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const startChatInFlightRef = useRef(false);
+  const promptActionInFlightRef = useRef(false);
+  const composerMenuActionInFlightRef = useRef(false);
   const speechCommitReadyRef = useRef(false);
   const speechTranscriptFinalRef = useRef("");
   const speechTimeoutRef = useRef<number | null>(null);
@@ -2092,40 +2096,24 @@ export default function RunashChatPage() {
     }
   };
 
-  const removeFavorite = async (favoriteId: string, sourceLabel?: string) => {
-    const previousItems = favoriteItems;
-    const nextItems = previousItems.filter((item) => item.id !== favoriteId);
-    const hasChanged = nextItems.length !== previousItems.length;
+  const requestFavoriteRemovalConfirmation = (favoriteId: string) => {
+    const item = favoriteItems.find(
+      (favoriteItem) => favoriteItem.id === favoriteId,
+    );
 
-    if (!hasChanged) {
+    if (!item) {
+      closeFavoriteMenu();
       return;
     }
 
-    setFavoriteMutationLoading(favoriteId, true);
-    setFavoriteItems(nextItems);
-
-    try {
-      await persistSidebarMutation("favorite.remove", {
-        entityId: favoriteId,
-      });
-      closeFavoriteMenu();
-      toast({
-        title: "Removed from favorites",
-        description: sourceLabel
-          ? `${sourceLabel} is no longer pinned to Favorites.`
-          : "This item is no longer pinned to Favorites.",
-      });
-    } catch {
-      setFavoriteItems(previousItems);
-      toast({
-        title: "Could not remove favorite",
-        description:
-          "We restored your previous Favorites list. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setFavoriteMutationLoading(favoriteId, false);
-    }
+    closeFavoriteMenu();
+    setConfirmDeletePayload({
+      entityType: "recent",
+      entityId: favoriteId,
+      title: item.label,
+      description: `Remove ${item.label} from Favorites? You can add it back later from Recents.`,
+    });
+    openModal("deleteConfirm");
   };
 
   const handleRecentShare = (item: RecentEntity) => {
@@ -2172,8 +2160,8 @@ export default function RunashChatPage() {
 
   const toggleRecentFavorite = async (item: RecentEntity) => {
     if (isRecentFavorited(item)) {
-      await removeFavorite(`favorite-${item.id}`, item.title);
       closeRecentMenu();
+      requestFavoriteRemovalConfirmation(`favorite-${item.id}`);
       return;
     }
 
@@ -2217,6 +2205,15 @@ export default function RunashChatPage() {
     let undone = false;
 
     if (payload.entityType === "folder") {
+      setFavoriteItems((previousItems) =>
+        previousItems.filter(
+          (favoriteItem) => favoriteItem.id !== payload.entityId,
+        ),
+      );
+    } else if (
+      payload.entityType === "recent" &&
+      payload.entityId.startsWith("favorite-")
+    ) {
       setFavoriteItems((previousItems) =>
         previousItems.filter(
           (favoriteItem) => favoriteItem.id !== payload.entityId,
@@ -2266,10 +2263,19 @@ export default function RunashChatPage() {
       }
 
       try {
-        await persistSidebarMutation("entity.delete", {
-          entityId: payload.entityId,
-          entityType: payload.entityType,
-        });
+        if (
+          payload.entityType === "recent" &&
+          payload.entityId.startsWith("favorite-")
+        ) {
+          await persistSidebarMutation("favorite.remove", {
+            entityId: payload.entityId,
+          });
+        } else {
+          await persistSidebarMutation("entity.delete", {
+            entityId: payload.entityId,
+            entityType: payload.entityType,
+          });
+        }
 
         toast({
           title:
@@ -2277,9 +2283,11 @@ export default function RunashChatPage() {
           description:
             payload.entityType === "folder"
               ? `${payload.title} was removed from your workspace list.`
-              : payload.entityType === "chat"
-                ? `${payload.title} chat was removed from Recents.`
-                : `${payload.title} was removed from Recents.`,
+              : payload.entityId.startsWith("favorite-")
+                ? `${payload.title} was removed from Favorites.`
+                : payload.entityType === "chat"
+                  ? `${payload.title} chat was removed from Recents.`
+                  : `${payload.title} was removed from Recents.`,
           variant: "destructive",
         });
       } catch {
@@ -4078,6 +4086,13 @@ export default function RunashChatPage() {
       }
     }
 
+    trackAnalyticsEvent("prompt.submit", {
+      hasPrompt: Boolean(cleanPrompt),
+      promptLength: cleanPrompt?.length ?? 0,
+      source: metadata?.source ?? "composer-send",
+      actionId: metadata?.actionId ?? activePromptActionId ?? "unknown",
+    });
+
     trackAnalyticsEvent("prompt.create", {
       hasPrompt: Boolean(cleanPrompt),
       actionId: metadata?.actionId ?? activePromptActionId ?? "unknown",
@@ -4171,6 +4186,10 @@ export default function RunashChatPage() {
     action: PromptActionConfig,
     source: "pill" | "menu" = "pill",
   ) => {
+    if (promptActionInFlightRef.current) {
+      return;
+    }
+
     const isDisabled = isPromptActionDisabled(action);
 
     if (isDisabled) {
@@ -4189,6 +4208,7 @@ export default function RunashChatPage() {
     setActivePromptActionId(action.id);
     setPromptActionLoadingId(action.id);
     trackPromptAction(action, "opened");
+    promptActionInFlightRef.current = true;
 
     try {
       if (action.type === "route") {
@@ -4225,8 +4245,10 @@ export default function RunashChatPage() {
           return;
         }
 
-        const response = await fetch(
+        const response = await fetchWithRetryAndTimeout(
           `${action.routeOrHandler}?query=${encodeURIComponent(searchQuery)}`,
+          undefined,
+          1,
         );
         const payload = await response.json().catch(() => null);
 
@@ -4271,7 +4293,10 @@ export default function RunashChatPage() {
       }
 
       if (action.id === "create") {
-        await startChatWithPrompt(prompt, { actionId: action.id });
+        await startChatWithPrompt(prompt, {
+          actionId: action.id,
+          source: "composer-send",
+        });
         trackPromptAction(action, "success");
       }
     } catch (error) {
@@ -4285,6 +4310,7 @@ export default function RunashChatPage() {
         variant: "destructive",
       });
     } finally {
+      promptActionInFlightRef.current = false;
       setPromptActionLoadingId(null);
       if (source === "menu") {
         closePromptMenu(false);
@@ -4296,8 +4322,13 @@ export default function RunashChatPage() {
     actionId: ComposerMenuActionId,
     run: () => Promise<void> | void,
   ) => {
+    if (composerMenuActionInFlightRef.current) {
+      return;
+    }
+
     setComposerMenuError(null);
     setComposerMenuActionLoadingId(actionId);
+    composerMenuActionInFlightRef.current = true;
 
     try {
       await run();
@@ -4314,6 +4345,7 @@ export default function RunashChatPage() {
         variant: "destructive",
       });
     } finally {
+      composerMenuActionInFlightRef.current = false;
       setComposerMenuActionLoadingId(null);
     }
   };
@@ -4543,7 +4575,9 @@ ${instructionStarter}`
     }
 
     if (action === "continue") {
-      void startChatWithPrompt(`Continue chat: ${item.title}`);
+      void startChatWithPrompt(`Continue chat: ${item.title}`, {
+        source: "composer-send",
+      });
       return;
     }
 
@@ -4745,14 +4779,17 @@ ${instructionStarter}`
     }
 
     if (prompt.trim()) {
-      void startChatWithPrompt(prompt);
+      void startChatWithPrompt(prompt, { source: "composer-enter" });
     }
   };
 
   const handlePromptSuggestionCardClick = (card: PromptSuggestionCard) => {
     trackAnalyticsEvent("live-showcase.card.cta", { cardId: card.id });
     setPrompt(card.promptPayload);
-    void startChatWithPrompt(card.promptPayload, { actionId: "create" });
+    void startChatWithPrompt(card.promptPayload, {
+      actionId: "create",
+      source: "prompt-card",
+    });
   };
 
   const handleDismissPromptSuggestionCard = (cardId: string) => {
@@ -4773,11 +4810,8 @@ ${instructionStarter}`
     closeSidebarActionMenu();
   };
 
-  const handleFavoriteRemove = async (favoriteId: string) => {
-    const item = favoriteItems.find(
-      (favoriteItem) => favoriteItem.id === favoriteId,
-    );
-    await removeFavorite(favoriteId, item?.label);
+  const handleFavoriteRemove = (favoriteId: string) => {
+    requestFavoriteRemovalConfirmation(favoriteId);
   };
 
   const handleFavoriteRename = (favoriteId: string) => {
@@ -4913,7 +4947,7 @@ ${instructionStarter}`
         <Button
           className={`mb-3 ${collapsed ? "justify-center px-0" : "justify-start"} bg-zinc-900 hover:bg-zinc-800`}
           onClick={() => {
-            void startChatWithPrompt();
+            void startChatWithPrompt(undefined, { source: "new-chat" });
             if (isMobileDrawer) setIsMobileSidebarOpen(false);
           }}
           aria-label="Start a new chat"
@@ -7356,7 +7390,11 @@ ${instructionStarter}`
                       type="button"
                       className="h-8 rounded-full bg-zinc-100 px-3 text-xs font-medium text-zinc-900 hover:bg-white"
                       disabled={!prompt.trim() || isStartingChat}
-                      onClick={() => void startChatWithPrompt(prompt)}
+                      onClick={() =>
+                        void startChatWithPrompt(prompt, {
+                          source: "composer-send",
+                        })
+                      }
                       aria-label="Send prompt"
                     >
                       Send
