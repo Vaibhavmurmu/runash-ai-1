@@ -1035,6 +1035,13 @@ type ActiveOverlay =
   | { type: "sidebarActionMenu"; payload: SidebarActionMenuState }
   | { type: "promptMenu" };
 
+const overlayLayerClassNames = {
+  menu: "z-40",
+  popover: "z-50",
+  dialog: "z-[60]",
+  settingsDialog: "z-[80]",
+} as const;
+
 const settingsSections = [
   "General",
   "Notifications",
@@ -1424,9 +1431,9 @@ export default function RunashChatPage() {
   const settingsSectionButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const upgradeCtaClassName =
     "border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900 focus-visible:ring-1 focus-visible:ring-zinc-500";
-  const menuOverlayClassName = "z-40";
-  const popoverOverlayClassName = "z-50";
-  const modalOverlayClassName = "z-[60]";
+  const menuOverlayClassName = overlayLayerClassNames.menu;
+  const popoverOverlayClassName = overlayLayerClassNames.popover;
+  const modalOverlayClassName = overlayLayerClassNames.dialog;
   const actionMenuContentClassName = `${menuOverlayClassName} w-48 border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100`;
   const actionMenuItemClassName =
     "cursor-pointer rounded-sm px-2.5 py-1.5 text-zinc-200 focus:bg-zinc-900 focus:text-zinc-100";
@@ -1436,7 +1443,6 @@ export default function RunashChatPage() {
   const redeemCodeInputId = "runash-chat-redeem-code-input";
   const creditsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const creditsPanelRef = useRef<HTMLDivElement | null>(null);
-  const redeemDialogTriggerRef = useRef<HTMLElement | null>(null);
   const profileMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const darkDialogContentClassName = `${modalOverlayClassName} border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md`;
   const compactDarkDialogContentClassName = `${modalOverlayClassName} w-[min(92vw,26rem)] border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-[26rem]`;
@@ -1555,6 +1561,7 @@ export default function RunashChatPage() {
   const activeGetStartedCards = getStartedQuickCards[activeGetStartedTab];
   const activeModalId =
     activeOverlay.type === "modal" ? activeOverlay.payload.id : null;
+  const isAnyOverlayOpen = activeOverlay.type !== null;
   const isFeedbackOpen = activeModalId === "feedback";
   const isReferOpen = activeModalId === "refer";
   const isUpgradeModalOpen = activeModalId === "upgrade";
@@ -3067,16 +3074,11 @@ export default function RunashChatPage() {
   };
 
   const openRedeemCodeDialog = (triggerElement?: HTMLElement | null) => {
-    redeemDialogTriggerRef.current =
-      triggerElement ??
-      (document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null);
     closeCreditsPanel(false);
     setRedeemCodeInput("");
     setRedeemCodeError(null);
     setIsRedeemingCode(false);
-    openModal("redeem");
+    openModal("redeem", triggerElement);
   };
 
   const handleRedeemDialogOpenChange = (open: boolean) => {
@@ -3085,23 +3087,10 @@ export default function RunashChatPage() {
       return;
     }
 
-    closeOverlay(false);
-    if (!open) {
-      setIsRedeemingCode(false);
-      setRedeemCodeError(null);
-      setRedeemCodeInput("");
-      window.requestAnimationFrame(() => {
-        if (
-          redeemDialogTriggerRef.current &&
-          document.contains(redeemDialogTriggerRef.current)
-        ) {
-          redeemDialogTriggerRef.current.focus();
-          return;
-        }
-
-        creditsTriggerRef.current?.focus();
-      });
-    }
+    dismissModal("redeem", true);
+    setIsRedeemingCode(false);
+    setRedeemCodeError(null);
+    setRedeemCodeInput("");
   };
 
   const handleRedeemCodeSubmit = async (
@@ -3660,9 +3649,14 @@ export default function RunashChatPage() {
       if (event.key !== "Escape") return;
 
       if (activeOverlay.type === "modal") {
-        if (activeOverlay.payload.id === "feedback" && isSubmittingFeedback)
+        if (
+          activeOverlay.payload.id === "feedback" &&
+          isSubmittingFeedback
+        ) {
           return;
-        dismissModal(activeOverlay.payload.id);
+        }
+
+        dismissModal(activeOverlay.payload.id, true);
         return;
       }
 
@@ -3679,7 +3673,7 @@ export default function RunashChatPage() {
     return () => {
       window.removeEventListener("keydown", handleEscape);
     };
-  }, [activeOverlay, isSubmittingFeedback, isMobileSidebarOpen]);
+  }, [activeOverlay, dismissModal, isMobileSidebarOpen, isSubmittingFeedback]);
 
   useEffect(() => {
     const sidebarActionMenuOverlay =
@@ -5450,7 +5444,7 @@ ${instructionStarter}`
         modal
       >
         <DialogContent
-          className="z-[60] w-[min(92vw,32rem)] max-w-[32rem] overflow-hidden border-zinc-800 bg-zinc-950 p-0 text-zinc-100 motion-reduce:duration-0"
+          className={`${overlayLayerClassNames.dialog} w-[min(92vw,32rem)] max-w-[32rem] overflow-hidden border-zinc-800 bg-zinc-950 p-0 text-zinc-100 motion-reduce:duration-0`}
           aria-label="RunAsh chat updates"
           onEscapeKeyDown={() => handleOnboardingOpenChange(false)}
           onCloseAutoFocus={(event) => {
@@ -5545,7 +5539,7 @@ ${instructionStarter}`
 
       <Dialog open={isFeedbackOpen} onOpenChange={handleFeedbackOpenChange}>
         <DialogContent
-          className="z-[60] w-[min(92vw,520px)] max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-[520px]"
+          className={`${overlayLayerClassNames.dialog} w-[min(92vw,520px)] max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-[520px]`}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             focusOverlayTrigger();
@@ -5658,7 +5652,7 @@ ${instructionStarter}`
         onOpenChange={handleSettingsDialogOpenChange}
       >
         <DialogContent
-          className="z-[80] w-[min(96vw,840px)] overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 p-0 text-zinc-100 shadow-2xl shadow-black/40 sm:max-w-[840px]"
+          className={`${overlayLayerClassNames.settingsDialog} w-[min(96vw,840px)] overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 p-0 text-zinc-100 shadow-2xl shadow-black/40 sm:max-w-[840px]`}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             focusOverlayTrigger();
@@ -5951,7 +5945,7 @@ ${instructionStarter}`
 
       <Dialog open={isReferOpen} onOpenChange={handleReferDialogOpenChange}>
         <DialogContent
-          className="z-[60] w-[min(94vw,34rem)] max-h-[90dvh] overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-950 text-zinc-100 shadow-2xl shadow-black/40 sm:max-w-xl"
+          className={`${overlayLayerClassNames.dialog} w-[min(94vw,34rem)] max-h-[90dvh] overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-950 text-zinc-100 shadow-2xl shadow-black/40 sm:max-w-xl`}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             focusOverlayTrigger();
@@ -6081,7 +6075,7 @@ ${instructionStarter}`
         onOpenChange={handleUpgradeModalOpenChange}
       >
         <DialogContent
-          className="z-[60] w-[min(94vw,48rem)] max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-2xl"
+          className={`${overlayLayerClassNames.dialog} w-[min(94vw,48rem)] max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-2xl`}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             focusOverlayTrigger();
@@ -6187,7 +6181,13 @@ ${instructionStarter}`
         open={isRedeemDialogOpen}
         onOpenChange={handleRedeemDialogOpenChange}
       >
-        <DialogContent className="w-[92vw] max-w-sm border-zinc-800 bg-zinc-950 text-zinc-100">
+        <DialogContent
+          className={`${overlayLayerClassNames.dialog} w-[92vw] max-w-sm border-zinc-800 bg-zinc-950 text-zinc-100`}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            focusOverlayTrigger();
+          }}
+        >
           <DialogHeader className="space-y-2 text-left">
             <DialogTitle>Redeem Credit Code</DialogTitle>
             <DialogDescription className="text-zinc-400">
@@ -6300,7 +6300,7 @@ ${instructionStarter}`
           <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
             <div className="mb-4 space-y-3 lg:hidden">
               <div
-                className={`sticky top-0 ${isMobileSidebarOpen || isOnboardingOpen || activeOverlay.type === "modal" ? "z-0" : "z-20"} rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2 backdrop-blur`}
+                className={`sticky top-0 ${isMobileSidebarOpen || isOnboardingOpen || isAnyOverlayOpen ? "z-0" : "z-20"} rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2 backdrop-blur`}
               >
                 <div className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2">
                   <div className="flex items-center gap-2">
@@ -6565,7 +6565,7 @@ ${instructionStarter}`
               className={`sticky top-0 mb-4 space-y-4 rounded-2xl border border-transparent bg-gradient-to-b from-[#050607]/95 via-[#050607]/92 to-transparent px-1 pt-1 backdrop-blur-sm sm:mb-5 ${
                 isMobileSidebarOpen ||
                 isOnboardingOpen ||
-                activeOverlay.type === "modal"
+                isAnyOverlayOpen
                   ? "z-0"
                   : "z-20"
               }`}
@@ -6981,7 +6981,7 @@ ${instructionStarter}`
                             return;
                           }
 
-                          closePromptMenu(false);
+                          closePromptMenu(true);
                         }}
                       >
                         <DropdownMenuTrigger asChild>
