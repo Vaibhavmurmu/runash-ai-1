@@ -2,15 +2,15 @@
 
 import type { ReactNode } from "react"
 import { useState } from "react"
-import { DashboardFooter } from "./footer"
 import { DashboardNavbar } from "./navbar"
 import { DashboardSidebar } from "./sidebar"
 
 interface DashboardShellProps {
   children: ReactNode
+  footer?: ReactNode
 }
 
-export function DashboardShell({ children }: DashboardShellProps) {
+export function DashboardShell({ children, footer }: DashboardShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   return (
@@ -20,7 +20,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
       <div className="flex min-h-screen flex-col md:pl-64">
         <DashboardNavbar onOpenMobileMenu={() => setMobileOpen(true)} />
         <main className="flex-1">{children}</main>
-        <DashboardFooter />
+        {footer}
       </div>
     </div>
   )
