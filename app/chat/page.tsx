@@ -15,7 +15,16 @@ import ChatSidebar from "@/components/chat/chat-sidebar"
 import UserPreferencesDialog from "@/components/chat/user-preferences-dialog"
 import CartDrawer from "@/components/cart/cart-drawer"
 import VoiceControls from "@/components/chat/voice-controls"
-import { ChatPageFrame, ChatSurfaceCard, SuggestionCardGrid, type SuggestionCardItem } from "@/components/chat/shared-chat-primitives"
+import {
+  ActionPill,
+  ChatDataState,
+  ChatInfoBanner,
+  ChatPageFrame,
+  ChatShellHeader,
+  ChatSurfaceCard,
+  SuggestionCardGrid,
+  type SuggestionCardItem,
+} from "@/components/chat/shared-chat-primitives"
  
 import { getRecommendedProducts, shouldRecommendProducts } from "@/lib/chat-product-recommendations"
 
@@ -97,6 +106,7 @@ export default function RunAshChatPage() {
 
   const [voiceEnabled, setVoiceEnabled] = useState(false)
   const [voiceTranscriptHistory, setVoiceTranscriptHistory] = useState<string[]>([])
+  const [sessionsStatus, setSessionsStatus] = useState<"loading" | "ready" | "error">("loading")
 
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([
     {
@@ -261,11 +271,15 @@ export default function RunAshChatPage() {
 
     ;(async () => {
       try {
+        setSessionsStatus("loading")
         const response = await fetch("/api/sessions")
-        if (!response.ok) return
+        if (!response.ok) throw new Error("Unable to load sessions")
         const payload = await response.json()
         const listed = Array.isArray(payload?.data) ? payload.data : []
-        if (listed.length === 0) return
+        if (listed.length === 0) {
+          setSessionsStatus("ready")
+          return
+        }
 
         setChatSessions((previous) => {
           const mapped = listed.map((entry: { id: string; title?: string; created_at?: string }) => ({
@@ -289,7 +303,9 @@ export default function RunAshChatPage() {
 
           return [...mapped, ...previous.filter((session) => !mapped.some((item) => item.id === session.id))]
         })
+        setSessionsStatus("ready")
       } catch {
+        setSessionsStatus("error")
         // keep local fallback sessions when api is unavailable
       }
     })()
@@ -834,44 +850,58 @@ export default function RunAshChatPage() {
 
   return (
     <ChatPageFrame>
-      <div className="sticky top-0 z-50 mb-4 rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2.5 backdrop-blur sm:p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center space-x-3">
-            <div className="rounded-xl bg-gradient-to-r from-orange-600 to-yellow-500 p-2">
-              <Bot className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-base font-semibold tracking-tight text-zinc-100 sm:text-lg">RunAshChat</h1>
-              <p className="text-xs text-zinc-400">AI Assistant</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <CartDrawer />
-            <Button variant="outline" size="sm" onClick={() => setShowPreferences(true)} className="h-8 rounded-full border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-100 hover:bg-zinc-800">
-              <Settings className="h-3.5 w-3.5 mr-1.5" />
-              Preferences
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setSidebarOpen(!sidebarOpen)} className="h-8 rounded-full border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-100 hover:bg-zinc-800">
-              <History className="h-3.5 w-3.5 mr-1.5" />
-              History
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setVoiceEnabled(!voiceEnabled)}
-              className={`h-8 rounded-full border-zinc-700 px-3 text-xs text-zinc-100 hover:bg-zinc-800 ${voiceEnabled ? "bg-green-950 text-green-300" : "bg-zinc-900"}`}
-              aria-pressed={voiceEnabled}
-            >
-              <Mic className="h-3.5 w-3.5 mr-1.5" />
-              {voiceEnabled ? "Voice On" : "Voice Off"}
-            </Button>
-          </div>
-        </div>
+      <div className="sticky top-0 z-50 mb-4 space-y-3">
+        <ChatInfoBanner
+          badge="New"
+          message="Unified chat shell is now active with consistent actions and prompt patterns."
+        />
+        <ChatShellHeader
+          title="RunAshChat"
+          subtitle="AI Assistant"
+          icon={<Bot className="h-5 w-5" />}
+          actions={
+            <>
+              <CartDrawer />
+              <ActionPill onClick={() => setShowPreferences(true)}>
+                <Settings className="mr-1.5 h-3.5 w-3.5" />
+                Preferences
+              </ActionPill>
+              <ActionPill onClick={() => setSidebarOpen(!sidebarOpen)}>
+                <History className="mr-1.5 h-3.5 w-3.5" />
+                History
+              </ActionPill>
+              <ActionPill
+                onClick={() => setVoiceEnabled(!voiceEnabled)}
+                className={voiceEnabled ? "bg-green-950 text-green-300" : ""}
+                aria-pressed={voiceEnabled}
+              >
+                <Mic className="mr-1.5 h-3.5 w-3.5" />
+                {voiceEnabled ? "Voice On" : "Voice Off"}
+              </ActionPill>
+            </>
+          }
+        />
       </div>
 
       <div className="flex gap-4">
         {sidebarOpen && (
-          <div className="w-full lg:w-80">
+          <div className="w-full space-y-2 lg:w-80">
+            {sessionsStatus === "loading" ? (
+              <ChatDataState
+                state="loading"
+                loadingMessage="Loading session history..."
+                emptyMessage=""
+                errorMessage=""
+              />
+            ) : null}
+            {sessionsStatus === "error" ? (
+              <ChatDataState
+                state="error"
+                loadingMessage=""
+                emptyMessage=""
+                errorMessage="Unable to sync session history. Showing local sessions."
+              />
+            ) : null}
             <ChatSidebar
               sessions={chatSessions}
               onSessionSelect={loadSession}
@@ -885,6 +915,14 @@ export default function RunAshChatPage() {
         <div className="flex-1">
           <ChatSurfaceCard className="flex h-[calc(100vh-128px)] flex-col overflow-hidden">
             <div className="border-b border-zinc-800 p-3 sm:p-4">
+              {quickActions.length === 0 ? (
+                <ChatDataState
+                  state="empty"
+                  loadingMessage=""
+                  emptyMessage="Quick actions are unavailable right now."
+                  errorMessage=""
+                />
+              ) : null}
               <QuickActions actions={quickActions} />
             </div>
 

@@ -93,6 +93,8 @@ import {
   X,
 } from "lucide-react";
 import {
+  ActionPill,
+  ChatInfoBanner,
   SuggestionCardGrid,
   type SuggestionCardItem,
 } from "@/components/chat/shared-chat-primitives";
@@ -3584,12 +3586,6 @@ export default function RunashChatPage() {
     localStorage.setItem(runashChatAnnouncementSeenStorageKey, "true");
   };
 
-  const handleLearnMoreClick = (
-    event: React.MouseEvent<HTMLButtonElement>,
-  ) => {
-    handleOpenOnboardingDialog(event.currentTarget);
-  };
-
   const handleDismissGetStarted = () => {
     trackAnalyticsEvent("onboarding.get-started.dismiss", {
       activeTab: activeGetStartedTab,
@@ -6666,37 +6662,15 @@ ${instructionStarter}`
               }`}
             >
               {isBannerDismissed === false && (
-                <div
-                  className="relative mx-auto w-full max-w-3xl rounded-lg border border-zinc-700/80 bg-zinc-900/90 px-10 py-2.5 text-zinc-100 shadow-[0_10px_28px_-22px_rgba(34,211,238,0.55)] backdrop-blur-sm sm:px-12"
-                  role="status"
-                  aria-live="polite"
-                >
-                  <div className="flex min-w-0 flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-xs leading-relaxed sm:text-sm">
-                    <span className="rounded-full border border-zinc-600 bg-zinc-800/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-200">
-                      New
-                    </span>
-                    <p className="text-zinc-200">
-                      Chat composer updates are live with quicker launch
-                      actions.
-                    </p>
-                    <Button
-                      variant="link"
-                      ref={learnMoreTriggerRef}
-                      className="h-auto p-0 text-xs font-medium text-cyan-300 underline underline-offset-2 hover:text-cyan-200 sm:text-sm"
-                      onClick={handleLearnMoreClick}
-                    >
-                      Learn More
-                    </Button>
-                  </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="absolute right-2 top-1/2 h-8 w-8 -translate-y-1/2 shrink-0 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
-                    onClick={dismissUpdatesBanner}
-                    aria-label="Dismiss updates banner"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+                <div className="mx-auto w-full max-w-3xl" role="status" aria-live="polite">
+                  <ChatInfoBanner
+                    badge="New"
+                    message="Chat composer updates are live with quicker launch actions."
+                    cta="Learn More"
+                    ctaRef={learnMoreTriggerRef}
+                    onCtaClick={() => handleOpenOnboardingDialog(learnMoreTriggerRef.current)}
+                    onDismiss={dismissUpdatesBanner}
+                  />
                 </div>
               )}
 
@@ -6717,9 +6691,8 @@ ${instructionStarter}`
                 <div className="flex shrink-0 items-center justify-end gap-2 sm:gap-2.5 md:absolute md:right-0 md:top-1/2 md:w-auto md:-translate-y-1/2">
                   <div className="hidden items-center gap-1.5 lg:flex">
                     {headerActions.map((action) => (
-                      <Button
+                      <ActionPill
                         key={action.id}
-                        size="sm"
                         variant={action.id === "upgrade" ? "outline" : "ghost"}
                         className={
                           action.id === "upgrade"
@@ -6733,15 +6706,14 @@ ${instructionStarter}`
                       >
                         <action.icon className="mr-1.5 h-3.5 w-3.5" />
                         {action.label}
-                      </Button>
+                      </ActionPill>
                     ))}
                   </div>
 
                   <div className="hidden items-center gap-1.5 md:flex lg:hidden">
                     {primaryTabletHeaderActions.map((action) => (
-                      <Button
+                      <ActionPill
                         key={action.id}
-                        size="sm"
                         variant={action.id === "upgrade" ? "outline" : "ghost"}
                         className={
                           action.id === "upgrade"
@@ -6755,7 +6727,7 @@ ${instructionStarter}`
                       >
                         <action.icon className="mr-1.5 h-3.5 w-3.5" />
                         {action.label}
-                      </Button>
+                      </ActionPill>
                     ))}
                     {overflowTabletHeaderActions.length > 0 && (
                       <DropdownMenu
