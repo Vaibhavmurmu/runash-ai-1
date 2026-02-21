@@ -272,6 +272,51 @@ const validateRedeemCode = (value: string): string | null => {
   return null;
 };
 
+const validateFeedbackInput = (value: string): string | null => {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return "Please enter feedback before submitting.";
+  }
+
+  if (trimmedValue.length < 8) {
+    return "Feedback must be at least 8 characters.";
+  }
+
+  if (trimmedValue.length > 500) {
+    return "Feedback cannot exceed 500 characters.";
+  }
+
+  return null;
+};
+
+const validatePromptInput = (value: string): string | null => {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return "Please enter a prompt before creating a task.";
+  }
+
+  if (trimmedValue.length < 3) {
+    return "Prompt must be at least 3 characters.";
+  }
+
+  if (trimmedValue.length > 2000) {
+    return "Prompt cannot exceed 2000 characters.";
+  }
+
+  return null;
+};
+
+const validateReferralLink = (value: string): boolean => {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
 const runashChatOnboardingStorageKey = "runash_chat_onboarding_seen";
 const runashChatGetStartedDismissedStorageKey =
   "runash_chat_get_started_dismissed";
@@ -1188,6 +1233,10 @@ export default function RunashChatPage() {
   >({});
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [isCopyingLink, setIsCopyingLink] = useState(false);
+  const [isReferralLoading, setIsReferralLoading] = useState(false);
+  const [referralLoadError, setReferralLoadError] = useState<string | null>(
+    null,
+  );
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [isGetStartedVisible, setIsGetStartedVisible] = useState(true);
   const [activeGetStartedTab, setActiveGetStartedTab] =
@@ -1197,6 +1246,8 @@ export default function RunashChatPage() {
   );
   const [selectedPlan, setSelectedPlan] = useState<UpgradePlanId>("team");
   const [isPlanActionLoading, setIsPlanActionLoading] = useState(false);
+  const [creditsLoadError, setCreditsLoadError] = useState<string | null>(null);
+  const [isCreditsLoading, setIsCreditsLoading] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackRating, setFeedbackRating] = useState<number | null>(null);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
@@ -2014,7 +2065,7 @@ export default function RunashChatPage() {
   };
 
   const handleDeleteConfirm = async () => {
-    if (!confirmDeletePayload) return;
+    if (isDeletingEntity || !confirmDeletePayload) return;
 
     const payload = confirmDeletePayload;
     const previousFavorites = favoriteItems;
@@ -2206,7 +2257,7 @@ export default function RunashChatPage() {
   ) => {
     event.preventDefault();
 
-    if (!renameDialogTarget) return;
+    if (isSubmittingRename || !renameDialogTarget) return;
 
     const validationError = validateRenameInput(
       renameInputValue,
@@ -2589,6 +2640,19 @@ export default function RunashChatPage() {
   };
 
   const handlePlanCtaClick = () => {
+    if (isPlanActionLoading) {
+      return;
+    }
+
+    if (!isUpgradePlanId(selectedPlan)) {
+      toast({
+        title: "Invalid plan selection",
+        description: "Please choose a valid plan before continuing.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     trackAnalyticsEvent("upgrade.confirm", { planId: selectedPlan });
     setIsPlanActionLoading(true);
 
@@ -2624,48 +2688,60 @@ export default function RunashChatPage() {
   };
 
   const loadCreditsBalance = useCallback(async () => {
-    const response = await fetchWithRetryAndTimeout(
-      "/api/settings/actions/credits-balance",
-      { method: "POST" },
-      1,
-    );
-    const payload = await response.json().catch(() => null);
+    setIsCreditsLoading(true);
+    setCreditsLoadError(null);
+    try {
+      const response = await fetchWithRetryAndTimeout(
+        "/api/settings/actions/credits-balance",
+        { method: "POST" },
+        1,
+      );
+      const payload = await response.json().catch(() => null);
 
-    if (!response.ok || typeof payload?.data?.creditsBalance !== "number") {
-      throw new Error(payload?.error || "Unable to fetch credits.");
+      if (!response.ok || typeof payload?.data?.creditsBalance !== "number") {
+        throw new Error(payload?.error || "Unable to fetch credits.");
+      }
+
+      const total = payload.data.creditsBalance;
+      setCreditMetrics((previous) => ({
+        ...previous,
+        total,
+      }));
+    } finally {
+      setIsCreditsLoading(false);
     }
-
-    const total = payload.data.creditsBalance;
-    setCreditMetrics((previous) => ({
-      ...previous,
-      total,
-    }));
   }, [fetchWithRetryAndTimeout]);
 
   const loadReferralData = useCallback(async (): Promise<string> => {
-    const response = await fetchWithRetryAndTimeout(
-      "/api/settings/actions/refer-earn",
-      { method: "POST" },
-      1,
-    );
-    const payload = await response.json().catch(() => null);
+    setIsReferralLoading(true);
+    setReferralLoadError(null);
+    try {
+      const response = await fetchWithRetryAndTimeout(
+        "/api/settings/actions/refer-earn",
+        { method: "POST" },
+        1,
+      );
+      const payload = await response.json().catch(() => null);
 
-    if (!response.ok || typeof payload?.data?.referralCode !== "string") {
-      throw new Error(payload?.error || "Unable to load referral data.");
+      if (!response.ok || typeof payload?.data?.referralCode !== "string") {
+        throw new Error(payload?.error || "Unable to load referral data.");
+      }
+
+      const referralCode = payload.data.referralCode.trim();
+      const referralLink = referralCode
+        ? `https://runash.in/refer?code=${encodeURIComponent(referralCode)}`
+        : defaultReferralUiData.referralLink;
+
+      setReferralUiData((previous) =>
+        buildReferralUiData({
+          ...previous,
+          referralLink,
+        }),
+      );
+      return referralLink;
+    } finally {
+      setIsReferralLoading(false);
     }
-
-    const referralCode = payload.data.referralCode.trim();
-    const referralLink = referralCode
-      ? `https://runash.in/refer?code=${encodeURIComponent(referralCode)}`
-      : defaultReferralUiData.referralLink;
-
-    setReferralUiData((previous) =>
-      buildReferralUiData({
-        ...previous,
-        referralLink,
-      }),
-    );
-    return referralLink;
   }, [fetchWithRetryAndTimeout]);
 
   const resetFeedbackDialog = () => {
@@ -2695,12 +2771,21 @@ export default function RunashChatPage() {
   };
 
   const handleCopyReferralLink = async () => {
+    if (isCopyingLink) {
+      return;
+    }
+
     try {
       setIsCopyingLink(true);
       let referralLink = referralUiData.referralLink;
       if (isAuthenticated) {
         referralLink = await loadReferralData();
       }
+
+      if (!validateReferralLink(referralLink)) {
+        throw new Error("Invalid referral link");
+      }
+
       await navigator.clipboard.writeText(referralLink);
       trackAnalyticsEvent("referral.copy-link", { hasAuth: isAuthenticated });
       toast({
@@ -2760,6 +2845,61 @@ export default function RunashChatPage() {
     event.preventDefault();
     setActiveSettingsSection(settingsSections[nextIndex]);
     settingsSectionButtonRefs.current[nextIndex]?.focus();
+  };
+
+  const updateGeneralSettingsAppearance = (value: string) => {
+    if (!isValidThemePreference(value)) {
+      return;
+    }
+
+    setGeneralSettings((prev) => ({
+      ...prev,
+      appearance: value,
+    }));
+  };
+
+  const updateGeneralSettingsAccentColor = (value: string) => {
+    if (!isValidAccentColorPreference(value)) {
+      return;
+    }
+
+    setGeneralSettings((prev) => ({
+      ...prev,
+      accentColor: value,
+    }));
+  };
+
+  const updateGeneralSettingsLanguage = (value: string) => {
+    if (!isValidLanguagePreference(value)) {
+      return;
+    }
+
+    setGeneralSettings((prev) => ({
+      ...prev,
+      language: value,
+    }));
+  };
+
+  const updateGeneralSettingsSpokenLanguage = (value: string) => {
+    if (!isValidSpokenLanguagePreference(value)) {
+      return;
+    }
+
+    setGeneralSettings((prev) => ({
+      ...prev,
+      spokenLanguage: value,
+    }));
+  };
+
+  const updateGeneralSettingsVoice = (value: string) => {
+    if (!isValidVoicePreference(value)) {
+      return;
+    }
+
+    setGeneralSettings((prev) => ({
+      ...prev,
+      voice: value,
+    }));
   };
 
   const handleSidebarSectionToggleKeyDown = (
@@ -2865,6 +3005,10 @@ export default function RunashChatPage() {
   ) => {
     event.preventDefault();
 
+    if (isRedeemingCode) {
+      return;
+    }
+
     const sanitizedCode = sanitizeRedeemCode(redeemCodeInput.trim());
     const validationMessage = validateRedeemCode(sanitizedCode);
     if (validationMessage) {
@@ -2909,15 +3053,21 @@ export default function RunashChatPage() {
   ) => {
     event.preventDefault();
 
-    const trimmedFeedback = feedbackText.trim().slice(0, 500);
-    if (!trimmedFeedback) {
+    if (isSubmittingFeedback) {
+      return;
+    }
+
+    const validationError = validateFeedbackInput(feedbackText);
+    if (validationError) {
       toast({
         title: "Feedback required",
-        description: "Please enter feedback before submitting.",
+        description: validationError,
         variant: "destructive",
       });
       return;
     }
+
+    const trimmedFeedback = feedbackText.trim().slice(0, 500);
 
     setIsSubmittingFeedback(true);
 
@@ -2984,6 +3134,8 @@ export default function RunashChatPage() {
     }
 
     void loadCreditsBalance().catch((error) => {
+      setIsCreditsLoading(false);
+      setCreditsLoadError("Unable to refresh credits right now.");
       handleServiceError(
         "Credits unavailable",
         "We could not refresh your credits balance.",
@@ -2992,6 +3144,8 @@ export default function RunashChatPage() {
     });
 
     void loadReferralData().catch((error) => {
+      setIsReferralLoading(false);
+      setReferralLoadError("Unable to load referral data right now.");
       handleServiceError(
         "Referral unavailable",
         "We could not load your referral link.",
@@ -3239,11 +3393,15 @@ export default function RunashChatPage() {
   };
 
   const handleDismissGetStarted = () => {
+    trackAnalyticsEvent("onboarding.get-started.dismiss", {
+      activeTab: activeGetStartedTab,
+    });
     setIsGetStartedVisible(false);
     localStorage.setItem(runashChatGetStartedDismissedStorageKey, "true");
   };
 
   const handleGetStartedTabChange = (tabId: GetStartedTabId) => {
+    trackAnalyticsEvent("onboarding.get-started.tab-change", { tabId });
     setActiveGetStartedTab(tabId);
     getStartedTabButtonRefs.current[tabId]?.focus();
   };
@@ -3278,6 +3436,7 @@ export default function RunashChatPage() {
   };
 
   const handleOpenOnboardingDialog = (triggerElement?: HTMLElement | null) => {
+    trackAnalyticsEvent("onboarding.open", { source: "runash-chat" });
     setOnboardingStep(0);
     closeOverlay(false);
     closeSidebarActionMenu();
@@ -3294,11 +3453,16 @@ export default function RunashChatPage() {
     }
 
     setIsOnboardingOpen(false);
+    trackAnalyticsEvent("onboarding.dismiss", { step: onboardingStep });
     setIsBannerDismissed(true);
     markOnboardingDismissed();
   };
 
   const handleOnboardingNext = () => {
+    trackAnalyticsEvent("onboarding.next", {
+      step: onboardingStep,
+      isLastStep: isLastOnboardingStep,
+    });
     if (isLastOnboardingStep) {
       markOnboardingSeen();
       setIsOnboardingOpen(false);
@@ -3693,6 +3857,22 @@ export default function RunashChatPage() {
     setIsStartingChat(true);
 
     const cleanPrompt = initialPrompt?.trim();
+    const shouldValidatePrompt = metadata?.actionId === "create";
+    if (shouldValidatePrompt) {
+      const promptValidationError = validatePromptInput(initialPrompt ?? "");
+      if (promptValidationError) {
+        setStartChatError(promptValidationError);
+        toast({
+          title: "Invalid prompt",
+          description: promptValidationError,
+          variant: "destructive",
+        });
+        startChatInFlightRef.current = false;
+        setIsStartingChat(false);
+        return;
+      }
+    }
+
     trackAnalyticsEvent("prompt.create", {
       hasPrompt: Boolean(cleanPrompt),
       actionId: metadata?.actionId ?? activePromptActionId ?? "unknown",
@@ -4298,6 +4478,7 @@ ${instructionStarter}`
   };
 
   const handlePromptSuggestionCardClick = (card: PromptSuggestionCard) => {
+    trackAnalyticsEvent("live-showcase.card.cta", { cardId: card.id });
     setPrompt(card.promptPayload);
     void startChatWithPrompt(card.promptPayload, { actionId: "create" });
   };
@@ -5348,12 +5529,7 @@ ${instructionStarter}`
                       <span className="text-zinc-200">Appearance</span>
                       <Select
                         value={generalSettings.appearance}
-                        onValueChange={(value) =>
-                          setGeneralSettings((prev) => ({
-                            ...prev,
-                            appearance: value as RunashThemePreference,
-                          }))
-                        }
+                        onValueChange={updateGeneralSettingsAppearance}
                       >
                         <SelectTrigger className="h-8 w-full border-zinc-700 bg-zinc-900 text-zinc-100">
                           <SelectValue />
@@ -5370,12 +5546,7 @@ ${instructionStarter}`
                       <span className="text-zinc-200">Accent color</span>
                       <Select
                         value={generalSettings.accentColor}
-                        onValueChange={(value) =>
-                          setGeneralSettings((prev) => ({
-                            ...prev,
-                            accentColor: value as RunashAccentColorPreference,
-                          }))
-                        }
+                        onValueChange={updateGeneralSettingsAccentColor}
                       >
                         <SelectTrigger className="h-8 w-full border-zinc-700 bg-zinc-900 text-zinc-100">
                           <SelectValue />
@@ -5392,12 +5563,7 @@ ${instructionStarter}`
                       <span className="text-zinc-200">Language</span>
                       <Select
                         value={generalSettings.language}
-                        onValueChange={(value) =>
-                          setGeneralSettings((prev) => ({
-                            ...prev,
-                            language: value as RunashLanguagePreference,
-                          }))
-                        }
+                        onValueChange={updateGeneralSettingsLanguage}
                       >
                         <SelectTrigger className="h-8 w-full border-zinc-700 bg-zinc-900 text-zinc-100">
                           <SelectValue />
@@ -5420,13 +5586,7 @@ ${instructionStarter}`
                       </div>
                       <Select
                         value={generalSettings.spokenLanguage}
-                        onValueChange={(value) =>
-                          setGeneralSettings((prev) => ({
-                            ...prev,
-                            spokenLanguage:
-                              value as RunashSpokenLanguagePreference,
-                          }))
-                        }
+                        onValueChange={updateGeneralSettingsSpokenLanguage}
                       >
                         <SelectTrigger className="h-8 w-full border-zinc-700 bg-zinc-900 text-zinc-100">
                           <SelectValue />
@@ -5444,12 +5604,7 @@ ${instructionStarter}`
                       <div className="flex items-center justify-end gap-2">
                         <Select
                           value={generalSettings.voice}
-                          onValueChange={(value) =>
-                            setGeneralSettings((prev) => ({
-                              ...prev,
-                              voice: value as RunashVoicePreference,
-                            }))
-                          }
+                          onValueChange={updateGeneralSettingsVoice}
                         >
                           <SelectTrigger className="h-8 w-[132px] border-zinc-700 bg-zinc-900 text-zinc-100">
                             <SelectValue />
@@ -5624,6 +5779,12 @@ ${instructionStarter}`
 
             <section className="space-y-3 border-t border-zinc-800/80 py-4">
               <p className="text-sm font-medium text-zinc-200">Referral link</p>
+              {isReferralLoading ? (
+                <p className="text-xs text-zinc-500">Refreshing referral link…</p>
+              ) : null}
+              {referralLoadError ? (
+                <p className="text-xs text-amber-300">{referralLoadError}</p>
+              ) : null}
               <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
                 <code className="flex-1 truncate rounded bg-zinc-950 px-3 py-2 text-xs text-zinc-300">
                   {referralUiData.referralLink}
@@ -5632,7 +5793,7 @@ ${instructionStarter}`
                   type="button"
                   className="h-10 px-4"
                   onClick={handleCopyReferralLink}
-                  disabled={isCopyingLink}
+                  disabled={isCopyingLink || isReferralLoading}
                 >
                   {isCopyingLink ? (
                     <>
@@ -6343,7 +6504,9 @@ ${instructionStarter}`
                         }
 
                         if (isAuthenticated) {
+                          setCreditsLoadError(null);
                           void loadCreditsBalance().catch((error) => {
+                            setCreditsLoadError("Unable to refresh credits right now.");
                             handleServiceError(
                               "Credits unavailable",
                               "We could not refresh your credits balance.",
@@ -6387,6 +6550,12 @@ ${instructionStarter}`
                             <X className="h-4 w-4" />
                           </Button>
                         </div>
+                        {isCreditsLoading ? (
+                          <p className="mb-2 text-xs text-zinc-500">Refreshing credits…</p>
+                        ) : null}
+                        {creditsLoadError ? (
+                          <p className="mb-2 text-xs text-amber-300">{creditsLoadError}</p>
+                        ) : null}
                         <div className="space-y-1.5">
                           {creditSummaryRows.map((row) => (
                             <div
@@ -7354,4 +7523,3 @@ ${instructionStarter}`
     </div>
   );
 }
-
