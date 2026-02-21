@@ -612,7 +612,12 @@ type HeaderAction = {
   onClick?: (triggerElement?: HTMLElement | null) => void;
 };
 
-type PromptActionType = "route" | "modal" | "service" | "handler";
+type PromptActionType =
+  | "route"
+  | "modal"
+  | "service"
+  | "handler"
+  | "file-dialog";
 type PromptActionId =
   | "enhance"
   | "create"
@@ -649,6 +654,13 @@ type ComposerMenuActionSection = {
   actions: readonly ComposerMenuActionNode[];
 };
 
+type PromptMenuActionNode = {
+  id?: PromptActionId;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  children?: PromptMenuActionNode[];
+};
+
 const allowedUploadMimeTypes = new Set([
   "image/png",
   "image/jpeg",
@@ -675,10 +687,12 @@ type PromptActionConfig = {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   type: PromptActionType;
+  placement: "primary" | "secondary";
   requiresPlan: UpgradePlanId | null;
   routeOrHandler: string;
   description: string;
   commandGroup: "Prompt" | "Create" | "Tools";
+  secondaryMenuPath?: readonly [string, string?];
   unavailableReason?: string;
 };
 
@@ -729,12 +743,13 @@ const promptSuggestionCards: PromptSuggestionCard[] = [
   },
 ];
 
-const promptActionConfigs: PromptActionConfig[] = [
+const promptActionConfigs: readonly PromptActionConfig[] = [
   {
     id: "enhance",
     label: "Enhance",
     icon: Sparkles,
     type: "handler",
+    placement: "primary",
     requiresPlan: null,
     routeOrHandler: "enhancePrompt",
     description: "Improve your prompt before sending.",
@@ -745,6 +760,7 @@ const promptActionConfigs: PromptActionConfig[] = [
     label: "Create",
     icon: Plus,
     type: "handler",
+    placement: "primary",
     requiresPlan: null,
     routeOrHandler: "startChatWithPrompt",
     description: "Start a new run with your current prompt.",
@@ -754,9 +770,10 @@ const promptActionConfigs: PromptActionConfig[] = [
     id: "upload",
     label: "Upload",
     icon: Upload,
-    type: "route",
+    type: "file-dialog",
+    placement: "primary",
     requiresPlan: null,
-    routeOrHandler: "/upload",
+    routeOrHandler: "composerUploadInput",
     description: "Upload product or campaign assets.",
     commandGroup: "Create",
   },
@@ -765,6 +782,7 @@ const promptActionConfigs: PromptActionConfig[] = [
     label: "Search",
     icon: Search,
     type: "service",
+    placement: "primary",
     requiresPlan: null,
     routeOrHandler: "/api/web-search",
     description: "Run a product web search from the prompt.",
@@ -775,54 +793,125 @@ const promptActionConfigs: PromptActionConfig[] = [
     label: "Go Live",
     icon: Rocket,
     type: "route",
+    placement: "secondary",
     requiresPlan: "team",
     routeOrHandler: "/live",
     description: "Launch a live commerce session.",
     commandGroup: "Create",
+    secondaryMenuPath: ["Create", "Live & video"],
   },
   {
     id: "talk",
     label: "Talk",
     icon: Mic,
     type: "modal",
+    placement: "secondary",
     requiresPlan: null,
     routeOrHandler: "settings",
     description: "Open voice preferences in settings.",
     commandGroup: "Tools",
+    secondaryMenuPath: ["Tools"],
   },
   {
     id: "generate-video",
     label: "Generate Video",
     icon: Play,
     type: "route",
+    placement: "secondary",
     requiresPlan: "premium",
     routeOrHandler: "/editor?mode=video",
     description: "Jump to video generation workspace.",
     commandGroup: "Create",
+    secondaryMenuPath: ["Create", "Live & video"],
   },
   {
     id: "mcp",
     label: "MCP",
     icon: PlugZap,
     type: "route",
+    placement: "secondary",
     requiresPlan: "team",
-    routeOrHandler: "/integrations",
+    routeOrHandler: "/integrations?tab=mcps",
     description: "Manage MCP integrations.",
     commandGroup: "Tools",
-    unavailableReason:
-      "MCP setup is currently managed in the integrations dashboard.",
+    secondaryMenuPath: ["Tools", "Integrations"],
   },
   {
     id: "editor",
     label: "Editor",
     icon: Pencil,
     type: "route",
+    placement: "secondary",
     requiresPlan: null,
     routeOrHandler: "/editor",
     description: "Open the RunAsh editor.",
     commandGroup: "Tools",
+    secondaryMenuPath: ["Tools", "Workspace"],
   },
 ];
+
+const primaryPromptActionConfigs = promptActionConfigs.filter(
+  (action) => action.placement === "primary",
+);
+
+const secondaryPromptActionConfigs = promptActionConfigs.filter(
+  (action) => action.placement === "secondary",
+);
+
+const buildSecondaryPromptMenuNodes = (
+  actions: readonly PromptActionConfig[],
+): PromptMenuActionNode[] => {
+  const menuNodes: PromptMenuActionNode[] = [];
+
+  actions.forEach((action) => {
+    const [groupLabel, subGroupLabel] = action.secondaryMenuPath ?? [action.commandGroup];
+
+    let groupNode = menuNodes.find((node) => node.label === groupLabel);
+    if (!groupNode) {
+      groupNode = {
+        label: groupLabel,
+        icon: action.icon,
+        children: [],
+      };
+      menuNodes.push(groupNode);
+    }
+
+    if (!subGroupLabel) {
+      groupNode.children?.push({
+        id: action.id,
+        label: action.label,
+        icon: action.icon,
+      });
+      return;
+    }
+
+    let subGroupNode = groupNode.children?.find((node) => node.label === subGroupLabel);
+    if (!subGroupNode) {
+      subGroupNode = {
+        label: subGroupLabel,
+        icon: action.icon,
+        children: [],
+      };
+      groupNode.children?.push(subGroupNode);
+    }
+
+    subGroupNode.children?.push({
+      id: action.id,
+      label: action.label,
+      icon: action.icon,
+    });
+  });
+
+  return menuNodes;
+};
+
+const secondaryPromptActionMenuNodes = buildSecondaryPromptMenuNodes(
+  secondaryPromptActionConfigs,
+);
+
+const promptActionConfigById = new Map<PromptActionId, PromptActionConfig>(
+  promptActionConfigs.map((action) => [action.id, action]),
+);
 
 const composerMenuActionSections: readonly ComposerMenuActionSection[] = [
   {
@@ -2923,7 +3012,7 @@ export default function RunashChatPage() {
     event: React.KeyboardEvent<HTMLButtonElement>,
     actionId: PromptActionId,
   ) => {
-    const focusableActionIds = promptActionConfigs
+    const focusableActionIds = primaryPromptActionConfigs
       .filter((action) => !isPromptActionDisabled(action))
       .map((action) => action.id);
 
@@ -3962,7 +4051,10 @@ export default function RunashChatPage() {
     }
   }
 
-  const handlePromptAction = async (action: PromptActionConfig) => {
+  const handlePromptAction = async (
+    action: PromptActionConfig,
+    source: "pill" | "menu" = "pill",
+  ) => {
     const isDisabled = isPromptActionDisabled(action);
 
     if (isDisabled) {
@@ -3971,6 +4063,9 @@ export default function RunashChatPage() {
         title: `${action.label} unavailable`,
         description: getPromptActionTooltip(action),
       });
+      if (source === "menu") {
+        closePromptMenu(false);
+      }
       return;
     }
 
@@ -3982,6 +4077,12 @@ export default function RunashChatPage() {
     try {
       if (action.type === "route") {
         router.push(action.routeOrHandler);
+        trackPromptAction(action, "success");
+        return;
+      }
+
+      if (action.type === "file-dialog") {
+        composerUploadInputRef.current?.click();
         trackPromptAction(action, "success");
         return;
       }
@@ -4069,6 +4170,9 @@ export default function RunashChatPage() {
       });
     } finally {
       setPromptActionLoadingId(null);
+      if (source === "menu") {
+        closePromptMenu(false);
+      }
     }
   };
 
@@ -4348,6 +4452,54 @@ ${instructionStarter}`
     }
 
     handleRecentDelete(item);
+  };
+
+  const renderPromptMenuActionNode = (node: PromptMenuActionNode) => {
+    if (node.children && node.children.length > 0) {
+      return (
+        <DropdownMenuSub key={node.label}>
+          <DropdownMenuSubTrigger className="focus:bg-zinc-800 focus:text-zinc-100">
+            <node.icon className="mr-2 h-4 w-4" aria-hidden="true" />
+            <span>{node.label}</span>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="z-40 w-60 border-zinc-800 bg-zinc-900 text-zinc-100">
+            {node.children.map((child) => renderPromptMenuActionNode(child))}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      );
+    }
+
+    if (!node.id) {
+      return null;
+    }
+
+    const action = promptActionConfigById.get(node.id);
+    if (!action) {
+      return null;
+    }
+
+    const actionDisabled =
+      isPromptActionDisabled(action) || Boolean(promptActionLoadingId) || isStartingChat;
+
+    return (
+      <DropdownMenuItem
+        key={node.id}
+        onSelect={() => void handlePromptAction(action, "menu")}
+        disabled={actionDisabled}
+        className="focus:bg-zinc-800 focus:text-zinc-100"
+      >
+        <action.icon className="mr-2 h-4 w-4" aria-hidden="true" />
+        <span>{action.label}</span>
+        {action.requiresPlan && (
+          <span className="ml-2 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+            Pro
+          </span>
+        )}
+        {promptActionLoadingId === action.id && (
+          <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />
+        )}
+      </DropdownMenuItem>
+    );
   };
 
   const renderComposerMenuActionNode = (node: ComposerMenuActionNode) => {
@@ -6771,6 +6923,13 @@ ${instructionStarter}`
                           align="start"
                           className={`${menuOverlayClassName} w-72 border-zinc-800 bg-zinc-900 text-zinc-100`}
                         >
+                          <DropdownMenuLabel className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">
+                            Secondary prompt actions
+                          </DropdownMenuLabel>
+                          {secondaryPromptActionMenuNodes.map((node) =>
+                            renderPromptMenuActionNode(node),
+                          )}
+                          <DropdownMenuSeparator className="bg-zinc-800" />
                           {composerMenuActionSections.map((section, sectionIndex) => (
                             <React.Fragment key={section.id}>
                               {sectionIndex > 0 && (
@@ -6858,7 +7017,7 @@ ${instructionStarter}`
                             <span>Cancel</span>
                           </button>
                         )}
-                        {promptActionConfigs.map((action) => {
+                        {primaryPromptActionConfigs.map((action) => {
                           const actionDisabled = isPromptActionDisabled(action);
                           const actionIsActive =
                             activePromptActionId === action.id;
