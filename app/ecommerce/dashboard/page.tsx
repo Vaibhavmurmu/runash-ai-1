@@ -1,7 +1,5 @@
-"use client"
+import { redirect } from "next/navigation"
 
-import { StoreWorkspace } from "@/components/dashboard/workspace/store-workspace"
-
-export default function ShoppingDashboardPage() {
-  return <StoreWorkspace />
+export default function EcommerceDashboardDeprecatedRoute() {
+  redirect("/dashboard?module=store")
 }

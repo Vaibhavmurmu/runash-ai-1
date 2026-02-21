@@ -17,6 +17,7 @@ import { useAuth } from "@/lib/hooks/use-auth"
 import { formatCurrency, formatNumber } from "@/lib/utils"
 import { Users, DollarSign, PlayCircle, Package, Activity } from "lucide-react"
 
+/** @deprecated Use app/dashboard/page.tsx + components/dashboard/workspace/* module hosts as canonical architecture. */
 export function DashboardContent() {
   const { user } = useAuth()
   const { totals, loading: analyticsLoading, error: analyticsError } = useAnalytics(user?.id)

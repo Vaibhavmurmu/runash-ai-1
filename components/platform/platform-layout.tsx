@@ -14,6 +14,7 @@ interface PlatformLayoutProps {
   onSectionChange: (section: string) => void
 }
 
+/** @deprecated Use the canonical /dashboard shell with workspace module hosts instead. */
 export default function PlatformLayout({ children, activeSection, onSectionChange }: PlatformLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [rightPanelOpen, setRightPanelOpen] = useState(false)
