@@ -2,10 +2,9 @@
 
 import { ArrowRight, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useState, useEffect } from "react"
 import FeaturesSection from "@/components/features-section"
 import DemoSection from "@/components/demo-section"
-{/* import Footer from "@/components/footer" */}
+// import Footer from "@/components/footer"
 
 export default function AIEditorPage() {
   return (

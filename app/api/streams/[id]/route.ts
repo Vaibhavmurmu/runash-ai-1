@@ -7,7 +7,7 @@ import { getServerAuthSession } from "@/lib/auth/session"
 const ROUTE = "/api/streams/[id]"
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID()
+  const requestId = req.headers.get("x-correlation-id") ?? req.headers.get("x-request-id") ?? crypto.randomUUID()
   try {
     const session = await getServerAuthSession()
     if (!session) {
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
-  const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID()
+  const requestId = req.headers.get("x-correlation-id") ?? req.headers.get("x-request-id") ?? crypto.randomUUID()
   try {
     const session = await getServerAuthSession()
     if (!session) {
@@ -54,6 +54,15 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     }
 
     await Database.updateStream(streamId, { status: "deleted" })
+
+    logApiEvent("info", "streams.delete.success", {
+      requestId,
+      route: ROUTE,
+      method: req.method,
+      userId: session.user.id,
+      details: { operation: "delete-stream", streamId },
+    })
+
     return respondSuccess(req, { success: true }, { requestId })
   } catch (error) {
     logApiEvent("error", "streams.delete.failed", {

@@ -1,143 +1,1149 @@
-"use client"
+"use client";
 
-import React, { useEffect, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
-import { signOutWithRedirect, useAuthSession } from "@/lib/auth/access-client"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { signOutWithRedirect, useAuthSession } from "@/lib/auth/access-client";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useTheme } from "next-themes";
 import {
   ArrowRight,
+  Archive,
   Bot,
-  Bell,
+  Check,
+  ChevronDown,
   ChevronsLeft,
   ChevronsRight,
+  Copy,
   CreditCard,
+  ExternalLink,
   FolderKanban,
   Home,
   LayoutTemplate,
   Library,
   Menu,
   MessageSquare,
+  Mic,
   MoreVertical,
-  PackageSearch,
   PanelsTopLeft,
   LifeBuoy,
   LogOut,
+  Loader2,
   Plus,
+  Play,
+  PlugZap,
+  Pencil,
   Rocket,
   Search,
+  Smile,
   Settings,
-  ShieldCheck,
-  ShoppingCart,
   Sparkles,
+  Upload,
   User,
+  Meh,
+  Frown,
   X,
-} from "lucide-react"
+} from "lucide-react";
+import {
+  ActionPill,
+  ChatInfoBanner,
+  SuggestionCardGrid,
+  type SuggestionCardItem,
+} from "@/components/chat/shared-chat-primitives";
 
 type ChatPreviewMessage = {
-  id: string | number
-  role: "assistant" | "user"
-  content: string
-  created_at?: string
-}
+  id: string | number;
+  role: "assistant" | "user";
+  content: string;
+  created_at?: string;
+};
 
-type ChatQuickPrompt = {
-  id: string
-  label: string
-  description: string
-  prompt: string
-  icon: React.ComponentType<{ className?: string }>
-}
+type SessionBootstrapPayload = {
+  success?: boolean;
+  data?: {
+    id?: string | number;
+  };
+  id?: string | number;
+  error?: {
+    message?: string;
+  };
+};
 
-type RecentItem = {
-  id: string
-  title: string
-}
+type RecentEntity = {
+  id: string;
+  title: string;
+  updatedAt: string | null;
+  entityType: "session" | "project";
+  sessionId?: string;
+};
+
+type RecentMoveDestination = {
+  id: string;
+  label: string;
+  description: string;
+};
+
+type SidebarFavoriteIconName =
+  | "FolderKanban"
+  | "LayoutTemplate"
+  | "Library"
+  | "MessageSquare";
+
+type SidebarFavoriteItem = {
+  id: string;
+  label: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+  iconName: SidebarFavoriteIconName;
+  href: string;
+};
+
+type ConfirmDeleteEntityType = "chat" | "folder" | "recent";
+
+type ConfirmDeletePayload = {
+  entityType: ConfirmDeleteEntityType;
+  entityId: string;
+  title: string;
+  description: string;
+};
+
+type RenameDialogTarget = {
+  entityType: "favorite" | "recent";
+  entityId: string;
+  currentName: string;
+};
 
 type OnboardingSlide = {
-  title: string
-  description: string
-  image?: string
-  cta: string
-}
+  title: string;
+  description: string;
+  media: {
+    label: string;
+    value: string;
+  };
+};
 
-const runashChatOnboardingStorageKey = "runash_chat_onboarding_seen"
+type GetStartedTabId = "tasks" | "reviews" | "archive";
+
+type OnboardingQuickCard = {
+  id: string;
+  title: string;
+  description: string;
+  actionLabel: string;
+  actionType: "task" | "review" | "archive";
+  icon: React.ComponentType<{ className?: string }>;
+};
+
+type PromptSuggestionCard = {
+  id: string;
+  title: string;
+  guidance: string;
+  ctaText: string;
+  promptPayload: string;
+  icon: React.ComponentType<{ className?: string }>;
+};
+
+type CreditMetrics = {
+  gifted: number;
+  monthly: number;
+  purchased: number;
+  total?: number;
+};
+
+type InteractiveActionKind = "route" | "api-call" | "local-only";
+
+type CreditSummaryRow = {
+  key: keyof Omit<CreditMetrics, "total">;
+  label: string;
+};
+
+type VoiceCaptureState = "idle" | "recording" | "processing" | "error";
+
+type BrowserSpeechRecognitionResult = {
+  transcript: string;
+};
+
+type BrowserSpeechRecognitionResultList = {
+  [index: number]: BrowserSpeechRecognitionResult;
+  isFinal?: boolean;
+  length: number;
+};
+
+type BrowserSpeechRecognitionEvent = {
+  resultIndex: number;
+  results: {
+    [index: number]: BrowserSpeechRecognitionResultList;
+    length: number;
+  };
+};
+
+type BrowserSpeechRecognitionErrorEvent = {
+  error: string;
+};
+
+type BrowserSpeechRecognition = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
+  onerror: ((event: BrowserSpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+};
+
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+
+const creditSummaryRows: CreditSummaryRow[] = [
+  { key: "gifted", label: "Gifted credits" },
+  { key: "monthly", label: "Monthly credits" },
+  { key: "purchased", label: "Purchased credits" },
+];
+
+const formatCreditValue = (value?: number | null): string => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "0.00";
+  }
+
+  return value.toFixed(2);
+};
+
+const sanitizeRedeemCode = (value: string): string =>
+  value.replace(/[^a-zA-Z0-9_-]/g, "").toUpperCase();
+
+const validateRedeemCode = (value: string): string | null => {
+  if (!value) {
+    return "Please enter a credit code.";
+  }
+
+  if (value.length < 4) {
+    return "Code must be at least 4 characters.";
+  }
+
+  if (value.length > 32) {
+    return "Code cannot exceed 32 characters.";
+  }
+
+  return null;
+};
+
+const validateFeedbackInput = (value: string): string | null => {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return "Please enter feedback before submitting.";
+  }
+
+  if (trimmedValue.length < 8) {
+    return "Feedback must be at least 8 characters.";
+  }
+
+  if (trimmedValue.length > 500) {
+    return "Feedback cannot exceed 500 characters.";
+  }
+
+  return null;
+};
+
+const validatePromptInput = (value: string): string | null => {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return "Please enter a prompt before creating a task.";
+  }
+
+  if (trimmedValue.length < 3) {
+    return "Prompt must be at least 3 characters.";
+  }
+
+  if (trimmedValue.length > 2000) {
+    return "Prompt cannot exceed 2000 characters.";
+  }
+
+  return null;
+};
+
+const buildEnhancedPrompt = (input: string): string => {
+  const trimmedInput = input.trim();
+  if (!trimmedInput) {
+    return "";
+  }
+
+  return [
+    "Enhance this prompt for execution readiness:",
+    "- Clarify objective and target audience.",
+    "- Add a concise step-by-step structure.",
+    "- Include expected output format and success criteria.",
+    "- Keep the original intent and key details unchanged.",
+    "",
+    `Original prompt: ${trimmedInput}`,
+  ].join("\n");
+};
+
+const validateReferralLink = (value: string): boolean => {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+const runashChatOnboardingStorageKey = "runash_chat_onboarding_seen";
+const runashChatGetStartedDismissedStorageKey =
+  "runash_chat_get_started_dismissed";
+const runashChatSidebarCollapsedStorageKey = "runash_chat_sidebar_collapsed";
+const runashChatBannerHiddenStorageKey = "runash_chat_banner_hidden";
+const runashChatUpdatesBannerHiddenStorageKey = "runash_chat_updates_hidden";
+const runashChatLegacyUpdatesBannerHiddenStorageKey =
+  "runash_updates_banner_hidden";
+const runashChatUpdatesBannerSeenStorageKey = "runash_chat_updates_seen";
+const runashChatAnnouncementSeenStorageKey = "runash_chat_announcement_seen";
+const runashChatFavoritesCollapsedStorageKey =
+  "runash_chat_favorites_collapsed";
+const runashChatRecentsCollapsedStorageKey = "runash_chat_recents_collapsed";
+const runashChatFavoritesStorageKey = "runash_chat_favorites_items";
+const runashChatDesktopSidebarContentId = "runash-chat-desktop-sidebar-content";
+const runashChatMobileSidebarId = "runash-chat-mobile-sidebar";
+const runashChatThemeStorageKey = "runash_chat_preference_theme";
+const runashChatLanguageStorageKey = "runash_chat_preference_language";
+const runashChatPositionStorageKey = "runash_chat_preference_chat_position";
+const runashChatSettingsStorageKey = "runash_chat_settings";
+const runashChatPromptSuggestionDismissedStorageKey =
+  "runash_chat_prompt_suggestion_dismissed";
+const runashChatGetStartedActiveTabStorageKey =
+  "runash_chat_get_started_active_tab";
+
+const interactiveActionInventory: Record<string, InteractiveActionKind> = {
+  "prompt.submit": "api-call",
+  "prompt.create": "api-call",
+  "prompt.search": "api-call",
+  "prompt.enhance": "local-only",
+  "prompt.upload": "route",
+  "prompt.go-live": "route",
+  "prompt.talk": "local-only",
+  "prompt.generate-video": "route",
+  "prompt.mcp": "route",
+  "prompt.editor": "route",
+  "header.upgrade": "local-only",
+  "header.feedback": "local-only",
+  "header.refer": "local-only",
+  "composer.import-github": "api-call",
+  "composer.import-figma": "api-call",
+  "composer.upload-from-computer": "local-only",
+  "composer.generate-images": "local-only",
+  "composer.design-system-library": "route",
+  "composer.design-system-create": "local-only",
+  "composer.folder-new": "api-call",
+  "composer.folder-open": "route",
+  "composer.instructions": "local-only",
+  "composer.mcps-manage": "route",
+  "composer.mcps-explore": "route",
+  "feedback.submit": "api-call",
+  "referral.copy-link": "api-call",
+  "credits.refresh": "api-call",
+  "credits.redeem": "route",
+  "upgrade.confirm": "api-call",
+  "voice.start": "local-only",
+  "voice.stop": "local-only",
+};
+
+const themeOptions = ["system", "dark", "light"] as const;
+const languageOptions = [
+  { value: "en", label: "English" },
+  { value: "es", label: "Español" },
+  { value: "fr", label: "Français" },
+  { value: "de", label: "Deutsch" },
+  { value: "hi", label: "हिन्दी" },
+] as const;
+const chatPositionOptions = ["left", "right"] as const;
+const accentColorOptions = ["violet", "blue", "emerald"] as const;
+const spokenLanguageOptions = ["en-US", "en-IN", "es-ES"] as const;
+const voiceOptions = ["alloy", "verse", "willow"] as const;
+
+type RunashThemePreference = (typeof themeOptions)[number];
+type RunashLanguagePreference = (typeof languageOptions)[number]["value"];
+type RunashChatPositionPreference = (typeof chatPositionOptions)[number];
+type RunashAccentColorPreference = (typeof accentColorOptions)[number];
+type RunashSpokenLanguagePreference = (typeof spokenLanguageOptions)[number];
+type RunashVoicePreference = (typeof voiceOptions)[number];
+
+type RunashGeneralSettings = {
+  appearance: RunashThemePreference;
+  accentColor: RunashAccentColorPreference;
+  language: RunashLanguagePreference;
+  spokenLanguage: RunashSpokenLanguagePreference;
+  voice: RunashVoicePreference;
+  separateVoiceEnabled: boolean;
+  showAdditionalModels: boolean;
+};
+
+const defaultRunashGeneralSettings: RunashGeneralSettings = {
+  appearance: "system",
+  accentColor: "violet",
+  language: "en",
+  spokenLanguage: "en-US",
+  voice: "alloy",
+  separateVoiceEnabled: false,
+  showAdditionalModels: false,
+};
+
+const isValidThemePreference = (
+  value: string | null,
+): value is RunashThemePreference =>
+  Boolean(value && themeOptions.includes(value as RunashThemePreference));
+
+const isValidLanguagePreference = (
+  value: string | null,
+): value is RunashLanguagePreference =>
+  Boolean(
+    value &&
+    languageOptions.some((languageOption) => languageOption.value === value),
+  );
+
+const isValidChatPositionPreference = (
+  value: string | null,
+): value is RunashChatPositionPreference =>
+  Boolean(
+    value &&
+    chatPositionOptions.includes(value as RunashChatPositionPreference),
+  );
+
+const isValidAccentColorPreference = (
+  value: unknown,
+): value is RunashAccentColorPreference =>
+  typeof value === "string" &&
+  accentColorOptions.includes(value as RunashAccentColorPreference);
+
+const isValidSpokenLanguagePreference = (
+  value: unknown,
+): value is RunashSpokenLanguagePreference =>
+  typeof value === "string" &&
+  spokenLanguageOptions.includes(value as RunashSpokenLanguagePreference);
+
+const isValidVoicePreference = (
+  value: unknown,
+): value is RunashVoicePreference =>
+  typeof value === "string" &&
+  voiceOptions.includes(value as RunashVoicePreference);
+
+const parseRunashGeneralSettings = (
+  raw: string | null,
+): { settings: RunashGeneralSettings; isValid: boolean } => {
+  if (!raw) {
+    return { settings: defaultRunashGeneralSettings, isValid: true };
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<RunashGeneralSettings>;
+    const normalizedSettings: RunashGeneralSettings = {
+      appearance: isValidThemePreference(parsed.appearance ?? null)
+        ? parsed.appearance
+        : defaultRunashGeneralSettings.appearance,
+      accentColor: isValidAccentColorPreference(parsed.accentColor)
+        ? parsed.accentColor
+        : defaultRunashGeneralSettings.accentColor,
+      language: isValidLanguagePreference(parsed.language ?? null)
+        ? parsed.language
+        : defaultRunashGeneralSettings.language,
+      spokenLanguage: isValidSpokenLanguagePreference(parsed.spokenLanguage)
+        ? parsed.spokenLanguage
+        : defaultRunashGeneralSettings.spokenLanguage,
+      voice: isValidVoicePreference(parsed.voice)
+        ? parsed.voice
+        : defaultRunashGeneralSettings.voice,
+      separateVoiceEnabled:
+        typeof parsed.separateVoiceEnabled === "boolean"
+          ? parsed.separateVoiceEnabled
+          : defaultRunashGeneralSettings.separateVoiceEnabled,
+      showAdditionalModels:
+        typeof parsed.showAdditionalModels === "boolean"
+          ? parsed.showAdditionalModels
+          : defaultRunashGeneralSettings.showAdditionalModels,
+    };
+
+    const isValid =
+      normalizedSettings.appearance === parsed.appearance &&
+      normalizedSettings.accentColor === parsed.accentColor &&
+      normalizedSettings.language === parsed.language &&
+      normalizedSettings.spokenLanguage === parsed.spokenLanguage &&
+      normalizedSettings.voice === parsed.voice &&
+      normalizedSettings.separateVoiceEnabled === parsed.separateVoiceEnabled &&
+      normalizedSettings.showAdditionalModels === parsed.showAdditionalModels;
+
+    return { settings: normalizedSettings, isValid };
+  } catch {
+    return { settings: defaultRunashGeneralSettings, isValid: false };
+  }
+};
 
 const onboardingSlides: OnboardingSlide[] = [
   {
     title: "Welcome to RunAsh Chat",
-    description: "Plan campaigns, build bundles, and launch storefront workflows from one assistant workspace.",
-    image: "✨",
-    cta: "Next",
+    description:
+      "Plan campaigns, build bundles, and launch storefront workflows from one assistant workspace.",
+    media: { label: "Sparkles", value: "✨" },
   },
   {
     title: "Use guided prompts",
-    description: "Start with quick actions for checkout, bundles, and post-purchase support to move faster.",
-    image: "🧭",
-    cta: "Next",
+    description:
+      "Start with quick actions for checkout, bundles, and post-purchase support to move faster.",
+    media: { label: "Compass", value: "🧭" },
   },
   {
     title: "Stay in control",
-    description: "Track recents, jump back into sessions, and use the sidebar to keep launches organized.",
-    cta: "Get started",
+    description:
+      "Track recents, jump back into sessions, and use the sidebar to keep launches organized.",
+    media: { label: "Rocket", value: "🚀" },
   },
-]
+];
+
+const getStartedTabs: Array<{ id: GetStartedTabId; label: string }> = [
+  { id: "tasks", label: "Tasks" },
+  { id: "reviews", label: "Reviews" },
+  { id: "archive", label: "Archive" },
+];
+
+const getStartedQuickOptions: Array<{
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}> = [
+  { id: "try-pwas", label: "Try PWAs", icon: PanelsTopLeft },
+  { id: "try-browser", label: "Try Browser", icon: ExternalLink },
+  { id: "task", label: "Tasks", icon: FolderKanban },
+  { id: "review", label: "Review", icon: Check },
+  { id: "manage", label: "Manage", icon: Settings },
+];
+
+const getStartedQuickCards: Record<GetStartedTabId, OnboardingQuickCard[]> = {
+  tasks: [
+    {
+      id: "task-brief",
+      title: "Start your first task",
+      description:
+        "Create a launch-ready task brief with goals, owners, and due dates.",
+      actionLabel: "Start task flow",
+      actionType: "task",
+      icon: FolderKanban,
+    },
+    {
+      id: "task-follow-up",
+      title: "Create a follow-up task",
+      description:
+        "Turn pending notes into an actionable checklist for your next run.",
+      actionLabel: "Start task flow",
+      actionType: "task",
+      icon: Rocket,
+    },
+  ],
+  reviews: [
+    {
+      id: "review-checklist",
+      title: "Start your first task review",
+      description:
+        "Review deliverables with a quality checklist before shipping.",
+      actionLabel: "Start review flow",
+      actionType: "review",
+      icon: Check,
+    },
+    {
+      id: "review-feedback",
+      title: "Collect review feedback",
+      description:
+        "Capture reviewer comments and convert them into next-step tasks.",
+      actionLabel: "Start review flow",
+      actionType: "review",
+      icon: MessageSquare,
+    },
+  ],
+  archive: [
+    {
+      id: "archive-save",
+      title: "Start your first archive",
+      description:
+        "Save completed chat outcomes so your team can reuse proven prompts.",
+      actionLabel: "Start archive flow",
+      actionType: "archive",
+      icon: Archive,
+    },
+    {
+      id: "archive-cleanup",
+      title: "Manage archived work",
+      description:
+        "Group and label archived runs to keep your workspace organized.",
+      actionLabel: "Open archive manager",
+      actionType: "archive",
+      icon: Library,
+    },
+  ],
+};
 
 type HeaderAction = {
-  id: "upgrade" | "feedback" | "refer"
-  label: string
-  tooltip: string
-  icon: React.ComponentType<{ className?: string }>
-  href?: string
-  onClick?: () => void
-}
+  id: "upgrade" | "feedback" | "refer";
+  label: string;
+  tooltip: string;
+  icon: React.ComponentType<{ className?: string }>;
+  href?: string;
+  onClick?: (triggerElement?: HTMLElement | null) => void;
+};
 
-type PlaceholderCollectionItem = {
-  id: string
-  title: string
-  subtitle: string
-}
+type PromptActionType =
+  | "route"
+  | "modal"
+  | "service"
+  | "handler"
+  | "file-dialog";
+type PromptActionId =
+  | "enhance"
+  | "create"
+  | "upload"
+  | "search"
+  | "go-live"
+  | "talk"
+  | "generate-video"
+  | "mcp"
+  | "editor";
+type ComposerMenuActionId =
+  | "import-github"
+  | "import-figma"
+  | "upload-from-computer"
+  | "generate-images"
+  | "design-system-library"
+  | "design-system-create"
+  | "folder-new"
+  | "folder-open"
+  | "instructions"
+  | "mcps-manage"
+  | "mcps-explore";
 
-type PlaceholderCollectionSectionProps = {
-  title: string
-  actionLabel?: string
-  items: PlaceholderCollectionItem[]
-}
+type ComposerMenuActionNode = {
+  id?: ComposerMenuActionId;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  children?: readonly ComposerMenuActionNode[];
+};
 
-function PlaceholderCollectionSection({ title, actionLabel = "View all", items }: PlaceholderCollectionSectionProps) {
-  return (
-    <Card className="border-zinc-800 bg-zinc-950 p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-medium text-zinc-100">{title}</h2>
-        <button type="button" className="text-xs text-zinc-500 transition hover:text-zinc-300">
-          {actionLabel}
-        </button>
-      </div>
+type ComposerMenuActionSection = {
+  id: string;
+  label: string;
+  actions: readonly ComposerMenuActionNode[];
+};
 
-      <ul className="space-y-2" aria-label={`${title} placeholder list`}>
-        {items.map((item) => (
-          <li key={item.id} className="rounded-md border border-zinc-800 bg-zinc-900/70 p-3">
-            <div className="mb-2 h-3 w-2/3 animate-pulse rounded bg-zinc-700/70" />
-            <div className="mb-2 h-2.5 w-1/2 animate-pulse rounded bg-zinc-800/80" />
-            <div className="h-2 w-full animate-pulse rounded bg-zinc-800/60" />
+type PromptMenuActionNode = {
+  id?: PromptActionId;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  children?: PromptMenuActionNode[];
+};
 
-            <div className="mt-2 space-y-0.5">
-              <p className="text-xs font-medium text-zinc-300">{item.title}</p>
-              <p className="text-[11px] text-zinc-500">{item.subtitle}</p>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </Card>
-  )
-}
+const allowedUploadMimeTypes = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+  "text/plain",
+  "application/json",
+]);
+
+const allowedUploadExtensions = [
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".gif",
+  ".pdf",
+  ".txt",
+  ".json",
+];
+
+type PromptActionConfig = {
+  id: PromptActionId;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  type: PromptActionType;
+  placement: "primary" | "secondary";
+  requiresPlan: UpgradePlanId | null;
+  routeOrHandler: string;
+  description: string;
+  commandGroup: "Prompt" | "Create" | "Tools";
+  secondaryMenuPath?: readonly [string, string?];
+  unavailableReason?: string;
+};
+
+type StartChatMetadata = {
+  actionId?: PromptActionId;
+  source?: "composer-enter" | "composer-send" | "prompt-card" | "new-chat";
+};
+
+const promptSuggestionCards: PromptSuggestionCard[] = [
+  {
+    id: "showcase-video",
+    title: "Real-time product demo showcase video",
+    guidance:
+      "Generate a polished live-demo script with camera cues, highlights, and audience callouts.",
+    ctaText: "Create showcase prompt",
+    promptPayload:
+      "Create a real-time product demonstration showcase video plan with timeline beats, presenter script, feature close-ups, and a final CTA to buy.",
+    icon: Play,
+  },
+  {
+    id: "agentic-runbook",
+    title: "Agentic live commerce assistant runbook",
+    guidance:
+      "Build an operator-ready runbook for launch, moderation, engagement, and escalation workflows.",
+    ctaText: "Draft runbook",
+    promptPayload:
+      "Draft an agentic live commerce assistant runbook covering pre-live setup, audience engagement loops, moderation guardrails, fallback handling, and post-live reporting.",
+    icon: Rocket,
+  },
+  {
+    id: "interactive-qa",
+    title: "Interactive product Q&A stream",
+    guidance:
+      "Design an interactive Q&A format with question routing, answer templates, and pacing cues.",
+    ctaText: "Build Q&A flow",
+    promptPayload:
+      "Design an interactive product Q&A live stream format with segments, audience question prompts, concise answer templates, and follow-up engagement hooks.",
+    icon: MessageSquare,
+  },
+  {
+    id: "checkout-assist",
+    title: "Checkout-assist live flow",
+    guidance:
+      "Create a conversion-focused checkout assist script with objection handling and urgency timing.",
+    ctaText: "Plan checkout assist",
+    promptPayload:
+      "Create a checkout-assist live commerce flow that guides viewers from intent to payment completion, including objection handling, trust signals, and conversion checkpoints.",
+    icon: CreditCard,
+  },
+];
+
+const promptActionConfigs: readonly PromptActionConfig[] = [
+  {
+    id: "enhance",
+    label: "Enhance",
+    icon: Sparkles,
+    type: "handler",
+    placement: "primary",
+    requiresPlan: null,
+    routeOrHandler: "enhancePrompt",
+    description: "Improve your prompt before sending.",
+    commandGroup: "Prompt",
+  },
+  {
+    id: "create",
+    label: "Create",
+    icon: Plus,
+    type: "handler",
+    placement: "primary",
+    requiresPlan: null,
+    routeOrHandler: "startChatWithPrompt",
+    description: "Start a new run with your current prompt.",
+    commandGroup: "Prompt",
+  },
+  {
+    id: "upload",
+    label: "Upload",
+    icon: Upload,
+    type: "file-dialog",
+    placement: "primary",
+    requiresPlan: null,
+    routeOrHandler: "composerUploadInput",
+    description: "Upload product or campaign assets.",
+    commandGroup: "Create",
+  },
+  {
+    id: "search",
+    label: "Search",
+    icon: Search,
+    type: "service",
+    placement: "primary",
+    requiresPlan: null,
+    routeOrHandler: "/api/web-search",
+    description: "Run a product web search from the prompt.",
+    commandGroup: "Prompt",
+  },
+  {
+    id: "go-live",
+    label: "Go Live",
+    icon: Rocket,
+    type: "route",
+    placement: "secondary",
+    requiresPlan: "team",
+    routeOrHandler: "/live",
+    description: "Launch a live commerce session.",
+    commandGroup: "Create",
+    secondaryMenuPath: ["Create", "Live & video"],
+  },
+  {
+    id: "talk",
+    label: "Talk",
+    icon: Mic,
+    type: "modal",
+    placement: "secondary",
+    requiresPlan: null,
+    routeOrHandler: "settings",
+    description: "Open voice preferences in settings.",
+    commandGroup: "Tools",
+    secondaryMenuPath: ["Tools"],
+  },
+  {
+    id: "generate-video",
+    label: "Generate Video",
+    icon: Play,
+    type: "route",
+    placement: "secondary",
+    requiresPlan: "premium",
+    routeOrHandler: "/editor?mode=video",
+    description: "Jump to video generation workspace.",
+    commandGroup: "Create",
+    secondaryMenuPath: ["Create", "Live & video"],
+  },
+  {
+    id: "mcp",
+    label: "MCP",
+    icon: PlugZap,
+    type: "route",
+    placement: "secondary",
+    requiresPlan: "team",
+    routeOrHandler: "/integrations?tab=mcps",
+    description: "Manage MCP integrations.",
+    commandGroup: "Tools",
+    secondaryMenuPath: ["Tools", "Integrations"],
+  },
+  {
+    id: "editor",
+    label: "Editor",
+    icon: Pencil,
+    type: "route",
+    placement: "secondary",
+    requiresPlan: null,
+    routeOrHandler: "/editor",
+    description: "Open the RunAsh editor.",
+    commandGroup: "Tools",
+    secondaryMenuPath: ["Tools", "Workspace"],
+  },
+];
+
+const primaryPromptActionConfigs = promptActionConfigs.filter(
+  (action) => action.placement === "primary",
+);
+
+const secondaryPromptActionConfigs = promptActionConfigs.filter(
+  (action) => action.placement === "secondary",
+);
+
+const buildSecondaryPromptMenuNodes = (
+  actions: readonly PromptActionConfig[],
+): PromptMenuActionNode[] => {
+  const menuNodes: PromptMenuActionNode[] = [];
+
+  actions.forEach((action) => {
+    const [groupLabel, subGroupLabel] = action.secondaryMenuPath ?? [action.commandGroup];
+
+    let groupNode = menuNodes.find((node) => node.label === groupLabel);
+    if (!groupNode) {
+      groupNode = {
+        label: groupLabel,
+        icon: action.icon,
+        children: [],
+      };
+      menuNodes.push(groupNode);
+    }
+
+    if (!subGroupLabel) {
+      groupNode.children?.push({
+        id: action.id,
+        label: action.label,
+        icon: action.icon,
+      });
+      return;
+    }
+
+    let subGroupNode = groupNode.children?.find((node) => node.label === subGroupLabel);
+    if (!subGroupNode) {
+      subGroupNode = {
+        label: subGroupLabel,
+        icon: action.icon,
+        children: [],
+      };
+      groupNode.children?.push(subGroupNode);
+    }
+
+    subGroupNode.children?.push({
+      id: action.id,
+      label: action.label,
+      icon: action.icon,
+    });
+  });
+
+  return menuNodes;
+};
+
+const secondaryPromptActionMenuNodes = buildSecondaryPromptMenuNodes(
+  secondaryPromptActionConfigs,
+);
+
+const promptActionConfigById = new Map<PromptActionId, PromptActionConfig>(
+  promptActionConfigs.map((action) => [action.id, action]),
+);
+
+const composerMenuActionSections: readonly ComposerMenuActionSection[] = [
+  {
+    id: "import",
+    label: "Import",
+    actions: [
+      { id: "import-github", label: "Import GitHub", icon: ExternalLink },
+      { id: "import-figma", label: "Import Figma", icon: LayoutTemplate },
+      {
+        id: "upload-from-computer",
+        label: "Upload from computer",
+        icon: Upload,
+      },
+    ],
+  },
+  {
+    id: "create",
+    label: "Create",
+    actions: [
+      {
+        id: "generate-images",
+        label: "Generate Images",
+        icon: Sparkles,
+      },
+      {
+        label: "Design System",
+        icon: PanelsTopLeft,
+        children: [
+          {
+            id: "design-system-library",
+            label: "Open library",
+            icon: Library,
+          },
+          {
+            id: "design-system-create",
+            label: "Create from prompt",
+            icon: Plus,
+          },
+        ],
+      },
+      {
+        label: "Folder",
+        icon: FolderKanban,
+        children: [
+          { id: "folder-new", label: "New folder", icon: Plus },
+          { id: "folder-open", label: "Browse folders", icon: FolderKanban },
+        ],
+      },
+      { id: "instructions", label: "Instructions", icon: MessageSquare },
+    ],
+  },
+  {
+    id: "mcps",
+    label: "MCP",
+    actions: [
+      {
+        label: "MCPs",
+        icon: PlugZap,
+        children: [
+          { id: "mcps-manage", label: "Manage MCPs", icon: Settings },
+          {
+            id: "mcps-explore",
+            label: "Explore integrations",
+            icon: ExternalLink,
+          },
+        ],
+      },
+    ],
+  },
+];
+
+type SidebarActionMenuSection = "favorite" | "recent";
+
+type SidebarActionMenuState = {
+  section: SidebarActionMenuSection;
+  rowId: string;
+};
+
+type FavoriteMenuActionId =
+  | "removeFavorite"
+  | "renameFavorite"
+  | "deleteFavorite";
+type RecentMenuActionId =
+  | "shareRecent"
+  | "moveRecent"
+  | "toggleFavoriteRecent"
+  | "renameRecent"
+  | "deleteRecent";
+
+type ModalOverlayId =
+  | "rename"
+  | "move"
+  | "deleteConfirm"
+  | "shareRecent"
+  | "feedback"
+  | "upgrade"
+  | "refer"
+  | "credits"
+  | "settings"
+  | "redeem";
+
+type ActiveOverlay =
+  | { type: null }
+  | { type: "modal"; payload: { id: ModalOverlayId } }
+  | {
+      type: "menu";
+      payload: {
+        id:
+          | "account"
+          | "mobileQuickActions"
+          | "tabletHeaderActions"
+          | "mobileHeaderActions"
+          | "modelPicker"
+          | "projectPicker";
+      };
+    }
+  | { type: "chatCardActions"; payload: { rowId: string } }
+  | { type: "sidebarActionMenu"; payload: SidebarActionMenuState }
+  | { type: "promptMenu" };
+
+const overlayLayerClassNames = {
+  menu: "z-40",
+  popover: "z-50",
+  dialog: "z-[60]",
+  settingsDialog: "z-[80]",
+} as const;
+
+const settingsSections = [
+  "General",
+  "Notifications",
+  "Personalization",
+  "Apps",
+  "Schedules",
+  "Data controls",
+  "Security",
+  "Account",
+] as const;
+
+type SettingsSection = (typeof settingsSections)[number];
+
+type UpgradePlanId = "free" | "premium" | "team" | "business" | "enterprise";
+
+type PlanConfigurationEntry = {
+  id: UpgradePlanId;
+  label: string;
+  price: string;
+  billingPeriod: string;
+  description: string;
+  ctaLabel: string;
+  ctaHref: string;
+  features: string[];
+};
+
+type ReferralUiData = {
+  headline: string;
+  rewardCap: number;
+  progressValue: number;
+  referralLink: string;
+  steps: string[];
+};
+
+const defaultReferralUiData: ReferralUiData = {
+  headline: "Invite & earn rewards",
+  rewardCap: 10,
+  progressValue: 3,
+  referralLink: "https://runash.in/refer?code=RUNASH-CHAT",
+  steps: [
+    "Share your link with creators, teammates, or storefront operators.",
+    "They sign up and launch their first RunAsh Chat workflow.",
+    "You both receive reward credits automatically each month.",
+  ],
+};
+
+const buildReferralUiData = (
+  overrides?: Partial<ReferralUiData>,
+): ReferralUiData => {
+  const rewardCap = Number.isFinite(overrides?.rewardCap)
+    ? Math.max(
+        0,
+        Math.trunc(overrides?.rewardCap ?? defaultReferralUiData.rewardCap),
+      )
+    : defaultReferralUiData.rewardCap;
+  const progressValue = Number.isFinite(overrides?.progressValue)
+    ? Math.min(
+        rewardCap,
+        Math.max(
+          0,
+          Math.trunc(
+            overrides?.progressValue ?? defaultReferralUiData.progressValue,
+          ),
+        ),
+      )
+    : Math.min(defaultReferralUiData.progressValue, rewardCap);
+  const steps =
+    overrides?.steps?.filter((step): step is string =>
+      Boolean(step?.trim().length),
+    ) ?? defaultReferralUiData.steps;
+
+  return {
+    headline: overrides?.headline?.trim() || defaultReferralUiData.headline,
+    rewardCap,
+    progressValue,
+    referralLink:
+      overrides?.referralLink?.trim() || defaultReferralUiData.referralLink,
+    steps: steps.length > 0 ? steps : defaultReferralUiData.steps,
+  };
+};
 
 const sidebarNavItems = [
   { label: "Home", icon: Home },
@@ -145,32 +1151,1447 @@ const sidebarNavItems = [
   { label: "Projects", icon: FolderKanban },
   { label: "Design Systems", icon: PanelsTopLeft },
   { label: "Templates", icon: LayoutTemplate },
-]
+];
+
+const sidebarFavoriteIconRegistry: Record<
+  SidebarFavoriteIconName,
+  React.ComponentType<{ className?: string }>
+> = {
+  FolderKanban,
+  LayoutTemplate,
+  Library,
+  MessageSquare,
+};
+
+const sidebarFavoriteItems: SidebarFavoriteItem[] = [
+  {
+    id: "projects",
+    label: "Projects",
+    description: "Continue building",
+    icon: FolderKanban,
+    iconName: "FolderKanban",
+    href: "/editor",
+  },
+  {
+    id: "templates",
+    label: "Templates",
+    description: "Start from a base",
+    icon: LayoutTemplate,
+    iconName: "LayoutTemplate",
+    href: "/templates",
+  },
+  {
+    id: "library",
+    label: "Library",
+    description: "Saved assets",
+    icon: Library,
+    iconName: "Library",
+    href: "/library",
+  },
+];
+
+const upgradePlanConfigurations: Record<UpgradePlanId, PlanConfigurationEntry> =
+  {
+    free: {
+      id: "free",
+      label: "Free",
+      price: "$0",
+      billingPeriod: "/ month",
+      description:
+        "Try core RunAsh Chat workflows and launch your first guided tasks.",
+      ctaLabel: "Stay on Free",
+      ctaHref: "/pricing?plan=free",
+      features: [
+        "Basic prompt workflows",
+        "Limited monthly credits",
+        "Community support",
+      ],
+    },
+    premium: {
+      id: "premium",
+      label: "Premium",
+      price: "$29",
+      billingPeriod: "/ month",
+      description:
+        "Unlock deeper automations for growing creators and solo stores.",
+      ctaLabel: "Choose Premium",
+      ctaHref: "/pricing?plan=premium",
+      features: [
+        "Higher usage limits",
+        "Priority model access",
+        "Email support",
+      ],
+    },
+    team: {
+      id: "team",
+      label: "Team",
+      price: "$99",
+      billingPeriod: "/ month",
+      description:
+        "Coordinate campaigns with shared workspaces and role-based access.",
+      ctaLabel: "Choose Team",
+      ctaHref: "/pricing?plan=team",
+      features: [
+        "Shared projects",
+        "Team seats and permissions",
+        "Workflow collaboration",
+      ],
+    },
+    business: {
+      id: "business",
+      label: "Business",
+      price: "$299",
+      billingPeriod: "/ month",
+      description:
+        "Scale live commerce operations with advanced controls and analytics.",
+      ctaLabel: "Choose Business",
+      ctaHref: "/pricing?plan=business",
+      features: [
+        "Advanced automations",
+        "Business dashboards",
+        "Priority onboarding",
+      ],
+    },
+    enterprise: {
+      id: "enterprise",
+      label: "Enterprise",
+      price: "Custom pricing",
+      billingPeriod: "",
+      description: "Get custom governance, integrations, and success planning.",
+      ctaLabel: "Contact Sales",
+      ctaHref: "/pricing?plan=enterprise",
+      features: [
+        "Custom integrations",
+        "Dedicated success manager",
+        "Enterprise security controls",
+      ],
+    },
+  };
+
+const defaultUpgradePlanId: UpgradePlanId = "team";
+
+const upgradePlans: PlanConfigurationEntry[] = [
+  upgradePlanConfigurations.free,
+  upgradePlanConfigurations.premium,
+  upgradePlanConfigurations.team,
+  upgradePlanConfigurations.business,
+  upgradePlanConfigurations.enterprise,
+];
+
+const getUpgradePlanConfiguration = (
+  planId: UpgradePlanId,
+): PlanConfigurationEntry =>
+  upgradePlanConfigurations[planId] ??
+  upgradePlanConfigurations[defaultUpgradePlanId];
+
+const formatPlanPriceLabel = (plan: PlanConfigurationEntry) =>
+  plan.billingPeriod ? `${plan.price} ${plan.billingPeriod}` : plan.price;
+
+const isUpgradePlanId = (value: string | null): value is UpgradePlanId =>
+  Boolean(
+    value &&
+    Object.prototype.hasOwnProperty.call(upgradePlanConfigurations, value),
+  );
 
 export default function RunashChatPage() {
-  const updatesBannerHiddenKey = "runash_updates_banner_hidden"
-  const router = useRouter()
-  const { data: session } = useAuthSession()
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const [messagesPreview, setMessagesPreview] = useState<ChatPreviewMessage[]>([])
-  const [loadingSession, setLoadingSession] = useState(false)
-  const [previewError, setPreviewError] = useState<string | null>(null)
-  const [recentItems, setRecentItems] = useState<RecentItem[]>([])
-  const [loadingRecents, setLoadingRecents] = useState(false)
-  const [recentItemsError, setRecentItemsError] = useState<string | null>(null)
-  const [prompt, setPrompt] = useState("")
-  const [startChatError, setStartChatError] = useState<string | null>(null)
-  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
-  const [mobileSearchValue, setMobileSearchValue] = useState("")
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
-  const [showUpdatesBanner, setShowUpdatesBanner] = useState(false)
-  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
-  const [activeOnboardingStep, setActiveOnboardingStep] = useState(0)
-  const mobileSidebarTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { toast } = useToast();
+  const { setTheme } = useTheme();
+  const { data: session, status: authStatus } = useAuthSession();
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [messagesPreview, setMessagesPreview] = useState<ChatPreviewMessage[]>(
+    [],
+  );
+  const [loadingSession, setLoadingSession] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [loadingRecents, setLoadingRecents] = useState(false);
+  const [recentItemsError, setRecentItemsError] = useState<string | null>(null);
+  const [recentEntities, setRecentEntities] = useState<RecentEntity[]>([]);
+  const [prompt, setPrompt] = useState("");
+  const [isSpeechRecognitionSupported, setIsSpeechRecognitionSupported] =
+    useState(false);
+  const [voiceCaptureState, setVoiceCaptureState] =
+    useState<VoiceCaptureState>("idle");
+  const [speechTranscriptPreview, setSpeechTranscriptPreview] = useState("");
+  const [speechErrorMessage, setSpeechErrorMessage] = useState<string | null>(
+    null,
+  );
+  const [startChatError, setStartChatError] = useState<string | null>(null);
+  const [isStartingChat, setIsStartingChat] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const [mobileSearchValue, setMobileSearchValue] = useState("");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isFavoritesExpanded, setIsFavoritesExpanded] = useState(true);
+  const [favoriteItems, setFavoriteItems] = useState<SidebarFavoriteItem[]>([]);
+  const [loadingFavorites, setLoadingFavorites] = useState(true);
+  const [favoritesError, setFavoritesError] = useState<string | null>(null);
+  const [activeOverlay, setActiveOverlay] = useState<ActiveOverlay>({
+    type: null,
+  });
+  const [isRecentsExpanded, setIsRecentsExpanded] = useState(true);
+  const [shareRecentItem, setShareRecentItem] = useState<RecentEntity | null>(
+    null,
+  );
+  const [moveRecentItem, setMoveRecentItem] = useState<RecentEntity | null>(
+    null,
+  );
+  const [selectedMoveDestinationId, setSelectedMoveDestinationId] =
+    useState<string>("");
+  const [renameDialogTarget, setRenameDialogTarget] =
+    useState<RenameDialogTarget | null>(null);
+  const [renameInputValue, setRenameInputValue] = useState("");
+  const [renameInputError, setRenameInputError] = useState<string | null>(null);
+  const [isSubmittingRename, setIsSubmittingRename] = useState(false);
+  const [isCopyingRecentLink, setIsCopyingRecentLink] = useState(false);
+  const [confirmDeletePayload, setConfirmDeletePayload] =
+    useState<ConfirmDeletePayload | null>(null);
+  const [isDeletingEntity, setIsDeletingEntity] = useState(false);
+  const [isMovingRecent, setIsMovingRecent] = useState(false);
+  const [moveInputError, setMoveInputError] = useState<string | null>(null);
+  const [favoriteMutationById, setFavoriteMutationById] = useState<
+    Record<string, boolean>
+  >({});
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const [isCopyingLink, setIsCopyingLink] = useState(false);
+  const [isReferralLoading, setIsReferralLoading] = useState(false);
+  const [referralLoadError, setReferralLoadError] = useState<string | null>(
+    null,
+  );
+  const [onboardingStep, setOnboardingStep] = useState(0);
+  const [isGetStartedVisible, setIsGetStartedVisible] = useState(true);
+  const [activeGetStartedTab, setActiveGetStartedTab] =
+    useState<GetStartedTabId>("tasks");
+  const [isBannerDismissed, setIsBannerDismissed] = useState<boolean | null>(
+    null,
+  );
+  const [selectedPlan, setSelectedPlan] = useState<UpgradePlanId>("team");
+  const [isPlanActionLoading, setIsPlanActionLoading] = useState(false);
+  const [creditsLoadError, setCreditsLoadError] = useState<string | null>(null);
+  const [isCreditsLoading, setIsCreditsLoading] = useState(false);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackRating, setFeedbackRating] = useState<number | null>(null);
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  const [creditMetrics, setCreditMetrics] = useState<CreditMetrics>({
+    gifted: 1,
+    monthly: 3,
+    purchased: 1,
+    total: 5,
+  });
+  const [referralUiData, setReferralUiData] = useState<ReferralUiData>(() =>
+    buildReferralUiData(),
+  );
+  const mobileSidebarTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const sidebarScrollAreaRef = useRef<HTMLDivElement | null>(null);
+  const desktopSidebarToggleRef = useRef<HTMLButtonElement | null>(null);
+  const learnMoreTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const mainControlsRef = useRef<HTMLTextAreaElement | null>(null);
+  const composerUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const composerMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const composerMenuContentRef = useRef<HTMLDivElement | null>(null);
+  const lastOverlayTriggerRef = useRef<HTMLElement | null>(null);
+  const deleteActionTriggerRef = useRef<HTMLElement | null>(null);
+  const pendingDeleteTimeoutRef = useRef<number | null>(null);
+  const rowActionTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>(
+    {},
+  );
+  const rowActionContentRefs = useRef<Record<string, HTMLDivElement | null>>(
+    {},
+  );
+  const promptActionButtonRefs = useRef<
+    Partial<Record<PromptActionId, HTMLButtonElement | null>>
+  >({});
+  const getStartedTabButtonRefs = useRef<
+    Partial<Record<GetStartedTabId, HTMLButtonElement | null>>
+  >({});
+  const recentItemsRequestIdRef = useRef(0);
 
-  const isLastOnboardingStep = activeOnboardingStep === onboardingSlides.length - 1
-  const currentOnboardingSlide = onboardingSlides[activeOnboardingStep]
+  useEffect(() => {
+    return () => {
+      if (pendingDeleteTimeoutRef.current) {
+        window.clearTimeout(pendingDeleteTimeoutRef.current);
+      }
+    };
+  }, []);
+  const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const startChatInFlightRef = useRef(false);
+  const promptActionInFlightRef = useRef(false);
+  const composerMenuActionInFlightRef = useRef(false);
+  const speechCommitReadyRef = useRef(false);
+  const speechTranscriptFinalRef = useRef("");
+  const speechTimeoutRef = useRef<number | null>(null);
+  const [selectedModel, setSelectedModel] = useState<"v0 Mini" | "v0 Max">(
+    "v0 Mini",
+  );
+  const [selectedProjectLabel, setSelectedProjectLabel] =
+    useState("Select a Project");
+  const [activePromptActionId, setActivePromptActionId] =
+    useState<PromptActionId | null>(null);
+  const [promptActionLoadingId, setPromptActionLoadingId] =
+    useState<PromptActionId | null>(null);
+  const [promptActionError, setPromptActionError] = useState<string | null>(
+    null,
+  );
+  const [composerMenuActionLoadingId, setComposerMenuActionLoadingId] =
+    useState<ComposerMenuActionId | null>(null);
+  const [composerMenuError, setComposerMenuError] = useState<string | null>(
+    null,
+  );
+  const [uploadedAssetName, setUploadedAssetName] = useState<string | null>(
+    null,
+  );
+  const [generateImagesEnabled, setGenerateImagesEnabled] = useState(false);
+  const [themePreference, setThemePreference] =
+    useState<RunashThemePreference>("system");
+  const [languagePreference, setLanguagePreference] =
+    useState<RunashLanguagePreference>("en");
+  const [chatPositionPreference, setChatPositionPreference] =
+    useState<RunashChatPositionPreference>("left");
+  const [
+    isComposerUpgradeHelperDismissed,
+    setIsComposerUpgradeHelperDismissed,
+  ] = useState(false);
+  const [redeemCodeInput, setRedeemCodeInput] = useState("");
+  const [redeemCodeError, setRedeemCodeError] = useState<string | null>(null);
+  const [isRedeemingCode, setIsRedeemingCode] = useState(false);
+  const [activeSettingsSection, setActiveSettingsSection] =
+    useState<SettingsSection>("General");
+  const [generalSettings, setGeneralSettings] = useState<RunashGeneralSettings>(
+    defaultRunashGeneralSettings,
+  );
+  const [dismissedPromptSuggestionCardIds, setDismissedPromptSuggestionCardIds] =
+    useState<string[]>([]);
+  const settingsSectionButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const upgradeCtaClassName =
+    "border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900 focus-visible:ring-1 focus-visible:ring-zinc-500";
+  const menuOverlayClassName = overlayLayerClassNames.menu;
+  const popoverOverlayClassName = overlayLayerClassNames.popover;
+  const modalOverlayClassName = overlayLayerClassNames.dialog;
+  const actionMenuContentClassName = `${menuOverlayClassName} w-48 max-w-[calc(100vw-2rem)] border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100`;
+  const actionMenuItemClassName =
+    "cursor-pointer rounded-sm px-2.5 py-1.5 text-zinc-200 focus:bg-zinc-900 focus:text-zinc-100";
+  const actionMenuDangerItemClassName =
+    "cursor-pointer rounded-sm px-2.5 py-1.5 text-red-300 focus:bg-red-950/60 focus:text-red-200";
+  const creditsPanelId = "runash-chat-credits-panel";
+  const redeemCodeInputId = "runash-chat-redeem-code-input";
+  const creditsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const creditsPanelRef = useRef<HTMLDivElement | null>(null);
+  const profileMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const darkDialogContentClassName = `${modalOverlayClassName} border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md`;
+  const compactDarkDialogContentClassName = `${modalOverlayClassName} w-[min(92vw,26rem)] border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-[26rem]`;
+
+  const feedbackRatingOptions: {
+    value: number;
+    label: string;
+    Icon: React.ComponentType<{ className?: string }>;
+  }[] = [
+    { value: 5, label: "Loved it", Icon: Smile },
+    { value: 3, label: "It was okay", Icon: Meh },
+    { value: 1, label: "Needs work", Icon: Frown },
+  ];
+
+  const SESSION_FETCH_TIMEOUT_MS = 7000;
+  const SESSION_FETCH_RETRIES = 2;
+
+  const readSessionIdFromPayload = useCallback(
+    (payload: SessionBootstrapPayload): string | null => {
+      const rawId = payload?.data?.id ?? payload?.id;
+      if (rawId == null) {
+        return null;
+      }
+
+      const normalizedId = String(rawId).trim();
+      return normalizedId || null;
+    },
+    [],
+  );
+
+  const fetchWithRetryAndTimeout = useCallback(
+    async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+      retries = SESSION_FETCH_RETRIES,
+    ) => {
+      let lastError: Error | null = null;
+
+      for (let attempt = 0; attempt <= retries; attempt += 1) {
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => {
+          controller.abort();
+        }, SESSION_FETCH_TIMEOUT_MS);
+
+        try {
+          const response = await fetch(input, {
+            ...init,
+            signal: controller.signal,
+          });
+          window.clearTimeout(timeoutId);
+          return response;
+        } catch (error) {
+          window.clearTimeout(timeoutId);
+          lastError =
+            error instanceof Error
+              ? error
+              : new Error("Network request failed");
+
+          if (attempt >= retries) {
+            throw lastError;
+          }
+        }
+      }
+
+      throw lastError ?? new Error("Network request failed");
+    },
+    [],
+  );
+
+  const sanitizeAnalyticsPayload = (payload: Record<string, unknown>) =>
+    Object.fromEntries(
+      Object.entries(payload)
+        .filter(
+          ([, value]) =>
+            ["string", "number", "boolean"].includes(typeof value) ||
+            value === null,
+        )
+        .map(([key, value]) => [
+          key,
+          typeof value === "string" ? value.slice(0, 120) : value,
+        ]),
+    );
+
+  const trackAnalyticsEvent = useCallback(
+    (eventName: string, payload: Record<string, unknown> = {}) => {
+      if (typeof window === "undefined") return;
+
+      window.dispatchEvent(
+        new CustomEvent("runash-chat:analytics", {
+          detail: {
+            eventName,
+            actionKind: interactiveActionInventory[eventName] ?? "local-only",
+            payload: sanitizeAnalyticsPayload(payload),
+          },
+        }),
+      );
+    },
+    [],
+  );
+
+  const handleServiceError = useCallback(
+    (title: string, fallbackMessage: string, error: unknown) => {
+      const description =
+        error instanceof Error ? error.message : fallbackMessage;
+      toast({
+        title,
+        description,
+        variant: "destructive",
+      });
+    },
+    [toast],
+  );
+
+  const isLastOnboardingStep = onboardingStep === onboardingSlides.length - 1;
+  const currentOnboardingSlide = onboardingSlides[onboardingStep];
+  const activeGetStartedCards = getStartedQuickCards[activeGetStartedTab];
+  const activeModalId =
+    activeOverlay.type === "modal" ? activeOverlay.payload.id : null;
+  const isAnyOverlayOpen = activeOverlay.type !== null;
+  const isFeedbackOpen = activeModalId === "feedback";
+  const isReferOpen = activeModalId === "refer";
+  const isUpgradeModalOpen = activeModalId === "upgrade";
+  const isCreditsOpen = activeModalId === "credits";
+  const isSettingsOpen = activeModalId === "settings";
+  const isRedeemDialogOpen = activeModalId === "redeem";
+  const isPromptMenuOpen = activeOverlay.type === "promptMenu";
+  const visiblePromptSuggestionCards = promptSuggestionCards.filter(
+    (card) => !dismissedPromptSuggestionCardIds.includes(card.id),
+  );
+  const promptSuggestionItems: SuggestionCardItem[] =
+    visiblePromptSuggestionCards.map((card) => ({
+      id: card.id,
+      title: card.title,
+      description: card.guidance,
+      actionLabel: card.ctaText,
+      icon: card.icon,
+      onAction: () => handlePromptSuggestionCardClick(card),
+      onDismiss: () => handleDismissPromptSuggestionCard(card.id),
+    }));
+  const referralProgressPercent =
+    referralUiData.rewardCap > 0
+      ? Math.min(
+          100,
+          Math.round(
+            (referralUiData.progressValue / referralUiData.rewardCap) * 100,
+          ),
+        )
+      : 0;
+
+  const authenticatedUser = session?.user;
+  const isAuthenticated =
+    authStatus === "authenticated" && Boolean(authenticatedUser);
+  const allowedUploadTypesLabel = "PNG, JPG, WEBP, GIF, PDF, TXT, or JSON";
+
+  const isFileTypeAllowed = (file: File) => {
+    const normalizedFileName = file.name.toLowerCase();
+    const hasAllowedExtension = allowedUploadExtensions.some((extension) =>
+      normalizedFileName.endsWith(extension),
+    );
+    return allowedUploadMimeTypes.has(file.type) || hasAllowedExtension;
+  };
+
+  const getSpeechRecognitionConstructor =
+    (): BrowserSpeechRecognitionConstructor | null => {
+      if (typeof window === "undefined") {
+        return null;
+      }
+
+      const speechWindow = window as Window & {
+        SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+        webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+      };
+
+      return (
+        speechWindow.SpeechRecognition ??
+        speechWindow.webkitSpeechRecognition ??
+        null
+      );
+    };
+
+  const clearSpeechTimeout = () => {
+    if (speechTimeoutRef.current === null) {
+      return;
+    }
+
+    window.clearTimeout(speechTimeoutRef.current);
+    speechTimeoutRef.current = null;
+  };
+
+  const resetSpeechTimeout = () => {
+    clearSpeechTimeout();
+    speechTimeoutRef.current = window.setTimeout(() => {
+      setSpeechErrorMessage(
+        "Voice input timed out. Try again and speak right after starting.",
+      );
+      setVoiceCaptureState("error");
+      speechCommitReadyRef.current = false;
+      speechRecognitionRef.current?.abort();
+      speechRecognitionRef.current = null;
+    }, 12000);
+  };
+
+  const applyTranscriptToPrompt = (transcript: string) => {
+    const normalizedTranscript = transcript.trim();
+    if (!normalizedTranscript) {
+      return;
+    }
+
+    setPrompt((previousPrompt) => {
+      if (!previousPrompt.trim()) {
+        return normalizedTranscript;
+      }
+
+      const separator =
+        previousPrompt.endsWith("\n") || previousPrompt.endsWith(" ")
+          ? ""
+          : " ";
+      return `${previousPrompt}${separator}${normalizedTranscript}`;
+    });
+    window.requestAnimationFrame(() => {
+      mainControlsRef.current?.focus();
+    });
+  };
+
+  const stopPromptRecording = () => {
+    if (voiceCaptureState !== "recording") {
+      return;
+    }
+
+    setSpeechErrorMessage(null);
+    setVoiceCaptureState("processing");
+    speechCommitReadyRef.current = true;
+    speechRecognitionRef.current?.stop();
+    trackAnalyticsEvent("voice.stop", { mode: "append" });
+  };
+
+  const cancelPromptRecording = () => {
+    speechCommitReadyRef.current = false;
+    setSpeechTranscriptPreview("");
+    setSpeechErrorMessage(null);
+    clearSpeechTimeout();
+    speechRecognitionRef.current?.abort();
+    speechRecognitionRef.current = null;
+    setVoiceCaptureState("idle");
+  };
+
+  const startPromptRecording = () => {
+    const SpeechRecognitionConstructor = getSpeechRecognitionConstructor();
+
+    if (!SpeechRecognitionConstructor) {
+      setSpeechErrorMessage(
+        "Voice input is not supported in this browser. Try Chrome, Edge, or Safari.",
+      );
+      setVoiceCaptureState("error");
+      toast({
+        title: "Voice input unavailable",
+        description:
+          "Your browser does not support speech recognition. Type your prompt manually.",
+      });
+      return;
+    }
+
+    const recognition = new SpeechRecognitionConstructor();
+    speechRecognitionRef.current = recognition;
+    speechCommitReadyRef.current = true;
+    speechTranscriptFinalRef.current = "";
+    setSpeechTranscriptPreview("");
+    setSpeechErrorMessage(null);
+    setVoiceCaptureState("recording");
+
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = generalSettings.spokenLanguage;
+
+    recognition.onresult = (event) => {
+      let interimTranscript = "";
+
+      for (
+        let index = event.resultIndex;
+        index < event.results.length;
+        index += 1
+      ) {
+        const result = event.results[index];
+        const segment = result?.[0]?.transcript ?? "";
+
+        if (result?.isFinal) {
+          const leadingSpacer = speechTranscriptFinalRef.current ? " " : "";
+          speechTranscriptFinalRef.current =
+            `${speechTranscriptFinalRef.current}${leadingSpacer}${segment.trim()}`.trim();
+        } else {
+          interimTranscript = `${interimTranscript}${segment}`;
+        }
+      }
+
+      setSpeechTranscriptPreview(
+        `${speechTranscriptFinalRef.current} ${interimTranscript}`.trim(),
+      );
+      resetSpeechTimeout();
+    };
+
+    recognition.onerror = (event) => {
+      const errorMessageMap: Record<string, string> = {
+        "not-allowed":
+          "Microphone permission was denied. Allow access and try again.",
+        "service-not-allowed":
+          "Microphone access is blocked by browser settings.",
+        "audio-capture":
+          "No microphone was detected. Check your input device and try again.",
+        "no-speech":
+          "No speech was detected. Try speaking closer to your microphone.",
+        aborted: "",
+      };
+
+      const mappedMessage =
+        errorMessageMap[event.error] ?? "Voice input failed. Please try again.";
+      setSpeechErrorMessage(mappedMessage || null);
+      if (mappedMessage) {
+        setVoiceCaptureState("error");
+        toast({
+          title: "Voice input error",
+          description: mappedMessage,
+          variant: "destructive",
+        });
+      }
+      clearSpeechTimeout();
+    };
+
+    recognition.onend = () => {
+      clearSpeechTimeout();
+
+      if (
+        speechCommitReadyRef.current &&
+        speechTranscriptFinalRef.current.trim()
+      ) {
+        applyTranscriptToPrompt(speechTranscriptFinalRef.current);
+      }
+
+      setSpeechTranscriptPreview("");
+      speechTranscriptFinalRef.current = "";
+      speechCommitReadyRef.current = false;
+      speechRecognitionRef.current = null;
+      setVoiceCaptureState((previousState) =>
+        previousState === "error" ? "error" : "idle",
+      );
+    };
+
+    resetSpeechTimeout();
+
+    try {
+      recognition.start();
+    } catch {
+      clearSpeechTimeout();
+      setVoiceCaptureState("error");
+      setSpeechErrorMessage(
+        "Unable to start voice input right now. Please try again.",
+      );
+      speechRecognitionRef.current = null;
+    }
+  };
+
+  const togglePromptRecording = () => {
+    if (voiceCaptureState === "processing") {
+      return;
+    }
+
+    if (voiceCaptureState === "recording") {
+      stopPromptRecording();
+      return;
+    }
+
+    trackAnalyticsEvent("voice.start", { mode: "append" });
+    startPromptRecording();
+  };
+
+  const trackPromptAction = (
+    action: PromptActionConfig,
+    status: "opened" | "success" | "error" | "disabled",
+  ) => {
+    if (typeof window === "undefined") return;
+
+    window.dispatchEvent(
+      new CustomEvent("runash-chat:prompt-action", {
+        detail: { actionId: action.id, actionType: action.type, status },
+      }),
+    );
+  };
+
+  const isPromptActionDisabled = (action: PromptActionConfig) =>
+    Boolean(action.unavailableReason) ||
+    (action.requiresPlan !== null && !isAuthenticated);
+
+  const getPromptActionTooltip = (action: PromptActionConfig) => {
+    if (action.unavailableReason) {
+      return action.unavailableReason;
+    }
+
+    if (action.requiresPlan && !isAuthenticated) {
+      return `${action.label} requires a ${action.requiresPlan} plan. Sign in to continue.`;
+    }
+
+    return action.description;
+  };
+
+  const rememberOverlayTrigger = (triggerElement?: HTMLElement | null) => {
+    if (triggerElement instanceof HTMLElement) {
+      lastOverlayTriggerRef.current = triggerElement;
+      return;
+    }
+
+    if (document.activeElement instanceof HTMLElement) {
+      lastOverlayTriggerRef.current = document.activeElement;
+    }
+  };
+
+  const mapRecentEntityToFavorite = (
+    item: RecentEntity,
+  ): SidebarFavoriteItem => {
+    const isProject = item.entityType === "project";
+    const fallbackSlug =
+      item.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "") || "recent";
+
+    return {
+      id: `favorite-${item.id}`,
+      label: item.title,
+      description: isProject ? "From recents · project" : "From recents · chat",
+      icon: isProject ? FolderKanban : MessageSquare,
+      iconName: isProject ? "FolderKanban" : "MessageSquare",
+      href: isProject
+        ? `/editor?projectId=${item.id.replace("project-", "")}`
+        : `/runash-chat?session=${item.sessionId ?? fallbackSlug}`,
+    };
+  };
+
+  const getSidebarActionMenuKey = (
+    section: SidebarActionMenuSection,
+    rowId: string,
+  ) => `${section}-${rowId}`;
+
+  const isSidebarActionMenuOpen = (
+    section: SidebarActionMenuSection,
+    rowId: string,
+  ) =>
+    activeOverlay.type === "sidebarActionMenu" &&
+    activeOverlay.payload.section === section &&
+    activeOverlay.payload.rowId === rowId;
+
+  const isMenuOverlayOpen = (
+    menuId:
+      | "account"
+      | "mobileQuickActions"
+      | "tabletHeaderActions"
+      | "mobileHeaderActions"
+      | "modelPicker"
+      | "projectPicker",
+  ) => activeOverlay.type === "menu" && activeOverlay.payload.id === menuId;
+
+  const isChatCardActionsOpen = (rowId: string) =>
+    activeOverlay.type === "chatCardActions" &&
+    activeOverlay.payload.rowId === rowId;
+
+  const openOverlay = (
+    overlay: Exclude<ActiveOverlay, { type: null }>,
+    triggerElement?: HTMLElement | null,
+  ) => {
+    rememberOverlayTrigger(triggerElement);
+    setActiveOverlay(overlay);
+  };
+
+  const closeOverlay = (restoreFocus = false) => {
+    setActiveOverlay({ type: null });
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => {
+        focusOverlayTrigger();
+      });
+    }
+  };
+
+  const closeSidebarActionMenu = (restoreFocus = false) => {
+    closeOverlay(restoreFocus);
+  };
+
+  const openSidebarActionMenu = (
+    section: SidebarActionMenuSection,
+    rowId: string,
+    triggerElement?: HTMLElement | null,
+  ) => {
+    openOverlay(
+      { type: "sidebarActionMenu", payload: { section, rowId } },
+      triggerElement,
+    );
+  };
+
+  const closeRecentMenu = () => {
+    closeSidebarActionMenu();
+  };
+
+  const openPromptMenu = (triggerElement?: HTMLElement | null) => {
+    openOverlay({ type: "promptMenu" }, triggerElement);
+  };
+
+  const openMenuOverlay = (
+    menuId:
+      | "account"
+      | "mobileQuickActions"
+      | "tabletHeaderActions"
+      | "mobileHeaderActions"
+      | "modelPicker"
+      | "projectPicker",
+    triggerElement?: HTMLElement | null,
+  ) => {
+    openOverlay({ type: "menu", payload: { id: menuId } }, triggerElement);
+  };
+
+  const openChatCardActionsMenu = (
+    rowId: string,
+    triggerElement?: HTMLElement | null,
+  ) => {
+    openOverlay({ type: "chatCardActions", payload: { rowId } }, triggerElement);
+  };
+
+  const closePromptMenu = (restoreFocus = false) => {
+    if (activeOverlay.type === "promptMenu") {
+      closeOverlay(restoreFocus);
+    }
+  };
+
+  const persistSidebarMutation = async (
+    action: string,
+    payload: Record<string, string>,
+  ) => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    const response = await fetchWithRetryAndTimeout("/api/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "settings",
+        action: "update",
+        timestamp: new Date().toISOString(),
+        data: {
+          id: `sidebar-${action}-${payload.entityId ?? "unknown"}`,
+          scope: "runash-chat-sidebar",
+          action,
+          ...payload,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Sidebar update failed");
+    }
+  };
+
+  const setFavoriteMutationLoading = (
+    favoriteId: string,
+    isLoading: boolean,
+  ) => {
+    setFavoriteMutationById((previousState) => {
+      if (!isLoading && !previousState[favoriteId]) {
+        return previousState;
+      }
+
+      if (!isLoading) {
+        const nextState = { ...previousState };
+        delete nextState[favoriteId];
+        return nextState;
+      }
+
+      return { ...previousState, [favoriteId]: true };
+    });
+  };
+
+  const addFavoriteFromRecent = async (item: RecentEntity) => {
+    const nextFavorite = mapRecentEntityToFavorite(item);
+    const previousItems = favoriteItems;
+
+    if (
+      previousItems.some((favoriteItem) => favoriteItem.id === nextFavorite.id)
+    ) {
+      closeRecentMenu();
+      toast({
+        title: "Already in Favorites",
+        description: `${item.title} is already pinned.`,
+      });
+      return;
+    }
+
+    setFavoriteMutationLoading(nextFavorite.id, true);
+    setFavoriteItems((currentItems) => [nextFavorite, ...currentItems]);
+
+    try {
+      await persistSidebarMutation("favorite.add", {
+        entityId: nextFavorite.id,
+        sourceEntityId: item.id,
+        sourceType: item.entityType,
+      });
+      closeRecentMenu();
+      toast({
+        title: "Added to Favorites",
+        description: `${item.title} is now pinned in your favorites list.`,
+      });
+    } catch {
+      setFavoriteItems(previousItems);
+      toast({
+        title: "Could not update Favorites",
+        description:
+          "We restored your previous Favorites list. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setFavoriteMutationLoading(nextFavorite.id, false);
+    }
+  };
+
+  const requestFavoriteRemovalConfirmation = (favoriteId: string) => {
+    const item = favoriteItems.find(
+      (favoriteItem) => favoriteItem.id === favoriteId,
+    );
+
+    if (!item) {
+      closeFavoriteMenu();
+      return;
+    }
+
+    closeFavoriteMenu();
+    setConfirmDeletePayload({
+      entityType: "recent",
+      entityId: favoriteId,
+      title: item.label,
+      description: `Remove ${item.label} from Favorites? You can add it back later from Recents.`,
+    });
+    openModal("deleteConfirm");
+  };
+
+  const handleRecentShare = (item: RecentEntity) => {
+    setShareRecentItem(item);
+    closeRecentMenu();
+    openModal("shareRecent");
+  };
+
+  const handleRecentMove = (item: RecentEntity) => {
+    setMoveRecentItem(item);
+    setSelectedMoveDestinationId("");
+    setMoveInputError(null);
+    closeRecentMenu();
+    openModal("move");
+  };
+
+  const handleRecentRename = (item: RecentEntity) => {
+    setRenameDialogTarget({
+      entityType: "recent",
+      entityId: item.id,
+      currentName: item.title,
+    });
+    setRenameInputValue(item.title);
+    setRenameInputError(null);
+    closeRecentMenu();
+    openModal("rename");
+  };
+
+  const handleRecentDelete = (item: RecentEntity) => {
+    closeRecentMenu();
+    setConfirmDeletePayload({
+      entityType: item.entityType === "session" ? "chat" : "recent",
+      entityId: item.id,
+      title: item.title,
+      description: `Delete ${item.title} from your recents list? This action cannot be undone.`,
+    });
+    openModal("deleteConfirm");
+  };
+
+  const isRecentFavorited = (item: RecentEntity) =>
+    favoriteItems.some(
+      (favoriteItem) => favoriteItem.id === `favorite-${item.id}`,
+    );
+
+  const toggleRecentFavorite = async (item: RecentEntity) => {
+    if (isRecentFavorited(item)) {
+      closeRecentMenu();
+      requestFavoriteRemovalConfirmation(`favorite-${item.id}`);
+      return;
+    }
+
+    await addFavoriteFromRecent(item);
+  };
+
+  const buildRecentShareLink = (item: RecentEntity): string => {
+    const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+
+    if (item.entityType === "project") {
+      return `${baseUrl}/editor?projectId=${item.id.replace("project-", "")}`;
+    }
+
+    return `${baseUrl}/runash-chat?session=${item.sessionId ?? item.id}`;
+  };
+
+  const restoreDeleteActionTriggerFocus = () => {
+    const triggerElement = deleteActionTriggerRef.current;
+    if (triggerElement && document.contains(triggerElement)) {
+      window.setTimeout(() => {
+        triggerElement.focus();
+      }, 0);
+    }
+  };
+
+  const closeDeleteConfirmModal = (restoreFocus = false) => {
+    setConfirmDeletePayload(null);
+    closeOverlay(false);
+
+    if (restoreFocus) {
+      restoreDeleteActionTriggerFocus();
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (isDeletingEntity || !confirmDeletePayload) return;
+
+    const payload = confirmDeletePayload;
+    const previousFavorites = favoriteItems;
+    const previousRecents = recentEntities;
+    let undone = false;
+
+    if (payload.entityType === "folder") {
+      setFavoriteItems((previousItems) =>
+        previousItems.filter(
+          (favoriteItem) => favoriteItem.id !== payload.entityId,
+        ),
+      );
+    } else if (
+      payload.entityType === "recent" &&
+      payload.entityId.startsWith("favorite-")
+    ) {
+      setFavoriteItems((previousItems) =>
+        previousItems.filter(
+          (favoriteItem) => favoriteItem.id !== payload.entityId,
+        ),
+      );
+    } else {
+      setRecentEntities((previousItems) =>
+        previousItems.filter(
+          (recentItem) => recentItem.id !== payload.entityId,
+        ),
+      );
+    }
+
+    closeDeleteConfirmModal(true);
+
+    toast({
+      title: "Deletion queued",
+      description: `Deleting ${payload.title} in 5 seconds.`,
+      variant: "destructive",
+      action: (
+        <ToastAction
+          altText={`Undo deleting ${payload.title}`}
+          onClick={() => {
+            undone = true;
+            if (pendingDeleteTimeoutRef.current) {
+              window.clearTimeout(pendingDeleteTimeoutRef.current);
+              pendingDeleteTimeoutRef.current = null;
+            }
+            setFavoriteItems(previousFavorites);
+            setRecentEntities(previousRecents);
+            toast({
+              title: "Delete cancelled",
+              description: `${payload.title} was restored.`,
+            });
+          }}
+        >
+          Undo
+        </ToastAction>
+      ),
+    });
+
+    setIsDeletingEntity(true);
+    pendingDeleteTimeoutRef.current = window.setTimeout(async () => {
+      if (undone) {
+        setIsDeletingEntity(false);
+        return;
+      }
+
+      try {
+        if (
+          payload.entityType === "recent" &&
+          payload.entityId.startsWith("favorite-")
+        ) {
+          await persistSidebarMutation("favorite.remove", {
+            entityId: payload.entityId,
+          });
+        } else {
+          await persistSidebarMutation("entity.delete", {
+            entityId: payload.entityId,
+            entityType: payload.entityType,
+          });
+        }
+
+        toast({
+          title:
+            payload.entityType === "folder" ? "Folder deleted" : "Item deleted",
+          description:
+            payload.entityType === "folder"
+              ? `${payload.title} was removed from your workspace list.`
+              : payload.entityId.startsWith("favorite-")
+                ? `${payload.title} was removed from Favorites.`
+                : payload.entityType === "chat"
+                  ? `${payload.title} chat was removed from Recents.`
+                  : `${payload.title} was removed from Recents.`,
+          variant: "destructive",
+        });
+      } catch {
+        setFavoriteItems(previousFavorites);
+        setRecentEntities(previousRecents);
+        toast({
+          title: "Delete failed",
+          description:
+            "We could not delete this item and restored your previous data.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsDeletingEntity(false);
+        pendingDeleteTimeoutRef.current = null;
+      }
+    }, 5000);
+  };
+
+  const handleCopyRecentShareLink = async () => {
+    if (!shareRecentItem) return;
+
+    try {
+      setIsCopyingRecentLink(true);
+      await navigator.clipboard.writeText(
+        buildRecentShareLink(shareRecentItem),
+      );
+      toast({
+        title: "Share link copied",
+        description: `Copied link for ${shareRecentItem.title}.`,
+      });
+      setShareRecentItem(null);
+      closeOverlay(false);
+    } catch {
+      toast({
+        title: "Could not copy link",
+        description: "Please copy the share link manually.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCopyingRecentLink(false);
+    }
+  };
+
+  const recentMoveDestinations: RecentMoveDestination[] = [
+    {
+      id: "favorites",
+      label: "Favorites",
+      description: "Pin this item for faster access.",
+    },
+    ...favoriteItems.map((favoriteItem) => ({
+      id: favoriteItem.id,
+      label: favoriteItem.label,
+      description: favoriteItem.description,
+    })),
+  ];
+
+  const handleRecentMoveDestinationSelect = async (
+    destination: RecentMoveDestination,
+  ) => {
+    if (!moveRecentItem) return;
+
+    const activeItem = moveRecentItem;
+    const previousFavorites = favoriteItems;
+    const previousRecents = recentEntities;
+
+    if (destination.id === "favorites") {
+      const nextFavorite = mapRecentEntityToFavorite(activeItem);
+      setFavoriteItems((previousItems) => {
+        if (
+          previousItems.some(
+            (favoriteItem) => favoriteItem.id === nextFavorite.id,
+          )
+        ) {
+          return previousItems;
+        }
+
+        return [nextFavorite, ...previousItems];
+      });
+    }
+
+    setRecentEntities((previousItems) =>
+      previousItems.filter((recentItem) => recentItem.id !== activeItem.id),
+    );
+
+    setIsMovingRecent(true);
+    try {
+      await persistSidebarMutation("recent.move", {
+        entityId: activeItem.id,
+        destinationId: destination.id,
+      });
+
+      toast({
+        title: "Item moved",
+        description: `${activeItem.title} moved to ${destination.label}.`,
+      });
+      setMoveRecentItem(null);
+      setSelectedMoveDestinationId("");
+      closeOverlay(false);
+    } catch {
+      setFavoriteItems(previousFavorites);
+      setRecentEntities(previousRecents);
+      toast({
+        title: "Move failed",
+        description: "We restored the previous location for this item.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsMovingRecent(false);
+    }
+  };
+
+  const closeRenameDialog = () => {
+    setRenameDialogTarget(null);
+    setRenameInputValue("");
+    setRenameInputError(null);
+    closeOverlay(false);
+  };
+
+  const validateRenameInput = (
+    value: string,
+    target: RenameDialogTarget,
+  ): string | null => {
+    const trimmedLabel = value.trim();
+
+    if (!trimmedLabel) return "Please enter a name.";
+    if (trimmedLabel.length < 2) return "Name must be at least 2 characters.";
+    if (trimmedLabel.length > 80) return "Name cannot exceed 80 characters.";
+    if (trimmedLabel === target.currentName.trim())
+      return "Enter a different name.";
+
+    const normalizedLabel = trimmedLabel.toLowerCase();
+
+    if (target.entityType === "favorite") {
+      const hasDuplicate = favoriteItems.some(
+        (favoriteItem) =>
+          favoriteItem.id !== target.entityId &&
+          favoriteItem.label.trim().toLowerCase() === normalizedLabel,
+      );
+      if (hasDuplicate) return "A favorite with this name already exists.";
+    } else {
+      const hasDuplicate = recentEntities.some(
+        (recentItem) =>
+          recentItem.id !== target.entityId &&
+          recentItem.title.trim().toLowerCase() === normalizedLabel,
+      );
+      if (hasDuplicate) return "A recent item with this name already exists.";
+    }
+
+    return null;
+  };
+
+  const handleRenameSubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+
+    if (isSubmittingRename || !renameDialogTarget) return;
+
+    const validationError = validateRenameInput(
+      renameInputValue,
+      renameDialogTarget,
+    );
+    if (validationError) {
+      setRenameInputError(validationError);
+      return;
+    }
+
+    const trimmedLabel = renameInputValue.trim();
+    const previousFavorites = favoriteItems;
+    const previousRecents = recentEntities;
+
+    setIsSubmittingRename(true);
+
+    if (renameDialogTarget.entityType === "favorite") {
+      setFavoriteItems((previousItems) =>
+        previousItems.map((favoriteItem) =>
+          favoriteItem.id === renameDialogTarget.entityId
+            ? { ...favoriteItem, label: trimmedLabel }
+            : favoriteItem,
+        ),
+      );
+    } else {
+      setRecentEntities((previousItems) =>
+        previousItems.map((recentItem) =>
+          recentItem.id === renameDialogTarget.entityId
+            ? { ...recentItem, title: trimmedLabel }
+            : recentItem,
+        ),
+      );
+    }
+
+    try {
+      await persistSidebarMutation("entity.rename", {
+        entityId: renameDialogTarget.entityId,
+        entityType: renameDialogTarget.entityType,
+        label: trimmedLabel,
+      });
+
+      toast({
+        title:
+          renameDialogTarget.entityType === "favorite"
+            ? "Favorite renamed"
+            : "Item renamed",
+        description: `Updated to "${trimmedLabel}".`,
+      });
+      closeRenameDialog();
+    } catch {
+      setFavoriteItems(previousFavorites);
+      setRecentEntities(previousRecents);
+      toast({
+        title: "Rename failed",
+        description: "We restored the previous name. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingRename(false);
+    }
+  };
+
+  const closeMoveDialog = () => {
+    setMoveRecentItem(null);
+    setSelectedMoveDestinationId("");
+    setMoveInputError(null);
+    closeOverlay(false);
+  };
+
+  const handleMoveSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!selectedMoveDestinationId) {
+      setMoveInputError("Choose a destination before moving this item.");
+      return;
+    }
+
+    const destination = recentMoveDestinations.find(
+      (recentDestination) => recentDestination.id === selectedMoveDestinationId,
+    );
+    if (!destination) {
+      setMoveInputError("The selected destination is no longer available.");
+      return;
+    }
+
+    setMoveInputError(null);
+    await handleRecentMoveDestinationSelect(destination);
+  };
+
+  const focusOverlayTrigger = () => {
+    const triggerElement = lastOverlayTriggerRef.current;
+    if (triggerElement && document.contains(triggerElement)) {
+      triggerElement.focus();
+      return;
+    }
+
+    restoreFocusToMainControls();
+  };
+
+  const openModal = (
+    overlay: ModalOverlayId,
+    triggerElement?: HTMLElement | null,
+  ) => {
+    trackAnalyticsEvent("modal.open", { modalId: overlay });
+    openOverlay({ type: "modal", payload: { id: overlay } }, triggerElement);
+  };
+
+  const dismissModal = (overlay: ModalOverlayId, restoreFocus = true) => {
+    closeOverlay(restoreFocus);
+
+    if (overlay === "upgrade") {
+      setIsPlanActionLoading(false);
+    }
+
+    if (overlay === "feedback") {
+      resetFeedbackDialog();
+    }
+
+    if (overlay === "shareRecent") {
+      setShareRecentItem(null);
+      setIsCopyingRecentLink(false);
+    }
+
+    if (overlay === "rename") {
+      closeRenameDialog();
+    }
+
+    if (overlay === "move") {
+      closeMoveDialog();
+    }
+
+    if (overlay === "deleteConfirm") {
+      closeDeleteConfirmModal(restoreFocus);
+    }
+  };
+
+  function openUpgradeModal(
+    planId?: UpgradePlanId,
+    triggerElement?: HTMLElement | null,
+  ) {
+    trackAnalyticsEvent("header.upgrade", { planId: planId ?? selectedPlan });
+    if (planId) {
+      setSelectedPlan(planId);
+    }
+    setIsPlanActionLoading(false);
+    openModal("upgrade", triggerElement);
+  }
 
   const headerActions: HeaderAction[] = [
     {
@@ -178,255 +2599,2347 @@ export default function RunashChatPage() {
       label: "Upgrade",
       tooltip: "View upgrade plans",
       icon: Rocket,
-      href: "/pricing",
+      onClick: (triggerElement) => openUpgradeModal(undefined, triggerElement),
     },
     {
       id: "feedback",
       label: "Feedback",
       tooltip: "Share product feedback",
       icon: MessageSquare,
-      onClick: () => router.push("/contact?topic=feedback&entry=runash-chat"),
+      onClick: (triggerElement) => openModal("feedback", triggerElement),
     },
     {
       id: "refer",
       label: "Refer",
       tooltip: "Refer a friend or team",
       icon: Sparkles,
-      onClick: () => router.push("/partners?program=referral"),
+      onClick: (triggerElement) => openModal("refer", triggerElement),
     },
-  ]
+  ];
 
-  const primaryMobileHeaderActions = headerActions.slice(0, 2)
-  const overflowMobileHeaderActions = headerActions.slice(2)
+  const primaryMobileHeaderActions = headerActions.slice(0, 1);
+  const overflowMobileHeaderActions = headerActions.slice(1);
+  const primaryTabletHeaderActions = headerActions.slice(0, 2);
+  const overflowTabletHeaderActions = headerActions.slice(2);
+  const creditsBalanceLabel = formatCreditValue(
+    creditMetrics.total ??
+      creditMetrics.gifted + creditMetrics.monthly + creditMetrics.purchased,
+  );
+  const selectedUpgradePlan = getUpgradePlanConfiguration(selectedPlan);
 
-  const userDisplayName = session?.user?.name?.trim() || "Guest User"
-  const userEmail = session?.user?.email?.trim() || ""
-  const userInitials = userDisplayName
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((namePart) => namePart[0]?.toUpperCase())
-    .join("") || "GU"
+  const userDisplayName =
+    authenticatedUser?.name?.trim() ||
+    authenticatedUser?.email?.split("@")[0]?.trim() ||
+    "Guest User";
+  const userEmail = authenticatedUser?.email?.trim() || "";
+  const userAvatar = authenticatedUser?.image?.trim() || "";
+  const userInitials =
+    userDisplayName
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((namePart) => namePart[0]?.toUpperCase())
+      .join("") || "GU";
 
-  const userMenuItems = [
-    { label: "Profile", icon: User, action: () => router.push("/ecommerce/profile") },
-    { label: "Settings", icon: Settings, action: () => router.push("/settings") },
-    { label: "Billing", icon: CreditCard, action: () => router.push("/payment/subscription") },
-    { label: "Help", icon: LifeBuoy, action: () => router.push("/support") },
-  ]
+  type UserMenuItem = {
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    href: string;
+    external?: boolean;
+    onSelect?: () => void;
+  };
 
-  const handleHeaderActionClick = (action: HeaderAction) => {
+  const openSettingsDialog = () => {
+    openModal("settings", profileMenuTriggerRef.current);
+  };
+
+  const accountMenuItems: UserMenuItem[] = [
+    { label: "Profile", icon: User, href: "/account" },
+    {
+      label: "Settings",
+      icon: Settings,
+      href: "/settings",
+      onSelect: openSettingsDialog,
+    },
+    { label: "Pricing", icon: CreditCard, href: "/pricing" },
+    {
+      label: "Documentation",
+      icon: Library,
+      href: "https://docs.runash.io",
+      external: true,
+    },
+    {
+      label: "Community Forum",
+      icon: LifeBuoy,
+      href: "https://community.runash.io",
+      external: true,
+    },
+    { label: "Credits", icon: Sparkles, href: "/settings/billing" },
+  ];
+
+  const preferenceMenuItems: UserMenuItem[] = [
+    {
+      label: "Theme",
+      icon: PanelsTopLeft,
+      href: "/settings?section=preferences&panel=theme",
+    },
+    {
+      label: "Language",
+      icon: MessageSquare,
+      href: "/settings?section=preferences&panel=language",
+    },
+    {
+      label: "Chat Position",
+      icon: LayoutTemplate,
+      href: "/settings?section=preferences&panel=chat-position",
+    },
+  ];
+
+  const handleUserMenuNavigation = (item: UserMenuItem) => {
+    if (item.external) {
+      window.open(item.href, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    router.push(item.href);
+  };
+
+  const handleUserMenuItemSelect = (item: UserMenuItem) => {
+    if (item.onSelect) {
+      item.onSelect();
+      return;
+    }
+
+    handleUserMenuNavigation(item);
+  };
+
+  const renderProfileMenu = (triggerClassName: string) => (
+    <DropdownMenu
+      open={isMenuOverlayOpen("account")}
+      onOpenChange={(open) => {
+        if (open) {
+          openMenuOverlay("account", profileMenuTriggerRef.current);
+          return;
+        }
+
+        closeOverlay(false);
+      }}
+    >
+      <DropdownMenuTrigger asChild>
+        <Button
+          ref={profileMenuTriggerRef}
+          type="button"
+          variant="outline"
+          className={triggerClassName}
+          aria-label="Open account menu"
+          aria-haspopup="menu"
+          onClick={(event) => {
+            profileMenuTriggerRef.current = event.currentTarget;
+          }}
+        >
+          <Avatar className="h-8 w-8">
+            {userAvatar ? (
+              <AvatarImage src={userAvatar} alt={userDisplayName} />
+            ) : null}
+            <AvatarFallback className="bg-zinc-800 text-xs text-zinc-100">
+              {userInitials}
+            </AvatarFallback>
+          </Avatar>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="z-40 w-72 border-zinc-800 bg-zinc-900 text-zinc-100"
+      >
+        <DropdownMenuLabel className="px-2 py-1.5">
+          <p className="truncate text-sm font-medium text-zinc-100">
+            {userDisplayName}
+          </p>
+          {userEmail ? (
+            <p className="truncate text-xs font-normal text-zinc-400">
+              {userEmail}
+            </p>
+          ) : null}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator className="bg-zinc-800" />
+        <DropdownMenuLabel className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
+          Account
+        </DropdownMenuLabel>
+        <DropdownMenuGroup>
+          {accountMenuItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <DropdownMenuItem
+                key={item.label}
+                onSelect={() => {
+                  handleUserMenuItemSelect(item);
+                }}
+                className="cursor-pointer py-2 focus:bg-zinc-800 focus:text-zinc-100"
+              >
+                <Icon className="mr-2 h-4 w-4" />
+                {item.label}
+                {item.external ? (
+                  <DropdownMenuShortcut>
+                    <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                  </DropdownMenuShortcut>
+                ) : null}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuGroup>
+        {isGetStartedVisible ? null : (
+          <>
+            <DropdownMenuSeparator className="bg-zinc-800" />
+            <DropdownMenuItem
+              onSelect={handleReopenGetStarted}
+              className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+            >
+              <Rocket className="mr-2 h-4 w-4 text-zinc-300" />
+              Show task starter
+            </DropdownMenuItem>
+          </>
+        )}
+        <DropdownMenuSeparator className="bg-zinc-800" />
+        <DropdownMenuLabel className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
+          Preferences
+        </DropdownMenuLabel>
+        <DropdownMenuGroup>
+          {preferenceMenuItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <DropdownMenuItem
+                key={item.label}
+                onSelect={() => handleUserMenuItemSelect(item)}
+                className="cursor-pointer py-2 focus:bg-zinc-800 focus:text-zinc-100"
+              >
+                <Icon className="mr-2 h-4 w-4" />
+                {item.label}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator className="bg-zinc-800" />
+
+        <DropdownMenuLabel className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
+          Session
+        </DropdownMenuLabel>
+
+        <DropdownMenuItem
+          onClick={() => signOutWithRedirect("/")}
+          className="cursor-pointer py-2 text-rose-300 focus:bg-rose-500/20 focus:text-rose-200"
+        >
+          <LogOut className="mr-2 h-4 w-4" />
+          Sign Out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  const handleHeaderActionClick = (
+    action: HeaderAction,
+    triggerElement?: HTMLElement | null,
+  ) => {
     if (action.href) {
-      router.push(action.href)
-      return
+      router.push(action.href);
+      return;
     }
-    action.onClick?.()
-  }
+    action.onClick?.(triggerElement);
+  };
 
-  useEffect(() => {
-    const savedValue = localStorage.getItem("runash_sidebar_collapsed")
-    setIsSidebarCollapsed(savedValue === "true")
-
-    const isBannerHidden = localStorage.getItem(updatesBannerHiddenKey) === "true"
-    setShowUpdatesBanner(!isBannerHidden)
-
-    const hasSeenOnboarding = localStorage.getItem(runashChatOnboardingStorageKey) === "true"
-    setIsOnboardingOpen(!hasSeenOnboarding)
-  }, [])
-
-  const markOnboardingSeen = () => {
-    localStorage.setItem(runashChatOnboardingStorageKey, "true")
-  }
-
-  const handleOnboardingOpenChange = (open: boolean) => {
-    setIsOnboardingOpen(open)
-    if (!open) {
-      markOnboardingSeen()
-    }
-  }
-
-  const handleOnboardingNext = () => {
-    if (isLastOnboardingStep) {
-      markOnboardingSeen()
-      setIsOnboardingOpen(false)
-      return
+  const handlePlanCtaClick = () => {
+    if (isPlanActionLoading) {
+      return;
     }
 
-    setActiveOnboardingStep((previousStep) => Math.min(previousStep + 1, onboardingSlides.length - 1))
-  }
-
-  useEffect(() => {
-    localStorage.setItem("runash_sidebar_collapsed", String(isSidebarCollapsed))
-  }, [isSidebarCollapsed])
-
-  useEffect(() => {
-    if (!isOnboardingOpen) return
-
-    setIsMobileSidebarOpen(false)
-    setIsMobileSearchOpen(false)
-  }, [isOnboardingOpen])
-
-  useEffect(() => {
-    if (!startChatError) return
-
-    const timeoutId = window.setTimeout(() => {
-      setStartChatError(null)
-    }, 3500)
-
-    return () => {
-      window.clearTimeout(timeoutId)
+    if (!isUpgradePlanId(selectedPlan)) {
+      toast({
+        title: "Invalid plan selection",
+        description: "Please choose a valid plan before continuing.",
+        variant: "destructive",
+      });
+      return;
     }
-  }, [startChatError])
 
-  const quickPrompts: ChatQuickPrompt[] = [
-    {
-      id: "bundle",
-      label: "Build Bundle",
-      description: "Create high-conversion bundles with upsells",
-      prompt: "Create a high-converting organic breakfast bundle and suggest two upsells under $30.",
-      icon: ShoppingCart,
-    },
-    {
-      id: "checkout",
-      label: "Checkout Assist",
-      description: "Guide payment and reduce checkout drop-off",
-      prompt: "Act as checkout assistant and help complete a secure payment with cart summary and next steps.",
-      icon: CreditCard,
-    },
-    {
-      id: "order-followup",
-      label: "Post-Purchase",
-      description: "Handle order updates and support questions",
-      prompt: "Handle a post-purchase support request: order tracking, ETA, and return options.",
-      icon: PackageSearch,
-    },
-  ]
+    trackAnalyticsEvent("upgrade.confirm", { planId: selectedPlan });
+    setIsPlanActionLoading(true);
 
-  useEffect(() => {
-    ;(async () => {
-      setLoadingRecents(true)
-      setRecentItemsError(null)
-      setLoadingSession(true)
-      setPreviewError(null)
+    void (async () => {
       try {
-        const sessionsResponse = await fetch("/api/sessions")
-        const sessionsPayload = await sessionsResponse.json().catch(() => null)
-
-        if (!sessionsResponse.ok || !sessionsPayload?.success || !Array.isArray(sessionsPayload?.data)) {
-          throw new Error(sessionsPayload?.error?.message || "Unable to load recent chats")
-        }
-
-        const normalizedRecentItems = sessionsPayload.data
-          .map((session: { id?: string | number; title?: string }) => {
-            const id = session?.id != null ? String(session.id) : ""
-            const title = typeof session?.title === "string" ? session.title.trim() : ""
-            if (!id) return null
-            return {
-              id,
-              title: title || `Session #${id}`,
-            }
-          })
-          .filter((item: RecentItem | null): item is RecentItem => item !== null)
-
-        setRecentItems(normalizedRecentItems.slice(0, 8))
-      } catch (error) {
-        setRecentItemsError(error instanceof Error ? error.message : "Unable to load recent chats")
-        setRecentItems([])
-      } finally {
-        setLoadingRecents(false)
-      }
-
-      try {
-        const res = await fetch("/api/sessions/recent")
-        const payload = await res.json()
-        if (!res.ok || !payload?.success || !payload?.data?.id) {
-          throw new Error(payload?.error?.message || "No recent session")
-        }
-
-        const recentSession = payload.data
-        setSessionId(String(recentSession.id))
-
-        const msgs = await fetch(`/api/messages/session/${recentSession.id}?limit=6`)
-        if (!msgs.ok) {
-          const messagePayload = await msgs.json().catch(() => null)
-          throw new Error(messagePayload?.error?.message || "Unable to load message preview")
-        }
-
-        const messagePayload = await msgs.json()
-        const preview = Array.isArray(messagePayload?.data) ? (messagePayload.data as ChatPreviewMessage[]) : []
-        setMessagesPreview(preview)
-      } catch (error) {
-        setPreviewError(error instanceof Error ? error.message : "Unable to load chat preview")
-        setMessagesPreview([])
-      } finally {
-        setLoadingSession(false)
-      }
-    })()
-  }, [])
-
-  function startChatWithPrompt(initialPrompt?: string) {
-    ;(async () => {
-      const cleanPrompt = initialPrompt?.trim()
-      try {
-        let sid = sessionId
-        if (!sid) {
-          const res = await fetch("/api/sessions", {
+        const response = await fetchWithRetryAndTimeout(
+          "/api/settings/actions/upgrade-plan",
+          {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ title: "RunAsh Chat" }),
-          })
-          const created = await res.json()
-          sid = created?.id ? String(created.id) : null
-          setSessionId(sid ?? null)
+            body: JSON.stringify({ confirm: true }),
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error("Unable to confirm plan upgrade.");
         }
 
-        if (cleanPrompt) {
-          localStorage.setItem("runash_initial_prompt", cleanPrompt)
-        }
-
-        setStartChatError(null)
-
-        router.push(sid ? `/chat?sessionId=${sid}` : "/chat")
+        toast({
+          title: "Plan selection saved",
+          description: `Continuing to ${selectedUpgradePlan.label} checkout.`,
+        });
+        router.push(selectedUpgradePlan.ctaHref);
       } catch (error) {
-        setStartChatError("Couldn’t resume session, opening chat directly.")
-        console.warn("Failed to start chat session; using direct chat fallback", {
-          hasSessionId: Boolean(sessionId),
-          hasInitialPrompt: Boolean(cleanPrompt),
-          errorType: error instanceof Error ? error.name : "unknown",
-        })
-        router.push("/chat")
+        setIsPlanActionLoading(false);
+        handleServiceError(
+          "Upgrade unavailable",
+          "We could not start checkout right now.",
+          error,
+        );
       }
-    })()
+    })();
+  };
+
+  const loadCreditsBalance = useCallback(async () => {
+    setIsCreditsLoading(true);
+    setCreditsLoadError(null);
+    try {
+      const response = await fetchWithRetryAndTimeout(
+        "/api/settings/actions/credits-balance",
+        { method: "POST" },
+        1,
+      );
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || typeof payload?.data?.creditsBalance !== "number") {
+        throw new Error(payload?.error || "Unable to fetch credits.");
+      }
+
+      const total = payload.data.creditsBalance;
+      setCreditMetrics((previous) => ({
+        ...previous,
+        total,
+      }));
+    } finally {
+      setIsCreditsLoading(false);
+    }
+  }, [fetchWithRetryAndTimeout]);
+
+  const loadReferralData = useCallback(async (): Promise<string> => {
+    setIsReferralLoading(true);
+    setReferralLoadError(null);
+    try {
+      const response = await fetchWithRetryAndTimeout(
+        "/api/settings/actions/refer-earn",
+        { method: "POST" },
+        1,
+      );
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || typeof payload?.data?.referralCode !== "string") {
+        throw new Error(payload?.error || "Unable to load referral data.");
+      }
+
+      const referralCode = payload.data.referralCode.trim();
+      const referralLink = referralCode
+        ? `https://runash.in/refer?code=${encodeURIComponent(referralCode)}`
+        : defaultReferralUiData.referralLink;
+
+      setReferralUiData((previous) =>
+        buildReferralUiData({
+          ...previous,
+          referralLink,
+        }),
+      );
+      return referralLink;
+    } finally {
+      setIsReferralLoading(false);
+    }
+  }, [fetchWithRetryAndTimeout]);
+
+  const resetFeedbackDialog = () => {
+    setFeedbackText("");
+    setFeedbackRating(null);
+    setIsSubmittingFeedback(false);
+  };
+
+  const handleFeedbackOpenChange = (open: boolean) => {
+    if (!open && isSubmittingFeedback) return;
+
+    if (open) {
+      openModal("feedback");
+      return;
+    }
+
+    dismissModal("feedback");
+  };
+
+  const handleReferDialogOpenChange = (open: boolean) => {
+    if (open) {
+      openModal("refer");
+      return;
+    }
+
+    dismissModal("refer");
+  };
+
+  const handleCopyReferralLink = async () => {
+    if (isCopyingLink) {
+      return;
+    }
+
+    try {
+      setIsCopyingLink(true);
+      let referralLink = referralUiData.referralLink;
+      if (isAuthenticated) {
+        referralLink = await loadReferralData();
+      }
+
+      if (!validateReferralLink(referralLink)) {
+        throw new Error("Invalid referral link");
+      }
+
+      await navigator.clipboard.writeText(referralLink);
+      trackAnalyticsEvent("referral.copy-link", { hasAuth: isAuthenticated });
+      toast({
+        title: "Referral link copied",
+        description: "Share it with friends to start earning rewards.",
+      });
+    } catch (error) {
+      handleServiceError(
+        "Could not copy link",
+        "Please copy your referral link manually.",
+        error,
+      );
+    } finally {
+      setIsCopyingLink(false);
+    }
+  };
+
+  const handleUpgradeModalOpenChange = (open: boolean) => {
+    if (open) {
+      openModal("upgrade");
+      return;
+    }
+
+    dismissModal("upgrade");
+  };
+
+  const handleSettingsDialogOpenChange = (open: boolean) => {
+    if (open) {
+      openModal("settings");
+      return;
+    }
+
+    dismissModal("settings");
+  };
+
+  const handleSettingsSectionKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    currentIndex: number,
+  ) => {
+    const lastIndex = settingsSections.length - 1;
+    let nextIndex: number | null = null;
+
+    if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+      nextIndex = currentIndex === lastIndex ? 0 : currentIndex + 1;
+    } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+      nextIndex = currentIndex === 0 ? lastIndex : currentIndex - 1;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = lastIndex;
+    }
+
+    if (nextIndex === null) {
+      return;
+    }
+
+    event.preventDefault();
+    setActiveSettingsSection(settingsSections[nextIndex]);
+    settingsSectionButtonRefs.current[nextIndex]?.focus();
+  };
+
+  const updateGeneralSettingsAppearance = (value: string) => {
+    if (!isValidThemePreference(value)) {
+      return;
+    }
+
+    setGeneralSettings((prev) => ({
+      ...prev,
+      appearance: value,
+    }));
+  };
+
+  const updateGeneralSettingsAccentColor = (value: string) => {
+    if (!isValidAccentColorPreference(value)) {
+      return;
+    }
+
+    setGeneralSettings((prev) => ({
+      ...prev,
+      accentColor: value,
+    }));
+  };
+
+  const updateGeneralSettingsLanguage = (value: string) => {
+    if (!isValidLanguagePreference(value)) {
+      return;
+    }
+
+    setGeneralSettings((prev) => ({
+      ...prev,
+      language: value,
+    }));
+  };
+
+  const updateGeneralSettingsSpokenLanguage = (value: string) => {
+    if (!isValidSpokenLanguagePreference(value)) {
+      return;
+    }
+
+    setGeneralSettings((prev) => ({
+      ...prev,
+      spokenLanguage: value,
+    }));
+  };
+
+  const updateGeneralSettingsVoice = (value: string) => {
+    if (!isValidVoicePreference(value)) {
+      return;
+    }
+
+    setGeneralSettings((prev) => ({
+      ...prev,
+      voice: value,
+    }));
+  };
+
+  const handleSidebarSectionToggleKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    expanded: boolean,
+    setExpanded: React.Dispatch<React.SetStateAction<boolean>>,
+  ) => {
+    if (event.key === "ArrowLeft" && expanded) {
+      event.preventDefault();
+      setExpanded(false);
+      return;
+    }
+
+    if (event.key === "ArrowRight" && !expanded) {
+      event.preventDefault();
+      setExpanded(true);
+    }
+  };
+
+  const handlePromptActionKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    actionId: PromptActionId,
+  ) => {
+    const focusableActionIds = primaryPromptActionConfigs
+      .filter((action) => !isPromptActionDisabled(action))
+      .map((action) => action.id);
+
+    if (focusableActionIds.length === 0) {
+      return;
+    }
+
+    const currentIndex = focusableActionIds.indexOf(actionId);
+    if (currentIndex === -1) {
+      return;
+    }
+
+    let nextIndex: number | null = null;
+
+    if (event.key === "ArrowRight") {
+      nextIndex = (currentIndex + 1) % focusableActionIds.length;
+    } else if (event.key === "ArrowLeft") {
+      nextIndex =
+        (currentIndex - 1 + focusableActionIds.length) %
+        focusableActionIds.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = focusableActionIds.length - 1;
+    }
+
+    if (nextIndex === null) {
+      return;
+    }
+
+    event.preventDefault();
+    promptActionButtonRefs.current[focusableActionIds[nextIndex]]?.focus();
+  };
+
+  const closeCreditsPanel = (restoreFocus = false) => {
+    dismissModal("credits", restoreFocus);
+  };
+
+  const openRedeemCodeDialog = (triggerElement?: HTMLElement | null) => {
+    closeCreditsPanel(false);
+    setRedeemCodeInput("");
+    setRedeemCodeError(null);
+    setIsRedeemingCode(false);
+    openModal("redeem", triggerElement);
+  };
+
+  const handleRedeemDialogOpenChange = (open: boolean) => {
+    if (open) {
+      openModal("redeem");
+      return;
+    }
+
+    dismissModal("redeem", true);
+    setIsRedeemingCode(false);
+    setRedeemCodeError(null);
+    setRedeemCodeInput("");
+  };
+
+  const handleRedeemCodeSubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+
+    if (isRedeemingCode) {
+      return;
+    }
+
+    const sanitizedCode = sanitizeRedeemCode(redeemCodeInput.trim());
+    const validationMessage = validateRedeemCode(sanitizedCode);
+    if (validationMessage) {
+      setRedeemCodeError(validationMessage);
+      toast({
+        title: "Invalid code",
+        description: validationMessage,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsRedeemingCode(true);
+    setRedeemCodeError(null);
+
+    try {
+      trackAnalyticsEvent("credits.redeem", { hasAuth: isAuthenticated });
+      router.push(
+        `/settings/billing?section=redeem&code=${encodeURIComponent(sanitizedCode)}`,
+      );
+      toast({
+        title: "Code ready to redeem",
+        description:
+          "We opened Billing so you can complete your credit redemption.",
+      });
+      handleRedeemDialogOpenChange(false);
+    } catch {
+      const errorMessage = "We could not open billing. Please try again.";
+      setRedeemCodeError(errorMessage);
+      toast({
+        title: "Redeem failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsRedeemingCode(false);
+    }
+  };
+
+  const handleFeedbackSubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+
+    if (isSubmittingFeedback) {
+      return;
+    }
+
+    const validationError = validateFeedbackInput(feedbackText);
+    if (validationError) {
+      toast({
+        title: "Feedback required",
+        description: validationError,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const trimmedFeedback = feedbackText.trim().slice(0, 500);
+
+    setIsSubmittingFeedback(true);
+
+    try {
+      const canUseFeedbackEndpoint = Boolean(sessionId);
+
+      if (canUseFeedbackEndpoint) {
+        const response = await fetch("/api/agents/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId,
+            signal: "quality",
+            score: feedbackRating ?? 3,
+            reason: trimmedFeedback,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Feedback endpoint unavailable");
+        }
+
+        toast({
+          title: "Thanks for your feedback",
+          description: "Your feedback helps us improve RunAsh Chat.",
+        });
+        trackAnalyticsEvent("feedback.submit", { via: "api" });
+
+        handleFeedbackOpenChange(false);
+        return;
+      } else {
+        router.push(`/support?feedback=${encodeURIComponent(trimmedFeedback)}`);
+        toast({
+          title: "Continue on Support",
+          description:
+            "We redirected you to Support so you can finish sharing your feedback.",
+        });
+        trackAnalyticsEvent("feedback.submit", { via: "route" });
+        handleFeedbackOpenChange(false);
+        return;
+      }
+    } catch {
+      toast({
+        title: "Feedback service unavailable",
+        description:
+          "We redirected you to Support so your message is not lost.",
+      });
+
+      router.push(`/support?feedback=${encodeURIComponent(trimmedFeedback)}`);
+      trackAnalyticsEvent("feedback.submit", { via: "fallback" });
+      handleFeedbackOpenChange(false);
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  };
+
+  useEffect(() => {
+    setIsSpeechRecognitionSupported(Boolean(getSpeechRecognitionConstructor()));
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    void loadCreditsBalance().catch((error) => {
+      setIsCreditsLoading(false);
+      setCreditsLoadError("Unable to refresh credits right now.");
+      handleServiceError(
+        "Credits unavailable",
+        "We could not refresh your credits balance.",
+        error,
+      );
+    });
+
+    void loadReferralData().catch((error) => {
+      setIsReferralLoading(false);
+      setReferralLoadError("Unable to load referral data right now.");
+      handleServiceError(
+        "Referral unavailable",
+        "We could not load your referral link.",
+        error,
+      );
+    });
+  }, [
+    handleServiceError,
+    isAuthenticated,
+    loadCreditsBalance,
+    loadReferralData,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      clearSpeechTimeout();
+      speechRecognitionRef.current?.abort();
+      speechRecognitionRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (voiceCaptureState === "idle" || voiceCaptureState === "error") {
+      return;
+    }
+
+    if (speechRecognitionRef.current) {
+      speechRecognitionRef.current.lang = generalSettings.spokenLanguage;
+    }
+  }, [generalSettings.spokenLanguage, voiceCaptureState]);
+
+  useEffect(() => {
+    const planFromQuery = searchParams.get("plan");
+    if (isUpgradePlanId(planFromQuery)) {
+      setSelectedPlan(planFromQuery);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const savedValue = localStorage.getItem(
+      runashChatSidebarCollapsedStorageKey,
+    );
+    setIsSidebarCollapsed(savedValue === "true");
+    const savedFavoritesCollapsedValue = localStorage.getItem(
+      runashChatFavoritesCollapsedStorageKey,
+    );
+    setIsFavoritesExpanded(savedFavoritesCollapsedValue !== "true");
+    const savedRecentsCollapsedValue = localStorage.getItem(
+      runashChatRecentsCollapsedStorageKey,
+    );
+    setIsRecentsExpanded(savedRecentsCollapsedValue !== "true");
+
+    const isBannerHidden =
+      localStorage.getItem(runashChatBannerHiddenStorageKey) === "true" ||
+      localStorage.getItem(runashChatUpdatesBannerHiddenStorageKey) ===
+        "true" ||
+      localStorage.getItem(runashChatLegacyUpdatesBannerHiddenStorageKey) ===
+        "true";
+    const hasSeenOnboarding =
+      localStorage.getItem(runashChatOnboardingStorageKey) === "true" ||
+      localStorage.getItem(runashChatUpdatesBannerSeenStorageKey) === "true" ||
+      localStorage.getItem(runashChatAnnouncementSeenStorageKey) === "true";
+    setIsBannerDismissed(isBannerHidden || hasSeenOnboarding);
+
+    if (hasSeenOnboarding) {
+      setOnboardingStep(onboardingSlides.length - 1);
+    }
+
+    setIsGetStartedVisible(
+      localStorage.getItem(runashChatGetStartedDismissedStorageKey) !== "true",
+    );
+    const storedGetStartedTab = localStorage.getItem(
+      runashChatGetStartedActiveTabStorageKey,
+    );
+    if (
+      storedGetStartedTab === "tasks" ||
+      storedGetStartedTab === "reviews" ||
+      storedGetStartedTab === "archive"
+    ) {
+      setActiveGetStartedTab(storedGetStartedTab);
+    }
+
+    const storedThemePreference = localStorage.getItem(
+      runashChatThemeStorageKey,
+    );
+    const safeThemePreference: RunashThemePreference = isValidThemePreference(
+      storedThemePreference,
+    )
+      ? storedThemePreference
+      : "system";
+    setThemePreference(safeThemePreference);
+    setTheme(safeThemePreference);
+
+    const storedLanguagePreference = localStorage.getItem(
+      runashChatLanguageStorageKey,
+    );
+    setLanguagePreference(
+      isValidLanguagePreference(storedLanguagePreference)
+        ? storedLanguagePreference
+        : "en",
+    );
+
+    const storedChatPositionPreference = localStorage.getItem(
+      runashChatPositionStorageKey,
+    );
+    setChatPositionPreference(
+      isValidChatPositionPreference(storedChatPositionPreference)
+        ? storedChatPositionPreference
+        : "left",
+    );
+
+    const storedGeneralSettings = localStorage.getItem(
+      runashChatSettingsStorageKey,
+    );
+    const { settings: restoredGeneralSettings, isValid } =
+      parseRunashGeneralSettings(storedGeneralSettings);
+    if (!isValid) {
+      localStorage.setItem(
+        runashChatSettingsStorageKey,
+        JSON.stringify(restoredGeneralSettings),
+      );
+    }
+    setGeneralSettings(restoredGeneralSettings);
+    setTheme(restoredGeneralSettings.appearance);
+
+    try {
+      const storedDismissedPromptSuggestions = localStorage.getItem(
+        runashChatPromptSuggestionDismissedStorageKey,
+      );
+      if (!storedDismissedPromptSuggestions) {
+        setDismissedPromptSuggestionCardIds([]);
+      } else {
+        const parsedDismissedPromptSuggestions = JSON.parse(
+          storedDismissedPromptSuggestions,
+        );
+        if (!Array.isArray(parsedDismissedPromptSuggestions)) {
+          throw new Error("Invalid prompt suggestion state");
+        }
+
+        const validDismissedPromptSuggestions =
+          parsedDismissedPromptSuggestions.filter(
+            (suggestionId): suggestionId is string =>
+              typeof suggestionId === "string" &&
+              promptSuggestionCards.some((card) => card.id === suggestionId),
+          );
+        setDismissedPromptSuggestionCardIds(validDismissedPromptSuggestions);
+      }
+    } catch {
+      setDismissedPromptSuggestionCardIds([]);
+      localStorage.removeItem(runashChatPromptSuggestionDismissedStorageKey);
+    }
+
+    try {
+      const storedFavorites = localStorage.getItem(
+        runashChatFavoritesStorageKey,
+      );
+      if (!storedFavorites) {
+        setFavoriteItems(sidebarFavoriteItems);
+      } else {
+        const parsedFavorites = JSON.parse(storedFavorites);
+        if (!Array.isArray(parsedFavorites)) {
+          throw new Error("Invalid favorites payload");
+        }
+
+        const restoredFavorites = parsedFavorites
+          .map((favorite) => {
+            if (!favorite || typeof favorite !== "object") return null;
+
+            const favoriteRecord = favorite as Record<string, unknown>;
+            const id =
+              typeof favoriteRecord.id === "string" ? favoriteRecord.id : null;
+            const label =
+              typeof favoriteRecord.label === "string"
+                ? favoriteRecord.label.trim()
+                : "";
+            const href =
+              typeof favoriteRecord.href === "string"
+                ? favoriteRecord.href
+                : null;
+            const description =
+              typeof favoriteRecord.description === "string"
+                ? favoriteRecord.description
+                : "Pinned item";
+            const iconName =
+              favoriteRecord.iconName === "FolderKanban" ||
+              favoriteRecord.iconName === "LayoutTemplate" ||
+              favoriteRecord.iconName === "Library" ||
+              favoriteRecord.iconName === "MessageSquare"
+                ? favoriteRecord.iconName
+                : "MessageSquare";
+            const icon = sidebarFavoriteIconRegistry[iconName];
+
+            if (!id || !label || !href) return null;
+
+            return { id, label, description, href, icon, iconName };
+          })
+          .filter(
+            (favorite): favorite is SidebarFavoriteItem => favorite !== null,
+          );
+
+        setFavoriteItems(
+          restoredFavorites.length > 0
+            ? restoredFavorites
+            : sidebarFavoriteItems,
+        );
+      }
+      setFavoritesError(null);
+    } catch {
+      setFavoriteItems(sidebarFavoriteItems);
+      setFavoritesError("Unable to load favorites. Showing defaults.");
+    } finally {
+      setLoadingFavorites(false);
+    }
+  }, [setTheme]);
+
+  useEffect(() => {
+    localStorage.setItem(runashChatThemeStorageKey, themePreference);
+    setTheme(themePreference);
+  }, [themePreference, setTheme]);
+
+  useEffect(() => {
+    localStorage.setItem(runashChatLanguageStorageKey, languagePreference);
+  }, [languagePreference]);
+
+  useEffect(() => {
+    localStorage.setItem(runashChatPositionStorageKey, chatPositionPreference);
+  }, [chatPositionPreference]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      runashChatSettingsStorageKey,
+      JSON.stringify(generalSettings),
+    );
+  }, [generalSettings]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      runashChatPromptSuggestionDismissedStorageKey,
+      JSON.stringify(dismissedPromptSuggestionCardIds),
+    );
+  }, [dismissedPromptSuggestionCardIds]);
+
+  useEffect(() => {
+    setTheme(generalSettings.appearance);
+  }, [generalSettings.appearance, setTheme]);
+
+  const markOnboardingSeen = () => {
+    localStorage.setItem(runashChatOnboardingStorageKey, "true");
+    localStorage.setItem(runashChatUpdatesBannerSeenStorageKey, "true");
+    localStorage.setItem(runashChatAnnouncementSeenStorageKey, "true");
+  };
+
+  const markOnboardingDismissed = () => {
+    localStorage.setItem(runashChatBannerHiddenStorageKey, "true");
+    localStorage.setItem(runashChatUpdatesBannerHiddenStorageKey, "true");
+    localStorage.setItem(runashChatLegacyUpdatesBannerHiddenStorageKey, "true");
+    localStorage.setItem(runashChatAnnouncementSeenStorageKey, "true");
+  };
+
+  const handleDismissGetStarted = () => {
+    trackAnalyticsEvent("onboarding.get-started.dismiss", {
+      activeTab: activeGetStartedTab,
+    });
+    setIsGetStartedVisible(false);
+    localStorage.setItem(runashChatGetStartedDismissedStorageKey, "true");
+  };
+
+  const handleReopenGetStarted = () => {
+    setIsGetStartedVisible(true);
+    localStorage.setItem(runashChatGetStartedDismissedStorageKey, "false");
+  };
+
+  const handleGetStartedTabChange = (tabId: GetStartedTabId) => {
+    trackAnalyticsEvent("onboarding.get-started.tab-change", { tabId });
+    setActiveGetStartedTab(tabId);
+    getStartedTabButtonRefs.current[tabId]?.focus();
+    localStorage.setItem(runashChatGetStartedActiveTabStorageKey, tabId);
+  };
+
+  const handleGetStartedTabKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    currentTabId: GetStartedTabId,
+  ) => {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") {
+      return;
+    }
+
+    event.preventDefault();
+    const currentIndex = getStartedTabs.findIndex((tab) => tab.id === currentTabId);
+    const nextIndex =
+      event.key === "ArrowRight"
+        ? (currentIndex + 1) % getStartedTabs.length
+        : (currentIndex - 1 + getStartedTabs.length) % getStartedTabs.length;
+    const nextTabId = getStartedTabs[nextIndex]?.id;
+    if (nextTabId) {
+      handleGetStartedTabChange(nextTabId);
+    }
+  };
+
+  const restoreFocusToMainControls = () => {
+    if (learnMoreTriggerRef.current instanceof HTMLElement) {
+      learnMoreTriggerRef.current.focus();
+      return;
+    }
+
+    mainControlsRef.current?.focus();
+  };
+
+  const handleOpenOnboardingDialog = (triggerElement?: HTMLElement | null) => {
+    trackAnalyticsEvent("onboarding.open", { source: "runash-chat" });
+    setOnboardingStep(0);
+    closeOverlay(false);
+    closeSidebarActionMenu();
+    rememberOverlayTrigger(triggerElement);
+    setIsOnboardingOpen(true);
+  };
+
+  const handleOnboardingOpenChange = (open: boolean) => {
+    if (open) {
+      setIsOnboardingOpen(true);
+      closeOverlay(false);
+      closeSidebarActionMenu();
+      return;
+    }
+
+    setIsOnboardingOpen(false);
+    trackAnalyticsEvent("onboarding.dismiss", { step: onboardingStep });
+    setIsBannerDismissed(true);
+    markOnboardingDismissed();
+  };
+
+  const handleOnboardingNext = () => {
+    trackAnalyticsEvent("onboarding.next", {
+      step: onboardingStep,
+      isLastStep: isLastOnboardingStep,
+    });
+    if (isLastOnboardingStep) {
+      markOnboardingSeen();
+      setIsOnboardingOpen(false);
+      setIsBannerDismissed(true);
+      return;
+    }
+
+    setOnboardingStep((previousStep) =>
+      Math.min(previousStep + 1, onboardingSlides.length - 1),
+    );
+  };
+
+  useEffect(() => {
+    localStorage.setItem(
+      runashChatSidebarCollapsedStorageKey,
+      String(isSidebarCollapsed),
+    );
+  }, [isSidebarCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      runashChatFavoritesCollapsedStorageKey,
+      String(!isFavoritesExpanded),
+    );
+  }, [isFavoritesExpanded]);
+
+  useEffect(() => {
+    if (loadingFavorites) {
+      return;
+    }
+
+    const serializableFavorites = favoriteItems.map(
+      ({ id, label, description, href, iconName }) => ({
+        id,
+        label,
+        description,
+        href,
+        iconName,
+      }),
+    );
+
+    localStorage.setItem(
+      runashChatFavoritesStorageKey,
+      JSON.stringify(serializableFavorites),
+    );
+  }, [favoriteItems, loadingFavorites]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      runashChatRecentsCollapsedStorageKey,
+      String(!isRecentsExpanded),
+    );
+  }, [isRecentsExpanded]);
+
+  useEffect(() => {
+    if (activeOverlay.type === null && !isOnboardingOpen) return;
+
+    setIsMobileSidebarOpen(false);
+    setIsMobileSearchOpen(false);
+  }, [activeOverlay, isOnboardingOpen]);
+
+  useEffect(() => {
+    if (activeOverlay.type === null && !isMobileSidebarOpen) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+
+      if (activeOverlay.type === "modal") {
+        if (
+          activeOverlay.payload.id === "feedback" &&
+          isSubmittingFeedback
+        ) {
+          return;
+        }
+
+        dismissModal(activeOverlay.payload.id, true);
+        return;
+      }
+
+      if (activeOverlay.type !== null) {
+        closeOverlay(true);
+        return;
+      }
+
+      setIsMobileSidebarOpen(false);
+    };
+
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [activeOverlay, dismissModal, isMobileSidebarOpen, isSubmittingFeedback]);
+
+  useEffect(() => {
+    const sidebarActionMenuOverlay =
+      activeOverlay.type === "sidebarActionMenu" ? activeOverlay.payload : null;
+    const isSidebarMenuOverlay = Boolean(sidebarActionMenuOverlay);
+    const isCreditsPopoverOverlay =
+      activeOverlay.type === "modal" && activeOverlay.payload.id === "credits";
+    const isPromptMenuOverlay = activeOverlay.type === "promptMenu";
+
+    if (
+      !isSidebarMenuOverlay &&
+      !isCreditsPopoverOverlay &&
+      !isPromptMenuOverlay
+    )
+      return;
+
+    const handleOutsideInteraction = (event: MouseEvent | TouchEvent) => {
+      const targetNode = event.target;
+      if (!(targetNode instanceof Node)) return;
+
+      if (sidebarActionMenuOverlay) {
+        const menuKey = getSidebarActionMenuKey(
+          sidebarActionMenuOverlay.section,
+          sidebarActionMenuOverlay.rowId,
+        );
+        const menuTrigger = rowActionTriggerRefs.current[menuKey];
+        const menuContent = rowActionContentRefs.current[menuKey];
+
+        if (
+          menuTrigger?.contains(targetNode) ||
+          menuContent?.contains(targetNode)
+        ) {
+          return;
+        }
+
+        closeOverlay(true);
+        return;
+      }
+
+      if (isPromptMenuOverlay) {
+        if (
+          composerMenuTriggerRef.current?.contains(targetNode) ||
+          composerMenuContentRef.current?.contains(targetNode)
+        ) {
+          return;
+        }
+
+        closeOverlay(true);
+        return;
+      }
+
+      if (
+        creditsPanelRef.current?.contains(targetNode) ||
+        creditsTriggerRef.current?.contains(targetNode)
+      ) {
+        return;
+      }
+
+      dismissModal("credits", true);
+    };
+
+    window.addEventListener("mousedown", handleOutsideInteraction);
+    window.addEventListener("touchstart", handleOutsideInteraction);
+
+    return () => {
+      window.removeEventListener("mousedown", handleOutsideInteraction);
+      window.removeEventListener("touchstart", handleOutsideInteraction);
+    };
+  }, [activeOverlay]);
+
+  useEffect(() => {
+    const handleKeyboardShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "b")
+        return;
+
+      event.preventDefault();
+
+      if (window.matchMedia("(min-width: 1024px)").matches) {
+        setIsSidebarCollapsed((previous) => !previous);
+        window.requestAnimationFrame(() => {
+          desktopSidebarToggleRef.current?.focus();
+        });
+        return;
+      }
+
+      setIsMobileSidebarOpen((previous) => !previous);
+    };
+
+    window.addEventListener("keydown", handleKeyboardShortcut);
+    return () => {
+      window.removeEventListener("keydown", handleKeyboardShortcut);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!startChatError) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setStartChatError(null);
+    }, 3500);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [startChatError]);
+
+  useEffect(() => {
+    const requestId = recentItemsRequestIdRef.current + 1;
+    recentItemsRequestIdRef.current = requestId;
+    const recentsController = new AbortController();
+
+    const shouldApplyResult = () =>
+      recentItemsRequestIdRef.current === requestId;
+
+    (async () => {
+      setLoadingRecents(true);
+      setRecentItemsError(null);
+      setLoadingSession(true);
+      setPreviewError(null);
+
+      try {
+        const sessionsResponse = await fetch("/api/sessions", {
+          signal: recentsController.signal,
+        });
+        const sessionsPayload = await sessionsResponse.json().catch(() => null);
+        const projectsResponse = await fetch("/api/editor/projects", {
+          signal: recentsController.signal,
+        });
+        const projectsPayload = await projectsResponse.json().catch(() => null);
+
+        if (
+          !sessionsResponse.ok ||
+          !sessionsPayload?.success ||
+          !Array.isArray(sessionsPayload?.data)
+        ) {
+          throw new Error(
+            sessionsPayload?.error?.message || "Unable to load recent chats",
+          );
+        }
+
+        const normalizedRecentEntities: RecentEntity[] = [
+          ...sessionsPayload.data
+            .map(
+              (session: {
+                id?: string | number;
+                title?: string;
+                created_at?: string;
+              }) => {
+                const id = session?.id != null ? String(session.id) : "";
+                if (!id) return null;
+
+                return {
+                  id: `session-${id}`,
+                  title:
+                    typeof session?.title === "string" && session.title.trim()
+                      ? session.title.trim()
+                      : `Session #${id}`,
+                  updatedAt:
+                    typeof session?.created_at === "string"
+                      ? session.created_at
+                      : null,
+                  entityType: "session" as const,
+                  sessionId: id,
+                };
+              },
+            )
+            .filter(
+              (item: RecentEntity | null): item is RecentEntity =>
+                item !== null,
+            ),
+          ...(projectsResponse.ok && Array.isArray(projectsPayload?.projects)
+            ? projectsPayload.projects
+                .map(
+                  (project: {
+                    id?: string | number;
+                    name?: string;
+                    updated_at?: string;
+                  }) => {
+                    const id = project?.id != null ? String(project.id) : "";
+                    if (!id) return null;
+
+                    return {
+                      id: `project-${id}`,
+                      title:
+                        typeof project?.name === "string" && project.name.trim()
+                          ? project.name.trim()
+                          : `Project #${id}`,
+                      updatedAt:
+                        typeof project?.updated_at === "string"
+                          ? project.updated_at
+                          : null,
+                      entityType: "project" as const,
+                    };
+                  },
+                )
+                .filter(
+                  (item: RecentEntity | null): item is RecentEntity =>
+                    item !== null,
+                )
+            : []),
+        ]
+          .sort((a, b) => {
+            const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+            const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+            return bTime - aTime;
+          })
+          .slice(0, 12);
+
+        if (shouldApplyResult()) {
+          setRecentEntities(normalizedRecentEntities);
+        }
+      } catch (error) {
+        if (recentsController.signal.aborted || !shouldApplyResult()) {
+          return;
+        }
+
+        setRecentItemsError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load recent chats",
+        );
+        setRecentEntities([]);
+      } finally {
+        if (shouldApplyResult()) {
+          setLoadingRecents(false);
+        }
+      }
+
+      if (!shouldApplyResult()) {
+        return;
+      }
+
+      try {
+        const res = await fetchWithRetryAndTimeout("/api/sessions/recent");
+        const payload = (await res
+          .json()
+          .catch(() => null)) as SessionBootstrapPayload | null;
+        const recentSessionId = payload
+          ? readSessionIdFromPayload(payload)
+          : null;
+
+        if (!res.ok || !payload?.success || !recentSessionId) {
+          throw new Error(payload?.error?.message || "No recent session");
+        }
+
+        if (!shouldApplyResult()) {
+          return;
+        }
+
+        setSessionId(recentSessionId);
+
+        const msgs = await fetchWithRetryAndTimeout(
+          `/api/messages/session/${recentSessionId}?limit=6`,
+          undefined,
+          1,
+        );
+        if (!msgs.ok) {
+          const messagePayload = await msgs.json().catch(() => null);
+          throw new Error(
+            messagePayload?.error?.message || "Unable to load message preview",
+          );
+        }
+
+        const messagePayload = await msgs.json();
+        const preview = Array.isArray(messagePayload?.data)
+          ? (messagePayload.data as ChatPreviewMessage[])
+          : [];
+
+        if (shouldApplyResult()) {
+          setMessagesPreview(preview);
+        }
+      } catch (error) {
+        if (!shouldApplyResult()) {
+          return;
+        }
+
+        setPreviewError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load chat preview",
+        );
+        setMessagesPreview([]);
+      } finally {
+        if (shouldApplyResult()) {
+          setLoadingSession(false);
+        }
+      }
+    })();
+
+    return () => {
+      recentsController.abort();
+    };
+  }, [fetchWithRetryAndTimeout, readSessionIdFromPayload]);
+
+  async function startChatWithPrompt(
+    initialPrompt?: string,
+    metadata?: StartChatMetadata,
+  ) {
+    if (startChatInFlightRef.current) {
+      return;
+    }
+
+    startChatInFlightRef.current = true;
+    setIsStartingChat(true);
+
+    const cleanPrompt = initialPrompt?.trim();
+    const shouldValidatePrompt = metadata?.actionId === "create";
+    if (shouldValidatePrompt) {
+      const promptValidationError = validatePromptInput(initialPrompt ?? "");
+      if (promptValidationError) {
+        setStartChatError(promptValidationError);
+        toast({
+          title: "Invalid prompt",
+          description: promptValidationError,
+          variant: "destructive",
+        });
+        startChatInFlightRef.current = false;
+        setIsStartingChat(false);
+        return;
+      }
+    }
+
+    trackAnalyticsEvent("prompt.submit", {
+      hasPrompt: Boolean(cleanPrompt),
+      promptLength: cleanPrompt?.length ?? 0,
+      source: metadata?.source ?? "composer-send",
+      actionId: metadata?.actionId ?? activePromptActionId ?? "unknown",
+    });
+
+    trackAnalyticsEvent("prompt.create", {
+      hasPrompt: Boolean(cleanPrompt),
+      actionId: metadata?.actionId ?? activePromptActionId ?? "unknown",
+    });
+    const promptContext = {
+      generateImagesEnabled,
+      selectedModel,
+      selectedProjectLabel:
+        selectedProjectLabel === "Select a Project"
+          ? null
+          : selectedProjectLabel,
+      uploadedAssetName,
+    };
+
+    try {
+      let sid = sessionId;
+      if (!sid) {
+        const res = await fetchWithRetryAndTimeout("/api/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "RunAsh Chat", promptContext }),
+        });
+
+        const created = (await res
+          .json()
+          .catch(() => null)) as SessionBootstrapPayload | null;
+        const createdSessionId = created
+          ? readSessionIdFromPayload(created)
+          : null;
+
+        if (!res.ok || !createdSessionId) {
+          throw new Error(
+            created?.error?.message || "Unable to create session",
+          );
+        }
+
+        sid = createdSessionId;
+        setSessionId(createdSessionId);
+      }
+
+      const navigationPayload = {
+        source: "runash-chat",
+        sessionId: sid,
+        prompt: cleanPrompt ?? null,
+        promptActionId: metadata?.actionId ?? activePromptActionId,
+        promptContext,
+        createdAt: new Date().toISOString(),
+      };
+
+      localStorage.setItem(
+        "runash_initial_prompt_context",
+        JSON.stringify(promptContext),
+      );
+      localStorage.setItem(
+        "runash_chat_navigation_payload",
+        JSON.stringify(navigationPayload),
+      );
+
+      if (cleanPrompt) {
+        localStorage.setItem("runash_initial_prompt", cleanPrompt);
+      }
+
+      setStartChatError(null);
+      router.push(
+        sid
+          ? `/chat?sessionId=${encodeURIComponent(sid)}&source=runash-chat`
+          : "/chat?source=runash-chat",
+      );
+    } catch (error) {
+      setStartChatError(
+        "Couldn’t create or resume a chat session. Opened chat directly.",
+      );
+      toast({
+        title: "Session unavailable",
+        description:
+          "We couldn’t create a session, so you were redirected to chat directly.",
+      });
+      trackAnalyticsEvent("prompt.create.error", {
+        hasSessionId: Boolean(sessionId),
+        hasInitialPrompt: Boolean(cleanPrompt),
+        errorType: error instanceof Error ? error.name : "unknown",
+      });
+      router.push("/chat?source=runash-chat&fallback=1");
+    } finally {
+      startChatInFlightRef.current = false;
+      setIsStartingChat(false);
+    }
   }
 
-  const mobileRecentMatches = recentItems.filter((item) => item.title.toLowerCase().includes(mobileSearchValue.trim().toLowerCase()))
+  const handlePromptAction = async (
+    action: PromptActionConfig,
+    source: "pill" | "menu" = "pill",
+  ) => {
+    if (promptActionInFlightRef.current) {
+      return;
+    }
 
-  const recentProjectPlaceholders: PlaceholderCollectionItem[] = [
-    { id: "proj-launch", title: "Launch planning workspace", subtitle: "Campaign strategy · Drafting assets" },
-    { id: "proj-ops", title: "Operations dashboard", subtitle: "Orders · Fulfillment checks" },
-    { id: "proj-retention", title: "Retention flow", subtitle: "Post-purchase journeys · Offers" },
-  ]
+    const isDisabled = isPromptActionDisabled(action);
 
-  const myChatPlaceholders: PlaceholderCollectionItem[] = [
-    { id: "chat-checkout", title: "Checkout support thread", subtitle: "Last active: just now" },
-    { id: "chat-bundle", title: "Bundle optimization", subtitle: "Last active: 2h ago" },
-    { id: "chat-assistant", title: "Assistant mode setup", subtitle: "Last active: yesterday" },
-  ]
+    if (isDisabled) {
+      trackPromptAction(action, "disabled");
+      toast({
+        title: `${action.label} unavailable`,
+        description: getPromptActionTooltip(action),
+      });
+      if (source === "menu") {
+        closePromptMenu(false);
+      }
+      return;
+    }
+
+    setPromptActionError(null);
+    setActivePromptActionId(action.id);
+    setPromptActionLoadingId(action.id);
+    trackPromptAction(action, "opened");
+    promptActionInFlightRef.current = true;
+
+    try {
+      if (action.type === "route") {
+        router.push(action.routeOrHandler);
+        trackPromptAction(action, "success");
+        return;
+      }
+
+      if (action.type === "file-dialog") {
+        composerUploadInputRef.current?.click();
+        trackPromptAction(action, "success");
+        return;
+      }
+
+      if (action.type === "modal") {
+        openModal(
+          action.routeOrHandler as ModalOverlayId,
+          mainControlsRef.current,
+        );
+        trackPromptAction(action, "success");
+        return;
+      }
+
+      if (action.type === "service" && action.id === "search") {
+        const searchQuery = prompt.trim();
+        if (!searchQuery) {
+          const message =
+            "Add a search query in the composer, then run Search.";
+          setPromptActionError(message);
+          toast({
+            title: "Enter a prompt first",
+            description: message,
+          });
+          return;
+        }
+
+        const response = await fetchWithRetryAndTimeout(
+          `${action.routeOrHandler}?query=${encodeURIComponent(searchQuery)}`,
+          undefined,
+          1,
+        );
+        const payload = await response.json().catch(() => null);
+
+        if (!response.ok || !payload?.success) {
+          throw new Error(payload?.error?.message || "Unable to run search");
+        }
+
+        const resultCount = Array.isArray(payload?.data?.results)
+          ? payload.data.results.length
+          : 0;
+        toast({
+          title: `Search complete (${resultCount})`,
+          description:
+            resultCount > 0
+              ? "Search results are ready in your workflow."
+              : "No results found for this query.",
+        });
+        trackPromptAction(action, "success");
+        return;
+      }
+
+      if (action.id === "enhance") {
+        const trimmedPrompt = prompt.trim();
+        if (!trimmedPrompt) {
+          const message = "Type a prompt first, then run Enhance.";
+          setPromptActionError(message);
+          toast({
+            title: "Add text to enhance",
+            description: message,
+          });
+          return;
+        }
+
+        const enhancedPrompt = buildEnhancedPrompt(trimmedPrompt);
+        setPrompt(enhancedPrompt);
+        toast({
+          title: "Prompt enhanced",
+          description: "Added clearer goals, structure, and output guidance.",
+        });
+        trackPromptAction(action, "success");
+        return;
+      }
+
+      if (action.id === "create") {
+        await startChatWithPrompt(prompt, {
+          actionId: action.id,
+          source: "composer-send",
+        });
+        trackPromptAction(action, "success");
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Something went wrong.";
+      setPromptActionError(message);
+      trackPromptAction(action, "error");
+      toast({
+        title: `${action.label} failed`,
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      promptActionInFlightRef.current = false;
+      setPromptActionLoadingId(null);
+      if (source === "menu") {
+        closePromptMenu(false);
+      }
+    }
+  };
+
+  const runComposerMenuAsyncAction = async (
+    actionId: ComposerMenuActionId,
+    run: () => Promise<void> | void,
+  ) => {
+    if (composerMenuActionInFlightRef.current) {
+      return;
+    }
+
+    setComposerMenuError(null);
+    setComposerMenuActionLoadingId(actionId);
+    composerMenuActionInFlightRef.current = true;
+
+    try {
+      await run();
+      closePromptMenu(false);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to complete this action right now.";
+      setComposerMenuError(message);
+      toast({
+        title: "Action failed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      composerMenuActionInFlightRef.current = false;
+      setComposerMenuActionLoadingId(null);
+    }
+  };
+
+  const handleMenuRouteAction = (
+    actionId: ComposerMenuActionId,
+    route: string,
+    successMessage: string,
+  ) => {
+    void runComposerMenuAsyncAction(actionId, async () => {
+      router.push(route);
+      toast({ title: successMessage });
+    });
+  };
+
+  const handleComposerProjectCreateAction = (
+    actionId: ComposerMenuActionId,
+    title: string,
+    provider?: "github" | "figma",
+  ) => {
+    void runComposerMenuAsyncAction(actionId, async () => {
+      const response = await fetchWithRetryAndTimeout("/api/editor/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          selectedModel,
+          metadata: {
+            source: "runash-chat",
+            provider: provider ?? "manual",
+          },
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      const projectId = payload?.project?.id;
+
+      if (!response.ok || !projectId) {
+        throw new Error(payload?.error || "Unable to create a project.");
+      }
+
+      toast({
+        title: provider
+          ? `Draft project ready for ${provider}`
+          : "Project created",
+        description: provider
+          ? "Continue to complete your import."
+          : "Opening your new project workspace.",
+      });
+
+      const query = provider ? `&provider=${encodeURIComponent(provider)}` : "";
+      router.push(
+        `/editor?projectId=${encodeURIComponent(String(projectId))}${query}`,
+      );
+    });
+  };
+
+  const handleComposerFileSelection = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const selectedFile = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!selectedFile) {
+      return;
+    }
+
+    if (!isFileTypeAllowed(selectedFile)) {
+      setComposerMenuError(
+        `Unsupported file type. Please upload ${allowedUploadTypesLabel}.`,
+      );
+      toast({
+        title: "Upload blocked",
+        description: `Unsupported file type. Please upload ${allowedUploadTypesLabel}.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setUploadedAssetName(selectedFile.name);
+    setComposerMenuError(null);
+    closePromptMenu(false);
+    toast({
+      title: "File attached",
+      description: `${selectedFile.name} will be included with your next prompt.`,
+    });
+  };
+
+  const handleComposerMenuAction = (actionId: ComposerMenuActionId) => {
+    switch (actionId) {
+      case "import-github":
+        handleComposerProjectCreateAction(
+          actionId,
+          "GitHub Import Draft",
+          "github",
+        );
+        return;
+      case "import-figma":
+        handleComposerProjectCreateAction(
+          actionId,
+          "Figma Import Draft",
+          "figma",
+        );
+        return;
+      case "upload-from-computer":
+        setComposerMenuError(null);
+        closePromptMenu(false);
+        composerUploadInputRef.current?.click();
+        return;
+      case "generate-images":
+        setGenerateImagesEnabled((previousValue) => {
+          const nextValue = !previousValue;
+          toast({
+            title: nextValue
+              ? "Generate Images enabled"
+              : "Generate Images disabled",
+            description: nextValue
+              ? "Your next prompt will request image generation output."
+              : "Prompts will not include image generation instructions.",
+          });
+          return nextValue;
+        });
+        closePromptMenu(false);
+        return;
+      case "design-system-library":
+        handleMenuRouteAction(
+          actionId,
+          "/editor?mode=design-system",
+          "Opening design system library",
+        );
+        return;
+      case "design-system-create":
+        setPrompt((previousPrompt) => {
+          const starter =
+            "Create a reusable design system with color tokens, typography, spacing scale, and UI components.";
+          return previousPrompt.trim()
+            ? `${previousPrompt}
+
+${starter}`
+            : starter;
+        });
+        closePromptMenu(false);
+        toast({ title: "Design system instructions added" });
+        return;
+      case "folder-new":
+        handleComposerProjectCreateAction(actionId, "New RunAsh Project");
+        return;
+      case "folder-open":
+        handleMenuRouteAction(
+          actionId,
+          "/editor",
+          "Opening projects and folders",
+        );
+        return;
+      case "instructions":
+        setPrompt((previousPrompt) => {
+          const instructionStarter = `Instructions:
+- Goal:
+- Brand constraints:
+- Expected output format:`;
+          return previousPrompt.trim()
+            ? `${previousPrompt}
+
+${instructionStarter}`
+            : instructionStarter;
+        });
+        closePromptMenu(false);
+        toast({ title: "Instruction template inserted" });
+        return;
+      case "mcps-manage":
+        handleMenuRouteAction(
+          actionId,
+          "/integrations?tab=mcps",
+          "Opening MCP configuration",
+        );
+        return;
+      case "mcps-explore":
+        handleMenuRouteAction(
+          actionId,
+          "/integrations",
+          "Opening MCP integrations",
+        );
+        return;
+      default:
+        setComposerMenuError("Unsupported menu action selected.");
+        toast({
+          title: "Action unavailable",
+          description: "This action is not currently supported.",
+          variant: "destructive",
+        });
+        closePromptMenu(false);
+        return;
+    }
+  };
+
+
+  const handleModelSelection = (model: "v0 Mini" | "v0 Max") => {
+    setSelectedModel(model);
+    closeOverlay(false);
+    toast({
+      title: `Model switched to ${model}`,
+      description: "New prompts will use the selected model.",
+    });
+  };
+
+  const handleProjectSelection = (label: string) => {
+    setSelectedProjectLabel(label);
+    closeOverlay(false);
+  };
+
+  const handleRecentCardMenuAction = (
+    item: RecentEntity,
+    action:
+      | "open"
+      | "continue"
+      | "share"
+      | "move"
+      | "toggleFavorite"
+      | "rename"
+      | "delete",
+  ) => {
+    closeOverlay(false);
+
+    if (action === "open") {
+      handleChatOpen(item.sessionId);
+      return;
+    }
+
+    if (action === "continue") {
+      void startChatWithPrompt(`Continue chat: ${item.title}`, {
+        source: "composer-send",
+      });
+      return;
+    }
+
+    if (action === "share") {
+      handleRecentShare(item);
+      return;
+    }
+
+    if (action === "move") {
+      handleRecentMove(item);
+      return;
+    }
+
+    if (action === "toggleFavorite") {
+      void toggleRecentFavorite(item);
+      return;
+    }
+
+    if (action === "rename") {
+      handleRecentRename(item);
+      return;
+    }
+
+    handleRecentDelete(item);
+  };
+
+  const renderPromptMenuActionNode = (node: PromptMenuActionNode) => {
+    if (node.children && node.children.length > 0) {
+      return (
+        <DropdownMenuSub key={node.label}>
+          <DropdownMenuSubTrigger className="focus:bg-zinc-800 focus:text-zinc-100">
+            <node.icon className="mr-2 h-4 w-4" aria-hidden="true" />
+            <span>{node.label}</span>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="z-40 w-60 border-zinc-800 bg-zinc-900 text-zinc-100">
+            {node.children.map((child) => renderPromptMenuActionNode(child))}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      );
+    }
+
+    if (!node.id) {
+      return null;
+    }
+
+    const action = promptActionConfigById.get(node.id);
+    if (!action) {
+      return null;
+    }
+
+    const actionDisabled =
+      isPromptActionDisabled(action) || Boolean(promptActionLoadingId) || isStartingChat;
+
+    return (
+      <DropdownMenuItem
+        key={node.id}
+        onSelect={() => void handlePromptAction(action, "menu")}
+        disabled={actionDisabled}
+        className="focus:bg-zinc-800 focus:text-zinc-100"
+      >
+        <action.icon className="mr-2 h-4 w-4" aria-hidden="true" />
+        <span>{action.label}</span>
+        {action.requiresPlan && (
+          <span className="ml-2 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+            Pro
+          </span>
+        )}
+        {promptActionLoadingId === action.id && (
+          <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />
+        )}
+      </DropdownMenuItem>
+    );
+  };
+
+  const renderComposerMenuActionNode = (node: ComposerMenuActionNode) => {
+    if (node.children && node.children.length > 0) {
+      return (
+        <DropdownMenuSub key={node.label}>
+          <DropdownMenuSubTrigger className="focus:bg-zinc-800 focus:text-zinc-100">
+            <node.icon className="mr-2 h-4 w-4" aria-hidden="true" />
+            <span>{node.label}</span>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="z-40 w-60 border-zinc-800 bg-zinc-900 text-zinc-100">
+            {node.children.map((child) => renderComposerMenuActionNode(child))}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      );
+    }
+
+    if (!node.id) {
+      return null;
+    }
+
+    return (
+      <DropdownMenuItem
+        key={node.id}
+        onSelect={() => handleComposerMenuAction(node.id as ComposerMenuActionId)}
+        className="focus:bg-zinc-800 focus:text-zinc-100"
+      >
+        <node.icon className="mr-2 h-4 w-4" aria-hidden="true" />
+        <span>{node.label}</span>
+        {composerMenuActionLoadingId === node.id && (
+          <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />
+        )}
+      </DropdownMenuItem>
+    );
+  };
+
+  const mobileRecentMatches = recentEntities.filter((item) =>
+    item.title.toLowerCase().includes(mobileSearchValue.trim().toLowerCase()),
+  );
+  const recentProjectItems = recentEntities.filter(
+    (item) => item.entityType === "project",
+  );
+  const myChatItems = recentEntities.filter(
+    (item) => item.entityType === "session",
+  );
+  const sidebarRecents = recentEntities.slice(0, 20);
+  const projectThumbnailClasses = [
+    "from-cyan-500/30 via-sky-500/20 to-indigo-500/30",
+    "from-violet-500/30 via-fuchsia-500/20 to-pink-500/30",
+    "from-emerald-500/30 via-teal-500/20 to-cyan-500/30",
+    "from-orange-500/30 via-amber-500/20 to-yellow-500/30",
+  ];
+
+  const handleProjectOpen = (projectId: string) => {
+    router.push(`/editor?projectId=${projectId}`);
+  };
+
+  const handleChatOpen = (chatSessionId?: string) => {
+    if (!chatSessionId) return;
+    router.push(`/chat?sessionId=${chatSessionId}`);
+  };
+
+  const getInitials = (value: string) =>
+    value
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((word) => word[0]?.toUpperCase())
+      .join("") || "RA";
+
+  const formatRecentTimestamp = (rawValue: string | null) => {
+    if (!rawValue) return "Updated recently";
+
+    const date = new Date(rawValue);
+    if (Number.isNaN(date.getTime())) return "Updated recently";
+
+    return `Updated ${date.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    })}`;
+  };
+
+  const getRecentStatus = (rawValue: string | null) => {
+    if (!rawValue) return "Idle";
+    const timestamp = new Date(rawValue).getTime();
+    if (Number.isNaN(timestamp)) return "Idle";
+
+    const diffHours = (Date.now() - timestamp) / (1000 * 60 * 60);
+    if (diffHours < 24) return "Active";
+    if (diffHours < 72) return "Recent";
+    return "Idle";
+  };
 
   const dismissUpdatesBanner = () => {
-    localStorage.setItem(updatesBannerHiddenKey, "true")
-    setShowUpdatesBanner(false)
-  }
+    markOnboardingDismissed();
+    setIsBannerDismissed(true);
+  };
 
   const handleMobileSidebarOpenChange = (open: boolean) => {
-    setIsMobileSidebarOpen(open)
+    setIsMobileSidebarOpen(open);
+
+    if (open) {
+      setIsMobileSearchOpen(false);
+    }
 
     if (!open) {
       window.requestAnimationFrame(() => {
-        mobileSidebarTriggerRef.current?.focus()
-      })
+        mobileSidebarTriggerRef.current?.focus();
+      });
     }
-  }
+  };
+
+  const handlePromptKeyDown = (
+    event: React.KeyboardEvent<HTMLTextAreaElement>,
+  ) => {
+    if (
+      event.key !== "Enter" ||
+      event.shiftKey ||
+      event.nativeEvent.isComposing
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    if (isStartingChat || startChatInFlightRef.current) {
+      return;
+    }
+
+    if (prompt.trim()) {
+      void startChatWithPrompt(prompt, { source: "composer-enter" });
+    }
+  };
+
+  const handlePromptSuggestionCardClick = (card: PromptSuggestionCard) => {
+    trackAnalyticsEvent("live-showcase.card.cta", { cardId: card.id });
+    setPrompt(card.promptPayload);
+    void startChatWithPrompt(card.promptPayload, {
+      actionId: "create",
+      source: "prompt-card",
+    });
+  };
+
+  const handleDismissPromptSuggestionCard = (cardId: string) => {
+    setDismissedPromptSuggestionCardIds((previousIds) => {
+      if (previousIds.includes(cardId)) {
+        return previousIds;
+      }
+
+      return [...previousIds, cardId];
+    });
+  };
+
+  const handleResetPromptSuggestionCards = () => {
+    setDismissedPromptSuggestionCardIds([]);
+  };
+
+  const closeFavoriteMenu = () => {
+    closeSidebarActionMenu();
+  };
+
+  const handleFavoriteRemove = (favoriteId: string) => {
+    requestFavoriteRemovalConfirmation(favoriteId);
+  };
+
+  const handleFavoriteRename = (favoriteId: string) => {
+    const item = favoriteItems.find(
+      (favoriteItem) => favoriteItem.id === favoriteId,
+    );
+    if (!item) {
+      closeFavoriteMenu();
+      return;
+    }
+
+    setRenameDialogTarget({
+      entityType: "favorite",
+      entityId: favoriteId,
+      currentName: item.label,
+    });
+    setRenameInputValue(item.label);
+    setRenameInputError(null);
+    closeFavoriteMenu();
+    openModal("rename");
+  };
+
+  const handleFavoriteDeleteFolder = (favoriteId: string) => {
+    const item = favoriteItems.find(
+      (favoriteItem) => favoriteItem.id === favoriteId,
+    );
+    if (!item) {
+      closeFavoriteMenu();
+      return;
+    }
+
+    closeFavoriteMenu();
+    setConfirmDeletePayload({
+      entityType: "folder",
+      entityId: favoriteId,
+      title: item.label,
+      description: `Delete ${item.label}? This action cannot be undone.`,
+    });
+    openModal("deleteConfirm");
+  };
+
+  const getFavoriteMenuActions = (
+    item: SidebarFavoriteItem,
+  ): Array<{
+    id: FavoriteMenuActionId;
+    label: string;
+    danger?: boolean;
+    onSelect: () => void;
+  }> => [
+    {
+      id: "removeFavorite",
+      label: "Remove from Favorites",
+      onSelect: () => {
+        void handleFavoriteRemove(item.id);
+      },
+    },
+    {
+      id: "renameFavorite",
+      label: "Rename",
+      onSelect: () => {
+        handleFavoriteRename(item.id);
+      },
+    },
+    {
+      id: "deleteFavorite",
+      label: "Delete folder",
+      danger: true,
+      onSelect: () => {
+        deleteActionTriggerRef.current =
+          rowActionTriggerRefs.current[
+            getSidebarActionMenuKey("favorite", item.id)
+          ];
+        handleFavoriteDeleteFolder(item.id);
+      },
+    },
+  ];
+
+  const getRecentMenuActions = (
+    item: RecentEntity,
+  ): Array<{
+    id: RecentMenuActionId;
+    label: string;
+    danger?: boolean;
+    onSelect: () => void;
+  }> => [
+    {
+      id: "shareRecent",
+      label: "Share",
+      onSelect: () => {
+        handleRecentShare(item);
+      },
+    },
+    {
+      id: "moveRecent",
+      label: "Move...",
+      onSelect: () => {
+        handleRecentMove(item);
+      },
+    },
+    {
+      id: "toggleFavoriteRecent",
+      label: isRecentFavorited(item)
+        ? "Remove from Favorites"
+        : "Add to Favorites",
+      onSelect: () => {
+        void toggleRecentFavorite(item);
+      },
+    },
+    {
+      id: "renameRecent",
+      label: "Rename",
+      onSelect: () => {
+        handleRecentRename(item);
+      },
+    },
+    {
+      id: "deleteRecent",
+      label: "Delete",
+      danger: true,
+      onSelect: () => {
+        deleteActionTriggerRef.current =
+          rowActionTriggerRefs.current[
+            getSidebarActionMenuKey("recent", item.id)
+          ];
+        handleRecentDelete(item);
+      },
+    },
+  ];
 
   function renderSidebarContent(collapsed: boolean, isMobileDrawer = false) {
     return (
@@ -434,10 +4947,11 @@ export default function RunashChatPage() {
         <Button
           className={`mb-3 ${collapsed ? "justify-center px-0" : "justify-start"} bg-zinc-900 hover:bg-zinc-800`}
           onClick={() => {
-            startChatWithPrompt()
-            if (isMobileDrawer) setIsMobileSidebarOpen(false)
+            void startChatWithPrompt(undefined, { source: "new-chat" });
+            if (isMobileDrawer) setIsMobileSidebarOpen(false);
           }}
           aria-label="Start a new chat"
+          disabled={isStartingChat}
         >
           <Plus className={`h-4 w-4 ${collapsed ? "mr-0" : "mr-2"}`} />
           {!collapsed && "New Chat"}
@@ -446,14 +4960,17 @@ export default function RunashChatPage() {
         {!collapsed && (
           <div className="relative mb-3">
             <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-zinc-500" />
-            <Input className="border-zinc-800 bg-zinc-950 pl-8 text-zinc-200" placeholder="Search" />
+            <Input
+              className="border-zinc-800 bg-zinc-950 pl-8 text-zinc-200"
+              placeholder="Search"
+            />
           </div>
         )}
 
         <TooltipProvider delayDuration={150}>
           <nav className="space-y-1 text-sm" aria-label="Primary">
             {sidebarNavItems.map((item) => {
-              const Icon = item.icon
+              const Icon = item.icon;
 
               const navButton = (
                 <button
@@ -467,260 +4984,1652 @@ export default function RunashChatPage() {
                   <Icon className="h-4 w-4" />
                   {!collapsed && item.label}
                 </button>
-              )
+              );
 
               if (!collapsed) {
-                return navButton
+                return navButton;
               }
 
               return (
                 <Tooltip key={item.label}>
                   <TooltipTrigger asChild>{navButton}</TooltipTrigger>
-                  <TooltipContent side="right" className="border-zinc-800 bg-zinc-900 text-zinc-100">
+                  <TooltipContent
+                    side="right"
+                    className="z-40 border-zinc-800 bg-zinc-900 text-zinc-100"
+                  >
                     {item.label}
                   </TooltipContent>
                 </Tooltip>
-              )
+              );
             })}
           </nav>
         </TooltipProvider>
 
-        <div className="mt-5 border-t border-zinc-800 pt-4">
-          {!collapsed && <div className="mb-2 text-xs font-medium text-zinc-500">Recents</div>}
-          <div className="space-y-1">
-            {loadingRecents && <div className={`py-1.5 text-xs text-zinc-500 ${collapsed ? "text-center" : "px-2"}`}>Loading recent chats…</div>}
-            {!loadingRecents && recentItemsError && (
-              <div className={`py-1.5 text-xs text-amber-400 ${collapsed ? "text-center" : "px-2"}`}>{recentItemsError}</div>
-            )}
-            {!loadingRecents && !recentItemsError && recentItems.length === 0 && (
-              <div className={`py-1.5 text-xs text-zinc-500 ${collapsed ? "text-center" : "px-2"}`}>No recent chats yet</div>
-            )}
-            {recentItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  router.push(`/chat?sessionId=${item.id}`)
-                  if (isMobileDrawer) setIsMobileSidebarOpen(false)
-                }}
-                className={`w-full truncate rounded-md py-1.5 text-xs text-zinc-400 hover:bg-zinc-900 ${collapsed ? "px-1 text-center" : "px-2 text-left"}`}
-                title={collapsed ? item.title : undefined}
-              >
-                {collapsed ? item.title.slice(0, 1).toUpperCase() : item.title}
-              </button>
-            ))}
-          </div>
+        <div className="mt-4 min-h-0 flex-1 border-t border-zinc-800 pt-3.5">
+          <ScrollArea className="h-full" ref={sidebarScrollAreaRef}>
+            <div className="space-y-4 pr-2">
+              {!collapsed ? (
+                <section>
+                  <button
+                    type="button"
+                    className="mb-2 flex w-full items-center justify-between rounded-full border border-zinc-800 bg-zinc-900/60 px-2.5 py-1.5 text-[11px] font-semibold text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-900"
+                    onClick={() => setIsFavoritesExpanded((prev) => !prev)}
+                    onKeyDown={(event) =>
+                      handleSidebarSectionToggleKeyDown(
+                        event,
+                        isFavoritesExpanded,
+                        setIsFavoritesExpanded,
+                      )
+                    }
+                    aria-expanded={isFavoritesExpanded}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span>Favorites</span>
+                      <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] leading-none text-zinc-400">
+                        {favoriteItems.length}
+                      </span>
+                    </span>
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 text-zinc-400 transition-transform ${isFavoritesExpanded ? "rotate-0" : "-rotate-90"}`}
+                    />
+                  </button>
+
+                  {isFavoritesExpanded ? (
+                    <div className="space-y-1">
+                      {loadingFavorites && (
+                        <div className="px-2 py-1.5 text-xs text-zinc-500">
+                          Loading favorites…
+                        </div>
+                      )}
+                      {!loadingFavorites && favoritesError && (
+                        <div className="px-2 py-1.5 text-xs text-amber-400">
+                          {favoritesError}
+                        </div>
+                      )}
+                      {!loadingFavorites &&
+                        !favoritesError &&
+                        favoriteItems.length === 0 && (
+                          <div className="rounded-md border border-dashed border-zinc-800 px-2 py-2 text-xs text-zinc-500">
+                            No favorites yet. Pin chats or projects from
+                            Recents.
+                          </div>
+                        )}
+                      {favoriteItems.map((item) => {
+                        const Icon = item.icon;
+                        const isMenuOpen = isSidebarActionMenuOpen(
+                          "favorite",
+                          item.id,
+                        );
+                        const isFavoriteMutating = Boolean(
+                          favoriteMutationById[item.id],
+                        );
+
+                        return (
+                          <div
+                            key={item.id}
+                            className="group flex items-center gap-1 rounded-md px-1 py-0.5 transition hover:bg-zinc-900"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                router.push(item.href);
+                                if (isMobileDrawer)
+                                  setIsMobileSidebarOpen(false);
+                              }}
+                              className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left"
+                              disabled={isFavoriteMutating}
+                            >
+                              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-900 text-zinc-300">
+                                <Icon className="h-3.5 w-3.5" />
+                              </div>
+                              <div className="w-0 min-w-0 flex-1 pr-1">
+                                <p
+                                  className="truncate text-xs font-medium text-zinc-200"
+                                  title={item.label}
+                                >
+                                  {item.label}
+                                </p>
+                                <p
+                                  className="truncate text-[11px] text-zinc-500"
+                                  title={item.description}
+                                >
+                                  {item.description}
+                                </p>
+                              </div>
+                            </button>
+
+                            <DropdownMenu
+                              open={isMenuOpen}
+                              onOpenChange={(open) => {
+                                if (open) {
+                                  openSidebarActionMenu("favorite", item.id);
+                                  return;
+                                }
+
+                                closeSidebarActionMenu();
+                              }}
+                            >
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  ref={(element) => {
+                                    const menuKey = getSidebarActionMenuKey(
+                                      "favorite",
+                                      item.id,
+                                    );
+                                    rowActionTriggerRefs.current[menuKey] =
+                                      element;
+                                  }}
+                                  type="button"
+                                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition hover:bg-zinc-800 hover:text-zinc-200 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 group-hover:opacity-100"
+                                  aria-label={`Open actions for ${item.label}`}
+                                  disabled={isFavoriteMutating}
+                                >
+                                  <MoreVertical className="h-3.5 w-3.5" />
+                                </button>
+                              </DropdownMenuTrigger>
+
+                              <DropdownMenuContent
+                                ref={(element) => {
+                                  const menuKey = getSidebarActionMenuKey(
+                                    "favorite",
+                                    item.id,
+                                  );
+                                  rowActionContentRefs.current[menuKey] =
+                                    element;
+                                }}
+                                align="end"
+                                sideOffset={6}
+                                className={actionMenuContentClassName}
+                              >
+                                {getFavoriteMenuActions(item).map((action) => (
+                                  <DropdownMenuItem
+                                    key={action.id}
+                                    className={
+                                      action.danger
+                                        ? actionMenuDangerItemClassName
+                                        : actionMenuItemClassName
+                                    }
+                                    onClick={action.onSelect}
+                                  >
+                                    {action.label}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
+
+              <section>
+                {!collapsed ? (
+                  <button
+                    type="button"
+                    className="mb-2 flex w-full items-center justify-between rounded-full border border-zinc-800 bg-zinc-900/60 px-2.5 py-1.5 text-[11px] font-semibold text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-900"
+                    onClick={() => setIsRecentsExpanded((prev) => !prev)}
+                    onKeyDown={(event) =>
+                      handleSidebarSectionToggleKeyDown(
+                        event,
+                        isRecentsExpanded,
+                        setIsRecentsExpanded,
+                      )
+                    }
+                    aria-expanded={isRecentsExpanded}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span>Recents</span>
+                      <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] leading-none text-zinc-400">
+                        {sidebarRecents.length}
+                      </span>
+                    </span>
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 text-zinc-400 transition-transform ${isRecentsExpanded ? "rotate-0" : "-rotate-90"}`}
+                    />
+                  </button>
+                ) : null}
+
+                {(collapsed || isRecentsExpanded) && (
+                  <div className="space-y-1">
+                    {loadingRecents && (
+                      <div
+                        className={`py-1.5 text-xs text-zinc-500 ${collapsed ? "text-center" : "px-2"}`}
+                      >
+                        Loading recent workspace items…
+                      </div>
+                    )}
+                    {!loadingRecents && recentItemsError && (
+                      <div
+                        className={`py-1.5 text-xs text-amber-400 ${collapsed ? "text-center" : "px-2"}`}
+                      >
+                        {recentItemsError}
+                      </div>
+                    )}
+                    {!loadingRecents &&
+                      !recentItemsError &&
+                      sidebarRecents.length === 0 && (
+                        <div
+                          className={`py-1.5 text-xs text-zinc-500 ${collapsed ? "text-center" : "px-2"}`}
+                        >
+                          No recent chats or projects
+                        </div>
+                      )}
+
+                    {sidebarRecents.map((item) => {
+                      const isProject = item.entityType === "project";
+                      const itemLabel = isProject ? "Project" : "Chat";
+                      const Icon = isProject ? FolderKanban : MessageSquare;
+
+                      return (
+                        <div
+                          key={item.id}
+                          className={`group flex items-center gap-1 rounded-md transition hover:bg-zinc-900 focus-within:bg-zinc-900 ${collapsed ? "px-1" : "px-2"}`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isProject) {
+                                handleProjectOpen(
+                                  item.id.replace("project-", ""),
+                                );
+                              } else {
+                                handleChatOpen(item.sessionId);
+                              }
+                              if (isMobileDrawer) setIsMobileSidebarOpen(false);
+                            }}
+                            className={`min-w-0 flex-1 rounded-md py-1.5 text-left transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 ${collapsed ? "px-0 text-center" : ""}`}
+                            title={collapsed ? item.title : undefined}
+                          >
+                            {collapsed ? (
+                              <span className="text-xs text-zinc-400">
+                                {item.title.slice(0, 1).toUpperCase()}
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-2">
+                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-900/70 text-zinc-300">
+                                  <Icon className="h-3.5 w-3.5" />
+                                </span>
+                                <span className="w-0 min-w-0 flex-1 pr-1">
+                                  <span
+                                    className="block truncate text-xs font-medium text-zinc-200"
+                                    title={item.title}
+                                  >
+                                    {item.title}
+                                  </span>
+                                  <span className="block truncate text-[11px] text-zinc-500">
+                                    {itemLabel} ·{" "}
+                                    {formatRecentTimestamp(item.updatedAt)}
+                                  </span>
+                                </span>
+                              </span>
+                            )}
+                          </button>
+
+                          {!collapsed ? (
+                            <DropdownMenu
+                              open={isSidebarActionMenuOpen("recent", item.id)}
+                              onOpenChange={(open) => {
+                                if (open) {
+                                  openSidebarActionMenu("recent", item.id);
+                                  return;
+                                }
+
+                                closeSidebarActionMenu();
+                              }}
+                              modal={false}
+                            >
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  ref={(element) => {
+                                    const menuKey = getSidebarActionMenuKey(
+                                      "recent",
+                                      item.id,
+                                    );
+                                    rowActionTriggerRefs.current[menuKey] =
+                                      element;
+                                  }}
+                                  type="button"
+                                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition hover:bg-zinc-800 hover:text-zinc-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 group-hover:opacity-100"
+                                  aria-label={`Open actions for ${item.title}`}
+                                >
+                                  <MoreVertical className="h-3.5 w-3.5" />
+                                </button>
+                              </DropdownMenuTrigger>
+
+                              <DropdownMenuContent
+                                ref={(element) => {
+                                  const menuKey = getSidebarActionMenuKey(
+                                    "recent",
+                                    item.id,
+                                  );
+                                  rowActionContentRefs.current[menuKey] =
+                                    element;
+                                }}
+                                align="end"
+                                sideOffset={6}
+                                collisionPadding={8}
+                                sticky="always"
+                                hideWhenDetached
+                                collisionBoundary={
+                                  sidebarScrollAreaRef.current ?? undefined
+                                }
+                                className={actionMenuContentClassName}
+                              >
+                                {getRecentMenuActions(item).map((action) => (
+                                  <DropdownMenuItem
+                                    key={action.id}
+                                    className={
+                                      action.danger
+                                        ? actionMenuDangerItemClassName
+                                        : actionMenuItemClassName
+                                    }
+                                    onClick={action.onSelect}
+                                  >
+                                    {action.label}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            </div>
+          </ScrollArea>
         </div>
       </>
-    )
+    );
   }
 
   return (
     <div className="min-h-screen bg-[#030405] text-zinc-100">
-      <Dialog open={isOnboardingOpen} onOpenChange={handleOnboardingOpenChange}>
-        <DialogContent className="max-w-md border-zinc-800 bg-zinc-950 p-0 text-zinc-100 motion-reduce:duration-0">
-          <div className="overflow-hidden rounded-lg">
-            <div className="h-44 bg-gradient-to-br from-cyan-500/30 via-blue-500/20 to-zinc-900 p-6">
+      <Dialog
+        open={
+          activeModalId === "deleteConfirm" && Boolean(confirmDeletePayload)
+        }
+        onOpenChange={(open) => !open && dismissModal("deleteConfirm")}
+      >
+        <DialogContent className={compactDarkDialogContentClassName}>
+          <DialogHeader className="space-y-2">
+            <DialogTitle className="text-base font-semibold text-zinc-100">
+              Delete {confirmDeletePayload?.title}?
+            </DialogTitle>
+            <DialogDescription className="text-sm text-zinc-400">
+              {confirmDeletePayload?.description}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border border-red-900/40 bg-red-950/20 px-3 py-2 text-xs leading-relaxed text-red-200">
+            This action is destructive. You'll have a short undo window after confirming.
+          </div>
+          <DialogFooter className="flex-row justify-end gap-2">
+            <Button
+              variant="ghost"
+              className="text-zinc-300 hover:bg-zinc-900"
+              onClick={() => closeDeleteConfirmModal(true)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-red-600 text-white hover:bg-red-500 focus-visible:ring-red-400"
+              onClick={() => void handleDeleteConfirm()}
+              disabled={isDeletingEntity}
+            >
+              {isDeletingEntity ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={activeModalId === "shareRecent" && Boolean(shareRecentItem)}
+        onOpenChange={(open) => !open && dismissModal("shareRecent")}
+      >
+        <DialogContent className={darkDialogContentClassName}>
+          <DialogHeader>
+            <DialogTitle>Share item</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Share{" "}
+              <span className="font-medium text-zinc-200">
+                {shareRecentItem?.title}
+              </span>{" "}
+              using this link.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Input
+              readOnly
+              value={
+                shareRecentItem ? buildRecentShareLink(shareRecentItem) : ""
+              }
+              className="border-zinc-800 bg-zinc-900 text-zinc-200"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              className="text-zinc-300 hover:bg-zinc-900"
+              onClick={() => dismissModal("shareRecent")}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-cyan-600 text-white hover:bg-cyan-500"
+              onClick={handleCopyRecentShareLink}
+              disabled={!shareRecentItem || isCopyingRecentLink}
+            >
+              {isCopyingRecentLink ? "Copying..." : "Copy link"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={activeModalId === "move" && Boolean(moveRecentItem)}
+        onOpenChange={(open) => !open && dismissModal("move")}
+      >
+        <DialogContent className={darkDialogContentClassName}>
+          <DialogHeader>
+            <DialogTitle>Move item</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Choose where to move {moveRecentItem?.title}.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={handleMoveSubmit}>
+            <div className="space-y-2">
+              <label
+                className="block text-xs font-medium uppercase tracking-wide text-zinc-400"
+                htmlFor="move-destination-select"
+              >
+                Destination
+              </label>
+              <Select
+                value={selectedMoveDestinationId}
+                onValueChange={(value) => {
+                  setSelectedMoveDestinationId(value);
+                  setMoveInputError(null);
+                }}
+              >
+                <SelectTrigger
+                  id="move-destination-select"
+                  className="border-zinc-800 bg-zinc-900 text-zinc-200"
+                >
+                  <SelectValue placeholder="Select folder or project" />
+                </SelectTrigger>
+                <SelectContent className="border-zinc-800 bg-zinc-950 text-zinc-100">
+                  {recentMoveDestinations.map((destination) => (
+                    <SelectItem
+                      key={destination.id}
+                      value={destination.id}
+                      className="focus:bg-zinc-900 focus:text-zinc-100"
+                    >
+                      <div className="flex flex-col text-left">
+                        <span className="text-sm font-medium text-zinc-100">
+                          {destination.label}
+                        </span>
+                        <span className="text-xs text-zinc-500">
+                          {destination.description}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {moveInputError ? (
+              <p className="text-xs text-red-300">{moveInputError}</p>
+            ) : null}
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                className="text-zinc-300 hover:bg-zinc-900"
+                onClick={closeMoveDialog}
+                type="button"
+              >
+                Cancel
+              </Button>
+              <Button
+                className="bg-cyan-600 text-white hover:bg-cyan-500"
+                type="submit"
+                disabled={!selectedMoveDestinationId || isMovingRecent}
+              >
+                {isMovingRecent ? "Moving..." : "Move"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={activeModalId === "rename" && Boolean(renameDialogTarget)}
+        onOpenChange={(open) => !open && dismissModal("rename")}
+      >
+        <DialogContent className={darkDialogContentClassName}>
+          <DialogHeader>
+            <DialogTitle>Rename</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Enter a new name for {renameDialogTarget?.currentName}.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={handleRenameSubmit}>
+            <div className="space-y-2">
+              <label
+                className="block text-xs font-medium uppercase tracking-wide text-zinc-400"
+                htmlFor="rename-item-input"
+              >
+                Name
+              </label>
+              <Input
+                id="rename-item-input"
+                value={renameInputValue}
+                onChange={(event) => {
+                  setRenameInputValue(event.target.value);
+                  if (renameInputError) {
+                    setRenameInputError(null);
+                  }
+                }}
+                className="border-zinc-800 bg-zinc-900 text-zinc-200"
+                autoFocus
+              />
+              {renameInputError ? (
+                <p className="text-xs text-red-300">{renameInputError}</p>
+              ) : null}
+            </div>
+            {moveInputError ? (
+              <p className="text-xs text-red-300">{moveInputError}</p>
+            ) : null}
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                className="text-zinc-300 hover:bg-zinc-900"
+                onClick={closeRenameDialog}
+                type="button"
+              >
+                Cancel
+              </Button>
+              <Button
+                className="bg-cyan-600 text-white hover:bg-cyan-500"
+                type="submit"
+                disabled={isSubmittingRename}
+              >
+                {isSubmittingRename ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isOnboardingOpen}
+        onOpenChange={handleOnboardingOpenChange}
+        modal
+      >
+        <DialogContent
+          className={`${overlayLayerClassNames.dialog} w-[min(92vw,32rem)] max-w-[32rem] overflow-hidden border-zinc-800 bg-zinc-950 p-0 text-zinc-100 motion-reduce:duration-0`}
+          aria-label="RunAsh chat updates"
+          onEscapeKeyDown={() => handleOnboardingOpenChange(false)}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            focusOverlayTrigger();
+          }}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-3 top-3 z-10 h-8 w-8 rounded-full text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+            onClick={() => handleOnboardingOpenChange(false)}
+            aria-label="Close updates dialog"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+          <div className="max-h-[min(88vh,42rem)] overflow-y-auto rounded-lg">
+            <div className="h-44 bg-gradient-to-br from-cyan-500/30 via-blue-500/20 to-zinc-900 p-4 sm:p-6">
               <div
                 className="flex h-full items-center justify-center rounded-lg border border-white/10 bg-black/20 text-6xl transition-transform duration-300 motion-reduce:transition-none"
                 key={currentOnboardingSlide.title}
               >
-                <span aria-hidden>{currentOnboardingSlide.image ?? "🚀"}</span>
+                <span
+                  role="img"
+                  aria-label={currentOnboardingSlide.media.label}
+                >
+                  {currentOnboardingSlide.media.value}
+                </span>
               </div>
             </div>
 
-            <div className="space-y-5 p-6">
+            <div className="space-y-5 p-4 sm:p-6">
               <DialogHeader className="space-y-2 text-left">
+                <p className="text-xs font-medium uppercase tracking-wide text-cyan-300">
+                  Step {onboardingStep + 1} of {onboardingSlides.length}
+                </p>
                 <DialogTitle>{currentOnboardingSlide.title}</DialogTitle>
-                <DialogDescription className="text-zinc-300">{currentOnboardingSlide.description}</DialogDescription>
+                <DialogDescription className="text-zinc-300">
+                  {currentOnboardingSlide.description}
+                </DialogDescription>
               </DialogHeader>
 
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2" aria-label="Onboarding progress">
+                <div
+                  className="flex items-center gap-2"
+                  aria-label="Onboarding progress"
+                  role="group"
+                >
                   {onboardingSlides.map((slide, index) => (
                     <button
                       key={slide.title}
                       type="button"
-                      onClick={() => setActiveOnboardingStep(index)}
+                      onClick={() => setOnboardingStep(index)}
                       className={`h-2.5 w-2.5 rounded-full transition-colors duration-200 motion-reduce:transition-none ${
-                        index === activeOnboardingStep ? "bg-cyan-400" : "bg-zinc-600 hover:bg-zinc-500"
+                        index === onboardingStep
+                          ? "bg-cyan-400"
+                          : "bg-zinc-600 hover:bg-zinc-500"
                       }`}
                       aria-label={`Go to onboarding step ${index + 1}`}
-                      aria-current={index === activeOnboardingStep ? "step" : undefined}
+                      aria-current={
+                        index === onboardingStep ? "step" : undefined
+                      }
                     />
                   ))}
                 </div>
 
-                <Button className="bg-cyan-600 text-white hover:bg-cyan-500" onClick={handleOnboardingNext}>
-                  {currentOnboardingSlide.cta}
-                  {!isLastOnboardingStep ? <ArrowRight className="ml-1 h-4 w-4" /> : null}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="text-zinc-300 hover:bg-zinc-900"
+                    onClick={() => handleOnboardingOpenChange(false)}
+                  >
+                    Dismiss
+                  </Button>
+                  <Button
+                    className="bg-cyan-600 text-white hover:bg-cyan-500"
+                    onClick={handleOnboardingNext}
+                  >
+                    {isLastOnboardingStep ? "Get started" : "Next"}
+                    {!isLastOnboardingStep ? (
+                      <ArrowRight className="ml-1 h-4 w-4" />
+                    ) : null}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      <div className="mx-auto flex w-full max-w-[1400px] gap-4 px-3 py-3">
+      <Dialog open={isFeedbackOpen} onOpenChange={handleFeedbackOpenChange}>
+        <DialogContent
+          className={`${overlayLayerClassNames.dialog} w-[min(92vw,520px)] max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-[520px]`}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            focusOverlayTrigger();
+          }}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-3 top-3 h-8 w-8 rounded-full text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+            onClick={() => handleFeedbackOpenChange(false)}
+            aria-label="Close feedback dialog"
+            disabled={isSubmittingFeedback}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle>Give feedback</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Tell us what worked well and what we can improve in your RunAsh
+              Chat experience.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form
+            onSubmit={handleFeedbackSubmit}
+            className="space-y-4"
+            aria-label="Feedback form"
+          >
+            <div className="space-y-2">
+              <label
+                htmlFor="feedback-text"
+                className="text-sm font-medium text-zinc-200"
+              >
+                Your feedback
+              </label>
+              <Textarea
+                id="feedback-text"
+                value={feedbackText}
+                onChange={(event) => setFeedbackText(event.target.value)}
+                placeholder="Share your feedback"
+                rows={5}
+                className="border-zinc-700 bg-zinc-900 text-zinc-100 placeholder:text-zinc-500"
+                disabled={isSubmittingFeedback}
+                onKeyDown={(event) => {
+                  if (
+                    (event.metaKey || event.ctrlKey) &&
+                    event.key === "Enter"
+                  ) {
+                    event.preventDefault();
+                    event.currentTarget.form?.requestSubmit();
+                  }
+                }}
+                required
+              />
+            </div>
+
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium text-zinc-200">
+                Quick reaction (optional)
+              </legend>
+              <div
+                className="flex items-center gap-2"
+                role="radiogroup"
+                aria-label="Select feedback sentiment"
+              >
+                {feedbackRatingOptions.map(({ value, label, Icon }) => {
+                  const isSelected = feedbackRating === value;
+                  return (
+                    <Button
+                      key={value}
+                      type="button"
+                      variant="outline"
+                      onClick={() => setFeedbackRating(value)}
+                      aria-pressed={isSelected}
+                      className={`h-10 border-zinc-700 px-3 text-zinc-200 hover:bg-zinc-900 ${isSelected ? "border-zinc-500 bg-zinc-900" : ""}`}
+                      disabled={isSubmittingFeedback}
+                    >
+                      <Icon className="mr-2 h-4 w-4" aria-hidden="true" />
+                      {label}
+                    </Button>
+                  );
+                })}
+              </div>
+            </fieldset>
+
+            <DialogFooter className="gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleFeedbackOpenChange(false)}
+                disabled={isSubmittingFeedback}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmittingFeedback || !feedbackText.trim()}
+              >
+                {isSubmittingFeedback ? "Submitting…" : "Submit"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isSettingsOpen}
+        onOpenChange={handleSettingsDialogOpenChange}
+      >
+        <DialogContent
+          className={`${overlayLayerClassNames.settingsDialog} w-[min(96vw,840px)] overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 p-0 text-zinc-100 shadow-2xl shadow-black/40 sm:max-w-[840px]`}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            focusOverlayTrigger();
+          }}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute left-3 top-3 h-8 w-8 rounded-full text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+            onClick={() => handleSettingsDialogOpenChange(false)}
+            aria-label="Close settings dialog"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+
+          <DialogHeader className="sr-only">
+            <DialogTitle>Settings</DialogTitle>
+            <DialogDescription>
+              Manage workspace settings from categorized controls.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid max-h-[82dvh] grid-cols-1 sm:grid-cols-[248px_minmax(0,1fr)]">
+            <aside className="border-b border-zinc-800 bg-zinc-900/40 sm:border-b-0 sm:border-r sm:bg-zinc-900/25">
+              <div className="hidden border-b border-zinc-800 px-4 py-4 sm:block">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-400">
+                  Settings
+                </h2>
+              </div>
+              <ScrollArea className="w-full sm:h-[calc(82dvh-57px)]">
+                <nav
+                  aria-label="Settings sections"
+                  role="tablist"
+                  className="flex min-w-max gap-1 p-2 sm:block sm:min-w-0 sm:space-y-1"
+                >
+                  {settingsSections.map((section, index) => {
+                    const isActive = activeSettingsSection === section;
+                    return (
+                      <button
+                        key={section}
+                        ref={(element) => {
+                          settingsSectionButtonRefs.current[index] = element;
+                        }}
+                        type="button"
+                        onClick={() => setActiveSettingsSection(section)}
+                        onKeyDown={(event) =>
+                          handleSettingsSectionKeyDown(event, index)
+                        }
+                        role="tab"
+                        aria-selected={isActive}
+                        tabIndex={isActive ? 0 : -1}
+                        className={`flex shrink-0 items-center rounded-lg border px-3 py-2 text-left text-sm transition-colors sm:w-full ${
+                          isActive
+                            ? "border-zinc-700 bg-zinc-800 text-zinc-50"
+                            : "border-transparent text-zinc-400 hover:border-zinc-800 hover:bg-zinc-900 hover:text-zinc-200"
+                        }`}
+                      >
+                        {section}
+                      </button>
+                    );
+                  })}
+                </nav>
+              </ScrollArea>
+            </aside>
+
+            <section className="flex min-h-[320px] flex-col bg-zinc-950">
+              <div className="px-5 pb-4 pt-4 sm:px-6 sm:pt-6">
+                <h3 className="text-lg font-semibold text-zinc-100 sm:text-xl">
+                  {activeSettingsSection}
+                </h3>
+              </div>
+              <div className="border-b border-zinc-800" />
+              <div className="flex-1 space-y-4 px-5 py-5 text-sm text-zinc-400 sm:px-6">
+                {activeSettingsSection === "General" ? (
+                  <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/30">
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 border-b border-zinc-800 px-4 py-3">
+                      <span className="text-zinc-200">Appearance</span>
+                      <Select
+                        value={generalSettings.appearance}
+                        onValueChange={updateGeneralSettingsAppearance}
+                      >
+                        <SelectTrigger className="h-8 w-full border-zinc-700 bg-zinc-900 text-zinc-100">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="system">System</SelectItem>
+                          <SelectItem value="light">Light</SelectItem>
+                          <SelectItem value="dark">Dark</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 border-b border-zinc-800 px-4 py-3">
+                      <span className="text-zinc-200">Accent color</span>
+                      <Select
+                        value={generalSettings.accentColor}
+                        onValueChange={updateGeneralSettingsAccentColor}
+                      >
+                        <SelectTrigger className="h-8 w-full border-zinc-700 bg-zinc-900 text-zinc-100">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="violet">Violet</SelectItem>
+                          <SelectItem value="blue">Blue</SelectItem>
+                          <SelectItem value="emerald">Emerald</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 border-b border-zinc-800 px-4 py-3">
+                      <span className="text-zinc-200">Language</span>
+                      <Select
+                        value={generalSettings.language}
+                        onValueChange={updateGeneralSettingsLanguage}
+                      >
+                        <SelectTrigger className="h-8 w-full border-zinc-700 bg-zinc-900 text-zinc-100">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="en">English</SelectItem>
+                          <SelectItem value="es">Español</SelectItem>
+                          <SelectItem value="fr">Français</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-start gap-4 border-b border-zinc-800 px-4 py-3">
+                      <div className="space-y-1">
+                        <p className="text-zinc-200">Spoken language</p>
+                        <p className="text-xs text-zinc-500">
+                          Controls transcription and voice response language
+                          defaults.
+                        </p>
+                      </div>
+                      <Select
+                        value={generalSettings.spokenLanguage}
+                        onValueChange={updateGeneralSettingsSpokenLanguage}
+                      >
+                        <SelectTrigger className="h-8 w-full border-zinc-700 bg-zinc-900 text-zinc-100">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="en-US">English (US)</SelectItem>
+                          <SelectItem value="en-IN">English (India)</SelectItem>
+                          <SelectItem value="es-ES">Spanish</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 border-b border-zinc-800 px-4 py-3">
+                      <span className="text-zinc-200">Voice</span>
+                      <div className="flex items-center justify-end gap-2">
+                        <Select
+                          value={generalSettings.voice}
+                          onValueChange={updateGeneralSettingsVoice}
+                        >
+                          <SelectTrigger className="h-8 w-[132px] border-zinc-700 bg-zinc-900 text-zinc-100">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="alloy">Alloy</SelectItem>
+                            <SelectItem value="verse">Verse</SelectItem>
+                            <SelectItem value="willow">Willow</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          className="h-8 w-8 border-zinc-700 bg-zinc-900"
+                          aria-label="Play selected voice sample"
+                          disabled
+                        >
+                          <Play className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-start gap-4 border-b border-zinc-800 px-4 py-3">
+                      <div className="space-y-1">
+                        <p className="text-zinc-200">Separate Voice</p>
+                        <p className="text-xs text-zinc-500">
+                          Use a distinct voice profile for generated speech
+                          output.
+                        </p>
+                      </div>
+                      <div className="flex justify-end">
+                        <Switch
+                          checked={generalSettings.separateVoiceEnabled}
+                          onCheckedChange={(checked) =>
+                            setGeneralSettings((prev) => ({
+                              ...prev,
+                              separateVoiceEnabled: checked,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 border-b border-zinc-800 px-4 py-3">
+                      <span className="text-zinc-200">
+                        Show additional models
+                      </span>
+                      <div className="flex justify-end">
+                        <Switch
+                          checked={generalSettings.showAdditionalModels}
+                          onCheckedChange={(checked) =>
+                            setGeneralSettings((prev) => ({
+                              ...prev,
+                              showAdditionalModels: checked,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 border-b border-zinc-800 px-4 py-3">
+                      <div className="space-y-1">
+                        <p className="text-zinc-200">Prompt suggestions</p>
+                        <p className="text-xs text-zinc-500">
+                          Restore dismissed suggestion cards beneath the chat
+                          composer.
+                        </p>
+                      </div>
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 border-zinc-700 bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
+                          onClick={handleResetPromptSuggestionCards}
+                          disabled={dismissedPromptSuggestionCardIds.length === 0}
+                        >
+                          Show again
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 px-4 py-3">
+                      <div className="space-y-1">
+                        <p className="text-zinc-200">Task starter module</p>
+                        <p className="text-xs text-zinc-500">
+                          Reopen the onboarding block with quick links and
+                          starter cards.
+                        </p>
+                      </div>
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 border-zinc-700 bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
+                          onClick={handleReopenGetStarted}
+                          disabled={isGetStartedVisible}
+                        >
+                          Show module
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p>
+                      Use this section to review and update your{" "}
+                      {activeSettingsSection.toLowerCase()} settings.
+                    </p>
+                    <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-4 text-zinc-300">
+                      Additional controls for{" "}
+                      <span className="font-medium text-zinc-100">
+                        {activeSettingsSection}
+                      </span>{" "}
+                      will appear here.
+                    </div>
+                  </>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-fit"
+                  onClick={() => router.push("/settings")}
+                >
+                  Open full settings page
+                </Button>
+              </div>
+            </section>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isReferOpen} onOpenChange={handleReferDialogOpenChange}>
+        <DialogContent
+          className={`${overlayLayerClassNames.dialog} w-[min(94vw,34rem)] max-h-[90dvh] overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-950 text-zinc-100 shadow-2xl shadow-black/40 sm:max-w-xl`}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            focusOverlayTrigger();
+          }}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-3 top-3 h-8 w-8 rounded-full text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+            onClick={() => handleReferDialogOpenChange(false)}
+            aria-label="Close refer dialog"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+
+          <DialogHeader className="space-y-2 border-b border-zinc-800/80 px-6 pb-4 pt-6 text-left">
+            <DialogTitle className="flex items-center gap-2 text-zinc-100">
+              <Sparkles
+                className="h-5 w-5 text-emerald-400"
+                aria-hidden="true"
+              />
+              {referralUiData.headline}
+            </DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Share your referral link and unlock monthly credits for every
+              verified signup.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-0 overflow-y-auto px-6 py-4">
+            <section className="space-y-3 rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-4">
+              <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-zinc-400">
+                <span>Monthly progress</span>
+                <span>
+                  {referralUiData.progressValue} / {referralUiData.rewardCap}{" "}
+                  invites
+                </span>
+              </div>
+              <div
+                className="h-2.5 overflow-hidden rounded-full border border-zinc-700/70 bg-zinc-900"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={referralUiData.rewardCap}
+                aria-valuenow={referralUiData.progressValue}
+              >
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-emerald-400 to-cyan-400"
+                  style={{ width: `${referralProgressPercent}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[11px] uppercase tracking-wide text-zinc-500">
+                <span>Start · 0 invites</span>
+                <span>Goal · {referralUiData.rewardCap} invites</span>
+              </div>
+            </section>
+
+            <section className="space-y-3 border-t border-zinc-800/80 py-4">
+              <p className="text-sm font-medium text-zinc-200">Referral link</p>
+              {isReferralLoading ? (
+                <p className="text-xs text-zinc-500">Refreshing referral link…</p>
+              ) : null}
+              {referralLoadError ? (
+                <p className="text-xs text-amber-300">{referralLoadError}</p>
+              ) : null}
+              <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
+                <code className="flex-1 truncate rounded bg-zinc-950 px-3 py-2 text-xs text-zinc-300">
+                  {referralUiData.referralLink}
+                </code>
+                <Button
+                  type="button"
+                  className="h-10 px-4"
+                  onClick={handleCopyReferralLink}
+                  disabled={isCopyingLink || isReferralLoading}
+                >
+                  {isCopyingLink ? (
+                    <>
+                      <Check className="mr-2 h-4 w-4" aria-hidden="true" />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="mr-2 h-4 w-4" aria-hidden="true" />
+                      Copy
+                    </>
+                  )}
+                </Button>
+              </div>
+            </section>
+
+            <section className="space-y-2 border-t border-zinc-800/80 py-4">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+                <p className="text-sm font-medium text-zinc-200">
+                  How it works
+                </p>
+                <ul className="list-disc space-y-1 pl-5 text-sm text-zinc-400">
+                  {referralUiData.steps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ul>
+              </div>
+            </section>
+          </div>
+
+          <DialogFooter className="gap-2 border-t border-zinc-800/80 px-6 py-4 sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 px-4"
+              onClick={() => handleReferDialogOpenChange(false)}
+            >
+              Maybe later
+            </Button>
+            <Button
+              type="button"
+              className="h-10 px-4"
+              onClick={() => router.push("/pricing?tab=roi")}
+            >
+              Run the numbers
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isUpgradeModalOpen}
+        onOpenChange={handleUpgradeModalOpenChange}
+      >
+        <DialogContent
+          className={`${overlayLayerClassNames.dialog} w-[min(94vw,48rem)] max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-2xl`}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            focusOverlayTrigger();
+          }}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-3 top-3 h-8 w-8 rounded-full text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+            onClick={() => handleUpgradeModalOpenChange(false)}
+            aria-label="Close upgrade dialog"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle>Explore More Plans</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Pick a plan to preview pricing and key benefits for your current
+              stage.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div
+              className="grid grid-cols-2 gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-1 sm:grid-cols-5"
+              role="tablist"
+              aria-label="Select plan tier"
+            >
+              {upgradePlans.map((plan) => {
+                const isSelected = selectedPlan === plan.id;
+                return (
+                  <Button
+                    key={plan.id}
+                    type="button"
+                    variant={isSelected ? "default" : "ghost"}
+                    className={`h-9 px-2 text-xs sm:text-sm ${isSelected ? "bg-zinc-100 text-zinc-950 hover:bg-zinc-200" : "text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"}`}
+                    onClick={() => setSelectedPlan(plan.id)}
+                    role="tab"
+                    aria-selected={isSelected}
+                  >
+                    {plan.label}
+                  </Button>
+                );
+              })}
+            </div>
+
+            <Card className="border-zinc-800 bg-zinc-900/60 p-5">
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-zinc-400">
+                    {selectedUpgradePlan.label} plan
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-zinc-100">
+                    {formatPlanPriceLabel(selectedUpgradePlan)}
+                  </p>
+                </div>
+                <p className="text-sm text-zinc-300">
+                  {selectedUpgradePlan.description}
+                </p>
+                <ul className="space-y-2">
+                  {selectedUpgradePlan.features.map((feature) => (
+                    <li
+                      key={feature}
+                      className="flex items-center gap-2 text-sm text-zinc-200"
+                    >
+                      <span
+                        className="h-1.5 w-1.5 rounded-full bg-cyan-300"
+                        aria-hidden="true"
+                      />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  type="button"
+                  className="w-full sm:w-auto"
+                  onClick={handlePlanCtaClick}
+                  disabled={isPlanActionLoading}
+                >
+                  {isPlanActionLoading
+                    ? "Opening…"
+                    : selectedUpgradePlan.ctaLabel}
+                </Button>
+              </div>
+            </Card>
+          </div>
+
+          <DialogFooter className="sm:justify-between">
+            <button
+              type="button"
+              className="text-sm text-cyan-300 underline-offset-4 hover:underline"
+              onClick={() => router.push("/pricing")}
+            >
+              See full plan comparison on pricing page
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isRedeemDialogOpen}
+        onOpenChange={handleRedeemDialogOpenChange}
+      >
+        <DialogContent
+          className={`${overlayLayerClassNames.dialog} w-[92vw] max-w-sm border-zinc-800 bg-zinc-950 text-zinc-100`}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            focusOverlayTrigger();
+          }}
+        >
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle>Redeem Credit Code</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Enter your code to apply credits in billing.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form className="space-y-3" onSubmit={handleRedeemCodeSubmit}>
+            <div className="space-y-1.5">
+              <label
+                htmlFor={redeemCodeInputId}
+                className="text-xs font-medium uppercase tracking-wide text-zinc-300"
+              >
+                Code
+              </label>
+              <Input
+                id={redeemCodeInputId}
+                value={redeemCodeInput}
+                onChange={(event) => {
+                  const sanitizedValue = sanitizeRedeemCode(event.target.value);
+                  setRedeemCodeInput(sanitizedValue);
+                  if (redeemCodeError) {
+                    setRedeemCodeError(null);
+                  }
+                }}
+                placeholder="RUNASH-2026"
+                autoComplete="off"
+                maxLength={32}
+                className="border-zinc-700 bg-zinc-900 text-zinc-100 placeholder:text-zinc-500"
+              />
+              {redeemCodeError ? (
+                <p className="text-xs text-rose-300">{redeemCodeError}</p>
+              ) : null}
+            </div>
+
+            <DialogFooter className="gap-2 sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleRedeemDialogOpenChange(false)}
+                disabled={isRedeemingCode}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="bg-cyan-600 text-zinc-950 hover:bg-cyan-500"
+                disabled={isRedeemingCode}
+              >
+                {isRedeemingCode ? "Redeeming..." : "Submit"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <div
+        className={`mx-auto flex w-full max-w-[1400px] gap-4 px-3 py-3 ${chatPositionPreference === "right" ? "lg:flex-row-reverse" : "lg:flex-row"}`}
+      >
         <aside
           id="runash-chat-sidebar"
-          className={`hidden h-[calc(100vh-24px)] shrink-0 rounded-xl border border-zinc-800 bg-black/70 p-3 lg:flex lg:flex-col ${
-            isSidebarCollapsed ? "w-[80px]" : "w-[250px]"
+          className={`hidden h-[calc(100vh-24px)] shrink-0 rounded-xl border border-zinc-800 bg-black/70 p-2.5 lg:flex lg:flex-col ${
+            isSidebarCollapsed ? "w-16" : "w-[250px]"
           }`}
           aria-label="Sidebar"
         >
-          <div className={`mb-2 flex ${isSidebarCollapsed ? "justify-center" : "justify-end"}`}>
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className="h-8 w-8 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
-              onClick={() => setIsSidebarCollapsed((prev) => !prev)}
-              aria-expanded={!isSidebarCollapsed}
-              aria-controls="runash-chat-sidebar"
-              aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              {isSidebarCollapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
-            </Button>
+          <div
+            className={`mb-1.5 flex ${isSidebarCollapsed ? "justify-center" : "justify-end"}`}
+          >
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    ref={desktopSidebarToggleRef}
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
+                    onClick={() => setIsSidebarCollapsed((prev) => !prev)}
+                    aria-expanded={!isSidebarCollapsed}
+                    aria-controls={runashChatDesktopSidebarContentId}
+                    aria-label={
+                      isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
+                    }
+                    title="Toggle sidebar (Ctrl/Cmd+B)"
+                  >
+                    {isSidebarCollapsed ? (
+                      <ChevronsRight className="h-4 w-4" />
+                    ) : (
+                      <ChevronsLeft className="h-4 w-4" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="right"
+                  className="z-40 border-zinc-800 bg-zinc-900 text-zinc-100"
+                >
+                  {isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}{" "}
+                  (Ctrl/Cmd+B)
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
-          {renderSidebarContent(isSidebarCollapsed)}
+          <div id={runashChatDesktopSidebarContentId}>
+            {renderSidebarContent(isSidebarCollapsed)}
+          </div>
         </aside>
 
         <main className="h-[calc(100vh-24px)] flex-1 rounded-xl border border-zinc-800 bg-[#050607] p-4 sm:p-6">
           <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
             <div className="mb-4 space-y-3 lg:hidden">
-              <div className="grid grid-cols-[auto,1fr,auto] items-center gap-2">
-                <div className="flex items-center gap-2">
-                  <Button
+              <div
+                className={`sticky top-0 ${isMobileSidebarOpen || isOnboardingOpen || isAnyOverlayOpen ? "z-0" : "z-20"} rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2 backdrop-blur`}
+              >
+                <div className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className="h-[42px] w-[42px] rounded-xl border-zinc-800 bg-zinc-950 text-zinc-100"
+                      onClick={() => router.push("/")}
+                      aria-label="Go to home"
+                      disabled={isOnboardingOpen || isStartingChat}
+                    >
+                      <Home className="h-[18px] w-[18px] stroke-[1.75]" />
+                    </Button>
+
+                    <Sheet
+                      open={isMobileSidebarOpen}
+                      onOpenChange={handleMobileSidebarOpenChange}
+                    >
+                      <SheetTrigger asChild>
+                        <Button
+                          ref={mobileSidebarTriggerRef}
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          className="h-[42px] w-[42px] rounded-xl border-zinc-800 bg-zinc-950 text-zinc-100"
+                          aria-expanded={isMobileSidebarOpen}
+                          aria-controls={runashChatMobileSidebarId}
+                          aria-label={
+                            isMobileSidebarOpen
+                              ? "Close navigation menu"
+                              : "Open navigation menu"
+                          }
+                          disabled={isOnboardingOpen || isStartingChat}
+                          title="Toggle navigation (Ctrl/Cmd+B)"
+                        >
+                          <Menu className="h-[18px] w-[18px] stroke-[1.75]" />
+                        </Button>
+                      </SheetTrigger>
+                      <SheetContent
+                        side={
+                          chatPositionPreference === "right" ? "right" : "left"
+                        }
+                        id={runashChatMobileSidebarId}
+                        className="w-[280px] border-zinc-800 bg-[#050607] p-3 text-zinc-100"
+                        onEscapeKeyDown={() => setIsMobileSidebarOpen(false)}
+                        onCloseAutoFocus={(event) => {
+                          event.preventDefault();
+                          mobileSidebarTriggerRef.current?.focus();
+                        }}
+                      >
+                        <SheetTitle className="sr-only">
+                          Chat navigation
+                        </SheetTitle>
+                        {renderSidebarContent(false, true)}
+                      </SheetContent>
+                    </Sheet>
+                  </div>
+
+                  <button
                     type="button"
-                    size="icon"
-                    variant="outline"
-                    className="h-10 w-10 border-zinc-700 bg-zinc-950 text-zinc-100"
-                    onClick={() => router.push("/")}
-                    aria-label="Go to home"
+                    onClick={() => {
+                      setIsMobileSearchOpen((open) => !open);
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    aria-expanded={isMobileSearchOpen}
+                    aria-controls="mobile-chat-search"
+                    className="flex h-[42px] min-w-0 items-center justify-between rounded-full border border-zinc-800 bg-zinc-950 px-3.5 text-left"
                     disabled={isOnboardingOpen}
                   >
-                    <Home className="h-4 w-4" />
-                  </Button>
+                    <span className="truncate text-sm font-semibold tracking-tight text-zinc-100">
+                      RunAsh Workspace
+                    </span>
+                    <span className="ml-2 flex shrink-0 items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300">
+                      <Sparkles className="h-3.5 w-3.5 stroke-[1.75]" />
+                      <span className="hidden sm:inline">Search</span>
+                    </span>
+                  </button>
 
-                  <Sheet open={isMobileSidebarOpen} onOpenChange={handleMobileSidebarOpenChange}>
-                    <SheetTrigger asChild>
-                      <Button
-                        ref={mobileSidebarTriggerRef}
-                        type="button"
-                        size="icon"
-                        variant="outline"
-                        className="h-10 w-10 border-zinc-700 bg-zinc-950 text-zinc-100"
-                        aria-expanded={isMobileSidebarOpen}
-                        aria-controls="runash-chat-mobile-sidebar"
-                        aria-label="Open navigation menu"
-                        disabled={isOnboardingOpen}
-                      >
-                        <Menu className="h-4 w-4" />
-                      </Button>
-                    </SheetTrigger>
-                    <SheetContent
-                      side="left"
-                      id="runash-chat-mobile-sidebar"
-                      className="w-[280px] border-zinc-800 bg-[#050607] p-3 text-zinc-100"
-                      onCloseAutoFocus={(event) => {
-                        event.preventDefault()
-                        mobileSidebarTriggerRef.current?.focus()
+                  <div className="flex items-center justify-end gap-2">
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className="h-[42px] w-[42px] rounded-xl border-zinc-800 bg-zinc-950 text-zinc-100 hover:bg-zinc-900"
+                      onClick={() => {
+                        setIsMobileSearchOpen((open) => !open);
+                        setIsMobileSidebarOpen(false);
+                      }}
+                      aria-label="Toggle mobile search"
+                      aria-expanded={isMobileSearchOpen}
+                      aria-controls="mobile-chat-search"
+                      disabled={isOnboardingOpen}
+                    >
+                      <Search className="h-[18px] w-[18px] stroke-[1.75]" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      className="h-[42px] w-[42px] rounded-xl bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
+                      onClick={() => void startChatWithPrompt()}
+                      aria-label="Start a new chat"
+                      disabled={isOnboardingOpen || isStartingChat}
+                    >
+                      <Plus className="h-[18px] w-[18px] stroke-[1.75]" />
+                    </Button>
+                    <DropdownMenu
+                      open={isMenuOverlayOpen("mobileQuickActions")}
+                      onOpenChange={(open) => {
+                        if (open) {
+                          openMenuOverlay("mobileQuickActions");
+                          return;
+                        }
+
+                        closeOverlay(false);
                       }}
                     >
-                      <SheetTitle className="sr-only">Chat navigation</SheetTitle>
-                      {renderSidebarContent(false, true)}
-                    </SheetContent>
-                  </Sheet>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setIsMobileSearchOpen((open) => !open)}
-                  aria-expanded={isMobileSearchOpen}
-                  aria-controls="mobile-chat-search"
-                  className="flex h-10 min-w-0 items-center justify-between rounded-full border border-zinc-700 bg-zinc-950 px-3 text-left"
-                  disabled={isOnboardingOpen}
-                >
-                  <span className="truncate text-sm font-medium text-zinc-100">RunAsh</span>
-                  <span className="ml-2 flex items-center gap-1 rounded-full bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300">
-                    <Search className="h-3.5 w-3.5" />
-                    Search
-                  </span>
-                </button>
-
-                <div className="flex items-center justify-end gap-2">
-                  <Button
-                    type="button"
-                    size="icon"
-                    className="h-10 w-10 bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
-                    onClick={() => startChatWithPrompt()}
-                    aria-label="Start a new chat"
-                    disabled={isOnboardingOpen}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="outline"
-                    className="h-10 w-10 border-zinc-700 bg-zinc-950 text-zinc-100"
-                    onClick={() => router.push("/changelog")}
-                    aria-label="Open notifications"
-                    disabled={isOnboardingOpen}
-                  >
-                    <Bell className="h-4 w-4" />
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="h-[42px] w-[42px] rounded-xl border-zinc-800 bg-zinc-950 text-zinc-100"
+                          aria-label="More quick actions"
+                          disabled={isOnboardingOpen}
+                        >
+                          <MoreVertical className="h-[18px] w-[18px] stroke-[1.75]" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        align="end"
+                        className="z-40 w-56 border-zinc-800 bg-zinc-900 text-zinc-100"
+                      >
+                        {headerActions.map((action) => {
+                          const Icon = action.icon;
+                          return (
+                            <DropdownMenuItem
+                              key={action.id}
+                              onClick={(event) =>
+                                handleHeaderActionClick(
+                                  action,
+                                  event.currentTarget,
+                                )
+                              }
+                              className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+                            >
+                              <Icon
+                                className="mr-2 h-4 w-4"
+                                aria-hidden="true"
+                              />
+                              {action.label}
+                            </DropdownMenuItem>
+                          );
+                        })}
+                        <DropdownMenuItem
+                          onClick={() => router.push("/changelog")}
+                          className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+                        >
+                          Notifications
+                        </DropdownMenuItem>
+                        {accountMenuItems.map((item) => (
+                          <DropdownMenuItem
+                            key={item.label}
+                            onSelect={() => handleUserMenuItemSelect(item)}
+                            className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
+                          >
+                            {item.label}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    {isAuthenticated ? (
+                      renderProfileMenu(
+                        "h-[42px] w-[42px] rounded-full border-zinc-800 bg-zinc-950 p-0 text-zinc-100",
+                      )
+                    ) : (
                       <Button
-                        size="icon"
+                        type="button"
                         variant="outline"
-                        className="h-10 w-10 border-zinc-700 bg-zinc-950 text-zinc-100"
-                        aria-label="More quick actions"
-                        disabled={isOnboardingOpen}
+                        className="h-[42px] rounded-full border-zinc-800 bg-zinc-950 px-4 text-zinc-100"
+                        onClick={() => router.push("/login")}
                       >
-                        <MoreVertical className="h-4 w-4" />
+                        Sign in
                       </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56 border-zinc-800 bg-zinc-900 text-zinc-100">
-                      {headerActions.map((action) => (
-                        <DropdownMenuItem
-                          key={action.id}
-                          onClick={() => handleHeaderActionClick(action)}
-                          className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
-                        >
-                          {action.label}
-                        </DropdownMenuItem>
-                      ))}
-                      {userMenuItems.map((item) => (
-                        <DropdownMenuItem
-                          key={item.label}
-                          onClick={item.action}
-                          className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
-                        >
-                          {item.label}
-                        </DropdownMenuItem>
-                      ))}
-                      <DropdownMenuItem
-                        onClick={() => signOutWithRedirect("/")}
-                        className="cursor-pointer text-rose-300 focus:bg-rose-500/20 focus:text-rose-200"
-                      >
-                        Sign out
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                    )}
+                  </div>
                 </div>
               </div>
 
               <div className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-400">
-                <span>{sessionId ? `Session #${sessionId}` : "No session"}</span>
+                <span>
+                  {sessionId ? `Session #${sessionId}` : "No session"}
+                </span>
                 <span className="truncate">{userDisplayName}</span>
               </div>
 
               {isMobileSearchOpen && (
-                <div id="mobile-chat-search" className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3">
-                  <label htmlFor="mobile-search-input" className="text-xs font-medium text-zinc-300">
+                <div
+                  id="mobile-chat-search"
+                  className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3"
+                >
+                  <label
+                    htmlFor="mobile-search-input"
+                    className="text-xs font-medium text-zinc-300"
+                  >
                     Search recent chats
                   </label>
                   <Input
@@ -732,19 +6641,44 @@ export default function RunashChatPage() {
                   />
                   {mobileSearchValue.trim() && (
                     <div className="max-h-28 space-y-1 overflow-y-auto">
-                      {mobileRecentMatches.length > 0 ? (
-                        mobileRecentMatches.slice(0, 4).map((item) => (
-                          <button
-                            key={item.id}
-                            type="button"
-                            onClick={() => router.push(`/chat?sessionId=${item.id}`)}
-                            className="w-full truncate rounded-md px-2 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-900"
-                          >
-                            {item.title}
-                          </button>
-                        ))
+                      {loadingRecents ? (
+                        <p className="px-1 text-xs text-zinc-500">
+                          Loading recents…
+                        </p>
+                      ) : recentItemsError ? (
+                        <p className="px-1 text-xs text-amber-400">
+                          {recentItemsError}
+                        </p>
+                      ) : mobileRecentMatches.length > 0 ? (
+                        mobileRecentMatches.slice(0, 6).map((item) => {
+                          const isProject = item.entityType === "project";
+
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() =>
+                                isProject
+                                  ? handleProjectOpen(
+                                      item.id.replace("project-", ""),
+                                    )
+                                  : handleChatOpen(item.sessionId)
+                              }
+                              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-900"
+                            >
+                              <span className="rounded border border-zinc-700 px-1 py-0.5 text-[10px] uppercase text-zinc-500">
+                                {isProject ? "Project" : "Chat"}
+                              </span>
+                              <span className="min-w-0 truncate">
+                                {item.title}
+                              </span>
+                            </button>
+                          );
+                        })
                       ) : (
-                        <p className="px-1 text-xs text-zinc-500">No matches found.</p>
+                        <p className="px-1 text-xs text-zinc-500">
+                          No matches found.
+                        </p>
                       )}
                     </div>
                   )}
@@ -752,83 +6686,124 @@ export default function RunashChatPage() {
               )}
             </div>
 
-            <header className="mb-6 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="rounded-md bg-gradient-to-r from-cyan-500 to-blue-500 p-2">
-                  <Bot className="h-5 w-5 text-white" />
+            <div
+              className={`sticky top-0 mb-4 space-y-4 rounded-2xl border border-transparent bg-gradient-to-b from-[#050607]/95 via-[#050607]/92 to-transparent px-1 pt-1 backdrop-blur-sm sm:mb-5 ${
+                isMobileSidebarOpen ||
+                isOnboardingOpen ||
+                isAnyOverlayOpen
+                  ? "z-0"
+                  : "z-20"
+              }`}
+            >
+              {isBannerDismissed === false && (
+                <div className="mx-auto w-full max-w-3xl" role="status" aria-live="polite">
+                  <ChatInfoBanner
+                    badge="New"
+                    message="Chat composer updates are live with quicker launch actions."
+                    cta="Learn More"
+                    ctaRef={learnMoreTriggerRef}
+                    onCtaClick={() => handleOpenOnboardingDialog(learnMoreTriggerRef.current)}
+                    onDismiss={dismissUpdatesBanner}
+                  />
                 </div>
-                <div>
-                  <p className="text-sm text-zinc-400">RunAsh Agent Workspace</p>
-                  <h1 className="text-xl font-semibold">What do you want to create?</h1>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="hidden items-center gap-1 md:flex">
-                  {headerActions.map((action) => {
-                    const Icon = action.icon
+              )}
 
-                    return (
-                      <Button
+              <header className="relative flex flex-col items-center gap-3 pb-1 md:min-h-[3.5rem] md:justify-center">
+                <div className="flex min-w-0 items-center justify-center gap-2.5 text-center sm:gap-3 md:px-28 lg:px-40 xl:px-52">
+                  <div className="rounded-md bg-gradient-to-r from-cyan-500 to-blue-500 p-1.5 sm:p-2">
+                    <Bot className="h-4 w-4 text-white sm:h-5 sm:w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-xs text-zinc-400 sm:text-sm">
+                      RunAsh Agent Workspace
+                    </p>
+                    <h1 className="truncate text-lg font-semibold text-zinc-100 sm:text-xl">
+                      What do you want to create?
+                    </h1>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center justify-end gap-2 sm:gap-2.5 md:absolute md:right-0 md:top-1/2 md:w-auto md:-translate-y-1/2">
+                  <div className="hidden items-center gap-1.5 lg:flex">
+                    {headerActions.map((action) => (
+                      <ActionPill
                         key={action.id}
-                        size="sm"
-                        variant="outline"
-                        className="border-zinc-700 bg-zinc-950 text-zinc-100"
-                        onClick={() => handleHeaderActionClick(action)}
+                        variant={action.id === "upgrade" ? "outline" : "ghost"}
+                        className={
+                          action.id === "upgrade"
+                            ? upgradeCtaClassName
+                            : "text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
+                        }
+                        onClick={(event) =>
+                          handleHeaderActionClick(action, event.currentTarget)
+                        }
                         aria-label={action.label}
                       >
-                        <Icon className="mr-2 h-4 w-4" />
+                        <action.icon className="mr-1.5 h-3.5 w-3.5" />
                         {action.label}
-                      </Button>
-                    )
-                  })}
-                </div>
+                      </ActionPill>
+                    ))}
+                  </div>
 
-                <TooltipProvider delayDuration={150}>
-                  <div className="flex items-center gap-1 md:hidden">
-                    {primaryMobileHeaderActions.map((action) => {
-                      const Icon = action.icon
-                      return (
-                        <Tooltip key={action.id}>
-                          <TooltipTrigger asChild>
-                            <Button
-                              size="icon"
-                              variant="outline"
-                              className="h-8 w-8 border-zinc-700 bg-zinc-950 text-zinc-100"
-                              onClick={() => handleHeaderActionClick(action)}
-                              aria-label={action.label}
-                            >
-                              <Icon className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent className="border-zinc-800 bg-zinc-900 text-zinc-100">{action.tooltip}</TooltipContent>
-                        </Tooltip>
-                      )
-                    })}
+                  <div className="hidden items-center gap-1.5 md:flex lg:hidden">
+                    {primaryTabletHeaderActions.map((action) => (
+                      <ActionPill
+                        key={action.id}
+                        variant={action.id === "upgrade" ? "outline" : "ghost"}
+                        className={
+                          action.id === "upgrade"
+                            ? upgradeCtaClassName
+                            : "text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
+                        }
+                        onClick={(event) =>
+                          handleHeaderActionClick(action, event.currentTarget)
+                        }
+                        aria-label={action.label}
+                      >
+                        <action.icon className="mr-1.5 h-3.5 w-3.5" />
+                        {action.label}
+                      </ActionPill>
+                    ))}
+                    {overflowTabletHeaderActions.length > 0 && (
+                      <DropdownMenu
+                        open={isMenuOverlayOpen("tabletHeaderActions")}
+                        onOpenChange={(open) => {
+                          if (open) {
+                            openMenuOverlay("tabletHeaderActions");
+                            return;
+                          }
 
-                    {overflowMobileHeaderActions.length > 0 && (
-                      <DropdownMenu>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                size="icon"
-                                variant="outline"
-                                className="h-8 w-8 border-zinc-700 bg-zinc-950 text-zinc-100"
-                                aria-label="More actions"
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                          </TooltipTrigger>
-                          <TooltipContent className="border-zinc-800 bg-zinc-900 text-zinc-100">More actions</TooltipContent>
-                        </Tooltip>
-                        <DropdownMenuContent align="end" className="border-zinc-800 bg-zinc-900 text-zinc-100">
-                          {overflowMobileHeaderActions.map((action) => (
+                          closeOverlay(false);
+                        }}
+                      >
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
+                            aria-label="More header actions"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="end"
+                          className="z-40 border-zinc-800 bg-zinc-900 text-zinc-100"
+                        >
+                          {overflowTabletHeaderActions.map((action) => (
                             <DropdownMenuItem
                               key={action.id}
-                              onClick={() => handleHeaderActionClick(action)}
+                              onClick={(event) =>
+                                handleHeaderActionClick(
+                                  action,
+                                  event.currentTarget,
+                                )
+                              }
                               className="focus:bg-zinc-800 focus:text-zinc-100"
                             >
+                              <action.icon
+                                className="mr-2 h-4 w-4"
+                                aria-hidden="true"
+                              />
                               {action.label}
                             </DropdownMenuItem>
                           ))}
@@ -836,51 +6811,246 @@ export default function RunashChatPage() {
                       </DropdownMenu>
                     )}
                   </div>
-                </TooltipProvider>
 
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
+                  <div className="relative hidden md:block">
+                    {isCreditsOpen && (
+                      <button
+                        type="button"
+                        aria-label="Close credit balance panel"
+                        className="fixed inset-0 z-40 hidden bg-black/40 md:block"
+                        onClick={() => closeCreditsPanel(true)}
+                      />
+                    )}
+
+                    <Button
+                      ref={creditsTriggerRef}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 rounded-full border-zinc-700 bg-zinc-950 px-2.5 text-xs font-medium text-zinc-100 hover:bg-zinc-900"
+                      onClick={(event) => {
+                        if (isCreditsOpen) {
+                          closeCreditsPanel(true);
+                          return;
+                        }
+
+                        if (isAuthenticated) {
+                          setCreditsLoadError(null);
+                          void loadCreditsBalance().catch((error) => {
+                            setCreditsLoadError("Unable to refresh credits right now.");
+                            handleServiceError(
+                              "Credits unavailable",
+                              "We could not refresh your credits balance.",
+                              error,
+                            );
+                          });
+                        }
+                        trackAnalyticsEvent("credits.refresh", {
+                          source: "credits-panel",
+                        });
+                        openModal("credits", event.currentTarget);
+                      }}
+                      aria-label="View credit balance details"
+                      aria-expanded={isCreditsOpen}
+                      aria-controls={creditsPanelId}
+                    >
+                      <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
+                      <span>{creditsBalanceLabel}</span>
+                    </Button>
+
+                    {isCreditsOpen && (
+                      <div
+                        ref={creditsPanelRef}
+                        id={creditsPanelId}
+                        role="dialog"
+                        aria-label="Credit balance"
+                        className={`${popoverOverlayClassName} absolute right-0 top-full mt-2.5 w-72 rounded-xl border border-zinc-800 bg-zinc-950/95 p-3 text-sm text-zinc-100 shadow-2xl shadow-black/40 backdrop-blur`}
+                      >
+                        <div className="mb-2 flex items-center justify-between">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                            Credit Balance
+                          </p>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                            onClick={() => closeCreditsPanel(true)}
+                            aria-label="Close credit balance panel"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        {isCreditsLoading ? (
+                          <p className="mb-2 text-xs text-zinc-500">Refreshing credits…</p>
+                        ) : null}
+                        {creditsLoadError ? (
+                          <p className="mb-2 text-xs text-amber-300">{creditsLoadError}</p>
+                        ) : null}
+                        <div className="space-y-1.5">
+                          {creditSummaryRows.map((row) => (
+                            <div
+                              key={row.key}
+                              className="flex items-center justify-between rounded-md bg-zinc-900/80 px-2 py-1.5"
+                            >
+                              <span className="text-zinc-300">{row.label}</span>
+                              <span className="font-medium text-zinc-100">
+                                {formatCreditValue(creditMetrics[row.key])}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 border-zinc-700 bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
+                            onClick={(event) =>
+                              openRedeemCodeDialog(event.currentTarget)
+                            }
+                          >
+                            Redeem Code
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-8 bg-cyan-600 text-zinc-950 hover:bg-cyan-500"
+                            onClick={() => {
+                              closeCreditsPanel(false);
+                              router.push("/pricing?intent=credits");
+                            }}
+                          >
+                            Buy Credits
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <TooltipProvider delayDuration={150}>
+                    <div className="flex items-center gap-1 md:hidden">
+                      {primaryMobileHeaderActions.map((action) => {
+                        const Icon = action.icon;
+                        return (
+                          <Tooltip key={action.id}>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant={
+                                  action.id === "upgrade" ? "outline" : "ghost"
+                                }
+                                className={
+                                  action.id === "upgrade"
+                                    ? `h-8 w-8 ${upgradeCtaClassName}`
+                                    : "h-8 w-8 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
+                                }
+                                onClick={(event) =>
+                                  handleHeaderActionClick(
+                                    action,
+                                    event.currentTarget,
+                                  )
+                                }
+                                aria-label={action.label}
+                              >
+                                <Icon className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent className="z-40 border-zinc-800 bg-zinc-900 text-zinc-100">
+                              {action.tooltip}
+                            </TooltipContent>
+                          </Tooltip>
+                        );
+                      })}
+
+                      {overflowMobileHeaderActions.length > 0 && (
+                        <DropdownMenu
+                          open={isMenuOverlayOpen("mobileHeaderActions")}
+                          onOpenChange={(open) => {
+                            if (open) {
+                              openMenuOverlay("mobileHeaderActions");
+                              return;
+                            }
+
+                            closeOverlay(false);
+                          }}
+                        >
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
+                                  aria-label="More actions"
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                            </TooltipTrigger>
+                            <TooltipContent className="z-40 border-zinc-800 bg-zinc-900 text-zinc-100">
+                              More actions
+                            </TooltipContent>
+                          </Tooltip>
+                          <DropdownMenuContent
+                            align="end"
+                            className="z-40 border-zinc-800 bg-zinc-900 text-zinc-100"
+                          >
+                            {overflowMobileHeaderActions.map((action) => (
+                              <DropdownMenuItem
+                                key={action.id}
+                                onClick={(event) =>
+                                  handleHeaderActionClick(
+                                    action,
+                                    event.currentTarget,
+                                  )
+                                }
+                                className="focus:bg-zinc-800 focus:text-zinc-100"
+                              >
+                                <action.icon
+                                  className="mr-2 h-4 w-4"
+                                  aria-hidden="true"
+                                />
+                                {action.label}
+                              </DropdownMenuItem>
+                            ))}
+                            <DropdownMenuSeparator className="bg-zinc-800" />
+                            <DropdownMenuItem
+                              onClick={(event) =>
+                                handleOpenOnboardingDialog(event.currentTarget)
+                              }
+                              className="focus:bg-zinc-800 focus:text-zinc-100"
+                            >
+                              <Sparkles
+                                className="mr-2 h-4 w-4"
+                                aria-hidden="true"
+                              />
+                              Credits: {creditsBalanceLabel}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </div>
+                  </TooltipProvider>
+
+                  {isAuthenticated ? (
+                    renderProfileMenu(
+                      "h-10 w-10 rounded-full border-zinc-700 bg-zinc-950 p-0 text-zinc-100 md:h-9 md:w-9",
+                    )
+                  ) : (
                     <Button
                       type="button"
+                      size="sm"
                       variant="outline"
-                      className="h-9 w-9 rounded-full border-zinc-700 bg-zinc-950 p-0 text-zinc-100"
-                      aria-label="Open account menu"
+                      className="border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-900"
+                      onClick={() => router.push("/login")}
                     >
-                      <Avatar className="h-8 w-8">
-                        {session?.user?.image ? <AvatarImage src={session.user.image} alt={userDisplayName} /> : null}
-                        <AvatarFallback className="bg-zinc-800 text-xs text-zinc-100">{userInitials}</AvatarFallback>
-                      </Avatar>
+                      Sign in
                     </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56 border-zinc-800 bg-zinc-900 text-zinc-100">
-                    <div className="px-2 py-1.5">
-                      <p className="truncate text-sm font-medium text-zinc-100">{userDisplayName}</p>
-                      {userEmail ? <p className="truncate text-xs text-zinc-400">{userEmail}</p> : null}
-                    </div>
-                    {userMenuItems.map((item) => {
-                      const Icon = item.icon
-                      return (
-                        <DropdownMenuItem
-                          key={item.label}
-                          onClick={item.action}
-                          className="cursor-pointer focus:bg-zinc-800 focus:text-zinc-100"
-                        >
-                          <Icon className="mr-2 h-4 w-4" />
-                          {item.label}
-                        </DropdownMenuItem>
-                      )
-                    })}
-                    <DropdownMenuItem
-                      onClick={() => signOutWithRedirect("/")}
-                      className="cursor-pointer text-rose-300 focus:bg-rose-500/20 focus:text-rose-200"
-                    >
-                      <LogOut className="mr-2 h-4 w-4" />
-                      Sign out
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </header>
+                  )}
+                </div>
+              </header>
+            </div>
 
             {startChatError && (
               <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
@@ -888,108 +7058,824 @@ export default function RunashChatPage() {
               </div>
             )}
 
-            {showUpdatesBanner && (
-              <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-cyan-300/50 bg-cyan-300/10 px-2.5 py-2 text-xs text-cyan-50 sm:mb-3 sm:px-3 sm:py-2.5">
-                <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
-                  <span className="rounded-full border border-cyan-200/60 bg-cyan-200/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-50">
-                    New
-                  </span>
-                  <p className="text-cyan-50">Faster workspace flows are now live.</p>
-                  <Button
-                    variant="link"
-                    className="h-auto p-0 text-xs text-cyan-100 underline-offset-2 hover:text-cyan-50"
-                    onClick={() => router.push("/changelog")}
-                  >
-                    Learn more
-                  </Button>
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-5 w-5 shrink-0 text-cyan-100 hover:bg-cyan-400/20 hover:text-cyan-50"
-                  onClick={dismissUpdatesBanner}
-                  aria-label="Dismiss updates banner"
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-            )}
+            <Card className="mx-auto mb-5 w-full max-w-4xl border-zinc-800 bg-zinc-950 p-0 sm:mb-6">
+              <div className="p-3 sm:p-4">
+                <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
+                  <Textarea
+                    ref={mainControlsRef}
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    onKeyDown={handlePromptKeyDown}
+                    placeholder="Ask v0 to build..."
+                    className="min-h-[120px] resize-none border-0 bg-transparent px-3 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-0 sm:px-4"
+                  />
+                  <div className="border-t border-zinc-800 px-3 py-2.5 sm:px-4">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                        Prompt actions
+                      </p>
+                      <DropdownMenu
+                        open={isPromptMenuOpen}
+                        onOpenChange={(open) => {
+                          if (open) {
+                            openPromptMenu(composerMenuTriggerRef.current);
+                            return;
+                          }
 
-            <Card className="mb-5 border-zinc-800 bg-zinc-950 p-4">
-              <Input
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Ask RunAsh to plan a launch, bundle products, or assist checkout..."
-                className="mb-3 border-zinc-700 bg-zinc-900 text-zinc-200"
-              />
-              <div className="flex flex-wrap gap-2">
-                {quickPrompts.map((item) => {
-                  const Icon = item.icon
-                  return (
-                    <button
-                      key={item.id}
+                          closePromptMenu(true);
+                        }}
+                      >
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            ref={composerMenuTriggerRef}
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 rounded-full border border-zinc-700 bg-zinc-950 text-zinc-200 hover:bg-zinc-800"
+                            aria-label="Open command launcher"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          ref={composerMenuContentRef}
+                          align="start"
+                          className={`${menuOverlayClassName} w-72 border-zinc-800 bg-zinc-900 text-zinc-100`}
+                        >
+                          <DropdownMenuLabel className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">
+                            Secondary prompt actions
+                          </DropdownMenuLabel>
+                          {secondaryPromptActionMenuNodes.map((node) =>
+                            renderPromptMenuActionNode(node),
+                          )}
+                          <DropdownMenuSeparator className="bg-zinc-800" />
+                          {composerMenuActionSections.map((section, sectionIndex) => (
+                            <React.Fragment key={section.id}>
+                              {sectionIndex > 0 && (
+                                <DropdownMenuSeparator className="bg-zinc-800" />
+                              )}
+                              <DropdownMenuLabel className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">
+                                {section.label}
+                              </DropdownMenuLabel>
+                              {section.actions.map((node) =>
+                                renderComposerMenuActionNode(node),
+                              )}
+                            </React.Fragment>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    <input
+                      ref={composerUploadInputRef}
+                      type="file"
+                      accept={allowedUploadExtensions.join(",")}
+                      className="hidden"
+                      onChange={handleComposerFileSelection}
+                      aria-label="Upload prompt attachment"
+                    />
+                    {composerMenuActionLoadingId && (
+                      <p className="mb-2 inline-flex items-center gap-2 text-xs text-zinc-400">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Processing menu action…
+                      </p>
+                    )}
+                    {uploadedAssetName && (
+                      <p className="mb-2 text-xs text-cyan-300">
+                        Attached file: {uploadedAssetName}
+                      </p>
+                    )}
+                    {composerMenuError && (
+                      <p className="mb-2 text-xs text-amber-300">
+                        {composerMenuError}
+                      </p>
+                    )}
+                    <TooltipProvider delayDuration={120}>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={togglePromptRecording}
+                          disabled={
+                            !isSpeechRecognitionSupported ||
+                            voiceCaptureState === "processing"
+                          }
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 ${
+                            voiceCaptureState === "recording" ||
+                            voiceCaptureState === "processing"
+                              ? "border-red-500/80 bg-red-500/15 text-red-200"
+                              : voiceCaptureState === "error"
+                                ? "border-amber-500/80 bg-amber-500/15 text-amber-200"
+                              : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          }`}
+                          aria-label={
+                            voiceCaptureState === "recording"
+                              ? "Stop voice input"
+                              : voiceCaptureState === "error"
+                                ? "Retry voice input"
+                              : "Start voice input"
+                          }
+                          aria-pressed={voiceCaptureState === "recording"}
+                        >
+                          {voiceCaptureState === "processing" ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Mic className="h-3.5 w-3.5" />
+                          )}
+                          <span>
+                            {voiceCaptureState === "recording"
+                              ? "Stop"
+                              : voiceCaptureState === "processing"
+                                ? "Stopping"
+                                : voiceCaptureState === "error"
+                                  ? "Retry voice"
+                                : "Voice"}
+                          </span>
+                        </button>
+                        {(voiceCaptureState === "recording" ||
+                          voiceCaptureState === "processing") && (
+                          <button
+                            type="button"
+                            onClick={cancelPromptRecording}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-xs text-zinc-300 transition hover:border-zinc-500 hover:bg-zinc-800 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+                            aria-label="Cancel voice input"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                            <span>Cancel</span>
+                          </button>
+                        )}
+                        {primaryPromptActionConfigs.map((action) => {
+                          const actionDisabled = isPromptActionDisabled(action);
+                          const actionIsActive =
+                            activePromptActionId === action.id;
+
+                          return (
+                            <Tooltip key={action.id}>
+                              <TooltipTrigger asChild>
+                                <button
+                                  ref={(element) => {
+                                    promptActionButtonRefs.current[action.id] =
+                                      element;
+                                  }}
+                                  type="button"
+                                  onClick={() =>
+                                    void handlePromptAction(action)
+                                  }
+                                  onKeyDown={(event) =>
+                                    handlePromptActionKeyDown(event, action.id)
+                                  }
+                                  disabled={
+                                    actionDisabled ||
+                                    Boolean(promptActionLoadingId) ||
+                                    isStartingChat
+                                  }
+                                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 ${
+                                    actionIsActive
+                                      ? "border-cyan-500/80 bg-cyan-500/15 text-cyan-200"
+                                      : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800 hover:text-zinc-100"
+                                  } ${actionDisabled ? "cursor-not-allowed border-zinc-800 text-zinc-600" : ""}`}
+                                  aria-pressed={actionIsActive}
+                                >
+                                  {promptActionLoadingId === action.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <action.icon className="h-3.5 w-3.5" />
+                                  )}
+                                  <span>{action.label}</span>
+                                  {action.requiresPlan && (
+                                    <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                                      Pro
+                                    </span>
+                                  )}
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent className="z-40 border-zinc-800 bg-zinc-900 text-zinc-100">
+                                {getPromptActionTooltip(action)}
+                              </TooltipContent>
+                            </Tooltip>
+                          );
+                        })}
+                      </div>
+                    </TooltipProvider>
+                    {promptActionError && (
+                      <p className="mt-2 text-xs text-amber-300">{promptActionError}</p>
+                    )}
+                    {!isSpeechRecognitionSupported && (
+                      <p className="mt-2 text-xs text-amber-300">
+                        Voice input is unavailable in this browser. Use Chrome,
+                        Edge, or Safari.
+                      </p>
+                    )}
+                    {voiceCaptureState === "recording" && (
+                      <p className="mt-2 inline-flex items-center gap-2 text-xs text-red-300">
+                        <span
+                          className="h-2 w-2 animate-pulse rounded-full bg-red-400"
+                          aria-hidden="true"
+                        />
+                        Recording… speak now.
+                      </p>
+                    )}
+                    {(voiceCaptureState === "recording" ||
+                      voiceCaptureState === "processing") &&
+                      speechTranscriptPreview && (
+                      <p className="mt-1 text-xs text-zinc-400">
+                        {speechTranscriptPreview}
+                      </p>
+                    )}
+                    {speechErrorMessage && (
+                      <p className="mt-2 text-xs text-amber-300">
+                        {speechErrorMessage}
+                      </p>
+                    )}
+                  </div>
+                  <div className="border-t border-zinc-800 px-3 py-2.5 sm:px-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
+                        <Bot className="h-3.5 w-3.5" />
+                        Model
+                      </div>
+                      <DropdownMenu
+                        open={isMenuOverlayOpen("modelPicker")}
+                        onOpenChange={(open) => {
+                          if (open) {
+                            openMenuOverlay("modelPicker", mainControlsRef.current);
+                            return;
+                          }
+
+                          closeOverlay(false);
+                        }}
+                      >
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="h-8 max-w-[220px] rounded-full border border-zinc-700 bg-zinc-950 px-3 text-xs font-medium text-zinc-200 hover:bg-zinc-800"
+                          >
+                            <span className="truncate">{selectedModel}</span>
+                            <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="end"
+                          className="z-40 border-zinc-800 bg-zinc-900 text-zinc-100"
+                        >
+                          <DropdownMenuItem
+                            onClick={() => handleModelSelection("v0 Mini")}
+                            className="focus:bg-zinc-800 focus:text-zinc-100"
+                          >
+                            v0 Mini
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleModelSelection("v0 Max")}
+                            className="focus:bg-zinc-800 focus:text-zinc-100"
+                          >
+                            v0 Max
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                  <div className="border-t border-zinc-800 px-3 py-2.5 sm:px-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
+                        <FolderKanban className="h-3.5 w-3.5" />
+                        Project
+                      </div>
+                      <DropdownMenu
+                        open={isMenuOverlayOpen("projectPicker")}
+                        onOpenChange={(open) => {
+                          if (open) {
+                            openMenuOverlay("projectPicker", mainControlsRef.current);
+                            return;
+                          }
+
+                          closeOverlay(false);
+                        }}
+                      >
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="h-8 w-full justify-between gap-1 rounded-full border border-zinc-800 bg-zinc-900 px-3 text-xs font-normal text-zinc-300 hover:bg-zinc-800 sm:w-auto sm:min-w-[220px]"
+                          >
+                            <span className="truncate">
+                              {selectedProjectLabel}
+                            </span>
+                            <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="end"
+                          className="z-40 border-zinc-800 bg-zinc-900 text-zinc-100"
+                        >
+                          <DropdownMenuItem
+                            onClick={() => handleProjectSelection("Select a Project")}
+                            className="focus:bg-zinc-800 focus:text-zinc-100"
+                          >
+                            Select a Project
+                          </DropdownMenuItem>
+                          {recentProjectItems.slice(0, 5).map((project) => (
+                            <DropdownMenuItem
+                              key={project.id}
+                              onClick={() => handleProjectSelection(project.title)}
+                              className="focus:bg-zinc-800 focus:text-zinc-100"
+                            >
+                              {project.title}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-zinc-800 px-3 py-2.5 sm:px-4">
+                    <Button
                       type="button"
-                      onClick={() => startChatWithPrompt(item.prompt)}
-                      className="flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 transition hover:bg-zinc-800"
+                      className="h-8 rounded-full bg-zinc-100 px-3 text-xs font-medium text-zinc-900 hover:bg-white"
+                      disabled={!prompt.trim() || isStartingChat}
+                      onClick={() =>
+                        void startChatWithPrompt(prompt, {
+                          source: "composer-send",
+                        })
+                      }
+                      aria-label="Send prompt"
                     >
-                      <Icon className="h-3.5 w-3.5 text-cyan-400" />
-                      {item.label}
-                    </button>
-                  )
-                })}
+                      Send
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                    <p className="hidden text-[11px] text-zinc-500 sm:block">
+                      Press Enter to send, Shift+Enter for a new line.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <SuggestionCardGrid
+                    title="Prompt suggestions"
+                    items={promptSuggestionItems}
+                    emptyMessage="All suggestions dismissed. Use Settings → General to show them again."
+                  />
+                </div>
               </div>
-              <div className="mt-4 flex justify-end">
-                <Button className="bg-cyan-600 text-white hover:bg-cyan-500" disabled={!prompt.trim()} onClick={() => startChatWithPrompt(prompt)}>
-                  Continue <ArrowRight className="ml-1 h-4 w-4" />
-                </Button>
-              </div>
+
+              {isGetStartedVisible && (
+                <section
+                  className="border-t border-zinc-800 px-3 py-4 sm:px-4"
+                  aria-label="Task starter onboarding"
+                >
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <h2 className="text-sm font-medium text-zinc-100">
+                      Task starter
+                    </h2>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                      onClick={handleDismissGetStarted}
+                      aria-label="Dismiss get started module"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <div
+                    className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
+                    role="navigation"
+                    aria-label="Task starter quick links"
+                  >
+                    {getStartedQuickOptions.map((option) => {
+                      const OptionIcon = option.icon;
+                      const nextTab: GetStartedTabId | null =
+                        option.id === "task"
+                          ? "tasks"
+                          : option.id === "review"
+                            ? "reviews"
+                            : option.id === "manage"
+                              ? "archive"
+                              : null;
+
+                      return (
+                        <Button
+                          key={option.id}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 rounded-full border-zinc-800 bg-zinc-900/60 px-3 text-xs text-zinc-200 hover:bg-zinc-800"
+                          onClick={() => {
+                            if (nextTab) {
+                              handleGetStartedTabChange(nextTab);
+                            }
+                          }}
+                          aria-pressed={nextTab ? nextTab === activeGetStartedTab : undefined}
+                        >
+                          <OptionIcon className="mr-1.5 h-3.5 w-3.5" />
+                          {option.label}
+                        </Button>
+                      );
+                    })}
+                  </div>
+
+                  <div>
+                    <div
+                      role="tablist"
+                      aria-label="Get started tabs"
+                      className="mb-3 flex flex-wrap gap-2"
+                    >
+                      {getStartedTabs.map((tab) => {
+                        const isActiveTab = tab.id === activeGetStartedTab;
+                        return (
+                          <button
+                            key={tab.id}
+                            ref={(element) => {
+                              getStartedTabButtonRefs.current[tab.id] = element;
+                            }}
+                            type="button"
+                            role="tab"
+                            id={`get-started-tab-${tab.id}`}
+                            aria-selected={isActiveTab}
+                            aria-controls={`get-started-panel-${tab.id}`}
+                            tabIndex={isActiveTab ? 0 : -1}
+                            onClick={() => handleGetStartedTabChange(tab.id)}
+                            onKeyDown={(event) =>
+                              handleGetStartedTabKeyDown(event, tab.id)
+                            }
+                            className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                              isActiveTab
+                                ? "border-zinc-600 bg-zinc-100 text-zinc-900"
+                                : "border-zinc-800 bg-zinc-900/40 text-zinc-300 hover:bg-zinc-800"
+                            }`}
+                          >
+                            {tab.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div
+                      role="tabpanel"
+                      id={`get-started-panel-${activeGetStartedTab}`}
+                      aria-labelledby={`get-started-tab-${activeGetStartedTab}`}
+                    >
+                      <p className="mb-2 text-xs text-zinc-400">
+                        Start your first task flows using one of these guided cards.
+                      </p>
+                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                        {activeGetStartedCards.map((card) => {
+                          const CardIcon = card.icon;
+                          return (
+                            <div
+                              key={card.id}
+                              className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3"
+                            >
+                              <div className="mb-2 flex items-center gap-2 text-zinc-200">
+                                <CardIcon className="h-4 w-4" />
+                                <h3 className="text-xs font-medium">{card.title}</h3>
+                              </div>
+                              <p className="mb-3 text-xs text-zinc-400">
+                                {card.description}
+                              </p>
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="h-7 rounded-full bg-zinc-100 px-3 text-xs font-medium text-zinc-900 hover:bg-white"
+                                onClick={() => {
+                                  setPrompt(`Start a ${card.actionType} workflow for me.`);
+                                  mainControlsRef.current?.focus();
+                                }}
+                              >
+                                {card.actionLabel}
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {!isComposerUpgradeHelperDismissed && (
+                <div className="border-t border-zinc-800/80 bg-zinc-900/40 px-3 py-2.5 text-xs text-zinc-400 sm:px-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="leading-relaxed text-zinc-300">
+                      Upgrade to Team for shared projects, model controls, and
+                      workspace collaboration.
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className={`ml-2 h-7 rounded-full px-2.5 text-[11px] ${upgradeCtaClassName}`}
+                        onClick={(event) =>
+                          openUpgradeModal("team", event.currentTarget)
+                        }
+                      >
+                        Upgrade Plan
+                      </Button>
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 self-start px-2 text-[11px] text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 sm:self-auto"
+                      onClick={() => setIsComposerUpgradeHelperDismissed(true)}
+                    >
+                      Dismiss
+                    </Button>
+                  </div>
+                </div>
+              )}
             </Card>
 
-            <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
               <Card className="border-zinc-800 bg-zinc-950 p-4">
                 <div className="mb-3 flex items-center justify-between">
-                  <h2 className="text-sm font-medium text-zinc-100">Recent chats</h2>
-                  <span className="text-xs text-zinc-500">View all</span>
+                  <h2 className="text-sm font-medium text-zinc-100">
+                    Recent Projects
+                  </h2>
+                  <button
+                    type="button"
+                    className="text-xs text-zinc-500 transition hover:text-zinc-300"
+                    onClick={() => router.push("/editor")}
+                  >
+                    View All
+                  </button>
                 </div>
-                <ScrollArea className="h-[260px]">
-                  <div className="space-y-2 pr-2">
-                    {loadingSession && <div className="text-sm text-zinc-500">Loading preview…</div>}
-                    {!loadingSession && previewError && <div className="text-sm text-amber-400">{previewError}</div>}
-                    {!loadingSession && !previewError && messagesPreview.length === 0 && (
-                      <div className="text-sm text-zinc-500">No messages yet. Start a chat to see history.</div>
-                    )}
-                    {messagesPreview.map((message) => (
-                      <div key={message.id} className="rounded-md border border-zinc-800 bg-zinc-900 p-2">
-                        <div className="mb-1 text-xs font-medium text-cyan-400">{message.role === "assistant" ? "RunAsh Agent" : "You"}</div>
-                        <p className="line-clamp-2 text-xs text-zinc-300">{message.content}</p>
+
+                {loadingRecents ? (
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                    {Array.from({ length: 4 }).map((_, index) => (
+                      <div
+                        key={`project-loading-${index}`}
+                        className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3"
+                      >
+                        <Skeleton className="mb-2 h-3 w-2/3 bg-zinc-800" />
+                        <Skeleton className="mb-3 h-3 w-4/5 bg-zinc-800" />
+                        <Skeleton className="h-20 rounded-md bg-zinc-800/70" />
                       </div>
                     ))}
                   </div>
-                </ScrollArea>
+                ) : recentItemsError ? (
+                  <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                    {recentItemsError}
+                  </div>
+                ) : recentProjectItems.length === 0 ? (
+                  <div className="rounded-md border border-dashed border-zinc-800 bg-zinc-900/30 px-3 py-6 text-center">
+                    <p className="text-xs text-zinc-400">
+                      No recent projects yet.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="mt-2 h-7 text-xs text-zinc-300 hover:bg-zinc-800"
+                      onClick={() => router.push("/editor")}
+                    >
+                      Create your first project
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {recentProjectItems.slice(0, 4).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() =>
+                          handleProjectOpen(item.id.replace("project-", ""))
+                        }
+                        className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-2.5 text-left transition hover:border-zinc-700 hover:bg-zinc-900/70"
+                      >
+                        <div
+                          className={`mb-2.5 flex h-20 items-end rounded-md border border-zinc-700/70 bg-gradient-to-br p-2 ${projectThumbnailClasses[Number(item.id.length) % projectThumbnailClasses.length]}`}
+                        >
+                          <div className="rounded bg-zinc-950/70 px-1.5 py-0.5 text-[10px] text-zinc-200">
+                            Preview
+                          </div>
+                        </div>
+                        <div className="mb-1 flex items-center justify-between gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
+                          <span className="flex items-center gap-2">
+                            <FolderKanban className="h-3.5 w-3.5" /> Project
+                          </span>
+                          <span className="rounded border border-zinc-700 px-1 py-0.5 text-[10px] text-zinc-400">
+                            #{item.id.replace("project-", "")}
+                          </span>
+                        </div>
+                        <p className="mb-1 truncate text-xs font-medium text-zinc-200">
+                          {item.title}
+                        </p>
+                        <p className="text-[11px] text-zinc-500">
+                          {formatRecentTimestamp(item.updatedAt)}
+                        </p>
+                        <p className="mt-2 text-[11px] text-cyan-300">
+                          Open in editor
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </Card>
 
               <Card className="border-zinc-800 bg-zinc-950 p-4">
-                <h2 className="mb-3 text-sm font-medium text-zinc-100">Commerce assistant modes</h2>
-                <ul className="space-y-2 text-sm text-zinc-300">
-                  <li className="flex items-center gap-2"><ShoppingCart className="h-4 w-4 text-emerald-400" /> Product discovery & bundling</li>
-                  <li className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-blue-400" /> Checkout guidance</li>
-                  <li className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-green-400" /> Safe payment handoff</li>
-                  <li className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-orange-400" /> Personalized upsells</li>
-                </ul>
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                  <Button variant="outline" className="border-zinc-700 bg-zinc-900 text-zinc-100" onClick={() => router.push("/payment/runash-pay")}>RunAsh Pay</Button>
-                  <Button className="bg-zinc-100 text-zinc-900 hover:bg-white" onClick={() => startChatWithPrompt("Help me complete checkout with best payment option and order confirmation steps.")}>Launch flow</Button>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <h2 className="text-sm font-medium text-zinc-100">
+                    My Chats
+                  </h2>
+                  <button
+                    type="button"
+                    className="text-xs text-zinc-500 transition hover:text-zinc-300"
+                    onClick={() => router.push("/chat")}
+                  >
+                    View All
+                  </button>
                 </div>
-              </Card>
-            </div>
+                <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-zinc-800/80 bg-zinc-900/30 px-2.5 py-1.5 text-[11px] text-zinc-500">
+                  <span>
+                    {loadingSession
+                      ? "Syncing previews…"
+                      : `${messagesPreview.length} preview snippets loaded`}
+                  </span>
+                  {previewError ? (
+                    <span className="text-amber-300">Preview unavailable</span>
+                  ) : (
+                    <span className="text-zinc-400">Workspace sync</span>
+                  )}
+                </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <PlaceholderCollectionSection title="Recent Projects" items={recentProjectPlaceholders} />
-              <PlaceholderCollectionSection title="My Chats" items={myChatPlaceholders} />
+                {loadingRecents ? (
+                  <div className="space-y-1.5">
+                    {Array.from({ length: 6 }).map((_, index) => (
+                      <div
+                        key={`chat-loading-${index}`}
+                        className="flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-900/50 px-3 py-2"
+                      >
+                        <Skeleton className="h-7 w-7 rounded-full bg-zinc-800" />
+                        <div className="flex-1 space-y-2">
+                          <Skeleton className="h-2 w-4/5 bg-zinc-800" />
+                          <Skeleton className="h-2 w-2/5 bg-zinc-800" />
+                        </div>
+                        <Skeleton className="h-2 w-10 bg-zinc-800" />
+                      </div>
+                    ))}
+                  </div>
+                ) : recentItemsError ? (
+                  <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                    {recentItemsError}
+                  </div>
+                ) : myChatItems.length === 0 ? (
+                  <div className="rounded-md border border-dashed border-zinc-800 bg-zinc-900/30 px-3 py-6 text-center">
+                    <p className="text-xs text-zinc-400">
+                      No chats yet. Start one from above.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="mt-2 h-7 text-xs text-zinc-300 hover:bg-zinc-800"
+                      onClick={() => void startChatWithPrompt()}
+                      disabled={isStartingChat}
+                    >
+                      Start a chat
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {myChatItems.slice(0, 6).map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/50 px-2.5 py-2 transition hover:border-zinc-700 hover:bg-zinc-900"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleChatOpen(item.sessionId)}
+                          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        >
+                          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-zinc-800/90 text-zinc-300">
+                            <MessageSquare className="h-3.5 w-3.5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs text-zinc-300">
+                              RunAsh Agent
+                            </p>
+                            <p
+                              className="truncate text-[11px] text-zinc-500"
+                              title={item.title}
+                            >
+                              {item.title}
+                            </p>
+                            <div className="mt-1 flex items-center gap-2 text-[10px] text-zinc-500">
+                              <span className="rounded border border-zinc-700 px-1.5 py-0.5">
+                                {getRecentStatus(item.updatedAt)}
+                              </span>
+                              <span>
+                                {formatRecentTimestamp(item.updatedAt)}
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                        <div className="relative mr-1 h-7 w-7">
+                          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800 text-[10px] font-medium text-zinc-300">
+                            {getInitials(item.title)}
+                          </div>
+                          <span
+                            className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-zinc-950 ${
+                              getRecentStatus(item.updatedAt) === "Active"
+                                ? "bg-emerald-400"
+                                : getRecentStatus(item.updatedAt) === "Recent"
+                                  ? "bg-amber-400"
+                                  : "bg-zinc-500"
+                            }`}
+                          />
+                        </div>
+                        <DropdownMenu
+                          open={isChatCardActionsOpen(item.id)}
+                          onOpenChange={(open) => {
+                            if (open) {
+                              openChatCardActionsMenu(item.id);
+                              return;
+                            }
+
+                            closeOverlay(false);
+                          }}
+                        >
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="rounded p-1 text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-300"
+                              aria-label={`Open actions for ${item.title}`}
+                            >
+                              <MoreVertical className="h-3.5 w-3.5" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent
+                            align="end"
+                            className="w-48 border-zinc-800 bg-zinc-900 p-1.5 text-zinc-100"
+                          >
+                            <DropdownMenuItem
+                              className="cursor-pointer rounded-sm px-2.5 py-1.5 focus:bg-zinc-800 focus:text-zinc-100"
+                              onClick={() =>
+                                handleRecentCardMenuAction(item, "open")
+                              }
+                            >
+                              Open chat
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer rounded-sm px-2.5 py-1.5 focus:bg-zinc-800 focus:text-zinc-100"
+                              onClick={() =>
+                                handleRecentCardMenuAction(item, "continue")
+                              }
+                            >
+                              Continue
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer rounded-sm px-2.5 py-1.5 focus:bg-zinc-800 focus:text-zinc-100"
+                              onClick={() =>
+                                handleRecentCardMenuAction(item, "share")
+                              }
+                            >
+                              Share
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer rounded-sm px-2.5 py-1.5 focus:bg-zinc-800 focus:text-zinc-100"
+                              onClick={() =>
+                                handleRecentCardMenuAction(item, "move")
+                              }
+                            >
+                              Move...
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer rounded-sm px-2.5 py-1.5 focus:bg-zinc-800 focus:text-zinc-100"
+                              onClick={() =>
+                                handleRecentCardMenuAction(item, "toggleFavorite")
+                              }
+                            >
+                              {isRecentFavorited(item)
+                                ? "Remove from Favorites"
+                                : "Add to Favorites"}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer rounded-sm px-2.5 py-1.5 focus:bg-zinc-800 focus:text-zinc-100"
+                              onClick={() =>
+                                handleRecentCardMenuAction(item, "rename")
+                              }
+                            >
+                              Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer rounded-sm px-2.5 py-1.5 text-red-300 focus:bg-red-950/60 focus:text-red-200"
+                              onClick={() =>
+                                handleRecentCardMenuAction(item, "delete")
+                              }
+                            >
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
             </div>
           </div>
         </main>
       </div>
     </div>
-  )
+  );
 }

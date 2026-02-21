@@ -28,18 +28,18 @@ const publicRoutes = [
   "/roadmap",
   "/status",
   "/creator",
-  "/business",
-  "/partners",
-  "/changelog",
-  "/forum",
-  "/community",
+  "/admin",
+  "/dashboard",
+  "/seller-dashboard",
+  "/grocery",
+  "/editor",
   "/pro",
   "/enterprise",
   "/ai-overview",
   "/models",
   "/company",
-  "/faq",
-  "/docs",
+  "/runash-chat",
+  "/chat",
   "/live",
 ] as const
 
@@ -238,7 +238,7 @@ export async function middleware(request: NextRequest) {
         headers: { "Content-Type": "application/json" },
       })
     }
-    return NextResponse.redirect(new URL("/login", request.url))
+    return NextResponse.redirect(new URL("/dashboard", request.url))
   }
 
   // Log security events for audit

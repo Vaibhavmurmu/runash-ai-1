@@ -116,6 +116,8 @@ RunAsh AI combines live streaming, AI-assisted creation tooling, seller operatio
 - Payout tab is API-backed (`GET /api/seller/payouts`) with settlement summaries and weekly history.
 - Inventory supports inline stock edits and guarded deletes for production workflows.
 - RunAsh Chat landing (`/runash-chat`) includes an enhanced mini preview with quick agentic commerce/payment prompts, with session continuity dependent on `GET /api/sessions/recent` and `GET /api/messages/session/:id` being available.
+- RunAsh Chat now applies retry + timeout safeguards for `GET /api/sessions/recent` and `POST /api/sessions`, validates session payload IDs before navigation, and stores prompt/action continuity metadata in localStorage before routing to `/chat`.
+- Profile dropdown on `/runash-chat` now includes compact controls for theme (`system`/`dark`/`light`), language selection (default `English`), and chat panel position (`Left`/`Right`), persisted in localStorage with safe defaults for invalid values.
 
 ### Current limitations (RunAsh Chat preview)
 - If either preview dependency endpoint (`/api/sessions/recent` or `/api/messages/session/:id`) is unavailable in a target deployment, the mini preview falls back to an error or empty state while users can still continue into `/chat`.

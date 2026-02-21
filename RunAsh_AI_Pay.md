@@ -1,5 +1,22 @@
 # 🏦 RunAsh AI Pay 
 
+## RunAsh Chat payment-adjacent action mapping note (2026-02)
+
+- RunAsh Chat header/composer high-value actions now use existing settings action APIs where available:
+  - `POST /api/settings/actions/credits-balance` for credits refresh,
+  - `POST /api/settings/actions/refer-earn` for referral link hydration,
+  - `POST /api/settings/actions/upgrade-plan` before checkout handoff.
+- Project create/import entry points from RunAsh Chat now call `POST /api/editor/projects` to create a draft project before routing into Editor, preserving current editor/payment handoff contracts.
+- Feedback submission continues to use `POST /api/agents/feedback` when a session is present, with Support route fallback when unavailable.
+- No payment request/response schema fields, webhook contracts, or auth/payment token formats were changed.
+- Sensitive auth/payment values are not logged by this flow update.
+
+## Credits quick-action routing note (2026-02)
+
+- The RunAsh Chat credits panel now connects **Redeem Code** to an in-app redeem dialog with input sanitization/validation before handing off to billing redemption flow.
+- **Buy Credits** now routes directly to pricing with a credits purchase context query (`/pricing?intent=credits`) to preserve existing billing contracts while improving purchase intent routing.
+- This is a UI flow reliability update only; no payment API schema fields, webhook contracts, or auth/payment signatures were changed.
+
 
 ## Auth email transport reliability note (2026-02)
 

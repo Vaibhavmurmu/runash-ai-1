@@ -7,8 +7,7 @@ import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Card } from "@/components/ui/card"
-import { Send, Sparkles, Leaf, Settings, History, Bot, Mic, Search } from "lucide-react"
+import { Send, Sparkles, Leaf, Settings, History, Bot, Mic, Search, Zap, WandSparkles } from "lucide-react"
 import type { ChatMessage, ChatSession, UserPreferences, QuickAction } from "@/types/runash-chat"
 import ChatMessageComponent from "@/components/chat/chat-message"
 import QuickActions from "@/components/chat/quick-actions"
@@ -16,6 +15,16 @@ import ChatSidebar from "@/components/chat/chat-sidebar"
 import UserPreferencesDialog from "@/components/chat/user-preferences-dialog"
 import CartDrawer from "@/components/cart/cart-drawer"
 import VoiceControls from "@/components/chat/voice-controls"
+import {
+  ActionPill,
+  ChatDataState,
+  ChatInfoBanner,
+  ChatPageFrame,
+  ChatShellHeader,
+  ChatSurfaceCard,
+  SuggestionCardGrid,
+  type SuggestionCardItem,
+} from "@/components/chat/shared-chat-primitives"
  
 import { getRecommendedProducts, shouldRecommendProducts } from "@/lib/chat-product-recommendations"
 
@@ -97,6 +106,7 @@ export default function RunAshChatPage() {
 
   const [voiceEnabled, setVoiceEnabled] = useState(false)
   const [voiceTranscriptHistory, setVoiceTranscriptHistory] = useState<string[]>([])
+  const [sessionsStatus, setSessionsStatus] = useState<"loading" | "ready" | "error">("loading")
 
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([
     {
@@ -261,11 +271,15 @@ export default function RunAshChatPage() {
 
     ;(async () => {
       try {
+        setSessionsStatus("loading")
         const response = await fetch("/api/sessions")
-        if (!response.ok) return
+        if (!response.ok) throw new Error("Unable to load sessions")
         const payload = await response.json()
         const listed = Array.isArray(payload?.data) ? payload.data : []
-        if (listed.length === 0) return
+        if (listed.length === 0) {
+          setSessionsStatus("ready")
+          return
+        }
 
         setChatSessions((previous) => {
           const mapped = listed.map((entry: { id: string; title?: string; created_at?: string }) => ({
@@ -289,7 +303,9 @@ export default function RunAshChatPage() {
 
           return [...mapped, ...previous.filter((session) => !mapped.some((item) => item.id === session.id))]
         })
+        setSessionsStatus("ready")
       } catch {
+        setSessionsStatus("error")
         // keep local fallback sessions when api is unavailable
       }
     })()
@@ -795,51 +811,97 @@ export default function RunAshChatPage() {
     handleSendMessage(transcript)
   }
 
+  const suggestionItems: SuggestionCardItem[] = [
+    {
+      id: "starter-campaign",
+      title: "Launch promo campaign",
+      description: "Build a short promotional sequence with hooks, CTA moments, and follow-up prompts.",
+      actionLabel: "Create campaign prompt",
+      icon: Sparkles,
+      onAction: () => handleSendMessage("Create a short promo campaign workflow with 3 hooks and a follow-up sequence"),
+    },
+    {
+      id: "voice-script",
+      title: "Voice-first script",
+      description: "Generate a conversational script optimized for live voice interactions.",
+      actionLabel: "Generate voice script",
+      icon: Mic,
+      onAction: () => handleSendMessage("Generate a voice-friendly script for a live product walkthrough"),
+    },
+    {
+      id: "inventory-automation",
+      title: "Inventory automation",
+      description: "Create reorder and low-stock automations for high-velocity SKUs.",
+      actionLabel: "Draft automation plan",
+      icon: Zap,
+      onAction: () => handleSendMessage("Draft an inventory automation plan with reorder thresholds and alerts"),
+    },
+    {
+      id: "prompt-improve",
+      title: "Improve my prompt",
+      description: "Rewrite a basic prompt into an outcome-focused RunAsh instruction set.",
+      actionLabel: "Enhance prompt",
+      icon: WandSparkles,
+      onAction: () => setInputValue("Rewrite my prompt to include audience, offer, constraints, and CTA."),
+    },
+  ]
+
+  const showEmptyState = messages.length === 1 && !inputValue.trim() && !isTyping
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-orange-50 dark:from-gray-950 dark:to-gray-900">
-      {/* Header */}
-      <div className="border-b bg-white/80 dark:bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="rounded-lg bg-gradient-to-r from-orange-600 to-yellow-500 p-2">
-                <Bot className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold bg-gradient-to-r from-orange-600 to-yellow-500 text-transparent bg-clip-text">
-                  RunAshChat
-                </h1>
-                <p className="text-sm text-gray-600 dark:text-gray-400">AI Assistant</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-2">
+    <ChatPageFrame>
+      <div className="sticky top-0 z-50 mb-4 space-y-3">
+        <ChatInfoBanner
+          badge="New"
+          message="Unified chat shell is now active with consistent actions and prompt patterns."
+        />
+        <ChatShellHeader
+          title="RunAshChat"
+          subtitle="AI Assistant"
+          icon={<Bot className="h-5 w-5" />}
+          actions={
+            <>
               <CartDrawer />
-              <Button variant="outline" size="sm" onClick={() => setShowPreferences(true)}>
-                <Settings className="h-4 w-4 mr-2" />
+              <ActionPill onClick={() => setShowPreferences(true)}>
+                <Settings className="mr-1.5 h-3.5 w-3.5" />
                 Preferences
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setSidebarOpen(!sidebarOpen)}>
-                <History className="h-4 w-4 mr-2" />
+              </ActionPill>
+              <ActionPill onClick={() => setSidebarOpen(!sidebarOpen)}>
+                <History className="mr-1.5 h-3.5 w-3.5" />
                 History
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
+              </ActionPill>
+              <ActionPill
                 onClick={() => setVoiceEnabled(!voiceEnabled)}
-                className={voiceEnabled ? "bg-green-100 text-green-700" : ""}
+                className={voiceEnabled ? "bg-green-950 text-green-300" : ""}
+                aria-pressed={voiceEnabled}
               >
-                <Mic className="h-4 w-4 mr-2" />
+                <Mic className="mr-1.5 h-3.5 w-3.5" />
                 {voiceEnabled ? "Voice On" : "Voice Off"}
-              </Button>
-            </div>
-          </div>
-        </div>
+              </ActionPill>
+            </>
+          }
+        />
       </div>
 
-      <div className="container mx-auto px-4 py-6 flex gap-6">
-        {/* Sidebar */}
+      <div className="flex gap-4">
         {sidebarOpen && (
-          <div className="w-80">
+          <div className="w-full space-y-2 lg:w-80">
+            {sessionsStatus === "loading" ? (
+              <ChatDataState
+                state="loading"
+                loadingMessage="Loading session history..."
+                emptyMessage=""
+                errorMessage=""
+              />
+            ) : null}
+            {sessionsStatus === "error" ? (
+              <ChatDataState
+                state="error"
+                loadingMessage=""
+                emptyMessage=""
+                errorMessage="Unable to sync session history. Showing local sessions."
+              />
+            ) : null}
             <ChatSidebar
               sessions={chatSessions}
               onSessionSelect={loadSession}
@@ -850,24 +912,39 @@ export default function RunAshChatPage() {
           </div>
         )}
 
-        {/* Main Chat Area */}
-        <div className="flex-1 max-w-4xl mx-auto">
-          <Card className="h-[calc(100vh-200px)] flex flex-col">
-            {/* Quick Actions */}
-            <div className="p-4 border-b">
+        <div className="flex-1">
+          <ChatSurfaceCard className="flex h-[calc(100vh-128px)] flex-col overflow-hidden">
+            <div className="border-b border-zinc-800 p-3 sm:p-4">
+              {quickActions.length === 0 ? (
+                <ChatDataState
+                  state="empty"
+                  loadingMessage=""
+                  emptyMessage="Quick actions are unavailable right now."
+                  errorMessage=""
+                />
+              ) : null}
               <QuickActions actions={quickActions} />
             </div>
 
-            {/* Messages */}
-            <ScrollArea className="flex-1 p-4">
+            {showEmptyState ? (
+              <div className="border-b border-zinc-800 p-3 sm:p-4">
+                <SuggestionCardGrid
+                  title="Prompt suggestions"
+                  items={suggestionItems}
+                  emptyMessage="No suggestions available right now."
+                />
+              </div>
+            ) : null}
+
+            <ScrollArea className="flex-1 p-3 sm:p-4">
               <div className="space-y-4">
                 {messages.map((message) => (
                   <ChatMessageComponent key={message.id} message={message} />
                 ))}
 
                 {isTyping && (
-                  <div className="flex items-center space-x-2 text-gray-500">
-                    <div className="rounded-lg bg-gray-100 dark:bg-gray-800 p-3">
+                  <div className="flex items-center space-x-2 text-zinc-400" aria-live="polite">
+                    <div className="rounded-lg bg-zinc-900 p-3">
                       <div className="flex space-x-1">
                         <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
                         <div
@@ -887,15 +964,14 @@ export default function RunAshChatPage() {
               </div>
             </ScrollArea>
 
-            {/* Voice Controls */}
             {voiceEnabled && (
-              <div className="p-4 border-t space-y-3">
+              <div className="border-t border-zinc-800 p-3 space-y-3 sm:p-4">
                 {voiceTranscriptHistory.length > 0 && (
-                  <div className="rounded-md border bg-green-50/60 p-2 text-xs dark:bg-green-900/20">
-                    <div className="mb-1 flex items-center font-medium text-green-700 dark:text-green-400">
+                  <div className="rounded-md border border-green-900/70 bg-green-950/20 p-2 text-xs">
+                    <div className="mb-1 flex items-center font-medium text-green-300">
                       <Search className="mr-1 h-3 w-3" /> Recent voice intents
                     </div>
-                    <ul className="space-y-1 text-gray-700 dark:text-gray-300">
+                    <ul className="space-y-1 text-zinc-300">
                       {voiceTranscriptHistory.map((item, index) => (
                         <li key={`${item}-${index}`} className="line-clamp-1">
                           • {item}
@@ -912,8 +988,7 @@ export default function RunAshChatPage() {
               </div>
             )}
 
-            {/* Input */}
-            <div className="p-4 border-t">
+            <div className="border-t border-zinc-800 p-3 sm:p-4">
               <div className="flex space-x-2">
                 <Input
                   ref={inputRef}
@@ -921,7 +996,7 @@ export default function RunAshChatPage() {
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder="Ask about organic products, recipes, sustainability tips, or retail automation..."
-                  className="flex-1"
+                  className="flex-1 border-zinc-700 bg-zinc-900 text-zinc-100 placeholder:text-zinc-500"
                 />
                 <Button
                   onClick={() => handleSendMessage()}
@@ -931,7 +1006,7 @@ export default function RunAshChatPage() {
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
-              <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
+              <div className="flex items-center justify-between mt-2 text-xs text-zinc-500">
                 <span>Press Enter to send, Shift+Enter for new line</span>
                 <div className="flex items-center space-x-4">
                   <span className="flex items-center">
@@ -940,12 +1015,12 @@ export default function RunAshChatPage() {
                   </span>
                   <span className="flex items-center">
                     <Sparkles className="h-3 w-3 mr-1 text-orange-500" />
-                    RunAsh AI 
+                    RunAsh AI
                   </span>
                 </div>
               </div>
             </div>
-          </Card>
+          </ChatSurfaceCard>
         </div>
       </div>
 
@@ -957,6 +1032,6 @@ export default function RunAshChatPage() {
           onClose={() => setShowPreferences(false)}
         />
       )}
-    </div>
+    </ChatPageFrame>
   )
 }

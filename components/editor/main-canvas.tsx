@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Download, Loader, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -37,6 +37,10 @@ export default function MainCanvas({
   const videoRef = useRef<HTMLVideoElement>(null)
   const timelineRef = useRef<HTMLDivElement>(null)
 
+
+  useEffect(() => {
+    setDuration(timeline?.durationSeconds ?? 10)
+  }, [timeline?.durationSeconds])
   const segments = useMemo(() => timeline?.segments ?? [], [timeline])
 
   const handleGenerateVideo = () => {
