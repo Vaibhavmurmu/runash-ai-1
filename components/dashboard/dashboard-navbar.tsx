@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Bell, ChevronRight, Command, Menu, MoreHorizontal, Plus, Search } from "lucide-react"
+import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -24,6 +25,17 @@ interface DashboardNavbarProps {
 export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbarProps) {
   const pathname = usePathname()
   const navContext = resolveDashboardNavContext(pathname)
+  const { openFromTrigger } = useDashboardModelDialog()
+
+  const triggerSource = pathname.startsWith("/editor")
+    ? "editor"
+    : pathname.startsWith("/seller")
+      ? "seller"
+      : pathname.startsWith("/ecommerce")
+        ? "store"
+        : pathname.startsWith("/stream") || pathname.startsWith("/dashboard/streams")
+          ? "streaming"
+          : "chat"
 
   return (
     <header className="sticky top-0 z-30 border-b border-border/70 bg-card/70 backdrop-blur-xl dark:bg-card/50">
@@ -71,6 +83,27 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>Quick actions</DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={(event) => {
+                  openFromTrigger(
+                    {
+                      triggerSource,
+                      mode: "configure",
+                      model: {
+                        modelId: "runash-router",
+                        provider: "RunAsh AI",
+                        displayName: "RunAsh Model Router",
+                      },
+                      payload: {
+                        prompt: `Open model controls from ${navContext.currentSection}.`,
+                      },
+                    },
+                    event.currentTarget,
+                  )
+                }}
+              >
+                Open AI Model Dialog
+              </DropdownMenuItem>
               {navConfig.quickActions.map((action) => (
                 <DropdownMenuItem asChild key={action.href}>
                   <Link href={action.href}>{action.label}</Link>
@@ -116,6 +149,27 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
               <DropdownMenuItem>
                 <Command className="mr-2 h-4 w-4" />
                 Search / Commands
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(event) => {
+                  openFromTrigger(
+                    {
+                      triggerSource,
+                      mode: "configure",
+                      model: {
+                        modelId: "runash-router",
+                        provider: "RunAsh AI",
+                        displayName: "RunAsh Model Router",
+                      },
+                      payload: {
+                        prompt: `Open model controls from ${navContext.currentSection}.`,
+                      },
+                    },
+                    event.currentTarget,
+                  )
+                }}
+              >
+                Open AI Model Dialog
               </DropdownMenuItem>
               {navConfig.quickActions.map((action) => (
                 <DropdownMenuItem asChild key={action.href}>

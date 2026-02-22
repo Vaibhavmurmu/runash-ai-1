@@ -60,6 +60,7 @@ import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { Progress } from "@/components/ui/progress"
 import { toast } from "@/components/ui/use-toast"
+import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
 import { useDashboardRealtime } from "@/lib/hooks/use-dashboard-realtime"
 import type {
   DashboardRecentStream,
@@ -257,6 +258,7 @@ function ActivityItem({ activity }: { activity: any }) {
 
 export function EnhancedDashboard() {
   const [isLoading, setIsLoading] = useState(true)
+  const { openFromTrigger } = useDashboardModelDialog()
   const [stats, setStats] = useState<any | null>(null)
   const [recentStreams, setRecentStreams] = useState<any[]>([])
   const [activities, setActivities] = useState<any[]>([])
@@ -681,6 +683,30 @@ export function EnhancedDashboard() {
                     </div>
                   </DialogContent>
                 </Dialog>
+
+                <Button
+                  variant="outline"
+                  className="w-full bg-transparent"
+                  onClick={(event) =>
+                    openFromTrigger(
+                      {
+                        triggerSource: "streaming",
+                        mode: "configure",
+                        model: {
+                          modelId: "streaming-ops-assistant",
+                          provider: "RunAsh AI",
+                          displayName: "Streaming Ops Assistant",
+                        },
+                        payload: {
+                          prompt: "Tune stream optimization strategy based on current dashboard metrics.",
+                        },
+                      },
+                      event.currentTarget,
+                    )
+                  }
+                >
+                  Open AI Model Dialog
+                </Button>
 
                 <Button variant="outline" className="w-full bg-transparent" onClick={() => loadDashboardData()}>
                   <BarChart3 className="mr-2 h-4 w-4" />
