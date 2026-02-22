@@ -13,9 +13,11 @@ import { useToast } from "@/hooks/use-toast"
 import type { EditorProject, EditorTimeline } from "@/lib/editor/domain"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
 
 export function EditorWorkspace() {
   const { toast } = useToast()
+  const { openFromTrigger } = useDashboardModelDialog()
   const isMobile = useIsMobile()
   const [activeTab, setActiveTab] = useState("generate")
   const [selectedModel, setSelectedModel] = useState("wan-2.1")
@@ -282,7 +284,28 @@ export function EditorWorkspace() {
 
   return (
     <EditorLayout>
-      <TopBar isRecording={isRecording} onRecordingToggle={setIsRecording} onOpenCollaboration={() => setIsCollaborationOpen(true)} onSave={saveProject} isSaving={isSaving} />
+      <TopBar
+        isRecording={isRecording}
+        onRecordingToggle={setIsRecording}
+        onOpenCollaboration={() => setIsCollaborationOpen(true)}
+        onSave={saveProject}
+        isSaving={isSaving}
+        onOpenModelDialog={(trigger) =>
+          openFromTrigger(
+            {
+              triggerSource: "editor",
+              mode: "configure",
+              model: {
+                modelId: selectedModel,
+                provider: "RunAsh AI",
+                displayName: `Editor Model (${selectedModel})`,
+              },
+              payload: { prompt: "Review editor generation settings before launching a new run." },
+            },
+            trigger,
+          )
+        }
+      />
       <div className="flex flex-1 overflow-hidden bg-background pb-24 md:pb-0">
         <LeftSidebar activeTab={activeTab} onTabChange={setActiveTab} isChatOpen={isChatOpen} onChatToggle={setIsChatOpen} />
         <MainCanvas
