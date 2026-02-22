@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
-import type { ModelExecutionState } from "@/lib/types/model-dialog"
+import type { ModelExecutionState, ModelDialogRunHistoryItem } from "@/lib/types/model-dialog"
 import { CheckCircle2, Clock3, Loader2, RotateCcw, Sparkles, Wand2, XCircle } from "lucide-react"
 
 type ModelOption = {
@@ -59,6 +59,7 @@ interface ModelDialogCardProps {
   onRun: () => void
   onSavePreset: () => void
   onRetry?: () => void
+  recentRuns?: ModelDialogRunHistoryItem[]
 }
 
 const STATUS_STYLES: Record<ModelIdentity["status"], string> = {
@@ -100,6 +101,7 @@ export function ModelDialogCard({
   onRun,
   onSavePreset,
   onRetry,
+  recentRuns = [],
 }: ModelDialogCardProps) {
   const isBusy = executionState === "queued" || executionState === "running" || executionState === "partial-output"
   const statusLabel = model.status.charAt(0).toUpperCase() + model.status.slice(1)
@@ -237,6 +239,24 @@ export function ModelDialogCard({
                   <p>Ready to run with the selected controls and current context.</p>
                 </div>
               )}
+            </section>
+
+            <section className="space-y-2">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Quick history</h3>
+              <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
+                {recentRuns.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No recent model runs yet.</p>
+                ) : (
+                  recentRuns.map((run) => (
+                    <div key={run.id} className="rounded-md border border-border/50 bg-background/70 p-2 text-xs">
+                      <p className="font-medium text-foreground">
+                        {run.modelId} • {run.status}
+                      </p>
+                      <p className="line-clamp-2 text-muted-foreground">{run.inputSummary}</p>
+                    </div>
+                  ))
+                )}
+              </div>
             </section>
           </CardContent>
 

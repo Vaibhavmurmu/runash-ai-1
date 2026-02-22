@@ -18,6 +18,6 @@ export const databaseDomainTables = {
     "editor_segments",
     "editor_render_jobs",
   ],
-  dashboard: ["dashboard_stream_invites"],
+  dashboard: ["dashboard_stream_invites", "model_dialog_runs"],
   userSettings: ["user_settings", "user_setting_attachments", "user_settings_audit"],
 } as const

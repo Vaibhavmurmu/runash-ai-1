@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { usePathname } from "next/navigation"
 import { ModelDialogCard } from "@/components/dashboard/model-dialog-card"
 import { useModelDialog } from "@/lib/hooks/use-model-dialog"
-import type { ModelDialogContract, ModelDialogSseEvent, ModelExecutionState } from "@/lib/types/model-dialog"
+import type { ModelDialogContract, ModelDialogRunHistoryItem, ModelDialogSseEvent, ModelExecutionState } from "@/lib/types/model-dialog"
 
 interface DashboardModelDialogContextValue {
   openFromTrigger: (payload: ModelDialogContract, trigger?: HTMLElement | null) => void
@@ -24,7 +24,11 @@ function createExecutionRequestId() {
     return crypto.randomUUID()
   }
 
-  return `mdl-${Date.now()}`
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (token) => {
+    const random = Math.random() * 16 | 0
+    const value = token === "x" ? random : (random & 0x3) | 0x8
+    return value.toString(16)
+  })
 }
 
 export function DashboardModelDialogProvider({ children }: { children: ReactNode }) {
@@ -39,6 +43,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
   const [responseOutput, setResponseOutput] = useState("")
   const [elapsedMs, setElapsedMs] = useState(0)
   const [requestId, setRequestId] = useState<string | null>(null)
+  const [recentRuns, setRecentRuns] = useState<ModelDialogRunHistoryItem[]>([])
   const eventSourceRef = useRef<EventSource | null>(null)
   const tickTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startedAtRef = useRef<number>(0)
@@ -85,6 +90,23 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
     }
   }, [stopExecutionTracking])
 
+  const loadRecentRuns = useCallback(async () => {
+    try {
+      const response = await fetch("/api/dashboard/model-dialog/recent?limit=5", { cache: "no-store" })
+      if (!response.ok) return
+      const payload = (await response.json()) as { runs?: ModelDialogRunHistoryItem[] }
+      setRecentRuns(Array.isArray(payload.runs) ? payload.runs : [])
+    } catch {
+      setRecentRuns([])
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isOpen) {
+      void loadRecentRuns()
+    }
+  }, [isOpen, loadRecentRuns])
+
   const handleExecutionEvent = useCallback(
     (event: MessageEvent<string>) => {
       const payload = JSON.parse(event.data) as ModelDialogSseEvent
@@ -101,14 +123,16 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
 
       if (payload.state === "completed") {
         stopExecutionTracking()
+        void loadRecentRuns()
       }
 
       if (payload.state === "failed") {
         setErrorMessage(payload.message || "Model execution failed.")
         stopExecutionTracking()
+        void loadRecentRuns()
       }
     },
-    [stopExecutionTracking],
+    [loadRecentRuns, stopExecutionTracking],
   )
 
   const runModel = useCallback(() => {
@@ -141,6 +165,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
       mode,
       qualityPreset,
       temperature: temperature.toString(),
+      sourceModule: activeModelDialog.triggerSource,
     })
 
     const eventSource = new EventSource(`/api/dashboard/model-dialog/stream?${params.toString()}`)
@@ -214,6 +239,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
         onRun={runModel}
         onSavePreset={closeModelDialog}
         onRetry={runModel}
+        recentRuns={recentRuns}
       />
     </DashboardModelDialogContext.Provider>
   )

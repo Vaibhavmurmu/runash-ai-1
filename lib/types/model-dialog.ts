@@ -37,3 +37,13 @@ export interface ModelDialogSseEvent {
   elapsedMs: number;
   timestamp: string;
 }
+
+export interface ModelDialogRunHistoryItem {
+  id: string;
+  modelId: string;
+  sourceModule: ModelDialogTriggerSource | "dashboard";
+  inputSummary: string;
+  status: Exclude<ModelExecutionState, "idle">;
+  createdAt: string;
+  updatedAt: string;
+}
