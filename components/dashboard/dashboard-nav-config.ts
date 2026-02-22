@@ -3,12 +3,13 @@ import {
   Clapperboard,
   FolderKanban,
   LayoutDashboard,
+  LifeBuoy,
   ListOrdered,
   MessageSquare,
-  Sparkles,
   Radio,
   Receipt,
   ShoppingBag,
+  Sparkles,
   Store,
   Wallet,
 } from "lucide-react"
@@ -31,9 +32,24 @@ export interface DashboardQuickLinkGroup {
   items: DashboardNavItem[]
 }
 
+export interface DashboardQuickAction {
+  label: string
+  href: string
+}
+
+export interface DashboardNavigationConfig {
+  items: DashboardNavItem[]
+  quickLinkGroups: DashboardQuickLinkGroup[]
+  quickActions: DashboardQuickAction[]
+}
+
 export interface DashboardNavContext {
   currentSection: string
   breadcrumbs: { label: string; href?: string }[]
+}
+
+function matchesPathPrefix(pathname: string, prefix: string) {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`)
 }
 
 export const dashboardNavItems: DashboardNavItem[] = [
@@ -42,21 +58,21 @@ export const dashboardNavItems: DashboardNavItem[] = [
     href: "/dashboard",
     icon: LayoutDashboard,
     section: "primary",
-    activeMatch: (pathname) => pathname === "/dashboard",
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard"),
   },
   {
     label: "RunAsh Chat",
     href: "/runash-chat",
     icon: MessageSquare,
     section: "primary",
-    activeMatch: (pathname) => pathname.startsWith("/runash-chat"),
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/runash-chat"),
   },
   {
     label: "Editor",
     href: "/editor",
     icon: Clapperboard,
     section: "primary",
-    activeMatch: (pathname) => pathname.startsWith("/editor"),
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/editor"),
   },
   {
     label: "Model",
@@ -70,21 +86,35 @@ export const dashboardNavItems: DashboardNavItem[] = [
     href: "/stream",
     icon: Radio,
     section: "primary",
-    activeMatch: (pathname) => pathname.startsWith("/stream"),
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/stream"),
+  },
+  {
+    label: "Streams",
+    href: "/dashboard/streams",
+    icon: Radio,
+    section: "primary",
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/streams"),
   },
   {
     label: "Seller Studio",
     href: "/seller/dashboard",
     icon: ShoppingBag,
     section: "primary",
-    activeMatch: (pathname) => pathname.startsWith("/seller"),
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/seller"),
   },
   {
     label: "Store",
     href: "/ecommerce/dashboard",
     icon: Store,
     section: "primary",
-    activeMatch: (pathname) => pathname.startsWith("/ecommerce"),
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/ecommerce"),
+  },
+  {
+    label: "Support",
+    href: "/support",
+    icon: LifeBuoy,
+    section: "primary",
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/support"),
   },
 ]
 
@@ -98,7 +128,7 @@ export const dashboardQuickLinkGroups: DashboardQuickLinkGroup[] = [
         href: "/editor/dashboard",
         icon: FolderKanban,
         section: "primary",
-        activeMatch: (pathname) => pathname.startsWith("/editor/dashboard"),
+        activeMatch: (pathname) => matchesPathPrefix(pathname, "/editor/dashboard"),
       },
     ],
   },
@@ -111,7 +141,7 @@ export const dashboardQuickLinkGroups: DashboardQuickLinkGroup[] = [
         href: "/ecommerce/history",
         icon: ListOrdered,
         section: "primary",
-        activeMatch: (pathname) => pathname.startsWith("/ecommerce/history"),
+        activeMatch: (pathname) => matchesPathPrefix(pathname, "/ecommerce/history"),
       },
     ],
   },
@@ -124,7 +154,7 @@ export const dashboardQuickLinkGroups: DashboardQuickLinkGroup[] = [
         href: "/seller/dashboard",
         icon: Wallet,
         section: "primary",
-        activeMatch: (pathname) => pathname.startsWith("/seller"),
+        activeMatch: (pathname) => matchesPathPrefix(pathname, "/seller"),
         badge: "Soon",
       },
       {
@@ -132,14 +162,28 @@ export const dashboardQuickLinkGroups: DashboardQuickLinkGroup[] = [
         href: "/ecommerce/invoices",
         icon: Receipt,
         section: "primary",
-        activeMatch: (pathname) => pathname.startsWith("/ecommerce/invoices"),
+        activeMatch: (pathname) => matchesPathPrefix(pathname, "/ecommerce/invoices"),
       },
     ],
   },
 ]
 
+export const dashboardQuickActions: DashboardQuickAction[] = [
+  { label: "New project", href: "/editor/dashboard" },
+  { label: "Go live", href: "/stream" },
+  { label: "Open chat session", href: "/runash-chat" },
+  { label: "Add product", href: "/ecommerce/dashboard" },
+  { label: "Get support", href: "/support" },
+]
+
+export const dashboardNavigationConfig: DashboardNavigationConfig = {
+  items: dashboardNavItems,
+  quickLinkGroups: dashboardQuickLinkGroups,
+  quickActions: dashboardQuickActions,
+}
+
 export function getNavItemsBySection(section: DashboardNavSection) {
-  return dashboardNavItems.filter((item) => item.section === section)
+  return dashboardNavigationConfig.items.filter((item) => item.section === section)
 }
 
 export function isNavItemActive(pathname: string, item: DashboardNavItem) {
@@ -156,6 +200,8 @@ const dashboardPathLabels: Record<string, string> = {
   ecommerce: "Store",
   history: "Order History",
   invoices: "Invoices",
+  support: "Support",
+  streams: "Streams",
 }
 
 function formatSegmentLabel(segment: string) {
@@ -172,7 +218,7 @@ function formatSegmentLabel(segment: string) {
 }
 
 export function resolveDashboardNavContext(pathname: string): DashboardNavContext {
-  const matchedItem = dashboardNavItems.find((item) => isNavItemActive(pathname, item))
+  const matchedItem = dashboardNavigationConfig.items.find((item) => isNavItemActive(pathname, item))
   const sectionLabel = matchedItem?.label ?? "Workspace"
   const pathSegments = pathname.split("/").filter(Boolean)
 

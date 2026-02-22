@@ -12,11 +12,12 @@ import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import { dashboardQuickLinkGroups, getNavItemsBySection, isNavItemActive } from "./dashboard-nav-config"
+import { isNavItemActive, type DashboardNavigationConfig } from "./dashboard-nav-config"
 
 interface DashboardSidebarProps {
   mobileOpen: boolean
   onMobileOpenChange: (open: boolean) => void
+  navConfig: DashboardNavigationConfig
 }
 
 interface NavLinkProps {
@@ -92,10 +93,10 @@ function UserCard({ mobile = false }: { mobile?: boolean }) {
   )
 }
 
-function SidebarContents({ onNavigate }: { onNavigate?: () => void }) {
+function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNavigationConfig; onNavigate?: () => void }) {
   const pathname = usePathname()
   const { openFromTrigger } = useDashboardModelDialog()
-  const primaryNavItems = getNavItemsBySection("primary")
+  const primaryNavItems = navConfig.items.filter((item) => item.section === "primary")
 
   return (
     <div className="mt-6 flex flex-1 flex-col gap-4 px-3">
@@ -136,7 +137,7 @@ function SidebarContents({ onNavigate }: { onNavigate?: () => void }) {
       <Separator className="bg-border/70" />
 
       <div className="space-y-1">
-        {dashboardQuickLinkGroups.map((group) => {
+        {navConfig.quickLinkGroups.map((group) => {
           const groupIsActive = group.items.some((item) => isNavItemActive(pathname, item))
 
           return (
@@ -175,7 +176,7 @@ function SidebarContents({ onNavigate }: { onNavigate?: () => void }) {
   )
 }
 
-export function DashboardSidebar({ mobileOpen, onMobileOpenChange }: DashboardSidebarProps) {
+export function DashboardSidebar({ mobileOpen, onMobileOpenChange, navConfig }: DashboardSidebarProps) {
   const [logoAvailable, setLogoAvailable] = useState(true)
 
   return (
@@ -196,7 +197,7 @@ export function DashboardSidebar({ mobileOpen, onMobileOpenChange }: DashboardSi
         </div>
 
         <div className="flex flex-1 flex-col overflow-y-auto">
-          <SidebarContents />
+          <SidebarContents navConfig={navConfig} />
           <div className="mt-auto pb-4">
             <Separator className="my-4 bg-border/70" />
             <UserCard />
@@ -228,7 +229,7 @@ export function DashboardSidebar({ mobileOpen, onMobileOpenChange }: DashboardSi
             </div>
 
             <div className="flex-1 overflow-y-auto">
-              <SidebarContents onNavigate={() => onMobileOpenChange(false)} />
+              <SidebarContents navConfig={navConfig} onNavigate={() => onMobileOpenChange(false)} />
             </div>
 
             <UserCard mobile />
