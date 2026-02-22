@@ -136,6 +136,8 @@ Related auth routes outside `app/api/auth/**`:
 - `GET /api/admin/analytics/auth` (`app/api/admin/analytics/auth/route.ts`)
 - `GET /api/admin/analytics/auth/events` (`app/api/admin/analytics/auth/events/route.ts`)
 - `GET /api/admin/analytics/auth/metrics` (`app/api/admin/analytics/auth/metrics/route.ts`)
+- `POST /api/streaming/platforms/auth/:platform` (`app/api/streaming/platforms/auth/[platform]/route.ts`) — starts authenticated platform OAuth linking and returns `{ auth_url }`.
+- `POST /api/streaming/platforms/auth/:platform/callback` (`app/api/streaming/platforms/auth/[platform]/callback/route.ts`) — validates callback payload and updates/creates the caller-owned `streaming_platforms` record.
 
 ## 3) Implemented auth-related UI routes
 
