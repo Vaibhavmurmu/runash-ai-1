@@ -1065,3 +1065,22 @@ Move user settings persistence from `users.bio.userSettings` to dedicated relati
 1. Remove/disable route redirects for deprecated dashboards and temporarily restore direct pages.
 2. Keep canonical `/dashboard` shell and module hosts intact.
 3. No destructive schema rollback needed (route-level consolidation only).
+
+## 2026-02 Dashboard Layout Simplification
+
+### Summary
+- `app/dashboard/layout.tsx` now remains a simple route layout that returns `children`.
+- `/dashboard` no longer mounts a multi-module runtime host container.
+- Dashboard surface modules remain available through their dedicated routes (`/runash-chat`, `/editor/*`, `/seller/*`, `/ecommerce/*`).
+
+### Compatibility notes for removed shell entry points
+- Deprecated import path: `@/components/dashboard/shell/dashboard-shell` → use `@/components/dashboard/dashboard-layout-frame`.
+- Deprecated import path: `@/components/dashboard/shell/navbar` → use `@/components/dashboard/dashboard-navbar`.
+- Deprecated import path: `@/components/dashboard/shell/sidebar` → use `@/components/dashboard/dashboard-sidebar`.
+- Deprecated import path: `@/components/dashboard/shell/nav-config` → use `@/components/dashboard/dashboard-nav-config`.
+- Deprecated import path: `@/components/dashboard/shell/footer` → use `@/components/dashboard/dashboard-shell-footer`.
+- Compatibility re-export stubs remain under `components/dashboard/shell/*` as non-breaking transitional aliases.
+
+### Rollback
+1. Restore prior `/dashboard` module-host page composition if unified-host behavior is required.
+2. Revert direct imports back to `components/dashboard/shell/*` only if consumers cannot migrate in-place.
