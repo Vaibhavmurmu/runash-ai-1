@@ -26,3 +26,14 @@ export interface ModelDialogContract {
   model: ModelDialogIdentity;
   payload?: ModelDialogPayload;
 }
+
+export type ModelExecutionState = "idle" | "queued" | "running" | "partial-output" | "completed" | "failed";
+
+export interface ModelDialogSseEvent {
+  requestId: string;
+  state: Exclude<ModelExecutionState, "idle">;
+  message: string;
+  chunk?: string;
+  elapsedMs: number;
+  timestamp: string;
+}

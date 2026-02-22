@@ -21,7 +21,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
-import { Loader2, RotateCcw, Sparkles, Wand2 } from "lucide-react"
+import type { ModelExecutionState } from "@/lib/types/model-dialog"
+import { CheckCircle2, Clock3, Loader2, RotateCcw, Sparkles, Wand2, XCircle } from "lucide-react"
 
 type ModelOption = {
   label: string
@@ -49,9 +50,11 @@ interface ModelDialogCardProps {
   qualityPreset: string
   onQualityPresetChange: (value: string) => void
   qualityOptions: ModelOption[]
-  isRunning?: boolean
-  isStreaming?: boolean
+  executionState?: ModelExecutionState
   streamingMessage?: string
+  responseOutput?: string
+  elapsedMs?: number
+  requestId?: string | null
   errorMessage?: string | null
   onRun: () => void
   onSavePreset: () => void
@@ -63,6 +66,15 @@ const STATUS_STYLES: Record<ModelIdentity["status"], string> = {
   offline: "bg-rose-500/10 text-rose-700 dark:text-rose-300",
   beta: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
   degraded: "bg-orange-500/10 text-orange-700 dark:text-orange-300",
+}
+
+const EXECUTION_STATE_LABELS: Record<ModelExecutionState, string> = {
+  idle: "Idle",
+  queued: "Queued",
+  running: "Running",
+  "partial-output": "Partial output",
+  completed: "Completed",
+  failed: "Failed",
 }
 
 export function ModelDialogCard({
@@ -79,14 +91,17 @@ export function ModelDialogCard({
   qualityPreset,
   onQualityPresetChange,
   qualityOptions,
-  isRunning = false,
-  isStreaming = false,
+  executionState = "idle",
   streamingMessage,
+  responseOutput,
+  elapsedMs = 0,
+  requestId,
   errorMessage,
   onRun,
   onSavePreset,
   onRetry,
 }: ModelDialogCardProps) {
+  const isBusy = executionState === "queued" || executionState === "running" || executionState === "partial-output"
   const statusLabel = model.status.charAt(0).toUpperCase() + model.status.slice(1)
   const initials = model.name
     .split(" ")
@@ -189,21 +204,32 @@ export function ModelDialogCard({
             </section>
 
             <section className="rounded-lg border border-border/60 bg-muted/30 p-4">
-              {errorMessage ? (
+              {executionState === "failed" || errorMessage ? (
                 <div className="space-y-3">
-                  <p className="text-sm font-medium text-destructive">{errorMessage}</p>
+                  <p className="text-sm font-medium text-destructive">{errorMessage || "Model execution failed."}</p>
                   <Button type="button" variant="outline" size="sm" onClick={onRetry} disabled={!onRetry}>
                     <RotateCcw className="mr-2 h-4 w-4" />
                     Retry
                   </Button>
                 </div>
-              ) : isRunning || isStreaming ? (
-                <div className="flex items-start gap-3">
-                  <Loader2 className="mt-0.5 h-4 w-4 animate-spin text-primary" />
-                  <div className="space-y-1 text-sm">
-                    <p className="font-medium">{isStreaming ? "Streaming response" : "Running model"}</p>
-                    <p className="text-muted-foreground">{streamingMessage || "Please keep this dialog open."}</p>
+              ) : isBusy ? (
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-start gap-3">
+                    <Loader2 className="mt-0.5 h-4 w-4 animate-spin text-primary" />
+                    <div className="space-y-1">
+                      <p className="font-medium">{EXECUTION_STATE_LABELS[executionState]}</p>
+                      <p className="text-muted-foreground">{streamingMessage || "Please keep this dialog open."}</p>
+                    </div>
                   </div>
+                  {responseOutput ? <p className="rounded-md bg-background/70 p-2 text-foreground">{responseOutput}</p> : null}
+                </div>
+              ) : executionState === "completed" ? (
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-start gap-2 font-medium text-emerald-600 dark:text-emerald-300">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4" />
+                    Completed
+                  </div>
+                  <p className="rounded-md bg-background/70 p-2 text-foreground">{responseOutput || "No output returned."}</p>
                 </div>
               ) : (
                 <div className="flex items-start gap-3 text-sm text-muted-foreground">
@@ -214,18 +240,28 @@ export function ModelDialogCard({
             </section>
           </CardContent>
 
-          <DialogFooter className="flex-row items-center justify-end gap-2 border-t border-border/50 px-6 py-4">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="button" variant="outline" onClick={onSavePreset} disabled={isRunning || isStreaming}>
-              <Sparkles className="mr-2 h-4 w-4" />
-              Save preset
-            </Button>
-            <Button type="button" onClick={onRun} disabled={isRunning || model.status === "offline"}>
-              {isRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Run
-            </Button>
+          <DialogFooter className="flex-row items-center justify-between gap-2 border-t border-border/50 px-6 py-4">
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1">
+                <Clock3 className="h-3.5 w-3.5" />
+                {(elapsedMs / 1000).toFixed(1)}s
+              </span>
+              <span className="truncate">Request ID: {requestId || "n/a"}</span>
+              {executionState === "failed" ? <XCircle className="h-3.5 w-3.5 text-destructive" /> : null}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button type="button" variant="outline" onClick={onSavePreset} disabled={isBusy}>
+                <Sparkles className="mr-2 h-4 w-4" />
+                Save preset
+              </Button>
+              <Button type="button" onClick={onRun} disabled={isBusy || model.status === "offline"}>
+                {isBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Run
+              </Button>
+            </div>
           </DialogFooter>
         </Card>
       </DialogContent>
