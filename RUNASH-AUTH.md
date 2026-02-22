@@ -9,6 +9,13 @@ Last updated: 2026-02
 - Auth/admin-sensitive APIs are protected with stricter endpoint-specific rate limits in addition to baseline API rate controls.
 - Auth event logging now redacts credentials/tokens/secrets and stores anonymized session identifiers for audit safety.
 
+## Get-started onboarding flow update (2026-02)
+
+- Restored the three-step onboarding journey (`Account -> Profile -> Complete`) inside a dark themed get-started modal while preserving the rich landing hero CTA flow.
+- Step 1 now bundles OAuth buttons (Google/GitHub plus optional Apple/Microsoft entry actions), email/password signup, and advanced auth methods (Magic Link, OTP, Passkey, SSO) using existing components from `components/auth/*`.
+- Role selection persistence remains keyed by `runash_user_type` in local storage, and completion exposes explicit navigation targets to `/consent` and `/post-login`.
+- Added upload-screenshot-ready onboarding messaging in the get-started modal so post-login flows are clearly communicated.
+
 This document tracks the **currently implemented** auth runtime, files, and routes in this repository. It intentionally excludes speculative endpoints that are not present in source.
 
 Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
