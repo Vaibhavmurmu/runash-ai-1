@@ -98,6 +98,16 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
   const { openFromTrigger } = useDashboardModelDialog()
   const primaryNavItems = navConfig.items.filter((item) => item.section === "primary")
 
+  const triggerSource = pathname.startsWith("/editor")
+    ? "editor"
+    : pathname.startsWith("/seller")
+      ? "seller"
+      : pathname.startsWith("/ecommerce")
+        ? "store"
+        : pathname.startsWith("/stream") || pathname.startsWith("/dashboard/streams")
+          ? "streaming"
+          : "chat"
+
   return (
     <div className="mt-6 flex flex-1 flex-col gap-4 px-3">
       <div className="space-y-1">
@@ -115,14 +125,16 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
                 ? (event) => {
                     openFromTrigger(
                       {
-                        triggerSource: "chat",
+                        triggerSource,
                         mode: "configure",
                         model: {
                           modelId: "runash-router",
                           provider: "RunAsh AI",
                           displayName: "RunAsh Model Router",
                         },
-                        payload: { prompt: "Configure routing rules and model strategy." },
+                        payload: {
+                          prompt: `Configure routing rules and model strategy for ${pathname}.`,
+                        },
                       },
                       event.currentTarget,
                     )
