@@ -21,3 +21,10 @@ export const databaseDomainTables = {
   dashboard: ["dashboard_stream_invites", "model_dialog_runs"],
   userSettings: ["user_settings", "user_setting_attachments", "user_settings_audit"],
 } as const
+
+export const dashboardSchemaMappings = {
+  modelDialogRuns: {
+    table: "model_dialog_runs",
+    fields: ["id", "user_id", "model_id", "source_module", "input_summary", "status", "created_at", "updated_at"],
+  },
+} as const

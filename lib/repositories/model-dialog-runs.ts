@@ -1,5 +1,6 @@
 import { queryMany, sql } from "@/lib/db"
 import type { ModelExecutionState, ModelDialogRunHistoryItem, ModelDialogTriggerSource } from "@/lib/types/model-dialog"
+import { z } from "zod"
 
 type ModelDialogRunStatus = Exclude<ModelExecutionState, "idle">
 
@@ -31,6 +32,11 @@ function summarizeInput(input: string): string {
   return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized
 }
 
+function toRunId(requestId: string): string {
+  const parsed = z.string().uuid().safeParse(requestId)
+  return parsed.success ? parsed.data : crypto.randomUUID()
+}
+
 export async function createModelDialogRun(params: {
   requestId: string
   userId: string
@@ -39,9 +45,11 @@ export async function createModelDialogRun(params: {
   input: string
   status: ModelDialogRunStatus
 }) {
+  const runId = toRunId(params.requestId)
+
   await sql`
     insert into model_dialog_runs (id, user_id, model_id, source_module, input_summary, status)
-    values (${params.requestId}::uuid, ${params.userId}::uuid, ${params.modelId}, ${params.sourceModule}, ${summarizeInput(params.input)}, ${params.status})
+    values (${runId}::uuid, ${params.userId}::uuid, ${params.modelId}, ${params.sourceModule}, ${summarizeInput(params.input)}, ${params.status})
     on conflict (id) do update
       set model_id = excluded.model_id,
           source_module = excluded.source_module,
@@ -49,13 +57,15 @@ export async function createModelDialogRun(params: {
           status = excluded.status,
           updated_at = now()
   `
+
+  return runId
 }
 
 export async function updateModelDialogRunStatus(requestId: string, status: ModelDialogRunStatus) {
   await sql`
     update model_dialog_runs
     set status = ${status}, updated_at = now()
-    where id = ${requestId}::uuid
+    where id::text = ${requestId}
   `
 }
 

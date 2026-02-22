@@ -50,6 +50,12 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 - Agent API client requests no longer submit mutable `userId` query/body values for self-service flows; user scope is resolved from server session.
 - AI agent create/update/delete routes reject requests attempting to override `user_id` and remain constrained to the authenticated session user unless elevated admin authorization applies.
 
+## Dashboard model dialog auth/session update (2026-02)
+
+- `POST /api/dashboard/model-dialog` now enforces authenticated dashboard session resolution on the server and rejects unauthenticated calls before model execution.
+- Model dialog requests are zod-validated (`modelId`, `mode`, `input`, optional `sourceModule/context`) and return a normalized envelope `{ requestId, status, output, error }`.
+- Model dialog runs are persisted in `model_dialog_runs` and exposed through `GET /api/dashboard/model-dialog/recent`, so recent run history survives dashboard refresh/navigation while remaining scoped to the authenticated user.
+
 ## OpenAPI + Scalar auth docs update (2026-02)
 
 - Added generated OpenAPI spec output for auth routes at `docs/openapi/auth.openapi.json`.
