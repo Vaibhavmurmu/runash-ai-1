@@ -14,6 +14,7 @@ import { OrderManager } from "@/components/seller/order-manager"
 import { BusinessSettings } from "@/components/seller/business-settings"
 import { InventoryManager } from "@/components/seller/inventory-manager"
 import { PayoutManager } from "@/components/seller/payout-manager"
+import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
 
 type SellerSummary = {
   revenue: number
@@ -34,6 +35,7 @@ const sellerFetcher = (url: string) =>
 
 export function SellerWorkspace() {
   const [activeTab, setActiveTab] = useState("overview")
+  const { openFromTrigger } = useDashboardModelDialog()
 
   const {
     data: perms,
@@ -83,6 +85,46 @@ export function SellerWorkspace() {
             <p className="text-muted-foreground mt-2">Production-ready command center for catalog, orders, and streams.</p>
           </div>
           <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={(event) =>
+                openFromTrigger(
+                  {
+                    triggerSource: "seller",
+                    mode: "configure",
+                    model: {
+                      modelId: "seller-product-copy",
+                      provider: "RunAsh AI",
+                      displayName: "Seller Product Copy Assistant",
+                    },
+                    payload: { prompt: "Draft high-converting product copy for live commerce listings." },
+                  },
+                  event.currentTarget,
+                )
+              }
+            >
+              AI Product Copy
+            </Button>
+            <Button
+              variant="outline"
+              onClick={(event) =>
+                openFromTrigger(
+                  {
+                    triggerSource: "seller",
+                    mode: "execute",
+                    model: {
+                      modelId: "seller-offer-generator",
+                      provider: "RunAsh AI",
+                      displayName: "Seller Offer Generator",
+                    },
+                    payload: { prompt: "Generate offer bundles and urgency copy for upcoming streams." },
+                  },
+                  event.currentTarget,
+                )
+              }
+            >
+              Offer Generator
+            </Button>
             <Button className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600">
               <Video className="h-4 w-4 mr-2" />
               Go Live

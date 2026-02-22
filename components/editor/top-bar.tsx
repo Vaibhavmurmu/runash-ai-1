@@ -1,7 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { Circle, Settings, Share2, Cloud, Webcam, Users, Loader2, MoreHorizontal } from "lucide-react"
+import { Circle, Settings, Share2, Cloud, Webcam, Users, Loader2, MoreHorizontal, Sparkles } from "lucide-react"
 import InputTools from "./input-tools"
 import SettingsPanel from "./settings-panel"
 import { useState } from "react"
@@ -14,9 +14,10 @@ interface TopBarProps {
   onOpenCollaboration?: () => void
   onSave?: () => Promise<void> | void
   isSaving?: boolean
+  onOpenModelDialog?: (trigger?: HTMLElement | null) => void
 }
 
-export default function TopBar({ isRecording, onRecordingToggle, onOpenCollaboration, onSave, isSaving = false }: TopBarProps) {
+export default function TopBar({ isRecording, onRecordingToggle, onOpenCollaboration, onSave, isSaving = false, onOpenModelDialog }: TopBarProps) {
   const [inputToolsOpen, setInputToolsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const isMobile = useIsMobile()
@@ -41,6 +42,11 @@ export default function TopBar({ isRecording, onRecordingToggle, onOpenCollabora
           >
             <Webcam className="w-4 h-4" />
             <span className="hidden md:inline">Inputs</span>
+          </Button>
+
+          <Button variant="outline" size="sm" className="gap-2 bg-transparent" onClick={(event) => onOpenModelDialog?.(event.currentTarget)}>
+            <Sparkles className="w-4 h-4" />
+            <span className="hidden md:inline">Model</span>
           </Button>
 
           <Button

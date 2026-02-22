@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   ListOrdered,
   MessageSquare,
+  Sparkles,
   Radio,
   Receipt,
   ShoppingBag,
@@ -20,6 +21,7 @@ export interface DashboardNavItem {
   icon: LucideIcon
   section: DashboardNavSection
   badge?: string
+  actionId?: "open-model-dialog"
   activeMatch?: (pathname: string) => boolean
 }
 
@@ -55,6 +57,13 @@ export const dashboardNavItems: DashboardNavItem[] = [
     icon: Clapperboard,
     section: "primary",
     activeMatch: (pathname) => pathname.startsWith("/editor"),
+  },
+  {
+    label: "Model",
+    href: "#model-dialog",
+    icon: Sparkles,
+    section: "primary",
+    actionId: "open-model-dialog",
   },
   {
     label: "Streaming Studio",

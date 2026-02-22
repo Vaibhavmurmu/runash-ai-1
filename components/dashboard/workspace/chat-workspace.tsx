@@ -25,12 +25,14 @@ import {
   SuggestionCardGrid,
   type SuggestionCardItem,
 } from "@/components/chat/shared-chat-primitives"
+import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
  
 import { getRecommendedProducts, shouldRecommendProducts } from "@/lib/chat-product-recommendations"
 
 
 
 export function ChatWorkspace() {
+  const { openFromTrigger } = useDashboardModelDialog()
   const searchParams = useSearchParams()
   const querySessionId = searchParams.get("sessionId")
   const bootstrapCompletedRef = useRef(false)
@@ -246,6 +248,23 @@ export function ChatWorkspace() {
       icon: "search",
       action: () => handleQuickAction("Search the web for eco-friendly organic pantry bundles under $30", "search"),
       category: "search",
+    },
+    {
+      id: "6",
+      label: "Model Assist",
+      icon: "zap",
+      action: (trigger) =>
+        openFromTrigger({
+          triggerSource: "chat",
+          mode: "configure",
+          model: {
+            modelId: "runash-chat-router",
+            provider: "RunAsh AI",
+            displayName: "RunAsh Chat Optimizer",
+          },
+          payload: { prompt: "Optimize this chat workflow for quality, latency, and cost." },
+        }, trigger),
+      category: "automation",
     },
   ]
 

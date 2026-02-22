@@ -1,10 +1,11 @@
 "use client"
 
-import { useState, type ComponentType } from "react"
+import { useState, type ComponentType, type MouseEvent } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ChevronDown, LogOut, X } from "lucide-react"
 import { signOutWithRedirect, useAuthSession } from "@/lib/auth/access-client"
+import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -25,17 +26,29 @@ interface NavLinkProps {
   isActive: boolean
   badge?: string
   onClick?: () => void
+  onAction?: (event: MouseEvent<HTMLButtonElement>) => void
 }
 
-function NavLink({ href, label, icon: Icon, isActive, badge, onClick }: NavLinkProps) {
+function NavLink({ href, label, icon: Icon, isActive, badge, onClick, onAction }: NavLinkProps) {
+  const className =
+    isActive
+      ? "flex items-center gap-3 rounded-lg border border-orange-500/20 bg-orange-100/70 px-3 py-2.5 text-sm font-medium text-orange-950 shadow-sm transition-all dark:border-orange-400/30 dark:bg-orange-500/15 dark:text-orange-100"
+      : "flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-border/70 hover:bg-card/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+
+  if (onAction) {
+    return (
+      <Button variant="ghost" className={className} onClick={onAction}>
+        <Icon className={isActive ? "h-4 w-4 text-orange-500 dark:text-orange-300" : "h-4 w-4"} />
+        <span className="flex-1 text-left">{label}</span>
+        {badge ? <Badge className={isActive ? "bg-orange-500 text-white dark:bg-orange-400 dark:text-orange-950" : ""}>{badge}</Badge> : null}
+      </Button>
+    )
+  }
+
   return (
     <Link
       href={href}
-      className={
-        isActive
-          ? "flex items-center gap-3 rounded-lg border border-orange-500/20 bg-orange-100/70 px-3 py-2.5 text-sm font-medium text-orange-950 shadow-sm transition-all dark:border-orange-400/30 dark:bg-orange-500/15 dark:text-orange-100"
-          : "flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-border/70 hover:bg-card/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-      }
+      className={className}
       onClick={onClick}
     >
       <Icon className={isActive ? "h-4 w-4 text-orange-500 dark:text-orange-300" : "h-4 w-4"} />
@@ -81,6 +94,7 @@ function UserCard({ mobile = false }: { mobile?: boolean }) {
 
 function SidebarContents({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
+  const { openFromTrigger } = useDashboardModelDialog()
   const primaryNavItems = getNavItemsBySection("primary")
 
   return (
@@ -95,6 +109,26 @@ function SidebarContents({ onNavigate }: { onNavigate?: () => void }) {
             badge={item.badge}
             isActive={isNavItemActive(pathname, item)}
             onClick={onNavigate}
+            onAction={
+              item.actionId === "open-model-dialog"
+                ? (event) => {
+                    openFromTrigger(
+                      {
+                        triggerSource: "chat",
+                        mode: "configure",
+                        model: {
+                          modelId: "runash-router",
+                          provider: "RunAsh AI",
+                          displayName: "RunAsh Model Router",
+                        },
+                        payload: { prompt: "Configure routing rules and model strategy." },
+                      },
+                      event.currentTarget,
+                    )
+                    onNavigate?.()
+                  }
+                : undefined
+            }
           />
         ))}
       </div>

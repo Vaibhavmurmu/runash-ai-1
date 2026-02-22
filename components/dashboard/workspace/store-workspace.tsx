@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { TrendingUp, Package, Zap, AlertCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useDashboardModelDialog } from '@/components/dashboard/model-dialog-provider';
 
 interface InventoryItem {
   id: string;
@@ -18,6 +19,7 @@ interface InventoryItem {
 }
 
 export function StoreWorkspace() {
+  const { openFromTrigger } = useDashboardModelDialog();
   const [inventory, setInventory] = useState<InventoryItem[]>([
     {
       id: '1',
@@ -114,6 +116,49 @@ export function StoreWorkspace() {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <Button
+              className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm"
+              onClick={(event) =>
+                openFromTrigger(
+                  {
+                    triggerSource: 'store',
+                    mode: 'configure',
+                    model: {
+                      modelId: 'store-product-copy',
+                      provider: 'RunAsh AI',
+                      displayName: 'Store Product Copy Assistant',
+                    },
+                    payload: { prompt: 'Generate product copy optimized for conversion and SEO.' },
+                  },
+                  event.currentTarget,
+                )
+              }
+            >
+              AI Product Copy
+            </Button>
+            <Button
+              variant="outline"
+              className="text-sm"
+              onClick={(event) =>
+                openFromTrigger(
+                  {
+                    triggerSource: 'store',
+                    mode: 'execute',
+                    model: {
+                      modelId: 'store-offer-generator',
+                      provider: 'RunAsh AI',
+                      displayName: 'Store Offer Generator',
+                    },
+                    payload: { prompt: 'Generate limited-time offers for low-stock and slow-moving inventory.' },
+                  },
+                  event.currentTarget,
+                )
+              }
+            >
+              Offer Generation
+            </Button>
+          </div>
           <h1 className="text-4xl font-bold mb-2">Real-Time Shopping Dashboard</h1>
           <p className="text-slate-400">Live inventory tracking and order management</p>
         </div>
