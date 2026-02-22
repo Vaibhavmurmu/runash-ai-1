@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowRight, Check, ChevronRight, Play, Sparkles, Zap, Github, Mail, Eye, EyeOff, Loader2 } from "lucide-react"
+import { ArrowRight, Check, ChevronRight, Github, Mail, Eye, EyeOff, Loader2, Play, Sparkles, Zap } from "lucide-react"
 import { signIn } from "next-auth/react"
 import ThemeToggle from "@/components/theme-toggle"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -22,10 +22,36 @@ import { OTPForm } from "@/components/auth/otp-form"
 import { PasskeyLoginForm } from "@/components/auth/passkey-form"
 import { Building2, Smartphone, Shield, KeyRound } from "lucide-react"
 
+const ROLE_OPTIONS = [
+  {
+    key: "creator",
+    title: "Creator",
+    desc: "Go live, manage streams, engage your audience",
+  },
+  {
+    key: "seller",
+    title: "Seller",
+    desc: "Set up store, manage orders, run live shopping",
+  },
+  {
+    key: "buyer",
+    title: "Buyer",
+    desc: "Shop groceries, track orders, chat for help",
+  },
+  {
+    key: "enterprise",
+    title: "Enterprise",
+    desc: "SSO, admin controls, org analytics",
+  },
+] as const
+
 export default function GetStartedPage() {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
   const [step, setStep] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [selectedRole, setSelectedRole] = useState<"creator" | "seller" | "buyer" | "enterprise" | null>(null)
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -35,21 +61,17 @@ export default function GetStartedPage() {
     platforms: [] as string[],
     contentTypes: [] as string[],
   })
-  const router = useRouter()
-  const [selectedRole, setSelectedRole] = useState<"creator" | "seller" | "buyer" | "enterprise" | null>(null)
 
   useEffect(() => {
     const stored = typeof window !== "undefined" ? window.localStorage.getItem("runash_user_type") : null
     if (stored && !selectedRole) {
-      setSelectedRole(stored as any)
+      setSelectedRole(stored as "creator" | "seller" | "buyer" | "enterprise")
     }
-  }, [])
+  }, [selectedRole])
 
   useEffect(() => {
     if (selectedRole) {
-      try {
-        window.localStorage.setItem("runash_user_type", selectedRole)
-      } catch {}
+      window.localStorage.setItem("runash_user_type", selectedRole)
     }
   }, [selectedRole])
 
@@ -57,12 +79,10 @@ export default function GetStartedPage() {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleCheckboxChange = (field: string, value: string, checked: boolean) => {
+  const handleCheckboxChange = (field: "platforms" | "contentTypes", value: string, checked: boolean) => {
     setFormData((prev) => ({
       ...prev,
-      [field]: checked
-        ? [...(prev[field as keyof typeof prev] as string[]), value]
-        : (prev[field as keyof typeof prev] as string[]).filter((item) => item !== value),
+      [field]: checked ? [...prev[field], value] : prev[field].filter((item) => item !== value),
     }))
   }
 
@@ -72,7 +92,6 @@ export default function GetStartedPage() {
 
     try {
       if (step === 1) {
-        // Create account
         const response = await fetch("/api/auth/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -85,17 +104,10 @@ export default function GetStartedPage() {
 
         if (response.ok) {
           setStep(2)
-        } else {
-          const error = await response.json()
-          console.error("Registration error:", error)
         }
       } else if (step === 2) {
-        // Complete profile setup
-        await new Promise((resolve) => setTimeout(resolve, 1500))
         setStep(3)
       }
-    } catch (error) {
-      console.error("Error:", error)
     } finally {
       setIsLoading(false)
     }
@@ -103,33 +115,22 @@ export default function GetStartedPage() {
 
   const handleOAuthSignIn = async (provider: string) => {
     setIsLoading(true)
-    try {
-      await signIn(provider, { callbackUrl: "/dashboard" })
-    } catch (error) {
-      console.error("OAuth error:", error)
-    } finally {
-      setIsLoading(false)
-    }
+    await signIn(provider, { callbackUrl: "/post-login" })
+    setIsLoading(false)
+  }
+
+  const openGetStarted = () => {
+    setStep(1)
+    setOpen(true)
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50 dark:from-orange-950/20 dark:via-gray-950 dark:to-amber-950/20 text-gray-900 dark:text-white flex flex-col">
-      {/* Header */}
       <header className="w-full py-6 px-6 flex justify-between items-center">
         <Link href="/" className="flex items-center group">
-      {/* <div className="relative mr-3 h-10 w-10 overflow-hidden rounded-xl bg-gradient-to-br from-orange-500 to-amber-400 shadow-lg group-hover:shadow-xl transition-all duration-300">
-            <div className="absolute inset-0 flex items-center justify-center text-white font-bold text-lg">R</div>
-          </div> */}
           <div className="relative mr-3 h-10 w-10 overflow-hidden rounded-xl bg-gradient-to-br from-orange-500 to-amber-400 shadow-lg group-hover:shadow-xl transition-all duration-300">
-          {/* Insert logo image */}
-          <Image
-            src="/RunAsh Logo.png"
-            alt="RunAsh Logo"
-            fill
-            className="object-contain p-1"
-            sizes="40px"
-          />
-        </div>
+            <Image src="/RunAsh Logo.png" alt="RunAsh Logo" fill className="object-contain p-1" sizes="40px" />
+          </div>
           <span className="text-2xl font-bold bg-gradient-to-r from-orange-600 via-orange-500 to-amber-500 dark:from-orange-400 dark:via-orange-300 dark:to-amber-300 text-transparent bg-clip-text">
             RunAsh
           </span>
@@ -145,533 +146,273 @@ export default function GetStartedPage() {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-5xl">
-          {/* Progress Steps */}
-          <div className="mb-12">
-            <div className="flex items-center justify-between max-w-md mx-auto">
+          <Card className="mx-auto max-w-3xl border border-orange-200/60 dark:border-orange-900/50 bg-white/70 dark:bg-slate-950/70 backdrop-blur-xl shadow-2xl">
+            <CardHeader className="text-center space-y-4">
+              <div className="mx-auto h-14 w-14 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-lg">
+                <Sparkles className="h-6 w-6 text-white" />
+              </div>
+              <CardTitle className="text-3xl bg-gradient-to-r from-orange-600 to-amber-600 text-transparent bg-clip-text">
+                Get started with RunAsh
+              </CardTitle>
+              <CardDescription className="text-base">
+                Create your account, pick your role, and launch into your personalized RunAsh workspace.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Button
+                onClick={openGetStarted}
+                className="h-12 px-8 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white"
+              >
+                Get started
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+              <Button variant="outline" className="h-12 px-8" onClick={() => router.push("/live")}>
+                <Play className="mr-2 h-4 w-4" />
+                Watch demo
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </main>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          <span className="hidden" />
+        </DialogTrigger>
+        <DialogContent className="w-[95vw] max-w-4xl max-h-[92vh] overflow-y-auto border border-orange-800/40 bg-slate-950/95 text-white backdrop-blur-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl text-orange-200">Get started</DialogTitle>
+          </DialogHeader>
+
+          <div className="mb-8">
+            <div className="flex items-center justify-between max-w-md mx-auto relative">
               {[1, 2, 3].map((stepNumber) => (
-                <div key={stepNumber} className="flex flex-col items-center">
+                <div key={stepNumber} className="flex flex-col items-center relative z-10">
                   <div
-                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 ${
+                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${
                       step >= stepNumber
                         ? "bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg"
-                        : "bg-white dark:bg-gray-800 text-gray-400 border-2 border-gray-200 dark:border-gray-700"
+                        : "bg-slate-900 text-gray-400 border border-slate-700"
                     }`}
                   >
-                    {step > stepNumber ? <Check className="h-6 w-6" /> : stepNumber}
+                    {step > stepNumber ? <Check className="h-5 w-5" /> : stepNumber}
                   </div>
-                  <span className="text-sm mt-3 font-medium">
+                  <span className="text-xs mt-2 text-orange-100/90">
                     {stepNumber === 1 ? "Account" : stepNumber === 2 ? "Profile" : "Complete"}
                   </span>
-                  {stepNumber < 3 && (
-                    <div className="absolute mt-6 ml-12 w-24 h-1 bg-gray-200 dark:bg-gray-700">
-                      <div
-                        className={`h-full bg-gradient-to-r from-orange-500 to-amber-500 transition-all duration-300 ${
-                          step > stepNumber ? "w-full" : "w-0"
-                        }`}
-                      />
-                    </div>
-                  )}
                 </div>
               ))}
+              <div className="absolute left-0 right-0 top-5 h-px bg-slate-700 -z-0" />
             </div>
           </div>
 
-          {/* Step 1: Create Account */}
           {step === 1 && (
-            <Card className="max-w-md mx-auto shadow-2xl border-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm">
-              <CardHeader className="text-center pb-6">
-                <CardTitle className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 text-transparent bg-clip-text">
-                  Create your account
-                </CardTitle>
-                <CardDescription className="text-gray-600 dark:text-gray-400">
-                  Start your AI-powered journey with tailored access by role
-                </CardDescription>
+            <Card className="mx-auto max-w-2xl border-orange-900/50 bg-slate-900/80">
+              <CardHeader className="text-center pb-4">
+                <CardTitle className="text-2xl text-orange-100">Create your account</CardTitle>
+                <CardDescription className="text-slate-300">Choose any auth method to continue.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-8">
-                {/* OAuth Buttons */}
-                <div className="space-y-3">
-                  <Button
-                    onClick={() => handleOAuthSignIn("google")}
-                    variant="outline"
-                    className="w-full h-12 border-orange-200 hover:border-orange-300 hover:bg-orange-50 dark:border-orange-800 dark:hover:bg-orange-950/20"
-                    disabled={isLoading}
-                  >
-                    <Mail className="mr-3 h-5 w-5 text-red-500" />
-                    Continue with Google
+              <CardContent className="space-y-6">
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <Button onClick={() => handleOAuthSignIn("google")} variant="outline" className="h-11" disabled={isLoading}>
+                    <Mail className="mr-2 h-4 w-4 text-red-500" /> Continue with Google
                   </Button>
-                  <Button
-                    onClick={() => handleOAuthSignIn("github")}
-                    variant="outline"
-                    className="w-full h-12 border-orange-200 hover:border-orange-300 hover:bg-orange-50 dark:border-orange-800 dark:hover:bg-orange-950/20"
-                    disabled={isLoading}
-                  >
-                    <Github className="mr-3 h-5 w-5" />
-                    Continue with GitHub
+                  <Button onClick={() => handleOAuthSignIn("github")} variant="outline" className="h-11" disabled={isLoading}>
+                    <Github className="mr-2 h-4 w-4" /> Continue with GitHub
                   </Button>
-                </div>
-
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-200 dark:border-gray-700" />
-                  </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span className="px-4 bg-white dark:bg-gray-900 text-gray-500">Or continue with email</span>
-                  </div>
                 </div>
 
                 <Collapsible>
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-medium text-muted-foreground">More sign-in options</h3>
+                    <h3 className="text-sm text-slate-300">Advanced sign-in options</h3>
                     <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 px-2">
+                      <Button variant="ghost" size="sm" className="text-orange-200 hover:text-orange-100">
                         Show
                       </Button>
                     </CollapsibleTrigger>
                   </div>
-                  <CollapsibleContent className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <CollapsibleContent className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                     <Dialog>
                       <DialogTrigger asChild>
-                        <Button variant="outline" className="h-12 w-full bg-transparent">
-                          <Shield className="mr-2 h-4 w-4" /> Email Magic Link
+                        <Button variant="outline" className="h-11 w-full bg-transparent">
+                          <Shield className="mr-2 h-4 w-4" /> Magic Link
                         </Button>
                       </DialogTrigger>
-                      <DialogContent className="sm:max-w-[480px]">
-                        <DialogHeader>
-                          <DialogTitle>Magic Link Sign In</DialogTitle>
-                        </DialogHeader>
-                        <MagicLinkForm />
-                      </DialogContent>
+                      <DialogContent className="sm:max-w-[480px]"><MagicLinkForm /></DialogContent>
                     </Dialog>
-
                     <Dialog>
                       <DialogTrigger asChild>
-                        <Button variant="outline" className="h-12 w-full bg-transparent">
-                          <Smartphone className="mr-2 h-4 w-4" /> Email / SMS OTP
+                        <Button variant="outline" className="h-11 w-full bg-transparent">
+                          <Smartphone className="mr-2 h-4 w-4" /> OTP
                         </Button>
                       </DialogTrigger>
-                      <DialogContent className="sm:max-w-[480px]">
-                        <DialogHeader>
-                          <DialogTitle>One-Time Passcode</DialogTitle>
-                        </DialogHeader>
-                        <OTPForm purpose="login" />
-                      </DialogContent>
+                      <DialogContent className="sm:max-w-[480px]"><OTPForm purpose="login" /></DialogContent>
                     </Dialog>
-
                     <Dialog>
                       <DialogTrigger asChild>
-                        <Button variant="outline" className="h-12 w-full bg-transparent">
-                          <KeyRound className="mr-2 h-4 w-4" /> Passkey (WebAuthn)
+                        <Button variant="outline" className="h-11 w-full bg-transparent">
+                          <KeyRound className="mr-2 h-4 w-4" /> Passkey
                         </Button>
                       </DialogTrigger>
-                      <DialogContent className="sm:max-w-[480px]">
-                        <DialogHeader>
-                          <DialogTitle>Passkey Sign In</DialogTitle>
-                        </DialogHeader>
-                        <PasskeyLoginForm />
-                      </DialogContent>
+                      <DialogContent className="sm:max-w-[480px]"><PasskeyLoginForm /></DialogContent>
                     </Dialog>
-
                     <Dialog>
                       <DialogTrigger asChild>
-                        <Button variant="outline" className="h-12 w-full bg-transparent">
-                          <Building2 className="mr-2 h-4 w-4" /> Enterprise SSO
+                        <Button variant="outline" className="h-11 w-full bg-transparent">
+                          <Building2 className="mr-2 h-4 w-4" /> SSO
                         </Button>
                       </DialogTrigger>
-                      <DialogContent className="sm:max-w-[520px]">
-                        <DialogHeader>
-                          <DialogTitle>Enterprise SSO</DialogTitle>
-                        </DialogHeader>
-                        <SSOLogin />
-                      </DialogContent>
+                      <DialogContent className="sm:max-w-[520px]"><SSOLogin /></DialogContent>
                     </Dialog>
                   </CollapsibleContent>
                 </Collapsible>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Full Name</Label>
+                  <Input placeholder="Full name" value={formData.name} onChange={(e) => handleInputChange("name", e.target.value)} required />
+                  <Input type="email" placeholder="Email" value={formData.email} onChange={(e) => handleInputChange("email", e.target.value)} required />
+                  <div className="relative">
                     <Input
-                      id="name"
-                      placeholder="Enter your full name"
-                      value={formData.name}
-                      onChange={(e) => handleInputChange("name", e.target.value)}
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Password"
+                      value={formData.password}
+                      onChange={(e) => handleInputChange("password", e.target.value)}
                       required
-                      className="h-12 border-orange-200 focus:border-orange-400 dark:border-orange-800"
+                      className="pr-10"
                     />
+                    <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1 h-8 w-8" onClick={() => setShowPassword((v) => !v)}>
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="you@example.com"
-                      value={formData.email}
-                      onChange={(e) => handleInputChange("email", e.target.value)}
-                      required
-                      className="h-12 border-orange-200 focus:border-orange-400 dark:border-orange-800"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="password">Password</Label>
-                    <div className="relative">
-                      <Input
-                        id="password"
-                        type={showPassword ? "text" : "password"}
-                        placeholder="Create a strong password"
-                        value={formData.password}
-                        onChange={(e) => handleInputChange("password", e.target.value)}
-                        required
-                        className="h-12 pr-12 border-orange-200 focus:border-orange-400 dark:border-orange-800"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="absolute right-0 top-0 h-12 w-12"
-                        onClick={() => setShowPassword(!showPassword)}
-                      >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="confirmPassword">Confirm Password</Label>
-                    <Input
-                      id="confirmPassword"
-                      type="password"
-                      placeholder="Confirm your password"
-                      value={formData.confirmPassword}
-                      onChange={(e) => handleInputChange("confirmPassword", e.target.value)}
-                      required
-                      className="h-12 border-orange-200 focus:border-orange-400 dark:border-orange-800"
-                    />
-                  </div>
-
-                  <div className="flex items-start space-x-3 pt-2">
+                  <Input
+                    type="password"
+                    placeholder="Confirm password"
+                    value={formData.confirmPassword}
+                    onChange={(e) => handleInputChange("confirmPassword", e.target.value)}
+                    required
+                  />
+                  <div className="flex items-start space-x-2">
                     <Checkbox id="terms" required className="mt-1" />
-                    <Label htmlFor="terms" className="text-sm leading-relaxed text-gray-600 dark:text-gray-400">
-                      I agree to the{" "}
-                      <Link
-                        href="/terms"
-                        className="text-orange-600 hover:text-orange-700 dark:text-orange-400 underline"
-                      >
-                        Terms of Service
-                      </Link>{" "}
-                      and{" "}
-                      <Link
-                        href="/privacy"
-                        className="text-orange-600 hover:text-orange-700 dark:text-orange-400 underline"
-                      >
-                        Privacy Policy
-                      </Link>
-                    </Label>
+                    <Label htmlFor="terms" className="text-xs text-slate-300">I agree to Terms and Privacy Policy.</Label>
                   </div>
-
-                  <Button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full h-12 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-300"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Creating account...
-                      </>
-                    ) : (
-                      <>
-                        Continue
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </>
-                    )}
+                  <Button type="submit" disabled={isLoading} className="w-full bg-gradient-to-r from-orange-500 to-amber-500">
+                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Continue to profile"}
                   </Button>
                 </form>
               </CardContent>
             </Card>
           )}
 
-          {/* Step 2: Profile Setup */}
           {step === 2 && (
-            <Card className="max-w-2xl mx-auto shadow-2xl border-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm">
-              <CardHeader className="text-center pb-6">
-                <CardTitle className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 text-transparent bg-clip-text">
-                  Set up your profile
-                </CardTitle>
-                <CardDescription className="text-gray-600 dark:text-gray-400">
-                  Choose your primary use case to personalize your experience
-                </CardDescription>
+            <Card className="mx-auto max-w-2xl border-orange-900/50 bg-slate-900/80">
+              <CardHeader>
+                <CardTitle className="text-orange-100">Set up your profile</CardTitle>
+                <CardDescription className="text-slate-300">Pick your role and preferences.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-8">
-                <div>
-                  <Label className="mb-3 block">Who are you?</Label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {(
-                      [
-                        {
-                          key: "creator",
-                          title: "Creator",
-                          desc: "Go live, manage streams, engage your audience",
-                          href: "/live",
-                        },
-                        {
-                          key: "seller",
-                          title: "Seller",
-                          desc: "Set up store, manage orders, run live shopping",
-                          href: "/seller/dashboard",
-                        },
-                        {
-                          key: "buyer",
-                          title: "Buyer",
-                          desc: "Shop groceries, track orders, chat for help",
-                          href: "/grocery",
-                        },
-                        {
-                          key: "enterprise",
-                          title: "Enterprise",
-                          desc: "SSO, admin controls, org analytics",
-                          href: "/business",
-                        },
-                      ] as const
-                    ).map((r) => (
-                      <button
-                        key={r.key}
-                        type="button"
-                        onClick={() => setSelectedRole(r.key)}
-                        className={`text-left rounded-lg border p-4 transition-colors ${
-                          selectedRole === r.key
-                            ? "border-orange-400 bg-orange-50 dark:bg-orange-950/20"
-                            : "border-orange-200 dark:border-orange-800 hover:bg-orange-50/50 dark:hover:bg-orange-950/10"
-                        }`}
-                        aria-pressed={selectedRole === r.key}
-                      >
-                        <div className="font-semibold">{r.title}</div>
-                        <div className="text-sm text-muted-foreground">{r.desc}</div>
-                      </button>
-                    ))}
-                  </div>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {ROLE_OPTIONS.map((role) => (
+                    <button
+                      key={role.key}
+                      type="button"
+                      onClick={() => setSelectedRole(role.key)}
+                      className={`text-left rounded-lg border p-4 transition-colors ${
+                        selectedRole === role.key ? "border-orange-400 bg-orange-950/30" : "border-slate-700 hover:bg-slate-800"
+                      }`}
+                    >
+                      <div className="font-semibold text-white">{role.title}</div>
+                      <div className="text-sm text-slate-300">{role.desc}</div>
+                    </button>
+                  ))}
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="username">Username</Label>
-                    <div className="flex">
-                      <span className="inline-flex items-center px-4 rounded-l-lg border border-r-0 border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/20 text-gray-600 dark:text-gray-400 text-sm">
-                        runash.ai/
-                      </span>
-                      <Input
-                        id="username"
-                        placeholder="username"
-                        value={formData.username}
-                        onChange={(e) => handleInputChange("username", e.target.value)}
-                        required
-                        className="rounded-l-none border-orange-200 focus:border-orange-400 dark:border-orange-800"
-                      />
-                    </div>
+                    <Input id="username" value={formData.username} onChange={(e) => handleInputChange("username", e.target.value)} required />
                   </div>
 
-                  <div className="space-y-3">
-                    <Label>Streaming Platforms</Label>
-                    <div className="grid grid-cols-2 gap-3">
-                      {["Twitch", "YouTube", "Facebook", "Instagram"].map((platform) => (
-                        <div key={platform} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`platform-${platform.toLowerCase()}`}
-                            checked={formData.platforms.includes(platform)}
-                            onCheckedChange={(checked) =>
-                              handleCheckboxChange("platforms", platform, checked as boolean)
-                            }
-                          />
-                          <Label htmlFor={`platform-${platform.toLowerCase()}`} className="text-sm">
-                            {platform}
-                          </Label>
-                        </div>
-                      ))}
-                    </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    {["Twitch", "YouTube", "Facebook", "Instagram"].map((platform) => (
+                      <label key={platform} className="flex items-center gap-2">
+                        <Checkbox
+                          checked={formData.platforms.includes(platform)}
+                          onCheckedChange={(checked) => handleCheckboxChange("platforms", platform, checked as boolean)}
+                        />
+                        {platform}
+                      </label>
+                    ))}
                   </div>
 
-                  <div className="space-y-3">
-                    <Label>Content Type</Label>
-                    <div className="grid grid-cols-2 gap-3">
-                      {["Creative", "Selling", "Businesses", "IRL"].map((type) => (
-                        <div key={type} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`content-${type.toLowerCase()}`}
-                            checked={formData.contentTypes.includes(type)}
-                            onCheckedChange={(checked) =>
-                              handleCheckboxChange("contentTypes", type, checked as boolean)
-                            }
-                          />
-                          <Label htmlFor={`content-${type.toLowerCase()}`} className="text-sm">
-                            {type}
-                          </Label>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <Button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full h-12 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-300"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Saving profile...
-                      </>
-                    ) : (
-                      <>
-                        Continue
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </>
-                    )}
+                  <Button type="submit" className="w-full bg-gradient-to-r from-orange-500 to-amber-500" disabled={isLoading || !selectedRole}>
+                    {isLoading ? "Saving..." : "Complete onboarding"}
                   </Button>
                 </form>
               </CardContent>
             </Card>
           )}
 
-          {/* Step 3: Complete */}
           {step === 3 && (
-            <Card className="max-w-3xl mx-auto shadow-2xl border-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm">
-              <CardContent className="pt-8">
-                <div className="text-center mb-8">
-                  <div className="w-20 h-20 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
-                    <Check className="h-10 w-10 text-white" />
-                  </div>
-                  <h1 className="text-3xl font-bold mb-3 bg-gradient-to-r from-orange-600 to-amber-600 text-transparent bg-clip-text">
-                    Welcome to RunAsh!
-                  </h1>
-                  <p className="text-gray-600 dark:text-gray-400 text-lg">
-                    Your AI-powered streaming journey starts now
-                  </p>
+            <Card className="mx-auto max-w-2xl border-orange-900/50 bg-slate-900/80">
+              <CardHeader className="text-center">
+                <div className="mx-auto w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center mb-4">
+                  <Check className="h-6 w-6 text-white" />
                 </div>
-
-                <Tabs defaultValue="explore" className="mb-8">
-                  <TabsList className="grid grid-cols-3 bg-orange-100/50 dark:bg-orange-900/20">
+                <CardTitle className="text-2xl text-orange-100">You&apos;re all set!</CardTitle>
+                <CardDescription className="text-slate-300">Finish setup and continue into RunAsh.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <Tabs defaultValue="explore" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="explore">Explore</TabsTrigger>
-                    <TabsTrigger value="setup">Quick Setup</TabsTrigger>
+                    <TabsTrigger value="setup">Setup</TabsTrigger>
                     <TabsTrigger value="learn">Learn</TabsTrigger>
                   </TabsList>
-
-                  <TabsContent value="explore" className="mt-6">
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {[
-                        { icon: Sparkles, title: "AI Features", desc: "Discover AI-powered streaming tools" },
-                        { icon: Zap, title: "Dashboard", desc: "View your analytics and insights" },
-                        { icon: Play, title: "Start Streaming", desc: "Go live with enhanced features" },
-                      ].map((item, index) => (
-                        <Card
-                          key={index}
-                          className="border-orange-200/50 dark:border-orange-900/30 hover:border-orange-300 dark:hover:border-orange-700 transition-colors cursor-pointer"
-                        >
-                          <CardContent className="p-4 flex items-center gap-4">
-                            <div className="p-3 bg-gradient-to-r from-orange-100 to-amber-100 dark:from-orange-900/30 dark:to-amber-900/30 rounded-lg">
-                              <item.icon className="h-6 w-6 text-orange-600 dark:text-orange-400" />
-                            </div>
-                            <div className="flex-1">
-                              <h3 className="font-semibold text-gray-900 dark:text-white">{item.title}</h3>
-                              <p className="text-sm text-gray-600 dark:text-gray-400">{item.desc}</p>
-                            </div>
-                            <ChevronRight className="h-5 w-5 text-gray-400" />
-                          </CardContent>
-                        </Card>
-                      ))}
-                      <Card
-                        className="border-orange-200/50 dark:border-orange-900/30 hover:border-orange-300 dark:hover:border-orange-700 transition-colors cursor-pointer"
-                        onClick={() => router.push("/chat")}
-                      >
-                        <CardContent className="p-4">
-                          <h3 className="font-semibold">RunAshChat</h3>
-                          <p className="text-sm text-muted-foreground">Ask anything and explore AI assistance</p>
+                  <TabsContent value="explore" className="grid gap-3 mt-4">
+                    {[
+                      { title: "Dashboard", desc: "Manage your workspace", icon: Zap, route: "/dashboard" },
+                      { title: "Live Studio", desc: "Start streaming faster", icon: Play, route: "/live" },
+                    ].map((item) => (
+                      <Card key={item.title} className="cursor-pointer border-slate-700 hover:border-orange-500" onClick={() => router.push(item.route)}>
+                        <CardContent className="p-4 flex items-center gap-3">
+                          <item.icon className="h-5 w-5 text-orange-400" />
+                          <div className="flex-1">
+                            <p className="font-medium text-white">{item.title}</p>
+                            <p className="text-sm text-slate-300">{item.desc}</p>
+                          </div>
+                          <ChevronRight className="h-4 w-4 text-slate-400" />
                         </CardContent>
                       </Card>
-                      <Card
-                        className="border-orange-200/50 dark:border-orange-900/30 hover:border-orange-300 dark:hover:border-orange-700 transition-colors cursor-pointer"
-                        onClick={() => router.push("/grocery")}
-                      >
-                        <CardContent className="p-4">
-                          <h3 className="font-semibold">RunAsh Store</h3>
-                          <p className="text-sm text-muted-foreground">Discover sustainable grocery products</p>
-                        </CardContent>
-                      </Card>
-                    </div>
+                    ))}
                   </TabsContent>
-
-                  <TabsContent value="setup" className="mt-6">
-                    <div className="text-center py-8">
-                      <p className="text-gray-600 dark:text-gray-400">
-                        Quick setup guides and tutorials will be available here
-                      </p>
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="learn" className="mt-6">
-                    <div className="text-center py-8">
-                      <p className="text-gray-600 dark:text-gray-400">
-                        Learning resources and documentation will be available here
-                      </p>
-                    </div>
-                  </TabsContent>
+                  <TabsContent value="setup" className="mt-4 text-sm text-slate-300">Quick setup guides coming soon.</TabsContent>
+                  <TabsContent value="learn" className="mt-4 text-sm text-slate-300">Learning resources coming soon.</TabsContent>
                 </Tabs>
 
-                <Button
-                  onClick={() => {
-                    const role =
-                      selectedRole ||
-                      (typeof window !== "undefined" ? (window.localStorage.getItem("runash_user_type") as any) : null)
-                    const route =
-                      role === "seller"
-                        ? "/seller/dashboard"
-                        : role === "buyer"
-                          ? "/grocery"
-                          : role === "enterprise"
-                            ? "/business"
-                            : "/dashboard"
-                    router.push(route)
-                  }}
-                  className="w-full h-12 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-300"
-                >
-                  Continue
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <Button onClick={() => router.push("/consent")} className="bg-gradient-to-r from-orange-500 to-amber-500">
+                    Continue to consent
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                  <Button variant="outline" onClick={() => router.push("/post-login")}>
+                    Go to post-login
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           )}
-        </div>
-      </main>
+        </DialogContent>
+      </Dialog>
 
-      {/* Footer */}
       <footer className="py-8">
         <div className="container mx-auto px-6">
           <div className="flex flex-col md:flex-row justify-between items-center">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              © {new Date().getFullYear()} RunAsh AI. All rights reserved.
-            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">© {new Date().getFullYear()} RunAsh AI. All rights reserved.</p>
             <div className="flex items-center gap-6 mt-4 md:mt-0">
-              <Link
-                href="/support"
-                className="text-sm text-gray-500 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
-              >
-                Help Center
-              </Link>
-              <Link
-                href="/terms"
-                className="text-sm text-gray-500 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
-              >
-                Terms
-              </Link>
-              <Link
-                href="/privacy"
-                className="text-sm text-gray-500 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
-              >
-                Privacy
-              </Link>
+              <Link href="/support" className="text-sm text-gray-500 dark:text-gray-400 hover:text-orange-600 transition-colors">Help Center</Link>
+              <Link href="/terms" className="text-sm text-gray-500 dark:text-gray-400 hover:text-orange-600 transition-colors">Terms</Link>
+              <Link href="/privacy" className="text-sm text-gray-500 dark:text-gray-400 hover:text-orange-600 transition-colors">Privacy</Link>
             </div>
           </div>
         </div>
