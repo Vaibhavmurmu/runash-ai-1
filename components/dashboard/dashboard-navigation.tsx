@@ -1,8 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { DashboardNavbar } from "@/components/dashboard/shell/navbar"
-import { DashboardSidebar } from "@/components/dashboard/shell/sidebar"
+import { DashboardNavbar } from "@/components/dashboard/dashboard-navbar"
+import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar"
 
 export function DashboardNavigation() {
   const [mobileOpen, setMobileOpen] = useState(false)

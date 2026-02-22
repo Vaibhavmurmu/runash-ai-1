@@ -16,7 +16,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
-import { getNavItemsBySection, isNavItemActive } from "@/components/dashboard/shell/nav-config"
+import { getNavItemsBySection, isNavItemActive } from "@/components/dashboard/dashboard-nav-config"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
