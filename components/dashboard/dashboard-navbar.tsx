@@ -25,6 +25,7 @@ interface DashboardNavbarProps {
 export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbarProps) {
   const pathname = usePathname()
   const navContext = resolveDashboardNavContext(pathname)
+  const currentPageTitle = navContext.breadcrumbs[navContext.breadcrumbs.length - 1]?.label ?? "Dashboard"
   const { openFromTrigger } = useDashboardModelDialog()
 
   const triggerSource = pathname.startsWith("/editor")
@@ -47,6 +48,7 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
           </Button>
           <div className="space-y-1">
             <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground md:text-xs">{navContext.currentSection}</p>
+            <p className="text-sm font-semibold text-foreground md:hidden">{currentPageTitle}</p>
             <div className="hidden items-center gap-1 text-sm font-medium text-foreground md:flex" aria-label="Current module breadcrumb">
               {navContext.breadcrumbs.map((crumb, index) => (
                 <div key={`${crumb.label}-${index}`} className="flex items-center gap-1.5">
