@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
       ? (parsed.data.sourceModule as "chat" | "editor" | "seller" | "store" | "streaming" | "dashboard")
       : "dashboard"
 
-    await createModelDialogRun({
+    const runId = await createModelDialogRun({
       requestId: streamRequestId,
       userId,
       modelId: parsed.data.modelId,
@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
         const timers: Array<ReturnType<typeof setTimeout>> = []
         timers.push(
           setTimeout(() => {
-            void updateModelDialogRunStatus(streamRequestId, "running")
+            void updateModelDialogRunStatus(runId, "running")
             emit(
               "running",
               buildEvent(streamRequestId, "running", `Running model ${parsed.data.modelId}.`, Date.now() - startedAt),
@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
         chunks.forEach((chunk, index) => {
           timers.push(
             setTimeout(() => {
-              void updateModelDialogRunStatus(streamRequestId, "partial-output")
+              void updateModelDialogRunStatus(runId, "partial-output")
               emit(
                 "partial",
                 buildEvent(streamRequestId, "partial-output", "Received partial output chunk.", Date.now() - startedAt, chunk),
@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
 
         timers.push(
           setTimeout(() => {
-            void updateModelDialogRunStatus(streamRequestId, "completed")
+            void updateModelDialogRunStatus(runId, "completed")
             emit(
               "completed",
               buildEvent(streamRequestId, "completed", "Model execution completed.", Date.now() - startedAt),
@@ -128,7 +128,7 @@ export async function GET(request: NextRequest) {
 
         request.signal.addEventListener("abort", () => {
           timers.forEach((timer) => clearTimeout(timer))
-          void updateModelDialogRunStatus(streamRequestId, "failed")
+          void updateModelDialogRunStatus(runId, "failed")
           controller.close()
         })
       },

@@ -2,27 +2,28 @@ import { type NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { logApiEvent } from "@/lib/api/logging"
 import { resolveRequestId } from "@/lib/api/response"
+import { createModelDialogRun, updateModelDialogRunStatus } from "@/lib/repositories/model-dialog-runs"
 import { requireDashboardSessionUserId } from "../_auth"
+
+const sourceModuleSchema = z.enum(["chat", "editor", "seller", "store", "streaming", "dashboard"])
 
 const modelDialogRequestSchema = z.object({
   modelId: z.string().trim().min(1, "modelId is required"),
   mode: z.enum(["sync", "async"]),
   input: z.string().trim().min(1, "input is required"),
+  sourceModule: sourceModuleSchema.optional().default("dashboard"),
   context: z.record(z.string(), z.unknown()).default({}),
 })
 
-type ModelDialogError = {
-  code: string
-  message: string
+type ModelDialogResponseEnvelope = {
+  requestId: string
+  status: "completed" | "accepted" | "failed"
+  output: unknown
+  error: { code: string; message: string } | null
 }
 
-function buildResponse(requestId: string, status: "completed" | "accepted" | "failed", output: unknown, error: ModelDialogError | null) {
-  return {
-    requestId,
-    status,
-    output,
-    error,
-  }
+function buildResponse(envelope: ModelDialogResponseEnvelope) {
+  return envelope
 }
 
 export async function POST(request: NextRequest) {
@@ -37,29 +38,61 @@ export async function POST(request: NextRequest) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        buildResponse(requestId, "failed", null, {
-          code: "MODEL_DIALOG_INVALID_REQUEST",
-          message: "Invalid model dialog request payload.",
+        buildResponse({
+          requestId,
+          status: "failed",
+          output: null,
+          error: {
+            code: "MODEL_DIALOG_INVALID_REQUEST",
+            message: "Invalid model dialog request payload.",
+          },
         }),
         { status: 400 },
       )
     }
 
-    const { modelId, mode, input, context } = parsed.data
+    const { modelId, mode, input, context, sourceModule } = parsed.data
+
+    const runId = await createModelDialogRun({
+      requestId,
+      userId,
+      modelId,
+      sourceModule,
+      input,
+      status: mode === "async" ? "queued" : "running",
+    })
 
     if (mode === "async") {
-      const token = `mdl_${requestId.replace(/-/g, "")}`
-      return NextResponse.json(buildResponse(requestId, "accepted", { token, modelId, context }, null), { status: 202 })
+      return NextResponse.json(
+        buildResponse({
+          requestId,
+          status: "accepted",
+          output: { token: `mdl_${runId.replace(/-/g, "")}`, modelId, context, runId },
+          error: null,
+        }),
+        { status: 202 },
+      )
     }
 
     const output = {
+      runId,
       modelId,
       mode,
       content: `Processed input (${input.length} chars) for model ${modelId}.`,
       context,
     }
 
-    return NextResponse.json(buildResponse(requestId, "completed", output, null), { status: 200 })
+    await updateModelDialogRunStatus(runId, "completed")
+
+    return NextResponse.json(
+      buildResponse({
+        requestId,
+        status: "completed",
+        output,
+        error: null,
+      }),
+      { status: 200 },
+    )
   } catch (error) {
     logApiEvent("error", "dashboard.model_dialog.failed", {
       requestId,
@@ -70,9 +103,14 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json(
-      buildResponse(requestId, "failed", null, {
-        code: "MODEL_DIALOG_INTERNAL_ERROR",
-        message: "Unable to process model dialog request.",
+      buildResponse({
+        requestId,
+        status: "failed",
+        output: null,
+        error: {
+          code: "MODEL_DIALOG_INTERNAL_ERROR",
+          message: "Unable to process model dialog request.",
+        },
       }),
       { status: 500 },
     )
