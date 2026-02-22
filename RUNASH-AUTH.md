@@ -478,3 +478,9 @@ These pages include:
 - Dashboard APIs now resolve identity from `getServerAuthSession` on the server boundary and reject mismatched `x-user-id` headers when present.
 - UI dashboard fetches no longer rely on client-provided identity fallbacks; `x-user-id` is retained only for internal contracts and is derived from verified session identity.
 - Dashboard refresh orchestration moved from polling-only behavior to an SSE subscription fan-in for `stream`, `chat`, `editor`, and `store` invalidation channels.
+
+## 2026-02 stream scheduling auth boundary hardening
+
+- `/api/streams/schedule` now requires a resolved server session via `getServerAuthSession`; unauthenticated calls return `401 Unauthorized`.
+- Stream schedule ownership is keyed exclusively by `session.user.id`; `x-user-id` overrides and `demo-user` fallback behavior were removed.
+- Development-only fallback identity is available only when explicitly enabled with `ENABLE_DEV_SCHEDULE_USER_FALLBACK=true` plus `DEV_SCHEDULE_FALLBACK_USER_ID` under `NODE_ENV=development`, and remains disabled by default.
