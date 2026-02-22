@@ -2,12 +2,13 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { BookOpenText, LifeBuoy, Lock, ShieldCheck } from "lucide-react"
+import { BookOpenText, CircleHelp, Gavel, Lock, Server } from "lucide-react"
 
 const FOOTER_LINKS = [
-  { label: "Support", href: "/support", icon: LifeBuoy },
-  { label: "Docs", href: "/docs", icon: BookOpenText },
-  { label: "Security", href: "/security", icon: ShieldCheck },
+  { label: "Status", href: "/status", icon: Server },
+  { label: "Help", href: "/support", icon: CircleHelp },
+  { label: "Version", href: "/releases", icon: BookOpenText },
+  { label: "Legal", href: "/legal", icon: Gavel },
   { label: "Privacy", href: "/privacy", icon: Lock },
 ] as const
 
@@ -52,7 +53,7 @@ export function DashboardFooter() {
           <p className="text-[11px]">Shortcuts: ⌘K Search · G then D Dashboard</p>
         </div>
 
-        <nav aria-label="Dashboard quick actions" className="grid grid-cols-4 gap-2 sm:hidden">
+        <nav aria-label="Dashboard quick actions" className="grid grid-cols-2 gap-2 sm:hidden">
           {FOOTER_LINKS.map(({ label, href, icon: Icon }) => (
             <Link
               key={label}

@@ -1,5 +1,7 @@
 import type React from "react"
 import type { Metadata } from "next"
+import { DashboardFooter } from "@/components/dashboard/dashboard-shell-footer"
+import { DashboardLayoutFrame } from "@/components/dashboard/dashboard-layout-frame"
 
 export const metadata: Metadata = {
   title: {
@@ -14,5 +16,5 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  return children
+  return <DashboardLayoutFrame footer={<DashboardFooter />}>{children}</DashboardLayoutFrame>
 }
