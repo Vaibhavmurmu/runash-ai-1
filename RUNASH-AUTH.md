@@ -11,9 +11,10 @@ Last updated: 2026-02
 
 ## Get-started onboarding flow update (2026-02)
 
-- Restored the three-step onboarding journey (`Account -> Profile -> Complete`) inside the dark themed get-started modal while keeping the landing CTA interaction.
-- Step 1 now bundles OAuth plus advanced auth methods (Magic Link, OTP, Passkey, SSO) directly in `app/get-started/page.tsx` using existing auth components from `components/auth/*`.
-- Role selection persistence remains keyed by `runash_user_type` in local storage, and completion now exposes explicit navigation targets to `/consent` and `/post-login`.
+- Restored the three-step onboarding journey (`Account -> Profile -> Complete`) inside a dark themed get-started modal while preserving the rich landing hero CTA flow.
+- Step 1 now bundles OAuth buttons (Google/GitHub plus optional Apple/Microsoft entry actions), email/password signup, and advanced auth methods (Magic Link, OTP, Passkey, SSO) using existing components from `components/auth/*`.
+- Role selection persistence remains keyed by `runash_user_type` in local storage, and completion exposes explicit navigation targets to `/consent` and `/post-login`.
+- Added upload-screenshot-ready onboarding messaging in the get-started modal so post-login flows are clearly communicated.
 
 This document tracks the **currently implemented** auth runtime, files, and routes in this repository. It intentionally excludes speculative endpoints that are not present in source.
 
