@@ -14,13 +14,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { resolveDashboardNavContext } from "./dashboard-nav-config"
+import { resolveDashboardNavContext, type DashboardNavigationConfig } from "./dashboard-nav-config"
 
 interface DashboardNavbarProps {
   onOpenMobileMenu: () => void
+  navConfig: DashboardNavigationConfig
 }
 
-export function DashboardNavbar({ onOpenMobileMenu }: DashboardNavbarProps) {
+export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbarProps) {
   const pathname = usePathname()
   const navContext = resolveDashboardNavContext(pathname)
 
@@ -70,18 +71,11 @@ export function DashboardNavbar({ onOpenMobileMenu }: DashboardNavbarProps) {
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>Quick actions</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/editor/dashboard">New project</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/stream">Go live</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/runash-chat">Open chat session</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/ecommerce/dashboard">Add product</Link>
-              </DropdownMenuItem>
+              {navConfig.quickActions.map((action) => (
+                <DropdownMenuItem asChild key={action.href}>
+                  <Link href={action.href}>{action.label}</Link>
+                </DropdownMenuItem>
+              ))}
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -123,18 +117,11 @@ export function DashboardNavbar({ onOpenMobileMenu }: DashboardNavbarProps) {
                 <Command className="mr-2 h-4 w-4" />
                 Search / Commands
               </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/editor/dashboard">New project</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/stream">Go live</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/runash-chat">Open chat session</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/ecommerce/dashboard">Add product</Link>
-              </DropdownMenuItem>
+              {navConfig.quickActions.map((action) => (
+                <DropdownMenuItem asChild key={action.href}>
+                  <Link href={action.href}>{action.label}</Link>
+                </DropdownMenuItem>
+              ))}
               <DropdownMenuSeparator />
               <DropdownMenuItem>Notifications</DropdownMenuItem>
               <DropdownMenuItem>Switch workspace</DropdownMenuItem>
