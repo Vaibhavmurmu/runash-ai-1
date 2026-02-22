@@ -40,6 +40,8 @@ interface ModelDialogCardProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   model: ModelIdentity
+  triggerSource?: string
+  dialogMode?: string
   promptPreview: string
   contextPreview?: string
   temperature: number
@@ -82,6 +84,8 @@ export function ModelDialogCard({
   open,
   onOpenChange,
   model,
+  triggerSource,
+  dialogMode,
   promptPreview,
   contextPreview,
   temperature,
@@ -135,9 +139,21 @@ export function ModelDialogCard({
                   <p className="truncate text-xs text-muted-foreground">{model.provider}</p>
                 </div>
               </div>
-              <Badge variant="secondary" className={STATUS_STYLES[model.status]}>
-                {statusLabel}
-              </Badge>
+              <div className="flex items-center gap-2">
+                {triggerSource ? (
+                  <Badge variant="outline" className="capitalize">
+                    Source: {triggerSource}
+                  </Badge>
+                ) : null}
+                {dialogMode ? (
+                  <Badge variant="outline" className="capitalize">
+                    Mode: {dialogMode}
+                  </Badge>
+                ) : null}
+                <Badge variant="secondary" className={STATUS_STYLES[model.status]}>
+                  {statusLabel}
+                </Badge>
+              </div>
             </div>
           </CardHeader>
 
@@ -152,7 +168,7 @@ export function ModelDialogCard({
             <section className="space-y-2">
               <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Context preview</h3>
               <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm leading-relaxed text-muted-foreground">
-                {contextPreview || "No additional context provided."}
+                {contextPreview || "No explicit context payload provided."}
               </div>
             </section>
 

@@ -212,8 +212,10 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
           name: activeModelDialog?.model.displayName ?? BASE_MODEL.name,
           provider: activeModelDialog?.model.provider ?? BASE_MODEL.provider,
         }}
+        triggerSource={activeModelDialog?.triggerSource}
+        dialogMode={activeModelDialog?.mode}
         promptPreview={promptPreview}
-        contextPreview={activeModelDialog ? `${activeModelDialog.triggerSource} • ${activeModelDialog.mode}` : undefined}
+        contextPreview={activeModelDialog?.payload?.context}
         temperature={temperature}
         onTemperatureChange={setTemperature}
         mode={mode}
