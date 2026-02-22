@@ -2,13 +2,17 @@ import { type NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { logApiEvent } from "@/lib/api/logging"
 import { resolveRequestId } from "@/lib/api/response"
+import { createModelDialogRun, updateModelDialogRunStatus } from "@/lib/repositories/model-dialog-runs"
 import type { ModelDialogSseEvent } from "@/lib/types/model-dialog"
 import { requireDashboardSessionUserId } from "../../_auth"
+
+const SOURCE_MODULES = new Set(["chat", "editor", "seller", "store", "streaming", "dashboard"])
 
 const querySchema = z.object({
   modelId: z.string().trim().min(1),
   input: z.string().trim().min(1),
   requestId: z.string().trim().optional(),
+  sourceModule: z.string().trim().min(1).optional(),
 })
 
 function toSse(event: string, payload: ModelDialogSseEvent) {
@@ -58,6 +62,19 @@ export async function GET(request: NextRequest) {
     }
 
     const streamRequestId = parsed.data.requestId || requestId
+    const sourceModule = SOURCE_MODULES.has(parsed.data.sourceModule || "")
+      ? (parsed.data.sourceModule as "chat" | "editor" | "seller" | "store" | "streaming" | "dashboard")
+      : "dashboard"
+
+    await createModelDialogRun({
+      requestId: streamRequestId,
+      userId,
+      modelId: parsed.data.modelId,
+      sourceModule,
+      input: parsed.data.input,
+      status: "queued",
+    })
+
     const encoder = new TextEncoder()
 
     const stream = new ReadableStream<Uint8Array>({
@@ -78,6 +95,7 @@ export async function GET(request: NextRequest) {
         const timers: Array<ReturnType<typeof setTimeout>> = []
         timers.push(
           setTimeout(() => {
+            void updateModelDialogRunStatus(streamRequestId, "running")
             emit(
               "running",
               buildEvent(streamRequestId, "running", `Running model ${parsed.data.modelId}.`, Date.now() - startedAt),
@@ -88,6 +106,7 @@ export async function GET(request: NextRequest) {
         chunks.forEach((chunk, index) => {
           timers.push(
             setTimeout(() => {
+              void updateModelDialogRunStatus(streamRequestId, "partial-output")
               emit(
                 "partial",
                 buildEvent(streamRequestId, "partial-output", "Received partial output chunk.", Date.now() - startedAt, chunk),
@@ -98,6 +117,7 @@ export async function GET(request: NextRequest) {
 
         timers.push(
           setTimeout(() => {
+            void updateModelDialogRunStatus(streamRequestId, "completed")
             emit(
               "completed",
               buildEvent(streamRequestId, "completed", "Model execution completed.", Date.now() - startedAt),
@@ -108,6 +128,7 @@ export async function GET(request: NextRequest) {
 
         request.signal.addEventListener("abort", () => {
           timers.forEach((timer) => clearTimeout(timer))
+          void updateModelDialogRunStatus(streamRequestId, "failed")
           controller.close()
         })
       },
