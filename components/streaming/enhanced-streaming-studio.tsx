@@ -60,9 +60,17 @@ import {
   defaultMediaAIPipelineSettings,
   MediaAIPipeline,
 } from "@/services/media-ai-pipeline"
+import {
+  createStreamSession,
+  endStreamSession,
+  getStreamHealthTelemetry,
+  getStreamLiveMetrics,
+  startStreamSession,
+} from "@/lib/stream-session-contract"
 
 export function EnhancedStreamingStudio() {
   const pipeline = useMemo(() => new MediaAIPipeline(), [])
+  const [streamSessionId, setStreamSessionId] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
@@ -114,95 +122,94 @@ export function EnhancedStreamingStudio() {
   })
 
   useEffect(() => {
-    let interval: NodeJS.Timeout
+    let alive = true
+    const bootstrapSession = async () => {
+      if (streamSessionId) return
+      try {
+        const created = await createStreamSession({ title: "Streaming Studio Session", platform: "custom" })
+        if (alive) {
+          setStreamSessionId(String(created.session.id))
+          setIsStreaming(created.session.status === "live")
+        }
+      } catch {
+        toast({ title: "Session Error", description: "Unable to initialize stream session.", variant: "destructive" })
+      }
+    }
+    void bootstrapSession()
+    return () => {
+      alive = false
+    }
+  }, [streamSessionId])
 
-    if (isStreaming) {
-      let seconds = 0
-      interval = setInterval(() => {
-        seconds++
-        const hours = Math.floor(seconds / 3600)
-        const minutes = Math.floor((seconds % 3600) / 60)
-        const secs = seconds % 60
+  useEffect(() => {
+    if (!streamSessionId) return
+    const interval = setInterval(async () => {
+      try {
+        const [{ metrics }, { telemetry }] = await Promise.all([
+          getStreamLiveMetrics(streamSessionId),
+          getStreamHealthTelemetry(streamSessionId),
+        ])
 
+        const hours = Math.floor(metrics.durationSeconds / 3600)
+        const minutes = Math.floor((metrics.durationSeconds % 3600) / 60)
+        const secs = metrics.durationSeconds % 60
         setStreamDuration(
           `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`,
         )
+        setViewerCount(metrics.viewers)
+        setRealtimeStats({
+          viewers: metrics.viewers,
+          likes: metrics.likes,
+          comments: metrics.comments,
+          shares: metrics.shares,
+        })
+        setStreamHealth(telemetry.status)
+        setHealthMetrics({
+          bitrate: telemetry.bitrate,
+          fps: telemetry.fps,
+          dropped: telemetry.dropped,
+          latency: telemetry.latency,
+        })
+      } catch {
+        // no-op polling failure
+      }
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [streamSessionId])
 
-        // Simulate viewer count increasing
-        if (seconds % 5 === 0) {
-          setViewerCount((prev) => Math.floor(prev + Math.random() * 5))
-          setRealtimeStats((prev) => ({
-            viewers: viewerCount,
-            likes: prev.likes + Math.floor(Math.random() * 3),
-            comments: prev.comments + Math.floor(Math.random() * 2),
-            shares: seconds % 15 === 0 ? prev.shares + 1 : prev.shares,
-          }))
-        }
-
-        // Simulate stream health changes
-        if (seconds % 10 === 0) {
-          const healthOptions = ["Excellent", "Good", "Fair", "Poor"]
-          const weights = [0.7, 0.2, 0.07, 0.03] // Weighted probabilities
-
-          const random = Math.random()
-          let cumulativeWeight = 0
-          let selectedHealth = "Excellent"
-
-          for (let i = 0; i < healthOptions.length; i++) {
-            cumulativeWeight += weights[i]
-            if (random <= cumulativeWeight) {
-              selectedHealth = healthOptions[i]
-              break
-            }
-          }
-
-          setStreamHealth(selectedHealth)
-
-          // Update health metrics
-          setHealthMetrics({
-            bitrate: 5000 + Math.floor(Math.random() * 500 - 250),
-            fps: 60 + Math.floor(Math.random() * 6 - 3),
-            dropped: Math.max(0, healthMetrics.dropped + (Math.random() > 0.9 ? 1 : 0)),
-            latency: 1.2 + (Math.random() * 0.4 - 0.2),
-          })
-        }
-      }, 1000)
-    } else {
-      setStreamDuration("00:00:00")
-      setViewerCount(0)
-      setRealtimeStats({
-        viewers: 0,
-        likes: 0,
-        comments: 0,
-        shares: 0,
-      })
-    }
-
-    return () => {
-      if (interval) clearInterval(interval)
-    }
-  }, [isStreaming, viewerCount, healthMetrics.dropped])
-
-  const handleToggleStream = () => {
+  const handleToggleStream = async () => {
+    if (!streamSessionId) return
+    const previous = isStreaming
+    setIsStreaming(!previous)
     if (!isStreaming) {
       // Starting stream
-      toast({
-        title: "Stream Started",
-        description: "Your stream is now live on your selected platforms.",
-        variant: "default",
-      })
-      setActivePlatforms(["twitch"]) // Example platform
+      try {
+        await startStreamSession(streamSessionId)
+        toast({
+          title: "Stream Started",
+          description: "Your stream is now live on your selected platforms.",
+          variant: "default",
+        })
+        setActivePlatforms(["twitch"])
+      } catch {
+        setIsStreaming(previous)
+        toast({ title: "Start Failed", description: "Could not start stream session.", variant: "destructive" })
+      }
     } else {
-      // Ending stream
-      toast({
-        title: "Stream Ended",
-        description: "Your stream has ended. View your analytics in the dashboard.",
-        variant: "default",
-      })
-      setIsRecording(false)
-      setActivePlatforms([])
+      try {
+        await endStreamSession(streamSessionId)
+        toast({
+          title: "Stream Ended",
+          description: "Your stream has ended. View your analytics in the dashboard.",
+          variant: "default",
+        })
+        setIsRecording(false)
+        setActivePlatforms([])
+      } catch {
+        setIsStreaming(previous)
+        toast({ title: "End Failed", description: "Could not end stream session.", variant: "destructive" })
+      }
     }
-    setIsStreaming((prev) => !prev)
   }
 
   const handleStartRecording = () => {
@@ -625,7 +632,7 @@ export function EnhancedStreamingStudio() {
                 </TabsList>
 
                 <TabsContent value="chat" className="flex-1 p-0 m-0">
-                  <StreamChat isStreaming={isStreaming} />
+                  <StreamChat isStreaming={isStreaming} streamId={streamSessionId} />
                 </TabsContent>
 
                 <TabsContent value="health" className="flex-1 p-3 m-0 space-y-4">
