@@ -1,10 +1,10 @@
 "use client"
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { usePathname } from "next/navigation"
 import { ModelDialogCard } from "@/components/dashboard/model-dialog-card"
 import { useModelDialog } from "@/lib/hooks/use-model-dialog"
-import type { ModelDialogContract } from "@/lib/types/model-dialog"
+import type { ModelDialogContract, ModelDialogSseEvent, ModelExecutionState } from "@/lib/types/model-dialog"
 
 interface DashboardModelDialogContextValue {
   openFromTrigger: (payload: ModelDialogContract, trigger?: HTMLElement | null) => void
@@ -19,23 +19,145 @@ const BASE_MODEL = {
   status: "ready" as const,
 }
 
+function createExecutionRequestId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+
+  return `mdl-${Date.now()}`
+}
+
 export function DashboardModelDialogProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const { activeModelDialog, isOpen, openModelDialog, closeModelDialog } = useModelDialog()
   const [temperature, setTemperature] = useState(0.7)
   const [mode, setMode] = useState("balanced")
   const [qualityPreset, setQualityPreset] = useState("high")
+  const [executionState, setExecutionState] = useState<ModelExecutionState>("idle")
+  const [streamingMessage, setStreamingMessage] = useState<string>("")
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [responseOutput, setResponseOutput] = useState("")
+  const [elapsedMs, setElapsedMs] = useState(0)
+  const [requestId, setRequestId] = useState<string | null>(null)
+  const eventSourceRef = useRef<EventSource | null>(null)
+  const tickTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const startedAtRef = useRef<number>(0)
+
+  const stopExecutionTracking = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close()
+      eventSourceRef.current = null
+    }
+
+    if (tickTimerRef.current) {
+      clearInterval(tickTimerRef.current)
+      tickTimerRef.current = null
+    }
+  }, [])
+
+  const resetExecutionState = useCallback(() => {
+    stopExecutionTracking()
+    setExecutionState("idle")
+    setStreamingMessage("")
+    setErrorMessage(null)
+    setResponseOutput("")
+    setElapsedMs(0)
+    setRequestId(null)
+    startedAtRef.current = 0
+  }, [stopExecutionTracking])
 
   const openFromTrigger = useCallback(
     (payload: ModelDialogContract, trigger?: HTMLElement | null) => {
+      resetExecutionState()
       openModelDialog(payload, trigger)
     },
-    [openModelDialog],
+    [openModelDialog, resetExecutionState],
   )
 
   useEffect(() => {
     closeModelDialog()
-  }, [pathname, closeModelDialog])
+    resetExecutionState()
+  }, [pathname, closeModelDialog, resetExecutionState])
+
+  useEffect(() => {
+    return () => {
+      stopExecutionTracking()
+    }
+  }, [stopExecutionTracking])
+
+  const handleExecutionEvent = useCallback(
+    (event: MessageEvent<string>) => {
+      const payload = JSON.parse(event.data) as ModelDialogSseEvent
+      setExecutionState(payload.state)
+      setStreamingMessage(payload.message)
+      setElapsedMs(payload.elapsedMs)
+      if (payload.requestId) {
+        setRequestId(payload.requestId)
+      }
+
+      if (payload.chunk) {
+        setResponseOutput((previous) => (previous ? `${previous}\n${payload.chunk}` : payload.chunk))
+      }
+
+      if (payload.state === "completed") {
+        stopExecutionTracking()
+      }
+
+      if (payload.state === "failed") {
+        setErrorMessage(payload.message || "Model execution failed.")
+        stopExecutionTracking()
+      }
+    },
+    [stopExecutionTracking],
+  )
+
+  const runModel = useCallback(() => {
+    if (!activeModelDialog) {
+      return
+    }
+
+    stopExecutionTracking()
+    const nextRequestId = createExecutionRequestId()
+    startedAtRef.current = Date.now()
+    setRequestId(nextRequestId)
+    setExecutionState("queued")
+    setStreamingMessage("Request queued for model execution.")
+    setErrorMessage(null)
+    setResponseOutput("")
+    setElapsedMs(0)
+
+    tickTimerRef.current = setInterval(() => {
+      if (startedAtRef.current > 0) {
+        setElapsedMs(Date.now() - startedAtRef.current)
+      }
+    }, 250)
+
+    const params = new URLSearchParams({
+      modelId: activeModelDialog.model.modelId,
+      input:
+        activeModelDialog.payload?.prompt ||
+        "Tune generation controls, review context, and execute with the selected model policy.",
+      requestId: nextRequestId,
+      mode,
+      qualityPreset,
+      temperature: temperature.toString(),
+    })
+
+    const eventSource = new EventSource(`/api/dashboard/model-dialog/stream?${params.toString()}`)
+    eventSourceRef.current = eventSource
+
+    eventSource.addEventListener("queued", handleExecutionEvent as EventListener)
+    eventSource.addEventListener("running", handleExecutionEvent as EventListener)
+    eventSource.addEventListener("partial", handleExecutionEvent as EventListener)
+    eventSource.addEventListener("completed", handleExecutionEvent as EventListener)
+    eventSource.addEventListener("failed", handleExecutionEvent as EventListener)
+
+    eventSource.onerror = () => {
+      setExecutionState("failed")
+      setErrorMessage("Streaming connection dropped before completion.")
+      stopExecutionTracking()
+    }
+  }, [activeModelDialog, handleExecutionEvent, mode, qualityPreset, stopExecutionTracking, temperature])
 
   const value = useMemo(
     () => ({
@@ -57,6 +179,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
         onOpenChange={(open) => {
           if (!open) {
             closeModelDialog()
+            resetExecutionState()
           }
         }}
         model={{
@@ -82,8 +205,15 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
           { label: "High", value: "high" },
           { label: "Ultra", value: "ultra" },
         ]}
-        onRun={closeModelDialog}
+        executionState={executionState}
+        streamingMessage={streamingMessage}
+        responseOutput={responseOutput}
+        elapsedMs={elapsedMs}
+        requestId={requestId}
+        errorMessage={errorMessage}
+        onRun={runModel}
         onSavePreset={closeModelDialog}
+        onRetry={runModel}
       />
     </DashboardModelDialogContext.Provider>
   )
