@@ -92,9 +92,12 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
 export function useDashboardModelDialog() {
   const context = useContext(DashboardModelDialogContext)
 
-  if (!context) {
-    throw new Error("useDashboardModelDialog must be used within DashboardModelDialogProvider")
+  if (context) {
+    return context
   }
 
-  return context
+  return {
+    openFromTrigger: () => {},
+    close: () => {},
+  }
 }
