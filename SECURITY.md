@@ -242,3 +242,10 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
 - Secure account deletion now requires a short-lived email verification code and records deletion audit events after cleanup callbacks complete.
 - Account lifecycle handlers avoid logging sensitive auth/payment values and only emit hashed/minimal metadata for anti-abuse integrations.
 - Auth error handling now routes users to explicit recovery surfaces (`/auth/error`) instead of ambiguous failures.
+
+
+## 2026-02 stream schedule identity enforcement
+
+- `/api/streams/schedule` now rejects unauthenticated access with `401 Unauthorized` and does not trust caller-supplied identity headers.
+- Schedule records are scoped by verified `session.user.id`; legacy `x-user-id` and `demo-user` fallback behavior has been removed.
+- Optional local development fallback identity is explicitly feature-gated (`ENABLE_DEV_SCHEDULE_USER_FALLBACK=true` + `DEV_SCHEDULE_FALLBACK_USER_ID`) and only honored when `NODE_ENV=development`.
