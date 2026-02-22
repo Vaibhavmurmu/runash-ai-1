@@ -595,7 +595,7 @@ export default function AISearch() {
     performSearch(search)
   }
 
-  //Handle result click
+  // Handle result click
   const handleResultClick = (result: SearchResult) => {
     setOpen(false)
 
@@ -1004,7 +1004,7 @@ export default function AISearch() {
                           <div className="flex-1 space-y-1">
                             <h4 className="text-sm font-medium">{result.title}</h4>
                             <p className="line-clamp-1 text-xs text-muted-foreground">{result.description}</p>
-                               <p className="flex items-center text-xs text-muted-foreground">
+                            <p className="flex items-center text-xs text-muted-foreground">
                               <Clock className="mr-1 h-3 w-3" /> {result.date}
                             </p>
                           </div>
