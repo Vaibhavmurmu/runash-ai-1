@@ -110,7 +110,9 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
 
   return (
     <div className="mt-6 flex flex-1 flex-col gap-4 px-3">
-      <div className="space-y-1">
+      <section className="space-y-2">
+        <p className="px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Workspace</p>
+        <div className="space-y-1 rounded-xl border border-border/60 bg-background/50 p-2">
         {primaryNavItems.map((item) => (
           <NavLink
             key={item.href}
@@ -144,11 +146,14 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
             }
           />
         ))}
-      </div>
+        </div>
+      </section>
 
       <Separator className="bg-border/70" />
 
-      <div className="space-y-1">
+      <section className="space-y-2">
+        <p className="px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quick links</p>
+        <div className="space-y-1 rounded-xl border border-border/60 bg-background/40 p-2">
         {navConfig.quickLinkGroups.map((group) => {
           const groupIsActive = group.items.some((item) => isNavItemActive(pathname, item))
 
@@ -157,13 +162,13 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
               <CollapsibleTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="w-full justify-between rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-card hover:text-foreground"
+                  className="group w-full justify-between rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-card hover:text-foreground"
                 >
                   <span className="flex items-center gap-3">
                     <group.icon className="h-4 w-4" />
                     {group.label}
                   </span>
-                  <ChevronDown className="h-4 w-4" />
+                  <ChevronDown className="h-4 w-4 transition-transform group-data-[state=open]:rotate-180" />
                 </Button>
               </CollapsibleTrigger>
               <CollapsibleContent className="space-y-1 pt-1.5">
@@ -183,7 +188,8 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
             </Collapsible>
           )
         })}
-      </div>
+        </div>
+      </section>
     </div>
   )
 }
