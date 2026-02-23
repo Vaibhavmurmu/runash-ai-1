@@ -55,6 +55,7 @@ import MultiPlatformStreaming from "./multi-platform-streaming"
 import AlertDisplay from "./alerts/alert-display"
 import StreamChat from "./stream-chat"
 import { MultiHostManager } from "./multi-host/multi-host-manager"
+import PollQuizManager from "@/components/grocery/live-shopping/poll-quiz-manager"
 import {
   type MediaAIPipelineSettings,
   defaultMediaAIPipelineSettings,
@@ -85,6 +86,7 @@ export function EnhancedStreamingStudio() {
   const [streamQuality, setStreamQuality] = useState(85)
   const [aiSettings, setAiSettings] = useState<MediaAIPipelineSettings>(defaultMediaAIPipelineSettings)
   const router = useRouter()
+  const studioStreamId = "studio-default"
 
   useEffect(() => {
     setAiSettings(pipeline.restoreSettings())
@@ -628,6 +630,13 @@ export function EnhancedStreamingStudio() {
                   >
                     <Users className="h-4 w-4 mr-2" />
                     Multi-Host
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="engagement"
+                    className="data-[state=active]:bg-orange-50 dark:data-[state=active]:bg-orange-950/20"
+                  >
+                    <MessageSquare className="h-4 w-4 mr-2" />
+                    Engagement
                   </TabsTrigger>
                 </TabsList>
 
