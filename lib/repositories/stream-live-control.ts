@@ -42,14 +42,16 @@ function hydrate(streamId: string, settings: Record<string, any>, updatedAt?: st
   const base = createDefaultLiveControlState(streamId)
   const minimumViewerAge =
     typeof settings.visibility?.minimumViewerAge === "number" ? settings.visibility.minimumViewerAge : undefined
+  const creatorAge = typeof settings.visibility?.creatorAge === "number" ? settings.visibility.creatorAge : undefined
   const explicitVisibility = settings.visibility?.explicitVisibility as StreamVisibility | undefined
-  const defaultVisibility = resolveVisibilityDefault(minimumViewerAge)
+  const defaultVisibility = resolveVisibilityDefault(creatorAge)
 
   return {
     ...base,
     visibility: {
       explicitVisibility,
       minimumViewerAge,
+      creatorAge,
       defaultVisibility,
       resolvedVisibility: explicitVisibility ?? defaultVisibility,
     },
@@ -121,8 +123,9 @@ export async function upsertLiveControlState(
 ): Promise<LiveControlState> {
   const current = await getLiveControlState(userId, streamId)
   const minimumViewerAge = input.visibility?.minimumViewerAge ?? current.visibility.minimumViewerAge
+  const creatorAge = input.visibility?.creatorAge ?? current.visibility.creatorAge
   const explicitVisibility = input.visibility?.explicitVisibility ?? current.visibility.explicitVisibility
-  const defaultVisibility = resolveVisibilityDefault(minimumViewerAge)
+  const defaultVisibility = resolveVisibilityDefault(creatorAge)
   const resolvedVisibility = explicitVisibility ?? defaultVisibility
   const trailerAssetId = validateTrailerAssetId(input.scheduledMetadata?.trailerAssetId ?? current.scheduledMetadata.trailerAssetId)
 
@@ -131,6 +134,7 @@ export async function upsertLiveControlState(
     visibility: {
       explicitVisibility,
       minimumViewerAge,
+      creatorAge,
       defaultVisibility,
       resolvedVisibility,
     },
