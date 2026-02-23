@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { applySidebarRouteGuards } from "@/lib/navigation/sidebar-route-guards"
 import { isNavItemActive, type DashboardNavSection, type DashboardNavigationConfig } from "./dashboard-nav-config"
 
 const navSectionOrder: DashboardNavSection[] = ["core", "studio", "intelligence", "operations", "account"]
@@ -22,6 +23,27 @@ const navSectionLabel: Record<DashboardNavSection, string> = {
   intelligence: "Intelligence",
   operations: "Operations",
   account: "Account",
+}
+
+const knownSidebarRoutes = new Set([
+  "/dashboard",
+  "/stream",
+  "/schedule",
+  "/analytics",
+  "/upload",
+  "/recordings",
+  "/alerts",
+  "/settings",
+  "/automation",
+  "/runash-chat",
+  "/editor",
+  "/seller/dashboard",
+  "/ecommerce/dashboard",
+])
+
+const sidebarRouteGuards = {
+  "/agents/dashboard": { featureFlag: "sidebar_ai_agents", unavailableBehavior: "disable" as const },
+  "/ecommerce/dashboard": { featureFlag: "sidebar_store", unavailableBehavior: "hide" as const },
 }
 
 interface DashboardSidebarProps {
@@ -38,13 +60,29 @@ interface NavLinkProps {
   badge?: string
   onClick?: () => void
   onAction?: (event: MouseEvent<HTMLButtonElement>) => void
+  disabled?: boolean
+  tooltip?: string
 }
 
-function NavLink({ href, label, icon: Icon, isActive, badge, onClick, onAction }: NavLinkProps) {
+function NavLink({ href, label, icon: Icon, isActive, badge, onClick, onAction, disabled = false, tooltip }: NavLinkProps) {
   const className =
     isActive
       ? "flex items-center gap-3 rounded-lg border border-orange-500/20 bg-orange-100/70 px-3 py-2.5 text-sm font-medium text-orange-950 shadow-sm transition-all dark:border-orange-400/30 dark:bg-orange-500/15 dark:text-orange-100"
       : "flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-border/70 hover:bg-card/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+
+  if (disabled) {
+    return (
+      <div
+        aria-disabled="true"
+        className="flex items-center gap-3 rounded-lg border border-dashed border-border/70 px-3 py-2.5 text-sm font-medium text-muted-foreground/60"
+        title={tooltip}
+      >
+        <Icon className="h-4 w-4" />
+        <span className="flex-1">{label}</span>
+        {badge ? <Badge variant="outline">{badge}</Badge> : null}
+      </div>
+    )
+  }
 
   if (onAction) {
     return (
@@ -106,11 +144,21 @@ function UserCard({ mobile = false }: { mobile?: boolean }) {
 function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNavigationConfig; onNavigate?: () => void }) {
   const pathname = usePathname()
   const { openFromTrigger } = useDashboardModelDialog()
+  const guardedItems = applySidebarRouteGuards(navConfig.items, {
+    knownRoutes: knownSidebarRoutes,
+    featureFlags: {
+      sidebar_ai_agents: process.env.NEXT_PUBLIC_FEATURE_SIDEBAR_AI_AGENTS !== "false",
+      sidebar_store: process.env.NEXT_PUBLIC_FEATURE_SIDEBAR_STORE !== "false",
+    },
+    routeGuards: sidebarRouteGuards,
+  })
+  const guardedItemsByHref = new Map(guardedItems.map((item) => [item.href, item]))
+
   const navItemsBySection = navSectionOrder
     .map((section) => ({
       section,
       label: navSectionLabel[section],
-      items: navConfig.items.filter((item) => item.section === section),
+      items: guardedItems.filter((item) => item.section === section),
     }))
     .filter((group) => group.items.length > 0)
 
@@ -141,6 +189,8 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
                 badge={item.badge}
                 isActive={isNavItemActive(pathname, item)}
                 onClick={onNavigate}
+                disabled={item.routeAvailability === "disabled"}
+                tooltip={item.tooltip}
                 onAction={
                   item.actionId === "open-model-dialog"
                     ? (event) => {
@@ -193,18 +243,28 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
                 </Button>
               </CollapsibleTrigger>
               <CollapsibleContent className="space-y-1 pt-1.5">
-                {group.items.map((item) => (
-                  <div key={item.href} className="pl-3">
-                    <NavLink
-                      href={item.href}
-                      label={item.label}
-                      icon={item.icon}
-                      badge={item.badge}
-                      isActive={isNavItemActive(pathname, item)}
-                      onClick={onNavigate}
-                    />
-                  </div>
-                ))}
+                {group.items.map((item) => {
+                  const guardedItem = guardedItemsByHref.get(item.href)
+
+                  if (!guardedItem) {
+                    return null
+                  }
+
+                  return (
+                    <div key={item.href} className="pl-3">
+                      <NavLink
+                        href={item.href}
+                        label={item.label}
+                        icon={item.icon}
+                        badge={item.badge}
+                        isActive={isNavItemActive(pathname, guardedItem)}
+                        onClick={onNavigate}
+                        disabled={guardedItem.routeAvailability === "disabled"}
+                        tooltip={guardedItem.tooltip}
+                      />
+                    </div>
+                  )
+                })}
               </CollapsibleContent>
             </Collapsible>
           )
