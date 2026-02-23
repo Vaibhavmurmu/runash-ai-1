@@ -54,7 +54,7 @@ export default function QuickActions({ actions }: QuickActionsProps) {
             key={action.id}
             variant="outline"
             size="sm"
-            onClick={action.action}
+            onClick={(event) => action.action(event.currentTarget)}
             className={`justify-start h-auto p-3 ${getCategoryColor(action.category)}`}
           >
             <div className="flex flex-col items-center space-y-1 text-center">

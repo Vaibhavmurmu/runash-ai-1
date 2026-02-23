@@ -12,6 +12,7 @@ import FeaturedProductCarousel from "@/components/grocery/live-shopping/featured
 import LiveStreamInfo from "@/components/grocery/live-shopping/live-stream-info"
 import LiveStreamMetricsDisplay from "@/components/grocery/live-shopping/live-stream-metrics-display"
 import UpcomingStreams from "@/components/grocery/live-shopping/upcoming-streams"
+import PollQuizManager from "@/components/grocery/live-shopping/poll-quiz-manager"
 import { CurrencyProvider } from "@/contexts/currency-context"
 
 type StreamPageData = {
@@ -316,6 +317,7 @@ export default function LiveShoppingPage() {
 
             <div className="space-y-6">
               <LiveStreamChat streamId={currentStream.id} />
+              <PollQuizManager streamId={currentStream.id} />
 
               <Card>
                 <CardHeader><CardTitle className="flex items-center space-x-2"><Calendar className="h-5 w-5" /><span>Upcoming Streams</span></CardTitle></CardHeader>

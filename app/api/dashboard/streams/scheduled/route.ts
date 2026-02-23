@@ -7,7 +7,7 @@ import type {
 } from "@/lib/types/dashboard-streams";
 
 export async function GET(request: Request) {
-  const scopedUserId = requireStreamDashboardUserId(request);
+  const scopedUserId = await requireStreamDashboardUserId(request);
   if (scopedUserId instanceof NextResponse) return scopedUserId;
 
   const streams = await listDashboardScheduledStreams(scopedUserId);

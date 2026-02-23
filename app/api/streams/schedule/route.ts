@@ -1,6 +1,7 @@
 // Simple scheduling backed by Redis (fallback memory)
 import { type NextRequest, NextResponse } from "next/server"
 import { Redis } from "@upstash/redis"
+import { getServerAuthSession } from "@/lib/auth/session"
 
 type Schedule = { id: string; userId: string; title: string; startsAt: number; description?: string }
 
@@ -17,8 +18,27 @@ function key(userId: string) {
   return `schedule:${userId}`
 }
 
+function resolveScheduleUserId(sessionUserId?: string) {
+  if (sessionUserId) return sessionUserId
+
+  const isDevelopment = process.env.NODE_ENV === "development"
+  const devFallbackEnabled = process.env.ENABLE_DEV_SCHEDULE_USER_FALLBACK === "true"
+  const fallbackUserId = process.env.DEV_SCHEDULE_FALLBACK_USER_ID
+
+  if (isDevelopment && devFallbackEnabled && fallbackUserId) {
+    return fallbackUserId
+  }
+
+  return null
+}
+
 export async function GET(req: NextRequest) {
-  const userId = req.headers.get("x-user-id") || "demo-user"
+  const session = await getServerAuthSession(req.headers)
+  const userId = resolveScheduleUserId(session?.user?.id)
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
   const r = redis()
   if (r) {
     const items = ((await r.get<Schedule[]>(key(userId))) as any) ?? []
@@ -29,7 +49,12 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const userId = req.headers.get("x-user-id") || "demo-user"
+  const session = await getServerAuthSession(req.headers)
+  const userId = resolveScheduleUserId(session?.user?.id)
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
   const body = await req.json().catch(() => null)
   if (!body?.title || !body?.startsAt)
     return NextResponse.json({ error: "title and startsAt required" }, { status: 400 })

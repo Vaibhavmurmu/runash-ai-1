@@ -9,6 +9,13 @@ Last updated: 2026-02
 - Auth/admin-sensitive APIs are protected with stricter endpoint-specific rate limits in addition to baseline API rate controls.
 - Auth event logging now redacts credentials/tokens/secrets and stores anonymized session identifiers for audit safety.
 
+## Get-started onboarding flow update (2026-02)
+
+- Restored the three-step onboarding journey (`Account -> Profile -> Complete`) inside a dark themed get-started modal while preserving the rich landing hero CTA flow.
+- Step 1 now bundles OAuth buttons (Google/GitHub plus optional Apple/Microsoft entry actions), email/password signup, and advanced auth methods (Magic Link, OTP, Passkey, SSO) using existing components from `components/auth/*`.
+- Role selection persistence remains keyed by `runash_user_type` in local storage, and completion exposes explicit navigation targets to `/consent` and `/post-login`.
+- Added upload-screenshot-ready onboarding messaging in the get-started modal so post-login flows are clearly communicated.
+
 This document tracks the **currently implemented** auth runtime, files, and routes in this repository. It intentionally excludes speculative endpoints that are not present in source.
 
 Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
@@ -49,6 +56,12 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 - AI agent dashboard now relies on active auth session identity and no longer uses a mock user identifier in client state.
 - Agent API client requests no longer submit mutable `userId` query/body values for self-service flows; user scope is resolved from server session.
 - AI agent create/update/delete routes reject requests attempting to override `user_id` and remain constrained to the authenticated session user unless elevated admin authorization applies.
+
+## Dashboard model dialog auth/session update (2026-02)
+
+- `POST /api/dashboard/model-dialog` now enforces authenticated dashboard session resolution on the server and rejects unauthenticated calls before model execution.
+- Model dialog requests are zod-validated (`modelId`, `mode`, `input`, optional `sourceModule/context`) and return a normalized envelope `{ requestId, status, output, error }`.
+- Model dialog runs are persisted in `model_dialog_runs` and exposed through `GET /api/dashboard/model-dialog/recent`, so recent run history survives dashboard refresh/navigation while remaining scoped to the authenticated user.
 
 ## OpenAPI + Scalar auth docs update (2026-02)
 
@@ -136,6 +149,8 @@ Related auth routes outside `app/api/auth/**`:
 - `GET /api/admin/analytics/auth` (`app/api/admin/analytics/auth/route.ts`)
 - `GET /api/admin/analytics/auth/events` (`app/api/admin/analytics/auth/events/route.ts`)
 - `GET /api/admin/analytics/auth/metrics` (`app/api/admin/analytics/auth/metrics/route.ts`)
+- `POST /api/streaming/platforms/auth/:platform` (`app/api/streaming/platforms/auth/[platform]/route.ts`) — starts authenticated platform OAuth linking and returns `{ auth_url }`.
+- `POST /api/streaming/platforms/auth/:platform/callback` (`app/api/streaming/platforms/auth/[platform]/callback/route.ts`) — validates callback payload and updates/creates the caller-owned `streaming_platforms` record.
 
 ## 3) Implemented auth-related UI routes
 
@@ -463,3 +478,16 @@ These pages include:
 - Passkey sign-in action
 - Social provider buttons (Google, GitHub, Hugging Face, LinkedIn, Twitter)
 - Card alert feedback states and password strength indicator
+
+
+## Dashboard authenticated data access + realtime subscriptions (2026-02)
+
+- Dashboard APIs now resolve identity from `getServerAuthSession` on the server boundary and reject mismatched `x-user-id` headers when present.
+- UI dashboard fetches no longer rely on client-provided identity fallbacks; `x-user-id` is retained only for internal contracts and is derived from verified session identity.
+- Dashboard refresh orchestration moved from polling-only behavior to an SSE subscription fan-in for `stream`, `chat`, `editor`, and `store` invalidation channels.
+
+## 2026-02 stream scheduling auth boundary hardening
+
+- `/api/streams/schedule` now requires a resolved server session via `getServerAuthSession`; unauthenticated calls return `401 Unauthorized`.
+- Stream schedule ownership is keyed exclusively by `session.user.id`; `x-user-id` overrides and `demo-user` fallback behavior were removed.
+- Development-only fallback identity is available only when explicitly enabled with `ENABLE_DEV_SCHEDULE_USER_FALLBACK=true` plus `DEV_SCHEDULE_FALLBACK_USER_ID` under `NODE_ENV=development`, and remains disabled by default.

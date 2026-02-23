@@ -479,4 +479,4 @@ export default function CheckoutForm() {
       </Tabs>
     </div>
   )
-        }
+}

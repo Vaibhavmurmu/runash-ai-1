@@ -60,6 +60,8 @@ import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { Progress } from "@/components/ui/progress"
 import { toast } from "@/components/ui/use-toast"
+import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
+import { useDashboardRealtime } from "@/lib/hooks/use-dashboard-realtime"
 import type {
   DashboardRecentStream,
   DashboardRecentStreamsResponse,
@@ -256,6 +258,7 @@ function ActivityItem({ activity }: { activity: any }) {
 
 export function EnhancedDashboard() {
   const [isLoading, setIsLoading] = useState(true)
+  const { openFromTrigger } = useDashboardModelDialog()
   const [stats, setStats] = useState<any | null>(null)
   const [recentStreams, setRecentStreams] = useState<any[]>([])
   const [activities, setActivities] = useState<any[]>([])
@@ -286,53 +289,41 @@ export function EnhancedDashboard() {
     return "Good evening"
   }, [])
 
+
+
   useEffect(() => {
     loadDashboardData()
-
-    // Poll for updates every 30s for "real-time" status
-    const id = setInterval(() => {
-      loadDashboardData()
-    }, 30000)
-
-    return () => clearInterval(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const loadDashboardData = async () => {
+  useDashboardRealtime({
+    onInvalidate: () => {
+      void loadDashboardData()
+    },
+  })
+
+  async function loadDashboardData() {
     try {
       setIsLoading(true)
 
       // 1) fetch current user (real)
       const meRes = await fetch("/api/me")
- 
-      let resolvedUserId: string | number | undefined
 
       let me: any | null = null
 
       if (meRes.ok) {
         me = await meRes.json()
         setUser(me)
-        resolvedUserId = me?.id
       } else {
         setUser(null)
       }
 
- 
-      const effectiveUserId = resolvedUserId || user?.id || undefined
-
-      const userId = me?.id || user?.id || undefined
-
-
-      // 2) fetch dashboard data using real user id when available
-      const headers: Record<string, string> = {}
-      if (effectiveUserId) headers["x-user-id"] = String(effectiveUserId)
-
       const [statsRes, streamsRes, activityRes, achievementsRes, goalsRes] = await Promise.all([
-        fetch("/api/dashboard/stats", { headers }),
-        fetch("/api/dashboard/streams/recent?limit=12", { headers }),
-        fetch("/api/dashboard/activity?limit=10", { headers }),
-        fetch("/api/dashboard/achievements", { headers }),
-        fetch("/api/dashboard/goals", { headers }),
+        fetch("/api/dashboard/stats"),
+        fetch("/api/dashboard/streams/recent?limit=12"),
+        fetch("/api/dashboard/activity?limit=10"),
+        fetch("/api/dashboard/achievements"),
+        fetch("/api/dashboard/goals"),
       ])
 
       if (statsRes.ok) {
@@ -407,7 +398,7 @@ export function EnhancedDashboard() {
       const payload = { title: startTitle || "Untitled Stream", category: startCategory }
       const res = await fetch("/api/dashboard/streams/start", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(user?.id ? { "x-user-id": String(user.id) } : {}) },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
       if (res.ok) {
@@ -433,7 +424,7 @@ export function EnhancedDashboard() {
       const payload = { title: scheduleTitle || "Scheduled Stream", category: scheduleCategory, startsAt: scheduleDate }
       const res = await fetch("/api/dashboard/streams/schedule", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(user?.id ? { "x-user-id": String(user.id) } : {}) },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
       if (res.ok) {
@@ -466,7 +457,7 @@ export function EnhancedDashboard() {
         emails.map(async (email) => {
           const response = await fetch("/api/dashboard/streams/invite", {
             method: "POST",
-            headers: { "Content-Type": "application/json", ...(user?.id ? { "x-user-id": String(user.id) } : {}) },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ streamId: targetStreamId, email }),
           })
 
@@ -692,6 +683,30 @@ export function EnhancedDashboard() {
                     </div>
                   </DialogContent>
                 </Dialog>
+
+                <Button
+                  variant="outline"
+                  className="w-full bg-transparent"
+                  onClick={(event) =>
+                    openFromTrigger(
+                      {
+                        triggerSource: "streaming",
+                        mode: "configure",
+                        model: {
+                          modelId: "streaming-ops-assistant",
+                          provider: "RunAsh AI",
+                          displayName: "Streaming Ops Assistant",
+                        },
+                        payload: {
+                          prompt: "Tune stream optimization strategy based on current dashboard metrics.",
+                        },
+                      },
+                      event.currentTarget,
+                    )
+                  }
+                >
+                  Open AI Model Dialog
+                </Button>
 
                 <Button variant="outline" className="w-full bg-transparent" onClick={() => loadDashboardData()}>
                   <BarChart3 className="mr-2 h-4 w-4" />

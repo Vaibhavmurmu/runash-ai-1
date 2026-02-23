@@ -1,176 +1,196 @@
-I
-;("ve successfully implemented comprehensive stream polls and quizzes functionality! Here")
-s
-what
-I
-'ve added:
+"use client"
 
-## 🗳️ Interactive Polls & Quizzes Features:
+import { useEffect, useMemo, useState } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import { Play, Square, Vote } from "lucide-react"
 
-### **Poll Creation & Management**
-- **Quick Poll Creator** - Create polls instantly during live streams
-- **Multiple Choice Options** - Support
-for 2-6 answer choices
-- **Real-time Results** - Live
-vote
-counting
-and
-percentage
-display
-- **Poll
-Templates ** -Pre - made
-polls
-for common shopping scenarios
-- **Auto-Close Timer** - Set
-automatic
-poll
-duration
+export type PollQuizKind = "poll" | "quiz"
+export type PollQuizStatus = "draft" | "live" | "closed"
 
-#
-#
-# ** Quiz
-System ** - **Product
-Knowledge
-Quizzes ** -Test
-viewers
-on
-product
-features
-- **Timed
-Questions ** -Add
-urgency
-with countdown timers
-- **Correct
-Answer
-Reveals ** -Show
-explanations
-after
-answering
-- **Score
-Tracking ** -Track
-individual
-and
-leaderboard
-scores
-- **Reward
-Integration ** -Offer
-discounts
-for quiz participation
+export interface PollQuizOption {
+  id: string
+  text: string
+  votes: number
+  isCorrect?: boolean
+}
 
-##
-# ** Viewer
-Engagement ** - **One - Click
-Voting ** -Simple
-tap - to - vote
-interface
-- **Real-time
-Feedback ** -Instant
-visual
-feedback
-on
-selections
-- **Results
-Visualization ** -Beautiful
-charts
-and
-progress
-bars
-- **Participation
-Rewards ** -Earn
-points
-for engagement
-- **Social Sharing** - Share quiz results
-and
-achievements
+export interface PollQuizItem {
+  id: string
+  streamId: string
+  kind: PollQuizKind
+  question: string
+  options: PollQuizOption[]
+  status: PollQuizStatus
+  createdAt: number
+}
 
-#
-#
-# ** Host
-Controls ** - **Live
-Management ** -Start, pause, and
-end
-polls / quizzes
-during
-stream
-- **Template
-Library ** -Save
-and
-reuse
-successful
-polls/quizzes
-- **Analytics
-Dashboard ** -Track
-engagement
-and
-participation
-rates
-- **Audience
-Insights ** -Understand
-viewer
-preferences
-and
-knowledge
+export interface PollQuizManagerProps {
+  streamId: string
+}
 
-#
-#
-🎯 Engagement Strategies:
+function toPercent(votes: number, totalVotes: number): string {
+  if (totalVotes === 0) return "0%"
+  return `${Math.round((votes / totalVotes) * 100)}%`
+}
 
-### **Shopping-Focused Polls**
-- "Which product should I feature next?"
-- "What's your favorite organic ingredient?"
-- "How do you prefer your vegetables packaged?"
+export default function PollQuizManager({ streamId }: PollQuizManagerProps) {
+  const [items, setItems] = useState<PollQuizItem[]>([])
+  const [question, setQuestion] = useState("")
+  const [kind, setKind] = useState<PollQuizKind>("poll")
+  const [options, setOptions] = useState<string[]>(["", ""])
+  const [loading, setLoading] = useState(false)
 
-### **Educational Quizzes**
-- Product knowledge tests
-- Nutrition fact challenges
-- Cooking tip quizzes
-- Sustainability awareness questions
+  const liveItem = useMemo(() => items.find((item) => item.status === "live") ?? null, [items])
 
-### **Interactive Features**
-- **Live Leaderboards** - Show top quiz performers
-- **Streak Tracking** - Reward consecutive correct answers
-- **Badge System** - Unlock achievements
-for participation
-- **Discount Rewards** - Offer shopping incentives
+  useEffect(() => {
+    let source: EventSource | null = null
 
-#
-#
-🔧 Technical Implementation:
+    const load = async () => {
+      const response = await fetch(`/api/streams/${streamId}/polls`, { cache: "no-store" })
+      if (response.ok) {
+        const payload = await response.json()
+        setItems(payload.items ?? [])
+      }
 
-- **Real-time Updates** - Instant poll/quiz synchronization
-- **Mobile Optimized** - Touch-friendly
-interface
-for all devices
-- **Accessibility** - Full keyboard navigation
-and
-screen
-reader
-support
-- **Performance** - Efficient
-real - time
-data
-handling
-- **Integration** - Seamlessly
-works
-with existing live
-shopping
-features
+      source = new EventSource(`/api/streams/${streamId}/polls/sse`)
+      source.onmessage = (event) => {
+        const payload = JSON.parse(event.data)
+        if (payload?.type === "polls" && Array.isArray(payload.data)) {
+          setItems(payload.data)
+        }
+      }
+    }
 
-The
-polls
-and
-quizzes
-system
-transforms
-passive
-viewers
-into
-active
-participants, creating
-a
-more
-engaging
-and
-interactive
-shopping
-experience!
+    void load()
+
+    return () => {
+      source?.close()
+    }
+  }, [streamId])
+
+  const createPollQuiz = async () => {
+    const trimmedQuestion = question.trim()
+    const filteredOptions = options.map((option) => option.trim()).filter(Boolean)
+    if (!trimmedQuestion || filteredOptions.length < 2) {
+      return
+    }
+
+    setLoading(true)
+    const response = await fetch(`/api/streams/${streamId}/polls`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind,
+        question: trimmedQuestion,
+        options: filteredOptions.map((option, index) => ({ text: option, isCorrect: kind === "quiz" && index === 0 })),
+      }),
+    })
+
+    setLoading(false)
+    if (response.ok) {
+      setQuestion("")
+      setOptions(["", ""])
+    }
+  }
+
+  const updateLifecycle = async (pollId: string, action: "start" | "close") => {
+    await fetch(`/api/streams/${streamId}/polls/${pollId}/lifecycle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    })
+  }
+
+  const vote = async (pollId: string, optionId: string) => {
+    await fetch(`/api/streams/${streamId}/polls/${pollId}/vote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ optionId }),
+    })
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <span>Polls & Quizzes</span>
+          <Badge variant="secondary">{items.length} total</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-md border p-3 space-y-3">
+          <div className="flex gap-2">
+            <Button variant={kind === "poll" ? "default" : "outline"} onClick={() => setKind("poll")}>Poll</Button>
+            <Button variant={kind === "quiz" ? "default" : "outline"} onClick={() => setKind("quiz")}>Quiz</Button>
+          </div>
+          <Input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask your audience a question" />
+          <div className="space-y-2">
+            {options.map((option, index) => (
+              <Input
+                key={`option-${index}`}
+                value={option}
+                onChange={(event) =>
+                  setOptions((previous) => previous.map((item, itemIndex) => (itemIndex === index ? event.target.value : item)))
+                }
+                placeholder={`Option ${index + 1}`}
+              />
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setOptions((previous) => [...previous, ""])} disabled={options.length >= 6}>
+              Add Option
+            </Button>
+            <Button onClick={createPollQuiz} disabled={loading}>
+              Create {kind}
+            </Button>
+          </div>
+        </div>
+
+        {liveItem && (
+          <div className="rounded-md border p-3 space-y-2">
+            <div className="text-sm font-medium">Live now: {liveItem.question}</div>
+            {liveItem.options.map((option) => {
+              const totalVotes = liveItem.options.reduce((sum, entry) => sum + entry.votes, 0)
+              return (
+                <div key={option.id} className="flex items-center gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => vote(liveItem.id, option.id)}>
+                    <Vote className="h-3 w-3 mr-1" />
+                    {option.text}
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    {option.votes} votes ({toPercent(option.votes, totalVotes)})
+                  </span>
+                </div>
+              )
+            })}
+            <Button variant="destructive" size="sm" onClick={() => updateLifecycle(liveItem.id, "close")}>
+              <Square className="h-3 w-3 mr-1" />
+              Close
+            </Button>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {items.map((item) => (
+            <div key={item.id} className="rounded-md border p-3">
+              <div className="flex items-center justify-between">
+                <div className="font-medium text-sm">{item.question}</div>
+                <Badge variant="outline">{item.status}</Badge>
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">{item.kind.toUpperCase()}</div>
+              {item.status === "draft" && (
+                <Button size="sm" className="mt-2" onClick={() => updateLifecycle(item.id, "start")}>
+                  <Play className="h-3 w-3 mr-1" />
+                  Start
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}

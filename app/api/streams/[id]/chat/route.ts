@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { Database } from "@/lib/database"
 import { addMessage } from "@/lib/chat"
+import { applyChatEvent } from "@/lib/stream-session-state"
 import { getServerAuthSession } from "@/lib/auth/session"
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
@@ -23,6 +24,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const body = await req.json()
     const content: string | undefined = body?.message ?? body?.text
     const type = body?.type ?? "message"
+    const platform = body?.platform ?? body?.metadata?.platform ?? "custom"
+    const metadata = body?.metadata ?? {}
 
     if (!content) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 })
@@ -32,12 +35,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const username = body?.username || session?.user?.name || "Anonymous"
     const userId = session?.user?.id || null
 
-    const chatMessage = await Database.addChatMessage({
-      stream_id: streamId,
-      user_id: userId,
+    const chatMessage = await Database.saveChatMessage({
+      streamId: String(streamId),
+      userId: userId ?? "anon",
       username,
       message: content,
       type,
+      platform,
+      metadata,
     })
 
     try {
@@ -47,11 +52,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         username: username,
         text: content,
       })
+      applyChatEvent(String(streamId))
     } catch (e) {
       console.warn("[v0] addMessage redis push failed:", (e as Error)?.message)
     }
 
-    return NextResponse.json({ message: chatMessage })
+    return NextResponse.json({ message: { ...chatMessage, platform, metadata } })
   } catch (error) {
     console.error("Add chat message error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

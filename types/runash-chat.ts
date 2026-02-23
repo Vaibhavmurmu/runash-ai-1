@@ -177,6 +177,6 @@ export interface QuickAction {
   id: string
   label: string
   icon: string
-  action: () => void
+  action: (trigger?: HTMLElement | null) => void
   category: "product" | "recipe" | "tip" | "automation" | "search"
 }

@@ -108,6 +108,22 @@ Response:
 | `SESSION_MESSAGES_FETCH_FAILED` | 500 | `GET /api/messages/session/:id` | Session messages query failed unexpectedly. |
 
 
+
+## Stream Schedule API (`/api/streams/schedule`)
+
+### Auth & identity behavior
+- `GET /api/streams/schedule` and `POST /api/streams/schedule` require a valid server auth session (`getServerAuthSession`).
+- Schedules are always scoped and stored by `session.user.id`.
+- Unauthenticated requests return `401` with `{ "error": "Unauthorized" }`.
+- `x-user-id` header identity override and `demo-user` fallback are not accepted.
+
+### Development-only fallback (disabled by default)
+- For local development only, a fallback identity can be enabled when **all** of the following are true:
+  - `NODE_ENV=development`
+  - `ENABLE_DEV_SCHEDULE_USER_FALLBACK=true`
+  - `DEV_SCHEDULE_FALLBACK_USER_ID=<non-empty-user-id>`
+- If any of the above conditions are not met, unauthenticated requests remain `401`.
+
 ## Upload API (`/api/upload`)
 
 ### `POST /api/upload`

@@ -552,3 +552,11 @@ Email automation templates are available for:
 - Re-engagement
 - Bounce cleanup
 - AI reply triage
+
+
+## Streaming Session Backend Contract (2026-02)
+
+- `EnhancedStreamingStudio` now uses server-backed stream session APIs for create/start/end lifecycle, live metrics polling, and health telemetry.
+- Stream lifecycle status is maintained on the server and mirrored in UI with optimistic updates that rollback when API requests fail.
+- Stream chat relay now persists through `app/api/streams/[id]/chat/*` endpoints with connector/platform metadata to support multi-platform attribution.
+

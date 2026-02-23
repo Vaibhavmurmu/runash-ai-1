@@ -38,6 +38,13 @@
 - Continue staged fallback retirement for legacy NextAuth compatibility reads after stability criteria are met.
 - If future payment contract changes are required, ship them as explicitly versioned migrations with rollout communication.
 
+
+## 2026-02 Streaming Reliability Change Audit (non-payment impact)
+
+- Introduced server-side stream-session lifecycle and chat relay contracts for studio reliability.
+- Payment/auth request/response contracts, field names, and business flow signatures remain unchanged.
+- Rollback plan: revert stream-session API wiring and restore previous studio-local behavior without touching payment routes.
+
 ## Executive Summary
 
 This comprehensive guide outlines the strategy for deploying RunAsh Pay across Business and Startup segments. The implementation focuses on secure payment processing, seamless integrations, enterprise scalability, and compliance requirements specific to each user segment.
