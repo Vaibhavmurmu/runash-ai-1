@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react"
 import {
+  Flame,
   Bell,
   Bot,
   CalendarDays,
@@ -11,6 +12,8 @@ import {
   Settings,
   ShoppingBag,
   Store,
+  Sparkles,
+  UploadCloud,
   Upload,
   Video,
   Workflow,
@@ -24,8 +27,15 @@ export interface DashboardNavItem {
   icon: LucideIcon
   section: DashboardNavSection
   badge?: string
+  metadata?: DashboardNavItemMetadata
   actionId?: "open-model-dialog"
   activeMatch?: (pathname: string) => boolean
+}
+
+export interface DashboardNavItemMetadata {
+  badgeCount?: number
+  statusChip?: "live" | "beta" | "pro"
+  quickActionIcon?: LucideIcon
 }
 
 export interface DashboardQuickLinkGroup {
@@ -67,6 +77,11 @@ export const dashboardNavItems: DashboardNavItem[] = [
     href: "/stream",
     icon: Radio,
     section: "studio",
+    metadata: {
+      badgeCount: 0,
+      statusChip: "live",
+      quickActionIcon: Flame,
+    },
     activeMatch: (pathname) => matchesPathPrefix(pathname, "/stream"),
   },
   {
@@ -88,6 +103,11 @@ export const dashboardNavItems: DashboardNavItem[] = [
     href: "/upload",
     icon: Upload,
     section: "studio",
+    metadata: {
+      badgeCount: 0,
+      statusChip: "pro",
+      quickActionIcon: UploadCloud,
+    },
     activeMatch: (pathname) => matchesPathPrefix(pathname, "/upload"),
   },
   {
@@ -102,6 +122,9 @@ export const dashboardNavItems: DashboardNavItem[] = [
     href: "/alerts",
     icon: Bell,
     section: "operations",
+    metadata: {
+      badgeCount: 0,
+    },
     activeMatch: (pathname) => matchesPathPrefix(pathname, "/alerts"),
   },
   {
@@ -116,6 +139,10 @@ export const dashboardNavItems: DashboardNavItem[] = [
     href: "/agents/dashboard",
     icon: Bot,
     section: "intelligence",
+    metadata: {
+      statusChip: "beta",
+      quickActionIcon: Sparkles,
+    },
     activeMatch: (pathname) => matchesPathPrefix(pathname, "/agents"),
   },
   {
@@ -123,6 +150,9 @@ export const dashboardNavItems: DashboardNavItem[] = [
     href: "/automation",
     icon: Workflow,
     section: "intelligence",
+    metadata: {
+      badgeCount: 0,
+    },
     activeMatch: (pathname) => matchesPathPrefix(pathname, "/automation"),
   },
   {

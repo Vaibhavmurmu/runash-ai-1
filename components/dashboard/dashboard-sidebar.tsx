@@ -13,7 +13,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { applySidebarRouteGuards } from "@/lib/navigation/sidebar-route-guards"
-import { isNavItemActive, type DashboardNavSection, type DashboardNavigationConfig } from "./dashboard-nav-config"
+import { isNavItemActive, type DashboardNavItemMetadata, type DashboardNavSection, type DashboardNavigationConfig } from "./dashboard-nav-config"
 
 const navSectionOrder: DashboardNavSection[] = ["core", "studio", "intelligence", "operations", "account"]
 
@@ -58,13 +58,20 @@ interface NavLinkProps {
   icon: ComponentType<{ className?: string }>
   isActive: boolean
   badge?: string
+  metadata?: DashboardNavItemMetadata
   onClick?: () => void
   onAction?: (event: MouseEvent<HTMLButtonElement>) => void
   disabled?: boolean
   tooltip?: string
 }
 
-function NavLink({ href, label, icon: Icon, isActive, badge, onClick, onAction, disabled = false, tooltip }: NavLinkProps) {
+function NavLink({ href, label, icon: Icon, isActive, badge, metadata, onClick, onAction, disabled = false, tooltip }: NavLinkProps) {
+  const metadataBadgeCount = typeof metadata?.badgeCount === "number" && metadata.badgeCount > 0 ? metadata.badgeCount.toString() : undefined
+  const badgeLabel = metadataBadgeCount ?? badge
+  const quickActionIconClassName = isActive ? "h-3.5 w-3.5 text-orange-500 dark:text-orange-300" : "h-3.5 w-3.5 text-muted-foreground"
+  const QuickActionIcon = metadata?.quickActionIcon
+  const statusChip = metadata?.statusChip?.toUpperCase()
+
   const className =
     isActive
       ? "flex items-center gap-3 rounded-lg border border-orange-500/20 bg-orange-100/70 px-3 py-2.5 text-sm font-medium text-orange-950 shadow-sm transition-all dark:border-orange-400/30 dark:bg-orange-500/15 dark:text-orange-100"
@@ -79,7 +86,9 @@ function NavLink({ href, label, icon: Icon, isActive, badge, onClick, onAction, 
       >
         <Icon className="h-4 w-4" />
         <span className="flex-1">{label}</span>
-        {badge ? <Badge variant="outline">{badge}</Badge> : null}
+        {statusChip ? <Badge variant="outline">{statusChip}</Badge> : null}
+        {badgeLabel ? <Badge variant="outline">{badgeLabel}</Badge> : null}
+        {QuickActionIcon ? <QuickActionIcon className={quickActionIconClassName} aria-hidden="true" /> : null}
       </div>
     )
   }
@@ -89,7 +98,9 @@ function NavLink({ href, label, icon: Icon, isActive, badge, onClick, onAction, 
       <Button variant="ghost" className={className} onClick={onAction}>
         <Icon className={isActive ? "h-4 w-4 text-orange-500 dark:text-orange-300" : "h-4 w-4"} />
         <span className="flex-1 text-left">{label}</span>
-        {badge ? <Badge className={isActive ? "bg-orange-500 text-white dark:bg-orange-400 dark:text-orange-950" : ""}>{badge}</Badge> : null}
+        {statusChip ? <Badge variant="outline">{statusChip}</Badge> : null}
+        {badgeLabel ? <Badge className={isActive ? "bg-orange-500 text-white dark:bg-orange-400 dark:text-orange-950" : ""}>{badgeLabel}</Badge> : null}
+        {QuickActionIcon ? <QuickActionIcon className={quickActionIconClassName} aria-hidden="true" /> : null}
       </Button>
     )
   }
@@ -102,7 +113,9 @@ function NavLink({ href, label, icon: Icon, isActive, badge, onClick, onAction, 
     >
       <Icon className={isActive ? "h-4 w-4 text-orange-500 dark:text-orange-300" : "h-4 w-4"} />
       <span className="flex-1">{label}</span>
-      {badge ? <Badge className={isActive ? "bg-orange-500 text-white dark:bg-orange-400 dark:text-orange-950" : ""}>{badge}</Badge> : null}
+      {statusChip ? <Badge variant="outline">{statusChip}</Badge> : null}
+      {badgeLabel ? <Badge className={isActive ? "bg-orange-500 text-white dark:bg-orange-400 dark:text-orange-950" : ""}>{badgeLabel}</Badge> : null}
+      {QuickActionIcon ? <QuickActionIcon className={quickActionIconClassName} aria-hidden="true" /> : null}
     </Link>
   )
 }
@@ -187,6 +200,7 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
                 label={item.label}
                 icon={item.icon}
                 badge={item.badge}
+                metadata={item.metadata}
                 isActive={isNavItemActive(pathname, item)}
                 onClick={onNavigate}
                 disabled={item.routeAvailability === "disabled"}
@@ -257,6 +271,7 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
                         label={item.label}
                         icon={item.icon}
                         badge={item.badge}
+                        metadata={guardedItem.metadata}
                         isActive={isNavItemActive(pathname, guardedItem)}
                         onClick={onNavigate}
                         disabled={guardedItem.routeAvailability === "disabled"}
