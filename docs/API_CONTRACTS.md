@@ -703,3 +703,22 @@ Payload (all optional):
 - Uses Upstash Redis when `KV_REST_API_URL` and `KV_REST_API_TOKEN` are configured.
 - Falls back to in-memory store when KV is unavailable (development convenience only).
 
+
+## Dashboard Live Control Visibility Defaults
+
+`/api/dashboard/streams/live-control/:id` now supports `visibility.creatorAge` as the default visibility resolver input:
+
+- `creatorAge` between 13 and 17 => default visibility resolves to `private`.
+- `creatorAge` 18 and above => default visibility resolves to `public`.
+- explicit visibility, when set, still overrides default resolution.
+
+Example update payload:
+
+```json
+{
+  "visibility": {
+    "creatorAge": 16,
+    "explicitVisibility": null
+  }
+}
+```

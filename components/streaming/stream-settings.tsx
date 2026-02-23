@@ -20,7 +20,7 @@ interface StreamSettingsProps {
 
 const defaultState: LiveControlState = {
   streamId: "",
-  visibility: { defaultVisibility: "public", resolvedVisibility: "public" },
+  visibility: { defaultVisibility: "public", resolvedVisibility: "public", creatorAge: 18 },
   scheduledMetadata: { trailerAssetId: null, scheduledAt: null, trailerTitle: "" },
   dualStream: { mode: "single", primaryOrientation: "horizontal", linkedStreamId: null, sharedChatEnabled: false },
   membersOnly: { enabled: false, transitionedAt: null, reason: "" },
@@ -129,6 +129,27 @@ export default function StreamSettings({
               <SelectItem value="private"><div className="flex items-center"><Lock className="h-4 w-4 mr-2" />Private</div></SelectItem>
             </SelectContent>
           </Select>
+        </div>
+
+
+        <div className="space-y-2">
+          <Label htmlFor="creator-age">Creator Age</Label>
+          <Input
+            id="creator-age"
+            type="number"
+            min={13}
+            max={120}
+            value={state.visibility.creatorAge ?? ""}
+            onChange={(e) =>
+              void persist({
+                visibility: {
+                  ...state.visibility,
+                  creatorAge: e.target.value ? Number(e.target.value) : undefined,
+                },
+              })
+            }
+          />
+          <p className="text-xs text-muted-foreground">Ages 13-17 default to private. Ages 18+ default to public.</p>
         </div>
 
         <div className="space-y-2">

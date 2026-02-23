@@ -3,6 +3,7 @@ export type StreamVisibility = "public" | "unlisted" | "private"
 export interface StreamVisibilityPolicy {
   explicitVisibility?: StreamVisibility
   minimumViewerAge?: number
+  creatorAge?: number
   defaultVisibility: StreamVisibility
   resolvedVisibility: StreamVisibility
 }
@@ -71,10 +72,11 @@ export type LiveControlAction =
   | { type: "poll_end"; pollId: string }
   | { type: "members_only_transition"; enabled: boolean; reason?: string }
 
-export function resolveVisibilityDefault(minimumViewerAge: number | undefined): StreamVisibility {
-  if (typeof minimumViewerAge !== "number") return "public"
-  if (minimumViewerAge < 16) return "unlisted"
-  return "public"
+export function resolveVisibilityDefault(creatorAge: number | undefined): StreamVisibility {
+  if (typeof creatorAge !== "number") return "public"
+  if (creatorAge >= 13 && creatorAge <= 17) return "private"
+  if (creatorAge >= 18) return "public"
+  return "private"
 }
 
 export function validateTrailerAssetId(trailerAssetId: string | null | undefined): string | null {
