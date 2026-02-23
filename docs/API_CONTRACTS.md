@@ -655,3 +655,51 @@ Success response:
 
 - The route executes the recording edit insert inside an explicit DB transaction (`BEGIN` / `COMMIT`, rollback on fail
 
+
+## Stream Interactions API (`/api/streams/:id/*`)
+
+These endpoints power live interactivity for polls, Q&A, reactions, member-only mode, and pinned message references.
+
+### `GET /api/streams/:id/interactions`
+Returns a combined snapshot:
+- `state`: `{ pinnedMessageId, reactionsEnabled, memberOnly, activePollId, activeQASessionId, updatedAt }`
+- `polls`: poll history for stream
+- `qaSessions`: Q&A session history
+- `questions`: submitted questions list
+
+### `PATCH /api/streams/:id/interactions`
+Auth required.
+
+Payload (all optional):
+```json
+{
+  "reactionsEnabled": true,
+  "memberOnly": false,
+  "pinnedMessageId": "chat-message-id-or-null"
+}
+```
+
+### Poll endpoints
+- `GET /api/streams/:id/polls`
+- `POST /api/streams/:id/polls` (auth required)
+  - payload: `{ "question": string, "options": string[] }`
+  - option count: 2-6
+- `POST /api/streams/:id/polls/:pollId/vote`
+  - payload: `{ "optionId": string }`
+- `POST /api/streams/:id/polls/:pollId/end` (auth required)
+
+### Q&A endpoints
+- `GET /api/streams/:id/qa`
+- `POST /api/streams/:id/qa` (auth required)
+  - payload: `{ "prompt": string }`
+- `POST /api/streams/:id/qa/:sessionId/end` (auth required)
+- `GET /api/streams/:id/qa/questions`
+- `POST /api/streams/:id/qa/questions`
+  - payload: `{ "username"?: string, "text": string }`
+- `PATCH /api/streams/:id/qa/questions/:questionId` (auth required)
+  - payload: `{ "selected": boolean }`
+
+### Storage behavior
+- Uses Upstash Redis when `KV_REST_API_URL` and `KV_REST_API_TOKEN` are configured.
+- Falls back to in-memory store when KV is unavailable (development convenience only).
+
