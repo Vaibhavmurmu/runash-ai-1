@@ -454,6 +454,7 @@ Rollback to prior stable auth/session path if any of the following occur:
 
 ## Better Auth client helpers and UI cards
 
+
 This repository now exposes Better Auth client helpers from:
 
 - `lib/auth/client.ts`
