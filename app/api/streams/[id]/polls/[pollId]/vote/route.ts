@@ -1,33 +1,17 @@
-import { NextRequest, NextResponse } from "next/server"
-import { addMessage } from "@/lib/chat"
-import { applyPollQuizAction, getPollQuizzes } from "@/lib/poll-quiz"
+import { type NextRequest, NextResponse } from "next/server"
+import { votePoll } from "@/lib/live-interactions"
 
 export async function POST(req: NextRequest, { params }: { params: { id: string; pollId: string } }) {
-  const body = await req.json()
-  const optionId = typeof body?.optionId === "string" ? body.optionId : ""
+  const body = (await req.json().catch(() => null)) as { optionId?: string } | null
 
-  if (!optionId) {
+  if (!body?.optionId) {
     return NextResponse.json({ error: "optionId is required" }, { status: 400 })
   }
 
-  const poll = applyPollQuizAction(params.id, { type: "vote", pollId: params.pollId, optionId })
+  const poll = await votePoll(params.id, params.pollId, body.optionId)
   if (!poll) {
-    return NextResponse.json({ error: "Poll not found" }, { status: 404 })
+    return NextResponse.json({ error: "Poll or option not found" }, { status: 404 })
   }
 
-  const selected = poll.options.find((option) => option.id === optionId)
-  if (selected) {
-    try {
-      await addMessage({
-        streamId: params.id,
-        userId: "system",
-        username: "System",
-        text: `New vote on ${poll.kind}: ${selected.text}`,
-      })
-    } catch {
-      // no-op
-    }
-  }
-
-  return NextResponse.json({ item: poll, all: getPollQuizzes(params.id) })
+  return NextResponse.json({ poll })
 }
