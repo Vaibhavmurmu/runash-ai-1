@@ -12,7 +12,17 @@ import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import { isNavItemActive, type DashboardNavigationConfig } from "./dashboard-nav-config"
+import { isNavItemActive, type DashboardNavSection, type DashboardNavigationConfig } from "./dashboard-nav-config"
+
+const navSectionOrder: DashboardNavSection[] = ["core", "studio", "intelligence", "operations", "account"]
+
+const navSectionLabel: Record<DashboardNavSection, string> = {
+  core: "Core",
+  studio: "Studio",
+  intelligence: "Intelligence",
+  operations: "Operations",
+  account: "Account",
+}
 
 interface DashboardSidebarProps {
   mobileOpen: boolean
@@ -96,7 +106,13 @@ function UserCard({ mobile = false }: { mobile?: boolean }) {
 function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNavigationConfig; onNavigate?: () => void }) {
   const pathname = usePathname()
   const { openFromTrigger } = useDashboardModelDialog()
-  const primaryNavItems = navConfig.items.filter((item) => item.section === "primary")
+  const navItemsBySection = navSectionOrder
+    .map((section) => ({
+      section,
+      label: navSectionLabel[section],
+      items: navConfig.items.filter((item) => item.section === section),
+    }))
+    .filter((group) => group.items.length > 0)
 
   const triggerSource = pathname.startsWith("/editor")
     ? "editor"
@@ -112,39 +128,44 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
     <div className="mt-6 flex flex-1 flex-col gap-4 px-3">
       <section className="space-y-2">
         <p className="px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Workspace</p>
-        <div className="space-y-1 rounded-xl border border-border/60 bg-background/50 p-2">
-        {primaryNavItems.map((item) => (
-          <NavLink
-            key={item.href}
-            href={item.href}
-            label={item.label}
-            icon={item.icon}
-            badge={item.badge}
-            isActive={isNavItemActive(pathname, item)}
-            onClick={onNavigate}
-            onAction={
-              item.actionId === "open-model-dialog"
-                ? (event) => {
-                    openFromTrigger(
-                      {
-                        triggerSource,
-                        mode: "configure",
-                        model: {
-                          modelId: "runash-router",
-                          provider: "RunAsh AI",
-                          displayName: "RunAsh Model Router",
-                        },
-                        payload: {
-                          prompt: `Configure routing rules and model strategy for ${pathname}.`,
-                        },
-                      },
-                      event.currentTarget,
-                    )
-                    onNavigate?.()
-                  }
-                : undefined
-            }
-          />
+        <div className="space-y-3 rounded-xl border border-border/60 bg-background/50 p-2">
+        {navItemsBySection.map((group) => (
+          <div key={group.section} className="space-y-1">
+            <p className="px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/90">{group.label}</p>
+            {group.items.map((item) => (
+              <NavLink
+                key={item.href}
+                href={item.href}
+                label={item.label}
+                icon={item.icon}
+                badge={item.badge}
+                isActive={isNavItemActive(pathname, item)}
+                onClick={onNavigate}
+                onAction={
+                  item.actionId === "open-model-dialog"
+                    ? (event) => {
+                        openFromTrigger(
+                          {
+                            triggerSource,
+                            mode: "configure",
+                            model: {
+                              modelId: "runash-router",
+                              provider: "RunAsh AI",
+                              displayName: "RunAsh Model Router",
+                            },
+                            payload: {
+                              prompt: `Configure routing rules and model strategy for ${pathname}.`,
+                            },
+                          },
+                          event.currentTarget,
+                        )
+                        onNavigate?.()
+                      }
+                    : undefined
+                }
+              />
+            ))}
+          </div>
         ))}
         </div>
       </section>
