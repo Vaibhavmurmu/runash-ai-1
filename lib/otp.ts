@@ -1,7 +1,9 @@
 import { createHash, randomInt, randomUUID } from "crypto"
 import { logApiEvent } from "./api/logging"
-import { sql } from "./db"
+import { assertDatabaseConfigured, sql } from "./db"
 import { sendEmail } from "./email"
+
+assertDatabaseConfigured("lib/otp.ts")
 
 type OtpLogLevel = "info" | "warn" | "error"
 
