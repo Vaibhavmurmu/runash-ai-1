@@ -173,7 +173,28 @@ When safety mode blocks a send in API handlers that surface policy errors, the r
 ```bash
 npm run lint
 npm run build
+npm run test
+npm run test:auth
 ```
+
+## Test command matrix
+- **Local full checks**
+  ```bash
+  npm run lint
+  npm run build
+  npm run test
+  ```
+- **Local quick auth check**
+  ```bash
+  npm run test:auth
+  ```
+- **CI quality job (same scripts to prevent drift)**
+  ```bash
+  npm run lint
+  npm run build
+  npm run test
+  npm run test:auth
+  ```
 
 ## Documentation index
 ### Governance and collaboration

@@ -10,7 +10,9 @@
     "lint:security-logs": "node scripts/check-sensitive-logging.mjs",
     "openapi:auth:generate": "node scripts/generate-auth-openapi.mjs",
     "openapi:auth:check": "npm run openapi:auth:generate && git diff --exit-code docs/openapi/auth.openapi.json",
-    "lint:payment-getways-imports": "node scripts/check-payment-getways-imports.mjs"
+    "lint:payment-getways-imports": "node scripts/check-payment-getways-imports.mjs",
+    "test": "node --loader ./scripts/node-ts-loader.mjs --test $(find app lib -name '*.test.ts' -print)",
+    "test:auth": "node --loader ./scripts/node-ts-loader.mjs --test lib/auth-helpers.get-session-check.test.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "latest",
