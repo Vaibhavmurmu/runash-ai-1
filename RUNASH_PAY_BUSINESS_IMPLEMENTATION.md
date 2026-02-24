@@ -17,6 +17,8 @@ This document is limited to payment/business implementation policy. Generic cont
 ## 2026-02 implementation notes
 
 - Canonical gateway module path is `lib/payment-gateways/pay.ts`; legacy `lib/payment-getways/pay.ts` remains temporary compatibility alias.
+- Migration status (2026-02-24): repository import sweep shows zero remaining runtime imports of `payment-getways/pay`; shim retained temporarily for backward compatibility.
+- CI guard added: `npm run lint:payment-getways-imports` fails on any new `payment-getways/pay` import outside the shim allowlist.
 - Payment and business APIs retain existing field names and API signatures during auth runtime migration.
 - Better Auth rollout remains staged behind `FEATURE_FLAG_USE_BETTER_AUTH_PERCENT` with explicit rollback guardrails.
 - Auth hardening updates (verified linking, session invalidation, throttling) are contract-compatible for payment APIs.
