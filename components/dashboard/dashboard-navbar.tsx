@@ -1,9 +1,12 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Bell, ChevronRight, Command, Menu, MoreHorizontal, Plus, Search } from "lucide-react"
+import { signOut } from "@/lib/auth/client"
 import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
+import { FeedbackModal } from "@/components/dashboard/feedback-modal"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -24,6 +27,7 @@ interface DashboardNavbarProps {
 
 export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbarProps) {
   const pathname = usePathname()
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
   const navContext = resolveDashboardNavContext(pathname)
   const currentPageTitle = navContext.breadcrumbs[navContext.breadcrumbs.length - 1]?.label ?? "Dashboard"
   const { openFromTrigger } = useDashboardModelDialog()
@@ -118,6 +122,14 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
             <Bell className="h-4 w-4" />
           </Button>
 
+          <Button asChild size="sm" className="hidden h-10 md:inline-flex">
+            <Link href="/settings/billing">Upgrade</Link>
+          </Button>
+
+          <Button variant="outline" size="sm" className="hidden h-10 border-border/80 bg-background/75 md:inline-flex" onClick={() => setFeedbackOpen(true)}>
+            Feedback
+          </Button>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="hidden h-10 items-center gap-2 border-border/80 bg-background/75 transition-colors hover:bg-card md:inline-flex">
@@ -128,13 +140,30 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuLabel>User & workspace</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>Switch to Creator Workspace</DropdownMenuItem>
-              <DropdownMenuItem>Switch to Commerce Workspace</DropdownMenuItem>
+              <DropdownMenuLabel>Account</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/dashboard">Account settings</Link>
+                <Link href="/settings/profile">Profile</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/settings">Settings</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/settings/billing">Billing</Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={async () => {
+                  await signOut({
+                    fetchOptions: {
+                      onSuccess: () => {
+                        window.location.href = "/"
+                      },
+                    },
+                  })
+                }}
+              >
+                Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -179,14 +208,42 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
                 </DropdownMenuItem>
               ))}
               <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/settings/billing">Upgrade</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setFeedbackOpen(true)}>Feedback</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/settings/profile">Profile</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/settings">Settings</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/settings/billing">Billing</Link>
+              </DropdownMenuItem>
               <DropdownMenuItem>Notifications</DropdownMenuItem>
-              <DropdownMenuItem>Switch workspace</DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={async () => {
+                  await signOut({
+                    fetchOptions: {
+                      onSuccess: () => {
+                        window.location.href = "/"
+                      },
+                    },
+                  })
+                }}
+              >
+                Sign out
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
           <ThemeToggle />
         </div>
       </div>
+
+      <FeedbackModal open={feedbackOpen} onOpenChange={setFeedbackOpen} />
     </header>
   )
 }
