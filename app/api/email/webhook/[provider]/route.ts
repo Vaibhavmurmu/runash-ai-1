@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { normalizeProviderWebhook } from "@/lib/email-webhooks/adapters"
 import { ingestNormalizedEvents } from "@/lib/email-webhooks/ingestion"
+import { recordWebhookRejection } from "@/lib/email-webhooks/store"
 import { type EmailWebhookProvider } from "@/lib/email-webhooks/types"
 import { verifyWebhookSignature } from "@/lib/email-webhooks/verify-signature"
 
@@ -21,6 +22,7 @@ export async function POST(request: NextRequest, { params }: { params: { provide
     const rawBody = await request.text()
     const verification = verifyWebhookSignature(provider, rawBody, request.headers)
     if (!verification.ok) {
+      await recordWebhookRejection(provider, { reason: verification.reason || "Invalid signature", rawBody })
       return NextResponse.json({ error: verification.reason || "Invalid signature" }, { status: 401 })
     }
 

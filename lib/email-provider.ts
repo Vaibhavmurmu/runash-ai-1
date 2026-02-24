@@ -22,6 +22,24 @@ interface EmailProvider {
   send(input: SendEmailInput): Promise<unknown>
 }
 
+export type EmailProviderType = "smtp" | "resend"
+
+export interface EmailProviderDiagnostics {
+  provider: EmailProviderType
+  configuredProvider?: string
+  fallbackActive: boolean
+  smtpConfigured: boolean
+  resendConfigured: boolean
+}
+
+export interface EmailProviderHealthCheckResult {
+  ok: boolean
+  provider: EmailProviderType
+  checkedAt: string
+  diagnostics: EmailProviderDiagnostics
+  reason?: string
+}
+
 class SmtpEmailProvider implements EmailProvider {
   private transporter: nodemailer.Transporter
 
@@ -115,7 +133,7 @@ function hasResendConfig() {
   return Boolean(process.env.RESEND_API_KEY && (process.env.EMAIL_FROM || process.env.SMTP_FROM))
 }
 
-function resolveProviderType() {
+function resolveProviderType(): EmailProviderType {
   const configuredProvider = process.env.EMAIL_PROVIDER?.toLowerCase()
 
   if (configuredProvider === "smtp") {
@@ -153,6 +171,90 @@ function resolveProviderType() {
   }
 
   throw new Error("No email provider configured. Set SMTP_* (with SMTP_PASSWORD) or RESEND_API_KEY + EMAIL_FROM.")
+}
+
+export function getEmailProviderDiagnostics(): EmailProviderDiagnostics {
+  const configuredProvider = process.env.EMAIL_PROVIDER?.toLowerCase()
+  const smtpConfigured = hasSmtpConfig()
+  const resendConfigured = hasResendConfig()
+  const provider = resolveProviderType()
+
+  return {
+    provider,
+    configuredProvider,
+    fallbackActive: Boolean(configuredProvider && configuredProvider !== provider),
+    smtpConfigured,
+    resendConfigured,
+  }
+}
+
+export async function runEmailProviderHealthCheck(): Promise<EmailProviderHealthCheckResult> {
+  const diagnostics = getEmailProviderDiagnostics()
+
+  try {
+    if (diagnostics.provider === "smtp") {
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: Number.parseInt(process.env.SMTP_PORT ?? "587", 10),
+        secure: process.env.SMTP_SECURE === "true" || Number.parseInt(process.env.SMTP_PORT ?? "587", 10) === 465,
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASSWORD ?? process.env.SMTP_PASS,
+        },
+      })
+
+      await transporter.verify()
+      return {
+        ok: true,
+        provider: diagnostics.provider,
+        checkedAt: new Date().toISOString(),
+        diagnostics,
+      }
+    }
+
+    const resendApiKey = process.env.RESEND_API_KEY
+    if (!resendApiKey) {
+      return {
+        ok: false,
+        provider: diagnostics.provider,
+        checkedAt: new Date().toISOString(),
+        diagnostics,
+        reason: "RESEND_API_KEY is missing",
+      }
+    }
+
+    const response = await fetch("https://api.resend.com/domains", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${resendApiKey}`,
+      },
+    })
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        provider: diagnostics.provider,
+        checkedAt: new Date().toISOString(),
+        diagnostics,
+        reason: `Resend health check failed with status ${response.status}`,
+      }
+    }
+
+    return {
+      ok: true,
+      provider: diagnostics.provider,
+      checkedAt: new Date().toISOString(),
+      diagnostics,
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      provider: diagnostics.provider,
+      checkedAt: new Date().toISOString(),
+      diagnostics,
+      reason: error instanceof Error ? error.message : "Email provider health check failed",
+    }
+  }
 }
 
 let cachedProvider: EmailProvider | undefined

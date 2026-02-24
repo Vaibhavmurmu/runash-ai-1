@@ -251,6 +251,23 @@ export async function sendEmail(options: {
   }
 }
 
+export async function sendAuthEmail(options: {
+  to: string
+  subject: string
+  html: string
+  text?: string
+  headers?: Record<string, string>
+}) {
+  return sendEmail({
+    ...options,
+    track_delivery: true,
+    headers: {
+      ...options.headers,
+      "X-Email-Category": "auth",
+    },
+  })
+}
+
 export async function sendVerificationEmail(email: string, name: string, token: string) {
   const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email?token=${token}`
 
@@ -284,7 +301,7 @@ export async function sendVerificationEmail(email: string, name: string, token: 
     `,
   }
 
-  await sendEmail(mailOptions)
+  await sendAuthEmail(mailOptions)
 }
 
 export async function sendPasswordResetEmail(email: string, name: string, token: string) {
@@ -320,5 +337,5 @@ export async function sendPasswordResetEmail(email: string, name: string, token:
     `,
   }
 
-  await sendEmail(mailOptions)
+  await sendAuthEmail(mailOptions)
 }
