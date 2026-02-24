@@ -22,6 +22,20 @@ export class BackgroundSync {
   private statusListeners: ((status: SyncStatus) => void)[] = []
   private lastSync: number = Date.now()
   private syncInterval: NodeJS.Timeout | null = null
+  private readonly onlineListener = () => {
+    this.isOnline = true
+    this.processSyncQueue()
+    this.notifyStatusListeners()
+  }
+  private readonly offlineListener = () => {
+    this.isOnline = false
+    this.notifyStatusListeners()
+  }
+  private readonly visibilityChangeListener = () => {
+    if (!document.hidden && this.isOnline) {
+      this.processSyncQueue()
+    }
+  }
 
   private constructor() {
     this.initializeEventListeners()
@@ -37,24 +51,9 @@ export class BackgroundSync {
   }
 
   private initializeEventListeners(): void {
-    // Listen for online/offline events
-    window.addEventListener("online", () => {
-      this.isOnline = true
-      this.processSyncQueue()
-      this.notifyStatusListeners()
-    })
-
-    window.addEventListener("offline", () => {
-      this.isOnline = false
-      this.notifyStatusListeners()
-    })
-
-    // Listen for page visibility changes
-    document.addEventListener("visibilitychange", () => {
-      if (!document.hidden && this.isOnline) {
-        this.processSyncQueue()
-      }
-    })
+    window.addEventListener("online", this.onlineListener)
+    window.addEventListener("offline", this.offlineListener)
+    document.addEventListener("visibilitychange", this.visibilityChangeListener)
   }
 
   private startPeriodicSync(): void {
@@ -210,14 +209,8 @@ export class BackgroundSync {
     if (this.syncInterval) {
       clearInterval(this.syncInterval)
     }
-    window.removeEventListener("online", () => {
-      this.isOnline = true
-      this.processSyncQueue()
-      this.notifyStatusListeners()
-    })
-    window.removeEventListener("offline", () => {
-      this.isOnline = false
-      this.notifyStatusListeners()
-    })
+    window.removeEventListener("online", this.onlineListener)
+    window.removeEventListener("offline", this.offlineListener)
+    document.removeEventListener("visibilitychange", this.visibilityChangeListener)
   }
 }
