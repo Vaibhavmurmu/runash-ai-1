@@ -3,6 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import {
   BarChart3,
   Users,
@@ -18,6 +19,8 @@ import {
   Star,
   Award,
   Target,
+  Sparkles,
+  RotateCcw,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -62,6 +65,7 @@ import { Progress } from "@/components/ui/progress"
 import { toast } from "@/components/ui/use-toast"
 import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
 import { useDashboardRealtime } from "@/lib/hooks/use-dashboard-realtime"
+import { RecordingService } from "@/lib/recording-service"
 import type {
   DashboardRecentStream,
   DashboardRecentStreamsResponse,
@@ -257,6 +261,7 @@ function ActivityItem({ activity }: { activity: any }) {
 }
 
 export function EnhancedDashboard() {
+  const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
   const { openFromTrigger } = useDashboardModelDialog()
   const [stats, setStats] = useState<any | null>(null)
@@ -266,6 +271,7 @@ export function EnhancedDashboard() {
   const [monthlyGoals, setMonthlyGoals] = useState<any[]>([])
   const [user, setUser] = useState<any | null>(null)
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null)
+  const [recentRecordingEditHref, setRecentRecordingEditHref] = useState<string>("/recordings")
 
   // Dialog state for actions
   const [startDialogOpen, setStartDialogOpen] = useState(false)
@@ -338,6 +344,19 @@ export function EnhancedDashboard() {
         setRecentStreams(Array.isArray(streamsData.streams) ? streamsData.streams : [])
       } else {
         setRecentStreams([])
+      }
+
+      try {
+        const recordings = await RecordingService.getInstance().getUserRecordings()
+        const latestRecording = recordings.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+
+        if (latestRecording?.id) {
+          setRecentRecordingEditHref(`/recordings?recordingId=${encodeURIComponent(latestRecording.id)}&mode=edit`)
+        } else {
+          setRecentRecordingEditHref("/recordings")
+        }
+      } catch {
+        setRecentRecordingEditHref("/recordings")
       }
 
       if (activityRes.ok) {
@@ -519,6 +538,50 @@ export function EnhancedDashboard() {
 
   const anyLive = recentStreams.some((s) => s.status === "live")
   const liveStream = recentStreams.find((s) => s.status === "live")
+  const lastLiveStream = recentStreams.find((stream) => stream.status === "live" || stream.status === "ended")
+
+  const handleResumeConfiguration = async () => {
+    try {
+      const [recentRes, scheduledRes] = await Promise.all([
+        fetch("/api/dashboard/streams/recent?limit=1"),
+        fetch("/api/dashboard/streams/scheduled"),
+      ])
+
+      const recentData = recentRes.ok ? ((await recentRes.json()) as DashboardRecentStreamsResponse) : { streams: [] }
+      const scheduledData = scheduledRes.ok ? await scheduledRes.json() : { streams: [] }
+      const target = scheduledData.streams?.[0] ?? recentData.streams?.[0]
+
+      if (!target?.id) {
+        toast({ title: "Resume unavailable", description: "No recent or scheduled stream configuration found." })
+        return
+      }
+
+      router.push(`/stream?resumeStreamId=${encodeURIComponent(target.id)}`)
+    } catch {
+      toast({ title: "Resume unavailable", description: "Unable to load stream configuration." })
+    }
+  }
+
+  const handleCreateHighlightsFromLastStream = async () => {
+    if (!lastLiveStream?.id) {
+      toast({ title: "Highlights unavailable", description: "No completed live stream found." })
+      return
+    }
+
+    try {
+      const recordings = await RecordingService.getInstance().getUserRecordings(lastLiveStream.id)
+      const linkedRecording = recordings.find((recording) => recording.streamId === lastLiveStream.id) ?? recordings[0]
+
+      if (!linkedRecording?.id) {
+        toast({ title: "Highlights unavailable", description: "No recording found for your latest stream." })
+        return
+      }
+
+      router.push(`/recordings?recordingId=${encodeURIComponent(linkedRecording.id)}&panel=highlights`)
+    } catch {
+      toast({ title: "Highlights unavailable", description: "Unable to load recording for the last stream." })
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -788,6 +851,46 @@ export function EnhancedDashboard() {
                 trend={stat.trend}
               />
                 ))}
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="border-border/40 bg-card/50 backdrop-blur">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Last live summary</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
+            <p className="font-medium text-foreground line-clamp-1">{lastLiveStream?.title ?? "No live session yet"}</p>
+            <p>Viewers: {lastLiveStream?.viewers?.toLocaleString?.() ?? 0}</p>
+            <p>Duration: {lastLiveStream?.duration ?? "—"}</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/40 bg-card/50 backdrop-blur">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Resume configuration</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" className="w-full" onClick={handleResumeConfiguration}>
+              <RotateCcw className="mr-2 h-4 w-4" />
+              Resume setup
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/40 bg-card/50 backdrop-blur">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Create highlights from last stream</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Button className="w-full" onClick={handleCreateHighlightsFromLastStream}>
+              <Sparkles className="mr-2 h-4 w-4" />
+              Generate highlights
+            </Button>
+            <Button variant="ghost" className="w-full" onClick={() => router.push(recentRecordingEditHref)}>
+              Open recent recording edit
+            </Button>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Main Content */}

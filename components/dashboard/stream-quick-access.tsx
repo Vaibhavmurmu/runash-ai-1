@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Video, Calendar, Clock, Users, Settings, Mail, Link as LinkIcon } from "lucide-react"
+import { Video, Calendar, Clock, Users, Settings, Mail, Link as LinkIcon, RotateCcw, Sparkles, BarChart3 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { toast } from "@/components/ui/use-toast"
+import { RecordingService } from "@/lib/recording-service"
 import type {
   DashboardRecentStream,
   DashboardRecentStreamsResponse,
@@ -78,6 +79,7 @@ export function StreamQuickAccess() {
   // Integration
   const [integrationKey, setIntegrationKey] = useState<string | null>(null)
   const [integrating, setIntegrating] = useState(false)
+  const [recentRecordingEditHref, setRecentRecordingEditHref] = useState("/recordings")
 
   useEffect(() => {
     async function fetchStreams() {
@@ -96,6 +98,14 @@ export function StreamQuickAccess() {
 
         setRecentStreams(Array.isArray(recentJson.streams) ? recentJson.streams : [])
         setScheduledStreams(Array.isArray(scheduledJson.streams) ? scheduledJson.streams : [])
+
+        try {
+          const recordings = await RecordingService.getInstance().getUserRecordings()
+          const latestRecording = recordings.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+          setRecentRecordingEditHref(latestRecording?.id ? `/recordings?recordingId=${encodeURIComponent(latestRecording.id)}&mode=edit` : "/recordings")
+        } catch {
+          setRecentRecordingEditHref("/recordings")
+        }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Could not load streams."
         toast({ title: "Error", description: message })
@@ -240,6 +250,68 @@ export function StreamQuickAccess() {
     }
   }
 
+  const lastLiveStream = recentStreams.find((stream) => stream.status === "live" || stream.status === "ended")
+
+  const handleResumeConfiguration = async () => {
+    try {
+      const [recentRes, scheduledRes] = await Promise.all([
+        fetch("/api/dashboard/streams/recent?limit=1"),
+        fetch("/api/dashboard/streams/scheduled"),
+      ])
+
+      const recentData = recentRes.ok ? ((await recentRes.json()) as DashboardRecentStreamsResponse) : { streams: [] }
+      const scheduledData = scheduledRes.ok ? ((await scheduledRes.json()) as DashboardScheduledStreamsResponse) : { streams: [] }
+      const target = scheduledData.streams[0] ?? recentData.streams[0]
+
+      if (!target?.id) {
+        toast({ title: "Resume unavailable", description: "No recent or scheduled stream configuration found." })
+        return
+      }
+
+      router.push(`/stream?resumeStreamId=${encodeURIComponent(target.id)}`)
+    } catch {
+      toast({ title: "Resume unavailable", description: "Unable to load stream configuration." })
+    }
+  }
+
+  const handleReplayAnalytics = async () => {
+    const streamId = lastLiveStream?.id
+
+    if (!streamId) {
+      toast({ title: "Analytics unavailable", description: "No recent live stream found." })
+      return
+    }
+
+    const res = await fetch(`/api/dashboard/streams/${streamId}`)
+    if (!res.ok) {
+      toast({ title: "Analytics unavailable", description: "Unable to load stream details." })
+      return
+    }
+
+    router.push(`/analytics/streams?streamId=${encodeURIComponent(streamId)}&replay=1`)
+  }
+
+  const handleCreateHighlightsFromLastStream = async () => {
+    if (!lastLiveStream?.id) {
+      toast({ title: "Highlights unavailable", description: "No completed live stream found." })
+      return
+    }
+
+    try {
+      const recordings = await RecordingService.getInstance().getUserRecordings(lastLiveStream.id)
+      const linkedRecording = recordings.find((recording) => recording.streamId === lastLiveStream.id) ?? recordings[0]
+
+      if (!linkedRecording?.id) {
+        toast({ title: "Highlights unavailable", description: "No recording found for your latest stream." })
+        return
+      }
+
+      router.push(`/recordings?recordingId=${encodeURIComponent(linkedRecording.id)}&panel=highlights`)
+    } catch {
+      toast({ title: "Highlights unavailable", description: "Unable to load recording for the last stream." })
+    }
+  }
+
   return (
     <Card className="border-border/40 bg-card/50 backdrop-blur">
       <CardHeader>
@@ -250,6 +322,49 @@ export function StreamQuickAccess() {
         <CardDescription>Start a new stream, schedule broadcasts, invite collaborators, or integrate with your encoder</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-3">
+          <Card className="border-border/40">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Last live summary</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1 text-xs text-muted-foreground">
+              <p className="font-medium text-foreground line-clamp-1">{lastLiveStream?.title ?? "No live session yet"}</p>
+              <p>Viewers: {lastLiveStream?.viewers?.toLocaleString?.() ?? 0}</p>
+              <p>Duration: {lastLiveStream?.duration ?? "—"}</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/40">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Resume configuration</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Button variant="outline" className="w-full" onClick={handleResumeConfiguration}>
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Resume setup
+              </Button>
+              <Button variant="ghost" className="w-full" onClick={() => router.push(recentRecordingEditHref)}>
+                Open recent recording edit
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/40">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Create highlights from last stream</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Button className="w-full" onClick={handleCreateHighlightsFromLastStream}>
+                <Sparkles className="mr-2 h-4 w-4" />
+                Generate highlights
+              </Button>
+              <Button variant="ghost" className="w-full" onClick={handleReplayAnalytics}>
+                <BarChart3 className="mr-2 h-4 w-4" />
+                Replay analytics
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
         {/* Start Live Dialog */}
         <Dialog>
           <DialogTrigger asChild>
@@ -475,4 +590,5 @@ export function StreamQuickAccess() {
       </CardFooter>
     </Card>
   )
-  }
+
+}
