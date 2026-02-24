@@ -23,6 +23,8 @@ This document is payment-domain specific. For contributor workflow/process polic
 
 ## Auth dependency notes for payment flows
 
+- OTP email login verification now mints canonical auth sessions and secure Better Auth cookies for `purpose=login`; non-login OTP purposes remain verification-only.
+- This auth-session alignment does not change payment API contracts, webhook payloads, or billing field names.
 - Payment-linked auth messaging uses the canonical provider module (`lib/email-provider.ts`) and deterministic provider selection (`EMAIL_PROVIDER=smtp|resend`).
 - Protected payment flows rely on Better Auth session validation via `/api/auth/get-session` and canonical Better Auth session cookies.
 - Legacy NextAuth cookie compatibility remains temporary during migration windows to avoid lockouts.
