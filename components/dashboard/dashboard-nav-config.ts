@@ -218,6 +218,9 @@ export const dashboardQuickLinkGroups: DashboardQuickLinkGroup[] = [
 export const dashboardQuickActions: DashboardQuickAction[] = [
   { label: "New project", href: "/editor" },
   { label: "Go live", href: "/stream" },
+  { label: "Resume previous live setup", href: "/stream?resume=last-live" },
+  { label: "Open recent recording edit", href: "/recordings?view=recent-edit" },
+  { label: "Replay analytics for last live", href: "/analytics/streams?replay=last-live" },
   { label: "Open chat session", href: "/runash-chat" },
   { label: "Add product", href: "/ecommerce/dashboard" },
   { label: "Configure automation", href: "/automation" },
