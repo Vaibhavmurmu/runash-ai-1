@@ -21,7 +21,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { toast } from "@/components/ui/use-toast"
 import { RecordingService } from "@/lib/recording-service"
 import { dashboardStreamingService } from "@/lib/streaming-service"
-import type { DashboardRecentStream, DashboardScheduledStream } from "@/lib/types/dashboard-streams"
+import type { DashboardRecentStream, DashboardScheduledStream, LatestCompletedStreamSummary } from "@/lib/types/dashboard-streams"
 import { useStreamingStudioRealtime } from "@/lib/hooks/use-streaming-studio-realtime"
 
 const getCanonicalStreamUrl = (id: string, url?: string) => url || `/stream/${id}`
@@ -58,6 +58,7 @@ export function StreamQuickAccess() {
   const [integrationKey, setIntegrationKey] = useState<string | null>(null)
   const [integrating, setIntegrating] = useState(false)
   const [recentRecordingEditHref, setRecentRecordingEditHref] = useState("/recordings")
+  const [latestSummary, setLatestSummary] = useState<LatestCompletedStreamSummary | null>(null)
 
   const initialStreamIds = useMemo(() => recentStreams.map((stream) => stream.id), [recentStreams])
   const { connected, streams: streamRealtime, alerts, subscribe } = useStreamingStudioRealtime({ initialStreamIds })
@@ -83,13 +84,15 @@ export function StreamQuickAccess() {
     async function fetchStreams() {
       setLoading(true)
       try {
-        const [recentJson, scheduledJson] = await Promise.all([
+        const [recentJson, scheduledJson, summaryJson] = await Promise.all([
           dashboardStreamingService.fetchRecentStreams(),
           dashboardStreamingService.fetchScheduledStreams(),
+          dashboardStreamingService.fetchLatestCompletedStreamSummary(),
         ])
 
         setRecentStreams(Array.isArray(recentJson.streams) ? recentJson.streams : [])
         setScheduledStreams(Array.isArray(scheduledJson.streams) ? scheduledJson.streams : [])
+        setLatestSummary(summaryJson.summary ?? null)
 
         try {
           const recordings = await RecordingService.getInstance().getUserRecordings()
@@ -212,7 +215,8 @@ export function StreamQuickAccess() {
 
   const handleOpenPreviousLiveSessionContext = async () => {
     try {
-      const targetId = await dashboardStreamingService.openPreviousLiveSessionContext()
+      const restore = await dashboardStreamingService.restoreLastStreamConfigurationDraft()
+      const targetId = restore.draft?.streamId ?? (await dashboardStreamingService.openPreviousLiveSessionContext())
 
       if (!targetId) {
         toast({ title: "Resume unavailable", description: "No recent or scheduled stream configuration found." })
@@ -244,17 +248,19 @@ export function StreamQuickAccess() {
   }
 
   const handleCreateHighlightsFromLastStream = async () => {
-    if (!lastLiveStream?.id) {
+    if (!latestSummary?.streamId && !lastLiveStream?.id) {
       toast({ title: "Highlights unavailable", description: "No completed live stream found." })
       return
     }
 
     try {
-      const recordings = await RecordingService.getInstance().getUserRecordings(lastLiveStream.id)
-      const linkedRecording = recordings.find((recording) => recording.streamId === lastLiveStream.id) ?? recordings[0]
+      await dashboardStreamingService.createFollowUpFromPreviousLiveSession()
+      const sourceStreamId = latestSummary?.streamId ?? lastLiveStream?.id
+      const recordings = await RecordingService.getInstance().getUserRecordings(sourceStreamId)
+      const linkedRecording = recordings.find((recording) => recording.streamId === sourceStreamId) ?? recordings[0]
 
       if (!linkedRecording?.id) {
-        toast({ title: "Highlights unavailable", description: "No recording found for your latest stream." })
+        toast({ title: "Follow-up created", description: "Highlight job queued from your previous live session." })
         return
       }
 
@@ -290,9 +296,11 @@ export function StreamQuickAccess() {
               <CardTitle className="text-sm">Last live summary</CardTitle>
             </CardHeader>
             <CardContent className="space-y-1 text-xs text-muted-foreground">
-              <p className="font-medium text-foreground line-clamp-1">{lastLiveStream?.title ?? "No live session yet"}</p>
-              <p>Viewers: {lastLiveStream?.viewers?.toLocaleString?.() ?? 0}</p>
-              <p>Duration: {lastLiveStream?.duration ?? "—"}</p>
+              <p className="font-medium text-foreground line-clamp-1">{latestSummary?.title ?? lastLiveStream?.title ?? "No live session yet"}</p>
+              <p>
+                Viewers: {Number((latestSummary?.keyMetrics?.peakViewers as number | undefined) ?? lastLiveStream?.viewers ?? 0).toLocaleString()}
+              </p>
+              <p>Alerts: {latestSummary?.unresolvedAlerts?.length ?? 0} unresolved</p>
             </CardContent>
           </Card>
 

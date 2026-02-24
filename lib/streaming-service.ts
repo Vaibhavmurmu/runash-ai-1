@@ -9,6 +9,9 @@ import type {
   StartStreamRequest,
   StartStreamResponse,
   DashboardStreamDetailsResponse,
+  FollowUpCreationResponse,
+  LatestCompletedStreamSummaryResponse,
+  RestoreLastStreamDraftResponse,
 } from "@/lib/types/dashboard-streams"
 
 import { BackgroundSync } from "./background-sync" // Assuming BackgroundSync is in a separate file
@@ -101,9 +104,35 @@ export const dashboardStreamingService = {
     )
   },
   async openPreviousLiveSessionContext() {
+    const restoreDraft = await this.restoreLastStreamConfigurationDraft()
+    if (restoreDraft.draft?.streamId) {
+      return restoreDraft.draft.streamId
+    }
+
     const [recentData, scheduledData] = await Promise.all([this.fetchRecentStreams(1), this.fetchScheduledStreams()])
     const target = scheduledData.streams[0] ?? recentData.streams[0]
     return target?.id ?? null
+  },
+  fetchLatestCompletedStreamSummary() {
+    return dashboardStreamsRequest<LatestCompletedStreamSummaryResponse>(
+      "/api/dashboard/streams/previous-live/summary",
+      { method: "GET" },
+      "Failed to fetch latest completed stream summary",
+    )
+  },
+  restoreLastStreamConfigurationDraft() {
+    return dashboardStreamsRequest<RestoreLastStreamDraftResponse>(
+      "/api/dashboard/streams/previous-live/restore-draft",
+      { method: "POST" },
+      "Failed to restore last stream configuration draft",
+    )
+  },
+  createFollowUpFromPreviousLiveSession() {
+    return dashboardStreamsRequest<FollowUpCreationResponse>(
+      "/api/dashboard/streams/previous-live/follow-up",
+      { method: "POST" },
+      "Failed to create follow-up from previous live session",
+    )
   },
 }
 
