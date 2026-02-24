@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Video, Calendar, Clock, Users, Settings, Mail, Link as LinkIcon, RotateCcw, Sparkles, BarChart3 } from "lucide-react"
+import { Video, Calendar, Clock, Users, Settings, Mail, Link as LinkIcon, RotateCcw, Sparkles, BarChart3, AlertTriangle } from "lucide-react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -22,6 +22,7 @@ import { toast } from "@/components/ui/use-toast"
 import { RecordingService } from "@/lib/recording-service"
 import { dashboardStreamingService } from "@/lib/streaming-service"
 import type { DashboardRecentStream, DashboardScheduledStream } from "@/lib/types/dashboard-streams"
+import { useStreamingStudioRealtime } from "@/lib/hooks/use-streaming-studio-realtime"
 
 const getCanonicalStreamUrl = (id: string, url?: string) => url || `/stream/${id}`
 
@@ -57,6 +58,26 @@ export function StreamQuickAccess() {
   const [integrationKey, setIntegrationKey] = useState<string | null>(null)
   const [integrating, setIntegrating] = useState(false)
   const [recentRecordingEditHref, setRecentRecordingEditHref] = useState("/recordings")
+
+  const initialStreamIds = useMemo(() => recentStreams.map((stream) => stream.id), [recentStreams])
+  const { connected, streams: streamRealtime, alerts, subscribe } = useStreamingStudioRealtime({ initialStreamIds })
+
+  useEffect(() => {
+    initialStreamIds.forEach((streamId) => subscribe(streamId))
+  }, [initialStreamIds, subscribe])
+
+  const effectiveRecentStreams = useMemo(
+    () =>
+      recentStreams.map((stream) => {
+        const realtime = streamRealtime[stream.id]
+        return {
+          ...stream,
+          status: (realtime?.status as DashboardRecentStream["status"] | undefined) ?? stream.status,
+          viewers: realtime?.concurrentViewers ?? stream.viewers,
+        }
+      }),
+    [recentStreams, streamRealtime],
+  )
 
   useEffect(() => {
     async function fetchStreams() {
@@ -187,7 +208,7 @@ export function StreamQuickAccess() {
     }
   }
 
-  const lastLiveStream = recentStreams.find((stream) => stream.status === "live" || stream.status === "ended")
+  const lastLiveStream = effectiveRecentStreams.find((stream) => stream.status === "live" || stream.status === "ended")
 
   const handleOpenPreviousLiveSessionContext = async () => {
     try {
@@ -253,6 +274,16 @@ export function StreamQuickAccess() {
         <CardDescription>Start a new stream, schedule broadcasts, invite collaborators, or integrate with your encoder</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="flex items-center justify-between rounded-md border border-border/50 px-3 py-2 text-xs">
+          <span className="text-muted-foreground">Studio realtime</span>
+          <Badge variant={connected ? "default" : "secondary"}>{connected ? "Connected" : "Reconnecting"}</Badge>
+        </div>
+        {alerts[0] ? (
+          <div className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <AlertTriangle className="h-4 w-4" />
+            <span>{alerts[0].message}</span>
+          </div>
+        ) : null}
         <div className="grid gap-3 md:grid-cols-3">
           <Card className="border-border/40">
             <CardHeader className="pb-2">
@@ -430,7 +461,7 @@ export function StreamQuickAccess() {
             {recentStreams.length === 0 && !loading ? (
               <div className="text-xs text-muted-foreground">No recent streams yet.</div>
             ) : (
-              recentStreams.map((stream) => (
+              effectiveRecentStreams.map((stream) => (
                 <div key={stream.id} className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50">
                   <div className="min-w-0">
                     <h4 className="text-sm font-medium truncate">{stream.title}</h4>
