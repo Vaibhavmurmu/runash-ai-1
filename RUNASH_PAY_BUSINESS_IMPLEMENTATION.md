@@ -6,6 +6,12 @@
 - Existing payment endpoint field names and API signatures remain unchanged in this phase.
 - Production cutover must be gated on auth compatibility checks for existing users/cookies/tokens and a tested rollback plan documented in `RUNASH-AUTH.md`.
 
+## 2026-02 Payment gateway module path normalization
+
+- Canonical source path is now `lib/payment-gateways/pay.ts`.
+- Legacy path `lib/payment-getways/pay.ts` remains as a compatibility re-export during migration.
+- No payment API request/response fields, endpoint signatures, or webhook contracts changed as part of this rename.
+
 
 ### Auth feature-flag rollout and payment safety gates (2026-02)
 
