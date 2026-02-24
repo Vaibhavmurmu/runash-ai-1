@@ -1,5 +1,20 @@
 # Codebase Issue Tasks (Targeted Backlog)
 
+_Last verified: 2026-02-24 (UTC)_
+
+## De-duplication campaign status
+
+- [x] Created canonical policy index (`docs/CONTRIBUTOR_POLICY_INDEX.md`).
+- [x] Replaced repeated policy text in `AGENTS.md` with canonical doc links.
+- [x] Reduced payment docs to payment-domain guidance and removed generic contributor/process policy duplication.
+- [x] Added "Last verified" stamps to high-churn governance docs touched in this campaign.
+
+## Superseded sections
+
+- **Task 3 (Documentation discrepancy: `RunAsh_AI_Pay.md` repo structure)** — **Superseded/Completed** by de-duplication work. Repository-structure and generic contributor guidance were removed from payment docs and replaced with canonical links.
+
+---
+
 ## 1) Typo fix task — normalize `payment-getways` naming
 
 **Issue observed**
@@ -39,28 +54,6 @@
 **Acceptance criteria**
 - `destroy()` removes all registered browser event listeners.
 - Recreating/destroying `BackgroundSync` repeatedly does not accumulate handlers.
-
----
-
-## 3) Documentation discrepancy task — reconcile `RunAsh_AI_Pay.md` repo structure
-
-**Issue observed**
-- `RunAsh_AI_Pay.md` documents an `agents/` directory in the repository structure.
-- The repository currently has no top-level `agents/` directory.
-
-**Task**
-- Update `RunAsh_AI_Pay.md` to either:
-  - reflect the current structure, or
-  - explicitly mark the section as roadmap/future-state.
-- Add a short “last verified” note for the structure block.
-
-**Why this matters**
-- Prevents contributor confusion and onboarding friction.
-- Keeps strategic docs aligned with actual code layout.
-
-**Acceptance criteria**
-- Directory map in docs matches current repository or is clearly labeled as planned.
-- No broken assumptions remain about non-existent top-level folders.
 
 ---
 
