@@ -208,22 +208,44 @@ export async function verifyOTP(
   purpose: string,
   type: "email" | "sms",
 ): Promise<{ success: boolean; message: string; userId?: number }> {
-  try {
-    const identifierField = type === "email" ? "email" : "phone_number"
+  return verifyOTPWithClient(sql, code, identifier, purpose, type)
+}
 
+export async function verifyOTPWithClient(
+  sqlClient: ReturnType<typeof neon>,
+  code: string,
+  identifier: string, // email or phone number
+  purpose: string,
+  type: "email" | "sms",
+): Promise<{ success: boolean; message: string; userId?: number }> {
+  try {
     // Find the OTP code
-    const otpResult = await sql`
-      SELECT * FROM otp_codes 
-      WHERE ${sql(identifierField)} = ${identifier} 
-        AND code = ${code} 
-        AND purpose = ${purpose} 
-        AND type = ${type}
-        AND is_active = true 
-        AND expires_at > NOW()
-        AND used_at IS NULL
-      ORDER BY created_at DESC 
-      LIMIT 1
-    `
+    const otpResult =
+      type === "email"
+        ? await sqlClient`
+            SELECT * FROM otp_codes 
+            WHERE email = ${identifier} 
+              AND code = ${code} 
+              AND purpose = ${purpose} 
+              AND type = ${type}
+              AND is_active = true 
+              AND expires_at > NOW()
+              AND used_at IS NULL
+            ORDER BY created_at DESC 
+            LIMIT 1
+          `
+        : await sqlClient`
+            SELECT * FROM otp_codes 
+            WHERE phone_number = ${identifier} 
+              AND code = ${code} 
+              AND purpose = ${purpose} 
+              AND type = ${type}
+              AND is_active = true 
+              AND expires_at > NOW()
+              AND used_at IS NULL
+            ORDER BY created_at DESC 
+            LIMIT 1
+          `
 
     if (otpResult.length === 0) {
       return { success: false, message: "Invalid or expired OTP code" }
@@ -237,27 +259,37 @@ export async function verifyOTP(
     }
 
     // Increment attempts
-    await sql`
+    await sqlClient`
       UPDATE otp_codes 
       SET attempts = attempts + 1 
       WHERE id = ${otpRecord.id}
     `
 
     // Mark as used
-    await sql`
+    await sqlClient`
       UPDATE otp_codes 
       SET used_at = NOW(), is_active = false 
       WHERE id = ${otpRecord.id}
     `
 
     // Clean up other active OTP codes for this identifier and purpose
-    await sql`
-      UPDATE otp_codes 
-      SET is_active = false 
-      WHERE ${sql(identifierField)} = ${identifier} 
-        AND purpose = ${purpose} 
-        AND id != ${otpRecord.id}
-    `
+    if (type === "email") {
+      await sqlClient`
+        UPDATE otp_codes 
+        SET is_active = false 
+        WHERE email = ${identifier} 
+          AND purpose = ${purpose} 
+          AND id != ${otpRecord.id}
+      `
+    } else {
+      await sqlClient`
+        UPDATE otp_codes 
+        SET is_active = false 
+        WHERE phone_number = ${identifier} 
+          AND purpose = ${purpose} 
+          AND id != ${otpRecord.id}
+      `
+    }
 
     return {
       success: true,
