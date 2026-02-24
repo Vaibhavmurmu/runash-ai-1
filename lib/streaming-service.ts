@@ -1,4 +1,111 @@
+import type {
+  DashboardRecentStreamsResponse,
+  DashboardScheduledStreamsResponse,
+  IntegrationKeyResponse,
+  InviteCollaboratorRequest,
+  InviteCollaboratorResponse,
+  ScheduleStreamRequest,
+  ScheduleStreamResponse,
+  StartStreamRequest,
+  StartStreamResponse,
+  DashboardStreamDetailsResponse,
+} from "@/lib/types/dashboard-streams"
+
 import { BackgroundSync } from "./background-sync" // Assuming BackgroundSync is in a separate file
+interface DashboardStreamsErrorEnvelope {
+  error?: {
+    message?: string
+  }
+}
+
+async function getDashboardStreamsErrorMessage(response: Response, fallback: string) {
+  try {
+    const payload = (await response.json()) as DashboardStreamsErrorEnvelope
+    return payload.error?.message || fallback
+  } catch {
+    return fallback
+  }
+}
+
+async function dashboardStreamsRequest<T>(input: RequestInfo, init: RequestInit, fallback: string): Promise<T> {
+  const response = await fetch(input, init)
+
+  if (!response.ok) {
+    throw new Error(await getDashboardStreamsErrorMessage(response, fallback))
+  }
+
+  return (await response.json()) as T
+}
+
+export const dashboardStreamingService = {
+  fetchRecentStreams(limit?: number) {
+    const suffix = typeof limit === "number" ? `?limit=${encodeURIComponent(String(limit))}` : ""
+    return dashboardStreamsRequest<DashboardRecentStreamsResponse>(
+      `/api/dashboard/streams/recent${suffix}`,
+      { method: "GET" },
+      "Failed to fetch recent streams",
+    )
+  },
+  fetchScheduledStreams() {
+    return dashboardStreamsRequest<DashboardScheduledStreamsResponse>(
+      "/api/dashboard/streams/scheduled",
+      { method: "GET" },
+      "Failed to fetch scheduled streams",
+    )
+  },
+  startStream(payload: StartStreamRequest) {
+    return dashboardStreamsRequest<StartStreamResponse>(
+      "/api/dashboard/streams/start",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      "Failed to start stream",
+    )
+  },
+  scheduleStream(payload: ScheduleStreamRequest) {
+    return dashboardStreamsRequest<ScheduleStreamResponse>(
+      "/api/dashboard/streams/schedule",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      "Failed to schedule stream",
+    )
+  },
+  inviteCollaborator(payload: InviteCollaboratorRequest) {
+    return dashboardStreamsRequest<InviteCollaboratorResponse>(
+      "/api/dashboard/streams/invite",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      "Failed to invite collaborator",
+    )
+  },
+  fetchIntegrationKey() {
+    return dashboardStreamsRequest<IntegrationKeyResponse>(
+      "/api/dashboard/streams/integration-key",
+      { method: "POST" },
+      "Failed to fetch integration key",
+    )
+  },
+  fetchStreamDetails(streamId: string) {
+    return dashboardStreamsRequest<DashboardStreamDetailsResponse>(
+      `/api/dashboard/streams/${encodeURIComponent(streamId)}`,
+      { method: "GET" },
+      "Failed to fetch stream details",
+    )
+  },
+  async openPreviousLiveSessionContext() {
+    const [recentData, scheduledData] = await Promise.all([this.fetchRecentStreams(1), this.fetchScheduledStreams()])
+    const target = scheduledData.streams[0] ?? recentData.streams[0]
+    return target?.id ?? null
+  },
+}
 
 export interface StreamData {
   id: string

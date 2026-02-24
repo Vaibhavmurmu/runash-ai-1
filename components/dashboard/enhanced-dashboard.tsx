@@ -66,12 +66,8 @@ import { toast } from "@/components/ui/use-toast"
 import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
 import { useDashboardRealtime } from "@/lib/hooks/use-dashboard-realtime"
 import { RecordingService } from "@/lib/recording-service"
-import type {
-  DashboardRecentStream,
-  DashboardRecentStreamsResponse,
-  InviteCollaboratorResponse,
-  StartStreamResponse,
-} from "@/lib/types/dashboard-streams"
+import { dashboardStreamingService } from "@/lib/streaming-service"
+import type { DashboardRecentStream } from "@/lib/types/dashboard-streams"
 
 interface StatCardProps {
   title: string
@@ -287,6 +283,8 @@ export function EnhancedDashboard() {
   const [scheduleDate, setScheduleDate] = useState("")
 
   const [inviteEmails, setInviteEmails] = useState("")
+  const [integrationKey, setIntegrationKey] = useState<string | null>(null)
+  const [integrating, setIntegrating] = useState(false)
 
   const getGreeting = useCallback(() => {
     const hour = new Date().getHours()
@@ -324,9 +322,9 @@ export function EnhancedDashboard() {
         setUser(null)
       }
 
-      const [statsRes, streamsRes, activityRes, achievementsRes, goalsRes] = await Promise.all([
+      const [statsRes, streamsData, activityRes, achievementsRes, goalsRes] = await Promise.all([
         fetch("/api/dashboard/stats"),
-        fetch("/api/dashboard/streams/recent?limit=12"),
+        dashboardStreamingService.fetchRecentStreams(12),
         fetch("/api/dashboard/activity?limit=10"),
         fetch("/api/dashboard/achievements"),
         fetch("/api/dashboard/goals"),
@@ -339,12 +337,7 @@ export function EnhancedDashboard() {
         setStats(null)
       }
 
-      if (streamsRes.ok) {
-        const streamsData = (await streamsRes.json()) as DashboardRecentStreamsResponse
-        setRecentStreams(Array.isArray(streamsData.streams) ? streamsData.streams : [])
-      } else {
-        setRecentStreams([])
-      }
+      setRecentStreams(Array.isArray(streamsData.streams) ? streamsData.streams : [])
 
       try {
         const recordings = await RecordingService.getInstance().getUserRecordings()
@@ -411,25 +404,14 @@ export function EnhancedDashboard() {
   }
 
   // Actions
-  const handleStartStreaming = async () => {
+  const handleStartStream = async () => {
     try {
       setIsLoading(true)
       const payload = { title: startTitle || "Untitled Stream", category: startCategory }
-      const res = await fetch("/api/dashboard/streams/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
-      if (res.ok) {
-        const started = (await res.json()) as StartStreamResponse
-        toast({ title: "Stream started", description: `${started.title} is now ${started.status}.` })
-        setStartDialogOpen(false)
-        // optimistic refresh
-        await loadDashboardData()
-      } else {
-        const err = await res.text()
-        toast({ title: "Failed to start", description: err || "Unknown error", variant: "destructive" })
-      }
+      const started = await dashboardStreamingService.startStream(payload)
+      toast({ title: "Stream started", description: `${started.title} is now ${started.status}.` })
+      setStartDialogOpen(false)
+      await loadDashboardData()
     } catch (e) {
       toast({ title: "Error", description: "Unable to start stream", variant: "destructive" })
     } finally {
@@ -441,19 +423,10 @@ export function EnhancedDashboard() {
     try {
       setIsLoading(true)
       const payload = { title: scheduleTitle || "Scheduled Stream", category: scheduleCategory, startsAt: scheduleDate }
-      const res = await fetch("/api/dashboard/streams/schedule", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
-      if (res.ok) {
-        toast({ title: "Scheduled", description: "Stream scheduled successfully." })
-        setScheduleDialogOpen(false)
-        await loadDashboardData()
-      } else {
-        const err = await res.text()
-        toast({ title: "Failed to schedule", description: err || "Unknown error", variant: "destructive" })
-      }
+      await dashboardStreamingService.scheduleStream(payload)
+      toast({ title: "Scheduled", description: "Stream scheduled successfully." })
+      setScheduleDialogOpen(false)
+      await loadDashboardData()
     } catch (e) {
       toast({ title: "Error", description: "Unable to schedule stream", variant: "destructive" })
     } finally {
@@ -461,7 +434,7 @@ export function EnhancedDashboard() {
     }
   }
 
-  const handleInviteCollaborators = async () => {
+  const handleInviteCollaborator = async () => {
     try {
       setIsLoading(true)
       const emails = inviteEmails.split(",").map((e) => e.trim()).filter(Boolean)
@@ -473,20 +446,7 @@ export function EnhancedDashboard() {
       }
 
       const inviteResults = await Promise.all(
-        emails.map(async (email) => {
-          const response = await fetch("/api/dashboard/streams/invite", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ streamId: targetStreamId, email }),
-          })
-
-          if (!response.ok) {
-            const errorText = await response.text()
-            throw new Error(errorText || `Failed to invite ${email}`)
-          }
-
-          return (await response.json()) as InviteCollaboratorResponse
-        }),
+        emails.map((email) => dashboardStreamingService.inviteCollaborator({ streamId: targetStreamId, email })),
       )
 
       if (inviteResults.length > 0) {
@@ -540,25 +500,32 @@ export function EnhancedDashboard() {
   const liveStream = recentStreams.find((s) => s.status === "live")
   const lastLiveStream = recentStreams.find((stream) => stream.status === "live" || stream.status === "ended")
 
-  const handleResumeConfiguration = async () => {
+  const handleOpenPreviousLiveSessionContext = async () => {
     try {
-      const [recentRes, scheduledRes] = await Promise.all([
-        fetch("/api/dashboard/streams/recent?limit=1"),
-        fetch("/api/dashboard/streams/scheduled"),
-      ])
+      const targetId = await dashboardStreamingService.openPreviousLiveSessionContext()
 
-      const recentData = recentRes.ok ? ((await recentRes.json()) as DashboardRecentStreamsResponse) : { streams: [] }
-      const scheduledData = scheduledRes.ok ? await scheduledRes.json() : { streams: [] }
-      const target = scheduledData.streams?.[0] ?? recentData.streams?.[0]
-
-      if (!target?.id) {
+      if (!targetId) {
         toast({ title: "Resume unavailable", description: "No recent or scheduled stream configuration found." })
         return
       }
 
-      router.push(`/stream?resumeStreamId=${encodeURIComponent(target.id)}`)
+      router.push(`/stream?resumeStreamId=${encodeURIComponent(targetId)}`)
     } catch {
       toast({ title: "Resume unavailable", description: "Unable to load stream configuration." })
+    }
+  }
+
+
+  const handleFetchIntegrationKey = async () => {
+    try {
+      setIntegrating(true)
+      const integration = await dashboardStreamingService.fetchIntegrationKey()
+      setIntegrationKey(integration.rtmpKey)
+      toast({ title: "Integration ready", description: "Streaming integration key loaded." })
+    } catch {
+      toast({ title: "Integration unavailable", description: "Unable to fetch integration key.", variant: "destructive" })
+    } finally {
+      setIntegrating(false)
     }
   }
 
@@ -659,7 +626,7 @@ export function EnhancedDashboard() {
                       </div>
                       <Button
                         className="w-full bg-gradient-to-r from-orange-500 to-amber-400 hover:from-orange-600 hover:to-amber-500"
-                        onClick={handleStartStreaming}
+                        onClick={handleStartStream}
                       >
                         Start Streaming
                       </Button>
@@ -740,7 +707,7 @@ export function EnhancedDashboard() {
                           placeholder="alice@example.com, bob@example.com"
                         />
                       </div>
-                      <Button className="w-full" onClick={handleInviteCollaborators}>
+                      <Button className="w-full" onClick={handleInviteCollaborator}>
                         Send Invites
                       </Button>
                     </div>
@@ -816,7 +783,7 @@ export function EnhancedDashboard() {
                 </div>
                 <Button
                   className="w-full bg-gradient-to-r from-orange-500 to-amber-400 hover:from-orange-600 hover:to-amber-500"
-                  onClick={handleStartStreaming}
+                  onClick={handleStartStream}
                 >
                   Start Streaming
                 </Button>
@@ -870,10 +837,15 @@ export function EnhancedDashboard() {
             <CardTitle className="text-base">Resume configuration</CardTitle>
           </CardHeader>
           <CardContent>
-            <Button variant="outline" className="w-full" onClick={handleResumeConfiguration}>
-              <RotateCcw className="mr-2 h-4 w-4" />
-              Resume setup
-            </Button>
+            <div className="space-y-2">
+              <Button variant="outline" className="w-full" onClick={handleOpenPreviousLiveSessionContext}>
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Resume setup
+              </Button>
+              <Button variant="ghost" className="w-full" onClick={handleFetchIntegrationKey} disabled={integrating}>
+                {integrationKey ? "Integration ready" : "Fetch integration key"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
