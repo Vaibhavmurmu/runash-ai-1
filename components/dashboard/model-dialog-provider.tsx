@@ -6,6 +6,16 @@ import { ModelDialogCard } from "@/components/dashboard/model-dialog-card"
 import { useModelDialog } from "@/lib/hooks/use-model-dialog"
 import type { ModelDialogContract, ModelDialogRunHistoryItem, ModelDialogSseEvent, ModelExecutionState } from "@/lib/types/model-dialog"
 
+type DialogExecutionMode = "generic" | "image-generation" | "video-generation" | "live-stream-assist" | "previous-live-optimization"
+
+function resolveExecutionMode(payload?: ModelDialogContract["payload"]): DialogExecutionMode {
+  if (!payload?.generationMode) {
+    return "generic"
+  }
+
+  return payload.generationMode
+}
+
 interface DashboardModelDialogContextValue {
   openFromTrigger: (payload: ModelDialogContract, trigger?: HTMLElement | null) => void
   close: () => void
@@ -37,6 +47,11 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
   const [temperature, setTemperature] = useState(0.7)
   const [mode, setMode] = useState("balanced")
   const [qualityPreset, setQualityPreset] = useState("high")
+  const [executionMode, setExecutionMode] = useState<DialogExecutionMode>("generic")
+  const [sourceModule, setSourceModule] = useState<ModelDialogContract["triggerSource"] | "dashboard">("dashboard")
+  const [streamId, setStreamId] = useState("")
+  const [recordingId, setRecordingId] = useState("")
+  const [assetId, setAssetId] = useState("")
   const [executionState, setExecutionState] = useState<ModelExecutionState>("idle")
   const [streamingMessage, setStreamingMessage] = useState<string>("")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -70,6 +85,24 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
     setRequestId(null)
     startedAtRef.current = 0
   }, [stopExecutionTracking])
+
+  useEffect(() => {
+    if (!activeModelDialog) {
+      setExecutionMode("generic")
+      setSourceModule("dashboard")
+      setStreamId("")
+      setRecordingId("")
+      setAssetId("")
+      return
+    }
+
+    const payload = activeModelDialog.payload
+    setExecutionMode(resolveExecutionMode(payload))
+    setSourceModule(payload?.sourceModule ?? activeModelDialog.triggerSource)
+    setStreamId(payload?.streamId ?? "")
+    setRecordingId(payload?.recordingId ?? "")
+    setAssetId(payload?.assetId ?? payload?.mediaAssetId ?? "")
+  }, [activeModelDialog])
 
   const openFromTrigger = useCallback(
     (payload: ModelDialogContract, trigger?: HTMLElement | null) => {
@@ -165,8 +198,24 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
       mode,
       qualityPreset,
       temperature: temperature.toString(),
-      sourceModule: activeModelDialog.triggerSource,
+      sourceModule,
     })
+
+    if (streamId) {
+      params.set("streamId", streamId)
+    }
+
+    if (recordingId) {
+      params.set("recordingId", recordingId)
+    }
+
+    if (assetId) {
+      params.set("assetId", assetId)
+    }
+
+    if (executionMode !== "generic") {
+      params.set("executionMode", executionMode)
+    }
 
     const eventSource = new EventSource(`/api/dashboard/model-dialog/stream?${params.toString()}`)
     eventSourceRef.current = eventSource
@@ -182,7 +231,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
       setErrorMessage("Streaming connection dropped before completion.")
       stopExecutionTracking()
     }
-  }, [activeModelDialog, handleExecutionEvent, mode, qualityPreset, stopExecutionTracking, temperature])
+  }, [activeModelDialog, assetId, executionMode, handleExecutionEvent, mode, qualityPreset, recordingId, sourceModule, stopExecutionTracking, streamId, temperature])
 
   const value = useMemo(
     () => ({
@@ -214,8 +263,18 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
         }}
         triggerSource={activeModelDialog?.triggerSource}
         dialogMode={activeModelDialog?.mode}
+        executionMode={executionMode}
+        onExecutionModeChange={setExecutionMode}
         promptPreview={promptPreview}
         contextPreview={activeModelDialog?.payload?.context}
+        sourceModule={sourceModule}
+        onSourceModuleChange={setSourceModule}
+        streamId={streamId}
+        onStreamIdChange={setStreamId}
+        recordingId={recordingId}
+        onRecordingIdChange={setRecordingId}
+        assetId={assetId}
+        onAssetIdChange={setAssetId}
         temperature={temperature}
         onTemperatureChange={setTemperature}
         mode={mode}
