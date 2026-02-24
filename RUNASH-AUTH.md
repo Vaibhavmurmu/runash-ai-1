@@ -44,6 +44,22 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 - Resend path:
   - `RESEND_API_KEY`
 
+### Required auth database environment matrix
+
+| Priority | Environment variable | Required | Notes |
+|---|---|---|---|
+| 1 | `DATABASE_URL` | Recommended | Canonical auth/runtime DB URL. |
+| 2 | `NEON_DATABASE_URL` | Fallback | Used when `DATABASE_URL` is not set. |
+| 3 | `POSTGRES_URL` | Fallback | Platform-provided pooled Postgres URL. |
+| 4 | `POSTGRES_PRISMA_URL` | Fallback | Prisma-compatible pooled URL fallback. |
+| 5 | `POSTGRES_URL_NON_POOLING` | Fallback | Direct/non-pooled connection fallback. |
+| 6 | `runash_POSTGRES_URL` | Fallback | Legacy project-prefixed pooled URL. |
+| 7 | `runash_POSTGRES_URL_NON_POOLING` | Fallback | Legacy project-prefixed non-pooled URL. |
+
+**Resolution precedence:** `DATABASE_URL -> NEON_DATABASE_URL -> POSTGRES_URL -> POSTGRES_PRISMA_URL -> POSTGRES_URL_NON_POOLING -> runash_POSTGRES_URL -> runash_POSTGRES_URL_NON_POOLING`.
+
+**Runtime guard behavior:** auth/OTP/SSO modules now resolve DB connectivity only through `lib/db.ts`. If no DB URL env is configured, startup/runtime paths throw an actionable error that lists supported env names, precedence order, and an example value format.
+
 ### Migration notes
 
 1. Replace `SMTP_PASS` with `SMTP_PASSWORD` in deployment secrets.

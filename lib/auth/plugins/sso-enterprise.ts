@@ -1,4 +1,6 @@
-import { sql } from "../../db"
+import { assertDatabaseConfigured, sql } from "../../db"
+
+assertDatabaseConfigured("lib/auth/plugins/sso-enterprise.ts")
 
 export type EnterpriseProviderType = "oidc" | "oauth2" | "saml2"
 

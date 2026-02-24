@@ -1,5 +1,7 @@
 import { randomBytes } from "crypto"
-import { sql } from "./db"
+import { assertDatabaseConfigured, sql } from "./db"
+
+assertDatabaseConfigured("lib/sso.ts")
 
 export interface SSOOrganization {
   id: number
