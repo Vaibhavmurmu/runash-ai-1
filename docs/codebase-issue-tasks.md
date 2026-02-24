@@ -2,6 +2,41 @@
 
 _Last verified: 2026-02-24 (UTC)_
 
+## Backlog operating model
+
+### Required fields per item
+Every backlog item must include:
+- **Owner**
+- **Priority** (`P0`/`P1`/`P2`)
+- **Status** (`todo`/`in-progress`/`blocked`/`done`)
+- **Target release**
+- **Risk** (`low`/`medium`/`high`)
+- **Affected paths** (direct file/module references)
+
+### Task structure standard
+Each backlog item must be split into:
+1. **Implementation steps**
+2. **Validation steps**
+
+### Closure criteria and evidence format
+An item can move to `done` only when all closure criteria are met and evidence is attached.
+
+**Required closure criteria**
+- Implementation steps are complete.
+- Validation steps are complete.
+- Risk + rollback notes are documented.
+- Affected docs are updated when behavior/policy changed.
+
+**Evidence format (attach in PR/task update)**
+- **Command outputs**: include exact commands and pass/fail results (for example: `npm run lint`, `npm run build`, focused test commands).
+- **Changed files**: list touched file paths.
+- **Rollback notes**: concise mitigation + rollback procedure for the change.
+
+### Weekly backlog hygiene
+- **Cadence**: review this backlog weekly.
+- **Action**: archive completed items to keep the active list short and current.
+- **Archive location**: move completed entries to `docs/archive/codebase-issue-tasks-archive.md` (create if missing).
+
 ## De-duplication campaign status
 
 - [x] Created canonical policy index (`docs/CONTRIBUTOR_POLICY_INDEX.md`).
@@ -17,23 +52,35 @@ _Last verified: 2026-02-24 (UTC)_
 
 ## 1) Typo fix task — normalize `payment-getways` naming
 
+- **Owner**: Backend
+- **Priority**: P1
+- **Status**: todo
+- **Target release**: Next patch release
+- **Risk**: medium
+- **Affected paths**:
+  - `lib/payment-getways/pay.ts`
+  - `lib/payment-gateways/pay.ts`
+  - `RunAsh_AI_Pay.md`
+
 **Issue observed**
 - The payment gateway module path is misspelled as `lib/payment-getways/pay.ts`.
 - Similar typo patterns already exist in `lib/prodct-recommendations.ts`, indicating naming drift risk.
 
-**Task**
-- Rename `lib/payment-getways/` to `lib/payment-gateways/`.
-- Add a temporary compatibility re-export at the old path to avoid breaking imports.
-- Sweep internal imports and update references to the corrected path.
+**Implementation steps**
+1. Rename `lib/payment-getways/` to `lib/payment-gateways/`.
+2. Add a temporary compatibility re-export at the old path to avoid breaking imports.
+3. Sweep internal imports and update references to the corrected path.
 
-**Why this matters**
-- Improves discoverability and consistency for payment-domain modules.
-- Reduces future import mistakes and duplication.
+**Validation steps**
+1. Run lint/type checks to confirm no broken imports.
+2. Run targeted tests for payment gateway usage paths.
+3. Verify old-path compatibility shim resolves correctly during migration window.
 
-**Acceptance criteria**
+**Closure criteria**
 - New canonical path uses `payment-gateways`.
 - Existing imports continue to work during migration window.
-- A follow-up task is created to remove compatibility alias after migration.
+- A follow-up task exists to remove compatibility alias after migration.
+- Evidence attached: command outputs, changed files, rollback notes.
 
 **Follow-up checklist (post-migration)**
 - [ ] Remove `lib/payment-getways/pay.ts` shim after `payment-getways` imports reach zero and CI guard remains green.
@@ -42,41 +89,64 @@ _Last verified: 2026-02-24 (UTC)_
 
 ## 2) Bug fix task — `BackgroundSync.destroy()` does not detach listeners
 
+- **Owner**: Backend
+- **Priority**: P1
+- **Status**: todo
+- **Target release**: Next patch release
+- **Risk**: medium
+- **Affected paths**:
+  - `lib/background-sync.ts`
+  - `lib/background-sync.destroy.test.ts`
+
 **Issue observed**
 - `initializeEventListeners()` registers inline arrow functions for `online` and `offline` events.
 - `destroy()` calls `removeEventListener()` with *new* inline arrow functions, so listeners are not actually removed.
 
-**Task**
-- Store listener references as class fields and use the same references in both add/remove operations.
-- Add a regression test to verify listeners are detached after `destroy()`.
+**Implementation steps**
+1. Store listener references as class fields and use the same references in both add/remove operations.
+2. Ensure teardown paths consistently unregister listener instances.
+3. Add regression coverage for repeated init/destroy cycles.
 
-**Why this matters**
-- Prevents memory leaks and duplicate sync attempts in long-lived sessions.
-- Avoids subtle state bugs after teardown/re-init cycles.
+**Validation steps**
+1. Run unit tests for background sync teardown behavior.
+2. Run targeted regression test proving listeners are detached after `destroy()`.
+3. Optionally run stress-style recreate/destroy loop to verify handlers do not accumulate.
 
-**Acceptance criteria**
+**Closure criteria**
 - `destroy()` removes all registered browser event listeners.
 - Recreating/destroying `BackgroundSync` repeatedly does not accumulate handlers.
+- Evidence attached: command outputs, changed files, rollback notes.
 
 ---
 
 ## 4) Test improvement task — replace source-text assertions with behavior tests
 
+- **Owner**: Security + Backend
+- **Priority**: P2
+- **Status**: todo
+- **Target release**: Next minor release
+- **Risk**: low
+- **Affected paths**:
+  - `lib/auth-helpers.get-session-check.test.ts`
+  - `lib/auth-helpers.ts`
+  - `RUNASH-AUTH.md`
+
 **Issue observed**
 - `lib/auth-helpers.get-session-check.test.ts` validates behavior using regex against source code text.
 - This can pass even if runtime behavior changes, making tests brittle and low-signal.
 
-**Task**
-- Refactor tests to assert runtime behavior of `getSession`:
-  - verifies delegation to dependency override when provided,
-  - verifies fallback to shared auth accessor when override is absent,
-  - verifies returned session value and call arguments.
-- Keep one light contract test if needed, but avoid source-regex as primary assurance.
+**Implementation steps**
+1. Refactor tests to assert runtime behavior of `getSession`.
+2. Cover dependency-override delegation path.
+3. Cover fallback-to-shared-auth-accessor path.
+4. Keep only a minimal contract check if needed; remove source-regex as primary assurance.
 
-**Why this matters**
-- Behavior tests better protect refactors and catch real regressions.
-- Reduces false confidence from implementation-detail matching.
+**Validation steps**
+1. Run focused auth helper tests.
+2. Confirm tests fail on intentional delegation regression.
+3. Run lint/build checks to ensure no test/runtime integration breakage.
 
-**Acceptance criteria**
+**Closure criteria**
 - Tests fail on delegation regressions even when source formatting changes.
 - Coverage includes both dependency-injected and default execution paths.
+- Evidence attached: command outputs, changed files, rollback notes.
