@@ -21,7 +21,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
             </CardHeader>
             <CardContent className="flex flex-wrap gap-3">
               <Button asChild>
-                <Link href="/login?callbackUrl=/settings">Sign in</Link>
+                <Link href="/login?callbackUrl=/dashboard/settings">Sign in</Link>
               </Button>
               <Button asChild variant="outline">
                 <Link href="/dashboard">Back to dashboard</Link>

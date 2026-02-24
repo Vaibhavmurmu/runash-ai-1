@@ -1,7 +1,5 @@
-"use client"
+import { redirect } from "next/navigation"
 
-import { EditorWorkspace } from "@/components/dashboard/workspace/editor-workspace"
-
-export default function EditorPage() {
-  return <EditorWorkspace />
+export default function EditorLegacyPage() {
+  redirect("/dashboard/editor")
 }

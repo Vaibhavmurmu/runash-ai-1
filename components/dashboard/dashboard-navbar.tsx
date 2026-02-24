@@ -32,13 +32,13 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
   const currentPageTitle = navContext.breadcrumbs[navContext.breadcrumbs.length - 1]?.label ?? "Dashboard"
   const { openFromTrigger } = useDashboardModelDialog()
 
-  const triggerSource = pathname.startsWith("/editor")
+  const triggerSource = pathname.startsWith("/dashboard/editor") || pathname.startsWith("/editor")
     ? "editor"
-    : pathname.startsWith("/seller")
+    : pathname.startsWith("/dashboard/seller-studio") || pathname.startsWith("/seller")
       ? "seller"
-      : pathname.startsWith("/ecommerce")
+      : pathname.startsWith("/dashboard/store") || pathname.startsWith("/ecommerce")
         ? "store"
-        : pathname.startsWith("/stream") || pathname.startsWith("/dashboard/streams")
+        : pathname.startsWith("/dashboard/streaming-studio") || pathname.startsWith("/stream")
           ? "streaming"
           : "chat"
 
