@@ -35,6 +35,9 @@ _Last verified: 2026-02-24 (UTC)_
 - Existing imports continue to work during migration window.
 - A follow-up task is created to remove compatibility alias after migration.
 
+**Follow-up checklist (post-migration)**
+- [ ] Remove `lib/payment-getways/pay.ts` shim after `payment-getways` imports reach zero and CI guard remains green.
+
 ---
 
 ## 2) Bug fix task — `BackgroundSync.destroy()` does not detach listeners

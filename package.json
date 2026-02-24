@@ -9,7 +9,8 @@
     "start": "next start",
     "lint:security-logs": "node scripts/check-sensitive-logging.mjs",
     "openapi:auth:generate": "node scripts/generate-auth-openapi.mjs",
-    "openapi:auth:check": "npm run openapi:auth:generate && git diff --exit-code docs/openapi/auth.openapi.json"
+    "openapi:auth:check": "npm run openapi:auth:generate && git diff --exit-code docs/openapi/auth.openapi.json",
+    "lint:payment-getways-imports": "node scripts/check-payment-getways-imports.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai": "latest",
