@@ -4,6 +4,7 @@ import { z } from "zod"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { ASSIGNABLE_ADMIN_ROLES, normalizeRoleForStorage } from "@/lib/rbac"
 import { recordAdminAuditLog, respondInternalServerError } from "@/lib/api/admin-route-utils"
+import { enforceAdminUserTenantBoundary, migrateLegacyUserOrganizationIfNeeded } from "../tenant-guard"
 
 const updateUserSchema = z.object({
   name: z.string().optional(),
@@ -27,7 +28,10 @@ export async function GET(request: NextRequest, { params }: { params: { userId: 
 
   try {
     const userId = userIdSchema.parse(params.userId)
-    const user = await UserManager.getUserById(userId)
+    const tenantGuard = await enforceAdminUserTenantBoundary(userId, auth.session.user.ssoOrganization)
+    if (!tenantGuard.ok) return tenantGuard.response
+
+    const user = await UserManager.getUserById(userId, { sessionOrganizationId: auth.session.user.ssoOrganization })
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
@@ -53,6 +57,15 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
 
   try {
     const userId = userIdSchema.parse(params.userId)
+    const tenantGuard = await enforceAdminUserTenantBoundary(userId, auth.session.user.ssoOrganization)
+    if (!tenantGuard.ok) return tenantGuard.response
+
+    await migrateLegacyUserOrganizationIfNeeded(
+      userId,
+      auth.session.user.ssoOrganization,
+      tenantGuard.shouldMigrateLegacyOrganization,
+    )
+
     const body = await request.json()
     const validatedData = updateUserSchema.parse(body)
     const normalizedData = {
@@ -60,7 +73,7 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
       ...(validatedData.role ? { role: normalizeRoleForStorage(validatedData.role) } : {}),
     }
 
-    const updatedUser = await UserManager.updateUser(userId, normalizedData, auth.userId)
+    const updatedUser = await UserManager.updateUser(userId, normalizedData, auth.userId, { sessionOrganizationId: auth.session.user.ssoOrganization })
 
     await recordAdminAuditLog({
       actorUserId: auth.userId,
@@ -90,7 +103,16 @@ export async function DELETE(request: NextRequest, { params }: { params: { userI
 
   try {
     const userId = userIdSchema.parse(params.userId)
-    await UserManager.deleteUser(userId, auth.userId)
+    const tenantGuard = await enforceAdminUserTenantBoundary(userId, auth.session.user.ssoOrganization)
+    if (!tenantGuard.ok) return tenantGuard.response
+
+    await migrateLegacyUserOrganizationIfNeeded(
+      userId,
+      auth.session.user.ssoOrganization,
+      tenantGuard.shouldMigrateLegacyOrganization,
+    )
+
+    await UserManager.deleteUser(userId, auth.userId, { sessionOrganizationId: auth.session.user.ssoOrganization })
 
     await recordAdminAuditLog({
       actorUserId: auth.userId,

@@ -521,3 +521,13 @@ These pages include:
 - `/api/streams/schedule` now requires a resolved server session via `getServerAuthSession`; unauthenticated calls return `401 Unauthorized`.
 - Stream schedule ownership is keyed exclusively by `session.user.id`; `x-user-id` overrides and `demo-user` fallback behavior were removed.
 - Development-only fallback identity is available only when explicitly enabled with `ENABLE_DEV_SCHEDULE_USER_FALLBACK=true` plus `DEV_SCHEDULE_FALLBACK_USER_ID` under `NODE_ENV=development`, and remains disabled by default.
+
+## 2026-02 tenant boundary guard for user profile/admin user management
+
+- Added shared tenant boundary helpers in `lib/api/route-auth.ts` to standardize session `ssoOrganization` resolution and resource-tenant enforcement.
+- `GET|PATCH /api/users/[id]/profile` now enforce tenant scoping for reads and writes.
+- Admin user-management endpoints (`/api/admin/users/*`) now enforce same-tenant access before reading or mutating target users.
+- Legacy compatibility for users with `sso_organization_id IS NULL` is preserved:
+  - Reads remain allowed for authenticated actors in their current tenant scope.
+  - First successful tenant-scoped mutation migrates the legacy row by backfilling `sso_organization_id` with the actor tenant.
+  - Cross-tenant access continues to be denied even when legacy compatibility mode is enabled.

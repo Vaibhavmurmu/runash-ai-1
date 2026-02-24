@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     const validatedParams = getUsersSchema.parse(params)
 
     const { page, limit, ...filters } = validatedParams
-    const result = await UserManager.getUsers(filters, { page, limit })
+    const result = await UserManager.getUsers(filters, { page, limit }, { sessionOrganizationId: auth.session.user.ssoOrganization })
 
     return NextResponse.json(result)
   } catch (error) {
@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
         username: validatedBody.username,
         email: validatedBody.email,
         role: storedRole,
+        organizationId: auth.session.user.ssoOrganization ?? null,
       },
       auth.userId,
     )

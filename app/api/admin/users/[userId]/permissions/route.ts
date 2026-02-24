@@ -6,6 +6,7 @@ import { recordAdminAuditLog, respondInternalServerError } from "@/lib/api/admin
 import { z } from "zod"
 import { queryOne } from "@/lib/db"
 import { recordSecurityAuditEvent } from "@/lib/security-audit-events"
+import { enforceAdminUserTenantBoundary, migrateLegacyUserOrganizationIfNeeded } from "../../tenant-guard"
 
 const userIdSchema = z.coerce.number().int().positive()
 const permissionMutationSchema = z.object({ permission: z.string().min(2).max(100) })
@@ -19,6 +20,9 @@ export async function GET(request: NextRequest, { params }: { params: { userId: 
 
   try {
     const userId = userIdSchema.parse(params.userId)
+    const tenantGuard = await enforceAdminUserTenantBoundary(userId, auth.session.user.ssoOrganization)
+    if (!tenantGuard.ok) return tenantGuard.response
+
     const permissions = await RBACManager.getUserPermissions(userId)
 
     return NextResponse.json({ permissions })
@@ -44,18 +48,20 @@ export async function POST(request: NextRequest, { params }: { params: { userId:
     const userId = userIdSchema.parse(params.userId)
     const adminId = auth.userId
 
+    const tenantGuard = await enforceAdminUserTenantBoundary(userId, auth.session.user.ssoOrganization)
+    if (!tenantGuard.ok) return tenantGuard.response
+
     if (userId === adminId) {
       return NextResponse.json({ message: "Cannot modify your own permission overrides" }, { status: 400 })
     }
 
-    const [targetUser, knownPermission] = await Promise.all([
-      queryOne<{ id: number }>(`SELECT id FROM users WHERE id = $1`, [userId]),
-      queryOne<{ id: number }>(`SELECT id FROM admin_permissions WHERE key = $1`, [permission]),
-    ])
+    await migrateLegacyUserOrganizationIfNeeded(
+      userId,
+      auth.session.user.ssoOrganization,
+      tenantGuard.shouldMigrateLegacyOrganization,
+    )
 
-    if (!targetUser) {
-      return NextResponse.json({ message: "User not found" }, { status: 404 })
-    }
+    const knownPermission = await queryOne<{ id: number }>(`SELECT id FROM admin_permissions WHERE key = $1`, [permission])
 
     if (!knownPermission) {
       return NextResponse.json({ message: "Unknown permission" }, { status: 400 })
@@ -108,18 +114,20 @@ export async function DELETE(request: NextRequest, { params }: { params: { userI
     const userId = userIdSchema.parse(params.userId)
     const adminId = auth.userId
 
+    const tenantGuard = await enforceAdminUserTenantBoundary(userId, auth.session.user.ssoOrganization)
+    if (!tenantGuard.ok) return tenantGuard.response
+
     if (userId === adminId) {
       return NextResponse.json({ message: "Cannot modify your own permission overrides" }, { status: 400 })
     }
 
-    const [targetUser, knownPermission] = await Promise.all([
-      queryOne<{ id: number }>(`SELECT id FROM users WHERE id = $1`, [userId]),
-      queryOne<{ id: number }>(`SELECT id FROM admin_permissions WHERE key = $1`, [permission]),
-    ])
+    await migrateLegacyUserOrganizationIfNeeded(
+      userId,
+      auth.session.user.ssoOrganization,
+      tenantGuard.shouldMigrateLegacyOrganization,
+    )
 
-    if (!targetUser) {
-      return NextResponse.json({ message: "User not found" }, { status: 404 })
-    }
+    const knownPermission = await queryOne<{ id: number }>(`SELECT id FROM admin_permissions WHERE key = $1`, [permission])
 
     if (!knownPermission) {
       return NextResponse.json({ message: "Unknown permission" }, { status: 400 })
