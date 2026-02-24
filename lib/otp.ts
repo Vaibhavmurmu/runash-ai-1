@@ -1,9 +1,7 @@
-import { neon } from "@neondatabase/serverless"
 import { createHash, randomInt, randomUUID } from "crypto"
 import { logApiEvent } from "./api/logging"
+import { sql } from "./db"
 import { sendEmail } from "./email"
-
-const sql = neon(process.env.DATABASE_URL!)
 
 type OtpLogLevel = "info" | "warn" | "error"
 
