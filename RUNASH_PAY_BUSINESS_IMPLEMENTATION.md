@@ -22,6 +22,8 @@ This document is limited to payment/business implementation policy. Generic cont
 - Payment and business APIs retain existing field names and API signatures during auth runtime migration.
 - Better Auth rollout remains staged behind `FEATURE_FLAG_USE_BETTER_AUTH_PERCENT` with explicit rollback guardrails.
 - Auth hardening updates (verified linking, session invalidation, throttling) are contract-compatible for payment APIs.
+- Admin auth/org tooling updates (organization lifecycle + provider mapping + tenant user assignment) are operational-only and do not modify payment field contracts or payment API signatures.
+- Incident and rollback runbook reference for auth/org config operations: `docs/AUTH_ORG_INCIDENT_RUNBOOK.md`.
 
 ## Compatibility, risk, and rollback
 
