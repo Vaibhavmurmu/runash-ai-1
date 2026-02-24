@@ -4,12 +4,15 @@ import {
   Bell,
   Bot,
   CalendarDays,
+  CircleUserRound,
   Clapperboard,
+  CreditCard,
   BarChart3,
   LayoutDashboard,
   MessageSquare,
   Radio,
   Settings,
+  SlidersHorizontal,
   ShoppingBag,
   Store,
   Sparkles,
@@ -140,11 +143,25 @@ export const dashboardNavItems: DashboardNavItem[] = [
     activeMatch: (pathname) => matchesPathPrefix(pathname, "/alerts"),
   },
   {
-    label: "Settings",
-    href: "/settings",
-    icon: Settings,
+    label: "Profile",
+    href: "/settings/profile",
+    icon: CircleUserRound,
     section: "account",
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/settings"),
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/settings/profile"),
+  },
+  {
+    label: "Preferences",
+    href: "/settings",
+    icon: SlidersHorizontal,
+    section: "account",
+    activeMatch: (pathname) => pathname === "/settings",
+  },
+  {
+    label: "Billing",
+    href: "/settings/billing",
+    icon: CreditCard,
+    section: "account",
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/settings/billing"),
   },
   {
     label: "AI Agents",
@@ -206,7 +223,7 @@ export const dashboardQuickLinkGroups: DashboardQuickLinkGroup[] = [
   {
     label: "Ops",
     icon: Settings,
-    items: dashboardNavItems.filter((item) => ["Analytics", "Alerts", "Settings", "AI Agents", "Automation"].includes(item.label)),
+    items: dashboardNavItems.filter((item) => ["Analytics", "Alerts", "Preferences", "AI Agents", "Automation"].includes(item.label)),
   },
   {
     label: "Commerce",
@@ -252,6 +269,8 @@ const dashboardPathLabels: Record<string, string> = {
   recordings: "Recordings",
   alerts: "Alerts",
   settings: "Settings",
+  profile: "Profile",
+  billing: "Billing",
   agents: "AI Agents",
   automation: "Automation",
   seller: "Seller Studio",
@@ -273,8 +292,24 @@ function formatSegmentLabel(segment: string) {
 
 export function resolveDashboardNavContext(pathname: string): DashboardNavContext {
   const matchedItem = dashboardNavigationConfig.items.find((item) => isNavItemActive(pathname, item))
-  const sectionLabel = matchedItem?.label ?? "Workspace"
+  const isAccountRoute = pathname === "/settings" || pathname.startsWith("/settings/")
+  const sectionLabel = isAccountRoute ? "Account" : matchedItem?.label ?? "Workspace"
   const pathSegments = pathname.split("/").filter(Boolean)
+
+  if (isAccountRoute) {
+    const accountRouteLabels: Record<string, string> = {
+      "/settings": "Preferences",
+      "/settings/profile": "Profile",
+      "/settings/billing": "Billing",
+    }
+
+    const accountBreadcrumbLabel = accountRouteLabels[pathname] ?? formatSegmentLabel(pathSegments[pathSegments.length - 1] ?? "settings")
+
+    return {
+      currentSection: sectionLabel,
+      breadcrumbs: [{ label: "Account", href: "/settings" }, { label: accountBreadcrumbLabel }],
+    }
+  }
 
   const breadcrumbs = pathSegments.length
     ? pathSegments.map((segment, index) => {
