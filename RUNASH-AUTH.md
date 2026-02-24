@@ -522,6 +522,7 @@ These pages include:
 - Stream schedule ownership is keyed exclusively by `session.user.id`; `x-user-id` overrides and `demo-user` fallback behavior were removed.
 - Development-only fallback identity is available only when explicitly enabled with `ENABLE_DEV_SCHEDULE_USER_FALLBACK=true` plus `DEV_SCHEDULE_FALLBACK_USER_ID` under `NODE_ENV=development`, and remains disabled by default.
 
+ 
 ## 2026-02 tenant boundary guard for user profile/admin user management
 
 - Added shared tenant boundary helpers in `lib/api/route-auth.ts` to standardize session `ssoOrganization` resolution and resource-tenant enforcement.
@@ -531,3 +532,12 @@ These pages include:
   - Reads remain allowed for authenticated actors in their current tenant scope.
   - First successful tenant-scoped mutation migrates the legacy row by backfilling `sso_organization_id` with the actor tenant.
   - Cross-tenant access continues to be denied even when legacy compatibility mode is enabled.
+
+## 2026-02 OTP + passwordless route hardening
+
+- OTP verification now executes explicit query branches for `email` and `phone_number` lookups to avoid mixed-identifier predicate ambiguity.
+- OTP and magic-link internal logs use structured, redacted metadata (`identifierHash`, `purpose`, `outcome`) and avoid emitting raw OTP codes, tokens, email addresses, or phone numbers.
+- `PUT /api/auth/otp/email` login verification now consistently issues both server session records and auth cookies after successful OTP verification.
+- `forgot-password`, `reset-password`, `verify-email`, and magic-link endpoints now align on replay-safe token handling, endpoint-level throttling, and consistent error payloads for invalid/expired token states.
+- Magic-link verification now records a server-side user session before setting browser auth cookies to match password/OTP session issuance expectations.
+
