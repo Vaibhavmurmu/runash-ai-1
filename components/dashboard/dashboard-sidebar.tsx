@@ -78,21 +78,22 @@ function NavLink({ href, label, icon: Icon, isActive, badge, metadata, onClick, 
   const quickActionIconClassName = isActive ? "h-3.5 w-3.5 text-orange-500 dark:text-orange-300" : "h-3.5 w-3.5 text-muted-foreground"
   const QuickActionIcon = metadata?.quickActionIcon
   const statusChip = metadata?.statusChip?.toUpperCase()
+  const baseClassName = "group flex h-10 min-h-10 items-center gap-2.5 rounded-lg border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 
   const className =
     isActive
-      ? "flex items-center gap-3 rounded-lg border border-orange-500/20 bg-orange-100/70 px-3 py-2.5 text-sm font-medium text-orange-950 shadow-sm transition-all dark:border-orange-400/30 dark:bg-orange-500/15 dark:text-orange-100"
-      : "flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-border/70 hover:bg-card/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+      ? `${baseClassName} border-orange-500/30 bg-orange-100/80 text-orange-950 shadow-sm dark:border-orange-400/40 dark:bg-orange-500/20 dark:text-orange-100`
+      : `${baseClassName} border-transparent text-muted-foreground hover:border-border/80 hover:bg-muted/70 hover:text-foreground dark:hover:border-border/90 dark:hover:bg-muted/40`
 
   if (disabled) {
     return (
       <div
         aria-disabled="true"
-        className="flex items-center gap-3 rounded-lg border border-dashed border-border/70 px-3 py-2.5 text-sm font-medium text-muted-foreground/60"
+        className="flex h-10 min-h-10 items-center gap-2.5 rounded-lg border border-dashed border-border/70 px-3 text-sm font-medium text-muted-foreground/60"
         title={tooltip}
       >
-        <Icon className="h-4 w-4" />
-        <span className="flex-1">{label}</span>
+        <Icon className="h-4 w-4 shrink-0" />
+        <span className="flex-1 truncate">{label}</span>
         {statusChip ? <Badge variant="outline">{statusChip}</Badge> : null}
         {badgeLabel ? <Badge variant="outline">{badgeLabel}</Badge> : null}
         {QuickActionIcon ? <QuickActionIcon className={quickActionIconClassName} aria-hidden="true" /> : null}
@@ -103,8 +104,8 @@ function NavLink({ href, label, icon: Icon, isActive, badge, metadata, onClick, 
   if (onAction) {
     return (
       <Button variant="ghost" className={className} onClick={onAction}>
-        <Icon className={isActive ? "h-4 w-4 text-orange-500 dark:text-orange-300" : "h-4 w-4"} />
-        <span className="flex-1 text-left">{label}</span>
+        <Icon className={isActive ? "h-4 w-4 shrink-0 text-orange-500 dark:text-orange-300" : "h-4 w-4 shrink-0"} />
+        <span className="flex-1 truncate text-left">{label}</span>
         {statusChip ? <Badge variant="outline">{statusChip}</Badge> : null}
         {badgeLabel ? <Badge className={isActive ? "bg-orange-500 text-white dark:bg-orange-400 dark:text-orange-950" : ""}>{badgeLabel}</Badge> : null}
         {QuickActionIcon ? <QuickActionIcon className={quickActionIconClassName} aria-hidden="true" /> : null}
@@ -118,8 +119,8 @@ function NavLink({ href, label, icon: Icon, isActive, badge, metadata, onClick, 
       className={className}
       onClick={onClick}
     >
-      <Icon className={isActive ? "h-4 w-4 text-orange-500 dark:text-orange-300" : "h-4 w-4"} />
-      <span className="flex-1">{label}</span>
+      <Icon className={isActive ? "h-4 w-4 shrink-0 text-orange-500 dark:text-orange-300" : "h-4 w-4 shrink-0"} />
+      <span className="flex-1 truncate">{label}</span>
       {statusChip ? <Badge variant="outline">{statusChip}</Badge> : null}
       {badgeLabel ? <Badge className={isActive ? "bg-orange-500 text-white dark:bg-orange-400 dark:text-orange-950" : ""}>{badgeLabel}</Badge> : null}
       {QuickActionIcon ? <QuickActionIcon className={quickActionIconClassName} aria-hidden="true" /> : null}
@@ -194,13 +195,13 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
           : "chat"
 
   return (
-    <div className="mt-6 flex flex-1 flex-col gap-4 px-3">
+    <div className="mt-4 flex flex-1 flex-col gap-4 px-3 pb-4">
       <section className="space-y-2">
-        <p className="px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Workspace</p>
-        <div className="space-y-3 rounded-xl border border-border/60 bg-background/50 p-2">
+        <p className="sticky top-0 z-10 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:backdrop-blur-sm md:bg-card/80 dark:md:bg-card/60">Workspace</p>
+        <div className="space-y-3 rounded-xl border border-border/60 bg-background/50 p-2 dark:bg-card/20">
         {navItemsBySection.map((group) => (
           <div key={group.section} className="space-y-1">
-            <p className="px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/90">{group.label}</p>
+            <p className="sticky top-8 z-[5] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/90 md:backdrop-blur-sm md:bg-background/90 dark:md:bg-card/70">{group.label}</p>
             {group.items.map((item) => {
               const nestedItems = item.children ?? []
               const hasNestedItems = nestedItems.length > 0
@@ -274,7 +275,7 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
 
               return (
                 <Collapsible key={item.href} open={isExpanded} onOpenChange={(open) => setExpandedNavItems((previous) => ({ ...previous, [item.href]: open }))}>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5">
                     <div className="min-w-0 flex-1">
                       <NavLink
                         href={item.href}
@@ -294,7 +295,7 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
                       type="button"
                       size="icon"
                       variant="ghost"
-                      className="h-9 w-9 shrink-0"
+                      className="h-10 w-10 shrink-0 rounded-lg text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-orange-500/60"
                       onClick={handleNestedToggle}
                       onKeyDown={handleNestedKeyDown}
                       aria-label={`${item.label} sub-navigation`}
@@ -304,7 +305,7 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
                     </Button>
                   </div>
 
-                  <CollapsibleContent className="space-y-1 pl-8 pt-1">
+                  <CollapsibleContent className="space-y-1 pl-7 pt-1">
                     {nestedItems.map((nestedItem) => {
                       const nestedActive = isNestedLinkActive(pathname, nestedItem.href)
 
@@ -315,8 +316,8 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
                           onClick={onNavigate}
                           className={
                             nestedActive
-                              ? "block rounded-md px-3 py-2 text-sm font-medium text-orange-600 dark:text-orange-300"
-                              : "block rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-card/80 hover:text-foreground"
+                              ? "block rounded-md border border-orange-500/20 bg-orange-100/50 px-3 py-2 text-sm font-medium text-orange-700 dark:border-orange-400/30 dark:bg-orange-500/15 dark:text-orange-300"
+                              : "block rounded-md border border-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-border/70 hover:bg-muted/60 hover:text-foreground"
                           }
                         >
                           {nestedItem.label}
@@ -336,7 +337,7 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
 
       <section className="space-y-2">
         <p className="px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quick links</p>
-        <div className="space-y-1 rounded-xl border border-border/60 bg-background/40 p-2">
+        <div className="space-y-1 rounded-xl border border-border/60 bg-background/40 p-2 dark:bg-card/20">
         {navConfig.quickLinkGroups.map((group) => {
           const groupIsActive = group.items.some((item) => isNavItemActive(pathname, item))
 
@@ -345,7 +346,7 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
               <CollapsibleTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="group w-full justify-between rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-card hover:text-foreground"
+                  className="group h-10 w-full justify-between rounded-lg border border-transparent px-3 text-sm font-medium text-muted-foreground transition-colors hover:border-border/70 hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-orange-500/60"
                 >
                   <span className="flex items-center gap-3">
                     <group.icon className="h-4 w-4" />
@@ -363,7 +364,7 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
                   }
 
                   return (
-                    <div key={item.href} className="pl-3">
+                    <div key={item.href} className="pl-2">
                       <NavLink
                         href={item.href}
                         label={item.label}
@@ -408,7 +409,7 @@ export function DashboardSidebar({ mobileOpen, onMobileOpenChange, navConfig }: 
           </Link>
         </div>
 
-        <div className="flex flex-1 flex-col overflow-y-auto">
+        <div className="flex flex-1 flex-col overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
           <SidebarContents navConfig={navConfig} />
           <div className="mt-auto pb-4">
             <Separator className="my-4 bg-border/70" />
