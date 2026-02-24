@@ -21,6 +21,7 @@ import {
   Target,
   Sparkles,
   RotateCcw,
+  AlertTriangle,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -269,6 +270,7 @@ export function EnhancedDashboard() {
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null)
   const [recentRecordingEditHref, setRecentRecordingEditHref] = useState<string>("/recordings")
   const [latestSummary, setLatestSummary] = useState<{ title: string; streamId: string | null; unresolvedAlerts: unknown[]; keyMetrics: Record<string, unknown> } | null>(null)
+  const [streamWidgetError, setStreamWidgetError] = useState<string | null>(null)
 
   // Dialog state for actions
   const [startDialogOpen, setStartDialogOpen] = useState(false)
@@ -301,7 +303,7 @@ export function EnhancedDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useDashboardRealtime({
+  const { connected: dashboardRealtimeConnected } = useDashboardRealtime({
     onInvalidate: () => {
       void loadDashboardData()
     },
@@ -310,6 +312,7 @@ export function EnhancedDashboard() {
   async function loadDashboardData() {
     try {
       setIsLoading(true)
+      setStreamWidgetError(null)
 
       // 1) fetch current user (real)
       const meRes = await fetch("/api/me")
@@ -396,6 +399,7 @@ export function EnhancedDashboard() {
       setLastUpdatedAt(Date.now())
     } catch (error) {
       console.error("Error loading dashboard data:", error)
+      setStreamWidgetError(error instanceof Error ? error.message : "Failed to load stream widgets")
       toast({
         title: "Error",
         description: "Failed to load dashboard data. Please try again.",
@@ -410,6 +414,7 @@ export function EnhancedDashboard() {
   const handleStartStream = async () => {
     try {
       setIsLoading(true)
+      setStreamWidgetError(null)
       const payload = { title: startTitle || "Untitled Stream", category: startCategory }
       const started = await dashboardStreamingService.startStream(payload)
       toast({ title: "Stream started", description: `${started.title} is now ${started.status}.` })
@@ -425,6 +430,7 @@ export function EnhancedDashboard() {
   const handleScheduleStream = async () => {
     try {
       setIsLoading(true)
+      setStreamWidgetError(null)
       const payload = { title: scheduleTitle || "Scheduled Stream", category: scheduleCategory, startsAt: scheduleDate }
       await dashboardStreamingService.scheduleStream(payload)
       toast({ title: "Scheduled", description: "Stream scheduled successfully." })
@@ -440,6 +446,7 @@ export function EnhancedDashboard() {
   const handleInviteCollaborator = async () => {
     try {
       setIsLoading(true)
+      setStreamWidgetError(null)
       const emails = inviteEmails.split(",").map((e) => e.trim()).filter(Boolean)
       const targetStreamId = recentStreams[0]?.id
 
@@ -580,6 +587,12 @@ export function EnhancedDashboard() {
               <span className="ml-2 text-xs text-muted-foreground">· updated {new Date(lastUpdatedAt).toLocaleTimeString()}</span>
             )}
           </p>
+          {!dashboardRealtimeConnected && !isLoading ? (
+            <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Realtime disconnected — showing last snapshot{lastUpdatedAt ? ` (${new Date(lastUpdatedAt).toLocaleTimeString()})` : ""}.
+            </div>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
            <Sheet>
@@ -752,6 +765,10 @@ export function EnhancedDashboard() {
             </SheetContent>
           </Sheet>
 
+          <Button variant="outline" size="sm" onClick={() => void loadDashboardData()} disabled={isLoading}>
+            {isLoading ? "Refreshing…" : "Manual Refresh"}
+          </Button>
+
           <Dialog>
             <DialogTrigger asChild>
               <Button className="bg-gradient-to-r from-orange-500 to-amber-400 hover:from-orange-600 hover:to-amber-500">
@@ -896,7 +913,11 @@ export function EnhancedDashboard() {
                     <div className="px-4 pb-4">
                       <Carousel className="w-full">
                         <CarouselContent>
-                          {recentStreams.map((stream) => (
+                          {recentStreams.length === 0 ? (
+                            <CarouselItem>
+                              <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">No recent streams available.</div>
+                            </CarouselItem>
+                          ) : recentStreams.map((stream) => (
                             <CarouselItem key={stream.id} className="md:basis-1/2 lg:basis-1/3">
                               <StreamCard stream={stream} />
                             </CarouselItem>
@@ -927,6 +948,14 @@ export function EnhancedDashboard() {
                       </CardContent>
                     </Card>
                   ))}
+                </div>
+              ) : streamWidgetError ? (
+                <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                  Failed to load stream widgets. Use Manual Refresh to retry.
+                </div>
+              ) : recentStreams.length === 0 ? (
+                <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  No recent streams yet. Start a stream to populate this widget.
                 </div>
               ) : (
                 <div className="grid gap-4 md:grid-cols-2">
