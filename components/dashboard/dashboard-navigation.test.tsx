@@ -9,6 +9,7 @@ const knownSidebarRoutes = new Set([
   "/stream",
   "/schedule",
   "/analytics",
+  "/analytics/streams",
   "/upload",
   "/recordings",
   "/alerts",
@@ -18,6 +19,7 @@ const knownSidebarRoutes = new Set([
   "/editor",
   "/seller/dashboard",
   "/ecommerce/dashboard",
+  "/ecommerce/analytics",
 ])
 
 test("required dashboard sidebar items remain present after route guards", () => {
@@ -73,5 +75,20 @@ test("feature-flagged routes are hidden when disabled", () => {
   assert.equal(
     guardedItems.some((item) => item.href === "/ecommerce/dashboard"),
     false,
+  )
+})
+
+
+test("analytics nested links include only known optional routes", () => {
+  const guardedItems = applySidebarRouteGuards(dashboardNavigationConfig.items, {
+    knownRoutes: knownSidebarRoutes,
+  })
+
+  const analytics = guardedItems.find((item) => item.href === "/analytics")
+
+  assert.ok(analytics)
+  assert.deepEqual(
+    analytics.children?.map((child) => child.href),
+    ["/analytics/streams", "/ecommerce/analytics"],
   )
 })

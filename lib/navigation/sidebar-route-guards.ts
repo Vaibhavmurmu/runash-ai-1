@@ -45,6 +45,7 @@ export function applySidebarRouteGuards(
       if (!options.knownRoutes.has(item.href)) {
         return {
           ...item,
+          children: item.children?.filter((child) => !child.optional || options.knownRoutes.has(child.href)),
           routeAvailability: "disabled",
           tooltip: DEFAULT_UNAVAILABLE_TOOLTIP,
         }
@@ -52,6 +53,7 @@ export function applySidebarRouteGuards(
 
       return {
         ...item,
+        children: item.children?.filter((child) => !child.optional || options.knownRoutes.has(child.href)),
         routeAvailability: "available",
       }
     })
