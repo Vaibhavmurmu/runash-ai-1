@@ -15,9 +15,18 @@ export interface ModelDialogIdentity {
 
 export interface ModelDialogPayload {
   prompt?: string;
+  sourceModule?: ModelDialogTriggerSource | "dashboard";
   mediaAssetId?: string;
+  assetId?: string;
   productId?: string;
   streamId?: string;
+  recordingId?: string;
+  generationMode?:
+    | "generic"
+    | "image-generation"
+    | "video-generation"
+    | "live-stream-assist"
+    | "previous-live-optimization";
 }
 
 export interface ModelDialogContract {

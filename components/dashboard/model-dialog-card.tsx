@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -29,6 +30,8 @@ type ModelOption = {
   value: string
 }
 
+type ExecutionMode = "generic" | "image-generation" | "video-generation" | "live-stream-assist" | "previous-live-optimization"
+
 type ModelIdentity = {
   name: string
   provider: string
@@ -42,8 +45,18 @@ interface ModelDialogCardProps {
   model: ModelIdentity
   triggerSource?: string
   dialogMode?: string
+  executionMode: ExecutionMode
+  onExecutionModeChange: (value: ExecutionMode) => void
   promptPreview: string
   contextPreview?: string
+  sourceModule: string
+  onSourceModuleChange: (value: string) => void
+  streamId: string
+  onStreamIdChange: (value: string) => void
+  recordingId: string
+  onRecordingIdChange: (value: string) => void
+  assetId: string
+  onAssetIdChange: (value: string) => void
   temperature: number
   onTemperatureChange: (value: number) => void
   mode: string
@@ -80,14 +93,48 @@ const EXECUTION_STATE_LABELS: Record<ModelExecutionState, string> = {
   failed: "Failed",
 }
 
+const EXECUTION_MODE_OPTIONS: Array<{ label: string; value: ExecutionMode }> = [
+  { label: "Generic", value: "generic" },
+  { label: "Image generation", value: "image-generation" },
+  { label: "Video generation", value: "video-generation" },
+  { label: "Live stream assist", value: "live-stream-assist" },
+  { label: "Previous live optimization", value: "previous-live-optimization" },
+]
+
+function shouldShowField(field: "streamId" | "recordingId" | "assetId", mode: ExecutionMode) {
+  if (mode === "generic") {
+    return false
+  }
+
+  if (field === "assetId") {
+    return mode === "image-generation" || mode === "video-generation"
+  }
+
+  if (field === "streamId") {
+    return mode === "live-stream-assist" || mode === "previous-live-optimization"
+  }
+
+  return mode === "video-generation" || mode === "previous-live-optimization"
+}
+
 export function ModelDialogCard({
   open,
   onOpenChange,
   model,
   triggerSource,
   dialogMode,
+  executionMode,
+  onExecutionModeChange,
   promptPreview,
   contextPreview,
+  sourceModule,
+  onSourceModuleChange,
+  streamId,
+  onStreamIdChange,
+  recordingId,
+  onRecordingIdChange,
+  assetId,
+  onAssetIdChange,
   temperature,
   onTemperatureChange,
   mode,
@@ -159,6 +206,24 @@ export function ModelDialogCard({
 
           <CardContent className="space-y-5 px-6 py-5">
             <section className="space-y-2">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Generation mode</h3>
+              <div className="flex flex-wrap gap-2">
+                {EXECUTION_MODE_OPTIONS.map((option) => (
+                  <Button
+                    key={option.value}
+                    type="button"
+                    size="sm"
+                    variant={executionMode === option.value ? "default" : "outline"}
+                    onClick={() => onExecutionModeChange(option.value)}
+                    className="h-8"
+                  >
+                    {option.label}
+                  </Button>
+                ))}
+              </div>
+            </section>
+
+            <section className="space-y-2">
               <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Prompt preview</h3>
               <div className="rounded-lg border border-border/60 bg-muted/40 p-3 text-sm leading-relaxed text-foreground">
                 {promptPreview}
@@ -170,6 +235,31 @@ export function ModelDialogCard({
               <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm leading-relaxed text-muted-foreground">
                 {contextPreview || "No explicit context payload provided."}
               </div>
+            </section>
+
+            <section className="grid gap-3 rounded-lg border border-border/60 bg-muted/20 p-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="source-module">Source module</Label>
+                <Input id="source-module" value={sourceModule} onChange={(event) => onSourceModuleChange(event.target.value)} />
+              </div>
+              {shouldShowField("streamId", executionMode) ? (
+                <div className="space-y-2">
+                  <Label htmlFor="stream-id">Stream ID</Label>
+                  <Input id="stream-id" value={streamId} onChange={(event) => onStreamIdChange(event.target.value)} placeholder="stream_123" />
+                </div>
+              ) : null}
+              {shouldShowField("recordingId", executionMode) ? (
+                <div className="space-y-2">
+                  <Label htmlFor="recording-id">Recording ID</Label>
+                  <Input id="recording-id" value={recordingId} onChange={(event) => onRecordingIdChange(event.target.value)} placeholder="rec_123" />
+                </div>
+              ) : null}
+              {shouldShowField("assetId", executionMode) ? (
+                <div className="space-y-2">
+                  <Label htmlFor="asset-id">Asset ID</Label>
+                  <Input id="asset-id" value={assetId} onChange={(event) => onAssetIdChange(event.target.value)} placeholder="asset_123" />
+                </div>
+              ) : null}
             </section>
 
             <section className="grid gap-4 rounded-lg border border-border/60 bg-card/50 p-4 sm:grid-cols-2">
