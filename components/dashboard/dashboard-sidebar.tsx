@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, type ComponentType, type KeyboardEvent, type MouseEvent } from "react"
+import { useEffect, useState, type ComponentType, type KeyboardEvent, type MouseEvent } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ChevronDown, LogOut, X } from "lucide-react"
+import { ChevronDown, ChevronsLeft, ChevronsRight, LogOut, X } from "lucide-react"
 import { signOutWithRedirect, useAuthSession } from "@/lib/auth/access-client"
 import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -46,6 +46,49 @@ const knownSidebarRoutes = new Set([
 const sidebarRouteGuards = {
   "/agents/dashboard": { featureFlag: "sidebar_ai_agents", unavailableBehavior: "disable" as const },
   "/ecommerce/dashboard": { featureFlag: "sidebar_store", unavailableBehavior: "hide" as const },
+}
+
+const SIDEBAR_STORAGE_KEY = "runash.dashboard.sidebar.v1"
+
+interface SidebarPersistedState {
+  collapsed: boolean
+  expandedNavItems: Record<string, boolean>
+}
+
+const defaultSidebarState: SidebarPersistedState = {
+  collapsed: false,
+  expandedNavItems: {},
+}
+
+function parseSidebarState(rawState: string | null): SidebarPersistedState {
+  if (!rawState) {
+    return defaultSidebarState
+  }
+
+  try {
+    const parsedState = JSON.parse(rawState)
+
+    if (!parsedState || typeof parsedState !== "object") {
+      return defaultSidebarState
+    }
+
+    const collapsed = typeof parsedState.collapsed === "boolean" ? parsedState.collapsed : defaultSidebarState.collapsed
+    const expandedNavItems =
+      parsedState.expandedNavItems && typeof parsedState.expandedNavItems === "object"
+        ? Object.fromEntries(
+            Object.entries(parsedState.expandedNavItems).filter(
+              (entry): entry is [string, boolean] => typeof entry[0] === "string" && typeof entry[1] === "boolean",
+            ),
+          )
+        : defaultSidebarState.expandedNavItems
+
+    return {
+      collapsed,
+      expandedNavItems,
+    }
+  } catch {
+    return defaultSidebarState
+  }
 }
 
 
@@ -162,9 +205,20 @@ function UserCard({ mobile = false }: { mobile?: boolean }) {
   )
 }
 
-function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNavigationConfig; onNavigate?: () => void }) {
+function SidebarContents({
+  navConfig,
+  onNavigate,
+  collapsed = false,
+  expandedNavItems,
+  onExpandedNavItemsChange,
+}: {
+  navConfig: DashboardNavigationConfig
+  onNavigate?: () => void
+  collapsed?: boolean
+  expandedNavItems: Record<string, boolean>
+  onExpandedNavItemsChange: (updater: (previous: Record<string, boolean>) => Record<string, boolean>) => void
+}) {
   const pathname = usePathname()
-  const [expandedNavItems, setExpandedNavItems] = useState<Record<string, boolean>>({})
   const { openFromTrigger } = useDashboardModelDialog()
   const guardedItems = applySidebarRouteGuards(navConfig.items, {
     knownRoutes: knownSidebarRoutes,
@@ -209,7 +263,7 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
               const isExpanded = expandedNavItems[item.href] ?? hasActiveNestedItem
 
               const handleNestedToggle = () => {
-                setExpandedNavItems((previous) => ({
+                onExpandedNavItemsChange((previous) => ({
                   ...previous,
                   [item.href]: !isExpanded,
                 }))
@@ -218,7 +272,7 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
               const handleNestedKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
                 if (event.key === "ArrowRight" && !isExpanded) {
                   event.preventDefault()
-                  setExpandedNavItems((previous) => ({
+                  onExpandedNavItemsChange((previous) => ({
                     ...previous,
                     [item.href]: true,
                   }))
@@ -226,7 +280,7 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
 
                 if (event.key === "ArrowLeft" && isExpanded) {
                   event.preventDefault()
-                  setExpandedNavItems((previous) => ({
+                  onExpandedNavItemsChange((previous) => ({
                     ...previous,
                     [item.href]: false,
                   }))
@@ -273,8 +327,27 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
                 )
               }
 
+              if (collapsed) {
+                return (
+                  <div key={item.href} className="px-1">
+                    <NavLink
+                      href={item.href}
+                      label={item.label}
+                      icon={item.icon}
+                      badge={item.badge}
+                      metadata={item.metadata}
+                      isActive={isNavItemActive(pathname, item)}
+                      onClick={onNavigate}
+                      disabled={item.routeAvailability === "disabled"}
+                      tooltip={item.tooltip ?? item.label}
+                      onAction={actionHandler}
+                    />
+                  </div>
+                )
+              }
+
               return (
-                <Collapsible key={item.href} open={isExpanded} onOpenChange={(open) => setExpandedNavItems((previous) => ({ ...previous, [item.href]: open }))}>
+                <Collapsible key={item.href} open={isExpanded} onOpenChange={(open) => onExpandedNavItemsChange((previous) => ({ ...previous, [item.href]: open }))}>
                   <div className="flex items-center gap-1.5">
                     <div className="min-w-0 flex-1">
                       <NavLink
@@ -391,11 +464,45 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
 
 export function DashboardSidebar({ mobileOpen, onMobileOpenChange, navConfig }: DashboardSidebarProps) {
   const [logoAvailable, setLogoAvailable] = useState(true)
+  const [collapsed, setCollapsed] = useState(defaultSidebarState.collapsed)
+  const [expandedNavItems, setExpandedNavItems] = useState<Record<string, boolean>>(defaultSidebarState.expandedNavItems)
+  const [hydratedStorage, setHydratedStorage] = useState(false)
+
+  useEffect(() => {
+    let persistedState = defaultSidebarState
+
+    try {
+      persistedState = parseSidebarState(window.localStorage.getItem(SIDEBAR_STORAGE_KEY))
+    } catch {
+      persistedState = defaultSidebarState
+    }
+
+    setCollapsed(persistedState.collapsed)
+    setExpandedNavItems(persistedState.expandedNavItems)
+    setHydratedStorage(true)
+  }, [])
+
+  useEffect(() => {
+    if (!hydratedStorage) {
+      return
+    }
+
+    const stateToPersist: SidebarPersistedState = {
+      collapsed,
+      expandedNavItems,
+    }
+
+    try {
+      window.localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify(stateToPersist))
+    } catch {
+      // Ignore storage write failures and continue rendering with in-memory state.
+    }
+  }, [collapsed, expandedNavItems, hydratedStorage])
 
   return (
     <>
-      <aside className="fixed inset-y-0 hidden w-64 flex-col border-r border-border/70 bg-card/55 pt-6 backdrop-blur-xl md:flex dark:bg-card/35">
-        <div className="flex items-center px-4">
+      <aside className={`fixed inset-y-0 hidden flex-col border-r border-border/70 bg-card/55 pt-6 backdrop-blur-xl transition-[width] duration-200 md:flex dark:bg-card/35 ${collapsed ? "w-20" : "w-64"}`}>
+        <div className={`flex items-center ${collapsed ? "justify-center px-2" : "px-4"}`}>
           {logoAvailable ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src="/logo.svg" alt="RunAsh" className="h-8 w-8 rounded-full" onError={() => setLogoAvailable(false)} />
@@ -404,13 +511,25 @@ export function DashboardSidebar({ mobileOpen, onMobileOpenChange, navConfig }: 
               R
             </div>
           )}
-          <Link href="/" className="ml-2 text-xl font-semibold tracking-tight text-transparent bg-gradient-to-r from-orange-500 to-amber-400 bg-clip-text">
-            RunAsh
-          </Link>
+          {!collapsed ? (
+            <Link href="/" className="ml-2 text-xl font-semibold tracking-tight text-transparent bg-gradient-to-r from-orange-500 to-amber-400 bg-clip-text">
+              RunAsh
+            </Link>
+          ) : null}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={collapsed ? "absolute right-2 top-6" : "ml-auto"}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            onClick={() => setCollapsed((previous) => !previous)}
+          >
+            {collapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
+          </Button>
         </div>
 
         <div className="flex flex-1 flex-col overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
-          <SidebarContents navConfig={navConfig} />
+          <SidebarContents navConfig={navConfig} collapsed={collapsed} expandedNavItems={expandedNavItems} onExpandedNavItemsChange={setExpandedNavItems} />
           <div className="mt-auto pb-4">
             <Separator className="my-4 bg-border/70" />
             <UserCard />
@@ -442,7 +561,12 @@ export function DashboardSidebar({ mobileOpen, onMobileOpenChange, navConfig }: 
             </div>
 
             <div className="flex-1 overflow-y-auto">
-              <SidebarContents navConfig={navConfig} onNavigate={() => onMobileOpenChange(false)} />
+              <SidebarContents
+                navConfig={navConfig}
+                expandedNavItems={expandedNavItems}
+                onExpandedNavItemsChange={setExpandedNavItems}
+                onNavigate={() => onMobileOpenChange(false)}
+              />
             </div>
 
             <UserCard mobile />
