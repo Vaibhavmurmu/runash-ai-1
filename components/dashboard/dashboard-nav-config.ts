@@ -28,8 +28,15 @@ export interface DashboardNavItem {
   section: DashboardNavSection
   badge?: string
   metadata?: DashboardNavItemMetadata
+  children?: DashboardNavChildItem[]
   actionId?: "open-model-dialog"
   activeMatch?: (pathname: string) => boolean
+}
+
+export interface DashboardNavChildItem {
+  label: string
+  href: string
+  optional?: boolean
 }
 
 export interface DashboardNavItemMetadata {
@@ -96,6 +103,11 @@ export const dashboardNavItems: DashboardNavItem[] = [
     href: "/analytics",
     icon: BarChart3,
     section: "operations",
+    children: [
+      { label: "Stream analytics", href: "/analytics/streams", optional: true },
+      { label: "Seller analytics", href: "/seller/analytics", optional: true },
+      { label: "Store analytics", href: "/ecommerce/analytics", optional: true },
+    ],
     activeMatch: (pathname) => matchesPathPrefix(pathname, "/analytics"),
   },
   {

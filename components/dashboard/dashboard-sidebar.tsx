@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type ComponentType, type MouseEvent } from "react"
+import { useState, type ComponentType, type KeyboardEvent, type MouseEvent } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ChevronDown, LogOut, X } from "lucide-react"
@@ -30,6 +30,7 @@ const knownSidebarRoutes = new Set([
   "/stream",
   "/schedule",
   "/analytics",
+  "/analytics/streams",
   "/upload",
   "/recordings",
   "/alerts",
@@ -39,11 +40,17 @@ const knownSidebarRoutes = new Set([
   "/editor",
   "/seller/dashboard",
   "/ecommerce/dashboard",
+  "/ecommerce/analytics",
 ])
 
 const sidebarRouteGuards = {
   "/agents/dashboard": { featureFlag: "sidebar_ai_agents", unavailableBehavior: "disable" as const },
   "/ecommerce/dashboard": { featureFlag: "sidebar_store", unavailableBehavior: "hide" as const },
+}
+
+
+function isNestedLinkActive(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(`${href}/`)
 }
 
 interface DashboardSidebarProps {
@@ -156,6 +163,7 @@ function UserCard({ mobile = false }: { mobile?: boolean }) {
 
 function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNavigationConfig; onNavigate?: () => void }) {
   const pathname = usePathname()
+  const [expandedNavItems, setExpandedNavItems] = useState<Record<string, boolean>>({})
   const { openFromTrigger } = useDashboardModelDialog()
   const guardedItems = applySidebarRouteGuards(navConfig.items, {
     knownRoutes: knownSidebarRoutes,
@@ -193,42 +201,132 @@ function SidebarContents({ navConfig, onNavigate }: { navConfig: DashboardNaviga
         {navItemsBySection.map((group) => (
           <div key={group.section} className="space-y-1">
             <p className="px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/90">{group.label}</p>
-            {group.items.map((item) => (
-              <NavLink
-                key={item.href}
-                href={item.href}
-                label={item.label}
-                icon={item.icon}
-                badge={item.badge}
-                metadata={item.metadata}
-                isActive={isNavItemActive(pathname, item)}
-                onClick={onNavigate}
-                disabled={item.routeAvailability === "disabled"}
-                tooltip={item.tooltip}
-                onAction={
-                  item.actionId === "open-model-dialog"
-                    ? (event) => {
-                        openFromTrigger(
-                          {
-                            triggerSource,
-                            mode: "configure",
-                            model: {
-                              modelId: "runash-router",
-                              provider: "RunAsh AI",
-                              displayName: "RunAsh Model Router",
-                            },
-                            payload: {
-                              prompt: `Configure routing rules and model strategy for ${pathname}.`,
-                            },
-                          },
-                          event.currentTarget,
-                        )
-                        onNavigate?.()
-                      }
-                    : undefined
+            {group.items.map((item) => {
+              const nestedItems = item.children ?? []
+              const hasNestedItems = nestedItems.length > 0
+              const hasActiveNestedItem = nestedItems.some((nestedItem) => isNestedLinkActive(pathname, nestedItem.href))
+              const isExpanded = expandedNavItems[item.href] ?? hasActiveNestedItem
+
+              const handleNestedToggle = () => {
+                setExpandedNavItems((previous) => ({
+                  ...previous,
+                  [item.href]: !isExpanded,
+                }))
+              }
+
+              const handleNestedKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+                if (event.key === "ArrowRight" && !isExpanded) {
+                  event.preventDefault()
+                  setExpandedNavItems((previous) => ({
+                    ...previous,
+                    [item.href]: true,
+                  }))
                 }
-              />
-            ))}
+
+                if (event.key === "ArrowLeft" && isExpanded) {
+                  event.preventDefault()
+                  setExpandedNavItems((previous) => ({
+                    ...previous,
+                    [item.href]: false,
+                  }))
+                }
+              }
+
+              const actionHandler =
+                item.actionId === "open-model-dialog"
+                  ? (event: MouseEvent<HTMLButtonElement>) => {
+                      openFromTrigger(
+                        {
+                          triggerSource,
+                          mode: "configure",
+                          model: {
+                            modelId: "runash-router",
+                            provider: "RunAsh AI",
+                            displayName: "RunAsh Model Router",
+                          },
+                          payload: {
+                            prompt: `Configure routing rules and model strategy for ${pathname}.`,
+                          },
+                        },
+                        event.currentTarget,
+                      )
+                      onNavigate?.()
+                    }
+                  : undefined
+
+              if (!hasNestedItems) {
+                return (
+                  <NavLink
+                    key={item.href}
+                    href={item.href}
+                    label={item.label}
+                    icon={item.icon}
+                    badge={item.badge}
+                    metadata={item.metadata}
+                    isActive={isNavItemActive(pathname, item)}
+                    onClick={onNavigate}
+                    disabled={item.routeAvailability === "disabled"}
+                    tooltip={item.tooltip}
+                    onAction={actionHandler}
+                  />
+                )
+              }
+
+              return (
+                <Collapsible key={item.href} open={isExpanded} onOpenChange={(open) => setExpandedNavItems((previous) => ({ ...previous, [item.href]: open }))}>
+                  <div className="flex items-center gap-1">
+                    <div className="min-w-0 flex-1">
+                      <NavLink
+                        href={item.href}
+                        label={item.label}
+                        icon={item.icon}
+                        badge={item.badge}
+                        metadata={item.metadata}
+                        isActive={isNavItemActive(pathname, item)}
+                        onClick={onNavigate}
+                        disabled={item.routeAvailability === "disabled"}
+                        tooltip={item.tooltip}
+                        onAction={actionHandler}
+                      />
+                    </div>
+
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-9 w-9 shrink-0"
+                      onClick={handleNestedToggle}
+                      onKeyDown={handleNestedKeyDown}
+                      aria-label={`${item.label} sub-navigation`}
+                      aria-expanded={isExpanded}
+                    >
+                      <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                    </Button>
+                  </div>
+
+                  <CollapsibleContent className="space-y-1 pl-8 pt-1">
+                    {nestedItems.map((nestedItem) => {
+                      const nestedActive = isNestedLinkActive(pathname, nestedItem.href)
+
+                      return (
+                        <Link
+                          key={nestedItem.href}
+                          href={nestedItem.href}
+                          onClick={onNavigate}
+                          className={
+                            nestedActive
+                              ? "block rounded-md px-3 py-2 text-sm font-medium text-orange-600 dark:text-orange-300"
+                              : "block rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-card/80 hover:text-foreground"
+                          }
+                        >
+                          {nestedItem.label}
+                        </Link>
+                      )
+                    })}
+                  </CollapsibleContent>
+                </Collapsible>
+              )
+            })}
           </div>
         ))}
         </div>
