@@ -1,7 +1,5 @@
-import { neon } from "@neondatabase/serverless"
 import { randomBytes } from "crypto"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { sql } from "./db"
 
 export interface SSOOrganization {
   id: number
