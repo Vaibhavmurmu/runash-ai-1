@@ -37,6 +37,13 @@ Gaps to close next:
 - dual-stream and media lifecycle completion,
 - production hardening and CI validation depth.
 
+### Realtime architecture baseline (current)
+
+- **Authoritative writes:** stream lifecycle and interaction mutations are committed through API routes; UI state is derived from server responses.
+- **Read transport:** realtime channel is preferred for latency-sensitive updates, with scheduled polling as integrity fallback.
+- **Client consistency:** optimistic updates are required to rollback on mutation failure; event reducers should be idempotent for reconnect safety.
+- **Operational rollback:** production incidents may disable realtime channel and force polling-only behavior until remediation is complete.
+
 ---
 
 ## 3) Workstreams and Ordered Milestones
