@@ -146,7 +146,7 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
                 <Link href="/settings/profile">Profile</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link href="/settings">Settings</Link>
+                <Link href="/settings">Preferences / Settings</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/settings/billing">Billing</Link>
@@ -217,7 +217,7 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
                 <Link href="/settings/profile">Profile</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link href="/settings">Settings</Link>
+                <Link href="/settings">Preferences / Settings</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/settings/billing">Billing</Link>

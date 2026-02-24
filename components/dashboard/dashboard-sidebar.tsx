@@ -35,6 +35,8 @@ const knownSidebarRoutes = new Set([
   "/recordings",
   "/alerts",
   "/settings",
+  "/settings/profile",
+  "/settings/billing",
   "/automation",
   "/runash-chat",
   "/editor",
