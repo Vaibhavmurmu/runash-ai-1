@@ -132,17 +132,18 @@ The system follows a **Lock-Verify-Release** sequence to ensure zero-hallucinati
 
 ## 📁 Repository Structure
 
-```text
-├── agents/              # Agent logic and persona definitions
-│   ├── Ash.ts           # Lead Orchestrator
-│   ├── Validator.ts     # Security & Biometrics
-│   └── Strategist.ts    # Financial Logic
-├── components/          # v0-generated high-contrast UI
-├── lib/                 # Core Protocol (RAPP) & Geo-fencing
-├── docs/                # Post-mortems and Maintenance logs
-└── llms.txt             # AI-readable project essence
+_Last verified: 2026-02 (current repository layout)_
 
+```text
+├── app/                 # Next.js routes, pages, layouts, and API handlers
+├── components/          # UI components and feature modules
+├── lib/                 # Shared domain/auth/payment/workflow modules
+├── docs/                # Governance, readiness, and implementation guides
+├── services/            # Service orchestration and business-layer flows
+└── LLMs.txt             # AI-readable contributor briefing
 ```
+
+> Note: Historical `agents/` examples in earlier drafts represented planned architecture narratives; the current implementation uses `services/` + `lib/skills/` + `lib/workflow/`.
 
 ---
 
