@@ -78,6 +78,7 @@ export function useStreamingStudioRealtime(options: UseStreamingStudioRealtimeOp
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sourceRef = useRef<EventSource | null>(null)
   const subscribedStreamIdsRef = useRef(new Set(options.initialStreamIds ?? []))
+  const sessionRequestIdRef = useRef<string>(`studio-sse-${Date.now()}`)
 
   const applyEvent = useCallback((payload: StreamingStudioRealtimePayload) => {
     if (payload.type === "alert") {
@@ -174,6 +175,17 @@ export function useStreamingStudioRealtime(options: UseStreamingStudioRealtimeOp
 
     source.onerror = () => {
       setConnected(false)
+      console.warn("[api]", JSON.stringify({
+        timestamp: new Date().toISOString(),
+        level: "warn",
+        event: "dashboard.stream_sse.disconnected",
+        details: {
+          requestId: sessionRequestIdRef.current,
+          endpoint: target,
+          reconnectAttempt: reconnectAttemptRef.current + 1,
+          subscribedStreams: Array.from(subscribedStreamIdsRef.current),
+        },
+      }))
       source.close()
       sourceRef.current = null
 

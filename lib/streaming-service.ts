@@ -21,6 +21,32 @@ interface DashboardStreamsErrorEnvelope {
   }
 }
 
+type DashboardStreamsClientError = Error & { requestId?: string }
+
+function createClientRequestId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+
+  return `dashboard-streams-${Date.now()}`
+}
+
+function logStreamClientEvent(level: "warn" | "info", event: string, details: Record<string, unknown>) {
+  const payload = {
+    timestamp: new Date().toISOString(),
+    level,
+    event,
+    details,
+  }
+
+  if (level === "warn") {
+    console.warn("[api]", JSON.stringify(payload))
+    return
+  }
+
+  console.info("[api]", JSON.stringify(payload))
+}
+
 async function getDashboardStreamsErrorMessage(response: Response, fallback: string) {
   try {
     const payload = (await response.json()) as DashboardStreamsErrorEnvelope
@@ -31,11 +57,34 @@ async function getDashboardStreamsErrorMessage(response: Response, fallback: str
 }
 
 async function dashboardStreamsRequest<T>(input: RequestInfo, init: RequestInit, fallback: string): Promise<T> {
-  const response = await fetch(input, init)
+  const requestId = createClientRequestId()
+  const method = init.method || "GET"
+  const headers = new Headers(init.headers)
+  headers.set("x-request-id", requestId)
+  const response = await fetch(input, { ...init, headers })
 
   if (!response.ok) {
-    throw new Error(await getDashboardStreamsErrorMessage(response, fallback))
+    const responseRequestId = response.headers.get("x-request-id") || requestId
+    const message = await getDashboardStreamsErrorMessage(response, fallback)
+
+    logStreamClientEvent("warn", "dashboard.stream_api.request_failed", {
+      requestId: responseRequestId,
+      method,
+      endpoint: typeof input === "string" ? input : input instanceof Request ? input.url : "unknown",
+      status: response.status,
+      statusText: response.statusText,
+    })
+
+    const error = new Error(`${message} (requestId: ${responseRequestId})`) as DashboardStreamsClientError
+    error.requestId = responseRequestId
+    throw error
   }
+
+  logStreamClientEvent("info", "dashboard.stream_api.request_succeeded", {
+    requestId,
+    method,
+    endpoint: typeof input === "string" ? input : input instanceof Request ? input.url : "unknown",
+  })
 
   return (await response.json()) as T
 }

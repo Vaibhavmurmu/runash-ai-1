@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Video, Calendar, Clock, Users, Settings, Mail, Link as LinkIcon, RotateCcw, Sparkles, BarChart3, AlertTriangle } from "lucide-react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -22,7 +23,7 @@ import { toast } from "@/components/ui/use-toast"
 import { RecordingService } from "@/lib/recording-service"
 import { dashboardStreamingService } from "@/lib/streaming-service"
 import type { DashboardRecentStream, DashboardScheduledStream, LatestCompletedStreamSummary } from "@/lib/types/dashboard-streams"
-import { useStreamingStudioRealtime } from "@/lib/hooks/use-streaming-studio-realtime"
+import { useStreamingStudioRealtime, type StreamingStudioRealtimeStreamState } from "@/lib/hooks/use-streaming-studio-realtime"
 
 const getCanonicalStreamUrl = (id: string, url?: string) => url || `/stream/${id}`
 
@@ -44,6 +45,10 @@ export function StreamQuickAccess() {
   const [recentStreams, setRecentStreams] = useState<DashboardRecentStream[]>([])
   const [scheduledStreams, setScheduledStreams] = useState<DashboardScheduledStream[]>([])
   const [loading, setLoading] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(true)
+  const [streamLoadError, setStreamLoadError] = useState<string | null>(null)
+  const [lastSnapshotAt, setLastSnapshotAt] = useState<number | null>(null)
+  const [lastRealtimeSnapshot, setLastRealtimeSnapshot] = useState<Record<string, StreamingStudioRealtimeStreamState>>({})
 
   // Scheduling
   const [scheduleTitle, setScheduleTitle] = useState("")
@@ -67,50 +72,64 @@ export function StreamQuickAccess() {
     initialStreamIds.forEach((streamId) => subscribe(streamId))
   }, [initialStreamIds, subscribe])
 
+  const effectiveRealtimeState = connected ? streamRealtime : lastRealtimeSnapshot
+
   const effectiveRecentStreams = useMemo(
     () =>
       recentStreams.map((stream) => {
-        const realtime = streamRealtime[stream.id]
+        const realtime = effectiveRealtimeState[stream.id]
         return {
           ...stream,
           status: (realtime?.status as DashboardRecentStream["status"] | undefined) ?? stream.status,
           viewers: realtime?.concurrentViewers ?? stream.viewers,
         }
       }),
-    [recentStreams, streamRealtime],
+    [effectiveRealtimeState, recentStreams],
   )
 
   useEffect(() => {
-    async function fetchStreams() {
-      setLoading(true)
-      try {
-        const [recentJson, scheduledJson, summaryJson] = await Promise.all([
-          dashboardStreamingService.fetchRecentStreams(),
-          dashboardStreamingService.fetchScheduledStreams(),
-          dashboardStreamingService.fetchLatestCompletedStreamSummary(),
-        ])
-
-        setRecentStreams(Array.isArray(recentJson.streams) ? recentJson.streams : [])
-        setScheduledStreams(Array.isArray(scheduledJson.streams) ? scheduledJson.streams : [])
-        setLatestSummary(summaryJson.summary ?? null)
-
-        try {
-          const recordings = await RecordingService.getInstance().getUserRecordings()
-          const latestRecording = recordings.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
-          setRecentRecordingEditHref(latestRecording?.id ? `/recordings?recordingId=${encodeURIComponent(latestRecording.id)}&mode=edit` : "/recordings")
-        } catch {
-          setRecentRecordingEditHref("/recordings")
-        }
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Could not load streams."
-        toast({ title: "Error", description: message })
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchStreams()
+    void fetchStreams()
   }, [])
+
+
+  useEffect(() => {
+    if (!connected) return
+    if (Object.keys(streamRealtime).length === 0) return
+    setLastRealtimeSnapshot(streamRealtime)
+    setLastSnapshotAt(Date.now())
+  }, [connected, streamRealtime])
+
+  const fetchStreams = async () => {
+    setLoading(true)
+    setStreamLoadError(null)
+    try {
+      const [recentJson, scheduledJson, summaryJson] = await Promise.all([
+        dashboardStreamingService.fetchRecentStreams(),
+        dashboardStreamingService.fetchScheduledStreams(),
+        dashboardStreamingService.fetchLatestCompletedStreamSummary(),
+      ])
+
+      setRecentStreams(Array.isArray(recentJson.streams) ? recentJson.streams : [])
+      setScheduledStreams(Array.isArray(scheduledJson.streams) ? scheduledJson.streams : [])
+      setLatestSummary(summaryJson.summary ?? null)
+
+      try {
+        const recordings = await RecordingService.getInstance().getUserRecordings()
+        const latestRecording = recordings.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+        setRecentRecordingEditHref(latestRecording?.id ? `/recordings?recordingId=${encodeURIComponent(latestRecording.id)}&mode=edit` : "/recordings")
+      } catch {
+        setRecentRecordingEditHref("/recordings")
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Could not load streams."
+      setStreamLoadError(message)
+      toast({ title: "Error", description: message })
+    } finally {
+      setLoading(false)
+      setInitialLoading(false)
+    }
+  }
+
 
   const handleStartStream = async () => {
     if (!streamTitle) {
@@ -290,6 +309,14 @@ export function StreamQuickAccess() {
             <span>{alerts[0].message}</span>
           </div>
         ) : null}
+        {!connected && (
+          <div className="flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <span>Realtime disconnected. Showing last snapshot{lastSnapshotAt ? ` from ${new Date(lastSnapshotAt).toLocaleTimeString()}` : ""}.</span>
+            <Button size="sm" variant="outline" onClick={() => void fetchStreams()} disabled={loading} className="h-7">
+              Refresh now
+            </Button>
+          </div>
+        )}
         <div className="grid gap-3 md:grid-cols-3">
           <Card className="border-border/40">
             <CardHeader className="pb-2">
@@ -466,7 +493,15 @@ export function StreamQuickAccess() {
         <div className="space-y-2">
           <h3 className="text-sm font-medium">Recent Streams</h3>
           <div className="space-y-2">
-            {recentStreams.length === 0 && !loading ? (
+            {initialLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 2 }).map((_, idx) => (
+                  <Skeleton key={idx} className="h-12 w-full" />
+                ))}
+              </div>
+            ) : streamLoadError ? (
+              <div className="text-xs text-destructive">Unable to load recent streams. Use refresh to retry.</div>
+            ) : effectiveRecentStreams.length === 0 ? (
               <div className="text-xs text-muted-foreground">No recent streams yet.</div>
             ) : (
               effectiveRecentStreams.map((stream) => (
@@ -507,7 +542,15 @@ export function StreamQuickAccess() {
         <div className="space-y-2">
           <h3 className="text-sm font-medium">Upcoming Streams</h3>
           <div className="space-y-2">
-            {scheduledStreams.length === 0 && !loading ? (
+            {initialLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 2 }).map((_, idx) => (
+                  <Skeleton key={idx} className="h-12 w-full" />
+                ))}
+              </div>
+            ) : streamLoadError ? (
+              <div className="text-xs text-destructive">Unable to load scheduled streams. Use refresh to retry.</div>
+            ) : scheduledStreams.length === 0 ? (
               <div className="text-xs text-muted-foreground">No upcoming streams scheduled.</div>
             ) : (
               scheduledStreams.map((stream) => (
@@ -547,6 +590,9 @@ export function StreamQuickAccess() {
         <div className="w-full flex gap-2">
           <Button variant="outline" className="w-full" onClick={() => router.push("/schedule")}>
             View All Streams
+          </Button>
+          <Button variant="outline" className="w-full" onClick={() => void fetchStreams()} disabled={loading}>
+            {loading ? "Refreshing…" : "Manual Refresh"}
           </Button>
           <Button variant="ghost" className="w-full" onClick={handleFetchIntegrationKey} disabled={integrating}>
             {integrationKey ? "Integration Ready" : "Get Integration"}
