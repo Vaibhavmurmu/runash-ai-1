@@ -20,36 +20,62 @@ function createEventTargetMock() {
   }
 }
 
-test("BackgroundSync destroy detaches registered browser listeners", async () => {
-  const windowMock = createEventTargetMock()
-  const documentMock = {
+function createAdapters() {
+  const windowTarget = createEventTargetMock()
+  const documentTarget = {
     ...createEventTargetMock(),
     hidden: true,
   }
 
-  Object.assign(globalThis, {
-    navigator: { onLine: true },
-    window: windowMock,
-    document: documentMock,
-    localStorage: {
-      getItem: () => null,
-      setItem: () => undefined,
+  return {
+    windowTarget,
+    documentTarget,
+    adapters: {
+      windowTarget,
+      documentTarget,
+      getIsOnline: () => true,
+      storage: {
+        getItem: () => null,
+        setItem: () => undefined,
+      },
     },
-    crypto: { randomUUID: () => "id" },
-  })
+  }
+}
 
+test("BackgroundSync destroy detaches registered browser listeners", async () => {
   const { BackgroundSync } = await import("./background-sync")
-  const sync = BackgroundSync.getInstance()
+  const { adapters, windowTarget, documentTarget } = createAdapters()
+  const sync = new BackgroundSync(adapters)
 
-  assert.equal(windowMock.listeners.online?.length, 1)
-  assert.equal(windowMock.listeners.offline?.length, 1)
-  assert.equal(documentMock.listeners.visibilitychange?.length, 1)
+  assert.equal(windowTarget.listeners.online?.length, 1)
+  assert.equal(windowTarget.listeners.offline?.length, 1)
+  assert.equal(documentTarget.listeners.visibilitychange?.length, 1)
 
   sync.destroy()
 
-  assert.equal(windowMock.listeners.online?.length ?? 0, 0)
-  assert.equal(windowMock.listeners.offline?.length ?? 0, 0)
-  assert.equal(documentMock.listeners.visibilitychange?.length ?? 0, 0)
+  assert.equal(windowTarget.listeners.online?.length ?? 0, 0)
+  assert.equal(windowTarget.listeners.offline?.length ?? 0, 0)
+  assert.equal(documentTarget.listeners.visibilitychange?.length ?? 0, 0)
 
-  ;(BackgroundSync as unknown as { instance: unknown }).instance = undefined
+  BackgroundSync.resetInstanceForTests()
+})
+
+test("BackgroundSync can re-init after destroy without duplicate listeners", async () => {
+  const { BackgroundSync } = await import("./background-sync")
+  const { adapters, windowTarget, documentTarget } = createAdapters()
+
+  const first = new BackgroundSync(adapters)
+  assert.equal(windowTarget.listeners.online?.length, 1)
+  assert.equal(windowTarget.listeners.offline?.length, 1)
+  assert.equal(documentTarget.listeners.visibilitychange?.length, 1)
+
+  first.destroy()
+  const second = new BackgroundSync(adapters)
+
+  assert.equal(windowTarget.listeners.online?.length, 1)
+  assert.equal(windowTarget.listeners.offline?.length, 1)
+  assert.equal(documentTarget.listeners.visibilitychange?.length, 1)
+
+  second.destroy()
+  BackgroundSync.resetInstanceForTests()
 })

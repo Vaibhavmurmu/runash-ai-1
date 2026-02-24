@@ -14,14 +14,61 @@ export interface SyncStatus {
   syncInProgress: boolean
 }
 
+interface EventTargetAdapter {
+  addEventListener(event: string, listener: EventListenerOrEventListenerObject): void
+  removeEventListener(event: string, listener: EventListenerOrEventListenerObject): void
+  dispatchEvent?(event: Event): boolean
+}
+
+interface StorageAdapter {
+  getItem(key: string): string | null
+  setItem(key: string, value: string): void
+}
+
+export interface BackgroundSyncAdapters {
+  windowTarget: EventTargetAdapter
+  documentTarget: EventTargetAdapter & { hidden: boolean }
+  getIsOnline: () => boolean
+  storage: StorageAdapter
+}
+
+function createBrowserAdapters(): BackgroundSyncAdapters {
+  return {
+    windowTarget: window,
+    documentTarget: document,
+    getIsOnline: () => navigator.onLine,
+    storage: localStorage,
+  }
+}
+
+
+function resolveAdapters(adapters: Partial<BackgroundSyncAdapters>): BackgroundSyncAdapters {
+  const defaults =
+    typeof window !== "undefined" &&
+    typeof document !== "undefined" &&
+    typeof navigator !== "undefined" &&
+    typeof localStorage !== "undefined"
+      ? createBrowserAdapters()
+      : {}
+
+  const resolved = { ...defaults, ...adapters } as Partial<BackgroundSyncAdapters>
+
+  if (!resolved.windowTarget || !resolved.documentTarget || !resolved.getIsOnline || !resolved.storage) {
+    throw new Error("BackgroundSync adapters are required outside browser environments")
+  }
+
+  return resolved as BackgroundSyncAdapters
+}
+
 export class BackgroundSync {
-  private static instance: BackgroundSync
+  private static instance: BackgroundSync | undefined
   private syncQueue: SyncData[] = []
-  private isOnline: boolean = navigator.onLine
+  private isOnline = true
   private syncInProgress = false
   private statusListeners: ((status: SyncStatus) => void)[] = []
   private lastSync: number = Date.now()
   private syncInterval: NodeJS.Timeout | null = null
+  private readonly adapters: BackgroundSyncAdapters
   private readonly onlineListener = () => {
     this.isOnline = true
     this.processSyncQueue()
@@ -32,12 +79,14 @@ export class BackgroundSync {
     this.notifyStatusListeners()
   }
   private readonly visibilityChangeListener = () => {
-    if (!document.hidden && this.isOnline) {
+    if (!this.adapters.documentTarget.hidden && this.isOnline) {
       this.processSyncQueue()
     }
   }
 
-  private constructor() {
+  public constructor(adapters: Partial<BackgroundSyncAdapters> = {}) {
+    this.adapters = resolveAdapters(adapters)
+    this.isOnline = this.adapters.getIsOnline()
     this.initializeEventListeners()
     this.startPeriodicSync()
     this.loadQueueFromStorage()
@@ -50,10 +99,15 @@ export class BackgroundSync {
     return BackgroundSync.instance
   }
 
+  public static resetInstanceForTests(): void {
+    BackgroundSync.instance?.destroy()
+    BackgroundSync.instance = undefined
+  }
+
   private initializeEventListeners(): void {
-    window.addEventListener("online", this.onlineListener)
-    window.addEventListener("offline", this.offlineListener)
-    document.addEventListener("visibilitychange", this.visibilityChangeListener)
+    this.adapters.windowTarget.addEventListener("online", this.onlineListener)
+    this.adapters.windowTarget.addEventListener("offline", this.offlineListener)
+    this.adapters.documentTarget.addEventListener("visibilitychange", this.visibilityChangeListener)
   }
 
   private startPeriodicSync(): void {
@@ -141,7 +195,7 @@ export class BackgroundSync {
     console.warn("Sync conflict detected, using server data:", { localData, serverData })
 
     // Emit conflict event for UI to handle
-    window.dispatchEvent(
+    this.adapters.windowTarget.dispatchEvent?.(
       new CustomEvent("sync-conflict", {
         detail: { localData, serverData },
       }),
@@ -150,7 +204,7 @@ export class BackgroundSync {
 
   private saveQueueToStorage(): void {
     try {
-      localStorage.setItem("sync-queue", JSON.stringify(this.syncQueue))
+      this.adapters.storage.setItem("sync-queue", JSON.stringify(this.syncQueue))
     } catch (error) {
       console.error("Failed to save sync queue to storage:", error)
     }
@@ -158,7 +212,7 @@ export class BackgroundSync {
 
   private loadQueueFromStorage(): void {
     try {
-      const stored = localStorage.getItem("sync-queue")
+      const stored = this.adapters.storage.getItem("sync-queue")
       if (stored) {
         this.syncQueue = JSON.parse(stored)
       }
@@ -209,8 +263,8 @@ export class BackgroundSync {
     if (this.syncInterval) {
       clearInterval(this.syncInterval)
     }
-    window.removeEventListener("online", this.onlineListener)
-    window.removeEventListener("offline", this.offlineListener)
-    document.removeEventListener("visibilitychange", this.visibilityChangeListener)
+    this.adapters.windowTarget.removeEventListener("online", this.onlineListener)
+    this.adapters.windowTarget.removeEventListener("offline", this.offlineListener)
+    this.adapters.documentTarget.removeEventListener("visibilitychange", this.visibilityChangeListener)
   }
 }
