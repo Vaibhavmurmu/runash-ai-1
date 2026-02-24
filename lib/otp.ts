@@ -1,8 +1,31 @@
 import { neon } from "@neondatabase/serverless"
-import { randomInt } from "crypto"
+import { createHash, randomInt, randomUUID } from "crypto"
+import { logApiEvent } from "./api/logging"
 import { sendEmail } from "./email"
 
 const sql = neon(process.env.DATABASE_URL!)
+
+type OtpLogLevel = "info" | "warn" | "error"
+
+function hashIdentifier(identifier: string): string {
+  return createHash("sha256").update(identifier).digest("hex").slice(0, 16)
+}
+
+function logOtpEvent(
+  level: OtpLogLevel,
+  event: string,
+  requestId: string,
+  details: Record<string, unknown>,
+  error?: unknown,
+) {
+  logApiEvent(level, event, {
+    requestId,
+    route: "internal/otp",
+    method: "INTERNAL",
+    details,
+    error,
+  })
+}
 
 export interface OTPCode {
   id: number
@@ -86,7 +109,7 @@ export async function checkOTPRateLimit(
       attemptsLeft,
     }
   } catch (error) {
-    console.error("Error checking OTP rate limit:", error)
+    logOtpEvent("error", "otp.rate_limit.check_failed", randomUUID(), { outcome: "error", type }, error)
     return { allowed: false, attemptsLeft: 0 }
   }
 }
@@ -99,6 +122,7 @@ export async function createEmailOTP(
   ipAddress?: string,
   userAgent?: string,
 ): Promise<{ success: boolean; message: string; expiresIn?: number }> {
+  const requestId = randomUUID()
   try {
     // Check rate limiting
     const rateLimit = await checkOTPRateLimit(email, "email")
@@ -141,7 +165,13 @@ export async function createEmailOTP(
       expiresIn: 10 * 60, // 10 minutes in seconds
     }
   } catch (error) {
-    console.error("Error creating email OTP:", error)
+    logOtpEvent(
+      "error",
+      "otp.email.create_failed",
+      requestId,
+      { outcome: "error", identifierHash: hashIdentifier(email), purpose, vendor: "email" },
+      error,
+    )
     return { success: false, message: "Failed to create OTP" }
   }
 }
@@ -154,6 +184,7 @@ export async function createSMSOTP(
   ipAddress?: string,
   userAgent?: string,
 ): Promise<{ success: boolean; message: string; expiresIn?: number }> {
+  const requestId = randomUUID()
   try {
     // Check rate limiting
     const rateLimit = await checkOTPRateLimit(phoneNumber, "sms")
@@ -196,7 +227,13 @@ export async function createSMSOTP(
       expiresIn: 5 * 60, // 5 minutes in seconds
     }
   } catch (error) {
-    console.error("Error creating SMS OTP:", error)
+    logOtpEvent(
+      "error",
+      "otp.sms.create_failed",
+      requestId,
+      { outcome: "error", identifierHash: hashIdentifier(phoneNumber), purpose, vendor: "mock-sms" },
+      error,
+    )
     return { success: false, message: "Failed to create OTP" }
   }
 }
@@ -297,13 +334,14 @@ export async function verifyOTPWithClient(
       userId: otpRecord.user_id,
     }
   } catch (error) {
-    console.error("Error verifying OTP:", error)
+    logOtpEvent("error", "otp.verify.failed", randomUUID(), { outcome: "error", type, purpose }, error)
     return { success: false, message: "Failed to verify OTP" }
   }
 }
 
 // Send email OTP
 async function sendEmailOTP(email: string, code: string, purpose: string): Promise<boolean> {
+  const requestId = randomUUID()
   const subject = getEmailSubject(purpose)
   const emailHtml = `
     <!DOCTYPE html>
@@ -353,19 +391,31 @@ async function sendEmailOTP(email: string, code: string, purpose: string): Promi
     })
     return true
   } catch (error) {
-    console.error("Error sending email OTP:", error)
+    logOtpEvent(
+      "error",
+      "otp.email.email_provider.send_failed",
+      requestId,
+      { outcome: "error", identifierHash: hashIdentifier(email), purpose, vendor: "email" },
+      error,
+    )
     return false
   }
 }
 
 // Send SMS OTP (placeholder - integrate with SMS service like Twilio)
 async function sendSMSOTP(phoneNumber: string, code: string, purpose: string): Promise<boolean> {
+  const requestId = randomUUID()
+  const provider = "mock-sms"
   try {
     // TODO: Integrate with SMS service (Twilio, AWS SNS, etc.)
     // For now, we'll log the SMS content
-    const message = `Your ${purpose} verification code is: ${code}. This code expires in 5 minutes. Don't share this code with anyone.`
-
-    console.log(`SMS to ${phoneNumber}: ${message}`)
+    logOtpEvent("info", "otp.sms.mock_sms.send_attempted", requestId, {
+      vendor: provider,
+      outcome: "simulated",
+      purpose,
+      identifierHash: hashIdentifier(phoneNumber),
+      channel: "sms",
+    })
 
     // In production, replace this with actual SMS service integration:
     /*
@@ -381,7 +431,13 @@ async function sendSMSOTP(phoneNumber: string, code: string, purpose: string): P
 
     return true
   } catch (error) {
-    console.error("Error sending SMS OTP:", error)
+    logOtpEvent(
+      "error",
+      "otp.sms.mock_sms.send_failed",
+      requestId,
+      { vendor: provider, outcome: "error", purpose, identifierHash: hashIdentifier(phoneNumber) },
+      error,
+    )
     return false
   }
 }
@@ -414,7 +470,7 @@ export async function cleanupExpiredOTPs(): Promise<void> {
       WHERE blocked_until IS NOT NULL AND blocked_until < NOW()
     `
   } catch (error) {
-    console.error("Error cleaning up expired OTPs:", error)
+    logOtpEvent("error", "otp.cleanup.failed", randomUUID(), { outcome: "error" }, error)
   }
 }
 
@@ -435,7 +491,13 @@ export async function addMobileVerification(
     `
     return true
   } catch (error) {
-    console.error("Error adding mobile verification:", error)
+    logOtpEvent(
+      "error",
+      "otp.mobile_verification.add_failed",
+      randomUUID(),
+      { outcome: "error", identifierHash: hashIdentifier(phoneNumber) },
+      error,
+    )
     return false
   }
 }
@@ -450,7 +512,13 @@ export async function verifyMobileNumber(userId: number, phoneNumber: string): P
     `
     return result.length > 0
   } catch (error) {
-    console.error("Error verifying mobile number:", error)
+    logOtpEvent(
+      "error",
+      "otp.mobile_verification.verify_failed",
+      randomUUID(),
+      { outcome: "error", identifierHash: hashIdentifier(phoneNumber) },
+      error,
+    )
     return false
   }
 }
