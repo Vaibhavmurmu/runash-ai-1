@@ -704,6 +704,33 @@ Payload (all optional):
 - Falls back to in-memory store when KV is unavailable (development convenience only).
 
 
+## Studio Realtime Delivery & Polling Fallback
+
+The Streaming Studio runtime uses a **hybrid read model** for live state consistency:
+
+- **Primary transport:** realtime channel events for low-latency updates (viewer count, health, interaction deltas).
+- **Fallback transport:** polling snapshots for continuity and drift correction.
+
+### Realtime behavior contract
+
+1. Mutation endpoints (`create/start/end`, interactions writes) remain API-driven and authoritative.
+2. Realtime events are treated as non-authoritative deltas unless reconciled with API snapshots.
+3. Clients must tolerate duplicate/reordered events and apply idempotent reducers.
+4. On realtime channel health degradation, clients MUST degrade to polling-only until channel health is restored.
+
+### Incident rollback contract
+
+If production stability is impacted by realtime transport:
+- Disable realtime channel delivery (feature flag/config switch).
+- Keep Studio operational with polling-only reads against existing REST endpoints.
+- Re-enable realtime only after mitigation + canary verification.
+
+### API-level checks (recommended)
+
+- `GET /api/streams/:id/health` returns healthy status during live session.
+- `GET /api/streams/:id/metrics/realtime` returns monotonic/non-negative counters.
+- `GET /api/streams/:id/interactions` snapshot remains queryable while realtime channel is disabled.
+
 ## Dashboard Live Control Visibility Defaults
 
 `/api/dashboard/streams/live-control/:id` now supports `visibility.creatorAge` as the default visibility resolver input:
