@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     recordAuthMetric("auth.suspicious_activity", { endpoint: "reset-password", reason: "error" })
     logApiRouteError(request, "auth.reset_password.failed", error, { errorCode: "AUTH_RESET_PASSWORD_FAILED" })
 
-    if (error instanceof Error && error.message === "Invalid or expired token") {
+    if (error instanceof Error && /invalid|expired|used|token/i.test(error.message)) {
       return NextResponse.json({ message: "Invalid or expired reset token" }, { status: 400 })
     }
 

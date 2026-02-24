@@ -255,34 +255,40 @@ export async function verifyOTPWithClient(
   purpose: string,
   type: "email" | "sms",
 ): Promise<{ success: boolean; message: string; userId?: number }> {
+  const requestId = randomUUID()
   try {
-    // Find the OTP code
-    const otpResult =
-      type === "email"
-        ? await sqlClient`
-            SELECT * FROM otp_codes 
-            WHERE email = ${identifier} 
-              AND code = ${code} 
-              AND purpose = ${purpose} 
-              AND type = ${type}
-              AND is_active = true 
-              AND expires_at > NOW()
-              AND used_at IS NULL
-            ORDER BY created_at DESC 
-            LIMIT 1
-          `
-        : await sqlClient`
-            SELECT * FROM otp_codes 
-            WHERE phone_number = ${identifier} 
-              AND code = ${code} 
-              AND purpose = ${purpose} 
-              AND type = ${type}
-              AND is_active = true 
-              AND expires_at > NOW()
-              AND used_at IS NULL
-            ORDER BY created_at DESC 
-            LIMIT 1
-          `
+    const otpResult = await (type === "email"
+      ? sqlClient`
+          SELECT * FROM otp_codes 
+          WHERE email = ${identifier} 
+            AND code = ${code} 
+            AND purpose = ${purpose} 
+            AND type = ${type}
+            AND is_active = true 
+            AND expires_at > NOW()
+            AND used_at IS NULL
+          ORDER BY created_at DESC 
+          LIMIT 1
+        `
+      : sqlClient`
+          SELECT * FROM otp_codes 
+          WHERE phone_number = ${identifier} 
+            AND code = ${code} 
+            AND purpose = ${purpose} 
+            AND type = ${type}
+            AND is_active = true 
+            AND expires_at > NOW()
+            AND used_at IS NULL
+          ORDER BY created_at DESC 
+          LIMIT 1
+        `)
+
+    logOtpEvent("info", "otp.verify.attempt", requestId, {
+      outcome: otpResult.length > 0 ? "candidate_found" : "candidate_missing",
+      type,
+      purpose,
+      identifierHash: hashIdentifier(identifier),
+    })
 
     if (otpResult.length === 0) {
       return { success: false, message: "Invalid or expired OTP code" }
@@ -328,13 +334,28 @@ export async function verifyOTPWithClient(
       `
     }
 
-    return {
+    const verifyResult = {
       success: true,
       message: "OTP verified successfully",
       userId: otpRecord.user_id,
     }
+
+    logOtpEvent("info", "otp.verify.success", requestId, {
+      outcome: "verified",
+      type,
+      purpose,
+      identifierHash: hashIdentifier(identifier),
+    })
+
+    return verifyResult
   } catch (error) {
-    logOtpEvent("error", "otp.verify.failed", randomUUID(), { outcome: "error", type, purpose }, error)
+    logOtpEvent(
+      "error",
+      "otp.verify.failed",
+      requestId,
+      { outcome: "error", type, purpose, identifierHash: hashIdentifier(identifier) },
+      error,
+    )
     return { success: false, message: "Failed to verify OTP" }
   }
 }
