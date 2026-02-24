@@ -115,6 +115,26 @@ RunAsh AI combines live streaming, AI-assisted creation tooling, seller operatio
 - Seller business configuration is now API-backed (`GET/PUT /api/seller/settings`) for persisted operations.
 - Payout tab is API-backed (`GET /api/seller/payouts`) with settlement summaries and weekly history.
 - Inventory supports inline stock edits and guarded deletes for production workflows.
+- Dashboard navigation now resolves from the shared sidebar navigation config and route guards (`components/dashboard/dashboard-nav-config.ts` + `components/dashboard/dashboard-sidebar.tsx`) instead of legacy per-surface sidebar definitions.
+
+### Dashboard navigation map
+
+Primary dashboard sections and routes:
+
+| Section | Routes |
+| --- | --- |
+| Core | `/dashboard` |
+| Studio | `/stream`, `/schedule`, `/upload`, `/recordings`, `/editor` |
+| Intelligence | `/agents/dashboard`, `/automation`, `/runash-chat` |
+| Operations | `/analytics`, `/alerts`, `/seller/dashboard`, `/ecommerce/dashboard` |
+| Account | `/settings` |
+
+Sub-navigation and active-state behaviors are controlled by path-prefix matching in the shared navigation config to keep highlighting and expansion behavior consistent across dashboard shells.
+
+### Risk and rollback (dashboard navigation)
+
+- **Risk:** route mismatch or stale links can send users to unavailable pages when nav entries and route guards drift.
+- **Rollback:** if mismatches are discovered post-merge, revert to the previous dashboard nav config/sidebar mapping and re-run route validation smoke checks for `/dashboard`, `/seller/dashboard`, `/ecommerce/dashboard`, and `/runash-chat`.
 - RunAsh Chat landing (`/runash-chat`) includes an enhanced mini preview with quick agentic commerce/payment prompts, with session continuity dependent on `GET /api/sessions/recent` and `GET /api/messages/session/:id` being available.
 - RunAsh Chat now applies retry + timeout safeguards for `GET /api/sessions/recent` and `POST /api/sessions`, validates session payload IDs before navigation, and stores prompt/action continuity metadata in localStorage before routing to `/chat`.
 - Profile dropdown on `/runash-chat` now includes compact controls for theme (`system`/`dark`/`light`), language selection (default `English`), and chat panel position (`Left`/`Right`), persisted in localStorage with safe defaults for invalid values.
@@ -214,6 +234,7 @@ npm run test:auth
 - [RunAsh_AI_Pay.md](RunAsh_AI_Pay.md)
 - [RUNASH_PAY_BUSINESS_IMPLEMENTATION.md](RUNASH_PAY_BUSINESS_IMPLEMENTATION.md)
 - [docs/PRODUCTION_READINESS_AND_AGENTIC_PLAN.md](docs/PRODUCTION_READINESS_AND_AGENTIC_PLAN.md)
+- [docs/DASHBOARD_NAVIGATION_ARCHITECTURE.md](docs/DASHBOARD_NAVIGATION_ARCHITECTURE.md)
 
 ## Contribution
 1. Create a focused branch.
