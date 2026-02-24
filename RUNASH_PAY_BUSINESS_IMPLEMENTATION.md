@@ -37,3 +37,9 @@ This document is limited to payment/business implementation policy. Generic cont
 - Payment system detail: `RunAsh_AI_Pay.md`
 - Auth policy and migration details: `RUNASH-AUTH.md`
 - Security requirements: `SECURITY.md`
+
+## 2026-02 auth tenant-boundary compatibility note
+
+- No payment contract field names or API signatures were changed in this update.
+- Tenant-boundary enforcement for shared auth/admin user routes was hardened to prevent cross-tenant profile and admin-user access.
+- Legacy user rows without `sso_organization_id` remain temporarily readable in-tenant and are migrated on first successful tenant-scoped mutation.
