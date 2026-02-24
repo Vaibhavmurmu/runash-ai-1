@@ -268,6 +268,7 @@ export function EnhancedDashboard() {
   const [user, setUser] = useState<any | null>(null)
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null)
   const [recentRecordingEditHref, setRecentRecordingEditHref] = useState<string>("/recordings")
+  const [latestSummary, setLatestSummary] = useState<{ title: string; streamId: string | null; unresolvedAlerts: unknown[]; keyMetrics: Record<string, unknown> } | null>(null)
 
   // Dialog state for actions
   const [startDialogOpen, setStartDialogOpen] = useState(false)
@@ -322,12 +323,13 @@ export function EnhancedDashboard() {
         setUser(null)
       }
 
-      const [statsRes, streamsData, activityRes, achievementsRes, goalsRes] = await Promise.all([
+      const [statsRes, streamsData, activityRes, achievementsRes, goalsRes, summaryData] = await Promise.all([
         fetch("/api/dashboard/stats"),
         dashboardStreamingService.fetchRecentStreams(12),
         fetch("/api/dashboard/activity?limit=10"),
         fetch("/api/dashboard/achievements"),
         fetch("/api/dashboard/goals"),
+        dashboardStreamingService.fetchLatestCompletedStreamSummary(),
       ])
 
       if (statsRes.ok) {
@@ -338,6 +340,7 @@ export function EnhancedDashboard() {
       }
 
       setRecentStreams(Array.isArray(streamsData.streams) ? streamsData.streams : [])
+      setLatestSummary(summaryData.summary)
 
       try {
         const recordings = await RecordingService.getInstance().getUserRecordings()
@@ -502,7 +505,8 @@ export function EnhancedDashboard() {
 
   const handleOpenPreviousLiveSessionContext = async () => {
     try {
-      const targetId = await dashboardStreamingService.openPreviousLiveSessionContext()
+      const restore = await dashboardStreamingService.restoreLastStreamConfigurationDraft()
+      const targetId = restore.draft?.streamId ?? (await dashboardStreamingService.openPreviousLiveSessionContext())
 
       if (!targetId) {
         toast({ title: "Resume unavailable", description: "No recent or scheduled stream configuration found." })
@@ -530,17 +534,19 @@ export function EnhancedDashboard() {
   }
 
   const handleCreateHighlightsFromLastStream = async () => {
-    if (!lastLiveStream?.id) {
+    if (!latestSummary?.streamId && !lastLiveStream?.id) {
       toast({ title: "Highlights unavailable", description: "No completed live stream found." })
       return
     }
 
     try {
-      const recordings = await RecordingService.getInstance().getUserRecordings(lastLiveStream.id)
-      const linkedRecording = recordings.find((recording) => recording.streamId === lastLiveStream.id) ?? recordings[0]
+      await dashboardStreamingService.createFollowUpFromPreviousLiveSession()
+      const streamId = latestSummary?.streamId ?? lastLiveStream?.id
+      const recordings = await RecordingService.getInstance().getUserRecordings(streamId)
+      const linkedRecording = recordings.find((recording) => recording.streamId === streamId) ?? recordings[0]
 
       if (!linkedRecording?.id) {
-        toast({ title: "Highlights unavailable", description: "No recording found for your latest stream." })
+        toast({ title: "Follow-up created", description: "Highlight job queued from your previous live session." })
         return
       }
 
@@ -826,9 +832,9 @@ export function EnhancedDashboard() {
             <CardTitle className="text-base">Last live summary</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <p className="font-medium text-foreground line-clamp-1">{lastLiveStream?.title ?? "No live session yet"}</p>
-            <p>Viewers: {lastLiveStream?.viewers?.toLocaleString?.() ?? 0}</p>
-            <p>Duration: {lastLiveStream?.duration ?? "—"}</p>
+            <p className="font-medium text-foreground line-clamp-1">{latestSummary?.title ?? lastLiveStream?.title ?? "No live session yet"}</p>
+            <p>Viewers: {Number((latestSummary?.keyMetrics?.peakViewers as number | undefined) ?? lastLiveStream?.viewers ?? 0).toLocaleString()}</p>
+            <p>Alerts: {latestSummary?.unresolvedAlerts?.length ?? 0} unresolved</p>
           </CardContent>
         </Card>
 

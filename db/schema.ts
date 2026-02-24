@@ -19,6 +19,11 @@ export const databaseDomainTables = {
     "editor_render_jobs",
   ],
   dashboard: ["dashboard_stream_invites", "model_dialog_runs"],
+  streamingStudio: [
+    "stream_session_snapshots",
+    "stream_follow_up_tasks",
+    "stream_highlight_jobs",
+  ],
   userSettings: ["user_settings", "user_setting_attachments", "user_settings_audit"],
 } as const
 
