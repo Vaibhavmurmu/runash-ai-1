@@ -2,6 +2,12 @@
 
 Last updated: 2026-02
 
+## Admin auth/org operations update (2026-02)
+
+- Added an admin auth/org route inventory with UI coverage mapping at `docs/ADMIN_AUTH_ORG_ROUTE_INVENTORY.md`.
+- Added a dedicated incident + rollback runbook for privileged org/provider/tenant-user changes at `docs/AUTH_ORG_INCIDENT_RUNBOOK.md`.
+- Admin organization lifecycle, provider mapping, and tenant-scoped user operations now require privileged authorization and write to admin audit logs for traceability.
+
 ## Security hardening update (2026-02)
 
 - OAuth account linking now enforces verified identity linking by default at runtime (no permissive fallback toggle).
