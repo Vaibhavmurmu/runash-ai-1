@@ -1,3 +1,5 @@
+import { randomUUID } from "crypto"
+import { logApiEvent } from "./api/logging"
 import { EmailDeliveryTracker } from "./email-delivery"
 import { EmailBounceHandler } from "./email-bounce-handler"
 import { triggerDeliveryStatusEvent } from "./email-realtime"
@@ -137,7 +139,13 @@ export async function sendEmail(options: {
       delivery_id = tracking.delivery_id
       message_id = tracking.message_id
     } catch (error) {
-      console.error("Error creating delivery tracking:", error)
+      logApiEvent("error", "email.delivery_tracking.create_failed", {
+        requestId: randomUUID(),
+        route: "internal/email",
+        method: "INTERNAL",
+        details: { event: "delivery_tracking.create", outcome: "error", vendor: "email" },
+        error,
+      })
     }
   }
 
@@ -221,7 +229,13 @@ export async function sendEmail(options: {
 
     return { success: true, message_id, delivery_id }
   } catch (error) {
-    console.error("Error sending email:", error)
+    logApiEvent("error", "email.send.failed", {
+      requestId: randomUUID(),
+      route: "internal/email",
+      method: "INTERNAL",
+      details: { event: "email.send", outcome: "error", vendor: "email" },
+      error,
+    })
 
     if (message_id) {
       await EmailDeliveryTracker.updateDeliveryStatus(message_id, "failed", {
