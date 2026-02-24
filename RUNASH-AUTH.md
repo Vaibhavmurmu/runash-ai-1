@@ -63,6 +63,19 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 - Model dialog requests are zod-validated (`modelId`, `mode`, `input`, optional `sourceModule/context`) and return a normalized envelope `{ requestId, status, output, error }`.
 - Model dialog runs are persisted in `model_dialog_runs` and exposed through `GET /api/dashboard/model-dialog/recent`, so recent run history survives dashboard refresh/navigation while remaining scoped to the authenticated user.
 
+## Tenant-aware user/account query guard update (2026-02)
+
+- Added a tenant guard utility in `lib/api/route-auth.ts` that resolves `organizationId` from authenticated session (`ssoOrganization`) and produces SQL predicates for tenantized tables.
+- User/account mutable routes now enforce tenant boundary predicates against `users.sso_organization_id` in addition to user-id checks (including `app/api/users/[id]/profile` and `app/api/auth/account`).
+- Compatibility mode is enabled for migration safety: when a session has an organization, predicates allow rows with `NULL` organization (`organization_id IS NULL` equivalent for this schema) to preserve access to legacy records during backfill.
+
+### Tenant migration compatibility + rollback notes
+
+1. **Backfill window:** keep guard compatibility mode (`org = sessionOrg OR org IS NULL`) while tenant backfill migrates legacy null-org rows.
+2. **Cutover:** once null-org user/account rows are backfilled, switch to strict tenant mode (`org = sessionOrg`) by disabling legacy-null fallback in guard call-sites.
+3. **Rollback:** if tenant backfill causes access regressions, temporarily restore compatibility mode and re-run targeted backfill/verification before re-enabling strict mode.
+4. **Safety constraints:** do not broaden predicates beyond same-session tenant scope; do not log tenant/auth identifiers beyond existing redaction policy.
+
 ## OpenAPI + Scalar auth docs update (2026-02)
 
 - Added generated OpenAPI spec output for auth routes at `docs/openapi/auth.openapi.json`.

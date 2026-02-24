@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server"
 
 import { respondError } from "@/lib/api/envelope"
 import { getServerAuthSession } from "@/lib/auth/session"
+import type { ServerAuthSession } from "@/lib/auth/session"
 import { RBACManager } from "@/lib/rbac"
 
 type AuthzOptions = {
@@ -12,6 +13,11 @@ type AuthzOptions = {
 type RouteSession = {
   id: string
   role?: string | null
+  organizationId?: number | null
+}
+
+type TenantGuardOptions = {
+  allowLegacyNullOrganization?: boolean
 }
 
 const ADMIN_ROLES = new Set(["admin", "super_admin"])
@@ -64,7 +70,44 @@ export async function authorizeRoute(
     }
   }
 
-  return { ok: true, sessionUser: { id: sessionUser.id, role: sessionUser.role } }
+  return {
+    ok: true,
+    sessionUser: {
+      id: sessionUser.id,
+      role: sessionUser.role,
+      organizationId: sessionUser.ssoOrganization ?? null,
+    },
+  }
+}
+
+export function resolveSessionOrganizationId(session: ServerAuthSession | null | undefined): number | null {
+  return session?.user?.ssoOrganization ?? null
+}
+
+export function buildTenantScopePredicate(
+  columnName: string,
+  sessionOrganizationId: number | null | undefined,
+  parameterIndex: number,
+  options: TenantGuardOptions = {},
+): { predicate: string; values: number[] } {
+  const allowLegacyNullOrganization = options.allowLegacyNullOrganization ?? true
+
+  if (!sessionOrganizationId) {
+    return { predicate: `${columnName} IS NULL`, values: [] }
+  }
+
+  const organizationParam = `$${parameterIndex}`
+  if (allowLegacyNullOrganization) {
+    return {
+      predicate: `(${columnName} = ${organizationParam} OR ${columnName} IS NULL)`,
+      values: [sessionOrganizationId],
+    }
+  }
+
+  return {
+    predicate: `${columnName} = ${organizationParam}`,
+    values: [sessionOrganizationId],
+  }
 }
 
 export function resolveScopedUserId(request: NextRequest, sessionUser: RouteSession, explicitUserId?: unknown): string | null {
