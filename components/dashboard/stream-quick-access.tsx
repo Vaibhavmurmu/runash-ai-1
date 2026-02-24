@@ -20,31 +20,8 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { toast } from "@/components/ui/use-toast"
 import { RecordingService } from "@/lib/recording-service"
-import type {
-  DashboardRecentStream,
-  DashboardRecentStreamsResponse,
-  DashboardScheduledStream,
-  DashboardScheduledStreamsResponse,
-  IntegrationKeyResponse,
-  ScheduleStreamResponse,
-  StartStreamResponse,
-} from "@/lib/types/dashboard-streams"
-
-type ErrorEnvelope = {
-  error?: {
-    code?: string
-    message?: string
-  }
-}
-
-async function getSafeErrorMessage(response: Response, fallback: string) {
-  try {
-    const payload = (await response.json()) as ErrorEnvelope
-    return payload.error?.message || fallback
-  } catch {
-    return fallback
-  }
-}
+import { dashboardStreamingService } from "@/lib/streaming-service"
+import type { DashboardRecentStream, DashboardScheduledStream } from "@/lib/types/dashboard-streams"
 
 const getCanonicalStreamUrl = (id: string, url?: string) => url || `/stream/${id}`
 
@@ -85,16 +62,10 @@ export function StreamQuickAccess() {
     async function fetchStreams() {
       setLoading(true)
       try {
-        const [recentRes, scheduledRes] = await Promise.all([
-          fetch("/api/dashboard/streams/recent"),
-          fetch("/api/dashboard/streams/scheduled"),
+        const [recentJson, scheduledJson] = await Promise.all([
+          dashboardStreamingService.fetchRecentStreams(),
+          dashboardStreamingService.fetchScheduledStreams(),
         ])
-
-        if (!recentRes.ok) throw new Error(await getSafeErrorMessage(recentRes, "Failed to fetch recent streams"))
-        if (!scheduledRes.ok) throw new Error(await getSafeErrorMessage(scheduledRes, "Failed to fetch scheduled streams"))
-
-        const recentJson = (await recentRes.json()) as DashboardRecentStreamsResponse
-        const scheduledJson = (await scheduledRes.json()) as DashboardScheduledStreamsResponse
 
         setRecentStreams(Array.isArray(recentJson.streams) ? recentJson.streams : [])
         setScheduledStreams(Array.isArray(scheduledJson.streams) ? scheduledJson.streams : [])
@@ -125,17 +96,7 @@ export function StreamQuickAccess() {
 
     try {
       setLoading(true)
-      const res = await fetch("/api/dashboard/streams/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: streamTitle, category: streamCategory }),
-      })
-
-      if (!res.ok) {
-        throw new Error(await getSafeErrorMessage(res, "Failed to start stream"))
-      }
-
-      const data = (await res.json()) as StartStreamResponse
+      const data = await dashboardStreamingService.startStream({ title: streamTitle, category: streamCategory })
       toast({
         title: "Stream Started",
         description: `Your stream "${streamTitle}" is now live.`,
@@ -174,21 +135,11 @@ export function StreamQuickAccess() {
 
     try {
       setLoading(true)
-      const res = await fetch("/api/dashboard/streams/schedule", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: scheduleTitle,
-          category: scheduleCategory,
-          startsAt: scheduleDateTime,
-        }),
+      const newScheduled = await dashboardStreamingService.scheduleStream({
+        title: scheduleTitle,
+        category: scheduleCategory,
+        startsAt: scheduleDateTime,
       })
-
-      if (!res.ok) {
-        throw new Error(await getSafeErrorMessage(res, "Failed to schedule stream"))
-      }
-
-      const newScheduled = (await res.json()) as ScheduleStreamResponse
       toast({ title: "Scheduled", description: `${newScheduled.title} scheduled for ${newScheduled.startsAt}` })
       setScheduledStreams((s) => [newScheduled, ...s])
       setScheduleTitle("")
@@ -201,7 +152,7 @@ export function StreamQuickAccess() {
     }
   }
 
-  const handleInvite = async () => {
+  const handleInviteCollaborator = async () => {
     if (!inviteEmail || !inviteStreamId) {
       toast({ title: "Missing Data", description: "Select a stream and provide an email." })
       return
@@ -209,15 +160,7 @@ export function StreamQuickAccess() {
 
     try {
       setLoading(true)
-      const res = await fetch("/api/dashboard/streams/invite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ streamId: inviteStreamId, email: inviteEmail }),
-      })
-
-      if (!res.ok) {
-        throw new Error(await getSafeErrorMessage(res, "Failed to send invite"))
-      }
+      await dashboardStreamingService.inviteCollaborator({ streamId: inviteStreamId, email: inviteEmail })
 
       toast({ title: "Invite Sent", description: `Invitation sent to ${inviteEmail}` })
       setInviteEmail("")
@@ -230,16 +173,10 @@ export function StreamQuickAccess() {
     }
   }
 
-  const handleGetIntegration = async () => {
+  const handleFetchIntegrationKey = async () => {
     try {
       setIntegrating(true)
-      const res = await fetch("/api/dashboard/streams/integration-key", {
-        method: "POST",
-      })
-      if (!res.ok) {
-        throw new Error(await getSafeErrorMessage(res, "Failed to get integration"))
-      }
-      const data = (await res.json()) as IntegrationKeyResponse
+      const data = await dashboardStreamingService.fetchIntegrationKey()
       setIntegrationKey(data.rtmpKey)
       toast({ title: "Integration Ready", description: "Received RTMP key (demo)." })
     } catch (err: unknown) {
@@ -252,23 +189,16 @@ export function StreamQuickAccess() {
 
   const lastLiveStream = recentStreams.find((stream) => stream.status === "live" || stream.status === "ended")
 
-  const handleResumeConfiguration = async () => {
+  const handleOpenPreviousLiveSessionContext = async () => {
     try {
-      const [recentRes, scheduledRes] = await Promise.all([
-        fetch("/api/dashboard/streams/recent?limit=1"),
-        fetch("/api/dashboard/streams/scheduled"),
-      ])
+      const targetId = await dashboardStreamingService.openPreviousLiveSessionContext()
 
-      const recentData = recentRes.ok ? ((await recentRes.json()) as DashboardRecentStreamsResponse) : { streams: [] }
-      const scheduledData = scheduledRes.ok ? ((await scheduledRes.json()) as DashboardScheduledStreamsResponse) : { streams: [] }
-      const target = scheduledData.streams[0] ?? recentData.streams[0]
-
-      if (!target?.id) {
+      if (!targetId) {
         toast({ title: "Resume unavailable", description: "No recent or scheduled stream configuration found." })
         return
       }
 
-      router.push(`/stream?resumeStreamId=${encodeURIComponent(target.id)}`)
+      router.push(`/stream?resumeStreamId=${encodeURIComponent(targetId)}`)
     } catch {
       toast({ title: "Resume unavailable", description: "Unable to load stream configuration." })
     }
@@ -282,8 +212,9 @@ export function StreamQuickAccess() {
       return
     }
 
-    const res = await fetch(`/api/dashboard/streams/${streamId}`)
-    if (!res.ok) {
+    try {
+      await dashboardStreamingService.fetchStreamDetails(streamId)
+    } catch {
       toast({ title: "Analytics unavailable", description: "Unable to load stream details." })
       return
     }
@@ -339,7 +270,7 @@ export function StreamQuickAccess() {
               <CardTitle className="text-sm">Resume configuration</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <Button variant="outline" className="w-full" onClick={handleResumeConfiguration}>
+              <Button variant="outline" className="w-full" onClick={handleOpenPreviousLiveSessionContext}>
                 <RotateCcw className="mr-2 h-4 w-4" />
                 Resume setup
               </Button>
@@ -486,7 +417,7 @@ export function StreamQuickAccess() {
               ))}
             </select>
             <Input placeholder="collaborator@example.com" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} />
-            <Button onClick={handleInvite} disabled={loading}>
+            <Button onClick={handleInviteCollaborator} disabled={loading}>
               Send Invite
             </Button>
           </div>
@@ -578,7 +509,7 @@ export function StreamQuickAccess() {
           <Button variant="outline" className="w-full" onClick={() => router.push("/schedule")}>
             View All Streams
           </Button>
-          <Button variant="ghost" className="w-full" onClick={handleGetIntegration} disabled={integrating}>
+          <Button variant="ghost" className="w-full" onClick={handleFetchIntegrationKey} disabled={integrating}>
             {integrationKey ? "Integration Ready" : "Get Integration"}
           </Button>
         </div>

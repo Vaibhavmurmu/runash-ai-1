@@ -3,7 +3,6 @@ import {
   Flame,
   Bell,
   Bot,
-  CalendarDays,
   CircleUserRound,
   Clapperboard,
   CreditCard,
@@ -59,10 +58,24 @@ export interface DashboardQuickAction {
   href: string
 }
 
+export type StreamingStudioActionId =
+  | "start-stream"
+  | "schedule-stream"
+  | "invite-collaborator"
+  | "fetch-integration-key"
+  | "open-previous-live-session-context"
+
+export interface StreamingStudioEntry {
+  label: string
+  href: string
+  actionIds: StreamingStudioActionId[]
+}
+
 export interface DashboardNavigationConfig {
   items: DashboardNavItem[]
   quickLinkGroups: DashboardQuickLinkGroup[]
   quickActions: DashboardQuickAction[]
+  streamingStudioEntry: StreamingStudioEntry
 }
 
 export interface DashboardNavContext {
@@ -83,7 +96,7 @@ export const dashboardNavItems: DashboardNavItem[] = [
     activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard"),
   },
   {
-    label: "Go Live",
+    label: "Streaming Studio",
     href: "/stream",
     icon: Radio,
     section: "studio",
@@ -93,13 +106,6 @@ export const dashboardNavItems: DashboardNavItem[] = [
       quickActionIcon: Flame,
     },
     activeMatch: (pathname) => matchesPathPrefix(pathname, "/stream"),
-  },
-  {
-    label: "Schedule",
-    href: "/schedule",
-    icon: CalendarDays,
-    section: "studio",
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/schedule"),
   },
   {
     label: "Analytics",
@@ -218,7 +224,7 @@ export const dashboardQuickLinkGroups: DashboardQuickLinkGroup[] = [
   {
     label: "Creator",
     icon: Clapperboard,
-    items: dashboardNavItems.filter((item) => ["Go Live", "Schedule", "Upload", "Recordings", "Editor"].includes(item.label)),
+    items: dashboardNavItems.filter((item) => ["Streaming Studio", "Upload", "Recordings", "Editor"].includes(item.label)),
   },
   {
     label: "Ops",
@@ -247,6 +253,17 @@ export const dashboardNavigationConfig: DashboardNavigationConfig = {
   items: dashboardNavItems,
   quickLinkGroups: dashboardQuickLinkGroups,
   quickActions: dashboardQuickActions,
+  streamingStudioEntry: {
+    label: "Streaming Studio",
+    href: "/stream",
+    actionIds: [
+      "start-stream",
+      "schedule-stream",
+      "invite-collaborator",
+      "fetch-integration-key",
+      "open-previous-live-session-context",
+    ],
+  },
 }
 
 export function getNavItemsBySection(section: DashboardNavSection) {
