@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { EmailBounceHandler } from "@/lib/email-bounce-handler"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { FilterValidationError, normalizePagination, parseOptionalBoolean, parseOptionalInteger } from "@/lib/email-filter-utils"
+import { getEmailProviderDiagnostics } from "@/lib/email-provider"
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdminAuthorization(request, {
@@ -28,6 +29,7 @@ export async function GET(request: NextRequest) {
       data: result.suppressions,
       total: result.total,
       pagination: { limit, offset, hasMore: offset + limit < result.total },
+      debug: { provider: getEmailProviderDiagnostics() },
     })
   } catch (error) {
     if (error instanceof FilterValidationError) {

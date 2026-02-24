@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { getWebhookDiagnostics } from "@/lib/email-webhooks/store"
+import { getEmailProviderDiagnostics } from "@/lib/email-provider"
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdminAuthorization(request, {
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       ...diagnostics,
+      debug: { provider: getEmailProviderDiagnostics() },
     })
   } catch (error) {
     console.error("Error fetching email webhook diagnostics:", error)

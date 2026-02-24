@@ -1,6 +1,6 @@
 import { neon } from "@neondatabase/serverless"
 import { createHash, randomBytes } from "crypto"
-import { sendEmail } from "./email"
+import { sendAuthEmail } from "./email"
 import { logApiEvent } from "./api/logging"
 
 const sql = neon(process.env.DATABASE_URL!)
@@ -170,7 +170,7 @@ export async function sendMagicLink(email: string, token: string, userName?: str
   `
 
   try {
-    await sendEmail({
+    await sendAuthEmail({
       to: email,
       subject: "Your Magic Link - Sign in instantly",
       html: emailHtml,
