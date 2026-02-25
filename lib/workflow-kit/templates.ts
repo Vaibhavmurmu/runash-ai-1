@@ -124,6 +124,91 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       connections: [{ id: "c1", sourceNodeId: "n1", sourcePortId: "event-out", targetNodeId: "n2", targetPortId: "event-in" }],
     },
   },
+
+  {
+    id: "template-payment-succeeded-fulfillment",
+    name: "Payment Succeeded Fulfillment",
+    category: "live-commerce",
+    description: "On successful payment, send receipt and unlock paid entitlement.",
+    rating: 4.9,
+    uses: 188,
+    graph: {
+      name: "Payment Succeeded Fulfillment",
+      trigger: { type: "webhook_event", webhookEventType: "payment_succeeded" },
+      nodes: [
+        { id: "n1", type: "payment.webhook_event_trigger", name: "Payment Succeeded Trigger", config: { eventType: "payment_succeeded" }, position: { x: 80, y: 120 } },
+        { id: "n2", type: "payment.send_receipt", name: "Send Receipt", config: { templateId: "payment-receipt", queue: "automation" }, position: { x: 360, y: 80 } },
+        {
+          id: "n3",
+          type: "payment.unlock_feature_entitlement",
+          name: "Unlock Entitlement",
+          config: { featureKey: "premium_access" },
+          position: { x: 360, y: 180 },
+        },
+      ],
+      connections: [
+        { id: "c1", sourceNodeId: "n1", sourcePortId: "event-out", targetNodeId: "n2", targetPortId: "event-in" },
+        { id: "c2", sourceNodeId: "n1", sourcePortId: "event-out", targetNodeId: "n3", targetPortId: "event-in" },
+      ],
+    },
+  },
+  {
+    id: "template-payment-failed-support",
+    name: "Payment Failure Escalation",
+    category: "live-commerce",
+    description: "On failed payment, notify support for rapid intervention.",
+    rating: 4.8,
+    uses: 142,
+    graph: {
+      name: "Payment Failure Escalation",
+      trigger: { type: "webhook_event", webhookEventType: "payment_failed" },
+      nodes: [
+        { id: "n1", type: "payment.webhook_event_trigger", name: "Payment Failed Trigger", config: { eventType: "payment_failed" }, position: { x: 80, y: 140 } },
+        {
+          id: "n2",
+          type: "payment.notify_support",
+          name: "Notify Support",
+          config: { severity: "high", destination: "support-queue", queue: "automation" },
+          position: { x: 360, y: 140 },
+        },
+      ],
+      connections: [{ id: "c1", sourceNodeId: "n1", sourcePortId: "event-out", targetNodeId: "n2", targetPortId: "event-in" }],
+    },
+  },
+  {
+    id: "template-invoice-overdue-reminder",
+    name: "Invoice Overdue Reminder",
+    category: "live-commerce",
+    description: "Queue retry reminders when invoice passes due date.",
+    rating: 4.7,
+    uses: 119,
+    graph: {
+      name: "Invoice Overdue Reminder",
+      trigger: { type: "webhook_event", webhookEventType: "invoice_overdue" },
+      nodes: [
+        { id: "n1", type: "payment.webhook_event_trigger", name: "Invoice Overdue Trigger", config: { eventType: "invoice_overdue" }, position: { x: 80, y: 160 } },
+        { id: "n2", type: "payment.retry_reminder", name: "Queue Retry Reminder", config: { delayMinutes: 120, queue: "automation" }, position: { x: 360, y: 160 } },
+      ],
+      connections: [{ id: "c1", sourceNodeId: "n1", sourcePortId: "event-out", targetNodeId: "n2", targetPortId: "event-in" }],
+    },
+  },
+  {
+    id: "template-checkout-abandoned-recovery",
+    name: "Checkout Abandoned Recovery",
+    category: "live-commerce",
+    description: "Recover abandoned checkout with queued retry reminder.",
+    rating: 4.7,
+    uses: 126,
+    graph: {
+      name: "Checkout Abandoned Recovery",
+      trigger: { type: "webhook_event", webhookEventType: "checkout_abandoned" },
+      nodes: [
+        { id: "n1", type: "payment.webhook_event_trigger", name: "Checkout Abandoned Trigger", config: { eventType: "checkout_abandoned" }, position: { x: 80, y: 180 } },
+        { id: "n2", type: "payment.retry_reminder", name: "Queue Checkout Reminder", config: { delayMinutes: 45, queue: "automation" }, position: { x: 360, y: 180 } },
+      ],
+      connections: [{ id: "c1", sourceNodeId: "n1", sourcePortId: "event-out", targetNodeId: "n2", targetPortId: "event-in" }],
+    },
+  },
 ]
 
 export function templateToWorkflow(templateId: string) {
