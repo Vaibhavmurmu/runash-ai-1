@@ -50,6 +50,7 @@ const publicRoutes = [
   "/runash-chat",
   "/chat",
   "/live",
+  "/waitlist",
 ] as const
 
 const publicApiRoutes = [

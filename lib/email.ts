@@ -339,3 +339,29 @@ export async function sendPasswordResetEmail(email: string, name: string, token:
 
   await sendAuthEmail(mailOptions)
 }
+
+export async function sendWaitlistConfirmationEmail(options: { to: string; name?: string }) {
+  const greetingName = options.name?.trim() || "there"
+
+  await sendEmail({
+    to: options.to,
+    subject: "You’re on the RunAsh waitlist",
+    html: `
+      <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
+        <h2 style="color: #333; text-align: center;">Thanks for joining the RunAsh waitlist</h2>
+        <p>Hi ${greetingName},</p>
+        <p>We received your request and added you to our early access waitlist.</p>
+        <p>We’ll reach out with updates as soon as we open new spots.</p>
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #666; font-size: 12px;">
+          If you didn’t request this, you can ignore this message.
+        </p>
+      </div>
+    `,
+    text: `Hi ${greetingName},\n\nThanks for joining the RunAsh waitlist. We received your request and will contact you when new spots are available.`,
+    headers: {
+      "X-Email-Category": "waitlist",
+    },
+    track_delivery: true,
+  })
+}
