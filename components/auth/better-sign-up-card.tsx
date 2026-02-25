@@ -99,7 +99,8 @@ export function BetterSignUpCard() {
                 return
               }
 
-              toast.success(payload?.message || "Account created")
+              const isVerificationPending = payload?.user?.emailVerified === false || /verify your account/i.test(payload?.message || "")
+              toast.success(isVerificationPending ? "Check your email to verify your account" : payload?.message || "Account created")
               router.push("/login")
             } catch (error) {
               setError("Unable to create account")

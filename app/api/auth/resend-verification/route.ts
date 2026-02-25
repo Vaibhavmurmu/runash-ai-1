@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { generateEmailVerificationToken } from "@/lib/auth-utils"
-import { sendVerificationEmail } from "@/lib/email"
+import { auth } from "@/lib/auth"
 import { rateLimit } from "@/lib/rate-limit"
 import { neon } from "@neondatabase/serverless"
 import { logApiRouteError } from "@/lib/api/logging"
@@ -36,9 +35,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Email is already verified" }, { status: 400 })
     }
 
-    // Generate new verification token
-    const verificationToken = await generateEmailVerificationToken(user.id)
-    await sendVerificationEmail(email, user.name, verificationToken)
+    await auth.api.sendVerificationEmail({
+      headers: request.headers,
+      body: {
+        email,
+        callbackURL: process.env.BETTER_AUTH_EMAIL_VERIFICATION_CALLBACK_URL ?? "/login?emailVerified=1",
+      },
+    })
 
     return NextResponse.json({
       message: "If an account with that email exists, we've sent a verification link.",
