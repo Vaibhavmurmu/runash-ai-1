@@ -19,9 +19,10 @@ interface FeedbackModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSubmitted?: (payload: { score: number; reason: string }) => void
+  restoreFocusTo?: HTMLElement | null
 }
 
-export function FeedbackModal({ open, onOpenChange, onSubmitted }: FeedbackModalProps) {
+export function FeedbackModal({ open, onOpenChange, onSubmitted, restoreFocusTo }: FeedbackModalProps) {
   const [score, setScore] = useState("5")
   const [reason, setReason] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -82,7 +83,15 @@ export function FeedbackModal({ open, onOpenChange, onSubmitted }: FeedbackModal
         }
       }}
     >
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className="sm:max-w-md"
+        onCloseAutoFocus={(event) => {
+          if (restoreFocusTo) {
+            event.preventDefault()
+            restoreFocusTo.focus()
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MessageSquare className="h-4 w-4" />
@@ -116,7 +125,7 @@ export function FeedbackModal({ open, onOpenChange, onSubmitted }: FeedbackModal
           </div>
 
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          {success ? <p className="text-sm text-emerald-600">{success}</p> : null}
+          {success ? <p className="text-sm text-emerald-700 dark:text-emerald-400">{success}</p> : null}
         </div>
 
         <DialogFooter>
