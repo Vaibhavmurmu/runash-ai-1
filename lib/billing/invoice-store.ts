@@ -23,6 +23,10 @@ export async function ensureInvoiceSupportTables() {
       currency TEXT,
       failure_reason TEXT,
       event_source TEXT NOT NULL,
+      source_event_id TEXT,
+      source_event_created_at TIMESTAMPTZ,
+      checkout_session_id TEXT,
+      dedupe_key TEXT,
       metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
       occurred_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -33,8 +37,36 @@ export async function ensureInvoiceSupportTables() {
     CREATE INDEX IF NOT EXISTS idx_invoice_payment_attempts_invoice ON invoice_payment_attempts(invoice_id, occurred_at DESC)
   `)
 
+
+
   await Database.query(`
     CREATE INDEX IF NOT EXISTS idx_invoice_payment_attempts_provider_ref ON invoice_payment_attempts(provider_reference)
+  `)
+
+  await Database.query(`
+    ALTER TABLE invoice_payment_attempts ADD COLUMN IF NOT EXISTS source_event_id TEXT
+  `)
+
+  await Database.query(`
+    ALTER TABLE invoice_payment_attempts ADD COLUMN IF NOT EXISTS source_event_created_at TIMESTAMPTZ
+  `)
+
+  await Database.query(`
+    ALTER TABLE invoice_payment_attempts ADD COLUMN IF NOT EXISTS checkout_session_id TEXT
+  `)
+
+  await Database.query(`
+    ALTER TABLE invoice_payment_attempts ADD COLUMN IF NOT EXISTS dedupe_key TEXT
+  `)
+
+  await Database.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_invoice_payment_attempts_dedupe_key
+    ON invoice_payment_attempts(dedupe_key)
+  `)
+
+  await Database.query(`
+    CREATE INDEX IF NOT EXISTS idx_invoice_payment_attempts_checkout_session
+    ON invoice_payment_attempts(checkout_session_id, occurred_at DESC)
   `)
 }
 
@@ -45,7 +77,7 @@ export async function syncInvoiceStatusFromAttempts(invoiceId: string | number) 
         SELECT status, amount
         FROM invoice_payment_attempts
         WHERE invoice_id = $1
-        ORDER BY occurred_at DESC NULLS LAST, created_at DESC
+        ORDER BY COALESCE(source_event_created_at, occurred_at, created_at) DESC, created_at DESC
         LIMIT 1
       )
       UPDATE invoices i
