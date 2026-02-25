@@ -1,8 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { getServerAuthSession } from "@/lib/auth/session"
-import { generateEmailVerificationToken } from "@/lib/auth-utils"
-import { sendVerificationEmail } from "@/lib/email"
+import { auth } from "@/lib/auth"
 import { createEmailOTP, createSMSOTP } from "@/lib/otp"
 import { sql } from "@/lib/db"
 
@@ -27,8 +26,13 @@ export async function POST(request: NextRequest) {
   const [user] = await sql`SELECT id, email, name FROM users WHERE id = ${Number.parseInt(session.user.id)}` as Array<{ id: number; email: string; name: string }>
 
   if (parsed.data.type === "email_verification") {
-    const token = await generateEmailVerificationToken(user.id)
-    await sendVerificationEmail(user.email, user.name, token)
+    await auth.api.sendVerificationEmail({
+      headers: request.headers,
+      body: {
+        email: user.email,
+        callbackURL: process.env.BETTER_AUTH_EMAIL_VERIFICATION_CALLBACK_URL ?? "/login?emailVerified=1",
+      },
+    })
     return NextResponse.json({ message: "Verification email sent" })
   }
 

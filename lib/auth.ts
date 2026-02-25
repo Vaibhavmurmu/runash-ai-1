@@ -12,6 +12,7 @@ import { resolveBearerAuthSession } from "@/lib/auth/session-modes"
 
 const baseURL =
   process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
+const emailVerificationCallbackURL = process.env.BETTER_AUTH_EMAIL_VERIFICATION_CALLBACK_URL ?? "/login?emailVerified=1"
 
 const secret = process.env.BETTER_AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
 
@@ -94,6 +95,16 @@ function anonymizeUserId(userId: string) {
   return createHash("sha256").update(userId).digest("hex").slice(0, 12)
 }
 
+function buildEmailVerificationUrl(url: string): string {
+  const verificationUrl = new URL(url, baseURL)
+  verificationUrl.pathname = "/api/auth/verify-email"
+  if (!verificationUrl.searchParams.get("callbackURL")) {
+    verificationUrl.searchParams.set("callbackURL", emailVerificationCallbackURL)
+  }
+
+  return verificationUrl.toString()
+}
+
 function auditAccountLinkEvent(
   event: "account_link_attempt" | "account_link_denied" | "account_link_allowed",
   payload: {
@@ -125,6 +136,45 @@ export const auth = betterAuth({
   secret,
   emailAndPassword: {
     enabled: true,
+    requireEmailVerification: true,
+    autoSignIn: false,
+  },
+  emailVerification: {
+    sendOnSignUp: true,
+    autoSignInAfterVerification: false,
+    sendVerificationEmail: async ({ user, url }) => {
+      const verificationUrl = buildEmailVerificationUrl(url)
+
+      const { sendAuthEmail } = await import("@/lib/email")
+
+      await sendAuthEmail({
+        to: user.email,
+        subject: "Verify your email address",
+        html: `
+          <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
+            <h2 style="color: #333; text-align: center;">Verify Your Email Address</h2>
+            <p>Hi ${user.name || "there"},</p>
+            <p>Thanks for signing up! Please verify your account to continue.</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${verificationUrl}"
+                style="background: linear-gradient(135deg, #ff6b35, #f7931e);
+                      color: white;
+                      padding: 12px 30px;
+                      text-decoration: none;
+                      border-radius: 6px;
+                      display: inline-block;">
+                Verify Email
+              </a>
+            </div>
+            <p>If the button doesn't work, copy and paste this link into your browser:</p>
+            <p style="word-break: break-all; color: #666;">${verificationUrl}</p>
+            <p>This link will expire automatically.</p>
+            <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+            <p style="color: #666; font-size: 12px;">If you didn't create an account, you can safely ignore this email.</p>
+          </div>
+        `,
+      })
+    },
   },
   account: {
     accountLinking: {

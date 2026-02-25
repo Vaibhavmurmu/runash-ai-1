@@ -106,3 +106,39 @@ test("POST /api/auth/register keeps verification-required response contract when
   assert.equal(payload.message, "User created successfully. Please check your email to verify your account.")
   assert.equal(payload.user.emailVerified, false)
 })
+
+test("POST /api/auth/register forwards callbackURL so Better Auth can send verification email", async () => {
+  const request = new Request("http://localhost/api/auth/register", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      name: "Callback URL User",
+      username: "callback-url-user",
+      email: "callback@example.com",
+      password: "Str0ng@Pass",
+    }),
+  })
+
+  let signUpPayload: Record<string, unknown> | null = null
+
+  const response = await handleRegisterRequest(request, {
+    enforceRateLimit: successfulRateLimit as never,
+    applyCaptcha: noCaptchaFailure as never,
+    findExistingUsername: async () => null,
+    signUpEmail: async ({ body }) => {
+      signUpPayload = body
+      return {
+        token: null,
+        user: {
+          id: "u_3",
+          email: "callback@example.com",
+          name: "Callback URL User",
+          emailVerified: false,
+        },
+      }
+    },
+  })
+
+  assert.equal(response.status, 201)
+  assert.equal(signUpPayload?.callbackURL, "/login?emailVerified=1")
+})

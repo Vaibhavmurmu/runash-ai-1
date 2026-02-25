@@ -16,6 +16,8 @@ type RegisterInput = {
   username: string
 }
 
+const emailVerificationCallbackURL = process.env.BETTER_AUTH_EMAIL_VERIFICATION_CALLBACK_URL ?? "/login?emailVerified=1"
+
 type SignUpResponse = {
   token?: string | null
   user?: {
@@ -155,6 +157,7 @@ export async function handleRegister(
         email,
         password,
         name,
+        callbackURL: emailVerificationCallbackURL,
       },
     })
 
