@@ -3,14 +3,16 @@ import { z } from "zod"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 import { getAuthorizedBillingIdentity, requireScopedBillingAccess } from "@/lib/billing-auth"
-import { computeTaxForRegion, persistTaxComputation } from "@/lib/services/tax-service"
-import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
+import { createSignedCheckoutReturnState } from "@/lib/payments/checkout-return-state"
 import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
 import {
   createPaymentRoutingAuditEvent,
   resolveEdgeRoutingPolicy,
   withRouteContextMetadata,
 } from "@/lib/payments/edge-routing-policy"
+import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
+import { computeTaxForRegion, persistTaxComputation } from "@/lib/services/tax-service"
+import { upsertCustomerCheckoutProfile } from "@/services/payment-checkout-profile-service"
 
 const createCheckoutSchema = z
   .object({
@@ -18,6 +20,10 @@ const createCheckoutSchema = z
     mode: z.enum(["payment", "subscription"]).default("subscription"),
     success_url: z.string().url(),
     cancel_url: z.string().url(),
+    redirectUrl: z.string().url().optional(),
+    returnUrlSuccess: z.string().url().optional(),
+    returnUrlPending: z.string().url().optional(),
+    returnUrlFailed: z.string().url().optional(),
     humanConfirmed: z.boolean().optional(),
     mfaVerified: z.boolean().optional(),
     product_tax_code: z.enum(["physical_goods", "digital_services", "professional_services"]).optional(),
@@ -32,6 +38,14 @@ const createCheckoutSchema = z
   })
   .strict()
 
+function appendCallbackParams(url: string, params: Record<string, string>) {
+  const target = new URL(url)
+  for (const [key, value] of Object.entries(params)) {
+    target.searchParams.set(key, value)
+  }
+  return target.toString()
+}
+
 export async function POST(request: NextRequest) {
   const access = await requireScopedBillingAccess("startup")
   if ("response" in access) return access.response
@@ -44,8 +58,20 @@ export async function POST(request: NextRequest) {
       return respondError(request, { code: "INVALID_CHECKOUT_PAYLOAD", message: "Invalid checkout payload" }, { status: 400 })
     }
 
-    const { priceId, mode, success_url, cancel_url, product_tax_code, billing_address, humanConfirmed, mfaVerified } =
-      validation.data
+    const {
+      priceId,
+      mode,
+      success_url,
+      cancel_url,
+      redirectUrl,
+      returnUrlSuccess,
+      returnUrlPending,
+      returnUrlFailed,
+      product_tax_code,
+      billing_address,
+      humanConfirmed,
+      mfaVerified,
+    } = validation.data
 
     if (!process.env.STRIPE_SECRET_KEY) {
       return respondError(request, { code: "STRIPE_NOT_CONFIGURED", message: "Stripe not configured" }, { status: 500 })
@@ -132,10 +158,36 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    const returnBaseUrl = redirectUrl || `${request.nextUrl.origin}/payment-redirect/return`
+    const normalizedReturnSuccess = returnUrlSuccess || success_url
+    const normalizedReturnFailed = returnUrlFailed || cancel_url
+    const normalizedReturnPending = returnUrlPending || appendCallbackParams(returnBaseUrl, { status: "pending" })
+
+    const initialState = createSignedCheckoutReturnState({
+      checkoutSessionId: "{CHECKOUT_SESSION_ID}",
+      customerId: sessionUser.userId,
+      providerTransactionReference: "{CHECKOUT_SESSION_ID}",
+      ttlSeconds: 60 * 30,
+    })
+
+    const stripeSuccessUrl = appendCallbackParams(normalizedReturnSuccess, {
+      state: initialState,
+      provider_ref: "{CHECKOUT_SESSION_ID}",
+      checkout_session_id: "{CHECKOUT_SESSION_ID}",
+      provider: "stripe",
+    })
+    const stripeCancelUrl = appendCallbackParams(normalizedReturnFailed, {
+      state: initialState,
+      provider_ref: "{CHECKOUT_SESSION_ID}",
+      checkout_session_id: "{CHECKOUT_SESSION_ID}",
+      provider: "stripe",
+      status: "failed",
+    })
+
     const session = await stripe.checkout.sessions.create({
       mode,
-      success_url,
-      cancel_url,
+      success_url: stripeSuccessUrl,
+      cancel_url: stripeCancelUrl,
       customer: identity.user.stripe_customer_id || undefined,
       customer_email: sessionUser.email || undefined,
       line_items: [{ price: priceId, quantity: 1 }],
@@ -162,6 +214,42 @@ export async function POST(request: NextRequest) {
       computation: taxComputation,
     })
 
+    const signedState = createSignedCheckoutReturnState({
+      checkoutSessionId: session.id,
+      customerId: sessionUser.userId,
+      providerTransactionReference: session.id,
+    })
+
+    const finalizedReturnUrlSuccess = appendCallbackParams(normalizedReturnSuccess, {
+      state: signedState,
+      provider_ref: session.id,
+      checkout_session_id: session.id,
+      provider: "stripe",
+    })
+    const finalizedReturnUrlPending = appendCallbackParams(normalizedReturnPending, {
+      state: signedState,
+      provider_ref: session.id,
+      checkout_session_id: session.id,
+      provider: "stripe",
+      status: "pending",
+    })
+    const finalizedReturnUrlFailed = appendCallbackParams(normalizedReturnFailed, {
+      state: signedState,
+      provider_ref: session.id,
+      checkout_session_id: session.id,
+      provider: "stripe",
+      status: "failed",
+    })
+
+    await upsertCustomerCheckoutProfile({
+      customerId: sessionUser.userId,
+      redirectUrl: session.url ?? null,
+      returnUrlSuccess: finalizedReturnUrlSuccess,
+      returnUrlPending: finalizedReturnUrlPending,
+      returnUrlFailed: finalizedReturnUrlFailed,
+      providerTransactionReference: session.id,
+    })
+
     await logPrivilegedAction({
       actorUserId: sessionUser.userId,
       action: "billing.checkout.session_created",
@@ -174,11 +262,19 @@ export async function POST(request: NextRequest) {
         validatorDecision,
         requestId: routeAudit.requestId,
         routeDecision: routeAudit.routeDecision,
+        provider: "stripe",
       }),
     })
 
     return respondSuccess(request, {
       url: session.url,
+      redirectUrl: session.url,
+      returnUrlSuccess: finalizedReturnUrlSuccess,
+      returnUrlPending: finalizedReturnUrlPending,
+      returnUrlFailed: finalizedReturnUrlFailed,
+      providerTransactionReference: session.id,
+      provider: "stripe",
+      state: signedState,
       validatorDecision,
       tax: {
         country_code: taxComputation.countryCode,

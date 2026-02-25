@@ -46,3 +46,9 @@ This document is limited to payment/business implementation policy. Generic cont
 - No payment contract field names or API signatures were changed in this update.
 - Tenant-boundary enforcement for shared auth/admin user routes was hardened to prevent cross-tenant profile and admin-user access.
 - Legacy user rows without `sso_organization_id` remain temporarily readable in-tenant and are migrated on first successful tenant-scoped mutation.
+
+## Redirect orchestration rollout (2026-02)
+
+- Checkout orchestration now standardizes provider redirect + return URLs across API and profile surfaces for startup and v1 billing routes.
+- Rollback path: disable callback-based resume and fall back to provider-hosted success/cancel URL handling if signed-state verification fails unexpectedly.
+- Monitoring focus: callback signature failures, reference mismatch rates, and pending->completed transition latency from webhook updates.
