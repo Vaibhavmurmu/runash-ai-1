@@ -49,3 +49,10 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Redirect callbacks must include signed `state` plus provider reference so the callback endpoint can validate integrity before resuming checkout state.
 - Final status resolution order: webhook-backed checkout attempt state first, provider session lookup second (fallback).
 - Callback handlers must never trust query `status` without validating signed state/reference.
+
+## Payment status surfaces and backend resolution
+
+- Dedicated payment status pages exist at `/payment/status/[state]` where `state ∈ {success,error,incomplete,pending,complete}` for explicit status UX states.
+- Status pages resolve from backend payment records using `GET /api/v1/payment/status` (and alias `GET /api/payment/status`), not query-string status text alone.
+- Status resolution validates signed checkout return state/reference, then resolves status via persisted checkout attempts first and provider session lookup second.
+- UI contract for status pages includes transaction summary values, checkout attempt/reference identifiers, and recommended user actions (retry, dashboard return, support, invoice download when available).
