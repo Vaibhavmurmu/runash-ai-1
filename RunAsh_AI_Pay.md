@@ -74,3 +74,11 @@ This document is payment-domain specific. For contributor workflow/process polic
   - recover payment intents from provider event mismatches,
   - expire stale checkout sessions and prevent stuck authorized/created sessions.
 - Risk/rollback: if reconciliation behavior needs rollback, disable scheduled calls to the endpoint and revert to existing manual status updates while preserving the newly added transition metadata columns.
+
+## 2026-02 Webhook + Callback Reliability hardening
+
+- Stripe webhook intake enforces provider signature verification and idempotent event ingestion keyed by provider event id.
+- Webhook replay now reuses the same processing claim path as live events and replays in provider-created order to reduce out-of-order side effects.
+- Payment attempts now persist retry-safe dedupe keys and provider event timestamps in `invoice_payment_attempts`; invoice status synchronization reads the latest ordered attempt state.
+- Internal billing webhook replay/rollback routes additionally accept signed service-to-service calls (`x-runash-timestamp` + `x-runash-signature`) to verify non-session automation callers.
+- Checkout callback/payment resolution now prefers the unified invoice payment-attempt ledger (`invoice_payment_attempts`) before legacy checkout attempt records, keeping UI status surfaces consistent.

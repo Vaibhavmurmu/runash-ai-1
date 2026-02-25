@@ -282,6 +282,37 @@ async function ensureTables() {
     CREATE INDEX IF NOT EXISTS idx_checkout_attempt_results_session_status
       ON checkout_attempt_results(checkout_session_id, attempt_status);
 
+
+    CREATE TABLE IF NOT EXISTS invoice_payment_attempts (
+      id TEXT PRIMARY KEY,
+      invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL,
+      provider_reference TEXT,
+      status TEXT NOT NULL,
+      amount NUMERIC(15,2),
+      currency TEXT,
+      failure_reason TEXT,
+      event_source TEXT NOT NULL,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      occurred_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    ALTER TABLE invoice_payment_attempts
+      ADD COLUMN IF NOT EXISTS source_event_id TEXT;
+    ALTER TABLE invoice_payment_attempts
+      ADD COLUMN IF NOT EXISTS source_event_created_at TIMESTAMPTZ;
+    ALTER TABLE invoice_payment_attempts
+      ADD COLUMN IF NOT EXISTS checkout_session_id TEXT;
+    ALTER TABLE invoice_payment_attempts
+      ADD COLUMN IF NOT EXISTS dedupe_key TEXT;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_invoice_payment_attempts_dedupe_key
+      ON invoice_payment_attempts(dedupe_key);
+
+    CREATE INDEX IF NOT EXISTS idx_invoice_payment_attempts_checkout_session
+      ON invoice_payment_attempts(checkout_session_id, occurred_at DESC);
+
     CREATE TABLE IF NOT EXISTS portal_lifecycle_actions (
       id TEXT PRIMARY KEY,
       customer_id TEXT NOT NULL,
@@ -1067,6 +1098,99 @@ function mapLifecycleAction(row: any): PortalLifecycleActionRecord {
   }
 }
 
+
+
+function mapCheckoutAttemptToInvoiceStatus(status: CheckoutAttemptResultRecord["attemptStatus"]) {
+  if (status === "completed") return "completed"
+  if (status === "failed") return "failed"
+  if (status === "authorized") return "authorized"
+  return "expired"
+}
+
+async function mirrorCheckoutAttemptToInvoicePaymentAttempts(input: {
+  attempt: CheckoutAttemptResultRecord
+  provider: string
+  providerReference: string | null
+  eventSource: string
+}) {
+  const metadata = (input.attempt.metadata ?? {}) as Record<string, unknown>
+  const invoiceReference = typeof metadata.invoiceId === "string" && metadata.invoiceId.length > 0 ? metadata.invoiceId : null
+  if (!invoiceReference) return
+
+  const dedupeKey = `${input.provider}:checkout:${input.attempt.checkoutSessionId}:${input.attempt.id}:${input.attempt.attemptStatus}`
+
+  const inserted = await queryOne<{ invoice_id: number }>(
+    `
+      INSERT INTO invoice_payment_attempts (
+        id, invoice_id, provider, provider_reference, status, amount, currency, failure_reason,
+        event_source, source_event_id, source_event_created_at, checkout_session_id, dedupe_key, metadata, occurred_at, created_at
+      )
+      SELECT $1, i.id, $2, $3, $4, $5, $6, $7, $8, $9, $10::timestamptz, $11, $12, $13::jsonb, $14::timestamptz, NOW()
+      FROM invoices i
+      WHERE i.id::text = $15 OR i.stripe_invoice_id = $15
+      ON CONFLICT (dedupe_key) DO NOTHING
+      RETURNING invoice_id
+    `,
+    [
+      `checkout:${input.attempt.id}`,
+      input.provider,
+      input.providerReference,
+      mapCheckoutAttemptToInvoiceStatus(input.attempt.attemptStatus),
+      typeof metadata.reporting === "object" && metadata.reporting
+        ? Number((metadata.reporting as Record<string, unknown>).grossAmount ?? 0)
+        : null,
+      typeof metadata.reporting === "object" && metadata.reporting && typeof (metadata.reporting as Record<string, unknown>).settlementCurrency === "string"
+        ? String((metadata.reporting as Record<string, unknown>).settlementCurrency)
+        : null,
+      input.attempt.attemptResultMessage,
+      input.eventSource,
+      input.attempt.id,
+      input.attempt.occurredAt,
+      input.attempt.checkoutSessionId,
+      dedupeKey,
+      JSON.stringify({
+        source: input.eventSource,
+        checkoutSessionId: input.attempt.checkoutSessionId,
+        attemptStatus: input.attempt.attemptStatus,
+        ...metadata,
+      }),
+      input.attempt.occurredAt,
+      invoiceReference,
+    ],
+  )
+
+  if (!inserted?.invoice_id) return
+
+  await queryMany(
+    `
+      WITH latest AS (
+        SELECT status, amount
+        FROM invoice_payment_attempts
+        WHERE invoice_id = $1
+        ORDER BY COALESCE(source_event_created_at, occurred_at, created_at) DESC, created_at DESC
+        LIMIT 1
+      )
+      UPDATE invoices i
+      SET status = CASE
+            WHEN latest.status IN ('succeeded', 'paid', 'completed') THEN 'paid'
+            WHEN latest.status IN ('failed', 'payment_failed') THEN CASE WHEN i.due_date IS NOT NULL AND i.due_date < NOW() THEN 'uncollectible' ELSE 'open' END
+            ELSE i.status
+          END,
+          amount_paid = CASE
+            WHEN latest.status IN ('succeeded', 'paid', 'completed') THEN COALESCE(ROUND(latest.amount * 100)::INTEGER, i.amount_paid)
+            ELSE i.amount_paid
+          END,
+          paid_at = CASE
+            WHEN latest.status IN ('succeeded', 'paid', 'completed') THEN COALESCE(i.paid_at, NOW())
+            WHEN latest.status IN ('failed', 'payment_failed') THEN NULL
+            ELSE i.paid_at
+          END
+      FROM latest
+      WHERE i.id = $1
+    `,
+    [inserted.invoice_id],
+  )
+}
 function mapCheckoutAttemptResult(row: any): CheckoutAttemptResultRecord {
   return {
     id: row.id,
@@ -1134,7 +1258,21 @@ export async function recordCheckoutAttemptResult(input: {
   )
 
   if (!row) throw new Error("Failed to persist checkout attempt result")
-  return mapCheckoutAttemptResult(row)
+  const mapped = mapCheckoutAttemptResult(row)
+  const metadata = (mapped.metadata ?? {}) as Record<string, unknown>
+  await mirrorCheckoutAttemptToInvoicePaymentAttempts({
+    attempt: mapped,
+    provider: typeof metadata.provider === "string" ? metadata.provider : "stripe",
+    providerReference:
+      typeof metadata.providerTransactionReference === "string"
+        ? metadata.providerTransactionReference
+        : typeof metadata.providerRef === "string"
+          ? metadata.providerRef
+          : mapped.checkoutSessionId,
+    eventSource: "checkout.callback",
+  })
+
+  return mapped
 }
 
 export async function listCheckoutAttemptResults(customerId: string, limit = 100): Promise<CheckoutAttemptResultRecord[]> {
@@ -1163,6 +1301,40 @@ export async function listCheckoutAttemptResults(customerId: string, limit = 100
   return rows.map(mapCheckoutAttemptResult)
 }
 
+
+
+export async function getLatestPaymentAttemptByCheckoutSession(input: { customerId: string; checkoutSessionId: string }) {
+  await ensureTables()
+
+  const row = await queryOne<any>(
+    `
+      SELECT
+        ipa.id,
+        ipa.checkout_session_id AS "checkoutSessionId",
+        i.user_id AS "customerId",
+        NULL::text AS "paymentMethodRefId",
+        CASE
+          WHEN ipa.status IN ('succeeded', 'paid', 'completed') THEN 'completed'
+          WHEN ipa.status IN ('failed', 'payment_failed') THEN 'failed'
+          WHEN ipa.status = 'authorized' THEN 'authorized'
+          ELSE 'expired'
+        END AS "attemptStatus",
+        ipa.source_event_id AS "attemptResultCode",
+        ipa.failure_reason AS "attemptResultMessage",
+        ipa.metadata,
+        COALESCE(ipa.occurred_at, ipa.created_at)::text AS "occurredAt",
+        ipa.created_at::text AS "createdAt"
+      FROM invoice_payment_attempts ipa
+      INNER JOIN invoices i ON i.id = ipa.invoice_id
+      WHERE i.user_id = $1 AND ipa.checkout_session_id = $2
+      ORDER BY COALESCE(ipa.source_event_created_at, ipa.occurred_at, ipa.created_at) DESC, ipa.created_at DESC
+      LIMIT 1
+    `,
+    [input.customerId, input.checkoutSessionId],
+  )
+
+  return row ? mapCheckoutAttemptResult(row) : null
+}
 export async function getLatestCheckoutAttemptResultBySession(input: { customerId: string; checkoutSessionId: string }) {
   await ensureTables()
   const row = await queryOne<any>(
