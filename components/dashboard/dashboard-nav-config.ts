@@ -97,7 +97,7 @@ export const dashboardNavItems: DashboardNavItem[] = [
   },
   {
     label: "Streaming Studio",
-    href: "/stream",
+    href: "/dashboard/streaming-studio",
     icon: Radio,
     section: "studio",
     metadata: {
@@ -105,11 +105,11 @@ export const dashboardNavItems: DashboardNavItem[] = [
       statusChip: "live",
       quickActionIcon: Flame,
     },
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/stream"),
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/streaming-studio"),
   },
   {
     label: "Analytics",
-    href: "/analytics",
+    href: "/dashboard/analytics",
     icon: BarChart3,
     section: "operations",
     children: [
@@ -117,7 +117,7 @@ export const dashboardNavItems: DashboardNavItem[] = [
       { label: "Seller analytics", href: "/seller/analytics", optional: true },
       { label: "Store analytics", href: "/ecommerce/analytics", optional: true },
     ],
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/analytics"),
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/analytics"),
   },
   {
     label: "Upload",
@@ -140,34 +140,34 @@ export const dashboardNavItems: DashboardNavItem[] = [
   },
   {
     label: "Alerts",
-    href: "/alerts",
+    href: "/dashboard/alerts",
     icon: Bell,
     section: "operations",
     metadata: {
       badgeCount: 0,
     },
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/alerts"),
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/alerts"),
   },
   {
     label: "Profile",
-    href: "/settings/profile",
+    href: "/dashboard/settings",
     icon: CircleUserRound,
     section: "account",
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/settings/profile"),
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/settings"),
   },
   {
     label: "Preferences",
-    href: "/settings",
+    href: "/dashboard/settings",
     icon: SlidersHorizontal,
     section: "account",
-    activeMatch: (pathname) => pathname === "/settings",
+    activeMatch: (pathname) => pathname === "/dashboard/settings",
   },
   {
     label: "Billing",
-    href: "/settings/billing",
+    href: "/dashboard/billing",
     icon: CreditCard,
     section: "account",
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/settings/billing"),
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/billing"),
   },
   {
     label: "AI Agents",
@@ -192,31 +192,31 @@ export const dashboardNavItems: DashboardNavItem[] = [
   },
   {
     label: "RunAsh Chat",
-    href: "/runash-chat",
+    href: "/dashboard/runash-chat",
     icon: MessageSquare,
     section: "intelligence",
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/runash-chat"),
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/runash-chat"),
   },
   {
     label: "Editor",
-    href: "/editor",
+    href: "/dashboard/editor",
     icon: Clapperboard,
     section: "studio",
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/editor"),
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/editor"),
   },
   {
     label: "Seller Studio",
-    href: "/seller/dashboard",
+    href: "/dashboard/seller-studio",
     icon: ShoppingBag,
     section: "operations",
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/seller"),
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/seller-studio"),
   },
   {
     label: "Store",
-    href: "/ecommerce/dashboard",
+    href: "/dashboard/store",
     icon: Store,
     section: "operations",
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/ecommerce"),
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/store"),
   },
 ]
 
@@ -239,13 +239,13 @@ export const dashboardQuickLinkGroups: DashboardQuickLinkGroup[] = [
 ]
 
 export const dashboardQuickActions: DashboardQuickAction[] = [
-  { label: "New project", href: "/editor" },
-  { label: "Go live", href: "/stream" },
+  { label: "New project", href: "/dashboard/editor" },
+  { label: "Go live", href: "/dashboard/streaming-studio" },
   { label: "Resume previous live setup", href: "/stream?resume=last-live" },
   { label: "Open recent recording edit", href: "/recordings?view=recent-edit" },
-  { label: "Replay analytics for last live", href: "/analytics/streams?replay=last-live" },
-  { label: "Open chat session", href: "/runash-chat" },
-  { label: "Add product", href: "/ecommerce/dashboard" },
+  { label: "Replay analytics for last live", href: "/dashboard/analytics?replay=last-live" },
+  { label: "Open chat session", href: "/dashboard/runash-chat" },
+  { label: "Add product", href: "/dashboard/store" },
   { label: "Configure automation", href: "/automation" },
 ]
 
@@ -255,7 +255,7 @@ export const dashboardNavigationConfig: DashboardNavigationConfig = {
   quickActions: dashboardQuickActions,
   streamingStudioEntry: {
     label: "Streaming Studio",
-    href: "/stream",
+    href: "/dashboard/streaming-studio",
     actionIds: [
       "start-stream",
       "schedule-stream",
@@ -309,22 +309,22 @@ function formatSegmentLabel(segment: string) {
 
 export function resolveDashboardNavContext(pathname: string): DashboardNavContext {
   const matchedItem = dashboardNavigationConfig.items.find((item) => isNavItemActive(pathname, item))
-  const isAccountRoute = pathname === "/settings" || pathname.startsWith("/settings/")
+  const isAccountRoute = pathname === "/dashboard/settings" || pathname.startsWith("/settings/")
   const sectionLabel = isAccountRoute ? "Account" : matchedItem?.label ?? "Workspace"
   const pathSegments = pathname.split("/").filter(Boolean)
 
   if (isAccountRoute) {
     const accountRouteLabels: Record<string, string> = {
-      "/settings": "Preferences",
-      "/settings/profile": "Profile",
-      "/settings/billing": "Billing",
+      "/dashboard/settings": "Preferences",
+      "/dashboard/settings": "Profile",
+      "/dashboard/billing": "Billing",
     }
 
     const accountBreadcrumbLabel = accountRouteLabels[pathname] ?? formatSegmentLabel(pathSegments[pathSegments.length - 1] ?? "settings")
 
     return {
       currentSection: sectionLabel,
-      breadcrumbs: [{ label: "Account", href: "/settings" }, { label: accountBreadcrumbLabel }],
+      breadcrumbs: [{ label: "Account", href: "/dashboard/settings" }, { label: accountBreadcrumbLabel }],
     }
   }
 

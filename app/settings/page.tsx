@@ -1,5 +1,5 @@
-import { SettingsShell } from "@/components/settings/settings-shell"
+import { redirect } from "next/navigation"
 
-export default function SettingsPage() {
-  return <SettingsShell />
+export default function SettingsLegacyPage() {
+  redirect("/dashboard/settings")
 }
