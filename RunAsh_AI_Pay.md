@@ -56,3 +56,10 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Status pages resolve from backend payment records using `GET /api/v1/payment/status` (and alias `GET /api/payment/status`), not query-string status text alone.
 - Status resolution validates signed checkout return state/reference, then resolves status via persisted checkout attempts first and provider session lookup second.
 - UI contract for status pages includes transaction summary values, checkout attempt/reference identifiers, and recommended user actions (retry, dashboard return, support, invoice download when available).
+
+## 2026-02 invoice operations UX/API update
+
+- Added first-party invoice workflows backed by existing billing APIs: list, create, detail, payment status, and receipt/download surfaces under `/payment/invoices`.
+- `POST /api/v1/billing/invoices` now accepts validated customer + line-item + tax + due-date + currency payloads and persists invoice records and line items.
+- Invoice records now persist customer details and invoice-linked payment attempts (`invoice_payment_attempts`) to improve auditability.
+- Webhook payment events now append invoice payment attempts and synchronize invoice status (`open`/`paid`/`uncollectible`) + `amount_paid` in local invoice records when references match.

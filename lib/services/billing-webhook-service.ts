@@ -78,6 +78,70 @@ function toIsoTimestamp(value: unknown): string | null {
   return new Date(numeric * 1000).toISOString()
 }
 
+
+async function recordInvoicePaymentAttempt(input: {
+  invoiceReference: string | null
+  status: string
+  amount: number | null
+  currency: string | null
+  providerReference: string | null
+  failureReason?: string | null
+  eventId: string
+  eventType: string
+  occurredAt?: string | null
+  metadata?: Record<string, unknown>
+}) {
+  if (!input.invoiceReference) return
+
+  await queryMany(
+    `
+      INSERT INTO invoice_payment_attempts (
+        id, invoice_id, provider, provider_reference, status, amount, currency, failure_reason,
+        event_source, metadata, occurred_at, created_at
+      )
+      SELECT $1, i.id, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, NOW()
+      FROM invoices i
+      WHERE i.id::text = $11 OR i.stripe_invoice_id = $11
+      ON CONFLICT (id) DO NOTHING
+    `,
+    [
+      `${input.eventId}:${input.invoiceReference}:${input.status}`,
+      WEBHOOK_PROVIDER,
+      input.providerReference,
+      input.status,
+      input.amount,
+      input.currency,
+      input.failureReason ?? null,
+      input.eventType,
+      JSON.stringify({ source: input.eventType, ...(input.metadata ?? {}) }),
+      input.occurredAt ?? null,
+      input.invoiceReference,
+    ],
+  )
+
+  await queryMany(
+    `
+      UPDATE invoices i
+      SET status = CASE
+            WHEN $2 IN ('succeeded', 'paid', 'completed') THEN 'paid'
+            WHEN $2 IN ('failed', 'payment_failed') THEN CASE WHEN i.due_date IS NOT NULL AND i.due_date < NOW() THEN 'uncollectible' ELSE 'open' END
+            ELSE i.status
+          END,
+          amount_paid = CASE
+            WHEN $2 IN ('succeeded', 'paid', 'completed') THEN COALESCE(ROUND($3 * 100)::INTEGER, i.amount_paid)
+            ELSE i.amount_paid
+          END,
+          paid_at = CASE
+            WHEN $2 IN ('succeeded', 'paid', 'completed') THEN COALESCE(i.paid_at, NOW())
+            WHEN $2 IN ('failed', 'payment_failed') THEN NULL
+            ELSE i.paid_at
+          END
+      WHERE i.id::text = $1 OR i.stripe_invoice_id = $1
+    `,
+    [input.invoiceReference, input.status, input.amount],
+  )
+}
+
 async function ensureWebhookEventsTable() {
   await queryMany(`
     CREATE TABLE IF NOT EXISTS webhook_events (
@@ -118,6 +182,24 @@ async function ensureWebhookEventsTable() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (provider, event_id)
     );
+
+    CREATE TABLE IF NOT EXISTS invoice_payment_attempts (
+      id TEXT PRIMARY KEY,
+      invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL,
+      provider_reference TEXT,
+      status TEXT NOT NULL,
+      amount NUMERIC(15,2),
+      currency TEXT,
+      failure_reason TEXT,
+      event_source TEXT NOT NULL,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      occurred_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_invoice_payment_attempts_invoice
+      ON invoice_payment_attempts(invoice_id, occurred_at DESC);
 
     CREATE TABLE IF NOT EXISTS billing_webhook_subscriptions (
       subscription_id TEXT PRIMARY KEY,
@@ -283,6 +365,17 @@ async function runWebhookDomainHandler(event: StripeWebhookEvent) {
         )
       }
 
+      await recordInvoicePaymentAttempt({
+        invoiceReference: String(invoice.id),
+        status: "succeeded",
+        amount: centsToMoney(invoice.amount_paid ?? invoice.total),
+        currency,
+        providerReference: paymentIntentId,
+        eventId: event.id,
+        eventType: event.type,
+        occurredAt: toIsoTimestamp(invoice.status_transitions?.paid_at ?? invoice.created),
+      })
+
       await queryMany(
         `
           INSERT INTO billing_webhook_invoices (
@@ -324,6 +417,18 @@ async function runWebhookDomainHandler(event: StripeWebhookEvent) {
       if (!stripeObject?.id) return
       const invoice = stripeObject
       const paymentIntentId = invoice.payment_intent ? String(invoice.payment_intent) : null
+
+      await recordInvoicePaymentAttempt({
+        invoiceReference: String(invoice.id),
+        status: "payment_failed",
+        amount: centsToMoney(invoice.amount_due ?? invoice.total),
+        currency: String(invoice.currency || "usd").toUpperCase(),
+        providerReference: paymentIntentId,
+        failureReason: String(invoice.last_finalization_error?.message ?? "payment_failed"),
+        eventId: event.id,
+        eventType: event.type,
+        occurredAt: toIsoTimestamp(invoice.created),
+      })
 
       await queryMany(
         `
@@ -456,6 +561,19 @@ async function runWebhookDomainHandler(event: StripeWebhookEvent) {
           JSON.stringify({ source: event.type }),
         ],
       )
+
+      await recordInvoicePaymentAttempt({
+        invoiceReference: paymentIntent.invoice ? String(paymentIntent.invoice) : null,
+        status: isFailed ? "failed" : "succeeded",
+        amount: centsToMoney(paymentIntent.amount_received ?? paymentIntent.amount),
+        currency: String(paymentIntent.currency || "usd").toUpperCase(),
+        providerReference: String(paymentIntent.id),
+        failureReason: isFailed ? String(paymentIntent.last_payment_error?.message ?? "payment_failed") : null,
+        eventId: event.id,
+        eventType: event.type,
+        occurredAt: toIsoTimestamp(paymentIntent.created),
+      })
+
 
       return
     }
