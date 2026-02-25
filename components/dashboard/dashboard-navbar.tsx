@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Bell, ChevronRight, Command, LogOut, Menu, MessageSquare, MoreHorizontal, Plus, Search, Settings, User } from "lucide-react"
 import { signOut } from "@/lib/auth/client"
+import { isDashboardRouteReady } from "@/lib/navigation/dashboard-route-audit"
 import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
 import { FeedbackModal } from "@/components/dashboard/feedback-modal"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -133,11 +134,23 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
               >
                 Open AI Model Dialog
               </DropdownMenuItem>
-              {navConfig.quickActions.map((action) => (
-                <DropdownMenuItem asChild key={action.href}>
-                  <Link href={action.href}>{action.label}</Link>
-                </DropdownMenuItem>
-              ))}
+              {navConfig.quickActions.map((action) => {
+                const actionIsReady = isDashboardRouteReady(action.href)
+
+                if (!actionIsReady) {
+                  return (
+                    <DropdownMenuItem key={action.href} disabled>
+                      {action.label} · Coming soon
+                    </DropdownMenuItem>
+                  )
+                }
+
+                return (
+                  <DropdownMenuItem asChild key={action.href}>
+                    <Link href={action.href}>{action.label}</Link>
+                  </DropdownMenuItem>
+                )
+              })}
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -151,9 +164,15 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
             <Bell className="h-4 w-4" />
           </Button>
 
-          <Button asChild size="sm" className="hidden h-10 md:inline-flex">
-            <Link href="/settings/billing">Upgrade</Link>
-          </Button>
+          {isDashboardRouteReady("/settings/billing") ? (
+            <Button asChild size="sm" className="hidden h-10 md:inline-flex">
+              <Link href="/settings/billing">Upgrade</Link>
+            </Button>
+          ) : (
+            <Button size="sm" className="hidden h-10 md:inline-flex" disabled>
+              Upgrade · Coming soon
+            </Button>
+          )}
 
           <Button
             type="button"
@@ -250,9 +269,15 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
                 Open AI Model Dialog
               </DropdownMenuItem>
               {navConfig.quickActions.map((action) => (
-                <DropdownMenuItem asChild key={action.href}>
-                  <Link href={action.href}>{action.label}</Link>
-                </DropdownMenuItem>
+                isDashboardRouteReady(action.href) ? (
+                  <DropdownMenuItem asChild key={action.href}>
+                    <Link href={action.href}>{action.label}</Link>
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem key={action.href} disabled>
+                    {action.label} · Coming soon
+                  </DropdownMenuItem>
+                )
               ))}
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Account</DropdownMenuLabel>
