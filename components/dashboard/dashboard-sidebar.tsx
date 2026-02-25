@@ -45,28 +45,35 @@ import {
 
 const navSectionOrder: DashboardNavSection[] = [
   "core",
-  "studio",
   "intelligence",
   "operations",
   "account",
 ];
 
 const navSectionLabel: Record<DashboardNavSection, string> = {
-  core: "Core",
+  core: "Dashboard",
   studio: "Studio",
-  intelligence: "Intelligence",
-  operations: "Operations",
-  account: "Account",
+  intelligence: "Agents & Automation",
+  operations: "Workflows",
+  account: "Settings & Payments",
 };
 
-const knownSidebarRoutes = dashboardReadyRoutes;
+const knownSidebarRoutes = new Set([
+  ...dashboardReadyRoutes,
+  "/agents/dashboard",
+  "/workflows",
+  "/stream",
+  "/ecommerce/dashboard",
+  "/seller/dashboard",
+  "/payments",
+]);
 
 const sidebarRouteGuards = {
   "/agents/dashboard": {
     featureFlag: "sidebar_ai_agents",
     unavailableBehavior: "disable" as const,
   },
-  "/dashboard/store": {
+  "/ecommerce/dashboard": {
     featureFlag: "sidebar_store",
     unavailableBehavior: "hide" as const,
   },
