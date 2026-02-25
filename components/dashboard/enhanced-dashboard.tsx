@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Activity, ArrowRight, BarChart3, RefreshCw, ShieldAlert, ShoppingBag, Video } from "lucide-react"
+import { Activity, ArrowRight, BarChart3, MessageSquare, RefreshCw, ShieldAlert, ShoppingBag, Store, Video, WandSparkles } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,6 +26,45 @@ type DashboardActivity = {
   target?: string
   time?: string
   user?: { name?: string }
+}
+
+type SellerSummary = {
+  pendingOrders?: number
+  outOfStock?: number
+  recentStreams?: Array<{ id: string; title: string; date?: string; url?: string }>
+}
+
+type EditorProjectSummary = {
+  id: string
+  name?: string
+  updated_at?: string
+}
+
+type ChatSessionSummary = {
+  id: string
+  title?: string
+  created_at?: string
+}
+
+type ModuleCardData = {
+  id: "streams" | "editor" | "chat" | "store" | "seller"
+  title: string
+  description: string
+  primaryLabel: string
+  primaryHref: string
+  continuityLabel: string
+  continuityHref: string
+  continuityDisabled?: boolean
+  lastUpdatedLabel: string
+  icon: ComponentType<{ className?: string }>
+}
+
+function formatLastUpdated(value?: string | null) {
+  if (!value) return "No recent updates"
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+
+  return `Updated ${parsed.toLocaleString()}`
 }
 
 function formatStatValue(value: string | number | null | undefined) {
@@ -180,6 +219,37 @@ function PrimaryWorkflowPanel({
   )
 }
 
+function ModuleTemplateCard({ module }: { module: ModuleCardData }) {
+  const Icon = module.icon
+
+  return (
+    <Card className="border-border/50 bg-card/70">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base">{module.title}</CardTitle>
+          <Icon className="h-4 w-4 text-muted-foreground" />
+        </div>
+        <CardDescription>{module.description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <Button asChild className="w-full bg-brand-gradient hover:opacity-95">
+          <Link href={module.primaryHref}>{module.primaryLabel}</Link>
+        </Button>
+        {module.continuityDisabled ? (
+          <Button variant="outline" className="w-full" disabled>
+            {module.continuityLabel}
+          </Button>
+        ) : (
+          <Button asChild variant="outline" className="w-full">
+            <Link href={module.continuityHref}>{module.continuityLabel}</Link>
+          </Button>
+        )}
+        <div className="rounded-md border border-border/40 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">{module.lastUpdatedLabel}</div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function EnhancedDashboard() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
@@ -187,6 +257,10 @@ export function EnhancedDashboard() {
   const [activities, setActivities] = useState<DashboardActivity[]>([])
   const [streamWidgetError, setStreamWidgetError] = useState<string | null>(null)
   const [role, setRole] = useState<DashboardRolePreset>("creator")
+  const [recentStream, setRecentStream] = useState<{ id: string; title?: string; date?: string; url?: string } | null>(null)
+  const [latestEditorProject, setLatestEditorProject] = useState<EditorProjectSummary | null>(null)
+  const [recentChatSession, setRecentChatSession] = useState<ChatSessionSummary | null>(null)
+  const [sellerSummary, setSellerSummary] = useState<SellerSummary | null>(null)
 
   const loadDashboardData = useCallback(async () => {
     try {
@@ -198,17 +272,33 @@ export function EnhancedDashboard() {
       }).catch(() => null)
       setRole(resolveDashboardRole(me?.role))
 
-      const [statsData, activityData] = await Promise.all([
+      const [statsData, activityData, streamData, projectData, chatData, sellerData] = await Promise.all([
         fetchApiData<DashboardStats>("/api/dashboard/stats", {
           fallbackMessage: "Failed to load dashboard stats",
         }),
         fetchApiData<DashboardActivity[]>("/api/dashboard/activity?limit=8", {
           fallbackMessage: "Failed to load dashboard activity",
         }),
+        fetchApiData<{ streams?: Array<{ id: string; title?: string; date?: string; url?: string }> }>("/api/dashboard/streams?limit=1", {
+          fallbackMessage: "Failed to load dashboard streams",
+        }).catch(() => null),
+        fetchApiData<{ projects?: EditorProjectSummary[] }>("/api/editor/projects", {
+          fallbackMessage: "Failed to load editor projects",
+        }).catch(() => null),
+        fetchApiData<ChatSessionSummary>("/api/sessions/recent", {
+          fallbackMessage: "Failed to load recent chat session",
+        }).catch(() => null),
+        fetchApiData<SellerSummary>("/api/seller/dashboard/summary", {
+          fallbackMessage: "Failed to load seller summary",
+        }).catch(() => null),
       ])
 
       setStats(statsData ?? {})
       setActivities(Array.isArray(activityData) ? activityData : [])
+      setRecentStream(streamData?.streams?.[0] ?? null)
+      setLatestEditorProject(projectData?.projects?.[0] ?? null)
+      setRecentChatSession(chatData)
+      setSellerSummary(sellerData)
 
       await dashboardStreamingService.fetchLatestCompletedStreamSummary().catch(() => null)
     } catch (error) {
@@ -243,6 +333,88 @@ export function EnhancedDashboard() {
       })),
     [roleConfig.summaryMetrics, stats],
   )
+
+  const moduleCards = useMemo<ModuleCardData[]>(() => {
+    const sellerRecentStream = sellerSummary?.recentStreams?.[0]
+
+    return [
+      {
+        id: "streams",
+        title: "Streams",
+        description: "Go live quickly and jump back into your most recent stream setup.",
+        primaryLabel: "Go Live",
+        primaryHref: "/dashboard/streaming-studio",
+        continuityLabel: recentStream?.id ? `Resume previous live: ${recentStream.title ?? "Untitled"}` : "Resume previous live",
+        continuityHref: recentStream?.id ? `/stream?resumeStreamId=${encodeURIComponent(recentStream.id)}` : "/schedule",
+        continuityDisabled: !recentStream?.id,
+        lastUpdatedLabel: formatLastUpdated(recentStream?.date),
+        icon: Video,
+      },
+      {
+        id: "editor",
+        title: "Editor",
+        description: "Start a fresh edit or continue your latest project timeline.",
+        primaryLabel: "New Project",
+        primaryHref: "/dashboard/editor",
+        continuityLabel: latestEditorProject?.id
+          ? `Continue: ${latestEditorProject.name ?? "Untitled Project"}`
+          : "Continue last project",
+        continuityHref: latestEditorProject?.id
+          ? `/dashboard/editor?projectId=${encodeURIComponent(latestEditorProject.id)}`
+          : "/dashboard/editor",
+        continuityDisabled: !latestEditorProject?.id,
+        lastUpdatedLabel: formatLastUpdated(latestEditorProject?.updated_at),
+        icon: WandSparkles,
+      },
+      {
+        id: "chat",
+        title: "Chat",
+        description: "Start a new assistant conversation or continue your recent session context.",
+        primaryLabel: "New Chat",
+        primaryHref: "/dashboard/runash-chat",
+        continuityLabel: recentChatSession?.id
+          ? `Continue: ${recentChatSession.title ?? "Recent session"}`
+          : "Continue recent session",
+        continuityHref: recentChatSession?.id
+          ? `/dashboard/runash-chat?sessionId=${encodeURIComponent(recentChatSession.id)}`
+          : "/dashboard/runash-chat",
+        continuityDisabled: !recentChatSession?.id,
+        lastUpdatedLabel: formatLastUpdated(recentChatSession?.created_at),
+        icon: MessageSquare,
+      },
+      {
+        id: "store",
+        title: "Store",
+        description: "Manage catalog state and pick up order/inventory operations quickly.",
+        primaryLabel: "Open Store",
+        primaryHref: "/dashboard/store",
+        continuityLabel:
+          (sellerSummary?.outOfStock ?? 0) > 0
+            ? `Restock ${sellerSummary?.outOfStock ?? 0} low-stock item(s)`
+            : "Continue order operations",
+        continuityHref: (sellerSummary?.outOfStock ?? 0) > 0 ? "/dashboard/store?filter=low-stock" : "/dashboard/store?tab=orders",
+        continuityDisabled: !sellerSummary,
+        lastUpdatedLabel: formatLastUpdated(activities[0]?.time),
+        icon: Store,
+      },
+      {
+        id: "seller",
+        title: "Seller",
+        description: "Access seller controls and continue your most recent stream-linked workflow.",
+        primaryLabel: "Open Seller Studio",
+        primaryHref: "/dashboard/seller-studio",
+        continuityLabel: sellerRecentStream?.id
+          ? `Continue seller flow: ${sellerRecentStream.title ?? "Recent stream"}`
+          : "Continue seller flow",
+        continuityHref: sellerRecentStream?.id
+          ? `/dashboard/seller-studio?streamId=${encodeURIComponent(sellerRecentStream.id)}`
+          : "/dashboard/seller-studio",
+        continuityDisabled: !sellerRecentStream?.id,
+        lastUpdatedLabel: formatLastUpdated(sellerRecentStream?.date),
+        icon: ShoppingBag,
+      },
+    ]
+  }, [activities, latestEditorProject, recentChatSession, recentStream, sellerSummary])
 
   if (isLoading) {
     return (
@@ -288,6 +460,12 @@ export function EnhancedDashboard() {
         <div className="lg:col-span-2">
           <ActivityPanel items={activities} />
         </div>
+      </section>
+
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {moduleCards.map((module) => (
+          <ModuleTemplateCard key={module.id} module={module} />
+        ))}
       </section>
 
       <details className="rounded-lg border border-border/50 bg-card/60 p-4">
