@@ -91,6 +91,18 @@ const defaultSidebarState: SidebarPersistedState = {
   expandedNavItems: {},
 };
 
+function getInitialSidebarState(): SidebarPersistedState {
+  if (typeof window === "undefined") {
+    return defaultSidebarState;
+  }
+
+  try {
+    return parseSidebarState(window.localStorage.getItem(SIDEBAR_STORAGE_KEY));
+  } catch {
+    return defaultSidebarState;
+  }
+}
+
 function parseSidebarState(rawState: string | null): SidebarPersistedState {
   if (!rawState) {
     return defaultSidebarState;
@@ -426,15 +438,19 @@ function SidebarContents({
   return (
     <div className="mt-4 flex flex-1 flex-col gap-4 px-3 pb-4">
       <section className="space-y-2">
-        <p className="sticky top-0 z-10 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:backdrop-blur-sm md:bg-card/80 dark:md:bg-card/60">
-          Workspace
-        </p>
+        {!collapsed ? (
+          <p className="sticky top-0 z-10 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:backdrop-blur-sm md:bg-card/80 dark:md:bg-card/60">
+            Workspace
+          </p>
+        ) : null}
         <div className="space-y-3 rounded-xl border border-border/60 bg-background/50 p-2 dark:bg-card/20">
           {navItemsBySection.map((group) => (
             <div key={group.section} className="space-y-1">
-              <p className="sticky top-8 z-[5] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/90 md:backdrop-blur-sm md:bg-background/90 dark:md:bg-card/70">
-                {group.label}
-              </p>
+              {!collapsed ? (
+                <p className="sticky top-8 z-[5] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/90 md:backdrop-blur-sm md:bg-background/90 dark:md:bg-card/70">
+                  {group.label}
+                </p>
+              ) : null}
               {group.items.map((item) => {
                 const nestedItems = item.children ?? [];
                 const hasNestedItems = nestedItems.length > 0;
@@ -610,60 +626,91 @@ function SidebarContents({
       <Separator className="bg-border/70" />
 
       <section className="space-y-2">
-        <p className="px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Quick links
-        </p>
+        {!collapsed ? (
+          <p className="px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Quick links
+          </p>
+        ) : null}
         <div className="space-y-1 rounded-xl border border-border/60 bg-background/40 p-2 dark:bg-card/20">
-          {navConfig.quickLinkGroups.map((group) => {
-            const groupIsActive = group.items.some((item) =>
-              isNavItemActive(pathname, item),
-            );
+          {collapsed
+            ? navConfig.quickLinkGroups.flatMap((group) =>
+                group.items.map((item) => {
+                  const guardedItem = guardedItemsByHref.get(item.href);
 
-            return (
-              <Collapsible key={group.label} defaultOpen={groupIsActive}>
-                <CollapsibleTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="group h-10 w-full justify-between rounded-lg border border-transparent px-3 text-sm font-medium text-muted-foreground transition-colors hover:border-border/70 hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-orange-500/60"
-                  >
-                    <span className="flex items-center gap-3">
-                      <group.icon className="h-4 w-4" />
-                      {group.label}
-                    </span>
-                    <ChevronDown className="h-4 w-4 transition-transform group-data-[state=open]:rotate-180" />
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="space-y-1 pt-1.5">
-                  {group.items.map((item) => {
-                    const guardedItem = guardedItemsByHref.get(item.href);
+                  if (!guardedItem) {
+                    return null;
+                  }
 
-                    if (!guardedItem) {
-                      return null;
-                    }
+                  return (
+                    <NavLink
+                      key={item.href}
+                      href={item.href}
+                      label={item.label}
+                      icon={item.icon}
+                      badge={item.badge}
+                      metadata={guardedItem.metadata}
+                      isActive={isNavItemActive(pathname, guardedItem)}
+                      onClick={onNavigate}
+                      disabled={guardedItem.routeAvailability === "disabled"}
+                      tooltip={guardedItem.tooltip ?? item.label}
+                      mode="collapsed"
+                    />
+                  );
+                }),
+              )
+            : null}
+          {!collapsed
+            ? navConfig.quickLinkGroups.map((group) => {
+                const groupIsActive = group.items.some((item) =>
+                  isNavItemActive(pathname, item),
+                );
 
-                    return (
-                      <div key={item.href} className="pl-2">
-                        <NavLink
-                          href={item.href}
-                          label={item.label}
-                          icon={item.icon}
-                          badge={item.badge}
-                          metadata={guardedItem.metadata}
-                          isActive={isNavItemActive(pathname, guardedItem)}
-                          onClick={onNavigate}
-                          disabled={
-                            guardedItem.routeAvailability === "disabled"
-                          }
-                          tooltip={guardedItem.tooltip}
-                          mode={collapsed ? "collapsed" : "expanded"}
-                        />
-                      </div>
-                    );
-                  })}
-                </CollapsibleContent>
-              </Collapsible>
-            );
-          })}
+                return (
+                  <Collapsible key={group.label} defaultOpen={groupIsActive}>
+                    <CollapsibleTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="group h-10 w-full justify-between rounded-lg border border-transparent px-3 text-sm font-medium text-muted-foreground transition-colors hover:border-border/70 hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-orange-500/60"
+                      >
+                        <span className="flex items-center gap-3">
+                          <group.icon className="h-4 w-4" />
+                          {group.label}
+                        </span>
+                        <ChevronDown className="h-4 w-4 transition-transform group-data-[state=open]:rotate-180" />
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="space-y-1 pt-1.5">
+                      {group.items.map((item) => {
+                        const guardedItem = guardedItemsByHref.get(item.href);
+
+                        if (!guardedItem) {
+                          return null;
+                        }
+
+                        return (
+                          <div key={item.href} className="pl-2">
+                            <NavLink
+                              href={item.href}
+                              label={item.label}
+                              icon={item.icon}
+                              badge={item.badge}
+                              metadata={guardedItem.metadata}
+                              isActive={isNavItemActive(pathname, guardedItem)}
+                              onClick={onNavigate}
+                              disabled={
+                                guardedItem.routeAvailability === "disabled"
+                              }
+                              tooltip={guardedItem.tooltip}
+                              mode={collapsed ? "collapsed" : "expanded"}
+                            />
+                          </div>
+                        );
+                      })}
+                    </CollapsibleContent>
+                  </Collapsible>
+                );
+              })
+            : null}
         </div>
       </section>
     </div>
@@ -677,33 +724,14 @@ export function DashboardSidebar({
   onCollapsedChange,
 }: DashboardSidebarProps) {
   const [logoAvailable, setLogoAvailable] = useState(true);
-  const [collapsed, setCollapsed] = useState(defaultSidebarState.collapsed);
+  const [collapsed, setCollapsed] = useState(
+    () => getInitialSidebarState().collapsed,
+  );
   const [expandedNavItems, setExpandedNavItems] = useState<
     Record<string, boolean>
-  >(defaultSidebarState.expandedNavItems);
-  const [hydratedStorage, setHydratedStorage] = useState(false);
+  >(() => getInitialSidebarState().expandedNavItems);
 
   useEffect(() => {
-    let persistedState = defaultSidebarState;
-
-    try {
-      persistedState = parseSidebarState(
-        window.localStorage.getItem(SIDEBAR_STORAGE_KEY),
-      );
-    } catch {
-      persistedState = defaultSidebarState;
-    }
-
-    setCollapsed(persistedState.collapsed);
-    setExpandedNavItems(persistedState.expandedNavItems);
-    setHydratedStorage(true);
-  }, []);
-
-  useEffect(() => {
-    if (!hydratedStorage) {
-      return;
-    }
-
     const stateToPersist: SidebarPersistedState = {
       collapsed,
       expandedNavItems,
@@ -717,7 +745,7 @@ export function DashboardSidebar({
     } catch {
       // Ignore storage write failures and continue rendering with in-memory state.
     }
-  }, [collapsed, expandedNavItems, hydratedStorage]);
+  }, [collapsed, expandedNavItems]);
 
   useEffect(() => {
     onCollapsedChange?.(collapsed);

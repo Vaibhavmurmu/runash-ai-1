@@ -20,7 +20,8 @@ export default function DashboardLayout({
   return (
     <DashboardLayoutFrame
       footer={<DashboardFooter />}
-      contentClassName="mx-auto flex w-full max-w-7xl flex-1 p-4 md:p-6"
+      contentClassName="mx-auto flex w-full flex-1 justify-center p-4 md:p-6"
+      contentCollapsedClassName="mx-auto flex w-full max-w-[1200px] flex-1 justify-center p-4 md:p-6"
     >
       {children}
     </DashboardLayoutFrame>
