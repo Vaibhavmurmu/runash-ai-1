@@ -22,6 +22,7 @@ export function DashboardLayoutFrame({
   contentClassName,
 }: DashboardLayoutFrameProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   return (
     <DashboardModelDialogProvider>
@@ -30,9 +31,12 @@ export function DashboardLayoutFrame({
           mobileOpen={mobileOpen}
           onMobileOpenChange={setMobileOpen}
           navConfig={dashboardNavigationConfig}
+          onCollapsedChange={setSidebarCollapsed}
         />
 
-        <div className="flex min-h-screen flex-col md:pl-64">
+        <div
+          className={`flex min-h-screen flex-col transition-[padding] duration-200 ${sidebarCollapsed ? "md:pl-20" : "md:pl-64"}`}
+        >
           {header ?? (
             <DashboardHeader
               onOpenMobileMenu={() => setMobileOpen(true)}
