@@ -21,6 +21,12 @@ Last updated: 2026-02
 - Legacy response fields (`message`, `user`) are preserved via compatibility mapping for existing frontend callers.
 - Signup entrypoints (`app/get-started/page.tsx`, `components/auth/register-form.tsx`, and `components/auth/better-sign-up-card.tsx`) now converge on `/api/auth/register`.
 
+## Email verification delivery hardening update (2026-02)
+
+- Better Auth email verification callbacks now normalize all verification links to the canonical endpoint (`/api/auth/verify-email`) before dispatch.
+- Verification emails now route through the safety-aware `lib/email.ts` utility so allowlist/sink/dry-run controls and provider safeguards are consistently applied.
+- Signup UI copy explicitly states that email/password accounts require verification before first login to reduce onboarding ambiguity.
+
 ## Get-started onboarding flow update (2026-02)
 
 - Restored the three-step onboarding journey (`Account -> Profile -> Complete`) inside a dark themed get-started modal while preserving the rich landing hero CTA flow.
