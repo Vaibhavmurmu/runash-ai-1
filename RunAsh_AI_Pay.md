@@ -74,3 +74,49 @@ This document is payment-domain specific. For contributor workflow/process polic
   - recover payment intents from provider event mismatches,
   - expire stale checkout sessions and prevent stuck authorized/created sessions.
 - Risk/rollback: if reconciliation behavior needs rollback, disable scheduled calls to the endpoint and revert to existing manual status updates while preserving the newly added transition metadata columns.
+
+## 2026-02 Webhook + Callback Reliability hardening
+
+- Stripe webhook intake enforces provider signature verification and idempotent event ingestion keyed by provider event id.
+- Webhook replay now reuses the same processing claim path as live events and replays in provider-created order to reduce out-of-order side effects.
+- Payment attempts now persist retry-safe dedupe keys and provider event timestamps in `invoice_payment_attempts`; invoice status synchronization reads the latest ordered attempt state.
+- Internal billing webhook replay/rollback routes additionally accept signed service-to-service calls (`x-runash-timestamp` + `x-runash-signature`) to verify non-session automation callers.
+- Checkout callback/payment resolution now prefers the unified invoice payment-attempt ledger (`invoice_payment_attempts`) before legacy checkout attempt records, keeping UI status surfaces consistent.
+
+## 2026-02 Payment dashboard operations visibility refresh
+
+- `/payment/dashboard` now renders an operations-focused dashboard surface instead of redirecting to legacy billing navigation.
+- Customer-facing telemetry blocks include current balance/plan context, recent transactions, pending payment actions, and failed-payment recovery status.
+- Operator panel cards now surface recent failures, webhook lag/error counters, refund/chargeback risk flags, and reconciliation health metrics for faster triage.
+- No payment API request/response fields, webhook payload contracts, or auth/session signatures were changed by this UI refresh.
+- Rollback plan: revert the dashboard page/component pair (`app/payment/dashboard/page.tsx` and `components/payment/payment-operations-dashboard.tsx`) to restore previous redirect behavior.
+
+
+## 2026-02 Payment automation trigger/action mappings
+
+- Workflow automation now supports payment webhook trigger events:
+  - `payment_succeeded`
+  - `payment_failed`
+  - `invoice_overdue`
+  - `checkout_abandoned`
+- Payment trigger-to-action mappings are available in workflow templates and node handlers:
+  - `payment_succeeded` → `payment.send_receipt`, `payment.unlock_feature_entitlement`
+  - `payment_failed` → `payment.notify_support`
+  - `invoice_overdue` → `payment.retry_reminder`
+  - `checkout_abandoned` → `payment.retry_reminder`
+- Actions execute through the existing workflow automation engine and emit queue-oriented metadata (`queue: automation`, `queued`, `jobId`) for worker handoff where queue workers are enabled.
+- Backward compatibility: existing payment API signatures, webhook contracts, and billing field names are unchanged.
+- Rollback plan: remove payment workflow node/template references in `lib/workflow-kit/*` and revert to pre-payment trigger workflow configurations.
+
+## 2026-02 payment reliability test coverage expansion
+
+- Added targeted automated coverage for checkout redirect callback status mapping, payment status route-state mapping, invoice create total calculation lifecycle, webhook duplicate idempotency classification, and failed/incomplete retry lifecycle behavior.
+- Backward compatibility: no payment API field names, webhook payload fields, or billing endpoint signatures were changed; test-focused helper modules mirror existing route/service behavior.
+- Migration notes: no schema or contract migration required for this change set because logic is extracted to shared mappers/helpers without altering persisted formats.
+- Risks:
+  - Behavioral drift risk if helper mappers diverge from route/service call sites in future edits.
+  - Build/lint environment dependency risk remains (missing local lint/build env secrets/deps can mask unrelated regressions).
+- Rollback steps:
+  1. Revert helper module imports in payment routes/services to prior inline logic.
+  2. Revert added helper modules/tests (`lib/payments/*mappers*`, `lib/services/billing-webhook-idempotency.ts`, `lib/billing/invoice-calculations.ts`, and corresponding `*.test.ts` files).
+  3. Re-run payment route tests and deploy previous known-good commit if mapping regression is confirmed.

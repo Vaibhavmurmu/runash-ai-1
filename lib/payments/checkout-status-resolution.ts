@@ -1,4 +1,4 @@
-import { getLatestCheckoutAttemptResultBySession, type CheckoutAttemptResultRecord } from "@/services/payment-checkout-profile-service"
+import { getLatestCheckoutAttemptResultBySession, getLatestPaymentAttemptByCheckoutSession, type CheckoutAttemptResultRecord } from "@/services/payment-checkout-profile-service"
 
 export type PaymentStatusRouteState = "success" | "error" | "incomplete" | "pending" | "complete"
 export type PaymentResolvedStatus = "complete" | "pending" | "error" | "incomplete"
@@ -81,10 +81,15 @@ function buildInvoiceDownloadUrl(attempt: CheckoutAttemptResultRecord | null) {
 }
 
 export async function resolvePaymentStatus(input: ResolveStatusInput): Promise<PaymentResolution> {
-  const persistedAttempt = await getLatestCheckoutAttemptResultBySession({
-    customerId: input.customerId,
-    checkoutSessionId: input.checkoutSessionId,
-  })
+  const persistedAttempt =
+    (await getLatestPaymentAttemptByCheckoutSession({
+      customerId: input.customerId,
+      checkoutSessionId: input.checkoutSessionId,
+    })) ??
+    (await getLatestCheckoutAttemptResultBySession({
+      customerId: input.customerId,
+      checkoutSessionId: input.checkoutSessionId,
+    }))
 
   if (persistedAttempt) {
     const metadata = (persistedAttempt.metadata ?? {}) as Record<string, unknown>

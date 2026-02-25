@@ -90,19 +90,23 @@ async function recordInvoicePaymentAttempt(input: {
   eventType: string
   occurredAt?: string | null
   metadata?: Record<string, unknown>
+  providerEventCreatedAt?: number | null
+  checkoutSessionId?: string | null
 }) {
   if (!input.invoiceReference) return
 
-  await queryMany(
+  const dedupeKey = `${WEBHOOK_PROVIDER}:${input.eventId}:${input.invoiceReference}:${input.status}`
+  const inserted = await queryOne<{ invoice_id: number }>(
     `
       INSERT INTO invoice_payment_attempts (
         id, invoice_id, provider, provider_reference, status, amount, currency, failure_reason,
-        event_source, metadata, occurred_at, created_at
+        event_source, source_event_id, source_event_created_at, checkout_session_id, dedupe_key, metadata, occurred_at, created_at
       )
-      SELECT $1, i.id, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, NOW()
+      SELECT $1, i.id, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, NOW()
       FROM invoices i
-      WHERE i.id::text = $11 OR i.stripe_invoice_id = $11
-      ON CONFLICT (id) DO NOTHING
+      WHERE i.id::text = $15 OR i.stripe_invoice_id = $15
+      ON CONFLICT (dedupe_key) DO NOTHING
+      RETURNING invoice_id
     `,
     [
       `${input.eventId}:${input.invoiceReference}:${input.status}`,
@@ -113,32 +117,45 @@ async function recordInvoicePaymentAttempt(input: {
       input.currency,
       input.failureReason ?? null,
       input.eventType,
+      input.eventId,
+      input.providerEventCreatedAt ? toIsoTimestamp(input.providerEventCreatedAt) : null,
+      input.checkoutSessionId ?? null,
+      dedupeKey,
       JSON.stringify({ source: input.eventType, ...(input.metadata ?? {}) }),
       input.occurredAt ?? null,
       input.invoiceReference,
     ],
   )
 
+  if (!inserted?.invoice_id) return
+
   await queryMany(
     `
       UPDATE invoices i
       SET status = CASE
-            WHEN $2 IN ('succeeded', 'paid', 'completed') THEN 'paid'
-            WHEN $2 IN ('failed', 'payment_failed') THEN CASE WHEN i.due_date IS NOT NULL AND i.due_date < NOW() THEN 'uncollectible' ELSE 'open' END
+            WHEN latest.status IN ('succeeded', 'paid', 'completed') THEN 'paid'
+            WHEN latest.status IN ('failed', 'payment_failed') THEN CASE WHEN i.due_date IS NOT NULL AND i.due_date < NOW() THEN 'uncollectible' ELSE 'open' END
             ELSE i.status
           END,
           amount_paid = CASE
-            WHEN $2 IN ('succeeded', 'paid', 'completed') THEN COALESCE(ROUND($3 * 100)::INTEGER, i.amount_paid)
+            WHEN latest.status IN ('succeeded', 'paid', 'completed') THEN COALESCE(ROUND(latest.amount * 100)::INTEGER, i.amount_paid)
             ELSE i.amount_paid
           END,
           paid_at = CASE
-            WHEN $2 IN ('succeeded', 'paid', 'completed') THEN COALESCE(i.paid_at, NOW())
-            WHEN $2 IN ('failed', 'payment_failed') THEN NULL
+            WHEN latest.status IN ('succeeded', 'paid', 'completed') THEN COALESCE(i.paid_at, NOW())
+            WHEN latest.status IN ('failed', 'payment_failed') THEN NULL
             ELSE i.paid_at
           END
-      WHERE i.id::text = $1 OR i.stripe_invoice_id = $1
+      FROM LATERAL (
+        SELECT ipa.status, ipa.amount
+        FROM invoice_payment_attempts ipa
+        WHERE ipa.invoice_id = i.id
+        ORDER BY COALESCE(ipa.source_event_created_at, ipa.occurred_at, ipa.created_at) DESC, ipa.created_at DESC
+        LIMIT 1
+      ) latest
+      WHERE i.id = $1
     `,
-    [input.invoiceReference, input.status, input.amount],
+    [inserted.invoice_id],
   )
 }
 
@@ -193,13 +210,28 @@ async function ensureWebhookEventsTable() {
       currency TEXT,
       failure_reason TEXT,
       event_source TEXT NOT NULL,
+      source_event_id TEXT,
+      source_event_created_at TIMESTAMPTZ,
+      checkout_session_id TEXT,
+      dedupe_key TEXT,
       metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
       occurred_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    ALTER TABLE invoice_payment_attempts ADD COLUMN IF NOT EXISTS source_event_id TEXT;
+    ALTER TABLE invoice_payment_attempts ADD COLUMN IF NOT EXISTS source_event_created_at TIMESTAMPTZ;
+    ALTER TABLE invoice_payment_attempts ADD COLUMN IF NOT EXISTS checkout_session_id TEXT;
+    ALTER TABLE invoice_payment_attempts ADD COLUMN IF NOT EXISTS dedupe_key TEXT;
+
     CREATE INDEX IF NOT EXISTS idx_invoice_payment_attempts_invoice
       ON invoice_payment_attempts(invoice_id, occurred_at DESC);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_invoice_payment_attempts_dedupe_key
+      ON invoice_payment_attempts(dedupe_key);
+
+    CREATE INDEX IF NOT EXISTS idx_invoice_payment_attempts_checkout_session
+      ON invoice_payment_attempts(checkout_session_id, occurred_at DESC);
 
     CREATE TABLE IF NOT EXISTS billing_webhook_subscriptions (
       subscription_id TEXT PRIMARY KEY,
@@ -374,6 +406,9 @@ async function runWebhookDomainHandler(event: StripeWebhookEvent) {
         eventId: event.id,
         eventType: event.type,
         occurredAt: toIsoTimestamp(invoice.status_transitions?.paid_at ?? invoice.created),
+        providerEventCreatedAt: event.created,
+        checkoutSessionId:
+          typeof invoice.metadata?.checkout_session_id === "string" ? String(invoice.metadata.checkout_session_id) : null,
       })
 
       await queryMany(
@@ -428,6 +463,9 @@ async function runWebhookDomainHandler(event: StripeWebhookEvent) {
         eventId: event.id,
         eventType: event.type,
         occurredAt: toIsoTimestamp(invoice.created),
+        providerEventCreatedAt: event.created,
+        checkoutSessionId:
+          typeof invoice.metadata?.checkout_session_id === "string" ? String(invoice.metadata.checkout_session_id) : null,
       })
 
       await queryMany(
@@ -572,6 +610,9 @@ async function runWebhookDomainHandler(event: StripeWebhookEvent) {
         eventId: event.id,
         eventType: event.type,
         occurredAt: toIsoTimestamp(paymentIntent.created),
+        providerEventCreatedAt: event.created,
+        checkoutSessionId:
+          typeof paymentIntent.metadata?.checkout_session_id === "string" ? String(paymentIntent.metadata.checkout_session_id) : null,
       })
 
 
@@ -769,7 +810,7 @@ export async function replayFailedWebhookEvents(limit = 25) {
       WHERE provider = $1
         AND status IN ('failed', 'dead_letter')
         AND (next_retry_at IS NULL OR next_retry_at <= NOW())
-      ORDER BY received_at ASC
+      ORDER BY COALESCE((payload ->> 'created')::bigint, 0) ASC, received_at ASC
       LIMIT $2
     `,
     [WEBHOOK_PROVIDER, Math.max(1, limit)],
@@ -780,32 +821,12 @@ export async function replayFailedWebhookEvents(limit = 25) {
 
   for (const row of rows) {
     try {
-      await runWebhookDomainHandler(row.payload)
-      replayed += 1
-      await updateWebhookEventStatus({ eventId: row.event_id, status: "processed", attemptsIncrement: 1, errorMessage: null })
-    } catch (error) {
-      failed += 1
-      const nextAttempts = row.processing_attempts + 1
-      const deadLetter = nextAttempts >= DEAD_LETTER_THRESHOLD
-      const message = error instanceof Error ? error.message.slice(0, 500) : "webhook_replay_failed"
-
-      await updateWebhookEventStatus({
-        eventId: row.event_id,
-        status: deadLetter ? "dead_letter" : "failed",
-        attemptsIncrement: 1,
-        errorMessage: message,
-        scheduleRetryMinutes: retryDelayMinutes(nextAttempts),
-      })
-
-      if (deadLetter) {
-        await upsertDeadLetterEvent({
-          eventId: row.event_id,
-          eventType: row.payload.type,
-          errorMessage: message,
-          attempts: nextAttempts,
-          payload: row.payload,
-        })
+      const result = await processWebhookEvent(row.payload)
+      if (result.processed) {
+        replayed += 1
       }
+    } catch {
+      failed += 1
     }
   }
 
