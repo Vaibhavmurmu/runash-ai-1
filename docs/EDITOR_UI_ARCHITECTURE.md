@@ -38,3 +38,10 @@ Validated behavior against common viewport widths:
 - **768:** compact left rail present, drawers still used for right-side controls.
 - **1024:** desktop split layout activates with persistent sidebars.
 - **1440:** expanded right panel width and comfortable spacing for dense controls.
+
+## Shared responsive policy reference
+
+For cross-surface breakpoint behavior (sidebar modes, navbar overflow, card grids, dialogs, tables, editor/streaming panel expectations, and validation checklist), use:
+
+- `docs/RESPONSIVE_LAYOUT_SPEC.md`
+
