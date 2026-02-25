@@ -334,6 +334,41 @@ function parseCookieValue(cookieHeader: string | null, cookieName: string): stri
   return null
 }
 
+
+
+type LegacyFallbackPolicyDecision = {
+  enabled: boolean
+  reason: "disabled" | "sunset_flag" | "sunset_date"
+}
+
+function parseLegacyFallbackSunsetTimestamp() {
+  const rawValue = process.env.FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK_SUNSET_AT
+  if (!rawValue) {
+    return null
+  }
+
+  const parsed = Date.parse(rawValue)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+async function getLegacyFallbackPolicyDecision(): Promise<LegacyFallbackPolicyDecision> {
+  const fallbackEnabled = await isFeatureFlagEnabled("allow_legacy_next_auth_fallback")
+  if (!fallbackEnabled) {
+    return { enabled: false, reason: "disabled" }
+  }
+
+  const sunsetFlagEnabled = await isFeatureFlagEnabled("enforce_legacy_next_auth_fallback_sunset")
+  if (sunsetFlagEnabled) {
+    return { enabled: false, reason: "sunset_flag" }
+  }
+
+  const sunsetTimestamp = parseLegacyFallbackSunsetTimestamp()
+  if (sunsetTimestamp !== null && Date.now() >= sunsetTimestamp) {
+    return { enabled: false, reason: "sunset_date" }
+  }
+
+  return { enabled: true, reason: "disabled" }
+}
 async function readLegacyNextAuthSession(cookieHeader: string | null): Promise<BetterAuthSession | null> {
   const fallbackSecrets = getLegacySessionSecrets()
   if (!cookieHeader || fallbackSecrets.length === 0) {
@@ -409,7 +444,13 @@ export async function getAuthSessionFromHeaders(requestHeaders: Headers): Promis
 
   return resolveSessionFromSources({
     getPrimarySession: () => auth.api.getSession({ headers: requestHeaders }),
-    isLegacyFallbackEnabled: () => isFeatureFlagEnabled("allow_legacy_next_auth_fallback"),
+    isLegacyFallbackEnabled: async () => {
+      const decision = await getLegacyFallbackPolicyDecision()
+      if (!decision.enabled) {
+        recordAuthMetric("auth.legacy_fallback.blocked", { reason: decision.reason })
+      }
+      return decision.enabled
+    },
     getLegacySession: () => readLegacyNextAuthSession(requestHeaders.get("cookie")),
     recordMetric: recordAuthMetric,
     now: () => Date.now(),
