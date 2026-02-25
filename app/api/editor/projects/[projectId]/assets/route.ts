@@ -2,8 +2,8 @@ import { NextResponse } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
 import { sql, touchProject } from "@/lib/editor/repository"
 
-export async function GET(_: Request, { params }: { params: { projectId: string } }) {
-  const auth = await requireEditorUser()
+export async function GET(request: Request, { params }: { params: { projectId: string } }) {
+  const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
   const { projectId } = params
 
@@ -12,7 +12,7 @@ export async function GET(_: Request, { params }: { params: { projectId: string 
 }
 
 export async function POST(request: Request, { params }: { params: { projectId: string } }) {
-  const auth = await requireEditorUser()
+  const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
   const { projectId } = params
   const body = await request.json()

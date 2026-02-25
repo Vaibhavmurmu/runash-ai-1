@@ -2,8 +2,8 @@ import { NextResponse } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
 import { sql } from "@/lib/editor/repository"
 
-export async function GET(_: Request, { params }: { params: { jobId: string } }) {
-  const auth = await requireEditorUser()
+export async function GET(request: Request, { params }: { params: { jobId: string } }) {
+  const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
   const { jobId } = params
 
@@ -14,7 +14,7 @@ export async function GET(_: Request, { params }: { params: { jobId: string } })
 }
 
 export async function PATCH(request: Request, { params }: { params: { jobId: string } }) {
-  const auth = await requireEditorUser()
+  const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
   const { jobId } = params
   const body = await request.json()
@@ -35,8 +35,8 @@ export async function PATCH(request: Request, { params }: { params: { jobId: str
   return NextResponse.json({ job })
 }
 
-export async function DELETE(_: Request, { params }: { params: { jobId: string } }) {
-  const auth = await requireEditorUser()
+export async function DELETE(request: Request, { params }: { params: { jobId: string } }) {
+  const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
   const { jobId } = params
 

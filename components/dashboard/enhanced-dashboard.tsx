@@ -68,6 +68,7 @@ import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-pro
 import { useDashboardRealtime } from "@/lib/hooks/use-dashboard-realtime"
 import { RecordingService } from "@/lib/recording-service"
 import { dashboardStreamingService } from "@/lib/streaming-service"
+import { fetchApiData } from "@/lib/api/client"
 import type { DashboardRecentStream } from "@/lib/types/dashboard-streams"
 
 interface StatCardProps {
@@ -314,33 +315,19 @@ export function EnhancedDashboard() {
       setIsLoading(true)
       setStreamWidgetError(null)
 
-      // 1) fetch current user (real)
-      const meRes = await fetch("/api/me")
+      const me = await fetchApiData<any | null>("/api/me", { fallbackMessage: "Failed to load current user" }).catch(() => null)
+      setUser(me)
 
-      let me: any | null = null
-
-      if (meRes.ok) {
-        me = await meRes.json()
-        setUser(me)
-      } else {
-        setUser(null)
-      }
-
-      const [statsRes, streamsData, activityRes, achievementsRes, goalsRes, summaryData] = await Promise.all([
-        fetch("/api/dashboard/stats"),
+      const [statsData, streamsData, activityData, achievementsData, goalsData, summaryData] = await Promise.all([
+        fetchApiData<any>("/api/dashboard/stats", { fallbackMessage: "Failed to load dashboard stats" }),
         dashboardStreamingService.fetchRecentStreams(12),
-        fetch("/api/dashboard/activity?limit=10"),
-        fetch("/api/dashboard/achievements"),
-        fetch("/api/dashboard/goals"),
+        fetchApiData<any[]>("/api/dashboard/activity?limit=10", { fallbackMessage: "Failed to load dashboard activity" }),
+        fetchApiData<any[]>("/api/dashboard/achievements", { fallbackMessage: "Failed to load dashboard achievements" }),
+        fetchApiData<any[]>("/api/dashboard/goals", { fallbackMessage: "Failed to load dashboard goals" }),
         dashboardStreamingService.fetchLatestCompletedStreamSummary(),
       ])
 
-      if (statsRes.ok) {
-        const statsData = await statsRes.json()
-        setStats(statsData)
-      } else {
-        setStats(null)
-      }
+      setStats(statsData)
 
       setRecentStreams(Array.isArray(streamsData.streams) ? streamsData.streams : [])
       setLatestSummary(summaryData.summary)
@@ -358,43 +345,9 @@ export function EnhancedDashboard() {
         setRecentRecordingEditHref("/recordings")
       }
 
-      if (activityRes.ok) {
-        const activityData = await activityRes.json()
-        setActivities(activityData)
-      } else {
-        setActivities([])
-      }
-
-      if (achievementsRes.ok) {
-        const ach = await achievementsRes.json()
-        setAchievements(ach)
-      } else {
-        // fallback sample achievements computed from stats
-        setAchievements([
-          { title: "First Stream", description: "Completed your first live stream", unlocked: true },
-          {
-            title: "100 Followers",
-            description: "Reached 100 followers",
-            unlocked: stats?.followers ? stats.followers >= 100 : false,
-          },
-          {
-            title: "Viral Content",
-            description: "Stream reached 10K views",
-            unlocked: stats?.totalViews ? stats.totalViews >= 10000 : false,
-          },
-        ])
-      }
-
-      if (goalsRes.ok) {
-        const goals = await goalsRes.json()
-        setMonthlyGoals(goals)
-      } else {
-        setMonthlyGoals([
-          { name: "Streaming Hours", current: 45, target: 60, unit: "hours" },
-          { name: "New Followers", current: stats?.followers || 0, target: 300, unit: "followers" },
-          { name: "Revenue Goal", current: stats?.revenue || 0, target: 2000, unit: "$" },
-        ])
-      }
+      setActivities(Array.isArray(activityData) ? activityData : [])
+      setAchievements(Array.isArray(achievementsData) ? achievementsData : [])
+      setMonthlyGoals(Array.isArray(goalsData) ? goalsData : [])
 
       setLastUpdatedAt(Date.now())
     } catch (error) {
