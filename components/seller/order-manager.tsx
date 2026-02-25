@@ -7,16 +7,9 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { format } from "date-fns"
-import { Search, Eye, Package, Truck, CheckCircle, Clock, DollarSign, Mail, Calendar, Download } from "lucide-react"
+import { Search, Eye, Package, Truck, Clock, DollarSign, Mail, Calendar, Download } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 type OrderItem = { name: string; quantity: number; price: number }
@@ -28,7 +21,9 @@ type SellerOrder = {
   shipping_address: string
   status: string
   total: number
+  row_version: number
   created_at: string
+  updated_at: string
   items: OrderItem[]
 }
 
@@ -44,12 +39,10 @@ export function OrderManager() {
   const [selectedStatus, setSelectedStatus] = useState("all")
   const [selectedOrder, setSelectedOrder] = useState<SellerOrder | null>(null)
 
-  const {
-    data: orders = [],
-    error,
-    isLoading,
-    mutate,
-  } = useSWR<SellerOrder[]>(`/api/orders?status=${selectedStatus}&q=${encodeURIComponent(searchTerm)}`, fetcher)
+  const { data: orders = [], error, isLoading, mutate } = useSWR<SellerOrder[]>(
+    `/api/orders?status=${selectedStatus}&q=${encodeURIComponent(searchTerm)}`,
+    fetcher,
+  )
 
   const stats = useMemo(() => {
     const revenue = orders.reduce((sum, order) => sum + Number(order.total || 0), 0)
@@ -61,19 +54,48 @@ export function OrderManager() {
     }
   }, [orders])
 
-  const updateOrderStatus = async (orderId: number, newStatus: string) => {
+  const updateOrderStatus = async (order: SellerOrder, newStatus: string) => {
+    const previous = orders
+    const optimistic = orders.map((item) => (item.id === order.id ? { ...item, status: newStatus } : item))
+    await mutate(optimistic, { revalidate: false })
+    setSelectedOrder((prev) => (prev && prev.id === order.id ? { ...prev, status: newStatus } : prev))
+
     try {
-      const res = await fetch(`/api/orders/${orderId}`, {
+      const res = await fetch(`/api/orders/${order.id}`, {
         method: "PUT",
         headers: { "content-type": "application/json", "x-user-id": "1" },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status: newStatus, row_version: order.row_version }),
       })
-      if (!res.ok) throw new Error("Failed to update order")
-      await mutate()
-      setSelectedOrder((prev) => (prev ? { ...prev, status: newStatus } : prev))
-      toast({ title: "Order updated", description: `Order #${orderId} marked as ${newStatus}.` })
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}))
+        throw new Error(payload?.error || "Failed to update order")
+      }
+
+      const updated = (await res.json()) as Pick<SellerOrder, "status" | "row_version" | "updated_at"> & { id: number }
+      await mutate(
+        (current = []) =>
+          current.map((item) =>
+            item.id === order.id
+              ? { ...item, status: updated.status, row_version: updated.row_version, updated_at: updated.updated_at }
+              : item,
+          ),
+        { revalidate: false },
+      )
+      setSelectedOrder((prev) =>
+        prev && prev.id === order.id
+          ? { ...prev, status: updated.status, row_version: updated.row_version, updated_at: updated.updated_at }
+          : prev,
+      )
+      toast({ title: "Order updated", description: `Order #${order.id} marked as ${newStatus}.` })
     } catch (e: any) {
-      toast({ title: "Error", description: e.message || "Could not update order.", variant: "destructive" })
+      await mutate(previous, { revalidate: false })
+      setSelectedOrder(previous.find((item) => item.id === order.id) || null)
+      toast({
+        title: e?.message?.includes("Conflict") ? "Update conflict" : "Error",
+        description: e?.message || "Could not update order.",
+        variant: "destructive",
+      })
+      await mutate()
     }
   }
 
@@ -104,17 +126,10 @@ export function OrderManager() {
       <div className="flex items-center gap-4">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
-          <Input
-            placeholder="Search by buyer name/email"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
+          <Input placeholder="Search by buyer name/email" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
         </div>
         <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="All statuses" />
-          </SelectTrigger>
+          <SelectTrigger className="w-48"><SelectValue placeholder="All statuses" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
             <SelectItem value="pending">Pending</SelectItem>
@@ -130,11 +145,7 @@ export function OrderManager() {
         <MetricCard label="Total Orders" value={stats.total.toString()} icon={<Package className="h-8 w-8 text-orange-500" />} />
         <MetricCard label="Pending" value={stats.pending.toString()} icon={<Clock className="h-8 w-8 text-yellow-500" />} />
         <MetricCard label="Shipped" value={stats.shipped.toString()} icon={<Truck className="h-8 w-8 text-purple-500" />} />
-        <MetricCard
-          label="Revenue"
-          value={`$${stats.revenue.toFixed(2)}`}
-          icon={<DollarSign className="h-8 w-8 text-green-500" />}
-        />
+        <MetricCard label="Revenue" value={`$${stats.revenue.toFixed(2)}`} icon={<DollarSign className="h-8 w-8 text-green-500" />} />
       </div>
 
       <div className="space-y-4">
@@ -170,15 +181,8 @@ export function OrderManager() {
                     {selectedOrder && (
                       <div className="space-y-5">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <p className="font-medium">Buyer</p>
-                            <p>{selectedOrder.buyer_name}</p>
-                            <p>{selectedOrder.buyer_email}</p>
-                          </div>
-                          <div>
-                            <p className="font-medium">Shipping Address</p>
-                            <p>{selectedOrder.shipping_address || "Not provided"}</p>
-                          </div>
+                          <div><p className="font-medium">Buyer</p><p>{selectedOrder.buyer_name}</p><p>{selectedOrder.buyer_email}</p></div>
+                          <div><p className="font-medium">Shipping Address</p><p>{selectedOrder.shipping_address || "Not provided"}</p></div>
                         </div>
 
                         <div className="space-y-2">
@@ -191,13 +195,8 @@ export function OrderManager() {
                         </div>
 
                         <div className="flex items-center gap-3">
-                          <Select
-                            value={selectedOrder.status}
-                            onValueChange={(value) => updateOrderStatus(selectedOrder.id, value)}
-                          >
-                            <SelectTrigger className="w-56">
-                              <SelectValue />
-                            </SelectTrigger>
+                          <Select value={selectedOrder.status} onValueChange={(value) => updateOrderStatus(selectedOrder, value)}>
+                            <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="pending">Pending</SelectItem>
                               <SelectItem value="processing">Processing</SelectItem>
@@ -206,7 +205,7 @@ export function OrderManager() {
                               <SelectItem value="cancelled">Cancelled</SelectItem>
                             </SelectContent>
                           </Select>
-                          <Button onClick={() => updateOrderStatus(selectedOrder.id, "processing")}>Mark processing</Button>
+                          <Button onClick={() => updateOrderStatus(selectedOrder, "processing")}>Mark processing</Button>
                         </div>
                       </div>
                     )}

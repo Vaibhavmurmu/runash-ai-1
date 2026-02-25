@@ -8,13 +8,14 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/hooks/use-toast"
-import { AlertTriangle, Package, RefreshCw, Save } from "lucide-react"
+import { AlertTriangle, Package, RefreshCw, Save, Trash2 } from "lucide-react"
 
 type InventoryProduct = {
   id: number
   name: string
   stock: number
   price: number
+  row_version: number
 }
 
 export function InventoryManager() {
@@ -28,12 +29,10 @@ export function InventoryManager() {
     error,
     mutate,
     isLoading,
-  } = useSWR<InventoryProduct[]>(
-    "/api/products",
-    (url) =>
-      fetch(url, { headers: { "x-user-id": "1" } }).then((r) =>
-        r.ok ? r.json() : Promise.reject(new Error("Failed to fetch products")),
-      ),
+  } = useSWR<InventoryProduct[]>("/api/products", (url) =>
+    fetch(url, { headers: { "x-user-id": "1" } }).then((r) =>
+      r.ok ? r.json() : Promise.reject(new Error("Failed to fetch products")),
+    ),
   )
 
   const filteredProducts = useMemo(
@@ -41,41 +40,82 @@ export function InventoryManager() {
     [products, searchTerm],
   )
 
-  const handleUpdateStock = async (productId: number) => {
-    const newStock = stockDrafts[productId]
+  const handleUpdateStock = async (product: InventoryProduct) => {
+    const newStock = stockDrafts[product.id]
     if (newStock == null || Number.isNaN(newStock)) return
 
-    setSavingId(productId)
+    setSavingId(product.id)
+    const previousProducts = products
+    const optimisticProducts = products.map((item) =>
+      item.id === product.id ? { ...item, stock: newStock } : item,
+    )
+
+    await mutate(optimisticProducts, { revalidate: false })
+
     try {
-      const response = await fetch(`/api/products/${productId}`, {
+      const response = await fetch(`/api/products/${product.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "x-user-id": "1" },
-        body: JSON.stringify({ stock: newStock }),
+        body: JSON.stringify({ stock: newStock, row_version: product.row_version }),
       })
-      if (!response.ok) throw new Error("Failed to update stock")
-      toast({ title: "Stock updated", description: "Product stock has been updated." })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload?.error || "Failed to update stock")
+      }
+
+      const updated = (await response.json()) as InventoryProduct
+      await mutate(
+        (current = []) => current.map((item) => (item.id === product.id ? updated : item)),
+        { revalidate: false },
+      )
+
       setStockDrafts((prev) => {
         const next = { ...prev }
-        delete next[productId]
+        delete next[product.id]
         return next
       })
+      toast({ title: "Stock updated", description: "Product stock has been updated." })
+    } catch (error: any) {
+      await mutate(previousProducts, { revalidate: false })
+      toast({
+        title: error?.message?.includes("Conflict") ? "Update conflict" : "Error",
+        description: error?.message || "Failed to update stock.",
+        variant: "destructive",
+      })
       await mutate()
-    } catch {
-      toast({ title: "Error", description: "Failed to update stock.", variant: "destructive" })
     } finally {
       setSavingId(null)
     }
   }
 
-  const handleDeleteProduct = async (productId: number) => {
+  const handleDeleteProduct = async (product: InventoryProduct) => {
     if (!confirm("Are you sure you want to delete this product?")) return
+
+    const previousProducts = products
+    await mutate(
+      (current = []) => current.filter((item) => item.id !== product.id),
+      { revalidate: false },
+    )
+
     try {
-      const response = await fetch(`/api/products/${productId}`, { method: "DELETE", headers: { "x-user-id": "1" } })
-      if (!response.ok) throw new Error("Failed to delete product")
+      const response = await fetch(`/api/products/${product.id}`, {
+        method: "DELETE",
+        headers: { "x-user-id": "1", "if-match": `"${product.row_version}"` },
+      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload?.error || "Failed to delete product")
+      }
       toast({ title: "Product deleted", description: "The product has been removed." })
+    } catch (error: any) {
+      await mutate(previousProducts, { revalidate: false })
+      toast({
+        title: error?.message?.includes("Conflict") ? "Delete conflict" : "Error",
+        description: error?.message || "Failed to delete product.",
+        variant: "destructive",
+      })
       await mutate()
-    } catch {
-      toast({ title: "Error", description: "Failed to delete product.", variant: "destructive" })
     }
   }
 
@@ -152,14 +192,14 @@ export function InventoryManager() {
                     <TableCell className="flex gap-2">
                       <Button
                         size="sm"
-                        onClick={() => handleUpdateStock(product.id)}
+                        onClick={() => handleUpdateStock(product)}
                         disabled={!dirty || savingId === product.id}
                       >
                         <Save className="h-4 w-4 mr-1" />
                         Save
                       </Button>
-                      <Button size="sm" variant="destructive" onClick={() => handleDeleteProduct(product.id)}>
-                        Delete
+                      <Button size="sm" variant="destructive" onClick={() => handleDeleteProduct(product)}>
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
                   </TableRow>
