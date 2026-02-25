@@ -130,3 +130,15 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Risk/rollback:
   1. If confirmation polling causes UX regressions, revert `app/scan/page.tsx` and restore previous route behavior.
   2. If status endpoint behavior is unstable, roll back `app/api/upi/status/[transactionId]/route.ts` and gate Scan & Pay launch behind existing stable payment surfaces.
+
+## 2026-02 UPI backend PIN validation, rate-limits, and idempotency hardening
+
+- `POST /api/upi/initiate` and `POST /api/upi/confirm` now accept/reuse idempotency keys (header `idempotency-key` or body `idempotencyKey`) to prevent duplicate initiation/confirmation charging behavior under retries.
+- UPI PIN validation now executes only on backend confirmation (`/api/upi/confirm`) and no longer depends on client-side PIN length assumptions.
+- Payment routes now enforce request rate limits and PIN retry limits. Exhausted retries return `PIN_ATTEMPTS_EXCEEDED`; route-level risk controls return `RISK_BLOCKED`.
+- UPI confirmation and status APIs now expose structured error codes (`INVALID_PIN`, `PIN_ATTEMPTS_EXCEEDED`, `RISK_BLOCKED`) to support deterministic UI messaging without exposing provider internals.
+- Logging hardening expands payment log sanitization to redact PIN/auth-like fields (`pin`, `otp`, `token`, `authorization`, `secret`) so raw credentials never reach app logs.
+- Risks + rollback:
+  1. In-memory idempotency/rate-limit state resets on process restart; if this causes inconsistent behavior, replace store with Redis/DB-backed state before high-scale rollout.
+  2. If new confirmation API introduces regressions, rollback by reverting `app/api/upi/confirm/route.ts`, `lib/services/upi-checkout-service.ts`, and `app/scan/page.tsx` together to keep client/server flow aligned.
+  3. Keep API contracts backward-compatible by preserving existing payload fields (`transactionId`, `status`, `transactionReference`, `updatedAt`) while additive fields (`errorCode`) remain optional.
