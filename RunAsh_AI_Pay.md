@@ -63,3 +63,13 @@ This document is payment-domain specific. For contributor workflow/process polic
 - `POST /api/v1/billing/invoices` now accepts validated customer + line-item + tax + due-date + currency payloads and persists invoice records and line items.
 - Invoice records now persist customer details and invoice-linked payment attempts (`invoice_payment_attempts`) to improve auditability.
 - Webhook payment events now append invoice payment attempts and synchronize invoice status (`open`/`paid`/`uncollectible`) + `amount_paid` in local invoice records when references match.
+
+## 2026-02 Payment State Normalization & Reconciliation
+
+- Normalized payment intent states now use a shared domain enum: `pending`, `processing`, `requires_action`, `succeeded`, `failed`, `canceled`, `expired`, and `incomplete`.
+- Payment intent status updates are transition-validated in the service/repository layer to avoid invalid jumps and preserve backward-compatible API response shapes.
+- Payment intent records now persist status transition timestamps (`status_transitions` + `last_status_transition_at`) for auditability.
+- New reconciliation endpoint pattern is available at `POST /api/v1/payment/usage/reconcile` (and alias `/api/payment/usage/reconcile`) to:
+  - recover payment intents from provider event mismatches,
+  - expire stale checkout sessions and prevent stuck authorized/created sessions.
+- Risk/rollback: if reconciliation behavior needs rollback, disable scheduled calls to the endpoint and revert to existing manual status updates while preserving the newly added transition metadata columns.

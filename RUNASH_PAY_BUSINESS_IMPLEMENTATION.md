@@ -58,3 +58,11 @@ This document is limited to payment/business implementation policy. Generic cont
 - Invoice creation now uses canonical billing invoice APIs with server-side validation for customer fields, line items, tax, due date, and currency.
 - Payment-attempt linkage for invoices is persisted for reconciliation (`invoice_payment_attempts`), and webhook/payment confirmation paths now synchronize invoice lifecycle state.
 - No payment route field names were removed; invoice API compatibility is preserved while adding POST create support.
+
+## Payment Reliability Addendum (State Reconciliation)
+
+- Add automated operational reconciliation via `POST /api/v1/payment/usage/reconcile` for payment intents and checkout sessions.
+- Reconciliation should be run by a privileged billing admin actor and monitored for:
+  - `paymentIntents.updated` spikes,
+  - recurring `checkoutSessions.expired` counts.
+- Transition auditing is now first-class via persisted timestamps to support incident forensics and rollback reviews.
