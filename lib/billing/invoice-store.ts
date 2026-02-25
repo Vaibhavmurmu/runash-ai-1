@@ -1,5 +1,26 @@
 import { Database } from "@/lib/database"
 
+export function resolveInvoiceLifecycleStatus(input: {
+  currentStatus: string
+  attemptStatus: string
+  dueDateIso: string | null
+  now?: Date
+}) {
+  const now = input.now ?? new Date()
+  const isPastDue = Boolean(input.dueDateIso) && new Date(input.dueDateIso as string).getTime() < now.getTime()
+
+  if (["succeeded", "paid", "completed"].includes(input.attemptStatus)) {
+    return "paid"
+  }
+
+  if (["failed", "payment_failed"].includes(input.attemptStatus)) {
+    return isPastDue ? "uncollectible" : "open"
+  }
+
+  return input.currentStatus
+}
+
+
 export async function ensureInvoiceSupportTables() {
   await Database.query(`
     CREATE TABLE IF NOT EXISTS invoice_customer_details (

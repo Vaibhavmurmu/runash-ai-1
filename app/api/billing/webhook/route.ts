@@ -2,8 +2,10 @@ import { type NextRequest, NextResponse } from "next/server"
 import { logApiEvent, createRequestLogContext } from "@/lib/api/logging"
 import { getWebhookEventByEventId, processWebhookEvent, recordWebhookEvent } from "@/lib/services/billing-webhook-service"
 import { verifyStripeSignedPayload } from "@/lib/auth/plugins/runash-payment"
+import { shouldTreatDuplicateAsProcessed } from "@/lib/services/billing-webhook-idempotency"
 
 const DEFAULT_SIGNATURE_TOLERANCE_SECONDS = 300
+
 
 function getConfiguredToleranceSeconds() {
   const configured = Number(process.env.BILLING_WEBHOOK_SIGNATURE_TOLERANCE_SECONDS ?? DEFAULT_SIGNATURE_TOLERANCE_SECONDS)
@@ -68,7 +70,7 @@ export async function POST(req: NextRequest) {
       details: { eventId: event.id, eventType: event.type, status: existing?.status ?? "unknown" },
     })
 
-    if (existing?.status === "processed") {
+    if (shouldTreatDuplicateAsProcessed(existing?.status)) {
       return NextResponse.json({ received: true, duplicate: true, processed: true })
     }
   }

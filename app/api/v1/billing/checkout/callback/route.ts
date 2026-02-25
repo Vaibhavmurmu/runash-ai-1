@@ -4,6 +4,7 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { requireScopedBillingAccess } from "@/lib/billing-auth"
 import { verifySignedCheckoutReturnState } from "@/lib/payments/checkout-return-state"
 import { resolvePaymentStatus } from "@/lib/payments/checkout-status-resolution"
+import { mapResolutionToFinalStatus } from "@/lib/payments/checkout-callback-mappers"
 
 const callbackSchema = z
   .object({
@@ -51,14 +52,7 @@ export async function GET(request: NextRequest) {
     provider: parsed.data.provider,
   })
 
-  const finalStatus =
-    resolution.resolvedStatus === "complete"
-      ? "completed"
-      : resolution.resolvedStatus === "error"
-        ? "failed"
-        : resolution.resolvedStatus === "incomplete"
-          ? "expired"
-          : "pending"
+  const finalStatus = mapResolutionToFinalStatus(resolution.resolvedStatus)
 
   return respondSuccess(request, {
     checkoutSessionId: resolvedSessionId,

@@ -66,3 +66,21 @@ This document is limited to payment/business implementation policy. Generic cont
   - `paymentIntents.updated` spikes,
   - recurring `checkoutSessions.expired` counts.
 - Transition auditing is now first-class via persisted timestamps to support incident forensics and rollback reviews.
+
+## 2026-02 payment reliability campaign: test and rollback notes
+
+- Impacted flows validated in this update:
+  - checkout redirect roundtrip status resolution,
+  - payment status page route mapping,
+  - invoice create amount lifecycle calculations,
+  - webhook duplicate idempotency handling,
+  - failed/incomplete retry lifecycle outcomes.
+- Backward compatibility confirmation: startup/business payment APIs and field names remain unchanged; no version bump needed.
+- Migration/rollout: no data migration required; helper extraction only.
+- Risks and mitigations:
+  - **Risk:** helper extraction could desynchronize from route behavior. **Mitigation:** targeted payment tests added and required in validation commands.
+  - **Risk:** environment gaps (missing `eslint`, missing DB/auth env for full build) can limit local confidence. **Mitigation:** run targeted tests plus CI in fully provisioned environment before release.
+- Rollback plan:
+  1. Revert helper extraction commit.
+  2. Restore prior inline route/service logic.
+  3. Re-run lint/build/tests in release environment and redeploy previous stable artifact if issues persist.
