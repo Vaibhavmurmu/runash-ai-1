@@ -65,6 +65,12 @@ export default function Navbar() {
             >
               Blog
             </Link>
+            <Link
+              href="/waitlist"
+              className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
+            >
+              Waitlist
+            </Link>
           </div>
 
           <div className="hidden md:flex items-center space-x-4">
@@ -121,6 +127,12 @@ export default function Navbar() {
               className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md"
             >
               Blog
+            </Link>
+            <Link
+              href="/waitlist"
+              className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md"
+            >
+              Waitlist
             </Link>
           </div>
           <div className="px-5 py-4 border-t border-orange-100 dark:border-gray-800 flex flex-col space-y-3">
