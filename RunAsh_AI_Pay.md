@@ -29,6 +29,7 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Protected payment flows rely on Better Auth session validation via `/api/auth/get-session` and canonical Better Auth session cookies.
 - Legacy NextAuth cookie compatibility remains temporary during migration windows to avoid lockouts.
 - RBAC authorization remains aligned with canonical `viewer` / `operator` / `admin` capabilities with compatibility mapping where still required.
+- Middleware and seller/admin route guards enforce role-aware authorization server-side with explicit `401 Unauthorized` (missing session) and `403 Forbidden` (insufficient role) behavior for payment/auth-adjacent surfaces.
 
 ## Payment surface routes (current)
 
