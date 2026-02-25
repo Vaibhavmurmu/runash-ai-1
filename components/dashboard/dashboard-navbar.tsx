@@ -3,7 +3,7 @@
 import { useRef, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Bell, ChevronRight, Command, Menu, MoreHorizontal, Plus, Search } from "lucide-react"
+import { Bell, ChevronRight, Command, LogOut, Menu, MessageSquare, MoreHorizontal, Plus, Search, Settings, User } from "lucide-react"
 import { signOut } from "@/lib/auth/client"
 import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
 import { FeedbackModal } from "@/components/dashboard/feedback-modal"
@@ -32,6 +32,20 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
   const navContext = resolveDashboardNavContext(pathname)
   const currentPageTitle = navContext.breadcrumbs[navContext.breadcrumbs.length - 1]?.label ?? "Dashboard"
   const { openFromTrigger } = useDashboardModelDialog()
+
+  const handleSignOut = async () => {
+    await signOut({
+      fetchOptions: {
+        onSuccess: () => {
+          window.location.href = "/"
+        },
+      },
+    })
+  }
+
+  const openFeedbackModal = () => {
+    setFeedbackOpen(true)
+  }
 
   const triggerSource = pathname.startsWith("/dashboard/editor") || pathname.startsWith("/editor")
     ? "editor"
@@ -146,7 +160,7 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
             variant="outline"
             size="sm"
             className="hidden h-10 border-border/80 bg-background/75 focus-visible:ring-orange-500/80 md:inline-flex"
-            onClick={() => setFeedbackOpen(true)}
+            onClick={openFeedbackModal}
             ref={feedbackTriggerRef}
           >
             Feedback
@@ -165,26 +179,31 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
               <DropdownMenuLabel>Account</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/settings/profile">Profile</Link>
+                <Link href="/settings/profile">
+                  <User className="mr-2 h-4 w-4" />
+                  Profile
+                </Link>
               </DropdownMenuItem>
+              <DropdownMenuLabel>Workspace</DropdownMenuLabel>
+              <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/settings">Preferences / Settings</Link>
+                <Link href="/settings">
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/settings/billing">Billing</Link>
               </DropdownMenuItem>
+              <DropdownMenuLabel>Support</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={async () => {
-                  await signOut({
-                    fetchOptions: {
-                      onSuccess: () => {
-                        window.location.href = "/"
-                      },
-                    },
-                  })
-                }}
-              >
+              <DropdownMenuItem onClick={openFeedbackModal}>
+                <MessageSquare className="mr-2 h-4 w-4" />
+                Feedback
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleSignOut}>
+                <LogOut className="mr-2 h-4 w-4" />
                 Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -236,33 +255,34 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
                 </DropdownMenuItem>
               ))}
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/settings/billing">Upgrade</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setFeedbackOpen(true)}>Feedback</DropdownMenuItem>
+              <DropdownMenuLabel>Account</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/settings/profile">Profile</Link>
+                <Link href="/settings/profile">
+                  <User className="mr-2 h-4 w-4" />
+                  Profile
+                </Link>
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleSignOut}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign out
+              </DropdownMenuItem>
+              <DropdownMenuLabel>Workspace</DropdownMenuLabel>
+              <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/settings">Preferences / Settings</Link>
+                <Link href="/settings">
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/settings/billing">Billing</Link>
               </DropdownMenuItem>
-              <DropdownMenuItem>Notifications</DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={async () => {
-                  await signOut({
-                    fetchOptions: {
-                      onSuccess: () => {
-                        window.location.href = "/"
-                      },
-                    },
-                  })
-                }}
-              >
-                Sign out
+              <DropdownMenuLabel>Support</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={openFeedbackModal}>
+                <MessageSquare className="mr-2 h-4 w-4" />
+                Feedback
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
