@@ -87,6 +87,18 @@ export interface LinkCheckoutAttemptTimelineEntry {
   timestamp: string
 }
 
+export interface LinkCheckoutActivitySummary {
+  provider: "runash_pay"
+  endpoint: string
+  request_correlation_id: string
+  status: "initiated" | "failed"
+  next_action: "open_link_checkout" | "retry_or_manual_review"
+  checkout_session_id: string | null
+  fallback_used: boolean
+  attempts_count: number
+  attempted_methods: string[]
+}
+
 export interface LinkCheckoutFinalResult {
   status: "initiated" | "failed"
   checkout_session_id: string | null
@@ -101,6 +113,7 @@ export interface LinkCheckoutFinalResult {
   attempts: LinkCheckoutAttemptResult[]
   attempt_timeline: LinkCheckoutAttemptTimelineEntry[]
   attemptTimeline: LinkCheckoutAttemptTimelineEntry[]
+  activity_summary: LinkCheckoutActivitySummary
 }
 
 type PersistAttemptFn = (input: {
@@ -333,6 +346,17 @@ export async function runLinkCheckoutWithFallback(
           attempts,
           attempt_timeline: attemptTimeline,
           attemptTimeline,
+          activity_summary: {
+            provider: "runash_pay",
+            endpoint: LINK_CHECKOUT_API_URL,
+            request_correlation_id: requestId,
+            status: "initiated",
+            next_action: "open_link_checkout",
+            checkout_session_id: checkoutSessionId,
+            fallback_used: index > 0,
+            attempts_count: attempts.length,
+            attempted_methods: attempts.map((attempt) => attempt.method),
+          },
         }
       }
 
@@ -389,5 +413,16 @@ export async function runLinkCheckoutWithFallback(
     attempts,
     attempt_timeline: attemptTimeline,
     attemptTimeline,
+    activity_summary: {
+      provider: "runash_pay",
+      endpoint: LINK_CHECKOUT_API_URL,
+      request_correlation_id: requestId,
+      status: "failed",
+      next_action: "retry_or_manual_review",
+      checkout_session_id: null,
+      fallback_used: attempts.some((_, index) => index > 0),
+      attempts_count: attempts.length,
+      attempted_methods: attempts.map((attempt) => attempt.method),
+    },
   }
 }

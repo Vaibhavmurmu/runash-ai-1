@@ -15,7 +15,7 @@ import {
 import { RELAY_AGENT_TOOLS } from "@/lib/skills/relay-tool-registry"
 import { AgentOrchestrationService, type SupportedTool } from "@/services/agent-orchestration-service"
 import { enqueueToolJob } from "@/services/agent-tool-queue-worker"
-import { buildToolPlan } from "./chat-request-handler"
+import { buildToolPlan, resolveRunAshChatToolSelection } from "./chat-request-handler"
 
 const requestSchema = z.object({
   sessionId: z.string().trim().min(1).optional(),
@@ -80,7 +80,11 @@ export async function POST(request: NextRequest) {
           await updateAgentMessage(assistantMessage.id, { status: "streaming" })
 
           const toolOutputs: Record<string, unknown> = {}
-          const toolPlan = buildToolPlan(parsed.data.tools as SupportedTool[])
+          const selectedTools = resolveRunAshChatToolSelection(
+            sanitizedMessage,
+            parsed.data.tools as SupportedTool[],
+          )
+          const toolPlan = buildToolPlan(selectedTools)
 
           for (const tool of toolPlan.immediate) {
             send("tool_start", { tool, messageId: assistantMessage.id, status: "tool-running" })

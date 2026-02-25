@@ -570,6 +570,25 @@ export function ChatWorkspace() {
                 : typeof payload.result?.next_action === "string"
                   ? payload.result.next_action
                   : undefined
+            const checkoutStatusRaw =
+              typeof payload.result?.status === "string"
+                ? payload.result.status
+                : typeof payload.result?.execution_activity_summary?.status === "string"
+                  ? payload.result.execution_activity_summary.status
+                  : ""
+            const checkoutState: "idle" | "processing" | "success" | "failed" =
+              checkoutStatusRaw === "initiated"
+                ? "success"
+                : checkoutStatusRaw === "failed" || checkoutStatusRaw === "validation_failed"
+                  ? "failed"
+                  : "idle"
+            const requestCorrelationId =
+              typeof payload.result?.execution_activity_summary?.request_correlation_id === "string"
+                ? payload.result.execution_activity_summary.request_correlation_id
+                : typeof payload.result?.request_id === "string"
+                  ? payload.result.request_id
+                  : undefined
+
             const attemptTimeline = Array.isArray(payload.result?.attempt_timeline)
               ? payload.result.attempt_timeline
                   .map((entry: unknown) => {
@@ -607,7 +626,8 @@ export function ChatWorkspace() {
                   taxLabel: taxLabel === "GST" || taxLabel === "VAT" || taxLabel === "Sales Tax" ? taxLabel : undefined,
                   taxRatePercent,
                   blockedReason,
-                  status: typeof payload.result?.status === "string" ? payload.result.status : undefined,
+                  status: checkoutState,
+                  requestCorrelationId,
                   checkoutId,
                   nextAction,
                   attemptTimeline,

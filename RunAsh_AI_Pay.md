@@ -142,3 +142,14 @@ This document is payment-domain specific. For contributor workflow/process polic
   1. In-memory idempotency/rate-limit state resets on process restart; if this causes inconsistent behavior, replace store with Redis/DB-backed state before high-scale rollout.
   2. If new confirmation API introduces regressions, rollback by reverting `app/api/upi/confirm/route.ts`, `lib/services/upi-checkout-service.ts`, and `app/scan/page.tsx` together to keep client/server flow aligned.
   3. Keep API contracts backward-compatible by preserving existing payload fields (`transactionId`, `status`, `transactionReference`, `updatedAt`) while additive fields (`errorCode`) remain optional.
+
+## 2026-02 RunAshChat Instant Checkout (Relay → Link)
+
+- Added/confirmed `initiate_link_checkout` tool contract for RunAshChat relay with required fields: `merchant_id`, `amount` (smallest unit), `currency` (`INR`/`USD`), and `product_metadata` (`item_name`, `sku`, `tags` including `via RunAshChat`).
+- Relay chat routing now auto-selects payment tooling for natural-language intents such as `buy this` and `confirm`, while preserving explicit caller-provided tool lists for backward compatibility.
+- Link execution path now calls `https://api.runash.in/v3/pay` and emits structured execution activity summary metadata including request correlation ID, endpoint, attempt count, and fallback usage.
+- RunAshChat UI now surfaces checkout state (`idle` / `processing` / `success` / `failed`) and request correlation ID to improve support/audit workflows.
+- Risks + rollback:
+  1. Intent over-matching could trigger checkout tooling for ambiguous prompts; rollback by reverting intent selection helper in `app/api/agents/chat/chat-request-handler.ts`.
+  2. If upstream `/v3/pay` payload/response behavior changes, rollback to prior `runLinkCheckoutWithFallback` return mapping while preserving request headers and idempotency behavior.
+  3. UI state inconsistencies can be rolled back by reverting `components/chat/link-quick-pay-button.tsx` + `components/dashboard/workspace/chat-workspace.tsx` together to keep metadata/state mapping aligned.

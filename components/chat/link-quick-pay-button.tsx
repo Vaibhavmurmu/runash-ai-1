@@ -22,6 +22,8 @@ interface LinkQuickPayButtonProps {
   totalAmount?: number
   taxLabel?: "GST" | "VAT" | "Sales Tax"
   blockedReason?: string
+  checkoutState?: LinkQuickPayStatus
+  requestCorrelationId?: string
   attemptTimeline?: Array<{
     method: string
     reason: "primary" | "fallback_retry" | "no_retry"
@@ -60,14 +62,20 @@ export default function LinkQuickPayButton({
   totalAmount,
   taxLabel,
   blockedReason,
+  checkoutState = "idle",
+  requestCorrelationId,
   attemptTimeline,
 }: LinkQuickPayButtonProps) {
-  const [status, setStatus] = useState<LinkQuickPayStatus>("idle")
+  const [status, setStatus] = useState<LinkQuickPayStatus>(checkoutState)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [confirmedAfterPreview, setConfirmedAfterPreview] = useState(false)
 
   const requiresPostPreviewConfirmation =
     typeof subtotal === "number" && typeof taxAmount === "number" && typeof totalAmount === "number"
+
+  useEffect(() => {
+    setStatus((current) => (current === "processing" ? current : checkoutState))
+  }, [checkoutState])
 
   useEffect(() => {
     if (!requiresPostPreviewConfirmation) {
@@ -180,6 +188,10 @@ export default function LinkQuickPayButton({
           ) : null}
 
           {errorMessage ? <p className="text-xs text-red-600 dark:text-red-400">{errorMessage}</p> : null}
+
+          {requestCorrelationId ? (
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">Correlation ID: {requestCorrelationId}</p>
+          ) : null}
         </div>
 
         <div className="flex w-full flex-col gap-2 md:items-end">
