@@ -23,7 +23,8 @@ export interface LinkQuickPayPreview {
   last4: string
   tags: string[]
   taxPreview?: number
-  status?: string
+  status?: "idle" | "processing" | "success" | "failed"
+  requestCorrelationId?: string
   subtotal?: number
   taxAmount?: number
   totalAmount?: number

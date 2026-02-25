@@ -170,6 +170,17 @@ export type InitiateLinkCheckoutActivityPayload = {
       amount: number
     }>
   }
+  execution_activity_summary?: {
+    provider: "runash_pay"
+    endpoint: string
+    request_correlation_id: string
+    status: "initiated" | "failed"
+    next_action: "open_link_checkout" | "retry_or_manual_review"
+    checkout_session_id: string | null
+    fallback_used: boolean
+    attempts_count: number
+    attempted_methods: string[]
+  }
   activity_summary_payload: {
     status: "initiated" | "validation_failed" | "failed"
     checkoutId: string | null
@@ -323,6 +334,17 @@ export const initiateLinkCheckoutTool = {
         policy_decision: policyDecision,
         activity_summary: activitySummary,
         transaction_metadata: transactionMetadata,
+        execution_activity_summary: {
+          provider: "runash_pay",
+          endpoint: "https://api.runash.in/v3/pay",
+          request_correlation_id: requestId,
+          status: "failed",
+          next_action: "retry_or_manual_review",
+          checkout_session_id: null,
+          fallback_used: false,
+          attempts_count: 0,
+          attempted_methods: [],
+        },
         activity_summary_payload: {
           status: "validation_failed",
           checkoutId: null,
@@ -373,6 +395,7 @@ export const initiateLinkCheckoutTool = {
         policy_decision: policyDecision,
         activity_summary: activitySummary,
         transaction_metadata: transactionMetadata,
+        execution_activity_summary: checkoutResult.activity_summary,
         activity_summary_payload: {
           status: checkoutResult.status,
           checkoutId: checkoutResult.checkout_session_id,
@@ -389,6 +412,17 @@ export const initiateLinkCheckoutTool = {
         policy_decision: policyDecision,
         activity_summary: activitySummary,
         transaction_metadata: transactionMetadata,
+        execution_activity_summary: {
+          provider: "runash_pay",
+          endpoint: "https://api.runash.in/v3/pay",
+          request_correlation_id: requestId,
+          status: "failed",
+          next_action: "retry_or_manual_review",
+          checkout_session_id: null,
+          fallback_used: false,
+          attempts_count: 0,
+          attempted_methods: [],
+        },
         activity_summary_payload: {
           status: "failed",
           checkoutId: null,
