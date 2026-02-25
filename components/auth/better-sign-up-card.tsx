@@ -9,12 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { CardAlert } from "@/components/ui/card-alert"
-
-function buildFallbackUsername(email: string) {
-  const base = email.split("@")[0]?.toLowerCase().replace(/[^a-z0-9_-]/g, "") || "runash-user"
-  const suffix = Math.random().toString(36).slice(2, 8)
-  return `${base.slice(0, 12)}-${suffix}`
-}
+import { registerWithUnifiedRoute } from "@/lib/auth/register-client"
 
 export function BetterSignUpCard() {
   const [firstName, setFirstName] = useState("")
@@ -80,27 +75,21 @@ export function BetterSignUpCard() {
             setLoading(true)
 
             try {
-              const response = await fetch("/api/auth/register", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  email,
-                  password,
-                  name: `${firstName} ${lastName}`.trim(),
-                  username: buildFallbackUsername(email),
-                }),
+              const registration = await registerWithUnifiedRoute({
+                email,
+                password,
+                name: `${firstName} ${lastName}`.trim(),
               })
 
-              const payload = await response.json()
-              if (!response.ok) {
-                const message = payload?.message || "Unable to create account"
-                setError(message)
-                toast.error(message)
+              if (!registration.ok) {
+                setError(registration.message)
+                toast.error(registration.message)
                 return
               }
 
-              const isVerificationPending = payload?.user?.emailVerified === false || /verify your account/i.test(payload?.message || "")
-              toast.success(isVerificationPending ? "Check your email to verify your account" : payload?.message || "Account created")
+              const isVerificationPending =
+                registration.user?.emailVerified === false || /verify your account/i.test(registration.message)
+              toast.success(isVerificationPending ? "Check your email to verify your account" : registration.message)
               router.push("/login")
             } catch (error) {
               setError("Unable to create account")

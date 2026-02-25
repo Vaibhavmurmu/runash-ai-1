@@ -39,6 +39,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { registerWithUnifiedRoute } from "@/lib/auth/register-client"
 
 const ROLE_OPTIONS = [
   { key: "creator", title: "Creator", desc: "Go live, manage streams, engage your audience" },
@@ -137,19 +138,15 @@ export default function GetStartedPage() {
           return
         }
 
-        const response = await fetch("/api/auth/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: formData.email,
-            password: formData.password,
-            name: formData.name,
-            username: formData.username,
-          }),
+        const registration = await registerWithUnifiedRoute({
+          email: formData.email,
+          password: formData.password,
+          name: formData.name,
+          username: formData.username,
         })
 
-        if (response.ok) setStep(2)
-        else setError("Unable to create account. Please try again.")
+        if (registration.ok) setStep(2)
+        else setError(registration.message || "Unable to create account. Please try again.")
       } else if (step === 2) {
         setStep(3)
       }
