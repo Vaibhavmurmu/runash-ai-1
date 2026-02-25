@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { type ReactNode, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Video, Calendar, Clock, Users, Settings, Mail, Link as LinkIcon, RotateCcw, Sparkles, BarChart3, AlertTriangle } from "lucide-react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -14,7 +14,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -36,6 +35,41 @@ const getAppHrefFromStreamUrl = (id: string, url?: string) => {
   } catch {
     return canonicalUrl
   }
+}
+
+
+function formatModuleUpdatedLabel(value?: string | null) {
+  if (!value) return "Last updated: no recent activity"
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return `Last updated: ${value}`
+  return `Last updated: ${parsed.toLocaleString()}`
+}
+
+type StreamTemplateCardProps = {
+  primaryAction: ReactNode
+  onResume: () => void
+  resumeDisabled: boolean
+  continuityLabel: string
+  updatedLabel: string
+}
+
+function StreamTemplateCard({ primaryAction, onResume, resumeDisabled, continuityLabel, updatedLabel }: StreamTemplateCardProps) {
+  return (
+    <Card className="border-border/40 md:col-span-2 lg:col-span-2">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Streaming module</CardTitle>
+        <CardDescription>Use the common workflow template: launch, continue previous live context, and verify recency.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {primaryAction}
+        <Button variant="outline" className="w-full" onClick={onResume} disabled={resumeDisabled}>
+          <RotateCcw className="mr-2 h-4 w-4" />
+          {continuityLabel}
+        </Button>
+        <div className="rounded-md border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">{updatedLabel}</div>
+      </CardContent>
+    </Card>
+  )
 }
 
 export function StreamQuickAccess() {
@@ -64,6 +98,7 @@ export function StreamQuickAccess() {
   const [integrating, setIntegrating] = useState(false)
   const [recentRecordingEditHref, setRecentRecordingEditHref] = useState("/recordings")
   const [latestSummary, setLatestSummary] = useState<LatestCompletedStreamSummary | null>(null)
+  const [startDialogOpen, setStartDialogOpen] = useState(false)
 
   const initialStreamIds = useMemo(() => recentStreams.map((stream) => stream.id), [recentStreams])
   const { connected, streams: streamRealtime, alerts, subscribe } = useStreamingStudioRealtime({ initialStreamIds })
@@ -134,7 +169,7 @@ export function StreamQuickAccess() {
   const handleStartStream = async () => {
     if (!streamTitle) {
       toast({ title: "Missing Title", description: "Please enter a stream title." })
-      return
+      return false
     }
 
     try {
@@ -162,9 +197,11 @@ export function StreamQuickAccess() {
       setStreamTitle("")
       // Navigate to stream detail/player page (adjust route to your app)
       router.push(getAppHrefFromStreamUrl(data.id, data.url))
+      return true
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Could not start stream."
       toast({ title: "Error", description: message })
+      return false
     } finally {
       setLoading(false)
     }
@@ -318,6 +355,23 @@ export function StreamQuickAccess() {
           </div>
         )}
         <div className="grid gap-3 md:grid-cols-3">
+          <StreamTemplateCard
+            primaryAction={
+              <Button
+                className="w-full bg-gradient-to-r from-orange-500 to-amber-400 hover:from-orange-600 hover:to-amber-500"
+                disabled={loading}
+                onClick={() => setStartDialogOpen(true)}
+              >
+                <Video className="mr-2 h-4 w-4" />
+                Go Live
+              </Button>
+            }
+            onResume={handleOpenPreviousLiveSessionContext}
+            resumeDisabled={!lastLiveStream?.id && !latestSummary?.streamId}
+            continuityLabel={lastLiveStream?.title ? `Resume previous live: ${lastLiveStream.title}` : "Resume previous live"}
+            updatedLabel={formatModuleUpdatedLabel(latestSummary?.completedAt ?? lastLiveStream?.date)}
+          />
+
           <Card className="border-border/40">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">Last live summary</CardTitle>
@@ -333,22 +387,7 @@ export function StreamQuickAccess() {
 
           <Card className="border-border/40">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Resume configuration</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Button variant="outline" className="w-full" onClick={handleOpenPreviousLiveSessionContext}>
-                <RotateCcw className="mr-2 h-4 w-4" />
-                Resume setup
-              </Button>
-              <Button variant="ghost" className="w-full" onClick={() => router.push(recentRecordingEditHref)}>
-                Open recent recording edit
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/40">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Create highlights from last stream</CardTitle>
+              <CardTitle className="text-sm">Post-live actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
               <Button className="w-full" onClick={handleCreateHighlightsFromLastStream}>
@@ -359,17 +398,14 @@ export function StreamQuickAccess() {
                 <BarChart3 className="mr-2 h-4 w-4" />
                 Replay analytics
               </Button>
+              <Button variant="ghost" className="w-full" onClick={() => router.push(recentRecordingEditHref)}>
+                Open recent recording edit
+              </Button>
             </CardContent>
           </Card>
         </div>
         {/* Start Live Dialog */}
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button className="w-full bg-gradient-to-r from-orange-500 to-amber-400 hover:from-orange-600 hover:to-amber-500" disabled={loading}>
-              <Video className="mr-2 h-4 w-4" />
-              Go Live
-            </Button>
-          </DialogTrigger>
+        <Dialog open={startDialogOpen} onOpenChange={setStartDialogOpen}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Start Live Stream</DialogTitle>
@@ -420,10 +456,13 @@ export function StreamQuickAccess() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline">Cancel</Button>
+              <Button variant="outline" onClick={() => setStartDialogOpen(false)}>Cancel</Button>
               <Button
                 className="bg-gradient-to-r from-orange-500 to-amber-400 hover:from-orange-600 hover:to-amber-500"
-                onClick={handleStartStream}
+                onClick={async () => {
+                  const started = await handleStartStream()
+                  if (started) setStartDialogOpen(false)
+                }}
                 disabled={loading}
               >
                 Start Streaming
