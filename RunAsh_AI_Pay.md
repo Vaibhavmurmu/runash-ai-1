@@ -120,3 +120,13 @@ This document is payment-domain specific. For contributor workflow/process polic
   1. Revert helper module imports in payment routes/services to prior inline logic.
   2. Revert added helper modules/tests (`lib/payments/*mappers*`, `lib/services/billing-webhook-idempotency.ts`, `lib/billing/invoice-calculations.ts`, and corresponding `*.test.ts` files).
   3. Re-run payment route tests and deploy previous known-good commit if mapping regression is confirmed.
+
+## 2026-02 Scan & Pay UPI lifecycle confirmation hardening
+
+- The `/scan` payment UX now persists `transactionId` after initiation and models lifecycle states as `initiated` → `pending` → (`success` | `failed`) with timeout handling.
+- Client flow no longer transitions directly to success after initiation; it polls `GET /api/upi/status/[transactionId]` and only renders success UI when backend status is confirmed `success`.
+- Failed and timeout states now render explicit recovery UI (retry status check / return to RunAsh Pay) without changing payment contract field names.
+- Success rendering includes provider-facing `transactionReference` and `updatedAt` confirmation timestamp returned from the status API.
+- Risk/rollback:
+  1. If confirmation polling causes UX regressions, revert `app/scan/page.tsx` and restore previous route behavior.
+  2. If status endpoint behavior is unstable, roll back `app/api/upi/status/[transactionId]/route.ts` and gate Scan & Pay launch behind existing stable payment surfaces.
