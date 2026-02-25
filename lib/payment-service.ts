@@ -3,6 +3,7 @@ import {
   createPaymentIntentRecord,
   getPaymentIntentByCreateIdempotencyKey,
   getPaymentIntentById,
+  listPaymentIntentsForReconciliation,
   type PaymentIntentStatus,
   updatePaymentIntentStatus,
 } from "@/lib/repositories/payment-intents"
@@ -25,6 +26,7 @@ import {
 import { getProviderAdapter } from "@/lib/services/payment-provider-gateway"
 import { getLifecycleSnapshot, type LifecycleSnapshot } from "@/lib/customer-lifecycle-analytics-service"
 import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
+import { isTerminalPaymentState } from "@/types/payment-domain"
 
 export interface PaymentMethod {
   id: string
@@ -42,7 +44,7 @@ export interface PaymentIntent {
   id: string
   amount: number
   currency: string
-  status: "pending" | "processing" | "succeeded" | "failed" | "canceled"
+  status: PaymentIntentStatus
   paymentMethod: string
   metadata: Record<string, any>
   createdAt: Date
@@ -86,6 +88,19 @@ export interface PaymentExecutionResult {
   finalStatus: PaymentTransaction["status"]
 }
 
+export interface PaymentIntentReconciliationItem {
+  intentId: string
+  previousStatus: PaymentIntentStatus
+  reconciledStatus: PaymentIntentStatus
+  reason: string
+}
+
+export interface PaymentIntentReconciliationSummary {
+  scanned: number
+  updated: number
+  items: PaymentIntentReconciliationItem[]
+}
+
 export interface PaymentAnalytics {
   lifecycle: LifecycleSnapshot
   totalRevenue: number
@@ -126,12 +141,6 @@ function buildCreateIdempotencyKey(input: {
   return `create:${input.paymentMethodId}:${input.currency}:${input.amount}:${stableStringify(input.metadata)}`
 }
 
-function intentStatusFromTransactionStatus(status: PaymentTransaction["status"]): PaymentIntentStatus {
-  if (status === "completed" || status === "refunded") return "succeeded"
-  if (status === "failed") return "failed"
-  return "processing"
-}
-
 function statusFromProviderEvent(input: {
   event?: Record<string, unknown>
   providerStatus: string
@@ -165,6 +174,41 @@ function statusFromProviderEvent(input: {
   }
 
   return input.fallbackStatus
+}
+
+function resolveIntentStatusFromProviderSignal(input: {
+  providerStatus: string | null | undefined
+  event?: Record<string, unknown>
+  fallback: PaymentIntentStatus
+}): PaymentIntentStatus {
+  const status = String(input.providerStatus ?? "").toLowerCase()
+  const eventType = typeof input.event?.type === "string" ? input.event.type.toLowerCase() : ""
+
+  if (eventType.includes("cancel") || status.includes("cancel")) return "canceled"
+  if (eventType.includes("expire") || status.includes("expire")) return "expired"
+  if (eventType.includes("fail") || status.includes("fail") || status.includes("declin")) return "failed"
+  if (eventType.includes("succeed") || eventType.includes("captured") || status.includes("captured") || status.includes("success")) {
+    return "succeeded"
+  }
+  if (eventType.includes("requires_action") || status.includes("requires") || status.includes("action")) return "requires_action"
+  if (eventType.includes("process") || status.includes("process") || status.includes("pending")) return "processing"
+
+  return input.fallback
+}
+
+function deriveIntentStatusFromTransactionResult(input: {
+  transactionStatus: PaymentTransaction["status"]
+  providerStatus: string
+  providerEvent?: Record<string, unknown>
+}): PaymentIntentStatus {
+  if (input.transactionStatus === "completed" || input.transactionStatus === "refunded") return "succeeded"
+  if (input.transactionStatus === "failed") return "failed"
+
+  return resolveIntentStatusFromProviderSignal({
+    providerStatus: input.providerStatus,
+    event: input.providerEvent,
+    fallback: "processing",
+  })
 }
 
 function toPublicIntent(record: {
@@ -600,7 +644,11 @@ export class PaymentService {
 
     await updatePaymentIntentStatus({
       id: intentId,
-      status: intentStatusFromTransactionStatus(selectedStatus),
+      status: deriveIntentStatusFromTransactionResult({
+        transactionStatus: selectedStatus,
+        providerStatus: selectedProviderResult.providerStatus,
+        providerEvent: selectedProviderResult.event,
+      }),
       providerEvent: selectedProviderResult.event,
     })
 
@@ -609,6 +657,72 @@ export class PaymentService {
       attemptedMethods,
       fallbackUsed,
       finalStatus: selectedStatus,
+    }
+  }
+
+  static async reconcilePaymentIntents(limit = 50): Promise<PaymentIntentReconciliationSummary> {
+    const candidates = await listPaymentIntentsForReconciliation(limit)
+    const items: PaymentIntentReconciliationItem[] = []
+
+    for (const intent of candidates) {
+      const latestEvent = Array.isArray(intent.providerEvents) && intent.providerEvents.length > 0
+        ? intent.providerEvents[intent.providerEvents.length - 1]
+        : undefined
+
+      const providerStatus =
+        typeof latestEvent?.provider_status === "string"
+          ? latestEvent.provider_status
+          : typeof latestEvent?.status === "string"
+            ? latestEvent.status
+            : undefined
+
+      let nextStatus = resolveIntentStatusFromProviderSignal({
+        providerStatus,
+        event: latestEvent,
+        fallback: intent.status,
+      })
+
+      const now = Date.now()
+      const elapsedMs = Math.max(0, now - intent.updatedAt.getTime())
+      const staleProcessingWindowMs = 30 * 60 * 1000
+      const stalePendingWindowMs = 60 * 60 * 1000
+
+      if (!isTerminalPaymentState(nextStatus) && elapsedMs >= stalePendingWindowMs && nextStatus === "pending") {
+        nextStatus = "expired"
+      } else if (!isTerminalPaymentState(nextStatus) && elapsedMs >= staleProcessingWindowMs && (nextStatus === "processing" || nextStatus === "requires_action")) {
+        nextStatus = "incomplete"
+      }
+
+      if (nextStatus === intent.status) continue
+
+      await updatePaymentIntentStatus({
+        id: intent.id,
+        status: nextStatus,
+        providerEvent:
+          latestEvent && typeof latestEvent === "object"
+            ? {
+                ...latestEvent,
+                reconciled: true,
+                reconciledAt: new Date().toISOString(),
+              }
+            : {
+                reconciled: true,
+                reconciledAt: new Date().toISOString(),
+              },
+      })
+
+      items.push({
+        intentId: intent.id,
+        previousStatus: intent.status,
+        reconciledStatus: nextStatus,
+        reason: "provider_event_reconciliation",
+      })
+    }
+
+    return {
+      scanned: candidates.length,
+      updated: items.length,
+      items,
     }
   }
 

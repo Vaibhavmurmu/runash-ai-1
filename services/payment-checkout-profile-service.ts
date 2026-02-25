@@ -1501,3 +1501,71 @@ export async function getCheckoutAttemptFinancialSummary(customerId: string): Pr
     taxWithheldAmount: Number(row?.taxWithheldAmount ?? 0),
   }
 }
+
+export interface CheckoutSessionReconciliationSummary {
+  scanned: number
+  expired: number
+  sessions: string[]
+}
+
+export async function reconcileStuckCheckoutSessions(input?: { limit?: number; staleMinutes?: number }): Promise<CheckoutSessionReconciliationSummary> {
+  await ensureTables()
+
+  const limit = Math.max(1, Math.min(input?.limit ?? 50, 500))
+  const staleMinutes = Math.max(5, Math.min(input?.staleMinutes ?? 45, 24 * 60))
+
+  const candidates = await queryMany<{ id: string; customerId: string }>(
+    `
+      SELECT
+        s.id,
+        s.customer_id AS "customerId"
+      FROM checkout_sessions s
+      WHERE s.status IN ('created', 'authorized')
+        AND s.updated_at < NOW() - ($1::int || ' minutes')::interval
+        AND NOT EXISTS (
+          SELECT 1
+          FROM checkout_attempt_results ar
+          WHERE ar.checkout_session_id = s.id
+            AND ar.attempt_status = 'completed'
+        )
+      ORDER BY s.updated_at ASC
+      LIMIT $2
+    `,
+    [staleMinutes, limit],
+  )
+
+  const expiredSessions: string[] = []
+
+  for (const candidate of candidates) {
+    await queryOne(
+      `
+        UPDATE checkout_sessions
+        SET status = 'expired', updated_at = NOW()
+        WHERE id = $1
+      `,
+      [candidate.id],
+    )
+
+    await recordCheckoutAttemptResult({
+      checkoutSessionId: candidate.id,
+      customerId: candidate.customerId,
+      attemptStatus: 'expired',
+      attemptResultCode: 'session_reconciled_expired',
+      attemptResultMessage: 'Checkout session expired during reconciliation',
+      metadata: {
+        reconciliation: {
+          source: 'payment_usage_reconcile',
+          staleMinutes,
+        },
+      },
+    })
+
+    expiredSessions.push(candidate.id)
+  }
+
+  return {
+    scanned: candidates.length,
+    expired: expiredSessions.length,
+    sessions: expiredSessions,
+  }
+}
