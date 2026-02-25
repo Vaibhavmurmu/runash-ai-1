@@ -13,7 +13,7 @@ type SessionAccessorDependencies<TSession extends SessionShape> = {
   getPrimarySession: () => Promise<TSession | null>
   getLegacySession: () => Promise<TSession | null>
   isLegacyFallbackEnabled: () => Promise<boolean>
-  recordMetric: (name: "auth.session.invalidated" | "auth.session.rotation_due", tags?: Record<string, string>) => void
+  recordMetric: (name: "auth.session.invalidated" | "auth.session.rotation_due" | "auth.legacy_fallback.used" | "auth.legacy_fallback.unavailable", tags?: Record<string, string>) => void
   now: () => number
 }
 
@@ -45,8 +45,14 @@ export async function resolveSessionFromSources<TSession extends SessionShape>(
 
   const useLegacyFallback = await dependencies.isLegacyFallbackEnabled()
   if (!useLegacyFallback) {
+    dependencies.recordMetric("auth.legacy_fallback.unavailable", { reason: "flag_disabled_or_sunset" })
     return null
   }
 
-  return dependencies.getLegacySession()
+  const legacySession = await dependencies.getLegacySession()
+  if (legacySession?.user) {
+    dependencies.recordMetric("auth.legacy_fallback.used", { reason: "primary_session_missing" })
+  }
+
+  return legacySession
 }

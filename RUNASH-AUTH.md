@@ -553,3 +553,36 @@ These pages include:
 - `forgot-password`, `reset-password`, `verify-email`, and magic-link endpoints now align on replay-safe token handling, endpoint-level throttling, and consistent error payloads for invalid/expired token states.
 - Magic-link verification now records a server-side user session before setting browser auth cookies to match password/OTP session issuance expectations.
 
+
+## 2026-02 Better Auth baseline schema + session decommissioning controls
+
+### Migration summary
+- Replaced placeholder migration `db/migrations/0000_auth_neon_better_auth_baseline.sql` with concrete Better Auth baseline SQL for `users`, `accounts`, `sessions`, and `verification_tokens`.
+- Migration is idempotent (`IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`) to support mixed-env rollouts.
+- `db/schema.ts` now exposes active auth/session table mappings consumed by auth/session domain code.
+
+### Session lifecycle behavior verified
+- `GET /api/auth/sessions` now returns active concurrent sessions and `concurrentSessionCount` for UX/state reconciliation.
+- `DELETE /api/auth/sessions` supports both single-session revoke (`sessionId`) and all-session revoke (`revokeAll=true`).
+- `POST /api/auth/sessions/switch` preserves scoped session switching and not-found semantics.
+
+### Legacy NextAuth fallback sunset path
+- Legacy cookie fallback remains behind `allow_legacy_next_auth_fallback`.
+- New kill switch `enforce_legacy_next_auth_fallback_sunset` hard-disables fallback for decommission windows.
+- Optional date cutoff via `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK_SUNSET_AT` (ISO timestamp) disables fallback after the configured instant.
+- Telemetry events for retirement readiness:
+  - `auth.legacy_fallback.used`
+  - `auth.legacy_fallback.unavailable`
+  - `auth.legacy_fallback.blocked`
+
+### Rollout and rollback
+1. Deploy migration to staging and production.
+2. Validate Better Auth login + session listing/revoke/switch flows.
+3. Monitor fallback telemetry; when `auth.legacy_fallback.used` is zero for a full release window, enable `enforce_legacy_next_auth_fallback_sunset`.
+4. Remove legacy cookie parsing in follow-up release after sunset confirmation.
+
+Rollback:
+1. Set `FEATURE_FLAG_ENFORCE_LEGACY_NEXT_AUTH_FALLBACK_SUNSET=false` (or unset) to immediately re-enable fallback eligibility.
+2. If needed, set `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK=true`.
+3. Keep schema changes in place (non-breaking additive migration); no destructive rollback required.
+4. Re-validate auth session endpoints and monitor `auth.legacy_fallback.used` for expected recovery.
