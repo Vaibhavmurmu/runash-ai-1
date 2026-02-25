@@ -46,6 +46,32 @@ pnpm install
 - [ ] Create `.env.local` in the project root.
 - [ ] Add the required secrets for auth, AI providers, database, and integrations used in your environment.
 
+### Optional tooling: install Better Auth skills
+
+If you use Codex skills locally, install the Better Auth skill pack:
+
+```bash
+npx skills add better-auth/skills
+```
+
+- This command is **optional** for local app development (`pnpm dev`, `pnpm build`, API work).
+- It is only required if you want Codex skill workflows for Better Auth tasks.
+- Expected generated files are outside this repository, under your Codex home directory (commonly `~/.codex/skills/` or `$CODEX_HOME/skills/`), for example:
+  - `~/.codex/skills/better-auth/...`
+
+You can also run the repo helper script:
+
+```bash
+pnpm run setup:skills
+```
+
+#### Troubleshooting (`npx` unavailable in offline/CI)
+
+- **Offline/local air-gapped environment:** skip this step; it does not block normal RunAsh development.
+- **CI environments:** do not fail pipelines for missing skills install; treat as optional tooling.
+- **Restricted network/proxy:** pre-install the skills in a cached build image/home directory, or mirror the package source internally before running `npx`.
+- **Quick check:** run `npx skills --help` to verify command availability in the current environment.
+
 ### 3) Start the development server
 
 ```bash
