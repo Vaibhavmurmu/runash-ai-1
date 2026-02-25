@@ -39,9 +39,6 @@ const publicRoutes = [
   "/cookies",
   "/roadmap",
   "/status",
-  "/creator",
-  "/grocery",
-  "/editor",
   "/pro",
   "/enterprise",
   "/ai-overview",
@@ -59,8 +56,8 @@ const publicApiRoutes = [
   "/api/users/search", // Public user search
 ] as const
 
-const adminOnlyRoutePrefixes = ["/admin", "/api/admin"] as const
-const sellerOnlyRoutePrefixes = ["/seller-dashboard", "/api/seller"] as const
+const adminOnlyRoutePrefixes = ["/admin", "/ecommerce/admin", "/api/admin"] as const
+const sellerOnlyRoutePrefixes = ["/seller", "/seller-dashboard", "/api/seller", "/api/v1/seller"] as const
 const authenticatedRoutePrefixes = ["/dashboard", "/settings", "/api/settings", "/api/billing", "/api/upload"] as const
 
 function pathMatchesPrefixes(pathname: string, prefixes: readonly string[]): boolean {

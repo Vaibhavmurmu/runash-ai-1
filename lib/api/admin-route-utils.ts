@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { queryOne } from "@/lib/db"
 import { ensureAdminAuthMigrationTables } from "@/lib/migration-helpers"
 import { resolveRequestId } from "@/lib/api/response"
+import { respondError } from "@/lib/api/envelope"
 import { logApiRouteError } from "@/lib/api/logging"
 import { recordAuthMetric } from "@/lib/auth-observability"
 import { recordSecurityAuditEvent } from "@/lib/security-audit-events"
@@ -9,21 +10,16 @@ import { recordSecurityAuditEvent } from "@/lib/security-audit-events"
 export function respondAdminError(request: NextRequest, status: 401 | 403 | 500, message: string, requestId?: string) {
   const resolvedRequestId = requestId ?? resolveRequestId(request)
 
-  return NextResponse.json(
+  return respondError(
+    request,
     {
-      success: false,
-      error: {
-        code: status === 401 ? "UNAUTHORIZED" : status === 403 ? "FORBIDDEN" : "INTERNAL_ERROR",
-        message,
-      },
-      requestId: resolvedRequestId,
+      code: status === 401 ? "UNAUTHORIZED" : status === 403 ? "FORBIDDEN" : "INTERNAL_ERROR",
+      message,
     },
     {
       status,
-      headers: {
-        "x-request-id": resolvedRequestId,
-        "x-correlation-id": resolvedRequestId,
-      },
+      requestId: resolvedRequestId,
+      legacy: { error: message },
     },
   )
 }

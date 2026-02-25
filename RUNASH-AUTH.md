@@ -218,6 +218,7 @@ Note: middleware still treats `/signup` as public, but no `app/signup/page.tsx` 
 
 - Protected routes are evaluated in `middleware.ts`.
 - If no valid auth session is resolved, browser routes redirect to `/login`; API routes return `401`.
+- Privileged route prefixes are excluded from the public allowlist: seller surfaces (`/seller/**`, `/api/seller/**`, `/api/v1/seller/**`) and admin surfaces (`/admin/**`, `/ecommerce/admin/**`, `/api/admin/**`) always require authenticated role-aware checks.
 - Session checks rely on Better Auth session cookies, middleware validation through `/api/auth/get-session`, and `auth.api.getSession` in server helpers/accessors.
 - Session minting for passkey and magic-link paths now uses the canonical auth secret resolver in `lib/auth.ts`, keeping a single source-of-truth secret for Better Auth runtime and custom JWT issuance.
 - Legacy NextAuth cookie parsing remains available in session accessor fallback paths when feature-flagged compatibility fallback is enabled.
