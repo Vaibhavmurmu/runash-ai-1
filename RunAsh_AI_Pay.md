@@ -82,3 +82,11 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Payment attempts now persist retry-safe dedupe keys and provider event timestamps in `invoice_payment_attempts`; invoice status synchronization reads the latest ordered attempt state.
 - Internal billing webhook replay/rollback routes additionally accept signed service-to-service calls (`x-runash-timestamp` + `x-runash-signature`) to verify non-session automation callers.
 - Checkout callback/payment resolution now prefers the unified invoice payment-attempt ledger (`invoice_payment_attempts`) before legacy checkout attempt records, keeping UI status surfaces consistent.
+
+## 2026-02 Payment dashboard operations visibility refresh
+
+- `/payment/dashboard` now renders an operations-focused dashboard surface instead of redirecting to legacy billing navigation.
+- Customer-facing telemetry blocks include current balance/plan context, recent transactions, pending payment actions, and failed-payment recovery status.
+- Operator panel cards now surface recent failures, webhook lag/error counters, refund/chargeback risk flags, and reconciliation health metrics for faster triage.
+- No payment API request/response fields, webhook payload contracts, or auth/session signatures were changed by this UI refresh.
+- Rollback plan: revert the dashboard page/component pair (`app/payment/dashboard/page.tsx` and `components/payment/payment-operations-dashboard.tsx`) to restore previous redirect behavior.

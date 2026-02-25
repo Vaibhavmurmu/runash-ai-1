@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation"
+import { PaymentOperationsDashboard } from "@/components/payment/payment-operations-dashboard"
 
-export default function PaymentDashboardLegacyPage() {
-  redirect("/dashboard/billing")
+export default function PaymentDashboardPage() {
+  return <PaymentOperationsDashboard />
 }
