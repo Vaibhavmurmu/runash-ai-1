@@ -136,6 +136,7 @@ This guide defines ownership, workflow, and operational expectations for buildin
 - Observability prepared (dashboards, alerts, error budgets).
 - Release notes prepared and stakeholder communication drafted.
 - Rollback plan validated before production deploy.
+- Release confidence checklist completed: `docs/RELEASE_CONFIDENCE_CHECKLIST.md` (feature completeness, accessibility, responsive signoff, quality gates, API contract verification, rollback notes).
 
 ### Rollback guidance
 - Prefer fast rollback for customer-impacting regressions.
