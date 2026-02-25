@@ -1,9 +1,18 @@
 import { getServerAuthSession } from "@/lib/auth/session"
 import { respondError } from "@/lib/api/envelope"
 
-export async function requireSellerSessionUserId(request: Request): Promise<number | Response> {
-  const session = await getServerAuthSession(request.headers)
+type SellerSessionDependencies = {
+  getSession: typeof getServerAuthSession
+}
+
+export async function requireSellerSessionUserId(
+  request: Request,
+  dependencies: Partial<SellerSessionDependencies> = {},
+): Promise<number | Response> {
+  const readSession = dependencies.getSession ?? getServerAuthSession
+  const session = await readSession(request.headers)
   const rawUserId = session?.user?.id?.toString().trim()
+  const sessionRole = session?.user?.role?.toString().trim().toLowerCase()
 
   if (!rawUserId) {
     return respondError(request, { code: "UNAUTHORIZED", message: "Unauthorized" }, { status: 401, legacy: { error: "Unauthorized" } })
@@ -16,6 +25,10 @@ export async function requireSellerSessionUserId(request: Request): Promise<numb
 
   const scopedHeaderUserId = request.headers.get("x-user-id")?.trim()
   if (scopedHeaderUserId && scopedHeaderUserId !== rawUserId) {
+    return respondError(request, { code: "FORBIDDEN", message: "Forbidden" }, { status: 403, legacy: { error: "Forbidden" } })
+  }
+
+  if (sessionRole !== "seller" && sessionRole !== "admin" && sessionRole !== "super_admin") {
     return respondError(request, { code: "FORBIDDEN", message: "Forbidden" }, { status: 403, legacy: { error: "Forbidden" } })
   }
 
