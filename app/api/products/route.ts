@@ -10,7 +10,7 @@ export async function GET(req: Request) {
 
     const sql = getSql()
     const rows = await sql`
-      SELECT id, name, description, price, stock, category, status, rating, sales, image
+      SELECT id, name, description, price, stock, category, status, rating, sales, image, row_version, created_at, updated_at
       FROM public.products
       WHERE user_id = ${userId}
         AND (${search === ""} OR LOWER(name) LIKE ${"%" + search + "%"})
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     const [row] = await sql /* sql */`
       INSERT INTO public.products (user_id, name, description, price, stock, category, status, image)
       VALUES (${userId}, ${name}, ${description || null}, ${price}, ${stock ?? 0}, ${category || null}, ${status}, ${image || null})
-      RETURNING id, name, description, price, stock, category, status, rating, sales, image
+      RETURNING id, name, description, price, stock, category, status, rating, sales, image, row_version, created_at, updated_at
     `
     return NextResponse.json(row, { status: 201 })
   } catch (e: any) {
