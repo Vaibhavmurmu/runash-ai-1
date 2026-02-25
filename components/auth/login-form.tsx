@@ -98,7 +98,7 @@ export function LoginForm() {
           <CardTitle className="text-3xl font-bold bg-gradient-to-r from-orange-500 to-orange-600 bg-clip-text text-transparent">
             Welcome Back
           </CardTitle>
-          <CardDescription className="text-base">Sign in to your account to continue</CardDescription>
+          <CardDescription className="text-base text-foreground/80 dark:text-foreground/75">Sign in to your account to continue</CardDescription>
         </CardHeader>
         <CardContent className="relative">
           {error ? <CardAlert severity="danger" title="Sign-in failed" description={error} className="mb-4" /> : null}
@@ -141,7 +141,7 @@ export function LoginForm() {
                 </Label>
                 <Link
                   href="/forgot-password"
-                  className="text-xs text-orange-600 hover:text-orange-700 hover:underline transition-colors"
+                  className="text-xs text-orange-700 dark:text-orange-400 hover:text-orange-800 dark:hover:text-orange-300 hover:underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/80 focus-visible:ring-offset-2"
                 >
                   Forgot password?
                 </Link>
@@ -161,8 +161,9 @@ export function LoginForm() {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent focus-visible:ring-2 focus-visible:ring-orange-500/80"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4 text-muted-foreground" />
@@ -250,11 +251,11 @@ export function LoginForm() {
           </div>
         </CardContent>
         <CardFooter className="relative flex flex-col items-center justify-center space-y-2">
-          <div className="text-sm text-muted-foreground">
+          <div className="text-sm text-foreground/75 dark:text-foreground/70">
             Don't have an account?{" "}
             <Link
               href="/signup"
-              className="text-orange-600 hover:text-orange-700 hover:underline font-medium transition-colors"
+              className="text-orange-700 dark:text-orange-400 hover:text-orange-800 dark:hover:text-orange-300 hover:underline font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/80 focus-visible:ring-offset-2"
             >
               Sign up
             </Link>
