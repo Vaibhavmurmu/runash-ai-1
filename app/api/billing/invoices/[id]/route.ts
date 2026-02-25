@@ -3,18 +3,23 @@ import { type NextRequest } from "next/server"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { logApiRouteError } from "@/lib/api/logging"
 import { requireScopedBillingAccess } from "@/lib/billing-auth"
+import { ensureInvoiceSupportTables, syncInvoiceStatusFromAttempts } from "@/lib/billing/invoice-store"
 import { Database } from "@/lib/database"
 
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
+    await ensureInvoiceSupportTables()
+
     const access = await requireScopedBillingAccess("startup")
     if ("response" in access) return access.response
     const { sessionUser } = access
 
     const { id } = await context.params
+    await syncInvoiceStatusFromAttempts(id)
+
     const invoices = await Database.query(
       `
-      SELECT i.*, COALESCE(
+      SELECT i.*, cd.customer_reference, cd.customer_name, cd.customer_email, COALESCE(
         json_agg(
           json_build_object(
             'id', ili.id,
@@ -65,12 +70,33 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
         'tax_amount', COALESCE(tc.total_tax_amount, 0),
         'total_amount', COALESCE(tc.total_amount, i.amount_paid, i.amount_due, i.total, 0),
         'tax_inclusive', true
-      ) AS financial_summary
+      ) AS financial_summary,
+      COALESCE(
+        (
+          SELECT json_agg(
+            json_build_object(
+              'id', ipa.id,
+              'provider', ipa.provider,
+              'provider_reference', ipa.provider_reference,
+              'status', ipa.status,
+              'amount', ipa.amount,
+              'currency', ipa.currency,
+              'failure_reason', ipa.failure_reason,
+              'event_source', ipa.event_source,
+              'occurred_at', ipa.occurred_at
+            ) ORDER BY ipa.occurred_at DESC NULLS LAST, ipa.created_at DESC
+          )
+          FROM invoice_payment_attempts ipa
+          WHERE ipa.invoice_id = i.id
+        ),
+        '[]'::json
+      ) AS payment_attempts
       FROM invoices i
+      LEFT JOIN invoice_customer_details cd ON cd.invoice_id = i.id
       LEFT JOIN invoice_line_items ili ON ili.invoice_id = i.id
       LEFT JOIN tax_calculations tc ON tc.source_type = 'invoice' AND tc.source_id = i.id::text
       WHERE i.user_id = $1 AND i.id = $2
-      GROUP BY i.id, tc.id
+      GROUP BY i.id, tc.id, cd.invoice_id
       LIMIT 1
       `,
       [sessionUser.userId, id],

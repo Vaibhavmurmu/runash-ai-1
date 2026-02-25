@@ -52,3 +52,9 @@ This document is limited to payment/business implementation policy. Generic cont
 - Checkout orchestration now standardizes provider redirect + return URLs across API and profile surfaces for startup and v1 billing routes.
 - Rollback path: disable callback-based resume and fall back to provider-hosted success/cancel URL handling if signed-state verification fails unexpectedly.
 - Monitoring focus: callback signature failures, reference mismatch rates, and pending->completed transition latency from webhook updates.
+
+## 2026-02 invoice reliability additions
+
+- Invoice creation now uses canonical billing invoice APIs with server-side validation for customer fields, line items, tax, due date, and currency.
+- Payment-attempt linkage for invoices is persisted for reconciliation (`invoice_payment_attempts`), and webhook/payment confirmation paths now synchronize invoice lifecycle state.
+- No payment route field names were removed; invoice API compatibility is preserved while adding POST create support.
