@@ -42,3 +42,10 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Roll back immediately if payment authorization anomalies, checkout failures, or webhook processing regressions are observed.
 - Use staged rollout for auth-dependent payment changes and verify metrics before advancing rollout percentage.
 - Record payment-impacting changes in PR risk notes and in this document.
+
+## Checkout redirect orchestration contract
+
+- Billing checkout APIs return and persist redirect orchestration fields: `redirectUrl`, `returnUrlSuccess`, `returnUrlPending`, `returnUrlFailed`, and `providerTransactionReference`.
+- Redirect callbacks must include signed `state` plus provider reference so the callback endpoint can validate integrity before resuming checkout state.
+- Final status resolution order: webhook-backed checkout attempt state first, provider session lookup second (fallback).
+- Callback handlers must never trust query `status` without validating signed state/reference.

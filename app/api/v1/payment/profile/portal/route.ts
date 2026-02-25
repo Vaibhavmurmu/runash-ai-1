@@ -11,6 +11,11 @@ const portalProfileSchema = z
     shippingAddress: z.record(z.unknown()).nullable().optional(),
     defaultPaymentMethodId: z.string().min(1).nullable().optional(),
     backupPaymentMethodId: z.string().min(1).nullable().optional(),
+    redirectUrl: z.string().url().nullable().optional(),
+    returnUrlSuccess: z.string().url().nullable().optional(),
+    returnUrlPending: z.string().url().nullable().optional(),
+    returnUrlFailed: z.string().url().nullable().optional(),
+    providerTransactionReference: z.string().min(1).nullable().optional(),
   })
   .strict()
 

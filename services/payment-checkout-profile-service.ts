@@ -41,6 +41,11 @@ export interface CustomerCheckoutProfile {
   shippingAddress: Record<string, unknown> | null
   defaultPaymentMethodId: string | null
   backupPaymentMethodId: string | null
+  redirectUrl: string | null
+  returnUrlSuccess: string | null
+  returnUrlPending: string | null
+  returnUrlFailed: string | null
+  providerTransactionReference: string | null
   updatedAt: string
 }
 
@@ -235,6 +240,11 @@ async function ensureTables() {
       shipping_address_encrypted TEXT,
       default_payment_method_id TEXT REFERENCES customer_payment_method_vault_refs(id) ON DELETE SET NULL,
       backup_payment_method_id TEXT REFERENCES customer_payment_method_vault_refs(id) ON DELETE SET NULL,
+      redirect_url TEXT,
+      return_url_success TEXT,
+      return_url_pending TEXT,
+      return_url_failed TEXT,
+      provider_transaction_reference TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -287,6 +297,21 @@ async function ensureTables() {
 
     ALTER TABLE customer_checkout_profiles
     ADD COLUMN IF NOT EXISTS billing_details_encrypted TEXT;
+
+    ALTER TABLE customer_checkout_profiles
+    ADD COLUMN IF NOT EXISTS redirect_url TEXT;
+
+    ALTER TABLE customer_checkout_profiles
+    ADD COLUMN IF NOT EXISTS return_url_success TEXT;
+
+    ALTER TABLE customer_checkout_profiles
+    ADD COLUMN IF NOT EXISTS return_url_pending TEXT;
+
+    ALTER TABLE customer_checkout_profiles
+    ADD COLUMN IF NOT EXISTS return_url_failed TEXT;
+
+    ALTER TABLE customer_checkout_profiles
+    ADD COLUMN IF NOT EXISTS provider_transaction_reference TEXT;
   `)
 
   tablesReady = true
@@ -346,6 +371,11 @@ async function getProfileRow(customerId: string) {
     shippingAddressEncrypted: string | null
     defaultPaymentMethodId: string | null
     backupPaymentMethodId: string | null
+    redirectUrl: string | null
+    returnUrlSuccess: string | null
+    returnUrlPending: string | null
+    returnUrlFailed: string | null
+    providerTransactionReference: string | null
     updatedAt: string
   }>(
     `
@@ -353,10 +383,15 @@ async function getProfileRow(customerId: string) {
         customer_id AS "customerId",
         billing_details_encrypted AS "billingDetailsEncrypted",
         billing_address_encrypted AS "billingAddressEncrypted",
-        shipping_address_encrypted AS "shippingAddressEncrypted",
-        default_payment_method_id AS "defaultPaymentMethodId",
-        backup_payment_method_id AS "backupPaymentMethodId",
-        updated_at AS "updatedAt"
+      shipping_address_encrypted AS "shippingAddressEncrypted",
+      default_payment_method_id AS "defaultPaymentMethodId",
+      backup_payment_method_id AS "backupPaymentMethodId",
+      redirect_url AS "redirectUrl",
+      return_url_success AS "returnUrlSuccess",
+      return_url_pending AS "returnUrlPending",
+      return_url_failed AS "returnUrlFailed",
+      provider_transaction_reference AS "providerTransactionReference",
+      updated_at AS "updatedAt"
       FROM customer_checkout_profiles
       WHERE customer_id = $1
     `,
@@ -594,6 +629,11 @@ export async function getCustomerCheckoutProfile(customerId: string): Promise<Cu
       shippingAddress: null,
       defaultPaymentMethodId: null,
       backupPaymentMethodId: null,
+      redirectUrl: null,
+      returnUrlSuccess: null,
+      returnUrlPending: null,
+      returnUrlFailed: null,
+      providerTransactionReference: null,
       updatedAt: new Date(0).toISOString(),
     }
   }
@@ -605,6 +645,11 @@ export async function getCustomerCheckoutProfile(customerId: string): Promise<Cu
     shippingAddress: decryptJson(row.shippingAddressEncrypted),
     defaultPaymentMethodId: row.defaultPaymentMethodId,
     backupPaymentMethodId: row.backupPaymentMethodId,
+    redirectUrl: row.redirectUrl ?? null,
+    returnUrlSuccess: row.returnUrlSuccess ?? null,
+    returnUrlPending: row.returnUrlPending ?? null,
+    returnUrlFailed: row.returnUrlFailed ?? null,
+    providerTransactionReference: row.providerTransactionReference ?? null,
     updatedAt: row.updatedAt,
   }
 }
@@ -616,6 +661,11 @@ export async function upsertCustomerCheckoutProfile(input: {
   shippingAddress?: Record<string, unknown> | null
   defaultPaymentMethodId?: string | null
   backupPaymentMethodId?: string | null
+  redirectUrl?: string | null
+  returnUrlSuccess?: string | null
+  returnUrlPending?: string | null
+  returnUrlFailed?: string | null
+  providerTransactionReference?: string | null
 }) {
   await ensureTables()
   const billingDetailsEncrypted = encryptJson(input.billingDetails)
@@ -626,9 +676,10 @@ export async function upsertCustomerCheckoutProfile(input: {
     `
       INSERT INTO customer_checkout_profiles (
         customer_id, billing_details_encrypted, billing_address_encrypted,
-        shipping_address_encrypted, default_payment_method_id, backup_payment_method_id
+        shipping_address_encrypted, default_payment_method_id, backup_payment_method_id,
+        redirect_url, return_url_success, return_url_pending, return_url_failed, provider_transaction_reference
       )
-      VALUES ($1, $2, $3, $4, $5, $6)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       ON CONFLICT (customer_id)
       DO UPDATE SET
         billing_details_encrypted = COALESCE($2, customer_checkout_profiles.billing_details_encrypted),
@@ -636,6 +687,11 @@ export async function upsertCustomerCheckoutProfile(input: {
         shipping_address_encrypted = COALESCE($4, customer_checkout_profiles.shipping_address_encrypted),
         default_payment_method_id = COALESCE($5, customer_checkout_profiles.default_payment_method_id),
         backup_payment_method_id = COALESCE($6, customer_checkout_profiles.backup_payment_method_id),
+        redirect_url = COALESCE($7, customer_checkout_profiles.redirect_url),
+        return_url_success = COALESCE($8, customer_checkout_profiles.return_url_success),
+        return_url_pending = COALESCE($9, customer_checkout_profiles.return_url_pending),
+        return_url_failed = COALESCE($10, customer_checkout_profiles.return_url_failed),
+        provider_transaction_reference = COALESCE($11, customer_checkout_profiles.provider_transaction_reference),
         updated_at = NOW()
     `,
     [
@@ -645,6 +701,11 @@ export async function upsertCustomerCheckoutProfile(input: {
       shippingEncrypted,
       input.defaultPaymentMethodId ?? null,
       input.backupPaymentMethodId ?? null,
+      input.redirectUrl ?? null,
+      input.returnUrlSuccess ?? null,
+      input.returnUrlPending ?? null,
+      input.returnUrlFailed ?? null,
+      input.providerTransactionReference ?? null,
     ],
   )
 
@@ -1100,6 +1161,32 @@ export async function listCheckoutAttemptResults(customerId: string, limit = 100
   )
 
   return rows.map(mapCheckoutAttemptResult)
+}
+
+export async function getLatestCheckoutAttemptResultBySession(input: { customerId: string; checkoutSessionId: string }) {
+  await ensureTables()
+  const row = await queryOne<any>(
+    `
+      SELECT
+        id,
+        checkout_session_id AS "checkoutSessionId",
+        customer_id AS "customerId",
+        payment_method_ref_id AS "paymentMethodRefId",
+        attempt_status AS "attemptStatus",
+        attempt_result_code AS "attemptResultCode",
+        attempt_result_message AS "attemptResultMessage",
+        metadata,
+        occurred_at AS "occurredAt",
+        created_at AS "createdAt"
+      FROM checkout_attempt_results
+      WHERE customer_id = $1 AND checkout_session_id = $2
+      ORDER BY occurred_at DESC
+      LIMIT 1
+    `,
+    [input.customerId, input.checkoutSessionId],
+  )
+
+  return row ? mapCheckoutAttemptResult(row) : null
 }
 
 export async function getCheckoutAnalyticsSnapshot(customerId: string): Promise<CheckoutAnalyticsSnapshot> {
