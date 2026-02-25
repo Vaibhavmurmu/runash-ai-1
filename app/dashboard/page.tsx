@@ -1,40 +1,25 @@
 import type { Metadata } from "next"
-import dynamic from "next/dynamic"
-import { Suspense } from "react"
-import { Skeleton } from "@/components/ui/skeleton"
-import { createDashboardMetadata } from "./metadata"
+import { TopLevelModulePage } from "@/components/dashboard/top-level-module-page"
 
-const EnhancedDashboard = dynamic(() => import("@/components/dashboard/enhanced-dashboard").then((mod) => mod.EnhancedDashboard), {
-  loading: () => <DashboardMainPanelSkeleton />,
-})
-
-export const metadata: Metadata = createDashboardMetadata({
-  title: "Workspace",
-  description:
-    "Access your RunAsh AI workspace with dashboard insights and quick access links for core product surfaces.",
-  path: "/dashboard",
-})
-
-function DashboardMainPanelSkeleton() {
-  return (
-    <div className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <Skeleton key={index} className="h-24 w-full" />
-        ))}
-      </div>
-      <Skeleton className="h-56 w-full" />
-      <Skeleton className="h-56 w-full" />
-    </div>
-  )
+export const metadata: Metadata = {
+  title: "Dashboard Module | RunAsh AI",
+  description: "Top-level dashboard module with streamlined summary, CTA, and recent activity.",
 }
 
 export default function DashboardPage() {
   return (
     <div className="container mx-auto p-4 md:p-6 lg:p-8">
-      <Suspense fallback={<DashboardMainPanelSkeleton />}>
-        <EnhancedDashboard />
-      </Suspense>
+      <TopLevelModulePage
+        title="Dashboard"
+        summary="Monitor workspace health and quickly launch your core dashboard journey."
+        ctaLabel="Open streaming studio"
+        ctaHref="/dashboard/streaming-studio"
+        secondaryLinks={[
+          { label: "Analytics", href: "/dashboard/analytics" },
+          { label: "Alerts", href: "/dashboard/alerts" },
+          { label: "Settings", href: "/dashboard/settings" },
+        ]}
+      />
     </div>
   )
 }

@@ -82,49 +82,27 @@ function buildNavigationConfig(baseConfig: DashboardNavigationConfig, counts: Da
   const items = baseConfig.items.map((item) => {
     const updatedMetadata = { ...item.metadata }
 
-    if (item.href === "/alerts") {
-      updatedMetadata.badgeCount = counts.alerts
-    }
-
-    if (item.href === "/stream") {
-      updatedMetadata.badgeCount = counts.liveStreams
-    }
-
     if (item.href === "/automation") {
       updatedMetadata.badgeCount = counts.pendingAutomation
+    }
+
+    if (item.href === "/payments") {
+      updatedMetadata.badgeCount = counts.alerts
     }
 
     const metadata = Object.keys(updatedMetadata).length > 0 ? updatedMetadata : undefined
 
     switch (item.href) {
       case "/dashboard":
-        return withRouteMatcher({ ...item, metadata }, exactPath("/dashboard"))
-      case "/stream":
-        return withRouteMatcher({ ...item, metadata }, pathPrefix("/stream", ["/dashboard/streams", "/live"]))
-      case "/schedule":
-        return withRouteMatcher({ ...item, metadata }, pathPrefix("/schedule", ["/calendar"]))
-      case "/analytics":
-        return withRouteMatcher({ ...item, metadata }, pathPrefix("/analytics"))
-      case "/upload":
-        return withRouteMatcher({ ...item, metadata }, pathPrefix("/upload"))
-      case "/recordings":
-        return withRouteMatcher({ ...item, metadata }, pathPrefix("/recordings"))
-      case "/alerts":
-        return withRouteMatcher({ ...item, metadata }, pathPrefix("/alerts", ["/notifications"]))
-      case "/settings":
-        return withRouteMatcher({ ...item, metadata }, pathPrefix("/settings", ["/account/settings"]))
+        return withRouteMatcher({ ...item, metadata }, pathPrefix("/dashboard"))
       case "/agents/dashboard":
         return withRouteMatcher({ ...item, metadata }, pathPrefix("/agents", ["/ai-agents"]))
       case "/automation":
         return withRouteMatcher({ ...item, metadata }, pathPrefix("/automation", ["/workflows"]))
-      case "/runash-chat":
-        return withRouteMatcher({ ...item, metadata }, pathPrefix("/runash-chat", ["/chat"]))
-      case "/editor":
-        return withRouteMatcher({ ...item, metadata }, pathPrefix("/editor"))
-      case "/seller/dashboard":
-        return withRouteMatcher({ ...item, metadata }, pathPrefix("/seller", ["/seller-studio"]))
-      case "/ecommerce/dashboard":
-        return withRouteMatcher({ ...item, metadata }, pathPrefix("/ecommerce", ["/store"]))
+      case "/workflows":
+        return withRouteMatcher({ ...item, metadata }, pathPrefix("/workflows", ["/dashboard/streaming-studio", "/dashboard/editor", "/dashboard/seller-studio"]))
+      case "/payments":
+        return withRouteMatcher({ ...item, metadata }, pathPrefix("/payments", ["/dashboard/billing", "/payment/dashboard"]))
       default:
         return { ...item, metadata }
     }
