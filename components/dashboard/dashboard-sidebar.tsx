@@ -34,6 +34,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { dashboardReadyRoutes } from "@/lib/navigation/dashboard-route-audit";
 import { applySidebarRouteGuards } from "@/lib/navigation/sidebar-route-guards";
 import {
   isNavItemActive,
@@ -58,39 +59,14 @@ const navSectionLabel: Record<DashboardNavSection, string> = {
   account: "Account",
 };
 
-const knownSidebarRoutes = new Set([
-  "/dashboard",
-  "/dashboard/onboarding",
-  "/dashboard/projects/new",
-  "/dashboard/live-session",
-  "/dashboard/live-session/resume",
-  "/dashboard/feedback",
-  "/dashboard/upgrade",
-  "/dashboard/account",
-  "/stream",
-  "/schedule",
-  "/analytics",
-  "/analytics/streams",
-  "/upload",
-  "/recordings",
-  "/alerts",
-  "/settings",
-  "/settings/profile",
-  "/settings/billing",
-  "/automation",
-  "/runash-chat",
-  "/editor",
-  "/seller/dashboard",
-  "/ecommerce/dashboard",
-  "/ecommerce/analytics",
-]);
+const knownSidebarRoutes = dashboardReadyRoutes;
 
 const sidebarRouteGuards = {
   "/agents/dashboard": {
     featureFlag: "sidebar_ai_agents",
     unavailableBehavior: "disable" as const,
   },
-  "/ecommerce/dashboard": {
+  "/dashboard/store": {
     featureFlag: "sidebar_store",
     unavailableBehavior: "hide" as const,
   },
