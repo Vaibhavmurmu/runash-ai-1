@@ -1,9 +1,12 @@
-import { NextResponse } from "next/server"
-import { getCanonicalStreamUrl, readData } from "../utils"
+import { respondError, respondSuccess } from "@/lib/api/envelope"
+import { getCanonicalStreamUrl, readData, requireStreamDashboardUserId } from "../utils"
 import type { DashboardStreamDetailsResponse } from "@/lib/types/dashboard-streams"
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
-  const data = await readData()
+export async function GET(request: Request, { params }: { params: { id: string } }) {
+  const scopedUserId = await requireStreamDashboardUserId(request)
+  if (scopedUserId instanceof Response) return scopedUserId
+
+  const data = await readData(scopedUserId)
 
   const recentStream = data.recent.find((stream) => stream.id === params.id)
   if (recentStream) {
@@ -20,7 +23,7 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
       },
     }
 
-    return NextResponse.json(payload)
+    return respondSuccess(request, payload, { legacy: payload })
   }
 
   const scheduledStream = data.scheduled.find((stream) => stream.id === params.id)
@@ -38,8 +41,8 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
       },
     }
 
-    return NextResponse.json(payload)
+    return respondSuccess(request, payload, { legacy: payload })
   }
 
-  return NextResponse.json({ error: "Stream not found" }, { status: 404 })
+  return respondError(request, { code: "STREAM_NOT_FOUND", message: "Stream not found" }, { status: 404, legacy: { error: "Stream not found" } })
 }

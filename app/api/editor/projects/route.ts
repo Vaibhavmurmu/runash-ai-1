@@ -12,8 +12,8 @@ const createProjectSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 })
 
-export async function GET() {
-  const auth = await requireEditorUser()
+export async function GET(request: Request) {
+  const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
 
   try {
@@ -32,7 +32,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireEditorUser()
+  const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
 
   const json = await request.json().catch(() => null)

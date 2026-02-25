@@ -221,7 +221,7 @@ export function StreamQuickAccess() {
       setIntegrating(true)
       const data = await dashboardStreamingService.fetchIntegrationKey()
       setIntegrationKey(data.rtmpKey)
-      toast({ title: "Integration Ready", description: "Received RTMP key (demo)." })
+      toast({ title: "Integration Ready", description: "Received RTMP key." })
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Could not get integration."
       toast({ title: "Error", description: message })

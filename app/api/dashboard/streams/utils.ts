@@ -37,7 +37,7 @@ async function readFallbackFile(): Promise<DashboardStreamsStore> {
   }
 }
 
-export async function readData(userId = "demo-user"): Promise<DashboardStreamsStore> {
+export async function readData(userId: string): Promise<DashboardStreamsStore> {
   const [recent, scheduled, fallback] = await Promise.all([
     listDashboardRecentStreams(userId, 50),
     listDashboardScheduledStreams(userId),

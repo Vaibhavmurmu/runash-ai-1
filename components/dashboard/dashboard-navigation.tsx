@@ -8,23 +8,13 @@ import {
   type DashboardNavigationConfig,
 } from "@/components/dashboard/dashboard-nav-config"
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar"
+import { fetchApiData } from "@/lib/api/client"
 
 type RouteMatcher = (pathname: string) => boolean
 
-type DashboardActivityResponse = {
-  success?: boolean
-  data?: unknown
-}
-
-type DashboardRecentStreamsResponse = {
-  streams?: Array<{ status?: string }>
-}
-
-type DashboardMonitoringResponse = {
-  metrics?: {
-    alerts?: Array<{ triggered?: boolean }>
-  }
-}
+type DashboardActivity = { id: string }
+type DashboardRecentStreamsResponse = { streams: Array<{ status?: string }> }
+type DashboardMonitoringResponse = { metrics?: { alerts?: Array<{ triggered?: boolean }> } }
 
 interface DashboardNavCounts {
   alerts: number
@@ -56,12 +46,12 @@ function withRouteMatcher(item: DashboardNavItem, activeMatch: RouteMatcher): Da
   }
 }
 
-function parseActivityCount(payload: DashboardActivityResponse): number {
-  if (!payload || payload.success !== true || !Array.isArray(payload.data)) {
+function parseActivityCount(payload: DashboardActivity[]): number {
+  if (!Array.isArray(payload)) {
     return 0
   }
 
-  return payload.data.length
+  return payload.length
 }
 
 function parseLiveStreamCount(payload: DashboardRecentStreamsResponse): number {
@@ -86,20 +76,6 @@ function parseAlertCount(payload: DashboardMonitoringResponse): number {
   }
 
   return payload.metrics.alerts.filter((alert) => alert.triggered).length
-}
-
-async function fetchJson<T>(url: string, signal: AbortSignal): Promise<T | null> {
-  try {
-    const response = await fetch(url, { signal })
-
-    if (!response.ok) {
-      return null
-    }
-
-    return (await response.json()) as T
-  } catch {
-    return null
-  }
 }
 
 function buildNavigationConfig(baseConfig: DashboardNavigationConfig, counts: DashboardNavCounts): DashboardNavigationConfig {
@@ -168,11 +144,12 @@ export function DashboardNavigation() {
     const controller = new AbortController()
 
     async function loadNavCounts() {
-      const [activityPayload, recentStreamsPayload, scheduledStreamsPayload, monitoringPayload] = await Promise.all([
-        fetchJson<DashboardActivityResponse>("/api/dashboard/activity?limit=25", controller.signal),
-        fetchJson<DashboardRecentStreamsResponse>("/api/dashboard/streams/recent?limit=25", controller.signal),
-        fetchJson<DashboardRecentStreamsResponse>("/api/dashboard/streams/scheduled", controller.signal),
-        fetchJson<DashboardMonitoringResponse>("/api/dashboard/operations/monitoring", controller.signal),
+      try {
+        const [activityPayload, recentStreamsPayload, scheduledStreamsPayload, monitoringPayload] = await Promise.all([
+        fetchApiData<DashboardActivity[]>("/api/dashboard/activity?limit=25", { init: { signal: controller.signal }, fallbackMessage: "Failed to load dashboard activity" }),
+        fetchApiData<DashboardRecentStreamsResponse>("/api/dashboard/streams/recent?limit=25", { init: { signal: controller.signal }, fallbackMessage: "Failed to load recent streams" }),
+        fetchApiData<DashboardRecentStreamsResponse>("/api/dashboard/streams/scheduled", { init: { signal: controller.signal }, fallbackMessage: "Failed to load scheduled streams" }),
+        fetchApiData<DashboardMonitoringResponse>("/api/dashboard/operations/monitoring", { init: { signal: controller.signal }, fallbackMessage: "Failed to load monitoring data" }),
       ])
 
       if (controller.signal.aborted) {
@@ -183,11 +160,14 @@ export function DashboardNavigation() {
       const pendingAutomation = scheduledStreamsPayload ? parsePendingAutomationCount(scheduledStreamsPayload) : 0
       const alertCount = monitoringPayload ? parseAlertCount(monitoringPayload) : activityPayload ? parseActivityCount(activityPayload) : 0
 
-      setCounts({
-        alerts: alertCount,
-        liveStreams,
-        pendingAutomation,
-      })
+        setCounts({
+          alerts: alertCount,
+          liveStreams,
+          pendingAutomation,
+        })
+      } catch {
+        setCounts(DEFAULT_NAV_COUNTS)
+      }
     }
 
     loadNavCounts()

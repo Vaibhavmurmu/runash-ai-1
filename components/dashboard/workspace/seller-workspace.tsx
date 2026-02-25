@@ -15,6 +15,7 @@ import { BusinessSettings } from "@/components/seller/business-settings"
 import { InventoryManager } from "@/components/seller/inventory-manager"
 import { PayoutManager } from "@/components/seller/payout-manager"
 import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
+import { fetchApiData } from "@/lib/api/client"
 
 type SellerSummary = {
   revenue: number
@@ -28,10 +29,7 @@ type SellerSummary = {
   recentStreams: Array<{ id: string; title: string; date: string; viewers: number }>
 }
 
-const sellerFetcher = (url: string) =>
-  fetch(url, { headers: { "x-user-id": "1" } }).then((r) =>
-    r.ok ? r.json() : Promise.reject(new Error(`Failed to load: ${url}`)),
-  )
+const sellerFetcher = (url: string) => fetchApiData<SellerSummary>(url, { fallbackMessage: `Failed to load: ${url}` })
 
 export function SellerWorkspace() {
   const [activeTab, setActiveTab] = useState("overview")

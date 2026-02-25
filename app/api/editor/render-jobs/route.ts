@@ -3,7 +3,7 @@ import { requireEditorUser } from "@/app/api/editor/_lib"
 import { sql } from "@/lib/editor/repository"
 
 export async function GET(request: Request) {
-  const auth = await requireEditorUser()
+  const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
 
   const { searchParams } = new URL(request.url)
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireEditorUser()
+  const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
 
   const body = await request.json()

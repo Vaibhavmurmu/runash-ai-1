@@ -13,80 +13,12 @@ import type {
   LatestCompletedStreamSummaryResponse,
   RestoreLastStreamDraftResponse,
 } from "@/lib/types/dashboard-streams"
+import { fetchApiData } from "@/lib/api/client"
 
 import { BackgroundSync } from "./background-sync" // Assuming BackgroundSync is in a separate file
-interface DashboardStreamsErrorEnvelope {
-  error?: {
-    message?: string
-  }
-}
-
-type DashboardStreamsClientError = Error & { requestId?: string }
-
-function createClientRequestId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID()
-  }
-
-  return `dashboard-streams-${Date.now()}`
-}
-
-function logStreamClientEvent(level: "warn" | "info", event: string, details: Record<string, unknown>) {
-  const payload = {
-    timestamp: new Date().toISOString(),
-    level,
-    event,
-    details,
-  }
-
-  if (level === "warn") {
-    console.warn("[api]", JSON.stringify(payload))
-    return
-  }
-
-  console.info("[api]", JSON.stringify(payload))
-}
-
-async function getDashboardStreamsErrorMessage(response: Response, fallback: string) {
-  try {
-    const payload = (await response.json()) as DashboardStreamsErrorEnvelope
-    return payload.error?.message || fallback
-  } catch {
-    return fallback
-  }
-}
 
 async function dashboardStreamsRequest<T>(input: RequestInfo, init: RequestInit, fallback: string): Promise<T> {
-  const requestId = createClientRequestId()
-  const method = init.method || "GET"
-  const headers = new Headers(init.headers)
-  headers.set("x-request-id", requestId)
-  const response = await fetch(input, { ...init, headers })
-
-  if (!response.ok) {
-    const responseRequestId = response.headers.get("x-request-id") || requestId
-    const message = await getDashboardStreamsErrorMessage(response, fallback)
-
-    logStreamClientEvent("warn", "dashboard.stream_api.request_failed", {
-      requestId: responseRequestId,
-      method,
-      endpoint: typeof input === "string" ? input : input instanceof Request ? input.url : "unknown",
-      status: response.status,
-      statusText: response.statusText,
-    })
-
-    const error = new Error(`${message} (requestId: ${responseRequestId})`) as DashboardStreamsClientError
-    error.requestId = responseRequestId
-    throw error
-  }
-
-  logStreamClientEvent("info", "dashboard.stream_api.request_succeeded", {
-    requestId,
-    method,
-    endpoint: typeof input === "string" ? input : input instanceof Request ? input.url : "unknown",
-  })
-
-  return (await response.json()) as T
+  return fetchApiData<T>(input, { init, fallbackMessage: fallback })
 }
 
 export const dashboardStreamingService = {

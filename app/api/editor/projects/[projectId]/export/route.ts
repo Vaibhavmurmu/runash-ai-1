@@ -2,8 +2,8 @@ import { NextResponse } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
 import { getProjectById } from "@/lib/editor/repository"
 
-export async function GET(_: Request, { params }: { params: { projectId: string } }) {
-  const auth = await requireEditorUser()
+export async function GET(request: Request, { params }: { params: { projectId: string } }) {
+  const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
 
   const project = await getProjectById(auth.userId, params.projectId)
