@@ -140,7 +140,12 @@ export default function GetStartedPage() {
         const response = await fetch("/api/auth/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: formData.email, password: formData.password, name: formData.name }),
+          body: JSON.stringify({
+            email: formData.email,
+            password: formData.password,
+            name: formData.name,
+            username: formData.username,
+          }),
         })
 
         if (response.ok) setStep(2)

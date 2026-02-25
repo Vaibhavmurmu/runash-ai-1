@@ -15,6 +15,12 @@ Last updated: 2026-02
 - Auth/admin-sensitive APIs are protected with stricter endpoint-specific rate limits in addition to baseline API rate controls.
 - Auth event logging now redacts credentials/tokens/secrets and stores anonymized session identifiers for audit safety.
 
+## Unified register backend flow update (2026-02)
+
+- `POST /api/auth/register` now delegates account creation to `auth.api.signUpEmail` from `lib/auth.ts`, making Better Auth the registration source of truth.
+- Legacy response fields (`message`, `user`) are preserved via compatibility mapping for existing frontend callers.
+- Signup entrypoints (`app/get-started/page.tsx`, `components/auth/register-form.tsx`, and `components/auth/better-sign-up-card.tsx`) now converge on `/api/auth/register`.
+
 ## Get-started onboarding flow update (2026-02)
 
 - Restored the three-step onboarding journey (`Account -> Profile -> Complete`) inside a dark themed get-started modal while preserving the rich landing hero CTA flow.

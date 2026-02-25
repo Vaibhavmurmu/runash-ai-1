@@ -5,23 +5,6 @@ import { recordSecurityAuditEvent } from "@/lib/security-audit-events"
 import { sql } from "@/lib/db"
 import { createAuthSession, invalidateSession } from "@/lib/auth/session-modes"
 
-export async function createUser(email: string, password: string, name: string) {
-  try {
-    const passwordHash = await hash(password, 12)
-
-    const [user] = await sql`
-      INSERT INTO users (email, password_hash, name, role)
-      VALUES (${email}, ${passwordHash}, ${name}, 'user')
-      RETURNING id, email, name, role, created_at
-    `
-
-    return user
-  } catch (error) {
-    console.error("Error creating user")
-    throw new Error("Failed to create user")
-  }
-}
-
 export async function createPasswordResetToken(userId: number) {
   try {
     const token = randomBytes(32).toString("hex")
