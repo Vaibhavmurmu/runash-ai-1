@@ -81,13 +81,13 @@ function formatStatValue(value: string | number | null | undefined) {
 
 function SummaryCard({ label, value, icon: Icon }: { label: string; value: string; icon: ComponentType<{ className?: string }> }) {
   return (
-    <Card className="border-border/50 bg-card/70">
-      <CardContent className="flex items-center justify-between p-4">
+    <Card className="border-border/60 bg-card/80 shadow-sm backdrop-blur-sm dark:bg-card/70">
+      <CardContent className="flex items-center justify-between gap-4 p-5">
         <div>
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-          <p className="text-xl font-semibold">{value}</p>
+          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+          <p className="mt-1 text-2xl font-semibold tracking-tight">{value}</p>
         </div>
-        <Icon className="h-4 w-4 text-muted-foreground" />
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground"><Icon className="h-4 w-4" /></span>
       </CardContent>
     </Card>
   )
@@ -95,17 +95,17 @@ function SummaryCard({ label, value, icon: Icon }: { label: string; value: strin
 
 function ActivityPanel({ items }: { items: DashboardActivity[] }) {
   return (
-    <Card className="h-full border-border/50 bg-card/70">
-      <CardHeader>
+    <Card className="h-full border-border/60 bg-card/80 shadow-sm backdrop-blur-sm dark:bg-card/70">
+      <CardHeader className="space-y-2 pb-4">
         <CardTitle className="text-base">Recent activity</CardTitle>
         <CardDescription>Latest customer and stream events relevant to your role.</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-2.5">
         {items.length === 0 ? (
           <p className="text-sm text-muted-foreground">No new activity yet.</p>
         ) : (
           items.slice(0, 6).map((activity, index) => (
-            <div key={activity.id ?? `${activity.action}-${index}`} className="rounded-lg border border-border/40 p-3">
+            <div key={activity.id ?? `${activity.action}-${index}`} className="rounded-xl border border-border/50 bg-background/30 p-3.5 transition-colors hover:border-border hover:bg-background/60">
               <p className="text-sm">
                 <span className="font-medium">{activity.user?.name ?? "System"}</span>{" "}
                 <span className="text-muted-foreground">{activity.action ?? "updated"}</span>{" "}
@@ -113,7 +113,7 @@ function ActivityPanel({ items }: { items: DashboardActivity[] }) {
               </p>
               <div className="mt-2 flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">{activity.time ?? "Just now"}</span>
-                <Badge variant="outline" className="text-[10px] uppercase">
+                <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
                   {activity.type ?? "event"}
                 </Badge>
               </div>
@@ -178,22 +178,22 @@ function PrimaryWorkflowPanel({
   const Icon = block.icon
 
   return (
-    <Card className="border-border/50 bg-card/70">
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
+    <Card className="border-border/60 bg-card/80 shadow-sm backdrop-blur-sm dark:bg-card/70">
+      <CardHeader className="flex flex-row items-start justify-between gap-4 pb-4">
         <div>
           <CardTitle className="text-lg">{block.title}</CardTitle>
           <CardDescription>{block.description}</CardDescription>
         </div>
-        <Button variant="ghost" size="sm" onClick={onRefresh}>
+        <Button variant="ghost" size="sm" className="h-8 px-3 text-xs font-medium hover:bg-muted/70" onClick={onRefresh}>
           <RefreshCw className="mr-2 h-3.5 w-3.5" />
           Refresh
         </Button>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="rounded-lg border border-border/40 bg-muted/30 p-4">
-          <div className="flex items-center justify-between">
+        <div className="rounded-xl border border-border/50 bg-muted/30 p-4">
+          <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">{block.statLabel}</p>
-            <Icon className="h-4 w-4 text-muted-foreground" />
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground"><Icon className="h-4 w-4" /></span>
           </div>
           <p className="mt-2 text-2xl font-semibold">{block.statValue}</p>
           {streamError ? (
@@ -203,14 +203,14 @@ function PrimaryWorkflowPanel({
           )}
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          <Button asChild className="bg-brand-gradient hover:opacity-95">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Button asChild className="bg-brand-gradient shadow-sm transition-opacity hover:opacity-95 focus-visible:ring-brand-ring">
             <Link href={block.ctaHref}>
               {block.ctaLabel}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
-          <Button asChild variant="outline">
+          <Button asChild variant="outline" className="hover:bg-muted/80">
             <Link href={block.helperHref}>{block.helperLabel}</Link>
           </Button>
         </div>
@@ -223,16 +223,16 @@ function ModuleTemplateCard({ module }: { module: ModuleCardData }) {
   const Icon = module.icon
 
   return (
-    <Card className="border-border/50 bg-card/70">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+    <Card className="border-border/60 bg-card/80 shadow-sm backdrop-blur-sm dark:bg-card/70">
+      <CardHeader className="space-y-2 pb-3">
+        <div className="flex items-center justify-between gap-3">
           <CardTitle className="text-base">{module.title}</CardTitle>
-          <Icon className="h-4 w-4 text-muted-foreground" />
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground"><Icon className="h-4 w-4" /></span>
         </div>
         <CardDescription>{module.description}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <Button asChild className="w-full bg-brand-gradient hover:opacity-95">
+      <CardContent className="space-y-2.5">
+        <Button asChild className="w-full bg-brand-gradient shadow-sm transition-opacity hover:opacity-95 focus-visible:ring-brand-ring">
           <Link href={module.primaryHref}>{module.primaryLabel}</Link>
         </Button>
         {module.continuityDisabled ? (
@@ -240,7 +240,7 @@ function ModuleTemplateCard({ module }: { module: ModuleCardData }) {
             {module.continuityLabel}
           </Button>
         ) : (
-          <Button asChild variant="outline" className="w-full">
+          <Button asChild variant="outline" className="w-full hover:bg-muted/80">
             <Link href={module.continuityHref}>{module.continuityLabel}</Link>
           </Button>
         )}
@@ -418,8 +418,8 @@ export function EnhancedDashboard() {
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="space-y-5">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, index) => (
             <Skeleton key={index} className="h-24 w-full" />
           ))}
@@ -431,25 +431,25 @@ export function EnhancedDashboard() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-2">
+    <div className="space-y-7">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{roleConfig.title}</h1>
-          <p className="text-sm text-muted-foreground">Compact dashboard focused on your current workflow.</p>
+          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{roleConfig.title}</h1>
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">Compact dashboard focused on your current workflow.</p>
         </div>
         <Badge variant="secondary" className="capitalize">
           {role}
         </Badge>
       </div>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {summaryCards.map((item) => (
           <SummaryCard key={item.id} label={item.label} value={item.value} icon={item.icon} />
         ))}
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-5">
-        <div className="lg:col-span-3">
+      <section className="grid gap-4 xl:grid-cols-5">
+        <div className="xl:col-span-3">
           <PrimaryWorkflowPanel
             role={role}
             stats={stats}
@@ -457,22 +457,22 @@ export function EnhancedDashboard() {
             onRefresh={() => void loadDashboardData()}
           />
         </div>
-        <div className="lg:col-span-2">
+        <div className="xl:col-span-2">
           <ActivityPanel items={activities} />
         </div>
       </section>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {moduleCards.map((module) => (
           <ModuleTemplateCard key={module.id} module={module} />
         ))}
       </section>
 
-      <details className="rounded-lg border border-border/50 bg-card/60 p-4">
-        <summary className="cursor-pointer text-sm font-medium">More modules and routes</summary>
+      <details className="rounded-xl border border-border/60 bg-card/70 p-4 shadow-sm dark:bg-card/60">
+        <summary className="cursor-pointer text-sm font-medium hover:text-foreground/90">More modules and routes</summary>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           {roleConfig.expandedRouteLinks.map((item) => (
-            <Button key={item.href} asChild variant="outline" className="justify-between">
+            <Button key={item.href} asChild variant="outline" className="justify-between hover:bg-muted/80">
               <Link href={item.href} onClick={() => router.prefetch(item.href)}>
                 {item.label}
                 <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
