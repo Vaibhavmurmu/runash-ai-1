@@ -2,17 +2,39 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { DashboardModelDialogProvider } from "@/components/dashboard/model-dialog-provider";
+import { DashboardContent } from "@/components/dashboard/dashboard-content";
+import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { dashboardNavigationConfig } from "@/components/dashboard/dashboard-nav-config";
 import { DashboardSidebarFrame } from "@/components/dashboard/dashboard-sidebar-frame";
-import { DashboardHeader } from "@/components/dashboard/dashboard-header";
-import { DashboardContent } from "@/components/dashboard/dashboard-content";
+import { DashboardModelDialogProvider } from "@/components/dashboard/model-dialog-provider";
+
+const SIDEBAR_STORAGE_KEY = "runash.dashboard.sidebar.v1";
+
+function getInitialSidebarCollapsedState() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    const persisted = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
+
+    if (!persisted) {
+      return false;
+    }
+
+    const parsed = JSON.parse(persisted);
+    return typeof parsed?.collapsed === "boolean" ? parsed.collapsed : false;
+  } catch {
+    return false;
+  }
+}
 
 interface DashboardLayoutFrameProps {
   children: ReactNode;
   footer?: ReactNode;
   header?: ReactNode;
   contentClassName?: string;
+  contentCollapsedClassName?: string;
 }
 
 export function DashboardLayoutFrame({
@@ -20,9 +42,12 @@ export function DashboardLayoutFrame({
   footer,
   header,
   contentClassName,
+  contentCollapsedClassName,
 }: DashboardLayoutFrameProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    getInitialSidebarCollapsedState,
+  );
 
   return (
     <DashboardModelDialogProvider>
@@ -43,7 +68,13 @@ export function DashboardLayoutFrame({
               navConfig={dashboardNavigationConfig}
             />
           )}
-          <DashboardContent className={contentClassName}>
+          <DashboardContent
+            className={
+              sidebarCollapsed
+                ? (contentCollapsedClassName ?? contentClassName)
+                : contentClassName
+            }
+          >
             {children}
           </DashboardContent>
           {footer ? <div className="w-full">{footer}</div> : null}
