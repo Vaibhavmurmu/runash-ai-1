@@ -48,13 +48,13 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
     setFeedbackOpen(true)
   }
 
-  const triggerSource = pathname.startsWith("/dashboard/editor") || pathname.startsWith("/editor")
+  const triggerSource = pathname.startsWith("/editor")
     ? "editor"
-    : pathname.startsWith("/dashboard/seller-studio") || pathname.startsWith("/seller")
+    : pathname.startsWith("/seller")
       ? "seller"
-      : pathname.startsWith("/dashboard/store") || pathname.startsWith("/ecommerce")
+      : pathname.startsWith("/ecommerce")
         ? "store"
-        : pathname.startsWith("/dashboard/streaming-studio") || pathname.startsWith("/stream")
+        : pathname.startsWith("/stream")
           ? "streaming"
           : "chat"
 
@@ -203,16 +203,13 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
                   Profile
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuLabel>Workspace</DropdownMenuLabel>
+              <DropdownMenuLabel>Settings</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
                 <Link href="/settings">
                   <Settings className="mr-2 h-4 w-4" />
                   Settings
                 </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/settings/billing">Billing</Link>
               </DropdownMenuItem>
               <DropdownMenuLabel>Support</DropdownMenuLabel>
               <DropdownMenuSeparator />
@@ -292,16 +289,13 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
                 <LogOut className="mr-2 h-4 w-4" />
                 Sign out
               </DropdownMenuItem>
-              <DropdownMenuLabel>Workspace</DropdownMenuLabel>
+              <DropdownMenuLabel>Settings</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
                 <Link href="/settings">
                   <Settings className="mr-2 h-4 w-4" />
                   Settings
                 </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/settings/billing">Billing</Link>
               </DropdownMenuItem>
               <DropdownMenuLabel>Support</DropdownMenuLabel>
               <DropdownMenuSeparator />

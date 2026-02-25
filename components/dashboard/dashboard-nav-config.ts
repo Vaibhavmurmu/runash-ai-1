@@ -3,8 +3,9 @@ import {
   Bot,
   CreditCard,
   LayoutDashboard,
-  Workflow,
+  Settings,
   Sparkles,
+  Workflow,
 } from "lucide-react"
 
 export type DashboardNavSection = "core" | "studio" | "intelligence" | "operations" | "account"
@@ -97,9 +98,6 @@ export const dashboardNavItems: DashboardNavItem[] = [
     href: "/automation",
     icon: Workflow,
     section: "intelligence",
-    metadata: {
-      badgeCount: 0,
-    },
     activeMatch: (pathname) => matchesPathPrefix(pathname, "/automation"),
   },
   {
@@ -108,11 +106,22 @@ export const dashboardNavItems: DashboardNavItem[] = [
     icon: Workflow,
     section: "operations",
     children: [
-      { label: "Streaming studio", href: "/dashboard/streaming-studio", optional: true },
-      { label: "Editor", href: "/dashboard/editor", optional: true },
-      { label: "Seller studio", href: "/dashboard/seller-studio", optional: true },
+      { label: "Streaming", href: "/stream", optional: true },
+      { label: "Store", href: "/ecommerce/dashboard", optional: true },
+      { label: "Seller", href: "/seller/dashboard", optional: true },
     ],
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/workflows"),
+    activeMatch: (pathname) =>
+      matchesPathPrefix(pathname, "/workflows") ||
+      matchesPathPrefix(pathname, "/stream") ||
+      matchesPathPrefix(pathname, "/ecommerce") ||
+      matchesPathPrefix(pathname, "/seller"),
+  },
+  {
+    label: "Settings",
+    href: "/settings",
+    icon: Settings,
+    section: "account",
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/settings"),
   },
   {
     label: "Payments",
@@ -125,23 +134,31 @@ export const dashboardNavItems: DashboardNavItem[] = [
 
 export const dashboardQuickLinkGroups: DashboardQuickLinkGroup[] = [
   {
-    label: "Core modules",
+    label: "Primary",
     icon: LayoutDashboard,
-    items: dashboardNavItems.filter((item) => ["Dashboard", "Agents", "Automation"].includes(item.label)),
+    items: dashboardNavItems.filter((item) =>
+      ["Dashboard", "Agents", "Automation", "Workflows"].includes(item.label),
+    ),
   },
   {
-    label: "Operations",
-    icon: Workflow,
-    items: dashboardNavItems.filter((item) => ["Workflows", "Payments"].includes(item.label)),
+    label: "Account",
+    icon: CreditCard,
+    items: dashboardNavItems.filter((item) =>
+      ["Settings", "Payments"].includes(item.label),
+    ),
   },
 ]
 
 export const dashboardQuickActions: DashboardQuickAction[] = [
-  { label: "Open dashboard module", href: "/dashboard" },
-  { label: "Open agents module", href: "/agents/dashboard" },
-  { label: "Open automation module", href: "/automation" },
-  { label: "Open workflows module", href: "/workflows" },
-  { label: "Open payments module", href: "/payments" },
+  { label: "Dashboard", href: "/dashboard" },
+  { label: "Agents", href: "/agents/dashboard" },
+  { label: "Automation", href: "/automation" },
+  { label: "Workflows", href: "/workflows" },
+  { label: "Streaming", href: "/stream" },
+  { label: "Store", href: "/ecommerce/dashboard" },
+  { label: "Seller", href: "/seller/dashboard" },
+  { label: "Settings", href: "/settings" },
+  { label: "Payments", href: "/payments" },
 ]
 
 export const dashboardNavigationConfig: DashboardNavigationConfig = {
@@ -149,8 +166,8 @@ export const dashboardNavigationConfig: DashboardNavigationConfig = {
   quickLinkGroups: dashboardQuickLinkGroups,
   quickActions: dashboardQuickActions,
   streamingStudioEntry: {
-    label: "Streaming Studio",
-    href: "/dashboard/streaming-studio",
+    label: "Streaming",
+    href: "/stream",
     actionIds: [
       "start-stream",
       "schedule-stream",
@@ -171,13 +188,13 @@ export function isNavItemActive(pathname: string, item: DashboardNavItem) {
 
 const dashboardPathLabels: Record<string, string> = {
   dashboard: "Dashboard",
-  runash: "RunAsh",
-  chat: "Chat",
-  editor: "Editor",
-  stream: "Streaming Studio",
+  stream: "Streaming",
   agents: "Agents",
   automation: "Automation",
   workflows: "Workflows",
+  ecommerce: "Store",
+  seller: "Seller",
+  settings: "Settings",
   payments: "Payments",
 }
 
@@ -194,34 +211,26 @@ function formatSegmentLabel(segment: string) {
     .join(" ")
 }
 
+function resolveCurrentSection(pathname: string, fallback: string | undefined) {
+  if (matchesPathPrefix(pathname, "/agents")) return "Agents"
+  if (matchesPathPrefix(pathname, "/automation")) return "Automation"
+  if (matchesPathPrefix(pathname, "/workflows")) return "Workflows"
+  if (matchesPathPrefix(pathname, "/stream")) return "Streaming"
+  if (matchesPathPrefix(pathname, "/ecommerce")) return "Store"
+  if (matchesPathPrefix(pathname, "/seller")) return "Seller"
+  if (matchesPathPrefix(pathname, "/settings")) return "Settings"
+  if (matchesPathPrefix(pathname, "/payments")) return "Payments"
+  if (matchesPathPrefix(pathname, "/dashboard")) return "Dashboard"
+
+  return fallback ?? "Dashboard"
+}
+
 export function resolveDashboardNavContext(pathname: string): DashboardNavContext {
-  const matchedItem = dashboardNavigationConfig.items.find((item) => isNavItemActive(pathname, item))
-  const isAccountRoute =
-    pathname === "/dashboard/settings" ||
-    pathname.startsWith("/settings/") ||
-    pathname.startsWith("/dashboard/account") ||
-    pathname.startsWith("/dashboard/upgrade") ||
-    pathname.startsWith("/dashboard/billing") ||
-    pathname.startsWith("/payments")
-  const sectionLabel = isAccountRoute ? "Account" : matchedItem?.label ?? "Workspace"
+  const matchedItem = dashboardNavigationConfig.items.find((item) =>
+    isNavItemActive(pathname, item),
+  )
+  const currentSection = resolveCurrentSection(pathname, matchedItem?.label)
   const pathSegments = pathname.split("/").filter(Boolean)
-
-  if (isAccountRoute) {
-    const accountRouteLabels: Record<string, string> = {
-      "/dashboard/settings": "Preferences",
-      "/dashboard/account": "Profile",
-      "/dashboard/billing": "Billing",
-      "/dashboard/upgrade": "Upgrade",
-      "/payments": "Payments",
-    }
-
-    const accountBreadcrumbLabel = accountRouteLabels[pathname] ?? formatSegmentLabel(pathSegments[pathSegments.length - 1] ?? "settings")
-
-    return {
-      currentSection: sectionLabel,
-      breadcrumbs: [{ label: "Account", href: "/dashboard/settings" }, { label: accountBreadcrumbLabel }],
-    }
-  }
 
   const breadcrumbs = pathSegments.length
     ? pathSegments.map((segment, index) => {
@@ -236,7 +245,7 @@ export function resolveDashboardNavContext(pathname: string): DashboardNavContex
     : [{ label: "Dashboard" }]
 
   return {
-    currentSection: sectionLabel,
+    currentSection,
     breadcrumbs,
   }
 }
