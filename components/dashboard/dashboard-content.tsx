@@ -6,5 +6,14 @@ interface DashboardContentProps {
 }
 
 export function DashboardContent({ children, className }: DashboardContentProps) {
-  return <main className={className ?? "mx-auto flex w-full max-w-7xl flex-1 p-4 md:p-6"}>{children}</main>
+  return (
+    <main
+      className={
+        className ??
+        "mx-auto flex w-full max-w-[92rem] flex-1 px-4 pb-8 pt-5 sm:px-6 md:pt-6 lg:px-8 2xl:px-10"
+      }
+    >
+      {children}
+    </main>
+  )
 }

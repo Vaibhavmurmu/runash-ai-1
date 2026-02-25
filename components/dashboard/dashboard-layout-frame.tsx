@@ -35,7 +35,7 @@ export function DashboardLayoutFrame({
         />
 
         <div
-          className={`flex min-h-screen flex-col transition-[padding] duration-200 ${sidebarCollapsed ? "md:pl-20" : "md:pl-64"}`}
+          className={`flex min-h-screen flex-col transition-[padding] duration-300 ease-out ${sidebarCollapsed ? "md:pl-20" : "md:pl-64"}`}
         >
           {header ?? (
             <DashboardHeader
