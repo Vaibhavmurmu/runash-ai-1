@@ -18,9 +18,10 @@ import { Textarea } from "@/components/ui/textarea"
 interface FeedbackModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onSubmitted?: (payload: { score: number; reason: string }) => void
 }
 
-export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
+export function FeedbackModal({ open, onOpenChange, onSubmitted }: FeedbackModalProps) {
   const [score, setScore] = useState("5")
   const [reason, setReason] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -59,6 +60,7 @@ export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
       }
 
       setSuccess("Thanks! Your feedback has been submitted.")
+      onSubmitted?.({ score: Number(score), reason: reason.trim() || "Dashboard feedback submitted" })
       setTimeout(() => {
         onOpenChange(false)
         resetState()

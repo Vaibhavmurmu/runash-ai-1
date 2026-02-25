@@ -27,6 +27,13 @@ const navSectionLabel: Record<DashboardNavSection, string> = {
 
 const knownSidebarRoutes = new Set([
   "/dashboard",
+  "/dashboard/onboarding",
+  "/dashboard/projects/new",
+  "/dashboard/live-session",
+  "/dashboard/live-session/resume",
+  "/dashboard/feedback",
+  "/dashboard/upgrade",
+  "/dashboard/account",
   "/stream",
   "/schedule",
   "/analytics",

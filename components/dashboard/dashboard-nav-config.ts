@@ -3,7 +3,6 @@ import {
   Flame,
   Bell,
   Bot,
-  CircleUserRound,
   Clapperboard,
   CreditCard,
   BarChart3,
@@ -19,6 +18,11 @@ import {
   Upload,
   Video,
   Workflow,
+  User,
+  FolderPlus,
+  History,
+  Hand,
+  ArrowUpCircle,
 } from "lucide-react"
 
 export type DashboardNavSection = "core" | "studio" | "intelligence" | "operations" | "account"
@@ -108,6 +112,27 @@ export const dashboardNavItems: DashboardNavItem[] = [
     activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/streaming-studio"),
   },
   {
+    label: "Welcome onboarding",
+    href: "/dashboard/onboarding",
+    icon: Hand,
+    section: "core",
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/onboarding"),
+  },
+  {
+    label: "Create project",
+    href: "/dashboard/projects/new",
+    icon: FolderPlus,
+    section: "studio",
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/projects/new"),
+  },
+  {
+    label: "Live session resume",
+    href: "/dashboard/live-session",
+    icon: History,
+    section: "studio",
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/live-session"),
+  },
+  {
     label: "Analytics",
     href: "/dashboard/analytics",
     icon: BarChart3,
@@ -150,10 +175,10 @@ export const dashboardNavItems: DashboardNavItem[] = [
   },
   {
     label: "Profile",
-    href: "/dashboard/settings",
-    icon: CircleUserRound,
+    href: "/dashboard/account",
+    icon: User,
     section: "account",
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/settings"),
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/account"),
   },
   {
     label: "Preferences",
@@ -168,6 +193,20 @@ export const dashboardNavItems: DashboardNavItem[] = [
     icon: CreditCard,
     section: "account",
     activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/billing"),
+  },
+  {
+    label: "Upgrade",
+    href: "/dashboard/upgrade",
+    icon: ArrowUpCircle,
+    section: "account",
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/upgrade"),
+  },
+  {
+    label: "Feedback",
+    href: "/dashboard/feedback",
+    icon: MessageSquare,
+    section: "operations",
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/feedback"),
   },
   {
     label: "AI Agents",
@@ -229,7 +268,7 @@ export const dashboardQuickLinkGroups: DashboardQuickLinkGroup[] = [
   {
     label: "Ops",
     icon: Settings,
-    items: dashboardNavItems.filter((item) => ["Analytics", "Alerts", "Preferences", "AI Agents", "Automation"].includes(item.label)),
+    items: dashboardNavItems.filter((item) => ["Analytics", "Alerts", "Feedback", "Preferences", "AI Agents", "Automation"].includes(item.label)),
   },
   {
     label: "Commerce",
@@ -239,14 +278,19 @@ export const dashboardQuickLinkGroups: DashboardQuickLinkGroup[] = [
 ]
 
 export const dashboardQuickActions: DashboardQuickAction[] = [
+  { label: "Open onboarding", href: "/dashboard/onboarding" },
   { label: "New project", href: "/dashboard/editor" },
+  { label: "Create project wizard", href: "/dashboard/projects/new" },
   { label: "Go live", href: "/dashboard/streaming-studio" },
+  { label: "Previous live overview", href: "/dashboard/live-session" },
   { label: "Resume previous live setup", href: "/stream?resume=last-live" },
   { label: "Open recent recording edit", href: "/recordings?view=recent-edit" },
   { label: "Replay analytics for last live", href: "/dashboard/analytics?replay=last-live" },
   { label: "Open chat session", href: "/dashboard/runash-chat" },
   { label: "Add product", href: "/dashboard/store" },
   { label: "Configure automation", href: "/automation" },
+  { label: "Manage plans", href: "/dashboard/upgrade" },
+  { label: "Account overview", href: "/dashboard/account" },
 ]
 
 export const dashboardNavigationConfig: DashboardNavigationConfig = {
@@ -280,6 +324,12 @@ const dashboardPathLabels: Record<string, string> = {
   chat: "Chat",
   editor: "Editor",
   stream: "Streaming Studio",
+  onboarding: "Onboarding",
+  projects: "Projects",
+  new: "Create Project",
+  live: "Live",
+  session: "Session",
+  resume: "Resume",
   schedule: "Schedule",
   analytics: "Analytics",
   upload: "Upload",
@@ -288,6 +338,9 @@ const dashboardPathLabels: Record<string, string> = {
   settings: "Settings",
   profile: "Profile",
   billing: "Billing",
+  feedback: "Feedback",
+  upgrade: "Upgrade",
+  account: "Account",
   agents: "AI Agents",
   automation: "Automation",
   seller: "Seller Studio",
@@ -309,15 +362,21 @@ function formatSegmentLabel(segment: string) {
 
 export function resolveDashboardNavContext(pathname: string): DashboardNavContext {
   const matchedItem = dashboardNavigationConfig.items.find((item) => isNavItemActive(pathname, item))
-  const isAccountRoute = pathname === "/dashboard/settings" || pathname.startsWith("/settings/")
+  const isAccountRoute =
+    pathname === "/dashboard/settings" ||
+    pathname.startsWith("/settings/") ||
+    pathname.startsWith("/dashboard/account") ||
+    pathname.startsWith("/dashboard/upgrade") ||
+    pathname.startsWith("/dashboard/billing")
   const sectionLabel = isAccountRoute ? "Account" : matchedItem?.label ?? "Workspace"
   const pathSegments = pathname.split("/").filter(Boolean)
 
   if (isAccountRoute) {
     const accountRouteLabels: Record<string, string> = {
       "/dashboard/settings": "Preferences",
-      "/dashboard/settings": "Profile",
+      "/dashboard/account": "Profile",
       "/dashboard/billing": "Billing",
+      "/dashboard/upgrade": "Upgrade",
     }
 
     const accountBreadcrumbLabel = accountRouteLabels[pathname] ?? formatSegmentLabel(pathSegments[pathSegments.length - 1] ?? "settings")
