@@ -90,3 +90,20 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Operator panel cards now surface recent failures, webhook lag/error counters, refund/chargeback risk flags, and reconciliation health metrics for faster triage.
 - No payment API request/response fields, webhook payload contracts, or auth/session signatures were changed by this UI refresh.
 - Rollback plan: revert the dashboard page/component pair (`app/payment/dashboard/page.tsx` and `components/payment/payment-operations-dashboard.tsx`) to restore previous redirect behavior.
+
+
+## 2026-02 Payment automation trigger/action mappings
+
+- Workflow automation now supports payment webhook trigger events:
+  - `payment_succeeded`
+  - `payment_failed`
+  - `invoice_overdue`
+  - `checkout_abandoned`
+- Payment trigger-to-action mappings are available in workflow templates and node handlers:
+  - `payment_succeeded` → `payment.send_receipt`, `payment.unlock_feature_entitlement`
+  - `payment_failed` → `payment.notify_support`
+  - `invoice_overdue` → `payment.retry_reminder`
+  - `checkout_abandoned` → `payment.retry_reminder`
+- Actions execute through the existing workflow automation engine and emit queue-oriented metadata (`queue: automation`, `queued`, `jobId`) for worker handoff where queue workers are enabled.
+- Backward compatibility: existing payment API signatures, webhook contracts, and billing field names are unchanged.
+- Rollback plan: remove payment workflow node/template references in `lib/workflow-kit/*` and revert to pre-payment trigger workflow configurations.

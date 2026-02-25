@@ -63,6 +63,26 @@ interface EmailWebhookEventTriggerOutput {
   receivedAt: string
 }
 
+interface PaymentWebhookEventTriggerOutput {
+  action: "payment.webhook_event_trigger"
+  eventType: "payment_succeeded" | "payment_failed" | "invoice_overdue" | "checkout_abandoned"
+  provider: string
+  queue: "automation"
+  receivedAt: string
+}
+
+interface PaymentActionOutput {
+  action:
+    | "payment.send_receipt"
+    | "payment.notify_support"
+    | "payment.retry_reminder"
+    | "payment.unlock_feature_entitlement"
+  queue: "automation"
+  queued: boolean
+  jobId: string
+  metadata: Record<string, unknown>
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const passthrough: NodeHandler = async (node, input) => {
@@ -139,6 +159,45 @@ const emailWebhookEventTriggerHandler: NodeHandler<Record<string, never>, EmailW
   }
 }
 
+const paymentWebhookEventTriggerHandler: NodeHandler<Record<string, never>, PaymentWebhookEventTriggerOutput> = async (node) => {
+  await sleep(80)
+  const configuredEventType = typeof node.config.eventType === "string" ? node.config.eventType : "payment_succeeded"
+  const eventType: PaymentWebhookEventTriggerOutput["eventType"] =
+    configuredEventType === "payment_failed" ||
+    configuredEventType === "invoice_overdue" ||
+    configuredEventType === "checkout_abandoned"
+      ? configuredEventType
+      : "payment_succeeded"
+
+  return {
+    action: "payment.webhook_event_trigger",
+    eventType,
+    provider: typeof node.config.provider === "string" ? node.config.provider : "runash-pay",
+    queue: "automation",
+    receivedAt: new Date().toISOString(),
+  }
+}
+
+const paymentActionHandler =
+  (action: PaymentActionOutput["action"]): NodeHandler<Record<string, unknown>, PaymentActionOutput> =>
+  async (node, input) => {
+    await sleep(140)
+    const eventType = typeof node.config.eventType === "string" ? node.config.eventType : undefined
+    return {
+      action,
+      queue: "automation",
+      queued: true,
+      jobId: `payment-job-${node.id}-${Date.now()}`,
+      metadata: {
+        eventType,
+        nodeType: node.type,
+        retryWindowMinutes: typeof node.config.delayMinutes === "number" ? node.config.delayMinutes : undefined,
+        featureKey: typeof node.config.featureKey === "string" ? node.config.featureKey : undefined,
+        input,
+      },
+    }
+  }
+
 export const NODE_HANDLERS: Record<string, NodeHandler> = {
   "camera-input": async (node) => {
     await sleep(150)
@@ -188,6 +247,11 @@ export const NODE_HANDLERS: Record<string, NodeHandler> = {
   "email.import_contacts": emailImportContactsHandler as NodeHandler,
   "email.handle_inbound_reply": emailInboundReplyHandler as NodeHandler,
   "email.webhook_event_trigger": emailWebhookEventTriggerHandler as NodeHandler,
+  "payment.webhook_event_trigger": paymentWebhookEventTriggerHandler as NodeHandler,
+  "payment.send_receipt": paymentActionHandler("payment.send_receipt"),
+  "payment.notify_support": paymentActionHandler("payment.notify_support"),
+  "payment.retry_reminder": paymentActionHandler("payment.retry_reminder"),
+  "payment.unlock_feature_entitlement": paymentActionHandler("payment.unlock_feature_entitlement"),
 }
 
 export const NODE_ROLLBACK_HANDLERS: Record<string, NodeRollbackHandler> = {
@@ -199,6 +263,10 @@ export const NODE_ROLLBACK_HANDLERS: Record<string, NodeRollbackHandler> = {
   "email.import_contacts": async (_node, output) => {
     await sleep(70)
     return `Imported contacts reverted (${String(output.listName ?? "unknown-list")})`
+  },
+  "payment.unlock_feature_entitlement": async (_node, output) => {
+    await sleep(60)
+    return `Entitlement rollback completed (${String(output.metadata?.featureKey ?? "premium_access")})`
   },
 }
 

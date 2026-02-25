@@ -6,7 +6,16 @@ export type WorkflowPortType = "video" | "audio" | "metadata" | "text" | "analyt
 
 export type WorkflowTriggerType = "schedule" | "webhook_event" | "manual"
 
-export type WorkflowWebhookEventType = "delivered" | "opened" | "bounced" | "clicked" | "inbound_reply"
+export type WorkflowWebhookEventType =
+  | "delivered"
+  | "opened"
+  | "bounced"
+  | "clicked"
+  | "inbound_reply"
+  | "payment_succeeded"
+  | "payment_failed"
+  | "invoice_overdue"
+  | "checkout_abandoned"
 
 export interface WorkflowTriggerConfig {
   type: WorkflowTriggerType
