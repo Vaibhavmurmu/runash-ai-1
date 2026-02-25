@@ -27,7 +27,7 @@ export function BetterSignUpCard() {
     <Card className="max-w-md">
       <CardHeader>
         <CardTitle className="text-lg md:text-xl">Sign Up</CardTitle>
-        <CardDescription className="text-xs md:text-sm">Create your account with secure email/password auth.</CardDescription>
+        <CardDescription className="text-xs md:text-sm">Create your account with secure email/password auth. Email verification is required before your first login.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {error ? <CardAlert severity="danger" title="Sign-up failed" description={error} /> : null}
@@ -89,7 +89,7 @@ export function BetterSignUpCard() {
 
               const isVerificationPending =
                 registration.user?.emailVerified === false || /verify your account/i.test(registration.message)
-              toast.success(isVerificationPending ? "Check your email to verify your account" : registration.message)
+              toast.success(isVerificationPending ? "Check your inbox to verify your email before logging in." : registration.message)
               router.push("/login")
             } catch (error) {
               setError("Unable to create account")

@@ -5,6 +5,8 @@ import { EmailBounceHandler } from "./email-bounce-handler"
 import { triggerDeliveryStatusEvent } from "./email-realtime"
 import { type EmailAttachment, sendWithEmailProvider } from "./email-provider"
 
+export const AUTH_EMAIL_VERIFICATION_PATH = "/api/auth/verify-email"
+
 export interface EmailSafetyPolicyPayload {
   error: "EMAIL_SAFETY_BLOCKED"
   message: string
@@ -268,8 +270,33 @@ export async function sendAuthEmail(options: {
   })
 }
 
-export async function sendVerificationEmail(email: string, name: string, token: string) {
-  const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email?token=${token}`
+export function buildCanonicalVerificationUrl(input: { url?: string; token?: string; callbackURL?: string }) {
+  const baseUrl = process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
+  const verificationUrl = new URL(input.url ?? AUTH_EMAIL_VERIFICATION_PATH, baseUrl)
+
+  verificationUrl.pathname = AUTH_EMAIL_VERIFICATION_PATH
+
+  if (input.token) {
+    verificationUrl.searchParams.set("token", input.token)
+  }
+
+  if (input.callbackURL && !verificationUrl.searchParams.get("callbackURL")) {
+    verificationUrl.searchParams.set("callbackURL", input.callbackURL)
+  }
+
+  return verificationUrl.toString()
+}
+
+export async function sendVerificationEmail(
+  email: string,
+  name: string,
+  verificationTokenOrUrl: string,
+  callbackURL?: string,
+) {
+  const isUrlInput = verificationTokenOrUrl.startsWith("http://") || verificationTokenOrUrl.startsWith("https://") || verificationTokenOrUrl.startsWith("/")
+  const verificationUrl = isUrlInput
+    ? buildCanonicalVerificationUrl({ url: verificationTokenOrUrl, callbackURL })
+    : buildCanonicalVerificationUrl({ token: verificationTokenOrUrl, callbackURL })
 
   const mailOptions = {
     to: email,

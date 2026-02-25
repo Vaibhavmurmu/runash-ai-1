@@ -287,7 +287,7 @@ export default function GetStartedPage() {
             <Card className="mx-auto max-w-2xl border-orange-200 dark:border-white/10 bg-orange-50/40 dark:bg-white/[0.03]">
               <CardHeader className="pb-3 text-center">
                 <CardTitle>Create account</CardTitle>
-                <CardDescription className="text-slate-600 dark:text-white/60">Use OAuth, advanced auth, or continue with email.</CardDescription>
+                <CardDescription className="text-slate-600 dark:text-white/60">Use OAuth, advanced auth, or continue with email. Email/password sign-up requires email verification before login.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
                 {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
@@ -342,6 +342,7 @@ export default function GetStartedPage() {
 
                   <div className="flex items-start gap-2"><Checkbox id="terms" required className="mt-1" /><Label htmlFor="terms" className="text-xs text-slate-600 dark:text-white/60">By continuing you agree to cookies consent, scopes, and claims policy.</Label></div>
                   <Button type="submit" disabled={isLoading} className="w-full rounded-full bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-400 text-white hover:opacity-90">{isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Continue"}</Button>
+                  <p className="text-xs text-slate-500 dark:text-white/50 text-center">After sign-up, verify your email from the link we send before logging in.</p>
                 </form>
 
                 <div className="text-xs text-slate-500 dark:text-white/40">⇪ Upload screenshot-ready onboarding available after sign-in.</div>
