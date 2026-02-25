@@ -5,6 +5,7 @@ import { logApiRouteError } from "@/lib/api/logging"
 import { requireScopedBillingAccess } from "@/lib/billing-auth"
 import { ensureInvoiceSupportTables, syncInvoiceStatusFromAttempts } from "@/lib/billing/invoice-store"
 import { Database } from "@/lib/database"
+import { calculateInvoiceTotals } from "@/lib/billing/invoice-calculations"
 
 const createInvoiceSchema = z.object({
   customer: z.object({
@@ -268,9 +269,7 @@ export async function POST(request: NextRequest) {
       return respondError(request, { code: "INVALID_DUE_DATE", message: "Invalid due date" }, { status: 400 })
     }
 
-    const subtotalCents = lineItems.reduce((sum, item) => sum + Math.round(item.unitAmount * 100) * item.quantity, 0)
-    const taxCents = Math.round(tax.amount * 100)
-    const totalCents = subtotalCents + taxCents
+    const { subtotalCents, taxCents, totalCents } = calculateInvoiceTotals(lineItems, tax.amount)
 
     const insertedInvoices = await Database.query<{ id: number }>(
       `

@@ -107,3 +107,16 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Actions execute through the existing workflow automation engine and emit queue-oriented metadata (`queue: automation`, `queued`, `jobId`) for worker handoff where queue workers are enabled.
 - Backward compatibility: existing payment API signatures, webhook contracts, and billing field names are unchanged.
 - Rollback plan: remove payment workflow node/template references in `lib/workflow-kit/*` and revert to pre-payment trigger workflow configurations.
+
+## 2026-02 payment reliability test coverage expansion
+
+- Added targeted automated coverage for checkout redirect callback status mapping, payment status route-state mapping, invoice create total calculation lifecycle, webhook duplicate idempotency classification, and failed/incomplete retry lifecycle behavior.
+- Backward compatibility: no payment API field names, webhook payload fields, or billing endpoint signatures were changed; test-focused helper modules mirror existing route/service behavior.
+- Migration notes: no schema or contract migration required for this change set because logic is extracted to shared mappers/helpers without altering persisted formats.
+- Risks:
+  - Behavioral drift risk if helper mappers diverge from route/service call sites in future edits.
+  - Build/lint environment dependency risk remains (missing local lint/build env secrets/deps can mask unrelated regressions).
+- Rollback steps:
+  1. Revert helper module imports in payment routes/services to prior inline logic.
+  2. Revert added helper modules/tests (`lib/payments/*mappers*`, `lib/services/billing-webhook-idempotency.ts`, `lib/billing/invoice-calculations.ts`, and corresponding `*.test.ts` files).
+  3. Re-run payment route tests and deploy previous known-good commit if mapping regression is confirmed.

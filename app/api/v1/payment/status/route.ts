@@ -3,7 +3,8 @@ import { z } from "zod"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { requireScopedBillingAccess } from "@/lib/billing-auth"
 import { verifySignedCheckoutReturnState } from "@/lib/payments/checkout-return-state"
-import { resolvePaymentStatus, type PaymentResolvedStatus, type PaymentStatusRouteState } from "@/lib/payments/checkout-status-resolution"
+import { resolvePaymentStatus } from "@/lib/payments/checkout-status-resolution"
+import { mapResolvedStatusToRouteState } from "@/lib/payments/payment-status-mappers"
 
 const paymentStatusQuerySchema = z
   .object({
@@ -14,13 +15,6 @@ const paymentStatusQuerySchema = z
     status_route: z.enum(["success", "error", "incomplete", "pending", "complete"]).optional(),
   })
   .strict()
-
-function mapResolvedStatusToRouteState(resolved: PaymentResolvedStatus): PaymentStatusRouteState {
-  if (resolved === "complete") return "complete"
-  if (resolved === "error") return "error"
-  if (resolved === "incomplete") return "incomplete"
-  return "pending"
-}
 
 export async function GET(request: NextRequest) {
   const access = await requireScopedBillingAccess("startup")
