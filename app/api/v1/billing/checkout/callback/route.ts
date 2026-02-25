@@ -3,7 +3,7 @@ import { z } from "zod"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { requireScopedBillingAccess } from "@/lib/billing-auth"
 import { verifySignedCheckoutReturnState } from "@/lib/payments/checkout-return-state"
-import { getLatestCheckoutAttemptResultBySession } from "@/services/payment-checkout-profile-service"
+import { resolvePaymentStatus } from "@/lib/payments/checkout-status-resolution"
 
 const callbackSchema = z
   .object({
@@ -13,24 +13,6 @@ const callbackSchema = z
     provider: z.string().default("stripe"),
   })
   .strict()
-
-type FinalStatus = "completed" | "pending" | "failed" | "expired"
-
-function mapAttemptToStatus(status: string): FinalStatus {
-  if (status === "completed") return "completed"
-  if (status === "failed") return "failed"
-  if (status === "expired") return "expired"
-  return "pending"
-}
-
-function mapStripeSessionStatus(input: { status: string | null; paymentStatus: string | null }): FinalStatus {
-  if (input.status === "expired") return "expired"
-  if (input.status === "complete" && (input.paymentStatus === "paid" || input.paymentStatus === "no_payment_required")) {
-    return "completed"
-  }
-  if (input.paymentStatus === "unpaid") return "failed"
-  return "pending"
-}
 
 export async function GET(request: NextRequest) {
   const access = await requireScopedBillingAccess("startup")
@@ -63,30 +45,27 @@ export async function GET(request: NextRequest) {
     return respondError(request, { code: "CHECKOUT_RETURN_REFERENCE_MISMATCH", message: "Return callback reference mismatch" }, { status: 400 })
   }
 
-  let finalStatus: FinalStatus = "pending"
-  const persistedAttempt = await getLatestCheckoutAttemptResultBySession({
+  const resolution = await resolvePaymentStatus({
     customerId: access.sessionUser.userId,
     checkoutSessionId: resolvedSessionId,
+    provider: parsed.data.provider,
   })
 
-  if (persistedAttempt) {
-    finalStatus = mapAttemptToStatus(persistedAttempt.attemptStatus)
-  } else if (parsed.data.provider === "stripe" && process.env.STRIPE_SECRET_KEY) {
-    const { default: Stripe } = await import("stripe")
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" })
-    const checkoutSession = await stripe.checkout.sessions.retrieve(resolvedSessionId)
-    finalStatus = mapStripeSessionStatus({
-      status: checkoutSession.status,
-      paymentStatus: checkoutSession.payment_status,
-    })
-  }
+  const finalStatus =
+    resolution.resolvedStatus === "complete"
+      ? "completed"
+      : resolution.resolvedStatus === "error"
+        ? "failed"
+        : resolution.resolvedStatus === "incomplete"
+          ? "expired"
+          : "pending"
 
   return respondSuccess(request, {
     checkoutSessionId: resolvedSessionId,
     provider: parsed.data.provider,
     providerTransactionReference: parsed.data.provider_ref,
     finalStatus,
-    resumedFrom: persistedAttempt ? "webhook-backed-state" : "provider-session-query",
+    resumedFrom: resolution.source,
   })
 }
 

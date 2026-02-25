@@ -7,8 +7,16 @@ import { Button } from "@/components/ui/button"
 
 type CallbackResponse = {
   finalStatus: "completed" | "pending" | "failed" | "expired"
+  checkoutSessionId: string
   provider: string
   providerTransactionReference: string
+}
+
+const statusToRoute: Record<CallbackResponse["finalStatus"], string> = {
+  completed: "complete",
+  pending: "pending",
+  failed: "error",
+  expired: "incomplete",
 }
 
 export default function PaymentRedirectReturnPage() {
@@ -31,14 +39,10 @@ export default function PaymentRedirectReturnPage() {
     let cancelled = false
 
     async function resolveReturn() {
-      const fallbackStatus = searchParams?.get("status")
       if (!callbackQuery.get("state") || !callbackQuery.get("provider_ref")) {
         if (!cancelled) {
           setLoading(false)
           setError("Missing payment return state. Please retry checkout.")
-          if (fallbackStatus === "failed") {
-            setMessage("Payment was cancelled or failed.")
-          }
         }
         return
       }
@@ -53,24 +57,18 @@ export default function PaymentRedirectReturnPage() {
         const data = payload.data as CallbackResponse
         if (cancelled) return
 
-        if (data.finalStatus === "completed") {
-          setMessage("Payment completed successfully. Redirecting...")
-          router.replace("/checkout/success")
-          return
-        }
+        const params = new URLSearchParams()
+        params.set("state", callbackQuery.get("state") as string)
+        params.set("provider", data.provider)
+        params.set("provider_ref", data.providerTransactionReference)
+        params.set("checkout_session_id", data.checkoutSessionId)
 
-        if (data.finalStatus === "pending") {
-          setMessage("Payment is pending confirmation. You can safely close this page.")
-          setLoading(false)
-          return
-        }
-
-        setMessage("Payment was not completed. You can retry checkout.")
-        setLoading(false)
+        router.replace(`/payment/status/${statusToRoute[data.finalStatus]}?${params.toString()}`)
       } catch (requestError) {
         if (!cancelled) {
           setError(requestError instanceof Error ? requestError.message : "Failed to validate payment callback")
           setLoading(false)
+          setMessage("We couldn't validate the payment callback. You can retry checkout.")
         }
       }
     }
@@ -79,7 +77,7 @@ export default function PaymentRedirectReturnPage() {
     return () => {
       cancelled = true
     }
-  }, [callbackQuery, router, searchParams])
+  }, [callbackQuery, router])
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
