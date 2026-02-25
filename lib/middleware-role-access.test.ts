@@ -18,8 +18,27 @@ test("seller prefixes reject non-seller sessions", () => {
   assert.equal(evaluateRoleAccess("/api/seller/settings", { isAuthenticated: true, role: "seller" }).status, "allowed")
 })
 
+test("seller dashboard routes enforce seller-capable roles", () => {
+  const requirement = resolveRouteAccessRequirement("/seller/dashboard")
+
+  assert.equal(requirement.requiresSession, true)
+  assert.deepEqual(requirement.requiredRoles, ["seller", "admin", "super_admin"])
+
+  assert.equal(evaluateRoleAccess("/seller/dashboard", { isAuthenticated: true, role: "user" }).status, "forbidden")
+  assert.equal(evaluateRoleAccess("/seller/dashboard", { isAuthenticated: true, role: "seller" }).status, "allowed")
+})
+
+test("ecommerce admin routes enforce admin-capable roles", () => {
+  const requirement = resolveRouteAccessRequirement("/ecommerce/admin")
+
+  assert.equal(requirement.requiresSession, true)
+  assert.deepEqual(requirement.requiredRoles, ["admin", "super_admin"])
+
+  assert.equal(evaluateRoleAccess("/ecommerce/admin", { isAuthenticated: true, role: "seller" }).status, "forbidden")
+  assert.equal(evaluateRoleAccess("/ecommerce/admin", { isAuthenticated: true, role: "super_admin" }).status, "allowed")
+})
+
 test("protected user routes require an authenticated session", () => {
   assert.equal(evaluateRoleAccess("/dashboard", { isAuthenticated: false, role: null }).status, "unauthorized")
   assert.equal(evaluateRoleAccess("/dashboard", { isAuthenticated: true, role: "user" }).status, "allowed")
 })
-
