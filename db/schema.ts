@@ -73,6 +73,22 @@ export const appSchemaTables = {
     table: "waitlist_entries",
     fields: ["id", "email", "name", "company", "use_case", "created_at"],
   },
+  accountingChartOfAccounts: {
+    table: "accounting_chart_of_accounts",
+    fields: ["id", "code", "name", "account_type", "currency", "balance", "is_active", "created_at", "updated_at"],
+  },
+  accountingLedgerEntries: {
+    table: "accounting_ledger_entries",
+    fields: ["id", "entry_date", "voucher_code", "account_code", "debit", "credit", "narration", "created_at"],
+  },
+  accountingReconciliationItems: {
+    table: "accounting_reconciliation_items",
+    fields: ["id", "invoice_number", "tax_period", "status", "book_tax", "gst_portal_tax", "created_at", "updated_at"],
+  },
+  accountingCounterparties: {
+    table: "accounting_counterparties",
+    fields: ["id", "entity_type", "name", "gstin", "outstanding", "is_active", "created_at", "updated_at"],
+  },
 } as const
 
 export type AuthSchemaTableName = keyof typeof authSchemaTables
