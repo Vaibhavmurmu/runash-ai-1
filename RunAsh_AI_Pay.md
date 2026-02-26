@@ -246,3 +246,23 @@ Risks + rollback:
 1. **Risk:** key-ring misconfiguration can block decryption of existing encrypted profile fields. **Mitigation:** key-ring fallback decrypt and lazy re-encryption on read.
 2. **Rollback:** revert wallet repository migration and switch API handlers back to prior in-memory store while preserving API signatures.
 3. **Compatibility:** wallet API request/response field names remain unchanged for existing clients.
+
+## 2026-02 Link provider service hardening (Stripe Link)
+
+- Wallet Link APIs now route through a dedicated provider service (`lib/services/link-provider-service.ts`) that wraps Stripe Link-capable setup/session primitives for:
+  - session bootstrap (`/api/wallet/link/session`)
+  - verification status lookup (`/api/wallet/link/verify`)
+  - payment method save (`/api/wallet/link/save`)
+- API envelope compatibility is preserved (`success`, `data`, `error`, `requestId`) and legacy response fields remain additive.
+- Provider request identifiers are captured and returned for audit/support workflows via `providerRequestId`.
+- Verification status now supports webhook-driven state updates from Stripe SetupIntent events (`setup_intent.succeeded|setup_failed|canceled`) via `/api/billing/webhook` and persisted session status.
+- Error mapping now emits stable payment-safe error codes with user-safe messages:
+  - `LINK_SESSION_FAILED`
+  - `LINK_VERIFICATION_FAILED`
+  - `LINK_SAVE_FAILED`
+  - `LINK_PROVIDER_UNAVAILABLE`
+
+Risks + rollback:
+1. If Stripe SDK/credentials are unavailable in a non-prod environment, provider service falls back to deterministic mock IDs to keep local UX paths testable.
+2. If webhook event mapping causes false verification transitions, rollback by reverting wallet-link sync logic in `app/api/billing/webhook/route.ts` while preserving existing billing webhook processing.
+3. No breaking API contract changes were introduced; rollback is code revert only (no schema migration required for compatibility due to additive columns).

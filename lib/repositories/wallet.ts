@@ -38,6 +38,8 @@ export type WalletSubscription = {
 export type LinkSessionVerificationResult = {
   ok: true
   defaultCard: WalletCard | null
+  status: "pending" | "verified" | "failed" | "expired"
+  providerRequestId?: string | null
   autofill: {
     email: string
     paymentMethod: string
@@ -86,6 +88,12 @@ async function ensureWalletTables() {
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
       email TEXT NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'stripe_link',
+      provider_session_id TEXT,
+      provider_customer_id TEXT,
+      provider_request_id TEXT,
+      provider_verification_status TEXT NOT NULL DEFAULT 'pending',
+      provider_verification_reason TEXT,
       verification_code_hash TEXT NOT NULL,
       verification_metadata_encrypted TEXT,
       verified BOOLEAN NOT NULL DEFAULT FALSE,
@@ -96,6 +104,8 @@ async function ensureWalletTables() {
     );
 
     CREATE INDEX IF NOT EXISTS wallet_link_sessions_user_created_idx ON wallet_link_sessions (user_id, created_at DESC);
+
+    CREATE INDEX IF NOT EXISTS wallet_link_sessions_provider_session_idx ON wallet_link_sessions (provider_session_id);
 
     CREATE TABLE IF NOT EXISTS wallet_activity_logs (
       id TEXT PRIMARY KEY,
@@ -137,6 +147,15 @@ async function ensureWalletTables() {
     );
 
     CREATE INDEX IF NOT EXISTS wallet_otp_attempts_session_idx ON wallet_otp_verification_attempts (session_id, created_at DESC);
+  `)
+
+  await (sql as { unsafe: (query: string, params?: unknown[]) => Promise<unknown> }).unsafe(`
+    ALTER TABLE wallet_link_sessions ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'stripe_link';
+    ALTER TABLE wallet_link_sessions ADD COLUMN IF NOT EXISTS provider_session_id TEXT;
+    ALTER TABLE wallet_link_sessions ADD COLUMN IF NOT EXISTS provider_customer_id TEXT;
+    ALTER TABLE wallet_link_sessions ADD COLUMN IF NOT EXISTS provider_request_id TEXT;
+    ALTER TABLE wallet_link_sessions ADD COLUMN IF NOT EXISTS provider_verification_status TEXT NOT NULL DEFAULT 'pending';
+    ALTER TABLE wallet_link_sessions ADD COLUMN IF NOT EXISTS provider_verification_reason TEXT;
   `)
 
   walletTablesReady = true
@@ -469,6 +488,111 @@ export async function createWalletLinkSession(input: { userId: string; email: st
   return { ...session, verificationCode: undefined as unknown as string, maskedPhone: "*** *** 3421" }
 }
 
+export async function createWalletLinkSessionWithProvider(input: {
+  userId: string
+  email: string
+  provider: "stripe_link"
+  providerSessionId: string
+  providerCustomerId?: string | null
+  providerRequestId?: string | null
+  maskedPhone: string
+}) {
+  await runDemoBackfill()
+  const session = await queryOne<any>(
+    `
+    INSERT INTO wallet_link_sessions (
+      id,
+      user_id,
+      email,
+      provider,
+      provider_session_id,
+      provider_customer_id,
+      provider_request_id,
+      provider_verification_status,
+      verification_code_hash,
+      verification_metadata_encrypted
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, $9)
+    RETURNING id, email, user_id AS "userId", created_at AS "createdAt"
+  `,
+    [
+      nextId("link_session"),
+      input.userId,
+      input.email,
+      input.provider,
+      input.providerSessionId,
+      input.providerCustomerId ?? null,
+      input.providerRequestId ?? null,
+      crypto.createHash("sha256").update(crypto.randomUUID()).digest("hex"),
+      encryptField(JSON.stringify({ maskedPhone: input.maskedPhone, emailVerified: false })),
+    ],
+  )
+
+  if (!session) throw new Error("Failed to create wallet link session")
+
+  return {
+    ...session,
+    maskedPhone: input.maskedPhone,
+    provider: input.provider,
+    providerSessionId: input.providerSessionId,
+    providerRequestId: input.providerRequestId ?? null,
+  }
+}
+
+export async function getWalletLinkSessionById(sessionId: string) {
+  await runDemoBackfill()
+  return queryOne<any>(
+    `
+      SELECT
+        id,
+        user_id AS "userId",
+        email,
+        provider,
+        provider_session_id AS "providerSessionId",
+        provider_customer_id AS "providerCustomerId",
+        provider_request_id AS "providerRequestId",
+        provider_verification_status AS "providerVerificationStatus",
+        provider_verification_reason AS "providerVerificationReason",
+        verified,
+        expires_at AS "expiresAt"
+      FROM wallet_link_sessions
+      WHERE id = $1
+    `,
+    [sessionId],
+  )
+}
+
+export async function updateWalletLinkSessionProviderStatus(input: {
+  sessionId?: string
+  providerSessionId?: string
+  status: "pending" | "verified" | "failed" | "expired"
+  reason?: string | null
+  providerRequestId?: string | null
+}) {
+  await runDemoBackfill()
+  const session = await queryOne<any>(
+    `
+      UPDATE wallet_link_sessions
+      SET provider_verification_status = $1,
+          provider_verification_reason = $2,
+          provider_request_id = COALESCE($3, provider_request_id),
+          verified = CASE WHEN $1 = 'verified' THEN TRUE ELSE verified END,
+          verified_at = CASE WHEN $1 = 'verified' THEN NOW() ELSE verified_at END,
+          updated_at = NOW()
+      WHERE ($4::text IS NOT NULL AND id = $4)
+         OR ($5::text IS NOT NULL AND provider_session_id = $5)
+      RETURNING id, user_id AS "userId", email
+    `,
+    [input.status, input.reason ?? null, input.providerRequestId ?? null, input.sessionId ?? null, input.providerSessionId ?? null],
+  )
+
+  if (session && input.status === "verified") {
+    await addActivity(session.userId, { type: "otp_verified", description: `Link account verification completed for ${session.email}` })
+  }
+
+  return session
+}
+
 export async function verifyWalletLinkSession(sessionId: string, code: string): Promise<{ ok: false; message: string } | LinkSessionVerificationResult> {
   await runDemoBackfill()
   const session = await queryOne<any>(
@@ -527,6 +651,8 @@ export async function verifyWalletLinkSession(sessionId: string, code: string): 
 
   return {
     ok: true,
+    status: "verified",
+    providerRequestId: null,
     defaultCard,
     autofill: defaultCard
       ? {

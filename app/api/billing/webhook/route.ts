@@ -1,15 +1,41 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { logApiEvent, createRequestLogContext } from "@/lib/api/logging"
+import { WalletStore } from "@/lib/data/wallet-store"
 import { getWebhookEventByEventId, processWebhookEvent, recordWebhookEvent } from "@/lib/services/billing-webhook-service"
 import { verifyStripeSignedPayload } from "@/lib/auth/plugins/runash-payment"
 import { shouldTreatDuplicateAsProcessed } from "@/lib/services/billing-webhook-idempotency"
 
 const DEFAULT_SIGNATURE_TOLERANCE_SECONDS = 300
 
-
 function getConfiguredToleranceSeconds() {
   const configured = Number(process.env.BILLING_WEBHOOK_SIGNATURE_TOLERANCE_SECONDS ?? DEFAULT_SIGNATURE_TOLERANCE_SECONDS)
   return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_SIGNATURE_TOLERANCE_SECONDS
+}
+
+async function syncWalletLinkVerificationFromWebhook(event: { type: string; data?: { object?: any } }) {
+  const object = event.data?.object
+  if (!object || typeof object !== "object") return
+
+  if (!["setup_intent.succeeded", "setup_intent.setup_failed", "setup_intent.canceled"].includes(event.type)) {
+    return
+  }
+
+  const providerSessionId = typeof object.id === "string" ? object.id : null
+  if (!providerSessionId) return
+
+  const status =
+    event.type === "setup_intent.succeeded"
+      ? "verified"
+      : event.type === "setup_intent.canceled"
+        ? "expired"
+        : "failed"
+
+  await WalletStore.updateLinkSessionProviderStatus({
+    providerSessionId,
+    status,
+    reason: typeof object.last_setup_error?.code === "string" ? object.last_setup_error.code : null,
+    providerRequestId: typeof object.request === "string" ? object.request : null,
+  })
 }
 
 export async function POST(req: NextRequest) {
@@ -76,6 +102,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    await syncWalletLinkVerificationFromWebhook(event)
     const result = await processWebhookEvent(event)
     logApiEvent("info", "billing.webhook.processed", {
       ...requestContext,

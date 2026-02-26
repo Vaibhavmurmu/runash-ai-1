@@ -1,4 +1,6 @@
 import {
+  createWalletLinkSessionWithProvider,
+  getWalletLinkSessionById,
   createWalletCard,
   createWalletLinkSession,
   listWalletActivity,
@@ -8,6 +10,7 @@ import {
   removeWalletCard,
   setWalletDefaultCard,
   updateWalletSubscriptionStatus,
+  updateWalletLinkSessionProviderStatus,
   verifyWalletLinkSession,
 } from "@/lib/repositories/wallet"
 
@@ -51,6 +54,57 @@ export const WalletStore = {
   },
   async createLinkSession(input: { userId?: string | null; email: string }) {
     return createWalletLinkSession({ userId: resolveUser(input.userId), email: input.email })
+  },
+  async createLinkSessionWithProvider(input: {
+    userId?: string | null
+    email: string
+    provider: "stripe_link"
+    providerSessionId: string
+    providerCustomerId?: string | null
+    providerRequestId?: string | null
+    maskedPhone: string
+  }) {
+    return createWalletLinkSessionWithProvider({
+      userId: resolveUser(input.userId),
+      email: input.email,
+      provider: input.provider,
+      providerSessionId: input.providerSessionId,
+      providerCustomerId: input.providerCustomerId,
+      providerRequestId: input.providerRequestId,
+      maskedPhone: input.maskedPhone,
+    })
+  },
+  async getLinkSessionById(sessionId: string) {
+    return getWalletLinkSessionById(sessionId)
+  },
+  async updateLinkSessionProviderStatus(input: {
+    sessionId?: string
+    providerSessionId?: string
+    status: "pending" | "verified" | "failed" | "expired"
+    reason?: string | null
+    providerRequestId?: string | null
+  }) {
+    return updateWalletLinkSessionProviderStatus(input)
+  },
+  async getLinkAutofillForSession(sessionId: string) {
+    const session = await getWalletLinkSessionById(sessionId)
+    if (!session) {
+      return { defaultCard: null, autofill: null }
+    }
+
+    const cards = await listWalletCards(session.userId)
+    const defaultCard = cards.find((card) => card.isDefault) || cards[0] || null
+
+    return {
+      defaultCard,
+      autofill: defaultCard
+        ? {
+            email: session.email,
+            paymentMethod: `${defaultCard.brand.toUpperCase()} •••• ${defaultCard.last4}`,
+            billingAddress: defaultCard.billingAddress || "Saved billing address",
+          }
+        : null,
+    }
   },
   async verifyLinkSession(sessionId: string, code: string) {
     return verifyWalletLinkSession(sessionId, code)
