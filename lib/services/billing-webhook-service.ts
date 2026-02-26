@@ -2,6 +2,7 @@ import { queryMany, queryOne } from "@/lib/db"
 import { persistTaxComputation, type TaxComputation } from "@/lib/services/tax-service"
 import { handleSubscriptionLifecycleEvent, syncAuthUserWithPaymentCustomer } from "@/lib/auth/plugins/runash-payment"
 import { WalletStore } from "@/lib/data/wallet-store"
+import { postAccountingEvent } from "@/lib/services/runashbook-accounting-service"
 
 const WEBHOOK_PROVIDER = "stripe"
 const DEAD_LETTER_THRESHOLD = Number(process.env.BILLING_WEBHOOK_DEAD_LETTER_THRESHOLD ?? 10)
@@ -486,6 +487,65 @@ export async function recordWebhookEvent(event: StripeWebhookEvent): Promise<{ d
   return { duplicate: false, recordId: inserted.id }
 }
 
+async function emitAccountingEventFromStripe(input: {
+  event: StripeWebhookEvent
+  eventType: "payment_succeeded" | "refund" | "chargeback" | "fee"
+  stripeObject: Record<string, any>
+  amount: number
+  currency: string
+  taxAmount?: number
+  feeAmount?: number
+  providerReference: string
+  correlationKey: string
+  idempotencySuffix: string
+}) {
+  const merchantCountry = normalizeCountryCode(
+    input.stripeObject.account_country ?? input.stripeObject.on_behalf_of_country ?? process.env.RUNASH_MERCHANT_REGION ?? "US",
+  )
+  const customerCountry = normalizeCountryCode(
+    input.stripeObject.billing_details?.address?.country ??
+      input.stripeObject.customer_details?.address?.country ??
+      input.stripeObject.shipping?.address?.country ??
+      null,
+  )
+
+  await postAccountingEvent({
+    event: {
+      eventType: input.eventType,
+      occurredAt: toIsoTimestamp(input.event.created) ?? new Date().toISOString(),
+      amount: input.amount,
+      taxAmount: input.taxAmount,
+      feeAmount: input.feeAmount,
+      currency: input.currency,
+      merchantCountry,
+      merchantEntityId: String(
+        input.stripeObject.metadata?.organization_id ??
+          input.stripeObject.transfer_group ??
+          input.stripeObject.customer ??
+          "runash-default-entity",
+      ),
+      merchantId: String(input.stripeObject.metadata?.user_id ?? input.stripeObject.customer ?? "runash-system"),
+      customerCountry,
+      correlationKey: input.correlationKey,
+      idempotencyKey: `${input.event.id}:${input.idempotencySuffix}`,
+      provider: "stripe",
+      providerReference: input.providerReference,
+      metadata: {
+        stripe_event_type: input.event.type,
+        checkout_session_id:
+          typeof input.stripeObject.metadata?.checkout_session_id === "string"
+            ? String(input.stripeObject.metadata.checkout_session_id)
+            : null,
+      },
+    },
+  })
+}
+
+function normalizeCountryCode(value: unknown): string {
+  if (!value || typeof value !== "string") return "US"
+  return value.toUpperCase()
+}
+
 async function runWebhookDomainHandler(event: StripeWebhookEvent) {
   const stripeObject = event.data?.object as Record<string, any> | undefined
 
@@ -829,7 +889,84 @@ async function runWebhookDomainHandler(event: StripeWebhookEvent) {
           typeof paymentIntent.metadata?.checkout_session_id === "string" ? String(paymentIntent.metadata.checkout_session_id) : null,
       })
 
+      if (!isFailed) {
+        await emitAccountingEventFromStripe({
+          event,
+          eventType: "payment_succeeded",
+          stripeObject: paymentIntent,
+          amount: centsToMoney(paymentIntent.amount_received ?? paymentIntent.amount) ?? 0,
+          currency: String(paymentIntent.currency || "usd").toUpperCase(),
+          taxAmount: centsToMoney(paymentIntent.amount_details?.tip?.amount ?? 0) ?? 0,
+          providerReference: String(paymentIntent.id),
+          correlationKey: String(paymentIntent.id),
+          idempotencySuffix: "payment_succeeded",
+        })
+      }
 
+      return
+    }
+    case "charge.refunded": {
+      if (!stripeObject?.id) return
+      const charge = stripeObject
+      const refundedAmount = centsToMoney(charge.amount_refunded ?? charge.amount) ?? 0
+      const currency = String(charge.currency || "usd").toUpperCase()
+      await emitAccountingEventFromStripe({
+        event,
+        eventType: "refund",
+        stripeObject: charge,
+        amount: refundedAmount,
+        currency,
+        providerReference: String(charge.id),
+        correlationKey: String(charge.payment_intent ?? charge.id),
+        idempotencySuffix: "refund",
+      })
+
+      const feeAmount = centsToMoney(charge.balance_transaction?.fee)
+      if (feeAmount && feeAmount > 0) {
+        await emitAccountingEventFromStripe({
+          event,
+          eventType: "fee",
+          stripeObject: charge,
+          amount: feeAmount,
+          currency,
+          feeAmount,
+          providerReference: String(charge.balance_transaction?.id ?? charge.id),
+          correlationKey: String(charge.payment_intent ?? charge.id),
+          idempotencySuffix: "refund_fee",
+        })
+      }
+
+      return
+    }
+    case "charge.dispute.created":
+    case "charge.dispute.funds_withdrawn": {
+      if (!stripeObject?.id) return
+      const dispute = stripeObject
+      await emitAccountingEventFromStripe({
+        event,
+        eventType: "chargeback",
+        stripeObject: dispute,
+        amount: centsToMoney(dispute.amount) ?? 0,
+        currency: String(dispute.currency || "usd").toUpperCase(),
+        providerReference: String(dispute.id),
+        correlationKey: String(dispute.charge ?? dispute.payment_intent ?? dispute.id),
+        idempotencySuffix: "chargeback",
+      })
+      return
+    }
+    case "application_fee.created": {
+      if (!stripeObject?.id) return
+      const fee = stripeObject
+      await emitAccountingEventFromStripe({
+        event,
+        eventType: "fee",
+        stripeObject: fee,
+        amount: centsToMoney(fee.amount) ?? 0,
+        currency: String(fee.currency || "usd").toUpperCase(),
+        providerReference: String(fee.id),
+        correlationKey: String(fee.charge ?? fee.id),
+        idempotencySuffix: "platform_fee",
+      })
       return
     }
     case "payout.created":

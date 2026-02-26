@@ -397,3 +397,22 @@ Risks + rollback:
 - Existing webhook contracts remain compatible; newly introduced metadata is additive.
 - Existing checkout redirect/status contracts remain valid; signed-state validation hardens integrity without renaming fields.
 - Existing billing entry points (`/pricing`, `/settings/billing`, `/checkout/*`, `/portal/*`) remain stable through staged rollout.
+
+## 2026-02 RunAshBook accounting posting module for payment lifecycle events
+
+- Added `lib/services/runashbook-accounting-service.ts` to normalize accounting events from checkout + webhook payment lifecycle paths.
+- Supported normalized event types: `checkout_initiated`, `payment_succeeded`, `refund`, `chargeback`, `fee`.
+- Added deterministic chart-of-accounts mapping keyed by merchant country/entity with config-first defaults for `IN` and `US`.
+- Jurisdiction adapters:
+  - **India (IN):** GST split computation (`CGST`, `SGST`, `IGST`) + compliance metadata tags for invoice/journal processing.
+  - **US:** sales-tax treatment metadata, ASC-606/GAAP-friendly recognition/account classification tags.
+- Added idempotent accounting posting method (`idempotencyKey` + `correlationKey`) backed by `runash_accounting_posts` and unique idempotency enforcement.
+- Added safe logging guardrails for accounting posting diagnostics using payment log sanitization (never logs PAN/card/auth/payment secrets).
+- Wiring:
+  - Checkout initiation path now emits `checkout_initiated` accounting events from `POST /api/v1/billing/checkout`.
+  - Webhook processing emits accounting events for `payment_intent.succeeded`, `charge.refunded`, `charge.dispute.*`, and `application_fee.created` paths.
+
+Risks + rollback:
+1. **Risk:** If merchant country metadata is absent in provider payloads, fallback country default may classify to US chart mapping. **Mitigation:** metadata remains additive; override `RUNASH_MERCHANT_REGION` per tenant.
+2. **Risk:** Accounting table bootstrap (`CREATE TABLE IF NOT EXISTS`) in runtime may add slight cold-path latency on first post. **Mitigation:** idempotent and one-time; can be moved to migration in future hardening.
+3. **Rollback:** Revert accounting event emit calls in checkout/webhook handlers while preserving existing payment route API contracts and webhook idempotency behavior.
