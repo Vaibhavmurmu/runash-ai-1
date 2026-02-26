@@ -3,7 +3,9 @@ import { createHash } from "crypto"
 import { z } from "zod"
 import { logPaymentComplianceAudit } from "@/lib/payments/compliance-audit"
 import {
+  buildComplianceSafePaymentMetadata,
   createPaymentRoutingAuditEvent,
+  createPaymentRoutingContextMetadata,
   getPaymentRoutingRequestId,
   resolveEdgeRoutingPolicy,
   withRouteContextMetadata,
@@ -156,7 +158,10 @@ type CheckoutActivitySummary = {
     }
     transactionContext: {
       regionRoute: "IN_EDGE" | "US_EDGE"
+      region: "IN" | "US"
       residencyPolicy: "IN_DATA_RESIDENCY" | "US_DATA_RESIDENCY"
+      residencyPolicyVersion: string
+      requestId: string
       complianceProfile: "IN_RBI_PROFILE" | "US_STRIPE_PROFILE"
     }
   }
@@ -207,7 +212,10 @@ function buildActivitySummary(
   taxPreview: TaxPreview,
   transactionContext: {
     regionRoute: "IN_EDGE" | "US_EDGE"
+    region: "IN" | "US"
     residencyPolicy: "IN_DATA_RESIDENCY" | "US_DATA_RESIDENCY"
+    residencyPolicyVersion: string
+    requestId: string
     complianceProfile: "IN_RBI_PROFILE" | "US_STRIPE_PROFILE"
   },
   result: {
@@ -292,13 +300,20 @@ export const linkCheckoutSkill = {
       customerRegion: payload.country,
     })
     const requestId = getPaymentRoutingRequestId()
+    const routingContextMetadata = createPaymentRoutingContextMetadata({
+      requestId,
+      routeDecision: edgeRouting,
+    })
     const transactionContext = {
       regionRoute: edgeRouting.regionRoute,
+      region: edgeRouting.region,
       residencyPolicy: edgeRouting.residencyPolicy,
+      residencyPolicyVersion: routingContextMetadata.residencyPolicyVersion,
+      requestId: routingContextMetadata.requestId,
       complianceProfile: edgeRouting.complianceProfile,
     } as const
     const routeAudit = createPaymentRoutingAuditEvent({
-      requestId,
+      requestId: routingContextMetadata.requestId,
       decision: edgeRouting,
       metadata: {
         currency: payload.currency,
@@ -351,11 +366,16 @@ export const linkCheckoutSkill = {
     })
 
     const safeRoutingMetadata = withRouteContextMetadata(
-      {
-        merchant_region: edgeRouting.merchantRegion,
-        customer_region: edgeRouting.customerRegion,
-      },
+      buildComplianceSafePaymentMetadata({
+        requestId: routingContextMetadata.requestId,
+        routeDecision: edgeRouting,
+        metadata: {
+          merchant_region: edgeRouting.merchantRegion,
+          customer_region: edgeRouting.customerRegion,
+        },
+      }),
       edgeRouting,
+      routingContextMetadata,
     )
 
     const response = await fetch(LINK_CHECKOUT_API_URL, {
@@ -366,12 +386,13 @@ export const linkCheckoutSkill = {
         "X-RunAsh-Region-Route": edgeRouting.regionRoute,
         "X-RunAsh-Compliance-Profile": edgeRouting.complianceProfile,
       },
-      body: JSON.stringify(
-        sanitizePaymentActivityDetails({
-          ...payload,
-          routing_metadata: safeRoutingMetadata,
-        } as unknown as Record<string, unknown>),
-      ),
+      body: JSON.stringify({
+        merchant_id: payload.merchant_id,
+        amount: payload.amount,
+        currency: payload.currency,
+        product_metadata: sanitizePaymentActivityDetails(payload.product_metadata as unknown as Record<string, unknown>),
+        routing_metadata: safeRoutingMetadata,
+      }),
       signal: AbortSignal.timeout(10_000),
     })
 
