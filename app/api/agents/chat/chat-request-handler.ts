@@ -8,6 +8,8 @@ type CheckoutHandoffInput = {
   message: string
   sessionId: string
   merchantId?: string
+  merchantEntityId?: string
+  merchantCountry?: string
 }
 
 function toCheckoutAmount(message: string) {
@@ -21,11 +23,16 @@ function toCheckoutAmount(message: string) {
 export function buildCheckoutHandoffContract(input: CheckoutHandoffInput) {
   const normalizedMessage = input.message.trim().toLowerCase()
   const merchantId = input.merchantId?.trim() || "runash-default-merchant"
+  const merchantEntityId = input.merchantEntityId?.trim() || `${merchantId}-entity`
+  const merchantCountry = input.merchantCountry?.trim().toUpperCase() || "US"
   const digest = createHash("sha256").update(`${input.sessionId}:${normalizedMessage}`).digest("hex")
   const sku = `runashchat-${digest.slice(0, 12)}`
+  const idempotencyKey = `intent:${digest}`
 
   return {
     merchant_id: merchantId,
+    merchant_entity_id: merchantEntityId,
+    merchant_country: merchantCountry,
     amount: toCheckoutAmount(input.message),
     currency: "USD" as const,
     product_metadata: {
@@ -37,7 +44,28 @@ export function buildCheckoutHandoffContract(input: CheckoutHandoffInput) {
       session_id: input.sessionId,
       user_intent: normalizedMessage,
     },
-    idempotency_key: `intent:${digest}`,
+    payment_status: "payment_succeeded" as const,
+    event_timestamp: new Date().toISOString(),
+    accounting_context: {
+      correlation_key: `corr:${digest}`,
+      idempotency_key: idempotencyKey,
+      jurisdiction: merchantCountry,
+      tax_breakdown: {
+        amount: 0,
+        label: merchantCountry === "IN" ? "GST" : "Sales Tax",
+      },
+      fee_breakdown: {
+        amount: 0,
+        label: "payment_processing_fee",
+      },
+      product_plan_metadata: {
+        item_name: "RunAshChat Instant Checkout Item",
+        sku,
+        tags: ["via RunAshChat", "instant_checkout", "relay_handoff_v1"],
+        plan: "runashchat_instant_checkout",
+      },
+    },
+    idempotency_key: idempotencyKey,
   }
 }
 
@@ -77,6 +105,8 @@ export function buildDefaultToolPayloads(input: {
   message: string
   sessionId: string
   merchantId?: string
+  merchantEntityId?: string
+  merchantCountry?: string
   requestedTools?: RelayAgentTool[]
 }) {
   const selectedTools = resolveRunAshChatToolSelection(input.message, input.requestedTools ?? [])
@@ -87,6 +117,8 @@ export function buildDefaultToolPayloads(input: {
       message: input.message,
       sessionId: input.sessionId,
       merchantId: input.merchantId,
+      merchantEntityId: input.merchantEntityId,
+      merchantCountry: input.merchantCountry,
     }),
   }
 }

@@ -21,6 +21,7 @@ import { estimateTaxPreview } from "@/lib/payments/tax-estimator"
 import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
 import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
 import { searchProductsWithProviders } from "@/services/web-search-service"
+import { postAccountingEvent, type AccountingEventType } from "@/lib/services/runashbook-accounting-service"
 
 export type SupportedTool = RelayAgentTool
 
@@ -141,6 +142,125 @@ async function executeCheckoutPreview(payload: Record<string, unknown>) {
 }
 
 
+
+
+type AccountingSyncResult = {
+  status: "posted" | "duplicate" | "pending_sync" | "skipped"
+  eventType?: AccountingEventType
+  idempotencyKey?: string
+  correlationKey?: string
+  pendingReason?: string
+}
+
+export function shouldPostAccountingEvent(checkoutStatus: unknown, paymentStatus: unknown) {
+  const status = String(checkoutStatus ?? "").toLowerCase()
+  const normalizedPaymentStatus = String(paymentStatus ?? "payment_succeeded").toLowerCase()
+  const postableStatuses = new Set(["initiated", "succeeded", "confirmed", "payment_succeeded", "refund"])
+  const postablePaymentStatuses = new Set(["payment_succeeded", "refund"])
+
+  return postableStatuses.has(status) && postablePaymentStatuses.has(normalizedPaymentStatus)
+}
+
+export function mapAccountingEventType(paymentStatus: unknown): AccountingEventType {
+  const normalized = String(paymentStatus ?? "payment_succeeded").toLowerCase()
+  return normalized === "refund" ? "refund" : "payment_succeeded"
+}
+
+export async function syncCheckoutResultToAccounting(input: {
+  payload: Record<string, unknown>
+  result: Record<string, unknown>
+  correlationId: string
+  postAccountingEventFn?: typeof postAccountingEvent
+}) {
+  const payload = input.payload
+  const result = input.result
+  const postAccountingEventFn = input.postAccountingEventFn ?? postAccountingEvent
+  const accountingContext = payload.accounting_context && typeof payload.accounting_context === "object"
+    ? (payload.accounting_context as Record<string, unknown>)
+    : {}
+
+  const paymentStatus = payload.payment_status ?? result.payment_status ?? "payment_succeeded"
+  if (!shouldPostAccountingEvent(result.status, paymentStatus)) {
+    return { status: "skipped" } satisfies AccountingSyncResult
+  }
+
+  const eventType = mapAccountingEventType(paymentStatus)
+  const merchantId = String(payload.merchant_id ?? "runash-default-merchant")
+  const merchantEntityId = String(payload.merchant_entity_id ?? `${merchantId}-entity`)
+  const merchantCountry = String(payload.merchant_country ?? accountingContext.jurisdiction ?? "US").toUpperCase()
+  const amountMinor = Number(payload.amount)
+  const amount = Number.isFinite(amountMinor) ? Math.round(amountMinor) / 100 : 0
+  const taxBreakdown = accountingContext.tax_breakdown && typeof accountingContext.tax_breakdown === "object"
+    ? (accountingContext.tax_breakdown as Record<string, unknown>)
+    : {}
+  const feeBreakdown = accountingContext.fee_breakdown && typeof accountingContext.fee_breakdown === "object"
+    ? (accountingContext.fee_breakdown as Record<string, unknown>)
+    : {}
+
+  const correlationKey = String(accountingContext.correlation_key ?? payload.correlation_key ?? input.correlationId)
+  const upstreamIdempotencyKey = String(
+    payload.idempotency_key ?? result.idempotency_key ?? accountingContext.idempotency_key ?? `intent:${createHash("sha256").update(correlationKey).digest("hex")}`,
+  )
+  const accountingIdempotencyKey = `${upstreamIdempotencyKey}:accounting:${eventType}`
+
+  try {
+    const post = await postAccountingEventFn({
+      event: {
+        eventType,
+        occurredAt: String(payload.event_timestamp ?? new Date().toISOString()),
+        amount,
+        currency: String(payload.currency ?? "USD").toUpperCase(),
+        taxAmount: Number(taxBreakdown.amount ?? 0),
+        feeAmount: Number(feeBreakdown.amount ?? 0),
+        merchantCountry,
+        merchantEntityId,
+        merchantId,
+        correlationKey,
+        idempotencyKey: accountingIdempotencyKey,
+        provider: "relay",
+        providerReference: String(result.checkout_session_id ?? result.request_id ?? correlationKey),
+        metadata: {
+          payment_status: paymentStatus,
+          jurisdiction: accountingContext.jurisdiction ?? merchantCountry,
+          tax_breakdown: taxBreakdown,
+          fee_breakdown: feeBreakdown,
+          product_plan_metadata: accountingContext.product_plan_metadata ?? payload.product_metadata,
+          checkout_request_id: result.request_id,
+        },
+      },
+    })
+
+    return {
+      status: post.duplicate ? "duplicate" : "posted",
+      eventType,
+      idempotencyKey: accountingIdempotencyKey,
+      correlationKey,
+    } satisfies AccountingSyncResult
+  } catch (error) {
+    logApiEvent("warn", "relay.checkout.accounting_sync_pending", {
+      route: "relay/tool",
+      requestId: input.correlationId,
+      details: {
+        eventType,
+        merchantId,
+        correlationKey,
+        idempotencyKey: accountingIdempotencyKey,
+        pendingSync: true,
+        reconciliationSignal: "ops.accounting.reconcile_required",
+      },
+      error,
+    })
+
+    return {
+      status: "pending_sync",
+      eventType,
+      idempotencyKey: accountingIdempotencyKey,
+      correlationKey,
+      pendingReason: "accounting_sync_failed",
+    } satisfies AccountingSyncResult
+  }
+}
+
 async function executeWebSearch(payload: Record<string, unknown>) {
   const query = String(payload.query ?? "").trim()
   const results = await searchProductsWithProviders(query)
@@ -177,10 +297,18 @@ async function executeInitiateLinkCheckout(payload: Record<string, unknown>) {
     }
   }
 
-  const result = await relayAgentSkillModules.initiate_link_checkout.execute(payload)
+  const result = (await relayAgentSkillModules.initiate_link_checkout.execute(payload)) as Record<string, unknown>
+  const accountingSync = await syncCheckoutResultToAccounting({
+    payload,
+    result,
+    correlationId: String(payload.idempotency_key ?? payload.correlation_key ?? randomUUID()),
+  })
+
   return {
     ...result,
     validatorGate,
+    accounting_sync: accountingSync,
+    pending_sync: accountingSync.status === "pending_sync",
   }
 }
 
