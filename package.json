@@ -6,7 +6,7 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "next lint",
-    "setup:skills": "npx skills add better-auth/skills",
+    "setup:skills": "node scripts/setup-skills.mjs",
     "start": "next start",
     "lint:security-logs": "node scripts/check-sensitive-logging.mjs",
     "openapi:auth:generate": "node scripts/generate-auth-openapi.mjs",
