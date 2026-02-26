@@ -102,6 +102,18 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Rollback plan: revert the dashboard page/component pair (`app/payment/dashboard/page.tsx` and `components/payment/payment-operations-dashboard.tsx`) to restore previous redirect behavior.
 
 
+
+## 2026-02 RunAshBook dashboard compliance + automation telemetry
+
+- Expanded `/payment/dashboard` operations UI with a **RunAshBook** section for accounting integration visibility.
+- Added integration status card values for connection state, last sync timestamp, and jurisdiction mode (India/US/Both).
+- Added compliance cards for India (GST filing readiness + pending GST-tagged transactions) and US (sales-tax classification completeness + uncategorized revenue events).
+- Added agentic automation metrics for relay-triggered accounting posts, success/fail/retry counters, and unsynced queue size.
+- Added RunAshBook actions (`Sync now`, `View journal queue`, `Export audit trail`) for finance/operator workflows.
+- Backward compatibility: this is a UI-only enhancement and does not change payment/auth API signatures, payload field names, or persistence contracts.
+- Security posture: no sensitive payment/auth secrets are rendered; displayed values are aggregate operational metrics only.
+- Rollback plan: revert `components/payment/payment-operations-dashboard.tsx` and this section to restore the previous dashboard layout.
+
 ## 2026-02 Payment automation trigger/action mappings
 
 - Workflow automation now supports payment webhook trigger events:
