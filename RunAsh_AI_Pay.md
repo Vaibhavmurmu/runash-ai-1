@@ -567,3 +567,20 @@ RunAsh AI Link now supports deterministic negotiation handoff before Link checko
 1. **Risk:** legacy callers that depended on implicit fallback pricing/merchant defaults can now be blocked in production.
 2. **Mitigation:** remediation payloads identify exact context gaps and required next action; local/dev can enable explicit fallback flag.
 3. **Rollback:** disable strict enforcement by reverting `checkout-handoff-context-resolver` + `chat-request-handler` gate changes, restoring legacy defaulting behavior.
+
+## 2026-02-26 Voice commerce orchestrator + streaming checkout contract
+
+- Added a dedicated voice commerce orchestration chain that executes: speech-to-intent extraction, buyer preference search, negotiation/deal workflow, and `initiate_link_checkout` handoff for RunAshChat Instant Checkout.
+- Introduced streaming-safe agent response contract (`voice-commerce-turn.v1`) that emits intermediate recommendation/negotiation events before the final checkout action payload.
+- Integrated seller-side live session automation controls for product presentation, buyer query handling, bundle promotions, limited-time discounts, and approved-deal initiation with broker mediation fallback.
+- Added persistent session automation event storage for replay/compliance (`stream_session_automation_events`) to support auditability across voice and live stream routes.
+
+### Impacted payment/auth flows
+- Relay Agent voice turn orchestration -> `initiate_link_checkout`.
+- Deal negotiation acceptance/broker settlement path before payment handoff.
+- Live stream seller AI automation actions that can culminate in approved deal checkout initiation.
+
+### Risks + rollback
+1. **Risk:** false-positive intent classification can route non-checkout utterances into negotiation/checkout preparation.
+2. **Mitigation:** final checkout still respects `preview_displayed`, `user_confirmation_after_preview`, and validator middleware gates before terminal handoff.
+3. **Rollback:** disable voice commerce entry routes (`/api/agents/voice-commerce`, `/api/streams/sessions/[id]/automation`) and retain existing chat-based checkout path.

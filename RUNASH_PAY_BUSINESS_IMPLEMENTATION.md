@@ -285,3 +285,14 @@ This release introduces policy-driven deal negotiation before payment handoff:
 - **Risk:** misconfigured discount policy thresholds could over-accept or over-reject offers.
 - **Mitigation:** policies are tenant+SKU scoped and auditable through `deal_events` and `offers`.
 - **Rollback:** disable negotiation tool invocation and continue direct checkout path (`initiate_link_checkout` without `deal_id`).
+
+## 2026-02-26 Voice commerce orchestration release note
+
+- Voice commerce orchestration now supports end-to-end conversion from spoken buyer intent to Link checkout handoff inside RunAshChat.
+- Intermediate automation events are persisted per stream session for compliance replay and operational forensics.
+- Seller-side AI automation controls now include promotion triggers (bundle + limited-time discount) and approved-deal launch workflows with broker mediation.
+
+Business controls preserved:
+- Existing payment contracts remain additive and backward compatible.
+- Sensitive payment/auth data is not introduced into logs/event payloads.
+- Checkout finalization still requires explicit confirmation pathing in checkout skill gates.
