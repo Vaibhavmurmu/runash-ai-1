@@ -152,6 +152,16 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 
 ## 1) Runtime and source-of-truth files
 
+## 2026-02 auth/payment validation note (no auth contract changes)
+
+- **Change type:** validation-only run and policy documentation refresh; no auth endpoint additions/removals and no request/response contract changes.
+- **Impacted auth/payment flows reviewed:**
+  - Session validation (`GET /api/auth/get-session`) used by protected payment surfaces
+  - Login/session continuity behavior for payment-linked routes
+  - Authorization guard posture (`401` unauthenticated, `403` unauthorized) on payment/auth-adjacent pages
+- **Risk assessment:** low behavior risk; primary execution risk remains environment-dependent build failures when required database configuration is missing.
+- **Rollback plan:** revert documentation-only commit; no runtime rollback or credential/session migration is required.
+
 ### Better Auth runtime and adapters
 - `lib/auth.ts` — Better Auth instance, provider config, account-linking hooks, and the canonical server-side session resolver (`getAuthSessionFromHeaders`, `getServerAuthSession`).
 - `app/api/auth/[...nextauth]/route.ts` — Next.js route handler mounted via `toNextJsHandler(auth)`.
