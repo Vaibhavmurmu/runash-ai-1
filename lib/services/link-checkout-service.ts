@@ -71,6 +71,7 @@ export interface LinkCheckoutRequest {
 
 export interface LinkCheckoutAttemptResult {
   method: string
+  reason: "primary" | "fallback_retry" | "no_retry"
   success: boolean
   retryable_failure: boolean
   status_code: number | null
@@ -230,6 +231,15 @@ async function persistAttempt(
         line_items: input.taxLineItems ?? [],
       },
       attempt_timeline: input.timeline,
+      attempted_methods: input.timeline.map((entry) => entry.method),
+      fallback_used: input.timeline.some((entry, idx) => idx > 0),
+      attempts: input.timeline.map((entry, idx) => ({
+        attempt_number: idx + 1,
+        method: entry.method,
+        reason: entry.reason,
+        status: entry.status,
+        timestamp: entry.timestamp,
+      })),
     },
   })
 }
@@ -251,6 +261,11 @@ export async function runLinkCheckoutWithFallback(
   const attemptedMethodsPlan = [primaryMethod, ...(fallbackMethod ? [fallbackMethod] : [])]
   const methods = attemptedMethodsPlan.filter((method, index, all) => all.indexOf(method) === index)
 
+  const resolveAttemptReason = (index: number, previousRetryableFailure: boolean): "primary" | "fallback_retry" | "no_retry" => {
+    if (index === 0) return "primary"
+    return previousRetryableFailure ? "fallback_retry" : "no_retry"
+  }
+
   const attempts: LinkCheckoutAttemptResult[] = []
   const attemptTimeline: LinkCheckoutAttemptTimelineEntry[] = []
 
@@ -269,6 +284,8 @@ export async function runLinkCheckoutWithFallback(
 
   for (let index = 0; index < methods.length; index += 1) {
     const method = methods[index]
+    const previousRetryableFailure = index > 0 ? attempts[index - 1]?.retryable_failure === true : false
+    const reason = resolveAttemptReason(index, previousRetryableFailure)
 
     try {
       const response = await fetchImpl(LINK_CHECKOUT_API_URL, {
@@ -298,6 +315,7 @@ export async function runLinkCheckoutWithFallback(
       const success = response.ok && checkoutSessionId != null
       const attemptResult: LinkCheckoutAttemptResult = {
         method,
+        reason,
         success,
         retryable_failure: !success && isRetryableFailure(response.status, responseBody),
         status_code: response.status,
@@ -310,7 +328,7 @@ export async function runLinkCheckoutWithFallback(
       attempts.push(attemptResult)
       attemptTimeline.push({
         method,
-        reason: index === 0 ? "primary" : "fallback_retry",
+        reason,
         status: success ? "initiated" : "failed",
         timestamp: new Date().toISOString(),
       })
@@ -364,6 +382,7 @@ export async function runLinkCheckoutWithFallback(
     } catch {
       const attemptResult: LinkCheckoutAttemptResult = {
         method,
+        reason,
         success: false,
         retryable_failure: true,
         status_code: null,
@@ -376,7 +395,7 @@ export async function runLinkCheckoutWithFallback(
       attempts.push(attemptResult)
       attemptTimeline.push({
         method,
-        reason: index === 0 ? "primary" : "fallback_retry",
+        reason,
         status: "failed",
         timestamp: new Date().toISOString(),
       })

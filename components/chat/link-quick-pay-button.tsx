@@ -24,6 +24,7 @@ interface LinkQuickPayButtonProps {
   blockedReason?: string
   checkoutState?: LinkQuickPayStatus
   requestCorrelationId?: string
+  attemptedMethods?: string[]
   attemptTimeline?: Array<{
     method: string
     reason: "primary" | "fallback_retry" | "no_retry"
@@ -64,6 +65,7 @@ export default function LinkQuickPayButton({
   blockedReason,
   checkoutState = "idle",
   requestCorrelationId,
+  attemptedMethods,
   attemptTimeline,
 }: LinkQuickPayButtonProps) {
   const [status, setStatus] = useState<LinkQuickPayStatus>(checkoutState)
@@ -117,6 +119,7 @@ export default function LinkQuickPayButton({
 
   return (
     <div className="rounded-lg border bg-white p-4 shadow-sm dark:bg-gray-900" aria-busy={isLoading}>
+      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-orange-600 dark:text-orange-400">Step 3: Confirm and pay</p>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:items-center">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -148,6 +151,11 @@ export default function LinkQuickPayButton({
             </p>
           ) : null}
 
+
+          {Array.isArray(attemptedMethods) && attemptedMethods.length > 0 ? (
+            <p className="text-xs text-gray-600 dark:text-gray-300">Attempted methods: {attemptedMethods.join(" → ")}</p>
+          ) : null}
+
           {Array.isArray(attemptTimeline) && attemptTimeline.length > 0 ? (
             <div className="rounded-md border border-gray-200 bg-gray-50 p-2 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
               <p className="mb-1 font-semibold">Attempt timeline</p>
@@ -162,14 +170,17 @@ export default function LinkQuickPayButton({
           ) : null}
 
           {requiresPostPreviewConfirmation ? (
-            <Button
+            <div className="space-y-2">
+              <p className="text-xs text-gray-600 dark:text-gray-300">Explicit confirmation is required after tax preview before payment execution.</p>
+              <Button
               type="button"
               variant={confirmedAfterPreview ? "secondary" : "outline"}
               onClick={() => setConfirmedAfterPreview((current) => !current)}
               className="h-8 w-full text-xs md:w-auto"
             >
-              {confirmedAfterPreview ? "Totals confirmed" : "Confirm subtotal + tax + total"}
-            </Button>
+              {confirmedAfterPreview ? "Confirmed: I reviewed subtotal, tax, and total" : "I confirm subtotal, tax, and total"}
+              </Button>
+            </div>
           ) : null}
 
           {statusLabel ? (

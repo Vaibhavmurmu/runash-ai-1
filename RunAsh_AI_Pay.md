@@ -149,6 +149,9 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Relay chat routing now auto-selects payment tooling for natural-language intents such as `buy this` and `confirm`, while preserving explicit caller-provided tool lists for backward compatibility.
 - Link execution path now calls `https://api.runash.in/v3/pay` and emits structured execution activity summary metadata including request correlation ID, endpoint, attempt count, and fallback usage.
 - RunAshChat UI now surfaces checkout state (`idle` / `processing` / `success` / `failed`) and request correlation ID to improve support/audit workflows.
+- Added explicit tax estimation utility support to compute and expose subtotal, GST/VAT amount, and total payable before payment confirmation; step-3 confirmation UI now requires explicit post-preview user confirmation before charge execution.
+- Payment execution service now enforces primary-method-first execution with automatic backup-method retry only for retryable failures, and persists both attempts with reason/status in transaction metadata for auditability.
+- Receipt/audit payloads now include fallback metadata (`fallbackUsed`, `attemptedMethods`) in addition to existing snake_case fields for backward-compatible display across RunAshChat and operational reporting.
 - Risks + rollback:
   1. Intent over-matching could trigger checkout tooling for ambiguous prompts; rollback by reverting intent selection helper in `app/api/agents/chat/chat-request-handler.ts`.
   2. If upstream `/v3/pay` payload/response behavior changes, rollback to prior `runLinkCheckoutWithFallback` return mapping while preserving request headers and idempotency behavior.
