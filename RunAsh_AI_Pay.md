@@ -416,3 +416,20 @@ Risks + rollback:
 1. **Risk:** If merchant country metadata is absent in provider payloads, fallback country default may classify to US chart mapping. **Mitigation:** metadata remains additive; override `RUNASH_MERCHANT_REGION` per tenant.
 2. **Risk:** Accounting table bootstrap (`CREATE TABLE IF NOT EXISTS`) in runtime may add slight cold-path latency on first post. **Mitigation:** idempotent and one-time; can be moved to migration in future hardening.
 3. **Rollback:** Revert accounting event emit calls in checkout/webhook handlers while preserving existing payment route API contracts and webhook idempotency behavior.
+
+## 2026-02 Relay post-payment accounting sync for RunAshChat Instant Checkout
+
+- Added post-payment accounting sync in Relay orchestration (`executeInitiateLinkCheckout`) so successful checkout confirmation and refund states trigger RunAshBook posting after checkout tool execution.
+- Relay checkout handoff contract now includes accounting-required fields end-to-end:
+  - merchant/entity + jurisdiction (`merchant_id`, `merchant_entity_id`, `merchant_country`)
+  - monetary + tax/fee fields (`amount`, `currency`, `accounting_context.tax_breakdown`, `accounting_context.fee_breakdown`)
+  - product/plan metadata (`accounting_context.product_plan_metadata`)
+  - payment status + timestamp (`payment_status`, `event_timestamp`)
+  - correlation + idempotency markers (`accounting_context.correlation_key`, `idempotency_key`)
+- Exactly-once business semantics: Relay derives deterministic accounting idempotency keys using checkout idempotency key reuse (`<checkout-idempotency>:accounting:<eventType>`), so retries/duplicates collapse into single accounting effect.
+- Failure fallback: if RunAshBook sync fails, Relay marks response with `pending_sync: true` and `accounting_sync.status: "pending_sync"`, emits internal ops reconciliation signal (`ops.accounting.reconcile_required` via structured warn log), and still returns successful checkout response to user.
+
+Risks + rollback:
+1. **Risk:** misconfigured merchant/entity metadata can route accounting entries to fallback defaults. **Mitigation:** deterministic defaults preserve continuity while preserving non-breaking API signatures.
+2. **Risk:** transient accounting DB/service outages increase pending-sync backlog. **Mitigation:** explicit ops reconciliation signal and non-blocking checkout completion maintain user path reliability.
+3. **Rollback:** remove Relay accounting sync call path while retaining checkout handoff fields and existing payment execution API contracts.
