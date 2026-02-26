@@ -1,6 +1,6 @@
 "use client"
 
-import { AlertTriangle, BadgeIndianRupee, BellRing, CheckCircle2, Clock3, RefreshCcw, ShieldAlert, Wallet } from "lucide-react"
+import { ActivitySquare, AlertTriangle, BadgeIndianRupee, BellRing, CheckCircle2, Clock3, RefreshCcw, ShieldAlert, Wallet } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -83,6 +83,16 @@ const reconciliation = {
   staleSettlements: 6,
   healthScore: 92,
 }
+
+const linkFunnelHealth = {
+  sessionsCreated: 182,
+  sessionsVerified: 164,
+  autofillSuccess: 151,
+  checkoutCompletion: 142,
+  fallbackUsage: 19,
+  errorRatePercent: 7.6,
+}
+
 
 const severityVariant = {
   low: "secondary",
@@ -267,6 +277,43 @@ export function PaymentOperationsDashboard() {
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">High-risk accounts</p>
                 <p className="text-xl font-semibold">{riskFlags.highRiskAccounts}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg"><ActivitySquare className="h-5 w-5" />Link funnel health</CardTitle>
+              <CardDescription>Session→verification→checkout conversion for Instant Checkout.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 text-sm sm:grid-cols-3">
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Sessions created</p>
+                <p className="text-xl font-semibold">{linkFunnelHealth.sessionsCreated}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Verified sessions</p>
+                <p className="text-xl font-semibold">{linkFunnelHealth.sessionsVerified}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Checkout completed</p>
+                <p className="text-xl font-semibold">{linkFunnelHealth.checkoutCompletion}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Autofill success</p>
+                <p className="text-xl font-semibold">{linkFunnelHealth.autofillSuccess}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Fallback used</p>
+                <p className="text-xl font-semibold">{linkFunnelHealth.fallbackUsage}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Error-rate alert</p>
+                <p className="text-xl font-semibold">{linkFunnelHealth.errorRatePercent}%</p>
+                <Badge variant={linkFunnelHealth.errorRatePercent >= 10 ? "destructive" : "secondary"} className="mt-2">
+                  {linkFunnelHealth.errorRatePercent >= 20 ? "Critical" : linkFunnelHealth.errorRatePercent >= 10 ? "Warning" : "Healthy"}
+                </Badge>
               </div>
             </CardContent>
           </Card>
