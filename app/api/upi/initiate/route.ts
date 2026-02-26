@@ -33,8 +33,18 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => ({}))
+  const amount = typeof body?.amount === "number" && Number.isFinite(body.amount) && body.amount > 0 ? body.amount : null
+  if (amount == null) {
+    return NextResponse.json(
+      {
+        error: "amount is required and must be a positive number",
+        errorCode: "RISK_BLOCKED",
+      },
+      { status: 400 },
+    )
+  }
   const idempotencyKey = resolveIdempotencyKey(request, body)
-  const initiated = UpiCheckoutService.initiatePayment(idempotencyKey)
+  const initiated = UpiCheckoutService.initiatePayment(idempotencyKey, amount)
 
   return NextResponse.json(initiated)
 }

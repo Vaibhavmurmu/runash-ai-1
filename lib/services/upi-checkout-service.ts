@@ -6,6 +6,8 @@ export type UpiErrorCode = "INVALID_PIN" | "PIN_ATTEMPTS_EXCEEDED" | "RISK_BLOCK
 type UpiTransactionRecord = {
   transactionId: string
   createdAtEpoch: number
+  amount: number
+  currency: string
   status: UpiExecutionStatus
   transactionReference: string
   pinHash: string
@@ -19,6 +21,8 @@ type UpiTransactionRecord = {
 
 type UpiInitiationResult = {
   transactionId: string
+  amount: number
+  currency: string
   status: "initiated"
   initiatedAt: string
   idempotencyKey: string
@@ -49,6 +53,7 @@ const initiationByIdempotencyKey = new Map<string, UpiInitiationResult>()
 const DEMO_UPI_PIN = "123456"
 const MAX_PIN_ATTEMPTS = 3
 const EXECUTION_DELAY_MS = 6_000
+const DEFAULT_CURRENCY = "INR"
 
 function hashPin(pin: string): string {
   return createHash("sha256").update(pin).digest("hex")
@@ -81,7 +86,7 @@ function assertMaskedPin(_pin: string) {
 }
 
 export class UpiCheckoutService {
-  static initiatePayment(idempotencyKey: string): UpiInitiationResult {
+  static initiatePayment(idempotencyKey: string, amount: number): UpiInitiationResult {
     const existing = initiationByIdempotencyKey.get(idempotencyKey)
     if (existing) {
       return existing
@@ -93,6 +98,8 @@ export class UpiCheckoutService {
     const transaction: UpiTransactionRecord = {
       transactionId,
       createdAtEpoch,
+      amount,
+      currency: DEFAULT_CURRENCY,
       status: "initiated",
       transactionReference: toReference(transactionId),
       pinHash: hashPin(DEMO_UPI_PIN),
@@ -105,6 +112,8 @@ export class UpiCheckoutService {
 
     const result: UpiInitiationResult = {
       transactionId,
+      amount,
+      currency: DEFAULT_CURRENCY,
       status: "initiated",
       initiatedAt: new Date(createdAtEpoch).toISOString(),
       idempotencyKey,
@@ -215,6 +224,8 @@ export class UpiCheckoutService {
         found: false as const,
         payload: {
           transactionId,
+          amount: 0,
+          currency: DEFAULT_CURRENCY,
           status: "failed" as const,
           transactionReference: toReference(transactionId),
           updatedAt: new Date().toISOString(),
@@ -234,11 +245,35 @@ export class UpiCheckoutService {
       found: true as const,
       payload: {
         transactionId: transaction.transactionId,
+        amount: transaction.amount,
+        currency: transaction.currency,
         status: transaction.status,
         transactionReference: transaction.transactionReference,
         updatedAt: new Date().toISOString(),
         ...(transaction.failureReason ? { failedReason: transaction.failureReason } : {}),
         ...(transaction.failureCode ? { errorCode: transaction.failureCode } : {}),
+      },
+    }
+  }
+
+  static getTransactionDetails(transactionId: string) {
+    const status = UpiCheckoutService.getStatus(transactionId)
+
+    if (!status.found) {
+      return {
+        found: false as const,
+        payload: {
+          ...status.payload,
+          receiptId: `RCPT-${transactionId}`,
+        },
+      }
+    }
+
+    return {
+      found: true as const,
+      payload: {
+        ...status.payload,
+        receiptId: `RCPT-${status.payload.transactionReference}`,
       },
     }
   }

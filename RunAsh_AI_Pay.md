@@ -177,3 +177,15 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Outbound provider metadata is minimized to required operational fields and routing context only; sensitive auth/payment details remain redacted via payment logging sanitization.
 - Routing decision audits now persist request-scoped records with route decision + sanitized metadata only (no PAN/CVV/PIN/payment secrets).
 - Operational note: if routing anomalies occur, rollback by reverting routing-context metadata builder usage in checkout/subscription/create-intent handlers while keeping API response contracts unchanged.
+
+## 2026-02 Scan & Pay UX resiliency + receipt data wiring
+
+- `/scan` now includes explicit component-level UX surfaces for `pending`, `failed`, and `retry` states (including timeout-retry status sync) to reduce ambiguous in-flight payment states.
+- Added explicit user-controlled cancel/back actions from amount entry and PIN confirmation steps so users can safely exit or revise flow state without forcing hidden resets.
+- In-flight transaction continuity is now persisted on the client (`transactionId` + current lifecycle status + step) so refresh/navigation does not drop active payment context.
+- Per-action loading locks are enforced for initiate, confirm, status retry, share receipt, and download actions to prevent duplicate submissions.
+- Receipt actions now resolve live transaction details from `GET /api/upi/transactions/[transactionId]`; “Share Receipt” uses fetched receipt data and “Download transaction details” exports real transaction payload JSON.
+
+Risk and rollback notes:
+1. If local storage persistence causes stale states in user sessions, rollback persistence in `app/scan/page.tsx` while retaining backend transaction contracts.
+2. If receipt endpoint integration causes regressions, rollback `app/api/upi/transactions/[transactionId]/route.ts` and disable share/download controls while preserving UPI confirm/status behavior.
