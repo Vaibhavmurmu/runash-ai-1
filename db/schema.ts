@@ -40,6 +40,10 @@ export const authSchemaTables = {
     table: "verification_tokens",
     fields: ["id", "identifier", "value", "expires_at", "created_at", "updated_at"],
   },
+  authSessionIdentities: {
+    table: "auth_session_identities",
+    fields: ["id", "user_id", "linked_user_id", "linked_at", "created_at"],
+  },
   authSessionRegistry: {
     table: "auth_session_registry",
     fields: [
