@@ -208,3 +208,53 @@ This document is limited to payment/business implementation policy. Generic cont
 - Existing integration points continue to receive stable fields; any new fields/metadata are additive and optional.
 - Existing webhook consumers keep current contract semantics; no version bump required for this rollout.
 - Existing fallback checkout remains operational for rollback and phased adoption safety.
+
+## 2026-02-26 Relay-to-RunAshBook automation flow update
+
+### 1) Relay -> RunAshBook automation flow and event lifecycle
+
+- **Intent capture:** RunAshChat natural-language intents (for example, "buy this") are normalized by Relay into a tenant-scoped checkout command with deterministic correlation IDs.
+- **Checkout start:** Relay creates the RunAsh AI Link checkout attempt and emits `relay.checkout.initiated` for downstream observability.
+- **Gateway lifecycle:** payment events are consumed through idempotent webhook processing (`created`, `requires_action`, `succeeded`, `failed`) and mapped to the checkout attempt timeline.
+- **Accounting handoff:** successful terminal checkout emits `runashbook.accounting.post.requested` to automate journal posting in RunAshBook.
+- **Closure lifecycle:** RunAshBook responds with `runashbook.accounting.posted` or `runashbook.accounting.deferred`; checkout UX remains source-of-truth on payment state while accounting state is tracked as downstream automation.
+
+### 2) Backward compatibility statement
+
+- Existing startup/business payment API signatures and field names are preserved.
+- Any Relay-to-RunAshBook data extensions are additive and optional.
+- No migration or API version bump is required for current integrations.
+
+### 3) Risk and rollback plan
+
+- **Risk focus:** RunAshBook accounting posting failures can create finance-operation lag without affecting payment authorization.
+- **Rollback procedure:** set `FEATURE_FLAG_RUNASHBOOK_ACCOUNTING_POSTING=0` to stop accounting posting while preserving checkout, payment capture, and webhook reconciliation.
+- **Operational safeguard:** keep existing checkout fallback active and replay accounting events after remediation.
+
+### 4) Security note (logs and accounting payloads)
+
+- Sensitive payment/auth content is not logged (no full card data, secrets, OTP payloads, auth credentials, or raw tokens).
+- RunAshBook payloads include only minimum accounting-safe fields (masked references, IDs, amounts, currencies, timestamps, reconciliation keys).
+- Redaction rules remain mandatory for all payment and auth telemetry.
+
+### 5) Validation checklist/results format
+
+Capture release validation in this structure:
+
+```md
+Validation checklist (Relay -> RunAshBook)
+- [ ] npm run lint
+- [ ] npm run build
+- [ ] Integration: Relay intent -> Link checkout -> payment success
+- [ ] Integration: payment success -> RunAshBook posting event emitted
+- [ ] Integration: FEATURE_FLAG_RUNASHBOOK_ACCOUNTING_POSTING=0 keeps checkout healthy
+- [ ] Integration: accounting failure path does not alter payment final state
+
+Results
+- lint: <pass|fail> (notes)
+- build: <pass|fail> (notes)
+- integration-relay-checkout-success: <pass|fail> (notes)
+- integration-runashbook-posting: <pass|fail> (notes)
+- integration-flag-off-checkout-continuity: <pass|fail> (notes)
+- integration-accounting-failure-isolation: <pass|fail> (notes)
+```
