@@ -15,7 +15,7 @@ import {
 import { RELAY_AGENT_TOOLS } from "@/lib/skills/relay-tool-registry"
 import { AgentOrchestrationService, type SupportedTool } from "@/services/agent-orchestration-service"
 import { enqueueToolJob } from "@/services/agent-tool-queue-worker"
-import { buildToolPlan, resolveRunAshChatToolSelection } from "./chat-request-handler"
+import { buildDefaultToolPayloads, buildToolPlan, resolveRunAshChatToolSelection } from "./chat-request-handler"
 
 const requestSchema = z.object({
   sessionId: z.string().trim().min(1).optional(),
@@ -85,11 +85,16 @@ export async function POST(request: NextRequest) {
             parsed.data.tools as SupportedTool[],
           )
           const toolPlan = buildToolPlan(selectedTools)
+          const defaultPayloads = buildDefaultToolPayloads({
+            message: sanitizedMessage,
+            sessionId: agentSession.id,
+            requestedTools: selectedTools,
+          })
 
           for (const tool of toolPlan.immediate) {
             send("tool_start", { tool, messageId: assistantMessage.id, status: "tool-running" })
 
-            const payload = parsed.data.toolPayloads?.[tool] ?? { query: sanitizedMessage }
+            const payload = parsed.data.toolPayloads?.[tool] ?? defaultPayloads?.[tool] ?? { query: sanitizedMessage }
             const execution = await AgentOrchestrationService.executeToolWithPolicy(tool, payload, {
               sessionId: agentSession.id,
               messageId: assistantMessage.id,
@@ -102,7 +107,7 @@ export async function POST(request: NextRequest) {
 
           for (const tool of toolPlan.queued) {
             send("tool_start", { tool, messageId: assistantMessage.id, status: "tool-running" })
-            const payload = parsed.data.toolPayloads?.[tool] ?? { query: sanitizedMessage }
+            const payload = parsed.data.toolPayloads?.[tool] ?? defaultPayloads?.[tool] ?? { query: sanitizedMessage }
             const jobId = enqueueToolJob({
               tool,
               payload,

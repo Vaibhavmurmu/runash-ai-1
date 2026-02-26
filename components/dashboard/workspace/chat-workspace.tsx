@@ -459,20 +459,7 @@ export function ChatWorkspace() {
           ? ["catalog_lookup", "web_search"]
           : ["catalog_lookup"]
 
-      const toolPayloads = isInstantCheckoutIntent
-        ? {
-            initiate_link_checkout: {
-              merchant_id: "runash-default-merchant",
-              amount: 1000,
-              currency: "USD",
-              product_metadata: {
-                item_name: "RunAshChat Instant Checkout Item",
-                sku: "runashchat-instant-checkout",
-                tags: ["via RunAshChat", "instant_checkout", "digital"],
-              },
-            },
-          }
-        : undefined
+      const toolPayloads = undefined
 
       const response = await fetch("/api/agents/chat", {
         method: "POST",
@@ -529,7 +516,7 @@ export function ChatWorkspace() {
           }
 
           if (eventName === "tool_result" && payload.tool === "initiate_link_checkout") {
-            const linkPayload = toolPayloads?.initiate_link_checkout
+            const linkPayload = (payload.result?.handoff_contract ?? payload.result?.resolved_handoff_contract ?? {}) as Record<string, unknown>
             const productMetadata =
               linkPayload && typeof linkPayload.product_metadata === "object" && linkPayload.product_metadata !== null
                 ? (linkPayload.product_metadata as Record<string, unknown>)
@@ -570,6 +557,10 @@ export function ChatWorkspace() {
                 : typeof payload.result?.next_action === "string"
                   ? payload.result.next_action
                   : undefined
+            const requestId =
+              typeof payload.result?.activity_summary_payload?.requestId === "string"
+                ? payload.result.activity_summary_payload.requestId
+                : undefined
             const checkoutStatusRaw =
               typeof payload.result?.status === "string"
                 ? payload.result.status
@@ -587,7 +578,7 @@ export function ChatWorkspace() {
                 ? payload.result.execution_activity_summary.request_correlation_id
                 : typeof payload.result?.request_id === "string"
                   ? payload.result.request_id
-                  : undefined
+                  : requestId
 
             const attemptedMethods = Array.isArray(payload.result?.attempted_methods)
               ? payload.result.attempted_methods.filter((entry: unknown): entry is string => typeof entry === "string" && entry.length > 0)
@@ -642,6 +633,8 @@ export function ChatWorkspace() {
                     merchant_id: typeof linkPayload?.merchant_id === "string" ? linkPayload.merchant_id : "runash-default-merchant",
                     amount: amountMinor,
                     currency: linkPayload?.currency === "INR" ? "INR" : "USD",
+                    idempotency_key:
+                      typeof linkPayload?.idempotency_key === "string" ? linkPayload.idempotency_key : undefined,
                     product_metadata: {
                       item_name:
                         typeof productMetadata?.item_name === "string"
@@ -652,6 +645,19 @@ export function ChatWorkspace() {
                     },
                     country: typeof linkPayload?.country === "string" ? linkPayload.country : undefined,
                     region: typeof linkPayload?.region === "string" ? linkPayload.region : undefined,
+                    chat_context:
+                      linkPayload && typeof linkPayload.chat_context === "object" && linkPayload.chat_context !== null
+                        ? {
+                            session_id:
+                              typeof (linkPayload.chat_context as Record<string, unknown>).session_id === "string"
+                                ? ((linkPayload.chat_context as Record<string, unknown>).session_id as string)
+                                : currentSession?.id ?? querySessionId ?? "",
+                            user_intent:
+                              typeof (linkPayload.chat_context as Record<string, unknown>).user_intent === "string"
+                                ? ((linkPayload.chat_context as Record<string, unknown>).user_intent as string)
+                                : content,
+                          }
+                        : undefined,
                   },
                 },
               },
