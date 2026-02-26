@@ -215,3 +215,21 @@ RunAsh Pay send-money flows now follow an explicit lifecycle to reduce false-pos
 - Transaction reference and details endpoints are exposed for reconciliation.
 
 This change preserves API compatibility while improving operational correctness for payment status handling.
+
+
+
+## 2026-02 Custom Wallet + Link autofill integration
+
+- Added custom wallet APIs and pages for card vaulting, activity timeline, and subscription management:
+  - `GET/POST /api/wallet/cards`, `PATCH/DELETE /api/wallet/cards/:id`
+  - `GET /api/wallet/activity`
+  - `GET/PATCH /api/wallet/subscriptions`
+  - pages: `/wallet`, `/wallet/activity`, `/wallet/subscriptions`
+- Added Link UX flows aligned to RunAshChat checkout behavior:
+  1. Save payment info at checkout (`POST /api/wallet/link/save`).
+  2. Account verification with one-time code for new device/site (`POST /api/wallet/link/session`, `POST /api/wallet/link/verify`).
+  3. Checkout autofill preview after verification (saved email + masked payment method + billing details).
+- Security and compatibility notes:
+  - Card payloads are reduced to masked last4 storage in wallet records and never expose full PAN in API responses.
+  - Existing payment API signatures remain unchanged; wallet/link routes are additive and can be rolled back independently.
+
