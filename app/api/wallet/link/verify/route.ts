@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: { message: "sessionId and code are required" } }, { status: 400 })
   }
 
-  const result = WalletStore.verifyLinkSession(body.sessionId, body.code)
+  const result = await WalletStore.verifyLinkSession(body.sessionId, body.code)
   if (!result.ok) {
     return NextResponse.json({ success: false, error: { message: result.message } }, { status: 400 })
   }

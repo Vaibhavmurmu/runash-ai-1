@@ -99,3 +99,20 @@ This document is limited to payment/business implementation policy. Generic cont
 - Compliance-safe metadata contract for outbound gateway calls is now: `region`, `residency_policy_version`, and `request_id` (+ minimal business identifiers).
 - Audit trail requirements: capture `routeDecision`, `requestId`, and sanitized non-sensitive metadata for `billing.checkout`, `billing.subscription`, `payment.create_intent`, and RunAshChat instant checkout relay flows.
 - Risk + rollback: if provider rejects additive metadata keys, remove metadata enrichment from provider calls first (safe rollback) without changing payment API field names/signatures.
+
+## 2026-02 RunAsh AI Link data reliability update
+
+- Impacted flows: Link card save, Link session creation/OTP verification, wallet activity timeline, subscription snapshot management.
+- Startup/business compatibility: no field-name or signature changes in existing wallet APIs; persistence moved from process memory to DB-backed repository for operational reliability.
+- Audit + compliance controls:
+  - tokenized payment references only for cards;
+  - masked card metadata only (`last4`, `brand`, `exp`);
+  - hashed verification codes and OTP attempt logging;
+  - encrypted billing and verification-profile metadata at rest.
+- Migration + rollout:
+  1. apply `db/migrations/0002_wallet_link_persistence.sql`;
+  2. run `scripts/sql/2026-02-26_backfill_wallet_demo_data.sql` for seeded demo continuity;
+  3. validate wallet API read/write paths.
+- Rollback:
+  - revert wallet repository + migration commit and redeploy prior in-memory wallet fallback,
+  - keep API contracts unchanged during rollback window.

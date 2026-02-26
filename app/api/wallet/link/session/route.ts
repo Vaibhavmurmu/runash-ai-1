@@ -6,6 +6,6 @@ export async function POST(request: NextRequest) {
   if (!body?.email) {
     return NextResponse.json({ success: false, error: { message: "email is required" } }, { status: 400 })
   }
-  const session = WalletStore.createLinkSession({ userId: body.userId, email: body.email })
+  const session = await WalletStore.createLinkSession({ userId: body.userId, email: body.email })
   return NextResponse.json({ success: true, data: session })
 }
