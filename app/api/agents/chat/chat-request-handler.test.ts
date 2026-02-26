@@ -76,6 +76,16 @@ test("builds deterministic handoff contract with canonical checkout context", as
   assert.equal(first.accounting_context.tax_breakdown.amount > 0, true)
 })
 
+
+
+test("resolves find/compare/best under intents to buyer_product_search", () => {
+  const findTools = resolveRunAshChatToolSelection("find best under $80 skincare products")
+  const compareTools = resolveRunAshChatToolSelection("compare organic moisturizers")
+
+  assert.deepEqual(findTools, ["buyer_product_search", "catalog_lookup", "web_search"])
+  assert.deepEqual(compareTools, ["buyer_product_search", "catalog_lookup", "web_search"])
+})
+
 test("keeps explicit tool requests for backward compatibility", () => {
   const tools = resolveRunAshChatToolSelection("confirm", ["web_search"])
   assert.deepEqual(tools, ["web_search"])

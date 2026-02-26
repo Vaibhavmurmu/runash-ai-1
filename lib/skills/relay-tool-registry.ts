@@ -2,6 +2,7 @@ import { initiateLinkCheckoutTool } from "@/lib/agent-tools/initiate-link-checko
 import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
 import { type AgentRole, isToolAllowedForRole, resolveRolePolicy } from "@/services/agent-role-orchestration"
 import {
+  buyerProductSearchAdapter,
   getCheckoutPreviewAdapter,
   getInventoryHealthAdapter,
   queryCatalogAdapter,
@@ -13,6 +14,7 @@ export const RELAY_AGENT_TOOLS = [
   "inventory_health",
   "checkout_preview",
   "web_search",
+  "buyer_product_search",
   "initiate_link_checkout",
 ] as const
 
@@ -33,6 +35,7 @@ export const relayToolExecutionMode: Record<RelayAgentTool, "immediate" | "queue
   inventory_health: "queued",
   checkout_preview: "queued",
   web_search: "immediate",
+  buyer_product_search: "immediate",
   initiate_link_checkout: "immediate",
 }
 
@@ -56,6 +59,10 @@ export const relayAgentSkillModules: Record<string, { name: string; execute: (ar
       const query = typeof payload.query === "string" ? payload.query : ""
       return searchProductsWithProviders(query)
     },
+  },
+  buyer_product_search: {
+    name: "buyer_product_search",
+    execute: buyerProductSearchAdapter,
   },
   [initiateLinkCheckoutTool.name]: {
     ...initiateLinkCheckoutTool,

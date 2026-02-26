@@ -7,7 +7,8 @@ import {
 import type { ServerAuthSession } from "@/lib/auth/session"
 
 const INSTANT_CHECKOUT_INTENT = /\b(buy this|confirm purchase|pay now|instant checkout|checkout|confirm)\b/i
-const SEARCH_INTENT = /search|find|best|compare|web/i
+const SEARCH_INTENT = /search|find|best(?:\s+under)?|compare|web|under\s+\$?\d+/i
+const BUYER_PRODUCT_SEARCH_INTENT = /\b(find|compare|best under|under)\b/i
 
 type CheckoutHandoffInput = {
   message: string
@@ -84,6 +85,10 @@ export function resolveRunAshChatToolSelection(message: string, requestedTools: 
   }
 
   if (SEARCH_INTENT.test(message)) {
+    if (BUYER_PRODUCT_SEARCH_INTENT.test(message)) {
+      return ["buyer_product_search", "catalog_lookup", "web_search"]
+    }
+
     return ["catalog_lookup", "web_search"]
   }
 

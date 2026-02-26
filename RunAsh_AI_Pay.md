@@ -525,3 +525,14 @@ Results
   1. **Risk:** role misconfiguration could over-block tool usage for valid checkout intents. **Mitigation:** default fallback role remains `broker` and role policy checks return explicit blocked reasons.
   2. **Rollback:** revert role-conditioned execution path changes in `services/agent-orchestration-service.ts` and `lib/skills/relay-tool-registry.ts`, then keep migration table dormant (no contract break).
   3. **Compatibility:** all new request fields are additive (`agentRole`, `preferences`) and existing tool contracts remain backward compatible.
+
+## 2026-02-26 Buyer product search ranking in Relay (additive, no checkout contract break)
+
+- Added `buyer_product_search` Relay tool for pre-checkout intent handling (`find`, `compare`, `best under`) to improve recommendation explainability before `initiate_link_checkout` is triggered.
+- Ranking now combines catalog data, sustainability attributes, normalized price in user currency, and stock availability; each result returns explicit reasons (`matched_budget`, `sustainability_score`, `tradeoffs`).
+- Backward compatibility preserved: no existing payment request/response fields were removed or renamed; checkout tool contracts are unchanged.
+- Risk + rollback:
+  1. **Risk:** intent over-selection could call search tool for vague phrasing and increase chat latency.
+  2. **Mitigation:** search tool remains immediate/read-only and does not execute payment operations.
+  3. **Rollback:** revert `resolveRunAshChatToolSelection` mapping and remove `buyer_product_search` registration to restore prior catalog/web-search-only routing.
+

@@ -2,6 +2,7 @@ import { randomUUID } from "crypto"
 
 import { z } from "zod"
 
+import { parseBuyerPreferences } from "@/lib/commerce/preference-parser"
 import { products as localProducts } from "@/lib/data/store"
 import { estimateTaxPreview } from "@/lib/payments/tax-preview"
 import { listProducts } from "@/lib/repositories/products"
@@ -20,6 +21,28 @@ const inventoryHealthInputSchema = z.object({
   inventory_location_id: z.string().trim().optional(),
   low_stock_threshold: z.coerce.number().int().positive().max(200).default(20),
 })
+
+
+const buyerProductSearchInputSchema = z.object({
+  query: z.string().trim().default(""),
+  tenant_id: z.string().trim().optional(),
+  merchant_id: z.string().trim().optional(),
+  user_currency: z.string().trim().min(3).max(3).default("USD"),
+  max_results: z.coerce.number().int().positive().max(20).default(6),
+})
+
+const fallbackFxRates: Record<string, number> = {
+  "USD-USD": 1,
+  "USD-INR": 83,
+  "USD-EUR": 0.92,
+  "USD-GBP": 0.79,
+}
+
+const productSustainabilitySignals: Record<string, string[]> = {
+  skincare: ["organic", "cruelty-free"],
+  wellness: ["sustainable", "low-carbon"],
+  nutrition: ["vegan", "recycled"],
+}
 
 const checkoutPreviewInputSchema = z.object({
   items: z
@@ -112,9 +135,45 @@ type ProductProjection = {
   user_id?: string
   name: string
   description?: string | null
+  category?: string | null
   price: number
   inventory_count: number
   in_stock: boolean
+}
+
+export type BuyerProductSearchResult = {
+  query: string
+  preferences: ReturnType<typeof parseBuyerPreferences>
+  user_currency: string
+  source: "products_repository"
+  catalog_id: string
+  results: Array<{
+    product_id: string
+    sku: string
+    name: string
+    category: string | null
+    price: {
+      amount: number
+      currency: string
+      normalized_amount: number
+      normalized_currency: string
+    }
+    inventory: {
+      in_stock: boolean
+      inventory_count: number
+    }
+    sustainability: {
+      attributes: string[]
+      score: number
+    }
+    ranking_score: number
+    reasons: {
+      matched_budget: boolean
+      sustainability_score: number
+      tradeoffs: string[]
+    }
+  }>
+  generated_at: string
 }
 
 function normalizeSku(product: ProductProjection) {
@@ -136,6 +195,7 @@ async function loadProducts(tenantOrMerchantId?: string): Promise<ProductProject
     user_id: product.user_id,
     name: product.name,
     description: product.description,
+    category: product.category,
     price: Number(product.price),
     inventory_count: Number(product.inventory_count),
     in_stock: Boolean(product.in_stock),
@@ -243,5 +303,93 @@ export async function getCheckoutPreviewAdapter(args: unknown): Promise<Checkout
       previewDisplayedAt: new Date().toISOString(),
     },
     warnings: input.items.length > 8 ? ["Large cart may require split shipment"] : [],
+  }
+}
+
+
+function getFxRate(fromCurrency: string, toCurrency: string) {
+  const key = `${fromCurrency.toUpperCase()}-${toCurrency.toUpperCase()}`
+  return fallbackFxRates[key] ?? 1
+}
+
+function scoreSustainability(product: ProductProjection, requirements: string[]) {
+  const categoryKey = (product.category ?? "").toLowerCase()
+  const attributes = productSustainabilitySignals[categoryKey] ?? []
+  if (requirements.length === 0) {
+    return { attributes, score: attributes.length > 0 ? 0.7 : 0.5 }
+  }
+
+  const matched = requirements.filter((item) => attributes.includes(item))
+  const score = Math.min(1, matched.length / requirements.length)
+  return { attributes, score }
+}
+
+export async function buyerProductSearchAdapter(args: unknown): Promise<BuyerProductSearchResult> {
+  const input = buyerProductSearchInputSchema.parse(args ?? {})
+  const scopedIdentity = input.tenant_id ?? input.merchant_id
+  const products = await loadProducts(scopedIdentity)
+  const preferences = parseBuyerPreferences(input.query)
+  const normalizedCurrency = (preferences.currency || input.user_currency).toUpperCase()
+
+  const ranked = products
+    .map((product) => {
+      const fxRate = getFxRate("USD", normalizedCurrency)
+      const normalizedAmount = Number((product.price * fxRate).toFixed(2))
+      const sustainability = scoreSustainability(product, preferences.sustainability_requirements)
+      const queryWords = input.query.toLowerCase().split(/\s+/).filter(Boolean)
+      const haystack = `${product.name} ${product.description ?? ""} ${product.category ?? ""}`.toLowerCase()
+      const textScore =
+        queryWords.length === 0
+          ? 0.4
+          : queryWords.filter((word) => haystack.includes(word)).length / queryWords.length
+      const categoryScore = preferences.category
+        ? (product.category ?? "").toLowerCase().includes(preferences.category.toLowerCase())
+          ? 1
+          : 0
+        : 0.4
+      const stockScore = product.in_stock ? 1 : 0
+      const matchedBudget = preferences.budget_ceiling ? normalizedAmount <= preferences.budget_ceiling : true
+      const budgetScore = matchedBudget ? 1 : Math.max(0, 1 - (normalizedAmount - (preferences.budget_ceiling ?? normalizedAmount)) / normalizedAmount)
+      const rankingScore = Number((textScore * 0.25 + categoryScore * 0.2 + sustainability.score * 0.2 + stockScore * 0.2 + budgetScore * 0.15).toFixed(4))
+      const tradeoffs: string[] = []
+      if (!matchedBudget) tradeoffs.push("price_above_budget")
+      if (!product.in_stock) tradeoffs.push("currently_out_of_stock")
+      if (preferences.sustainability_requirements.length > 0 && sustainability.score < 0.6) tradeoffs.push("partial_sustainability_match")
+
+      return {
+        product_id: product.id,
+        sku: normalizeSku(product),
+        name: product.name,
+        category: product.category ?? null,
+        price: {
+          amount: Number(product.price),
+          currency: "USD",
+          normalized_amount: normalizedAmount,
+          normalized_currency: normalizedCurrency,
+        },
+        inventory: {
+          in_stock: product.in_stock,
+          inventory_count: Number(product.inventory_count),
+        },
+        sustainability,
+        ranking_score: rankingScore,
+        reasons: {
+          matched_budget: matchedBudget,
+          sustainability_score: sustainability.score,
+          tradeoffs: tradeoffs.length > 0 ? tradeoffs : ["no_major_tradeoffs"],
+        },
+      }
+    })
+    .sort((a, b) => b.ranking_score - a.ranking_score)
+    .slice(0, input.max_results)
+
+  return {
+    query: input.query,
+    preferences,
+    user_currency: normalizedCurrency,
+    source: "products_repository",
+    catalog_id: scopedIdentity ? `catalog:${scopedIdentity}` : "catalog:global",
+    results: ranked,
+    generated_at: new Date().toISOString(),
   }
 }
