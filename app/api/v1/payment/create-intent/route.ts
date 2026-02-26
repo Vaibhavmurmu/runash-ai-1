@@ -145,6 +145,8 @@ export async function POST(request: NextRequest) {
       organization_id: sessionUser.organizationId,
       validatorDecision,
       validatorGate,
+      human_confirmed: Boolean(humanConfirmed),
+      mfa_verified: Boolean(mfaVerified),
       usage_hook_attached: Boolean(usageHook),
       payment_context: {
         regionRoute: edgeRouting.regionRoute,

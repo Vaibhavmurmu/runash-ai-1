@@ -84,3 +84,10 @@ This document is limited to payment/business implementation policy. Generic cont
   1. Revert helper extraction commit.
   2. Restore prior inline route/service logic.
   3. Re-run lint/build/tests in release environment and redeploy previous stable artifact if issues persist.
+
+
+## 2026-02 payment safety validator enforcement update
+
+- Impacted flows validated: validator middleware enforcement for create-intent and confirm execution path, including HITL/MFA thresholds normalized across INR/USD.
+- Backward compatibility confirmation: no payment field names removed; response payload includes additive validator-decision metadata only.
+- Rollback: revert validator middleware enforcement in API routes/service and restore prior confirmation behavior if incident metrics indicate false-positive blocking.

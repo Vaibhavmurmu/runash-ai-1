@@ -26,6 +26,7 @@ import {
 import { getProviderAdapter } from "@/lib/services/payment-provider-gateway"
 import { getLifecycleSnapshot, type LifecycleSnapshot } from "@/lib/customer-lifecycle-analytics-service"
 import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
+import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
 import { isTerminalPaymentState } from "@/types/payment-domain"
 
 export interface PaymentMethod {
@@ -86,6 +87,11 @@ export interface PaymentExecutionResult {
   attemptedMethods: PaymentExecutionAttempt[]
   fallbackUsed: boolean
   finalStatus: PaymentTransaction["status"]
+}
+
+export interface PaymentExecutionVerificationInput {
+  humanConfirmed?: boolean
+  mfaVerified?: boolean
 }
 
 export interface PaymentIntentReconciliationItem {
@@ -482,10 +488,36 @@ export class PaymentService {
     return toPublicIntent(persisted)
   }
 
-  static async processPayment(intentId: string, idempotencyKey?: string): Promise<PaymentExecutionResult> {
+  static async processPayment(
+    intentId: string,
+    idempotencyKey?: string,
+    verification: PaymentExecutionVerificationInput = {},
+  ): Promise<PaymentExecutionResult> {
     const persistedIntent = await getPaymentIntentById(intentId)
     if (!persistedIntent) {
       throw new Error("Payment intent not found")
+    }
+
+    const metadata = (persistedIntent.metadata ?? {}) as Record<string, unknown>
+    const validatorGate = enforcePaymentValidatorMiddleware({
+      amountMinor: Math.round(persistedIntent.amount),
+      currency: persistedIntent.currency,
+      humanConfirmed:
+        typeof verification.humanConfirmed === "boolean"
+          ? verification.humanConfirmed
+          : typeof metadata.human_confirmed === "boolean"
+            ? metadata.human_confirmed
+            : false,
+      mfaVerified:
+        typeof verification.mfaVerified === "boolean"
+          ? verification.mfaVerified
+          : typeof metadata.mfa_verified === "boolean"
+            ? metadata.mfa_verified
+            : false,
+    })
+
+    if (!validatorGate.allowed) {
+      throw new Error(`Payment execution blocked by validator gate: ${validatorGate.decision.reasonCodes.join(",")}`)
     }
 
     const defaultMethod = await this.getPaymentMethodOrThrow(persistedIntent.paymentMethodId)

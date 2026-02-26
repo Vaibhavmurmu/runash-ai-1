@@ -1,6 +1,7 @@
 const CARD_LIKE_KEY_PATTERN = /(pan|card|cardnumber|fullcardnumber|rawpan|primaryaccountnumber)/i
 const CVV_KEY_PATTERN = /(cvv|securitycode|cvc)/i
 const PIN_AUTH_KEY_PATTERN = /(pin|otp|passcode|token|secret|authorization|auth)/i
+const PAYMENT_IDENTIFIER_KEY_PATTERN = /(payment.?method.?id|provider.?intent.?id|provider.?transaction.?id|intent.?id|transaction.?id|payment.?id)/i
 const DIGITS_ONLY_PATTERN = /\D/g
 const RAW_CARD_VALUE_PATTERN = /^(?:\d[ -]*?){13,19}$/
 const RAW_CARD_NUMERIC_PATTERN = /^\d{13,19}$/
@@ -19,6 +20,16 @@ function maskLast4(raw: string): string {
   return `*${last4}`
 }
 
+function maskPaymentIdentifier(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return "[REDACTED]"
+
+  const alphanumeric = trimmed.replace(/[^a-zA-Z0-9]/g, "")
+  if (!alphanumeric) return "[REDACTED]"
+
+  return `*${alphanumeric.slice(-4)}`
+}
+
 export function sanitizePaymentActivityValue(key: string, value: unknown): unknown {
   if (typeof value === "string") {
     if (CVV_KEY_PATTERN.test(key) || PIN_AUTH_KEY_PATTERN.test(key)) {
@@ -27,6 +38,10 @@ export function sanitizePaymentActivityValue(key: string, value: unknown): unkno
 
     if (CARD_LIKE_KEY_PATTERN.test(key)) {
       return maskLast4(value)
+    }
+
+    if (PAYMENT_IDENTIFIER_KEY_PATTERN.test(key)) {
+      return maskPaymentIdentifier(value)
     }
 
     if (RAW_CARD_VALUE_PATTERN.test(value.trim())) {
@@ -38,6 +53,7 @@ export function sanitizePaymentActivityValue(key: string, value: unknown): unkno
 
   if (typeof value === "number") {
     if (CVV_KEY_PATTERN.test(key) || PIN_AUTH_KEY_PATTERN.test(key)) return "[REDACTED]"
+    if (PAYMENT_IDENTIFIER_KEY_PATTERN.test(key)) return maskPaymentIdentifier(String(value))
     if (CARD_LIKE_KEY_PATTERN.test(key) || isCardLikeNumeric(value)) return maskLast4(String(value))
     return value
   }
