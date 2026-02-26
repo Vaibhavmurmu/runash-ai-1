@@ -9,6 +9,8 @@ import {
   logWalletCheckout,
   removeWalletCard,
   setWalletDefaultCard,
+  updateWalletCardLifecycle,
+  listWalletTransactions,
   updateWalletSubscriptionStatus,
   updateWalletLinkSessionProviderStatus,
   verifyWalletLinkSession,
@@ -34,6 +36,7 @@ export const WalletStore = {
     brand?: string
     billingAddress?: string
     setDefault?: boolean
+    setBackup?: boolean
   }) {
     return createWalletCard({ ...input, userId: resolveUser(input.userId) })
   },
@@ -43,14 +46,32 @@ export const WalletStore = {
   async removeCard(userId: string, cardId: string) {
     return removeWalletCard(resolveUser(userId), cardId)
   },
-  async listActivity(userId?: string | null) {
-    return listWalletActivity(resolveUser(userId))
+  async lifecycleCard(userId: string, cardId: string, input: { setDefault?: boolean; setBackup?: boolean; disable?: boolean }) {
+    return updateWalletCardLifecycle(resolveUser(userId), cardId, input)
   },
-  async listSubscriptions(userId?: string | null) {
-    return listWalletSubscriptions(resolveUser(userId))
+  async listActivity(userId?: string | null, input?: { limit?: number; offset?: number; search?: string; type?: string }) {
+    return listWalletActivity(resolveUser(userId), input)
   },
-  async updateSubscription(userId: string, subscriptionId: string, status: "active" | "paused" | "canceled") {
-    return updateWalletSubscriptionStatus(resolveUser(userId), subscriptionId, status)
+  async listTransactions(userId?: string | null, input?: { limit?: number; offset?: number; status?: "succeeded" | "failed" | null; search?: string }) {
+    return listWalletTransactions(resolveUser(userId), input)
+  },
+  async listSubscriptions(
+    userId?: string | null,
+    input?: { limit?: number; offset?: number; status?: "active" | "paused" | "canceled" | null; search?: string },
+  ) {
+    return listWalletSubscriptions(resolveUser(userId), input)
+  },
+  async updateSubscription(
+    userId: string,
+    subscriptionId: string,
+    input: {
+      status?: "active" | "paused" | "canceled"
+      plan?: string
+      reason?: string
+      eventType: "plan_changed" | "paused" | "canceled" | "reactivated"
+    },
+  ) {
+    return updateWalletSubscriptionStatus(resolveUser(userId), subscriptionId, input)
   },
   async createLinkSession(input: { userId?: string | null; email: string }) {
     return createWalletLinkSession({ userId: resolveUser(input.userId), email: input.email })

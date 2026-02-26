@@ -23,14 +23,14 @@ export async function GET(request: NextRequest) {
   const userId = request.nextUrl.searchParams.get("userId")
   const limit = Number(request.nextUrl.searchParams.get("limit") ?? "50")
   const offset = Number(request.nextUrl.searchParams.get("offset") ?? "0")
-  const type = request.nextUrl.searchParams.get("type")
+  const statusParam = request.nextUrl.searchParams.get("status")
   const search = request.nextUrl.searchParams.get("search")
   const format = request.nextUrl.searchParams.get("format")
 
-  const data = await WalletStore.listActivity(userId, {
+  const data = await WalletStore.listTransactions(userId, {
     limit: Number.isFinite(limit) ? limit : 50,
     offset: Number.isFinite(offset) ? offset : 0,
-    type: type || undefined,
+    status: statusParam === "succeeded" || statusParam === "failed" ? statusParam : null,
     search: search || undefined,
   })
 
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse(csv, {
       headers: {
         "Content-Type": "text/csv",
-        "Content-Disposition": `attachment; filename="wallet-activity-${Date.now()}.csv"`,
+        "Content-Disposition": `attachment; filename="wallet-transactions-${Date.now()}.csv"`,
       },
     })
   }

@@ -291,3 +291,24 @@ Risks + rollback:
 - Wallet default payment method updates and subscription lifecycle transitions are treated as high-risk payment actions and require HITL + MFA.
 - Risk engine decisioning includes geo mismatch review, risk-score review/block thresholds, and block-signal deny rules with explicit reason codes.
 - Payment-impacting wallet/link transitions emit structured audit logs with sanitized metadata for compliance review and rollback tracing.
+
+## 2026-02 Wallet lifecycle + subscription reliability operations
+
+- Added card lifecycle operations with ownership-aware repository checks:
+  - add/remove cards and lifecycle updates (disable/enable, set default, set backup)
+  - non-owner card IDs return not-found under scoped user queries, preventing cross-user mutation.
+- Extended subscription operations to support reliability workflows:
+  - plan changes
+  - pause/cancel/reactivate transitions with reason capture
+  - persisted subscription timeline events for auditability.
+- Added activity + transaction reporting with downloadable CSV exports and reconciliation fields:
+  - `/api/wallet/activity` now supports `limit`, `offset`, `search`, `type`, and `format=csv`.
+  - `/api/wallet/transactions` provides paged/searchable transaction views with `reconciliationRef` and `settlementDate` plus `format=csv` export.
+- Wallet UX now includes failed-renewal recovery:
+  - simulate failed renewal state
+  - fallback retry via designated backup card by promoting backup to default.
+
+Risks + rollback:
+1. **Risk:** lifecycle flags (`is_backup`, `is_disabled`) may be absent on older DB states. **Mitigation:** additive `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` migration-at-runtime handling.
+2. **Risk:** aggressive fallback promotion could switch default method unexpectedly if UI misuse occurs. **Mitigation:** explicit operator action and visible card badges.
+3. **Rollback:** revert wallet lifecycle route/UI changes and retain existing card add/remove/default behavior; additive schema remains backward-compatible.
