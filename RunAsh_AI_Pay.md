@@ -358,3 +358,42 @@ Risks + rollback:
 1. **Risk:** Removal of legacy top-level wallet/link fields can impact stale clients expecting direct `providerRequestId`. **Mitigation:** values remain available in `data` and envelope contract is now canonical; update any stale client mappers.
 2. **Risk:** Strict payload schemas can reject malformed requests previously tolerated. **Mitigation:** explicit validation errors are returned with stable envelope error codes.
 3. **Rollback:** revert Link observability module and wallet route payload parsing changes in one rollback commit; restore previous route handlers and dashboard tile blocks.
+
+## 2026-02 RunAsh AI Link final architecture, data flow, and migration notes
+
+### Final architecture (persistent + provider-backed)
+
+- **RunAshChat intent plane:** user natural-language intents (for example, `buy this`) are converted by Relay Agent into typed checkout commands with idempotency keys.
+- **Payment orchestration plane:** checkout commands are validated, enriched with tenant/session context, and routed to Link/session and billing services.
+- **Provider execution plane:** Stripe Link + Checkout/Payment Intent APIs perform payer authentication and payment authorization/capture.
+- **Durable state plane:** checkout attempts, link sessions, wallet artifacts, webhook events, dead-letter queue items, and reconciliation outcomes are persisted in DB.
+- **Status resolution plane:** webhook-confirmed state remains source-of-truth; provider lookup is fallback for delayed webhook arrival.
+
+### Data flow: RunAshChat "Instant Checkout"
+
+1. User says `buy this` in RunAshChat.
+2. Relay Agent resolves product/plan, amount/currency, merchant scope, and correlation/idempotency metadata.
+3. Payment API creates checkout attempt and returns canonical redirect contract fields (`redirectUrl`, `returnUrlSuccess`, `returnUrlPending`, `returnUrlFailed`, `providerTransactionReference`).
+4. User completes Link verification/auth flow and confirms payment.
+5. Domain webhook endpoints validate provider signatures and process events idempotently.
+6. Canonical payment status pages resolve from persisted attempt + webhook state, with provider lookup fallback.
+7. Reconciliation jobs backfill drift/backlog and sync wallet activity + subscription snapshots.
+
+### Migration: prototype to persistent/provider-backed implementation
+
+- **Prototype mode (legacy):** in-memory Link/wallet session state for demos.
+- **Target mode (current):** DB-backed repositories + provider-backed Link execution + replay-safe webhook pipeline.
+- **Migration steps:**
+  1. Apply `db/migrations/0002_wallet_link_persistence.sql`.
+  2. Run `scripts/sql/2026-02-26_backfill_wallet_demo_data.sql` where demo continuity is required.
+  3. Enable domain webhook handlers and dead-letter replay operations.
+  4. Validate `POST /api/v1/payment/usage/reconcile` against pending/expired checkout cohorts.
+- **Data protection controls:** tokenized payment references, masked card metadata only, hashed OTP artifacts, encrypted profile/billing metadata at rest.
+- **Rollback (non-breaking):** disable Link rollout flags and revert repository wiring to in-memory fallback while preserving API request/response contracts.
+
+### Backward compatibility notes for existing API consumers
+
+- Existing startup/business API field names and signatures are preserved; no required client payload/schema migration.
+- Existing webhook contracts remain compatible; newly introduced metadata is additive.
+- Existing checkout redirect/status contracts remain valid; signed-state validation hardens integrity without renaming fields.
+- Existing billing entry points (`/pricing`, `/settings/billing`, `/checkout/*`, `/portal/*`) remain stable through staged rollout.

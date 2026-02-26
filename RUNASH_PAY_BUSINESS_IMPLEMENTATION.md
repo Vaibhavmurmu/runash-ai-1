@@ -127,3 +127,84 @@ This document is limited to payment/business implementation policy. Generic cont
   - dead-letter escalation and controlled replay.
 - Reconciliation now propagates asynchronous payment/subscription outcomes into wallet activity/timeline to keep customer-visible state aligned with backend settlement progression.
 - Added webhook reconciliation health visibility for operations workflows (retry due, backlog, dead-letter depth, recent failures).
+
+## 2026-02 RunAsh AI Link adoption plan (Startup + Business)
+
+### Link adoption objectives
+
+- Enable RunAshChat "Instant Checkout" for natural-language purchase intents through Relay Agent.
+- Preserve startup velocity (minimal integration friction) while adding business-grade controls (auditability, reconciliation, role-scoped operations).
+- Keep existing payment API signatures stable while progressively enabling provider-backed Link flows.
+
+### Compliance operating model (US + India)
+
+- **US path:** standard Stripe-hosted Link/checkout execution with webhook-backed settlement state.
+- **India path:** residency-aware routing policy applies region controls and compliance-safe metadata (`region`, `residency_policy_version`, `request_id`) on outbound gateway calls.
+- **Shared controls:**
+  - no sensitive payment/auth material in logs,
+  - OTP + verification artifacts hashed,
+  - card metadata restricted to masked/tokenized representations,
+  - auditable route decisions and reconciliation trails.
+- **Contract safety:** regional routing/compliance controls are additive and do not change external API field names.
+
+### Feature flags for staged rollout (internal -> beta -> GA)
+
+- `FEATURE_FLAG_RUNASH_LINK_INTERNAL` — enables Link checkout for internal tenant allowlist only.
+- `FEATURE_FLAG_RUNASH_LINK_BETA_MERCHANTS` — enables Link for selected beta merchant IDs/tenants.
+- `FEATURE_FLAG_RUNASH_LINK_GA_PERCENT` — percentage rollout for general availability.
+- `FEATURE_FLAG_USE_BETTER_AUTH_PERCENT` — retained auth rollout dependency guard for payment-adjacent session posture.
+
+**Stage gates**
+1. **Internal:** 0 external merchants; validate webhook health, callback integrity, and reconciliation latency.
+2. **Beta merchants:** curated merchant cohort, monitored funnel/error metrics with daily rollback readiness.
+3. **GA:** progressive percentage expansion after incident-free stability window and reconciliation SLO adherence.
+
+### Rollback strategy
+
+- Immediate rollback triggers:
+  - Link verification failure spikes,
+  - provider outage/degraded webhook delivery,
+  - reconciliation backlog growth beyond runbook thresholds.
+- Rollback actions (in order):
+  1. set `FEATURE_FLAG_RUNASH_LINK_GA_PERCENT=0` and disable beta/internal flags as needed;
+  2. route affected traffic back to stable non-Link checkout fallback;
+  3. preserve webhook ingest and reconciliation for already-created attempts to avoid state drift;
+  4. revert latest Link orchestration changes only if flag rollback is insufficient.
+- Recovery exit criteria: error-rate normalization, webhook backlog burn-down, and successful replay/reconciliation parity checks.
+
+## Incident handling runbook (payments/link)
+
+### 1) Verification failures (OTP/session verification)
+
+- **Detect:** elevated `session_verified` drop-off or verification error-rate alert in operations monitoring.
+- **Triage:**
+  - inspect wallet/link verify endpoint validation errors,
+  - confirm provider OTP callback signatures,
+  - check auth session validity (`/api/auth/get-session`) for affected tenant/user cohort.
+- **Containment:** reduce rollout to internal-only, then disable beta/GA flags if customer impact persists.
+- **Recovery:** replay dead-lettered verification-related events, confirm funnel recovery, then re-open rollout stage.
+
+### 2) Provider outage / degraded provider dependencies
+
+- **Detect:** webhook delivery failures, elevated pending checkout duration, provider API timeout/error spikes.
+- **Triage:** verify provider status + local ingress health; compare catch-all webhook path vs domain endpoints.
+- **Containment:** switch traffic to stable fallback checkout path; keep idempotent event capture enabled.
+- **Recovery:** replay backlog from dead-letter queue, run reconciliation, and validate paid/pending parity before re-enabling rollout.
+
+### 3) Reconciliation backlog growth
+
+- **Detect:** backlog/health endpoints report retry due + dead-letter depth over threshold.
+- **Triage:** identify dominant event family (`checkout`, `payment`, `invoice`, `subscription`) and root-cause pattern.
+- **Containment:** pause rollout expansion and prioritize replay/reconcile workers.
+- **Recovery:**
+  1. execute targeted dead-letter replay batches,
+  2. run `POST /api/v1/payment/usage/reconcile`,
+  3. verify wallet timeline/subscription snapshot parity,
+  4. close incident after backlog and parity return within SLO.
+
+### Backward compatibility notes for existing API consumers (explicit)
+
+- Existing consumers of startup/business payment APIs require no request/response schema changes for Link adoption.
+- Existing integration points continue to receive stable fields; any new fields/metadata are additive and optional.
+- Existing webhook consumers keep current contract semantics; no version bump required for this rollout.
+- Existing fallback checkout remains operational for rollback and phased adoption safety.
