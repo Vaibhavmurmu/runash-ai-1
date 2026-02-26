@@ -493,3 +493,18 @@ Results
 - integration-flag-rollback: <pass|fail> (notes)
 - integration-failure-isolation: <pass|fail> (notes)
 ```
+
+## 2026-02 RunAshChat checkout handoff canonical context v2
+
+- Refactored Relay handoff contract generation to consume canonical commerce/session context (`cartId`, `selectedSku`, merchant profile, pricing snapshot, billing profile) instead of deriving payload details from free-text alone.
+- Added `lib/services/checkout-handoff-context-resolver.ts` to resolve merchant/account scope from authenticated session, SKU/amount from canonical selection inputs, billing currency/country, and tax/fee breakdowns via tax/payment service pathways.
+- Backward compatibility is preserved: existing `merchant_id`, `product_metadata`, and `idempotency_key` are still accepted and propagated. New metadata keys are versioned under `context_version: "v2"` and `handoff_context_v2` for richer context without breaking existing consumers.
+
+### Impacted flows
+- RunAshChat Relay → `initiate_link_checkout`
+- Accounting sync payloads consuming `accounting_context.tax_breakdown` / `fee_breakdown`
+
+### Risks and rollback
+1. **Risk:** canonical pricing inputs may be absent on legacy callers. **Mitigation:** resolver falls back to legacy-compatible defaults and deterministic digest identifiers.
+2. **Risk:** service tax computation may be unavailable during infra outages. **Mitigation:** fallback tax model emits deterministic non-zero jurisdictional approximation for continuity.
+3. **Rollback:** revert `chat-request-handler` + `checkout-handoff-context-resolver` changes; legacy `merchant_id`/`product_metadata`/idempotency behavior remains contract-compatible.

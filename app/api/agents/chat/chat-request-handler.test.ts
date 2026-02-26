@@ -31,22 +31,49 @@ test("resolves 'pay now' instant checkout intent to initiate_link_checkout tool 
   assert.deepEqual(tools, ["catalog_lookup", "initiate_link_checkout"])
 })
 
-test("builds deterministic handoff contract with idempotency key per intent", () => {
-  const first = buildCheckoutHandoffContract({
+test("builds deterministic handoff contract with canonical checkout context", async () => {
+  const first = await buildCheckoutHandoffContract({
     message: "buy this",
     sessionId: "session-1",
-    merchantId: "merchant-1",
-  })
-  const second = buildCheckoutHandoffContract({
-    message: "buy this",
-    sessionId: "session-1",
-    merchantId: "merchant-1",
+    authSession: { user: { id: "u1", role: "user", ssoOrganization: 42 } },
+    canonical: {
+      cartId: "cart-99",
+      selectedSku: "SKU-123",
+      pricingSnapshot: {
+        subtotal: 2499,
+        total: 2950,
+        currency: "USD",
+      },
+      billingProfile: {
+        country: "US",
+        state: "CA",
+      },
+      productSelection: {
+        itemName: "Noise Cancelling Headphones",
+        amount: 2950,
+      },
+      merchant_id: "merchant-legacy",
+      product_metadata: {
+        legacy_flag: true,
+      },
+      idempotency_key: "idem-legacy-1",
+    },
   })
 
-  assert.equal(first.idempotency_key, second.idempotency_key)
-  assert.equal(first.product_metadata.sku, second.product_metadata.sku)
-  assert.equal(first.chat_context.session_id, "session-1")
-  assert.equal(first.chat_context.user_intent, "buy this")
+  assert.equal(first.merchant_id, "merchant-legacy")
+  assert.equal(first.merchant_entity_id, "org-42")
+  assert.equal(first.amount, 2950)
+  assert.equal(first.currency, "USD")
+  assert.equal(first.idempotency_key, "idem-legacy-1")
+  assert.equal(first.product_metadata.sku, "SKU-123")
+  assert.equal(first.product_metadata.context_version, "v2")
+  assert.equal(first.product_metadata.cart_id, "cart-99")
+  assert.equal(first.product_metadata.legacy_flag, true)
+  assert.equal(first.chat_context.context_version, "v2")
+  assert.equal(first.chat_context.cart_id, "cart-99")
+  assert.equal(first.accounting_context.handoff_context_v2.selected_sku, "SKU-123")
+  assert.equal(first.accounting_context.fee_breakdown.amount > 0, true)
+  assert.equal(first.accounting_context.tax_breakdown.amount > 0, true)
 })
 
 test("keeps explicit tool requests for backward compatibility", () => {
@@ -56,7 +83,7 @@ test("keeps explicit tool requests for backward compatibility", () => {
 
 
 test("buy this flow triggers accounting sync for successful checkout", async () => {
-  const handoff = buildCheckoutHandoffContract({
+  const handoff = await buildCheckoutHandoffContract({
     message: "buy this",
     sessionId: "session-accounting-1",
     merchantId: "merchant-1",
@@ -91,7 +118,7 @@ test("buy this flow triggers accounting sync for successful checkout", async () 
 })
 
 test("buy this flow triggers accounting sync for refund scenario with stable idempotency key", async () => {
-  const handoff = buildCheckoutHandoffContract({
+  const handoff = await buildCheckoutHandoffContract({
     message: "buy this",
     sessionId: "session-accounting-2",
     merchantId: "merchant-2",

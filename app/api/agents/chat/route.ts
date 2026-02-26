@@ -85,10 +85,11 @@ export async function POST(request: NextRequest) {
             parsed.data.tools as SupportedTool[],
           )
           const toolPlan = buildToolPlan(selectedTools)
-          const defaultPayloads = buildDefaultToolPayloads({
+          const defaultPayloads = await buildDefaultToolPayloads({
             message: sanitizedMessage,
             sessionId: agentSession.id,
             requestedTools: selectedTools,
+            authSession: session,
           })
 
           for (const tool of toolPlan.immediate) {
