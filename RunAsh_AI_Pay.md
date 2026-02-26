@@ -312,3 +312,23 @@ Risks + rollback:
 1. **Risk:** lifecycle flags (`is_backup`, `is_disabled`) may be absent on older DB states. **Mitigation:** additive `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` migration-at-runtime handling.
 2. **Risk:** aggressive fallback promotion could switch default method unexpectedly if UI misuse occurs. **Mitigation:** explicit operator action and visible card badges.
 3. **Rollback:** revert wallet lifecycle route/UI changes and retain existing card add/remove/default behavior; additive schema remains backward-compatible.
+
+## 2026-02 Webhook domain endpoints + replay-safe reconciliation hardening
+
+- Added dedicated Stripe-signed webhook endpoints for domain routing:
+  - `POST /api/billing/webhook/checkout` (`checkout.session.*`)
+  - `POST /api/billing/webhook/session` (`setup_intent.*`)
+  - `POST /api/billing/webhook/payment` (`payment_intent.*`, `invoice.*`, `charge.*`)
+  - `POST /api/billing/webhook/subscription` (`customer.subscription.*`)
+  - Existing `POST /api/billing/webhook` remains backward compatible as the catch-all endpoint.
+- Event processing remains idempotent through `webhook_events` (`provider + event_id` uniqueness), claim-based processing transitions, exponential retry scheduling, and dead-letter promotion once retry threshold is reached.
+- Added dead-letter operations workflow:
+  - `GET /api/internal/billing/webhook/dead-letter` to inspect failed events.
+  - `POST /api/internal/billing/webhook/dead-letter` with `{ eventId }` for targeted retry or `{ limit }` for batch replay.
+- Async reconciliation now writes customer-facing wallet timeline records for checkout/payment/invoice/subscription lifecycle transitions and updates subscription snapshots where applicable.
+- Reconciliation health metrics are exposed via:
+  - `GET /api/internal/billing/webhook/health`
+  - `GET /api/dashboard/operations/monitoring` under `reconciliation.webhook` for operator dashboards.
+- Risk/rollback:
+  1. If per-domain endpoint routing causes delivery mismatch, temporarily direct Stripe to `POST /api/billing/webhook` (catch-all) while preserving signatures.
+  2. If timeline reconciliation introduces noisy events, disable wallet timeline writes by reverting `reconcileWalletTimeline` logic while retaining core billing ledger upserts.

@@ -116,3 +116,14 @@ This document is limited to payment/business implementation policy. Generic cont
 - Rollback:
   - revert wallet repository + migration commit and redeploy prior in-memory wallet fallback,
   - keep API contracts unchanged during rollback window.
+
+## 2026-02 Reliability increment: domain webhooks + dead-letter operations
+
+- Introduced domain-specific webhook ingress paths with Stripe signature verification to reduce blast radius and improve operational ownership across checkout/session/payment/subscription pipelines.
+- Established replay-safe event lifecycle using `webhook_events` and `webhook_dead_letters` with:
+  - idempotent provider event keys,
+  - in-flight claim checks,
+  - exponential retry backoff,
+  - dead-letter escalation and controlled replay.
+- Reconciliation now propagates asynchronous payment/subscription outcomes into wallet activity/timeline to keep customer-visible state aligned with backend settlement progression.
+- Added webhook reconciliation health visibility for operations workflows (retry due, backlog, dead-letter depth, recent failures).

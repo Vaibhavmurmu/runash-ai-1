@@ -1,6 +1,7 @@
 import { queryMany, queryOne } from "@/lib/db"
 import { persistTaxComputation, type TaxComputation } from "@/lib/services/tax-service"
 import { handleSubscriptionLifecycleEvent, syncAuthUserWithPaymentCustomer } from "@/lib/auth/plugins/runash-payment"
+import { WalletStore } from "@/lib/data/wallet-store"
 
 const WEBHOOK_PROVIDER = "stripe"
 const DEAD_LETTER_THRESHOLD = Number(process.env.BILLING_WEBHOOK_DEAD_LETTER_THRESHOLD ?? 10)
@@ -23,6 +24,20 @@ type StripeWebhookEvent = {
     object?: Record<string, any>
   }
 }
+
+const BILLING_TIMELINE_EVENT_TYPES = new Set([
+  "checkout.session.completed",
+  "checkout.session.expired",
+  "checkout.session.async_payment_failed",
+  "checkout.session.async_payment_succeeded",
+  "invoice.payment_succeeded",
+  "invoice.payment_failed",
+  "payment_intent.succeeded",
+  "payment_intent.payment_failed",
+  "customer.subscription.created",
+  "customer.subscription.updated",
+  "customer.subscription.deleted",
+])
 
 function mapStripeInvoiceTax(invoice: Record<string, any>): TaxComputation {
   const subtotal = Number(invoice.subtotal ?? 0) / 100
@@ -76,6 +91,159 @@ function toIsoTimestamp(value: unknown): string | null {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return null
   return new Date(numeric * 1000).toISOString()
+}
+
+function asObject(value: unknown): Record<string, any> | null {
+  return value && typeof value === "object" ? (value as Record<string, any>) : null
+}
+
+function safeUpperCurrency(value: unknown) {
+  return String(value || "usd").toUpperCase()
+}
+
+async function resolveUserIdByPaymentCustomerId(paymentCustomerId: string | null | undefined) {
+  if (!paymentCustomerId) return null
+  const link = await queryOne<{ user_id: string | null }>(
+    `
+      SELECT user_id
+      FROM payment_auth_customer_links
+      WHERE payment_provider = 'stripe' AND payment_customer_id = $1
+      LIMIT 1
+    `,
+    [paymentCustomerId],
+  )
+
+  return link?.user_id ?? null
+}
+
+
+async function ensureWalletActivityTablesReady(userId: string) {
+  await WalletStore.listActivity(userId, { limit: 1, offset: 0 })
+}
+
+async function appendWalletTimelineActivity(input: {
+  userId: string
+  eventType: string
+  description: string
+  amount?: number | null
+  currency?: string | null
+  metadata?: Record<string, unknown>
+  eventId: string
+}) {
+  await ensureWalletActivityTablesReady(input.userId)
+
+  await queryMany(
+    `
+      INSERT INTO wallet_activity_logs (id, user_id, activity_type, description, amount, currency, metadata, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW())
+      ON CONFLICT DO NOTHING
+    `,
+    [
+      `act_webhook_${input.eventId}_${input.eventType}`,
+      input.userId,
+      "checkout",
+      input.description,
+      input.amount ?? null,
+      input.currency ?? null,
+      JSON.stringify({ source: "stripe_webhook", eventType: input.eventType, ...(input.metadata ?? {}) }),
+    ],
+  )
+}
+
+async function reconcileWalletTimeline(event: StripeWebhookEvent) {
+  if (!BILLING_TIMELINE_EVENT_TYPES.has(event.type)) return
+  const stripeObject = asObject(event.data?.object)
+  if (!stripeObject) return
+
+  const customerId = stripeObject.customer ? String(stripeObject.customer) : null
+  const userId = await resolveUserIdByPaymentCustomerId(customerId)
+  if (!userId) return
+
+  if (event.type.startsWith("checkout.session.")) {
+    await appendWalletTimelineActivity({
+      userId,
+      eventType: event.type,
+      description: `Checkout ${String(stripeObject.status ?? "updated")}`,
+      amount: centsToMoney(stripeObject.amount_total),
+      currency: safeUpperCurrency(stripeObject.currency),
+      eventId: event.id,
+      metadata: {
+        checkoutSessionId: stripeObject.id ? String(stripeObject.id) : null,
+        paymentIntentId: stripeObject.payment_intent ? String(stripeObject.payment_intent) : null,
+      },
+    })
+    return
+  }
+
+  if (event.type.startsWith("payment_intent.")) {
+    await appendWalletTimelineActivity({
+      userId,
+      eventType: event.type,
+      description: event.type === "payment_intent.succeeded" ? "Payment captured" : "Payment failed",
+      amount: centsToMoney(stripeObject.amount_received ?? stripeObject.amount),
+      currency: safeUpperCurrency(stripeObject.currency),
+      eventId: event.id,
+      metadata: {
+        paymentIntentId: stripeObject.id ? String(stripeObject.id) : null,
+        invoiceId: stripeObject.invoice ? String(stripeObject.invoice) : null,
+      },
+    })
+    return
+  }
+
+  if (event.type.startsWith("invoice.")) {
+    await appendWalletTimelineActivity({
+      userId,
+      eventType: event.type,
+      description: event.type === "invoice.payment_succeeded" ? "Invoice paid" : "Invoice payment failed",
+      amount: centsToMoney(stripeObject.amount_paid ?? stripeObject.amount_due ?? stripeObject.total),
+      currency: safeUpperCurrency(stripeObject.currency),
+      eventId: event.id,
+      metadata: {
+        invoiceId: stripeObject.id ? String(stripeObject.id) : null,
+        subscriptionId: stripeObject.subscription ? String(stripeObject.subscription) : null,
+      },
+    })
+    return
+  }
+
+  if (event.type.startsWith("customer.subscription.")) {
+    const status = String(stripeObject.status ?? "unknown")
+    const subId = stripeObject.id ? String(stripeObject.id) : null
+    if (subId) {
+      await ensureWalletActivityTablesReady(userId)
+
+      await queryMany(
+        `
+          INSERT INTO wallet_subscription_snapshots (id, user_id, plan, status, next_billing_date, amount, currency, updated_at)
+          VALUES ($1, $2, $3, $4, COALESCE($5, NOW()), COALESCE($6, 0), $7, NOW())
+          ON CONFLICT (id) DO UPDATE
+          SET status = EXCLUDED.status,
+              next_billing_date = EXCLUDED.next_billing_date,
+              amount = EXCLUDED.amount,
+              currency = EXCLUDED.currency,
+              updated_at = NOW()
+        `,
+        [
+          subId,
+          userId,
+          stripeObject.items?.data?.[0]?.price?.nickname ? String(stripeObject.items.data[0].price.nickname) : "RunAsh Plan",
+          status === "canceled" ? "canceled" : status === "paused" ? "paused" : "active",
+          toIsoTimestamp(stripeObject.current_period_end),
+          centsToMoney(stripeObject.items?.data?.[0]?.price?.unit_amount),
+          safeUpperCurrency(stripeObject.currency ?? stripeObject.items?.data?.[0]?.price?.currency),
+        ],
+      )
+    }
+
+    await appendWalletTimelineActivity({
+      userId,
+      eventType: event.type,
+      description: `Subscription ${status}`,
+      eventId: event.id,
+      metadata: { subscriptionId: subId, status },
+    })
+  }
 }
 
 
@@ -336,6 +504,52 @@ async function runWebhookDomainHandler(event: StripeWebhookEvent) {
           customerName: stripeObject.name ? String(stripeObject.name) : undefined,
         },
       })
+
+      return
+    }
+    case "checkout.session.completed":
+    case "checkout.session.expired":
+    case "checkout.session.async_payment_failed":
+    case "checkout.session.async_payment_succeeded": {
+      if (!stripeObject?.id) return
+      const checkoutSession = stripeObject
+      const paymentIntentId = checkoutSession.payment_intent ? String(checkoutSession.payment_intent) : null
+      const customerId = checkoutSession.customer ? String(checkoutSession.customer) : null
+
+      await queryMany(
+        `
+          INSERT INTO billing_webhook_payments (
+            payment_intent_id, customer_id, invoice_id, status, amount, currency, captured_at,
+            failed_at, failure_reason, last_event_id, metadata, updated_at
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,NOW())
+          ON CONFLICT (payment_intent_id) DO UPDATE
+          SET customer_id = EXCLUDED.customer_id,
+              invoice_id = EXCLUDED.invoice_id,
+              status = EXCLUDED.status,
+              amount = EXCLUDED.amount,
+              currency = EXCLUDED.currency,
+              captured_at = EXCLUDED.captured_at,
+              failed_at = EXCLUDED.failed_at,
+              failure_reason = EXCLUDED.failure_reason,
+              last_event_id = EXCLUDED.last_event_id,
+              metadata = EXCLUDED.metadata,
+              updated_at = NOW()
+        `,
+        [
+          paymentIntentId ?? `checkout:${checkoutSession.id}`,
+          customerId,
+          checkoutSession.invoice ? String(checkoutSession.invoice) : null,
+          event.type.endsWith("failed") || event.type.endsWith("expired") ? "failed" : "succeeded",
+          centsToMoney(checkoutSession.amount_total),
+          safeUpperCurrency(checkoutSession.currency),
+          event.type.endsWith("failed") || event.type.endsWith("expired") ? null : toIsoTimestamp(event.created),
+          event.type.endsWith("failed") || event.type.endsWith("expired") ? toIsoTimestamp(event.created) : null,
+          event.type.endsWith("failed") || event.type.endsWith("expired") ? "checkout_session_failed" : null,
+          event.id,
+          JSON.stringify({ source: event.type, checkout_session_id: String(checkoutSession.id) }),
+        ],
+      )
 
       return
     }
@@ -767,6 +981,7 @@ export async function processWebhookEvent(event: StripeWebhookEvent) {
 
   try {
     await runWebhookDomainHandler(event)
+    await reconcileWalletTimeline(event)
     await updateWebhookEventStatus({ eventId: event.id, status: "processed", attemptsIncrement: 1, errorMessage: null })
     return { processed: true, attempts: claimed.processing_attempts + 1, duplicateProcessed: false }
   } catch (error) {
@@ -907,4 +1122,101 @@ export async function getWebhookEventByEventId(eventId: string) {
     `,
     [WEBHOOK_PROVIDER, eventId],
   )
+}
+
+export async function listWebhookDeadLetters(limit = 100) {
+  await ensureWebhookEventsTable()
+
+  return queryMany<{
+    event_id: string
+    event_type: string
+    attempts: number
+    last_error: string
+    dead_lettered_at: string
+    updated_at: string
+  }>(
+    `
+      SELECT event_id, event_type, attempts, last_error,
+             dead_lettered_at::text, updated_at::text
+      FROM webhook_dead_letters
+      WHERE provider = $1
+      ORDER BY dead_lettered_at DESC
+      LIMIT $2
+    `,
+    [WEBHOOK_PROVIDER, Math.max(1, limit)],
+  )
+}
+
+export async function retryDeadLetterWebhookEvent(eventId: string) {
+  await ensureWebhookEventsTable()
+  const reset = await rollbackWebhookEvent(eventId)
+  if (!reset) return { found: false, retried: false }
+
+  const replay = await replayWebhookEventById(eventId)
+  if (replay.processed) {
+    await queryMany(`DELETE FROM webhook_dead_letters WHERE provider = $1 AND event_id = $2`, [WEBHOOK_PROVIDER, eventId])
+  }
+
+  return { found: true, retried: replay.processed }
+}
+
+export async function getWebhookReconciliationHealthMetrics() {
+  await ensureWebhookEventsTable()
+
+  const [summary] = await queryMany<{
+    received: number
+    processing: number
+    processed: number
+    failed: number
+    dead_letter: number
+    retry_due: number
+    oldest_unprocessed_seconds: number
+  }>(
+    `
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'received')::int AS received,
+        COUNT(*) FILTER (WHERE status = 'processing')::int AS processing,
+        COUNT(*) FILTER (WHERE status = 'processed')::int AS processed,
+        COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
+        COUNT(*) FILTER (WHERE status = 'dead_letter')::int AS dead_letter,
+        COUNT(*) FILTER (WHERE status IN ('failed', 'dead_letter') AND (next_retry_at IS NULL OR next_retry_at <= NOW()))::int AS retry_due,
+        COALESCE(MAX(EXTRACT(EPOCH FROM (NOW() - received_at)) FILTER (WHERE status <> 'processed')), 0)::int AS oldest_unprocessed_seconds
+      FROM webhook_events
+      WHERE provider = $1
+    `,
+    [WEBHOOK_PROVIDER],
+  )
+
+  const [recentFailure] = await queryMany<{ event_id: string; event_type: string; last_error: string | null; updated_at: string }>(
+    `
+      SELECT event_id, event_type, last_error, updated_at::text
+      FROM webhook_events
+      WHERE provider = $1
+        AND status IN ('failed', 'dead_letter')
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `,
+    [WEBHOOK_PROVIDER],
+  )
+
+  return {
+    provider: WEBHOOK_PROVIDER,
+    backlog: {
+      received: summary?.received ?? 0,
+      processing: summary?.processing ?? 0,
+      failed: summary?.failed ?? 0,
+      deadLetter: summary?.dead_letter ?? 0,
+      retryDue: summary?.retry_due ?? 0,
+    },
+    processed: summary?.processed ?? 0,
+    oldestUnprocessedSeconds: summary?.oldest_unprocessed_seconds ?? 0,
+    recentFailure: recentFailure
+      ? {
+          eventId: recentFailure.event_id,
+          eventType: recentFailure.event_type,
+          lastError: recentFailure.last_error,
+          updatedAt: recentFailure.updated_at,
+        }
+      : null,
+  }
 }
