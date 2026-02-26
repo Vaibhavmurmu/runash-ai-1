@@ -21,6 +21,12 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Credits purchase routing uses `/pricing?intent=credits`; redeem flow uses in-app validated redeem input before billing handoff.
 - Payment API contract fields, webhook schemas, and auth/payment token formats remain unchanged by these routing updates.
 
+## 2026-02 Ecommerce payments theme/UI refactor (no contract changes)
+
+- Updated `/ecommerce/payments` presentation layer to use semantic theme tokens (`bg-background`, `text-foreground`, `border-border`, `muted-foreground`) and shared design-system inputs/select/textarea components.
+- Payment API request/response contracts, webhook schemas, and payment/auth field names remain unchanged.
+- Risk + rollback: low runtime risk (UI-only). If visual regressions are observed, revert `app/ecommerce/payments/page.tsx` to restore prior styling without data or contract rollback.
+
 ## 2026-02 validation-only reliability check (no contract changes)
 
 - **Change type:** validation-only pass; no payment runtime behavior, API signature, webhook schema, or field-name changes were introduced.
