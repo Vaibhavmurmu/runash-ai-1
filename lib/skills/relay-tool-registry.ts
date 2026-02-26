@@ -1,5 +1,10 @@
 import { initiateLinkCheckoutTool } from "@/lib/agent-tools/initiate-link-checkout"
 import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
+import {
+  getCheckoutPreviewAdapter,
+  getInventoryHealthAdapter,
+  queryCatalogAdapter,
+} from "@/services/relay-commerce-adapters"
 
 export const RELAY_AGENT_TOOLS = [
   "catalog_lookup",
@@ -20,6 +25,18 @@ export const relayToolExecutionMode: Record<RelayAgentTool, "immediate" | "queue
 }
 
 export const relayAgentSkillModules: Record<string, { name: string; execute: (args: unknown) => Promise<unknown> }> = {
+  catalog_lookup: {
+    name: "catalog_lookup",
+    execute: queryCatalogAdapter,
+  },
+  inventory_health: {
+    name: "inventory_health",
+    execute: getInventoryHealthAdapter,
+  },
+  checkout_preview: {
+    name: "checkout_preview",
+    execute: getCheckoutPreviewAdapter,
+  },
   [initiateLinkCheckoutTool.name]: {
     ...initiateLinkCheckoutTool,
     execute: async (args: unknown) => {

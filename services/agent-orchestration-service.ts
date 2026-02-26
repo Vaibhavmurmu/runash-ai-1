@@ -17,7 +17,6 @@ import {
 } from "@/lib/repositories/agent-orchestration"
 import { relayAgentSkillModules, type RelayAgentTool } from "@/lib/skills/relay-tool-registry"
 import { logApiEvent } from "@/lib/api/logging"
-import { estimateTaxPreview } from "@/lib/payments/tax-estimator"
 import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
 import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
 import { searchProductsWithProviders } from "@/services/web-search-service"
@@ -83,62 +82,6 @@ async function runWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promis
         reject(error)
       })
   })
-}
-
-async function executeCatalogLookup(payload: Record<string, unknown>) {
-  const query = String(payload.query ?? "").trim().toLowerCase()
-  await wait(120)
-
-  return {
-    query,
-    items: [
-      { sku: "ORG-QUINOA-1", name: "Organic Quinoa", score: 0.96 },
-      { sku: "ORG-AVO-2", name: "Organic Avocado", score: 0.91 },
-    ],
-  }
-}
-
-async function executeInventoryHealth(payload: Record<string, unknown>) {
-  await wait(100)
-  return {
-    warehouse: String(payload.warehouse ?? "default"),
-    lowStockSkus: ["ORG-QUINOA-1", "BAG-REUSE-5"],
-    generatedAt: new Date().toISOString(),
-  }
-}
-
-async function executeCheckoutPreview(payload: Record<string, unknown>) {
-  await wait(110)
-  const lineItems = Array.isArray(payload.items) ? payload.items.length : 0
-  const amount = typeof payload.amount === "number" ? payload.amount : 42.5
-  const currency = typeof payload.currency === "string" ? payload.currency : "USD"
-  const taxPreview = estimateTaxPreview({
-    country: typeof payload.country === "string" ? payload.country : "US",
-    region: typeof payload.region === "string" ? payload.region : null,
-    amount,
-    currency,
-    lineItemMetadata:
-      payload.line_item_metadata && typeof payload.line_item_metadata === "object"
-        ? (payload.line_item_metadata as { taxCode?: string; category?: string; tags?: string[] })
-        : undefined,
-  })
-
-  return {
-    lineItems,
-    estimatedTotal: taxPreview.totalPayable,
-    preview: {
-      subtotal: taxPreview.subtotal,
-      gstVatAmount: taxPreview.gstVatAmount,
-      totalPayable: taxPreview.totalPayable,
-      taxLabel: taxPreview.taxLabel,
-      taxRatePercent: taxPreview.taxRatePercent,
-      country: taxPreview.country,
-      region: taxPreview.region,
-      currency: taxPreview.currency,
-      previewDisplayedAt: new Date().toISOString(),
-    },
-    warnings: lineItems > 8 ? ["Large cart may require split shipment"] : [],
-  }
 }
 
 
@@ -545,9 +488,9 @@ export async function executeToolWithPolicy(
   })
 
   const execMap: Record<SupportedTool, () => Promise<Record<string, unknown>>> = {
-    catalog_lookup: () => executeCatalogLookup(payload),
-    inventory_health: () => executeInventoryHealth(payload),
-    checkout_preview: () => executeCheckoutPreview(payload),
+    catalog_lookup: async () => (await relayAgentSkillModules.catalog_lookup.execute(payload)) as Record<string, unknown>,
+    inventory_health: async () => (await relayAgentSkillModules.inventory_health.execute(payload)) as Record<string, unknown>,
+    checkout_preview: async () => (await relayAgentSkillModules.checkout_preview.execute(payload)) as Record<string, unknown>,
     web_search: () => executeWebSearch(payload),
     initiate_link_checkout: () => executeInitiateLinkCheckout(payload),
   }

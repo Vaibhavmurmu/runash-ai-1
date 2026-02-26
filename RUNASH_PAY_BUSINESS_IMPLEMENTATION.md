@@ -258,3 +258,16 @@ Results
 - integration-flag-off-checkout-continuity: <pass|fail> (notes)
 - integration-accounting-failure-isolation: <pass|fail> (notes)
 ```
+
+## 2026-02-26 Relay commerce adapter hardening (catalog/inventory/preview)
+
+- Replaced hardcoded Relay tool implementations for `catalog_lookup`, `inventory_health`, and `checkout_preview` with provider-backed service adapters.
+- Tool routing now goes through `relayAgentSkillModules` for these operations, ensuring deterministic orchestration and consistent typed payloads.
+- Checkout preview responses now include source-of-truth identifiers (`quote_id`/`preview_id`), while catalog + inventory include auditable identifiers (`sku`, `inventory_location_id`, `inventory_snapshot_id`) for downstream checkout and accounting traces.
+- Timeout/retry/throttle behavior in the orchestration layer remains unchanged; only tool execution backend wiring changed.
+
+### Risks and rollback
+
+- **Primary risk:** repository-backed product catalog may be unavailable in local/dev environments without database connectivity.
+- **Mitigation:** adapters retain safe fallback to local in-memory product seed data to preserve non-prod behavior.
+- **Rollback:** revert adapter wiring in `lib/skills/relay-tool-registry.ts` and orchestration map in `services/agent-orchestration-service.ts` to prior implementation if regression is detected.
