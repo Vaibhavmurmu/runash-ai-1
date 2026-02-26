@@ -21,6 +21,16 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Credits purchase routing uses `/pricing?intent=credits`; redeem flow uses in-app validated redeem input before billing handoff.
 - Payment API contract fields, webhook schemas, and auth/payment token formats remain unchanged by these routing updates.
 
+## 2026-02 validation-only reliability check (no contract changes)
+
+- **Change type:** validation-only pass; no payment runtime behavior, API signature, webhook schema, or field-name changes were introduced.
+- **Impacted payment/auth flows reviewed:**
+  - Checkout entry via `/pricing?intent=credits`
+  - Settings action payment-adjacent APIs (`credits-balance`, `refer-earn`, `upgrade-plan`)
+  - Auth-gated payment access via Better Auth session validation (`/api/auth/get-session`)
+- **Risk assessment:** low product risk because this update is documentation + validation only; primary operational risk is CI/local build interruption when database environment variables are absent.
+- **Rollback plan:** revert this documentation commit if needed; no data migration, no API rollback, and no payment contract rollback required.
+
 ## Auth dependency notes for payment flows
 
 - OTP email login verification now mints canonical auth sessions and secure Better Auth cookies for `purpose=login`; non-login OTP purposes remain verification-only.
