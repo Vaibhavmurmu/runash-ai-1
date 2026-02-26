@@ -68,4 +68,12 @@ export const authSchemaTables = {
   },
 } as const
 
+export const appSchemaTables = {
+  waitlistEntries: {
+    table: "waitlist_entries",
+    fields: ["id", "email", "name", "company", "use_case", "created_at"],
+  },
+} as const
+
 export type AuthSchemaTableName = keyof typeof authSchemaTables
+export type AppSchemaTableName = keyof typeof appSchemaTables

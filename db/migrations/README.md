@@ -5,6 +5,7 @@ This directory is configured as Drizzle migration output (`drizzle.config.ts -> 
 Current status:
 - Repository remains SQL-first for production migration execution (`scripts/sql/*.sql` and related `scripts/*.sql`).
 - `0000_auth_neon_better_auth_baseline.sql` is the executable baseline for Better Auth tables plus RunAsh session registry tables.
+- `0001_waitlist_entries.sql` provisions `waitlist_entries` for waitlist signups and duplicate-safe email capture.
 
 Operational guidance:
 1. Keep production-safe migration SQL reviewed and idempotent where practical.
