@@ -89,6 +89,23 @@ export const appSchemaTables = {
     table: "accounting_counterparties",
     fields: ["id", "entity_type", "name", "gstin", "outstanding", "is_active", "created_at", "updated_at"],
   },
+  agentRoleDecisions: {
+    table: "agent_role_decisions",
+    fields: [
+      "id",
+      "session_id",
+      "message_id",
+      "tenant_id",
+      "agent_role",
+      "tool_name",
+      "decision_status",
+      "objective_weights",
+      "guardrails",
+      "preferences",
+      "outcome",
+      "created_at",
+    ],
+  },
 } as const
 
 export type AuthSchemaTableName = keyof typeof authSchemaTables

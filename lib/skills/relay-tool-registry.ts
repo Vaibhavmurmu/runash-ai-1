@@ -1,10 +1,12 @@
 import { initiateLinkCheckoutTool } from "@/lib/agent-tools/initiate-link-checkout"
 import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
+import { type AgentRole, isToolAllowedForRole, resolveRolePolicy } from "@/services/agent-role-orchestration"
 import {
   getCheckoutPreviewAdapter,
   getInventoryHealthAdapter,
   queryCatalogAdapter,
 } from "@/services/relay-commerce-adapters"
+import { searchProductsWithProviders } from "@/services/web-search-service"
 
 export const RELAY_AGENT_TOOLS = [
   "catalog_lookup",
@@ -15,6 +17,16 @@ export const RELAY_AGENT_TOOLS = [
 ] as const
 
 export type RelayAgentTool = (typeof RELAY_AGENT_TOOLS)[number]
+
+export type RoleTaggedActivitySummary = {
+  role: AgentRole
+  tool: RelayAgentTool
+  objectiveWeights: Record<string, number>
+  guardrails: Record<string, number>
+  allowedByRolePolicy: boolean
+  status: "allowed" | "blocked"
+  message: string
+}
 
 export const relayToolExecutionMode: Record<RelayAgentTool, "immediate" | "queued"> = {
   catalog_lookup: "immediate",
@@ -36,6 +48,14 @@ export const relayAgentSkillModules: Record<string, { name: string; execute: (ar
   checkout_preview: {
     name: "checkout_preview",
     execute: getCheckoutPreviewAdapter,
+  },
+  web_search: {
+    name: "web_search",
+    execute: async (args: unknown) => {
+      const payload = (args ?? {}) as Record<string, unknown>
+      const query = typeof payload.query === "string" ? payload.query : ""
+      return searchProductsWithProviders(query)
+    },
   },
   [initiateLinkCheckoutTool.name]: {
     ...initiateLinkCheckoutTool,
@@ -78,4 +98,47 @@ export const relayAgentSkillModules: Record<string, { name: string; execute: (ar
       return initiateLinkCheckoutTool.execute(args)
     },
   },
+}
+
+export function createRoleTaggedActivitySummary(role: AgentRole, tool: RelayAgentTool, allowedByRolePolicy: boolean): RoleTaggedActivitySummary {
+  const policy = resolveRolePolicy(role)
+  return {
+    role,
+    tool,
+    objectiveWeights: policy.objectiveWeights,
+    guardrails: policy.guardrails,
+    allowedByRolePolicy,
+    status: allowedByRolePolicy ? "allowed" : "blocked",
+    message: allowedByRolePolicy
+      ? `${role} role allowed to invoke ${tool}`
+      : `${role} role is blocked from invoking ${tool}`,
+  }
+}
+
+export async function executeRoleConditionedTool(input: {
+  role: AgentRole
+  tool: RelayAgentTool
+  args: unknown
+}): Promise<{ result: Record<string, unknown>; activitySummary: RoleTaggedActivitySummary }> {
+  const allowed = isToolAllowedForRole(input.role, input.tool)
+  const activitySummary = createRoleTaggedActivitySummary(input.role, input.tool, allowed)
+
+  if (!allowed) {
+    return {
+      result: {
+        status: "blocked_by_role_policy",
+        blocked_reason: "tool_not_allowed_for_role",
+        tool: input.tool,
+        role: input.role,
+      },
+      activitySummary,
+    }
+  }
+
+  const module = relayAgentSkillModules[input.tool]
+  const executionResult = (await module.execute(input.args)) as Record<string, unknown>
+  return {
+    result: executionResult,
+    activitySummary,
+  }
 }
