@@ -1,4 +1,5 @@
 import { initiateLinkCheckoutTool } from "@/lib/agent-tools/initiate-link-checkout"
+import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
 
 export const RELAY_AGENT_TOOLS = [
   "catalog_lookup",
@@ -19,5 +20,45 @@ export const relayToolExecutionMode: Record<RelayAgentTool, "immediate" | "queue
 }
 
 export const relayAgentSkillModules: Record<string, { name: string; execute: (args: unknown) => Promise<unknown> }> = {
-  [initiateLinkCheckoutTool.name]: initiateLinkCheckoutTool,
+  [initiateLinkCheckoutTool.name]: {
+    ...initiateLinkCheckoutTool,
+    execute: async (args: unknown) => {
+      const payload = (args ?? {}) as Record<string, unknown>
+      const amountMinor = typeof payload.amount === "number" && Number.isFinite(payload.amount) ? Math.round(payload.amount) : 0
+      const currency = typeof payload.currency === "string" ? payload.currency : "USD"
+      const humanConfirmed =
+        typeof payload.human_confirmed === "boolean"
+          ? payload.human_confirmed
+          : typeof payload.user_confirmation_after_preview === "boolean"
+            ? payload.user_confirmation_after_preview
+            : false
+      const mfaVerified = typeof payload.mfa_verified === "boolean" ? payload.mfa_verified : false
+
+      const validatorGate = enforcePaymentValidatorMiddleware({
+        amountMinor,
+        currency,
+        humanConfirmed,
+        mfaVerified,
+      })
+
+      if (!validatorGate.allowed) {
+        return {
+          status: "validation_failed",
+          checkout_session_id: null,
+          request_id: "validator_gate_blocked",
+          next_action: "collect_valid_checkout_fields",
+          blocked_reason: "validator_gate_blocked",
+          validatorGate,
+          activity_summary_payload: {
+            checkoutId: null,
+            status: "validation_failed",
+            nextAction: "collect_valid_checkout_fields",
+            requestId: "validator_gate_blocked",
+          },
+        }
+      }
+
+      return initiateLinkCheckoutTool.execute(args)
+    },
+  },
 }

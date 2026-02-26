@@ -44,10 +44,15 @@ export interface LinkQuickPayPreview {
     merchant_id: string
     amount: number
     currency: "USD" | "INR"
+    idempotency_key?: string
     product_metadata: {
       item_name: string
       sku: string
       tags: string[]
+    }
+    chat_context?: {
+      session_id: string
+      user_intent: string
     }
     country?: string
     region?: string

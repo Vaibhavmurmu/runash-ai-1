@@ -266,3 +266,20 @@ Risks + rollback:
 1. If Stripe SDK/credentials are unavailable in a non-prod environment, provider service falls back to deterministic mock IDs to keep local UX paths testable.
 2. If webhook event mapping causes false verification transitions, rollback by reverting wallet-link sync logic in `app/api/billing/webhook/route.ts` while preserving existing billing webhook processing.
 3. No breaking API contract changes were introduced; rollback is code revert only (no schema migration required for compatibility due to additive columns).
+
+## 2026-02 Relay Instant Checkout hardening (RunAshChat → Stripe Link)
+
+- `initiate_link_checkout` in relay tool registry now enforces validator middleware before tool execution, ensuring checkout calls are blocked before provider execution when HITL/MFA policy fails.
+- Added deterministic handoff contract generation from chat context (`session_id`, normalized user intent), merchant metadata, and product metadata so checkout session creation is stable across retries.
+- Chat activity payload now includes UI-safe structured fields for rendering instant checkout state:
+  - `checkoutId`
+  - `status`
+  - `nextAction`
+  - `requestId`
+- Retry behavior uses per-intent deterministic idempotency keys to prevent duplicate checkout sessions across retries and reconnect flows.
+- Intent routing coverage expanded for phrases: `buy this`, `confirm purchase`, and `pay now` to ensure consistent `catalog_lookup -> initiate_link_checkout` path selection.
+
+Risks + rollback:
+1. **Risk:** deterministic idempotency keys may over-deduplicate if upstream intent normalization is too broad. **Mitigation:** key includes session and normalized intent digest.
+2. **Rollback:** revert relay handoff contract generation and registry middleware wrapper in a single commit; API signatures remain backward compatible.
+3. **Compatibility:** existing payload fields remain additive; no breaking changes to payment contract field names.

@@ -50,6 +50,21 @@ export const initiateLinkCheckoutToolParameters = {
         },
       },
     },
+    chat_context: {
+      type: "object",
+      additionalProperties: false,
+      required: ["session_id", "user_intent"],
+      properties: {
+        session_id: {
+          type: "string",
+          description: "RunAshChat session identifier used for deterministic handoff.",
+        },
+        user_intent: {
+          type: "string",
+          description: "Normalized checkout intent phrase from the chat message.",
+        },
+      },
+    },
     human_confirmed: {
       type: "boolean",
       description: "Indicates whether a human explicitly confirmed high-value checkout actions.",
@@ -110,6 +125,12 @@ const initiateLinkCheckoutInputSchema = z.object({
         })
       }
     }),
+  chat_context: z
+    .object({
+      session_id: z.string().trim().min(1),
+      user_intent: z.string().trim().min(1),
+    })
+    .optional(),
   human_confirmed: z.boolean().optional(),
   mfa_verified: z.boolean().optional(),
   default_payment_method: z.string().trim().min(1).optional(),
@@ -185,7 +206,9 @@ export type InitiateLinkCheckoutActivityPayload = {
   activity_summary_payload: {
     status: "initiated" | "validation_failed" | "failed"
     checkoutId: string | null
-    taxBreakdown: {
+    nextAction: "open_link_checkout" | "collect_valid_checkout_fields" | "retry_or_manual_review"
+    requestId: string
+    taxBreakdown?: {
       subtotal: number
       tax: number
       total: number
@@ -202,7 +225,21 @@ export type InitiateLinkCheckoutActivityPayload = {
         amount: number
       }>
     }
-    nextAction: "open_link_checkout" | "collect_valid_checkout_fields" | "retry_or_manual_review"
+  }
+  resolved_handoff_contract?: {
+    merchant_id: string
+    amount: number
+    currency: "INR" | "USD"
+    product_metadata: {
+      item_name: string
+      sku: string
+      tags: string[]
+    }
+    chat_context?: {
+      session_id: string
+      user_intent: string
+    }
+    idempotency_key?: string
   }
 }
 
@@ -247,6 +284,15 @@ export const initiateLinkCheckoutTool = {
             lineItems: [],
           },
           nextAction: "collect_valid_checkout_fields",
+          requestId,
+        },
+        resolved_handoff_contract: {
+          merchant_id: payload.merchant_id,
+          amount: payload.amount,
+          currency: payload.currency,
+          product_metadata: payload.product_metadata,
+          chat_context: payload.chat_context,
+          idempotency_key: payload.idempotency_key,
         },
       }
     }
@@ -322,6 +368,15 @@ export const initiateLinkCheckoutTool = {
           checkoutId: null,
           taxBreakdown,
           nextAction: "collect_valid_checkout_fields",
+          requestId,
+        },
+        resolved_handoff_contract: {
+          merchant_id: payload.merchant_id,
+          amount: payload.amount,
+          currency: payload.currency,
+          product_metadata: payload.product_metadata,
+          chat_context: payload.chat_context,
+          idempotency_key: payload.idempotency_key,
         },
       }
     }
@@ -358,6 +413,7 @@ export const initiateLinkCheckoutTool = {
           checkoutId: null,
           taxBreakdown,
           nextAction: "collect_valid_checkout_fields",
+          requestId,
         },
       }
     }
@@ -409,6 +465,15 @@ export const initiateLinkCheckoutTool = {
           checkoutId: checkoutResult.checkout_session_id,
           taxBreakdown,
           nextAction: checkoutResult.next_action,
+          requestId: checkoutResult.request_id,
+        },
+        resolved_handoff_contract: {
+          merchant_id: payload.merchant_id,
+          amount: payload.amount,
+          currency: payload.currency,
+          product_metadata: payload.product_metadata,
+          chat_context: payload.chat_context,
+          idempotency_key: checkoutResult.idempotency_key,
         },
       }
     } catch {
@@ -436,6 +501,15 @@ export const initiateLinkCheckoutTool = {
           checkoutId: null,
           taxBreakdown,
           nextAction: "retry_or_manual_review",
+          requestId,
+        },
+        resolved_handoff_contract: {
+          merchant_id: payload.merchant_id,
+          amount: payload.amount,
+          currency: payload.currency,
+          product_metadata: payload.product_metadata,
+          chat_context: payload.chat_context,
+          idempotency_key: payload.idempotency_key,
         },
       }
     }
