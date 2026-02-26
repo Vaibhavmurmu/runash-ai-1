@@ -13,11 +13,21 @@ import {
   updateAgentMessage,
 } from "@/lib/repositories/agent-orchestration"
 import { RELAY_AGENT_TOOLS } from "@/lib/skills/relay-tool-registry"
+import { AGENT_ROLES } from "@/services/agent-role-orchestration"
 import { AgentOrchestrationService, type SupportedTool } from "@/services/agent-orchestration-service"
 import { enqueueToolJob } from "@/services/agent-tool-queue-worker"
 import { buildDefaultToolPayloads, buildToolPlan, resolveRunAshChatToolSelection } from "./chat-request-handler"
 
 const requestSchema = z.object({
+  agentRole: z.enum(AGENT_ROLES).default("broker"),
+  preferences: z
+    .object({
+      prioritizeSustainability: z.boolean().optional(),
+      maxBudgetMinor: z.number().int().nonnegative().optional(),
+      minMarginPercent: z.number().min(0).max(100).optional(),
+      urgencyLevel: z.enum(["low", "medium", "high"]).optional(),
+    })
+    .optional(),
   sessionId: z.string().trim().min(1).optional(),
   title: z.string().trim().min(1).max(120).optional(),
   message: z.string().trim().min(1).max(5000),
@@ -100,6 +110,8 @@ export async function POST(request: NextRequest) {
               sessionId: agentSession.id,
               messageId: assistantMessage.id,
               tenantId: userId,
+              role: parsed.data.agentRole,
+              preferences: parsed.data.preferences,
             })
 
             toolOutputs[tool] = execution.result

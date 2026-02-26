@@ -15,12 +15,22 @@ import {
   createToolResult,
   pruneExpiredAgentRecords,
 } from "@/lib/repositories/agent-orchestration"
-import { relayAgentSkillModules, type RelayAgentTool } from "@/lib/skills/relay-tool-registry"
+import {
+  executeRoleConditionedTool,
+  type RelayAgentTool,
+} from "@/lib/skills/relay-tool-registry"
 import { logApiEvent } from "@/lib/api/logging"
 import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
 import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
 import { searchProductsWithProviders } from "@/services/web-search-service"
 import { postAccountingEvent, type AccountingEventType } from "@/lib/services/runashbook-accounting-service"
+import { createAgentRoleDecision } from "@/lib/repositories/agent-role-decisions"
+import {
+  clampRolePreferences,
+  resolveRolePolicy,
+  type AgentRole,
+  type RolePreferences,
+} from "@/services/agent-role-orchestration"
 
 export type SupportedTool = RelayAgentTool
 
@@ -28,6 +38,8 @@ export type ToolExecutionContext = {
   sessionId: string
   messageId: string
   tenantId: string
+  role?: AgentRole
+  preferences?: RolePreferences
   correlationId?: string
 }
 
@@ -487,12 +499,30 @@ export async function executeToolWithPolicy(
     status: "started",
   })
 
+  const role = context.role ?? "broker"
+  const preferences = clampRolePreferences(context.preferences)
+  const policy = resolveRolePolicy(role)
   const execMap: Record<SupportedTool, () => Promise<Record<string, unknown>>> = {
-    catalog_lookup: async () => (await relayAgentSkillModules.catalog_lookup.execute(payload)) as Record<string, unknown>,
-    inventory_health: async () => (await relayAgentSkillModules.inventory_health.execute(payload)) as Record<string, unknown>,
-    checkout_preview: async () => (await relayAgentSkillModules.checkout_preview.execute(payload)) as Record<string, unknown>,
-    web_search: () => executeWebSearch(payload),
-    initiate_link_checkout: () => executeInitiateLinkCheckout(payload),
+    catalog_lookup: async () => {
+      const execution = await executeRoleConditionedTool({ role, tool: "catalog_lookup", args: payload })
+      return { ...execution.result, activity_summary_role: execution.activitySummary }
+    },
+    inventory_health: async () => {
+      const execution = await executeRoleConditionedTool({ role, tool: "inventory_health", args: payload })
+      return { ...execution.result, activity_summary_role: execution.activitySummary }
+    },
+    checkout_preview: async () => {
+      const execution = await executeRoleConditionedTool({ role, tool: "checkout_preview", args: payload })
+      return { ...execution.result, activity_summary_role: execution.activitySummary }
+    },
+    web_search: async () => {
+      const execution = await executeRoleConditionedTool({ role, tool: "web_search", args: payload })
+      return { ...execution.result, activity_summary_role: execution.activitySummary }
+    },
+    initiate_link_checkout: async () => {
+      const execution = await executeRoleConditionedTool({ role, tool: "initiate_link_checkout", args: payload })
+      return { ...execution.result, activity_summary_role: execution.activitySummary }
+    },
   }
 
   let lastError: unknown
@@ -502,6 +532,22 @@ export async function executeToolWithPolicy(
       const result = await runWithTimeout(execMap[tool](), TOOL_TIMEOUT_MS)
       await createToolResult(lineage.id, result)
       await completeToolCallLineage(lineage.id, "completed")
+      const roleActivity =
+        result.activity_summary_role && typeof result.activity_summary_role === "object"
+          ? (result.activity_summary_role as Record<string, unknown>)
+          : undefined
+      await createAgentRoleDecision({
+        sessionId: context.sessionId,
+        messageId: context.messageId,
+        tenantId: context.tenantId,
+        agentRole: role,
+        toolName: tool,
+        decisionStatus: roleActivity?.status === "blocked" ? "blocked" : "completed",
+        objectiveWeights: policy.objectiveWeights,
+        guardrails: policy.guardrails,
+        preferences,
+        outcome: result,
+      })
 
       if (tool === "catalog_lookup") {
         catalogCache.set(cacheKey, { value: result, expiresAt: Date.now() + 30_000 })
@@ -510,7 +556,7 @@ export async function executeToolWithPolicy(
       logApiEvent("info", "relay.tool.execution.completed", {
         route: "relay/tool",
         requestId: correlationId,
-        details: { tool, correlationId, attempt },
+        details: { tool, correlationId, attempt, role },
       })
       return { tool, result, fromCache: false }
     } catch (error) {
@@ -519,7 +565,7 @@ export async function executeToolWithPolicy(
         logApiEvent("warn", "relay.tool.execution.retry", {
           route: "relay/tool",
           requestId: correlationId,
-          details: { tool, correlationId, attempt },
+          details: { tool, correlationId, attempt, role },
         })
         await wait(120 * (attempt + 1))
       }
@@ -527,6 +573,18 @@ export async function executeToolWithPolicy(
   }
 
   await completeToolCallLineage(lineage.id, "failed")
+  await createAgentRoleDecision({
+    sessionId: context.sessionId,
+    messageId: context.messageId,
+    tenantId: context.tenantId,
+    agentRole: role,
+    toolName: tool,
+    decisionStatus: "failed",
+    objectiveWeights: policy.objectiveWeights,
+    guardrails: policy.guardrails,
+    preferences,
+    outcome: { error: lastError instanceof Error ? lastError.message : "tool_execution_failed" },
+  })
   logApiEvent("error", "relay.tool.execution.failed", {
     route: "relay/tool",
     requestId: correlationId,

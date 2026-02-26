@@ -514,3 +514,14 @@ Results
 1. **Risk:** canonical pricing inputs may be absent on legacy callers. **Mitigation:** resolver falls back to legacy-compatible defaults and deterministic digest identifiers.
 2. **Risk:** service tax computation may be unavailable during infra outages. **Mitigation:** fallback tax model emits deterministic non-zero jurisdictional approximation for continuity.
 3. **Rollback:** revert `chat-request-handler` + `checkout-handoff-context-resolver` changes; legacy `merchant_id`/`product_metadata`/idempotency behavior remains contract-compatible.
+
+## 2026-02 Agent role orchestration audit trail for RunAshChat Link checkout
+
+- Added role-aware agent orchestration controls for `buyer`, `seller`, and `broker` to gate tool access for payment-adjacent chat flows while preserving existing checkout API contracts.
+- Role policies now carry objective weights (`price`, `sustainability`, `inventory urgency`, `margin`) and enforce guardrails (`max discount`, approval threshold, negotiation limit) during tool execution planning.
+- Relay tool execution now emits role-tagged activity summaries for auditability and writes structured role decision outcomes (`allowed`/`blocked`/`completed`/`failed`) to persistent storage for post-hoc deal review and matching analysis.
+- Migration added: `db/migrations/0004_agent_role_decisions.sql`.
+- Risks + rollback:
+  1. **Risk:** role misconfiguration could over-block tool usage for valid checkout intents. **Mitigation:** default fallback role remains `broker` and role policy checks return explicit blocked reasons.
+  2. **Rollback:** revert role-conditioned execution path changes in `services/agent-orchestration-service.ts` and `lib/skills/relay-tool-registry.ts`, then keep migration table dormant (no contract break).
+  3. **Compatibility:** all new request fields are additive (`agentRole`, `preferences`) and existing tool contracts remain backward compatible.
