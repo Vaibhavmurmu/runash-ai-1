@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 
 import { respondError, respondSuccess, resolveRequestId } from "@/lib/api/response"
 import { WalletStore } from "@/lib/data/wallet-store"
+import { logWalletPaymentTransition } from "@/lib/payments/wallet-audit-log"
 import { saveLinkPaymentMethodViaProvider, toUserSafeProviderError } from "@/lib/services/link-provider-service"
 
 export async function POST(request: NextRequest) {
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest) {
       brand: providerPayment.brand,
     })
 
+    logWalletPaymentTransition({ requestId, action: "wallet.link.payment_method.save", status: "success", userId: body.userId })
     return respondSuccess(
       request,
       {
@@ -55,6 +57,7 @@ export async function POST(request: NextRequest) {
     )
   } catch (error) {
     const mapped = toUserSafeProviderError(error)
+    logWalletPaymentTransition({ requestId, action: "wallet.link.payment_method.save", status: "failed", userId: body?.userId, reasonCodes: [mapped.code] })
     return respondError(
       request,
       {

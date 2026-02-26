@@ -636,3 +636,13 @@ Rollback:
 2. If needed, set `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK=true`.
 3. Keep schema changes in place (non-breaking additive migration); no destructive rollback required.
 4. Re-validate auth session endpoints and monitor `auth.legacy_fallback.used` for expected recovery.
+
+
+## Wallet/Link Authentication Hardening
+
+- Wallet Link checkout initiation requires **step-up auth context** for high-value and high-risk operations:
+  - `human_confirmed=true` for HITL approval gates.
+  - `mfa_verified=true` for MFA-gated flows.
+- High-risk wallet mutations (default method switch, subscription status updates) are rejected unless HITL + MFA assertions are present.
+- Geo/risk checks are evaluated at request time and surfaced as explicit reason codes to callers for adaptive auth UX (review queues, challenge loops, or hard-deny).
+- Auth-adjacent telemetry for wallet/link flows is emitted only through sanitized structured logs; secrets, OTP values, and card data are not logged.

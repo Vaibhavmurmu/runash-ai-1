@@ -261,3 +261,12 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
   4. lazily re-encrypt records on read/write using the new primary key;
   5. remove retired key only after migration completion verification.
 - Sensitive payment/auth values (PAN/CVV/OTP raw values, verification codes) remain prohibited from logs; only hashed/tokenized representations are allowed.
+
+
+## Wallet + Link Payment Security Controls
+
+- **Validator threshold enforcement (Link checkout):** Wallet Link session creation now enforces payment validator thresholds with HITL (`human_confirmed`) and MFA (`mfa_verified`) signals before initiating provider checkout.
+- **High-risk wallet action gates:** Default payment method changes and subscription state transitions now require both HITL and MFA signals. Missing controls are blocked with explicit reason codes.
+- **Geo + risk policy decisioning:** Wallet/link routes evaluate geo mismatch (`GEO_MISMATCH_REVIEW`), risk score review/block thresholds, and explicit blocklist risk signals. Blocked actions return explicit reason codes in response metadata for deterministic handling.
+- **PII-safe logging:** Wallet/link auditing uses payment-safe sanitization and never logs PAN/CVV/OTP/secrets; user/session identifiers are fingerprinted before audit emission.
+- **Structured audit coverage:** Every payment-impacting transition emits structured audit records (`[wallet.payment.audit]`) with request correlation and normalized status (`blocked|review|success|failed`).

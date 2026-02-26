@@ -64,9 +64,8 @@ const USER_SAFE_MESSAGES: Record<LinkProviderErrorCode, string> = {
   LINK_PROVIDER_UNAVAILABLE: "Payment provider is currently unavailable. Please try again shortly.",
 }
 
-function toProviderError(code: LinkProviderErrorCode, cause: unknown, providerRequestId?: string | null): LinkProviderError {
-  const message = cause instanceof Error ? cause.message : USER_SAFE_MESSAGES[code]
-  return new LinkProviderError(code, message, 502, providerRequestId)
+function toProviderError(code: LinkProviderErrorCode, _cause: unknown, providerRequestId?: string | null): LinkProviderError {
+  return new LinkProviderError(code, USER_SAFE_MESSAGES[code], 502, providerRequestId)
 }
 
 export function toUserSafeProviderError(error: unknown): { code: LinkProviderErrorCode; message: string; providerRequestId: string | null } {

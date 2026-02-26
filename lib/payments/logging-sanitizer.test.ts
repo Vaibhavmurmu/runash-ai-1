@@ -18,3 +18,20 @@ test("sanitizePaymentActivityDetails masks payment identifiers and sensitive aut
   assert.equal(sanitized.otp, "[REDACTED]")
   assert.equal(sanitized.amount, 1200)
 })
+
+
+test("sanitizePaymentActivityDetails redacts PAN/CVV/secrets across wallet payloads", () => {
+  const sanitized = sanitizePaymentActivityDetails({
+    cardNumber: "4242 4242 4242 4242",
+    pan: "5555444433331111",
+    cvv: "123",
+    otp: 123456,
+    apiSecret: "shh-abc",
+  })
+
+  assert.equal(sanitized.cardNumber, "*4242")
+  assert.equal(sanitized.pan, "*1111")
+  assert.equal(sanitized.cvv, "[REDACTED]")
+  assert.equal(sanitized.otp, "[REDACTED]")
+  assert.equal(sanitized.apiSecret, "[REDACTED]")
+})

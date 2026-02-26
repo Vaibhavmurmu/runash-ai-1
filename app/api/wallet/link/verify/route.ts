@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 
 import { respondError, respondSuccess, resolveRequestId } from "@/lib/api/response"
 import { WalletStore } from "@/lib/data/wallet-store"
+import { logWalletPaymentTransition } from "@/lib/payments/wallet-audit-log"
 import { fetchLinkVerificationFromProvider, toUserSafeProviderError } from "@/lib/services/link-provider-service"
 
 export async function POST(request: NextRequest) {
@@ -29,6 +30,7 @@ export async function POST(request: NextRequest) {
       providerRequestId: session.providerRequestId,
     })
 
+    logWalletPaymentTransition({ requestId, action: "wallet.link.verify", status: "failed", userId: session.userId, sessionId: session.id, reasonCodes: ["SESSION_EXPIRED"] })
     return respondError(
       request,
       { code: "LINK_VERIFICATION_FAILED", message: "Session expired" },
@@ -62,6 +64,7 @@ export async function POST(request: NextRequest) {
             ? "Session expired"
             : "Link verification failed"
 
+      logWalletPaymentTransition({ requestId, action: "wallet.link.verify", status: providerVerification.status === "pending" ? "review" : "failed", userId: session.userId, sessionId: session.id, reasonCodes: [providerVerification.status === "pending" ? "PROVIDER_PENDING" : "PROVIDER_FAILED"] })
       return respondError(
         request,
         { code: "LINK_VERIFICATION_FAILED", message },
@@ -78,6 +81,7 @@ export async function POST(request: NextRequest) {
 
     const autofill = await WalletStore.getLinkAutofillForSession(session.id)
 
+    logWalletPaymentTransition({ requestId, action: "wallet.link.verify", status: "success", userId: session.userId, sessionId: session.id })
     return respondSuccess(
       request,
       {
@@ -97,6 +101,7 @@ export async function POST(request: NextRequest) {
     )
   } catch (error) {
     const mapped = toUserSafeProviderError(error)
+    logWalletPaymentTransition({ requestId, action: "wallet.link.verify", status: "failed", userId: session.userId, sessionId: session.id, reasonCodes: [mapped.code] })
     return respondError(
       request,
       {
