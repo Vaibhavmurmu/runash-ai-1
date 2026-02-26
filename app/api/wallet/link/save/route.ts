@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const card = WalletStore.addCard({
+  const card = await WalletStore.addCard({
     userId: body.userId,
     holderName: body.holderName,
     cardNumber: body.cardNumber,

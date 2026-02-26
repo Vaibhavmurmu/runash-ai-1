@@ -6,6 +6,7 @@ Current status:
 - Repository remains SQL-first for production migration execution (`scripts/sql/*.sql` and related `scripts/*.sql`).
 - `0000_auth_neon_better_auth_baseline.sql` is the executable baseline for Better Auth tables plus RunAsh session registry tables.
 - `0001_waitlist_entries.sql` provisions `waitlist_entries` for waitlist signups and duplicate-safe email capture.
+- `0002_wallet_link_persistence.sql` provisions RunAsh AI Link wallet persistence tables (cards/link sessions/activity/subscription snapshots/OTP attempts).
 
 Operational guidance:
 1. Keep production-safe migration SQL reviewed and idempotent where practical.

@@ -249,3 +249,15 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
 - `/api/streams/schedule` now rejects unauthenticated access with `401 Unauthorized` and does not trust caller-supplied identity headers.
 - Schedule records are scoped by verified `session.user.id`; legacy `x-user-id` and `demo-user` fallback behavior has been removed.
 - Optional local development fallback identity is explicitly feature-gated (`ENABLE_DEV_SCHEDULE_USER_FALLBACK=true` + `DEV_SCHEDULE_FALLBACK_USER_ID`) and only honored when `NODE_ENV=development`.
+
+## 11) 2026-02 wallet profile encryption + key rotation policy
+
+- Wallet billing address and email/phone verification profile metadata are encrypted at rest using AES-256-GCM envelope format with key ID metadata (`kid`).
+- Runtime key ring is sourced from `RUNASH_FIELD_ENCRYPTION_KEYS` (`kid:material,kid:material`) with active key set by `RUNASH_FIELD_ENCRYPTION_PRIMARY_KEY_ID`.
+- Rotation strategy:
+  1. add new key material with new `kid` to key ring;
+  2. switch primary key ID;
+  3. allow decrypt fallback for legacy key IDs;
+  4. lazily re-encrypt records on read/write using the new primary key;
+  5. remove retired key only after migration completion verification.
+- Sensitive payment/auth values (PAN/CVV/OTP raw values, verification codes) remain prohibited from logs; only hashed/tokenized representations are allowed.

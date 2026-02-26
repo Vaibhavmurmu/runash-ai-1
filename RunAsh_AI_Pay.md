@@ -233,3 +233,16 @@ This change preserves API compatibility while improving operational correctness 
   - Card payloads are reduced to masked last4 storage in wallet records and never expose full PAN in API responses.
   - Existing payment API signatures remain unchanged; wallet/link routes are additive and can be rolled back independently.
 
+
+## 2026-02 Link wallet persistence hardening (Instant Checkout)
+
+- Replaced in-memory wallet/link state maps with PostgreSQL-backed repositories for cards, link sessions, activity logs, subscription snapshots, and OTP verification attempts.
+- Card persistence stores only tokenized payment references and masked metadata (`brand`, `last4`, `expMonth`, `expYear`); full PAN is never persisted.
+- Link verification codes are stored as hashes; OTP verification attempts are captured for auditability and abuse monitoring.
+- Sensitive wallet profile fields are encrypted at rest with envelope metadata (`kid`, `iv`, `tag`, `data`) and key-ring based decrypt fallback to support key rotation.
+- Backfill strategy for existing seeded demo flow is published in `scripts/sql/2026-02-26_backfill_wallet_demo_data.sql` and is idempotent.
+
+Risks + rollback:
+1. **Risk:** key-ring misconfiguration can block decryption of existing encrypted profile fields. **Mitigation:** key-ring fallback decrypt and lazy re-encryption on read.
+2. **Rollback:** revert wallet repository migration and switch API handlers back to prior in-memory store while preserving API signatures.
+3. **Compatibility:** wallet API request/response field names remain unchanged for existing clients.

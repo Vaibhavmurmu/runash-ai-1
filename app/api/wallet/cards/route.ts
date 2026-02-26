@@ -3,7 +3,7 @@ import { WalletStore } from "@/lib/data/wallet-store"
 
 export async function GET(request: NextRequest) {
   const userId = request.nextUrl.searchParams.get("userId")
-  return NextResponse.json({ success: true, data: WalletStore.listCards(userId) })
+  return NextResponse.json({ success: true, data: await WalletStore.listCards(userId) })
 }
 
 export async function POST(request: NextRequest) {
@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: { message: "holderName, cardNumber, expMonth, expYear are required" } }, { status: 400 })
   }
 
-  const created = WalletStore.addCard({
+  const created = await WalletStore.addCard({
     userId: body.userId,
     holderName: body.holderName,
     cardNumber: body.cardNumber,
