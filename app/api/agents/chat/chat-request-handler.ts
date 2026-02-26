@@ -1,6 +1,7 @@
 import { relayToolExecutionMode, type RelayAgentTool } from "@/lib/skills/relay-tool-registry"
 import { createHash } from "crypto"
 import {
+  CheckoutContextResolutionError,
   resolveCheckoutHandoffContext,
   type CheckoutCanonicalSessionInput,
 } from "@/lib/services/checkout-handoff-context-resolver"
@@ -9,6 +10,7 @@ import type { ServerAuthSession } from "@/lib/auth/session"
 const INSTANT_CHECKOUT_INTENT = /\b(buy this|confirm purchase|pay now|instant checkout|checkout|confirm)\b/i
 const SEARCH_INTENT = /search|find|best(?:\s+under)?|compare|web|under\s+\$?\d+/i
 const BUYER_PRODUCT_SEARCH_INTENT = /\b(find|compare|best under|under)\b/i
+const NON_PRODUCTION_CHECKOUT_FALLBACK = process.env.RUNASH_ALLOW_NON_PRODUCTION_CHECKOUT_FALLBACK === "true"
 
 type CheckoutHandoffInput = {
   message: string
@@ -20,6 +22,20 @@ type CheckoutHandoffInput = {
   merchantCountry?: string
 }
 
+export type CheckoutValidationRemediation = {
+  missing_fields: string[]
+  next_action: string
+}
+
+export type CheckoutGateEvaluation =
+  | {
+      canInitiateCheckout: true
+    }
+  | {
+      canInitiateCheckout: false
+      remediation: CheckoutValidationRemediation
+    }
+
 export async function buildCheckoutHandoffContract(input: CheckoutHandoffInput) {
   const normalizedMessage = input.message.trim().toLowerCase()
   const digest = createHash("sha256").update(`${input.sessionId}:${normalizedMessage}`).digest("hex")
@@ -27,6 +43,8 @@ export async function buildCheckoutHandoffContract(input: CheckoutHandoffInput) 
     sessionId: input.sessionId,
     message: input.message,
     authSession: input.authSession,
+    strictFinalization: true,
+    allowNonProductionFallback: NON_PRODUCTION_CHECKOUT_FALLBACK,
     canonical: {
       ...(input.canonical ?? {}),
       merchantProfile: {
@@ -72,6 +90,22 @@ export async function buildCheckoutHandoffContract(input: CheckoutHandoffInput) 
       },
     },
     idempotency_key: resolved.idempotencyKey,
+  }
+}
+
+export async function evaluateCheckoutValidationGate(input: CheckoutHandoffInput): Promise<CheckoutGateEvaluation> {
+  try {
+    await buildCheckoutHandoffContract(input)
+    return { canInitiateCheckout: true }
+  } catch (error) {
+    if (error instanceof CheckoutContextResolutionError) {
+      return {
+        canInitiateCheckout: false,
+        remediation: error.remediation,
+      }
+    }
+
+    throw error
   }
 }
 
@@ -124,15 +158,28 @@ export async function buildDefaultToolPayloads(input: {
   const selectedTools = resolveRunAshChatToolSelection(input.message, input.requestedTools ?? [])
   if (!selectedTools.includes("initiate_link_checkout")) return undefined
 
-  return {
-    initiate_link_checkout: await buildCheckoutHandoffContract({
-      message: input.message,
-      sessionId: input.sessionId,
-      canonical: input.canonical,
-      authSession: input.authSession,
-      merchantId: input.merchantId,
-      merchantEntityId: input.merchantEntityId,
-      merchantCountry: input.merchantCountry,
-    }),
+  try {
+    return {
+      initiate_link_checkout: await buildCheckoutHandoffContract({
+        message: input.message,
+        sessionId: input.sessionId,
+        canonical: input.canonical,
+        authSession: input.authSession,
+        merchantId: input.merchantId,
+        merchantEntityId: input.merchantEntityId,
+        merchantCountry: input.merchantCountry,
+      }),
+    }
+  } catch (error) {
+    if (error instanceof CheckoutContextResolutionError) {
+      return {
+        checkout_validation: {
+          status: "blocked",
+          ...error.remediation,
+        },
+      }
+    }
+
+    throw error
   }
 }

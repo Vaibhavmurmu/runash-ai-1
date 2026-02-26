@@ -68,6 +68,21 @@ export type CheckoutResolvedContext = {
   contextVersion: "v2"
 }
 
+export type CheckoutResolutionRemediation = {
+  missing_fields: string[]
+  next_action: string
+}
+
+export class CheckoutContextResolutionError extends Error {
+  remediation: CheckoutResolutionRemediation
+
+  constructor(message: string, remediation: CheckoutResolutionRemediation) {
+    super(message)
+    this.name = "CheckoutContextResolutionError"
+    this.remediation = remediation
+  }
+}
+
 const FALLBACK_ITEM_NAME = "RunAshChat Instant Checkout Item"
 
 function cents(input: number) {
@@ -116,6 +131,22 @@ function resolveAmountCents(input: CheckoutCanonicalSessionInput) {
   }
 
   return 1000
+}
+
+function hasCanonicalPricingSnapshot(input: CheckoutCanonicalSessionInput) {
+  return (
+    typeof input.pricingSnapshot?.subtotal === "number" &&
+    typeof input.pricingSnapshot?.total === "number" &&
+    typeof input.pricingSnapshot?.currency === "string"
+  )
+}
+
+function hasCanonicalProductOrCart(input: CheckoutCanonicalSessionInput) {
+  return Boolean(
+    input.cartId?.trim() ||
+      input.selectedSku?.trim() ||
+      input.productSelection?.sku?.trim(),
+  )
 }
 
 function resolveMerchantContext(input: CheckoutCanonicalSessionInput, session: ServerAuthSession | null) {
@@ -171,8 +202,12 @@ export async function resolveCheckoutHandoffContext(input: {
     merchantId: string
     sku: string
   }) => Promise<{ amount: number; label: string; source?: string }>
+  strictFinalization?: boolean
+  allowNonProductionFallback?: boolean
 }) {
   const canonical = input.canonical ?? {}
+  const strictFinalization = input.strictFinalization ?? true
+  const allowNonProductionFallback = input.allowNonProductionFallback ?? false
   const normalizedMessage = input.message.trim().toLowerCase()
   const digest = createHash("sha256").update(`${input.sessionId}:${normalizedMessage}`).digest("hex")
 
@@ -183,6 +218,43 @@ export async function resolveCheckoutHandoffContext(input: {
   const billingCountry = resolveBillingCountry(canonical.billingProfile, merchant.merchantCountry)
 
   const amount = resolveAmountCents(canonical)
+
+  if (strictFinalization && !allowNonProductionFallback) {
+    const missingFields: string[] = []
+
+    if (!input.authSession?.user?.id) {
+      missingFields.push("merchant.auth_session")
+    }
+
+    if (!hasCanonicalProductOrCart(canonical)) {
+      missingFields.push("checkout.cart_or_product")
+    }
+
+    if (!hasCanonicalPricingSnapshot(canonical)) {
+      missingFields.push("checkout.pricing_snapshot")
+    }
+
+    if (!canonical.billingProfile?.country?.trim()) {
+      missingFields.push("customer.region")
+    }
+
+    const usesSyntheticMerchant = merchant.merchantId === "runash-default-merchant"
+    if (usesSyntheticMerchant) {
+      missingFields.push("merchant.identity")
+    }
+
+    const usesSyntheticItem = itemName === FALLBACK_ITEM_NAME
+    if (usesSyntheticItem) {
+      missingFields.push("checkout.item_name")
+    }
+
+    if (missingFields.length > 0) {
+      throw new CheckoutContextResolutionError("Checkout finalization requires complete canonical context.", {
+        missing_fields: Array.from(new Set(missingFields)),
+        next_action: "collect_checkout_context",
+      })
+    }
+  }
 
   const computedTax = await computeTaxForRegion({
     amount: amount / 100,
