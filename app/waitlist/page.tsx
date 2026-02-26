@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { waitlistJoinSchema } from "@/lib/validations/waitlist"
 
 type WaitlistFormState = {
   email: string
@@ -14,6 +15,10 @@ type WaitlistFormState = {
   company: string
   useCase: string
 }
+
+type WaitlistFormField = keyof WaitlistFormState
+
+type WaitlistFieldErrors = Partial<Record<WaitlistFormField, string>>
 
 const initialState: WaitlistFormState = {
   email: "",
@@ -24,15 +29,51 @@ const initialState: WaitlistFormState = {
 
 export default function WaitlistPage() {
   const [form, setForm] = useState<WaitlistFormState>(initialState)
+  const [fieldErrors, setFieldErrors] = useState<WaitlistFieldErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
+  function validateForm(nextForm: WaitlistFormState) {
+    const validation = waitlistJoinSchema.safeParse(nextForm)
+
+    if (validation.success) {
+      setFieldErrors({})
+      return true
+    }
+
+    const flattenedErrors = validation.error.flatten().fieldErrors
+    const nextErrors: WaitlistFieldErrors = {
+      email: flattenedErrors.email?.[0],
+      name: flattenedErrors.name?.[0],
+      company: flattenedErrors.company?.[0],
+      useCase: flattenedErrors.useCase?.[0],
+    }
+
+    setFieldErrors(nextErrors)
+    return false
+  }
+
+  function handleFieldChange(field: WaitlistFormField, value: string) {
+    setForm((current) => ({ ...current, [field]: value }))
+
+    if (fieldErrors[field]) {
+      validateForm({ ...form, [field]: value })
+    }
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setIsSubmitting(true)
     setSuccessMessage(null)
     setErrorMessage(null)
+
+    const isValid = validateForm(form)
+    if (!isValid) {
+      setErrorMessage("Please fix the highlighted fields and try again.")
+      return
+    }
+
+    setIsSubmitting(true)
 
     try {
       const response = await fetch("/api/waitlist", {
@@ -46,12 +87,22 @@ export default function WaitlistPage() {
       if (!response.ok) {
         const fallback = "Unable to join the waitlist. Please try again."
         const message = payload?.error?.message || payload?.message || fallback
+        const apiFieldErrors = payload?.error?.details as Record<string, string[] | undefined> | undefined
+
+        setFieldErrors((current) => ({
+          ...current,
+          email: apiFieldErrors?.email?.[0] ?? current.email,
+          name: apiFieldErrors?.name?.[0] ?? current.name,
+          company: apiFieldErrors?.company?.[0] ?? current.company,
+          useCase: apiFieldErrors?.useCase?.[0] ?? current.useCase,
+        }))
         setErrorMessage(message)
         return
       }
 
       setSuccessMessage(payload?.data?.message ?? "You’re on the waitlist!")
       setForm(initialState)
+      setFieldErrors({})
     } catch {
       setErrorMessage("Unable to join the waitlist. Please try again.")
     } finally {
@@ -78,9 +129,11 @@ export default function WaitlistPage() {
                   type="email"
                   required
                   value={form.email}
-                  onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                  onChange={(event) => handleFieldChange("email", event.target.value)}
+                  aria-invalid={Boolean(fieldErrors.email)}
                   placeholder="you@company.com"
                 />
+                {fieldErrors.email ? <p className="text-sm text-red-600">{fieldErrors.email}</p> : null}
               </div>
 
               <div className="space-y-2">
@@ -88,9 +141,11 @@ export default function WaitlistPage() {
                 <Input
                   id="name"
                   value={form.name}
-                  onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                  onChange={(event) => handleFieldChange("name", event.target.value)}
+                  aria-invalid={Boolean(fieldErrors.name)}
                   placeholder="Your name"
                 />
+                {fieldErrors.name ? <p className="text-sm text-red-600">{fieldErrors.name}</p> : null}
               </div>
 
               <div className="space-y-2">
@@ -98,9 +153,11 @@ export default function WaitlistPage() {
                 <Input
                   id="company"
                   value={form.company}
-                  onChange={(event) => setForm((current) => ({ ...current, company: event.target.value }))}
+                  onChange={(event) => handleFieldChange("company", event.target.value)}
+                  aria-invalid={Boolean(fieldErrors.company)}
                   placeholder="Company or team"
                 />
+                {fieldErrors.company ? <p className="text-sm text-red-600">{fieldErrors.company}</p> : null}
               </div>
 
               <div className="space-y-2">
@@ -108,10 +165,12 @@ export default function WaitlistPage() {
                 <Textarea
                   id="useCase"
                   value={form.useCase}
-                  onChange={(event) => setForm((current) => ({ ...current, useCase: event.target.value }))}
+                  onChange={(event) => handleFieldChange("useCase", event.target.value)}
+                  aria-invalid={Boolean(fieldErrors.useCase)}
                   placeholder="How are you planning to use RunAsh?"
                   rows={4}
                 />
+                {fieldErrors.useCase ? <p className="text-sm text-red-600">{fieldErrors.useCase}</p> : null}
               </div>
 
               {successMessage ? (
@@ -128,7 +187,10 @@ export default function WaitlistPage() {
             </form>
 
             <p className="mt-5 text-center text-sm text-muted-foreground">
-              Looking for the full product now? <Link href="/get-started" className="underline">Get started</Link>
+              Looking for the full product now?{" "}
+              <Link href="/get-started" className="underline">
+                Get started
+              </Link>
             </p>
           </CardContent>
         </Card>

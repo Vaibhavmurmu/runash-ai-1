@@ -202,9 +202,12 @@ export default function GetStartedPage() {
             RunAsh Auth pages use custom orange, yellow and white gradient styling with both light and dark support.
           </p>
 
-          <div className="flex items-center justify-center gap-3">
+          <div className="flex items-center justify-center gap-3 flex-wrap">
             <Button className="rounded-full px-10 bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-400 text-white hover:opacity-90" onClick={() => { setStep(1); setOpen(true) }}>
               Get started
+            </Button>
+            <Button variant="outline" className="rounded-full px-10 border-orange-200 dark:border-white/20 bg-white/70 dark:bg-black/40" onClick={() => router.push("/waitlist")}>
+              Join waitlist
             </Button>
             <Button variant="outline" className="rounded-full px-10 border-orange-200 dark:border-white/20 bg-white/70 dark:bg-black/40" onClick={() => router.push("/login")}>
               Welcome back
