@@ -100,8 +100,27 @@ export async function POST(request: NextRequest) {
             requestedTools: selectedTools,
             authSession: session,
           })
+          const checkoutValidation = defaultPayloads?.checkout_validation as
+            | { status: "blocked"; missing_fields: string[]; next_action: string }
+            | undefined
+
+          if (checkoutValidation?.status === "blocked") {
+            send("tool_result", {
+              tool: "initiate_link_checkout",
+              result: {
+                status: "blocked",
+                reason: "missing_checkout_context",
+                missing_fields: checkoutValidation.missing_fields,
+                next_action: checkoutValidation.next_action,
+              },
+              fromCache: false,
+            })
+          }
 
           for (const tool of toolPlan.immediate) {
+            if (tool === "initiate_link_checkout" && checkoutValidation?.status === "blocked") {
+              continue
+            }
             send("tool_start", { tool, messageId: assistantMessage.id, status: "tool-running" })
 
             const payload = parsed.data.toolPayloads?.[tool] ?? defaultPayloads?.[tool] ?? { query: sanitizedMessage }
@@ -118,6 +137,9 @@ export async function POST(request: NextRequest) {
           }
 
           for (const tool of toolPlan.queued) {
+            if (tool === "initiate_link_checkout" && checkoutValidation?.status === "blocked") {
+              continue
+            }
             send("tool_start", { tool, messageId: assistantMessage.id, status: "tool-running" })
             const payload = parsed.data.toolPayloads?.[tool] ?? defaultPayloads?.[tool] ?? { query: sanitizedMessage }
             const jobId = enqueueToolJob({

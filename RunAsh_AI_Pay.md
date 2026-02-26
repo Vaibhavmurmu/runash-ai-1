@@ -546,3 +546,24 @@ RunAsh AI Link now supports deterministic negotiation handoff before Link checko
 - `initiate_link_checkout` consumes the accepted snapshot when `deal_id` is provided, ensuring payment amount and line item context match the finalized negotiation outcome.
 - Backward compatibility is preserved: direct `initiate_link_checkout` payloads without `deal_id` continue to work unchanged.
 - No sensitive card/auth data is logged by negotiation services; only deal metadata and pricing outcomes are recorded.
+
+
+## 2026-02-26 Checkout finalization strict-mode gates (RunAshChat -> Link)
+
+- Introduced strict checkout-finalization validation in `resolveCheckoutHandoffContext` for production flows:
+  - requires authenticated merchant identity resolution,
+  - requires canonical pricing snapshot (`subtotal`, `total`, `currency`),
+  - requires canonical cart/product selection and customer billing region,
+  - rejects synthetic fallback merchant/item defaults during production checkout finalization.
+- Added explicit non-production compatibility override via `RUNASH_ALLOW_NON_PRODUCTION_CHECKOUT_FALLBACK=true` for local/dev/test workflows.
+- Added chat-layer validation gates so `buy this` intent cannot execute `initiate_link_checkout` when required checkout context is incomplete.
+- Blocked checkout attempts now return actionable remediation payloads (`missing_fields`, `next_action`) instead of silently applying implicit defaults.
+
+### Impacted payment/auth flows
+- RunAshChat Relay handoff generation for `initiate_link_checkout`.
+- Authenticated merchant context propagation from session -> checkout handoff.
+
+### Risks + rollback
+1. **Risk:** legacy callers that depended on implicit fallback pricing/merchant defaults can now be blocked in production.
+2. **Mitigation:** remediation payloads identify exact context gaps and required next action; local/dev can enable explicit fallback flag.
+3. **Rollback:** disable strict enforcement by reverting `checkout-handoff-context-resolver` + `chat-request-handler` gate changes, restoring legacy defaulting behavior.

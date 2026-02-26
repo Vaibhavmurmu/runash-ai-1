@@ -4,6 +4,8 @@ import test from "node:test"
 import {
   buildCheckoutHandoffContract,
   buildToolPlan,
+  buildDefaultToolPayloads,
+  evaluateCheckoutValidationGate,
   resolveRunAshChatToolSelection,
 } from "./chat-request-handler.ts"
 import { syncCheckoutResultToAccounting } from "@/services/agent-orchestration-service"
@@ -96,7 +98,23 @@ test("buy this flow triggers accounting sync for successful checkout", async () 
   const handoff = await buildCheckoutHandoffContract({
     message: "buy this",
     sessionId: "session-accounting-1",
-    merchantId: "merchant-1",
+    authSession: { user: { id: "u-account-1", role: "user", ssoOrganization: 1 } },
+    canonical: {
+      cartId: "cart-accounting-1",
+      selectedSku: "SKU-ACCOUNT-1",
+      pricingSnapshot: {
+        subtotal: 2000,
+        total: 2360,
+        currency: "USD",
+      },
+      billingProfile: {
+        country: "US",
+      },
+      productSelection: {
+        sku: "SKU-ACCOUNT-1",
+        itemName: "Accounting Test Item",
+      },
+    },
   })
 
   const calls: Array<Record<string, unknown>> = []
@@ -131,7 +149,23 @@ test("buy this flow triggers accounting sync for refund scenario with stable ide
   const handoff = await buildCheckoutHandoffContract({
     message: "buy this",
     sessionId: "session-accounting-2",
-    merchantId: "merchant-2",
+    authSession: { user: { id: "u-account-2", role: "user", ssoOrganization: 2 } },
+    canonical: {
+      cartId: "cart-accounting-2",
+      selectedSku: "SKU-ACCOUNT-2",
+      pricingSnapshot: {
+        subtotal: 3000,
+        total: 3540,
+        currency: "USD",
+      },
+      billingProfile: {
+        country: "US",
+      },
+      productSelection: {
+        sku: "SKU-ACCOUNT-2",
+        itemName: "Accounting Refund Item",
+      },
+    },
   })
 
   const calls: Array<Record<string, unknown>> = []
@@ -180,4 +214,36 @@ test("buy this flow triggers accounting sync for refund scenario with stable ide
   assert.equal(calls[0].eventType, "refund")
   assert.equal(first.idempotencyKey, second.idempotencyKey)
   assert.equal(second.status, "duplicate")
+})
+
+
+test("checkout gate blocks buy this when canonical checkout context is missing", async () => {
+  const gate = await evaluateCheckoutValidationGate({
+    message: "buy this",
+    sessionId: "session-missing-context",
+    authSession: null,
+    canonical: {},
+  })
+
+  assert.equal(gate.canInitiateCheckout, false)
+  if (gate.canInitiateCheckout) {
+    assert.fail("Expected checkout gate to block incomplete context")
+  }
+
+  assert.equal(gate.remediation.next_action, "collect_checkout_context")
+  assert.equal(gate.remediation.missing_fields.includes("checkout.pricing_snapshot"), true)
+  assert.equal(gate.remediation.missing_fields.includes("customer.region"), true)
+})
+
+test("default payloads return actionable remediation for blocked checkout", async () => {
+  const payloads = await buildDefaultToolPayloads({
+    message: "buy this",
+    sessionId: "session-remediation",
+    authSession: null,
+    canonical: {},
+  })
+
+  assert.equal(payloads?.checkout_validation?.status, "blocked")
+  assert.equal(Array.isArray(payloads?.checkout_validation?.missing_fields), true)
+  assert.equal(payloads?.checkout_validation?.next_action, "collect_checkout_context")
 })
