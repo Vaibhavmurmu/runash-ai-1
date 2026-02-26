@@ -15,6 +15,39 @@ Last updated: 2026-02
 - Auth/admin-sensitive APIs are protected with stricter endpoint-specific rate limits in addition to baseline API rate controls.
 - Auth event logging now redacts credentials/tokens/secrets and stores anonymized session identifiers for audit safety.
 
+## Better Auth storage migration update (2026-02)
+
+- `db/migrations/0000_auth_neon_better_auth_baseline.sql` now ships executable DDL (not placeholder text) for Better Auth core tables: `accounts`, `sessions`, and `verification_tokens`, while aligning profile fields on the existing `users` table.
+- The same baseline migration now provisions RunAsh session-mode tables used by `/api/auth/sessions/**`: `auth_session_identities`, `auth_session_registry`, and `auth_one_time_transfer_tokens`.
+- Migration remains idempotent (`IF NOT EXISTS` guards + additive `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`) to support rolling deploys and repeated CI bootstrap runs.
+
+### Migration notes (Better Auth + session registry baseline)
+
+1. Apply migration: `db/migrations/0000_auth_neon_better_auth_baseline.sql`.
+2. Verify table creation: `accounts`, `sessions`, `verification_tokens`, `auth_session_identities`, `auth_session_registry`, `auth_one_time_transfer_tokens`.
+3. Validate runtime endpoints after migration:
+   - `GET /api/auth/sessions` (list)
+   - `DELETE /api/auth/sessions` (single/all revoke)
+   - `POST /api/auth/sessions/switch` (scope switch)
+4. Backward-compatibility guarantees:
+   - Existing `users` table + field names are preserved.
+   - API signatures for session list/switch/revoke are unchanged.
+
+### Rollback guidance (schema + runtime)
+
+- **Preferred rollback:** application-level rollback first (redeploy previous stable app artifact) because this migration is additive and does not drop/rename existing auth columns.
+- **If DB rollback is required:**
+  1. Disable new session-mode writes (temporary feature/config gate) so no new rows are introduced.
+  2. Revert app to the previous release and monitor auth/session error rates.
+  3. Drop only newly created tables if the previous release cannot tolerate them:
+     - `auth_one_time_transfer_tokens`
+     - `auth_session_registry`
+     - `auth_session_identities`
+     - `verification_tokens`
+     - `sessions`
+     - `accounts`
+- **Do not rollback by removing `users` auth profile columns** (`email_verified`, `image`, `name`, `created_at`, `updated_at`) unless a dedicated data-migration plan is approved, because other runtime paths may already depend on them.
+
 ## Unified register backend flow update (2026-02)
 
 - `POST /api/auth/register` now delegates account creation to `auth.api.signUpEmail` from `lib/auth.ts`, making Better Auth the registration source of truth.
@@ -249,11 +282,11 @@ Note: middleware still treats `/signup` as public, but no `app/signup/page.tsx` 
 
 ### Added in this update
 - `db/migrations/README.md` — migration ownership and execution status.
-- `db/migrations/0000_auth_neon_better_auth_baseline.sql` — baseline planned migration artifact placeholder for auth/session/account tables.
+- `db/migrations/0000_auth_neon_better_auth_baseline.sql` — executable baseline migration artifact for Better Auth and RunAsh session tables.
 
 ### Planned next steps
-- Convert planned baseline artifact into an executable migration once the canonical Drizzle table definitions are finalized.
 - Add Drizzle migration journal metadata when migration generation is turned on for CI-managed schema rollout.
+- Keep schema registry updates (`db/schema.ts`) synchronized with any auth table contract changes before release cut.
 
 ## 6) Payment-impacting auth notes
 
