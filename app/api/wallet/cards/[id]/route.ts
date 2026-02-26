@@ -30,7 +30,16 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     return respondError(request, { code: "WALLET_DEFAULT_METHOD_REVIEW_REQUIRED", message: "Default payment method change requires review" }, { status: 409, requestId, meta: { reason_codes: decision.reasonCodes } })
   }
 
-  const updated = await WalletStore.setDefaultCard(userId || "", params.id)
+  const action = typeof body.action === "string" ? body.action : "set_default"
+  const lifecycleInput = {
+    setDefault: action === "set_default" ? true : undefined,
+    setBackup: action === "set_backup" ? true : undefined,
+    disable: action === "disable" ? true : action === "enable" ? false : undefined,
+  }
+  const updated =
+    action === "set_default"
+      ? await WalletStore.setDefaultCard(userId || "", params.id)
+      : await WalletStore.lifecycleCard(userId || "", params.id, lifecycleInput)
   if (!updated) {
     return respondError(request, { code: "WALLET_CARD_NOT_FOUND", message: "Card not found" }, { status: 404, requestId })
   }

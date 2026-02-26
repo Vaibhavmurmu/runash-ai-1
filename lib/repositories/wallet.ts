@@ -12,6 +12,8 @@ export type WalletCard = {
   expYear: number
   billingAddress?: string
   isDefault: boolean
+  isBackup: boolean
+  isDisabled: boolean
   createdAt: string
 }
 
@@ -22,6 +24,19 @@ export type WalletActivity = {
   description: string
   amount?: number
   currency?: string
+  metadata?: Record<string, unknown>
+  createdAt: string
+}
+
+export type WalletTransaction = {
+  id: string
+  userId: string
+  amount: number
+  currency: string
+  status: "succeeded" | "failed"
+  description: string
+  reconciliationRef: string
+  settlementDate: string
   createdAt: string
 }
 
@@ -33,6 +48,19 @@ export type WalletSubscription = {
   nextBillingDate: string
   amount: number
   currency: string
+  timeline: WalletSubscriptionEvent[]
+}
+
+export type WalletSubscriptionEvent = {
+  id: string
+  subscriptionId: string
+  userId: string
+  eventType: "plan_changed" | "paused" | "canceled" | "reactivated"
+  reason?: string
+  fromPlan?: string
+  toPlan?: string
+  metadata?: Record<string, unknown>
+  createdAt: string
 }
 
 export type LinkSessionVerificationResult = {
@@ -74,6 +102,8 @@ async function ensureWalletTables() {
       exp_year INTEGER NOT NULL,
       billing_address_encrypted TEXT,
       is_default BOOLEAN NOT NULL DEFAULT FALSE,
+      is_backup BOOLEAN NOT NULL DEFAULT FALSE,
+      is_disabled BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -134,6 +164,35 @@ async function ensureWalletTables() {
 
     CREATE INDEX IF NOT EXISTS wallet_subscription_snapshots_user_idx ON wallet_subscription_snapshots (user_id, updated_at DESC);
 
+    CREATE TABLE IF NOT EXISTS wallet_subscription_events (
+      id TEXT PRIMARY KEY,
+      subscription_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      reason TEXT,
+      from_plan TEXT,
+      to_plan TEXT,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS wallet_subscription_events_sub_idx ON wallet_subscription_events (subscription_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS wallet_transactions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      amount NUMERIC(12,2) NOT NULL,
+      currency TEXT NOT NULL,
+      status TEXT NOT NULL,
+      description TEXT NOT NULL,
+      reconciliation_ref TEXT NOT NULL,
+      settlement_date TIMESTAMPTZ NOT NULL,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS wallet_transactions_user_created_idx ON wallet_transactions (user_id, created_at DESC);
+
     CREATE TABLE IF NOT EXISTS wallet_otp_verification_attempts (
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL REFERENCES wallet_link_sessions(id) ON DELETE CASCADE,
@@ -156,6 +215,8 @@ async function ensureWalletTables() {
     ALTER TABLE wallet_link_sessions ADD COLUMN IF NOT EXISTS provider_request_id TEXT;
     ALTER TABLE wallet_link_sessions ADD COLUMN IF NOT EXISTS provider_verification_status TEXT NOT NULL DEFAULT 'pending';
     ALTER TABLE wallet_link_sessions ADD COLUMN IF NOT EXISTS provider_verification_reason TEXT;
+    ALTER TABLE wallet_cards ADD COLUMN IF NOT EXISTS is_backup BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE wallet_cards ADD COLUMN IF NOT EXISTS is_disabled BOOLEAN NOT NULL DEFAULT FALSE;
   `)
 
   walletTablesReady = true
@@ -165,11 +226,11 @@ async function addActivity(userId: string, activity: Omit<WalletActivity, "id" |
   await ensureWalletTables()
   await queryOne(
     `
-      INSERT INTO wallet_activity_logs (id, user_id, activity_type, description, amount, currency)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO wallet_activity_logs (id, user_id, activity_type, description, amount, currency, metadata)
+      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
       RETURNING id
     `,
-    [nextId("act"), userId, activity.type, activity.description, activity.amount ?? null, activity.currency ?? null],
+    [nextId("act"), userId, activity.type, activity.description, activity.amount ?? null, activity.currency ?? null, JSON.stringify(activity.metadata ?? {})],
   )
 }
 
@@ -222,6 +283,22 @@ function mapCardRow(row: any): WalletCard {
     expYear: Number(row.expYear),
     billingAddress: parsedAddress?.value,
     isDefault: Boolean(row.isDefault),
+    isBackup: Boolean(row.isBackup),
+    isDisabled: Boolean(row.isDisabled),
+    createdAt: new Date(row.createdAt).toISOString(),
+  }
+}
+
+function mapSubscriptionEventRow(row: any): WalletSubscriptionEvent {
+  return {
+    id: row.id,
+    subscriptionId: row.subscriptionId,
+    userId: row.userId,
+    eventType: row.eventType,
+    reason: row.reason ?? undefined,
+    fromPlan: row.fromPlan ?? undefined,
+    toPlan: row.toPlan ?? undefined,
+    metadata: row.metadata ?? undefined,
     createdAt: new Date(row.createdAt).toISOString(),
   }
 }
@@ -240,6 +317,8 @@ export async function listWalletCards(userId: string): Promise<WalletCard[]> {
       exp_year AS "expYear",
       billing_address_encrypted AS "billingAddressEncrypted",
       is_default AS "isDefault",
+      is_backup AS "isBackup",
+      is_disabled AS "isDisabled",
       created_at AS "createdAt"
     FROM wallet_cards
     WHERE user_id = $1
@@ -266,6 +345,7 @@ export async function createWalletCard(input: {
   brand?: string
   billingAddress?: string
   setDefault?: boolean
+  setBackup?: boolean
   id?: string
 }): Promise<WalletCard> {
   await runDemoBackfill()
@@ -290,9 +370,11 @@ export async function createWalletCard(input: {
         exp_month,
         exp_year,
         billing_address_encrypted,
-        is_default
+        is_default,
+        is_backup,
+        is_disabled
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, FALSE))
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, FALSE), COALESCE($11, FALSE), FALSE)
       ON CONFLICT (id) DO UPDATE
       SET
         holder_name = EXCLUDED.holder_name,
@@ -302,6 +384,7 @@ export async function createWalletCard(input: {
         exp_year = EXCLUDED.exp_year,
         billing_address_encrypted = EXCLUDED.billing_address_encrypted,
         is_default = EXCLUDED.is_default,
+        is_backup = EXCLUDED.is_backup,
         updated_at = NOW()
       RETURNING
         id,
@@ -313,6 +396,8 @@ export async function createWalletCard(input: {
         exp_year AS "expYear",
         billing_address_encrypted AS "billingAddressEncrypted",
         is_default AS "isDefault",
+        is_backup AS "isBackup",
+        is_disabled AS "isDisabled",
         created_at AS "createdAt"
     `,
     [
@@ -326,6 +411,7 @@ export async function createWalletCard(input: {
       input.expYear,
       input.billingAddress ? encryptField(input.billingAddress) : null,
       shouldSetDefault,
+      Boolean(input.setBackup),
     ],
   )
 
@@ -355,6 +441,8 @@ export async function setWalletDefaultCard(userId: string, cardId: string): Prom
       exp_year AS "expYear",
       billing_address_encrypted AS "billingAddressEncrypted",
       is_default AS "isDefault",
+      is_backup AS "isBackup",
+      is_disabled AS "isDisabled",
       created_at AS "createdAt"
   `,
     [userId, cardId],
@@ -378,6 +466,8 @@ export async function removeWalletCard(userId: string, cardId: string): Promise<
       exp_year AS "expYear",
       billing_address_encrypted AS "billingAddressEncrypted",
       is_default AS "isDefault",
+      is_backup AS "isBackup",
+      is_disabled AS "isDisabled",
       created_at AS "createdAt"
   `,
     [userId, cardId],
@@ -395,8 +485,55 @@ export async function removeWalletCard(userId: string, cardId: string): Promise<
   return mapCardRow(removed)
 }
 
-export async function listWalletActivity(userId: string): Promise<WalletActivity[]> {
+export async function updateWalletCardLifecycle(
+  userId: string,
+  cardId: string,
+  input: { setDefault?: boolean; setBackup?: boolean; disable?: boolean },
+): Promise<WalletCard | null> {
   await runDemoBackfill()
+  const card = await queryOne<{ id: string }>(`SELECT id FROM wallet_cards WHERE user_id = $1 AND id = $2`, [userId, cardId])
+  if (!card) return null
+
+  if (input.setDefault) {
+    await queryOne(`UPDATE wallet_cards SET is_default = FALSE, updated_at = NOW() WHERE user_id = $1`, [userId])
+  }
+
+  if (input.setBackup) {
+    await queryOne(`UPDATE wallet_cards SET is_backup = FALSE, updated_at = NOW() WHERE user_id = $1`, [userId])
+  }
+
+  const updated = await queryOne<any>(
+    `
+      UPDATE wallet_cards
+      SET is_default = COALESCE($3, is_default),
+          is_backup = COALESCE($4, is_backup),
+          is_disabled = COALESCE($5, is_disabled),
+          updated_at = NOW()
+      WHERE user_id = $1 AND id = $2
+      RETURNING
+        id,
+        user_id AS "userId",
+        holder_name AS "holderName",
+        brand,
+        last4,
+        exp_month AS "expMonth",
+        exp_year AS "expYear",
+        billing_address_encrypted AS "billingAddressEncrypted",
+        is_default AS "isDefault",
+        is_backup AS "isBackup",
+        is_disabled AS "isDisabled",
+        created_at AS "createdAt"
+    `,
+    [userId, cardId, input.setDefault ?? null, input.setBackup ?? null, input.disable ?? null],
+  )
+
+  return updated ? mapCardRow(updated) : null
+}
+
+export async function listWalletActivity(userId: string, input?: { limit?: number; offset?: number; search?: string; type?: string }): Promise<WalletActivity[]> {
+  await runDemoBackfill()
+  const limit = Math.min(Math.max(input?.limit ?? 50, 1), 200)
+  const offset = Math.max(input?.offset ?? 0, 0)
   const rows = await queryMany<any>(
     `
     SELECT
@@ -406,23 +543,64 @@ export async function listWalletActivity(userId: string): Promise<WalletActivity
       description,
       amount,
       currency,
+      metadata,
       created_at AS "createdAt"
     FROM wallet_activity_logs
     WHERE user_id = $1
+      AND ($2::text IS NULL OR activity_type = $2)
+      AND ($3::text IS NULL OR description ILIKE '%' || $3 || '%')
     ORDER BY created_at DESC
+    LIMIT $4 OFFSET $5
   `,
-    [userId],
+    [userId, input?.type ?? null, input?.search ?? null, limit, offset],
   )
 
   return rows.map((row) => ({
     ...row,
     amount: row.amount != null ? Number(row.amount) : undefined,
+    metadata: row.metadata ?? undefined,
     createdAt: new Date(row.createdAt).toISOString(),
   }))
 }
 
-export async function listWalletSubscriptions(userId: string): Promise<WalletSubscription[]> {
+export async function listWalletTransactions(userId: string, input?: { limit?: number; offset?: number; status?: "succeeded" | "failed" | null; search?: string }) {
   await runDemoBackfill()
+  const limit = Math.min(Math.max(input?.limit ?? 50, 1), 200)
+  const offset = Math.max(input?.offset ?? 0, 0)
+  const rows = await queryMany<any>(
+    `
+    SELECT
+      id,
+      user_id AS "userId",
+      amount,
+      currency,
+      status,
+      description,
+      reconciliation_ref AS "reconciliationRef",
+      settlement_date AS "settlementDate",
+      created_at AS "createdAt"
+    FROM wallet_transactions
+    WHERE user_id = $1
+      AND ($2::text IS NULL OR status = $2)
+      AND ($3::text IS NULL OR description ILIKE '%' || $3 || '%' OR reconciliation_ref ILIKE '%' || $3 || '%')
+    ORDER BY created_at DESC
+    LIMIT $4 OFFSET $5
+    `,
+    [userId, input?.status ?? null, input?.search ?? null, limit, offset],
+  )
+
+  return rows.map((row) => ({
+    ...row,
+    amount: Number(row.amount),
+    settlementDate: new Date(row.settlementDate).toISOString(),
+    createdAt: new Date(row.createdAt).toISOString(),
+  })) as WalletTransaction[]
+}
+
+export async function listWalletSubscriptions(userId: string, input?: { limit?: number; offset?: number; status?: WalletSubscription["status"] | null; search?: string }): Promise<WalletSubscription[]> {
+  await runDemoBackfill()
+  const limit = Math.min(Math.max(input?.limit ?? 50, 1), 200)
+  const offset = Math.max(input?.offset ?? 0, 0)
   const rows = await queryMany<any>(
     `
     SELECT
@@ -435,34 +613,88 @@ export async function listWalletSubscriptions(userId: string): Promise<WalletSub
       currency
     FROM wallet_subscription_snapshots
     WHERE user_id = $1
+      AND ($2::text IS NULL OR status = $2)
+      AND ($3::text IS NULL OR plan ILIKE '%' || $3 || '%')
     ORDER BY updated_at DESC
+    LIMIT $4 OFFSET $5
   `,
+    [userId, input?.status ?? null, input?.search ?? null, limit, offset],
+  )
+
+  const events = await queryMany<any>(
+    `
+      SELECT
+        id,
+        subscription_id AS "subscriptionId",
+        user_id AS "userId",
+        event_type AS "eventType",
+        reason,
+        from_plan AS "fromPlan",
+        to_plan AS "toPlan",
+        metadata,
+        created_at AS "createdAt"
+      FROM wallet_subscription_events
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+    `,
     [userId],
   )
+  const eventsBySub = new Map<string, WalletSubscriptionEvent[]>()
+  events.forEach((eventRow) => {
+    const event = mapSubscriptionEventRow(eventRow)
+    const current = eventsBySub.get(event.subscriptionId) ?? []
+    current.push(event)
+    eventsBySub.set(event.subscriptionId, current)
+  })
 
   return rows.map((row) => ({
     ...row,
     amount: Number(row.amount),
     nextBillingDate: new Date(row.nextBillingDate).toISOString(),
+    timeline: eventsBySub.get(row.id) ?? [],
   }))
 }
 
-export async function updateWalletSubscriptionStatus(userId: string, subscriptionId: string, status: WalletSubscription["status"]) {
+export async function updateWalletSubscriptionStatus(
+  userId: string,
+  subscriptionId: string,
+  input: { status?: WalletSubscription["status"]; plan?: string; reason?: string; eventType: WalletSubscriptionEvent["eventType"] },
+) {
   await runDemoBackfill()
   const updated = await queryOne<any>(
     `
     UPDATE wallet_subscription_snapshots
-      SET status = $3, updated_at = NOW()
+      SET status = COALESCE($3, status),
+          plan = COALESCE($4, plan),
+          updated_at = NOW()
     WHERE user_id = $1 AND id = $2
     RETURNING id, user_id AS "userId", plan, status, next_billing_date AS "nextBillingDate", amount, currency
   `,
-    [userId, subscriptionId, status],
+    [userId, subscriptionId, input.status ?? null, input.plan ?? null],
   )
 
   if (!updated) return null
 
-  await addActivity(userId, { type: "subscription_updated", description: `Subscription ${updated.plan} changed to ${status}` })
-  return { ...updated, amount: Number(updated.amount), nextBillingDate: new Date(updated.nextBillingDate).toISOString() } as WalletSubscription
+  await queryOne(
+    `
+      INSERT INTO wallet_subscription_events (id, subscription_id, user_id, event_type, reason, to_plan)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id
+    `,
+    [nextId("sub_event"), subscriptionId, userId, input.eventType, input.reason ?? null, input.plan ?? updated.plan],
+  )
+
+  await addActivity(userId, {
+    type: "subscription_updated",
+    description: `Subscription ${updated.plan} ${input.eventType.replace("_", " ")}`,
+    metadata: { reason: input.reason ?? null, plan: input.plan ?? updated.plan, status: input.status ?? updated.status },
+  })
+
+  return {
+    ...updated,
+    amount: Number(updated.amount),
+    nextBillingDate: new Date(updated.nextBillingDate).toISOString(),
+  } as WalletSubscription
 }
 
 export async function createWalletLinkSession(input: { userId: string; email: string }) {
@@ -665,6 +897,15 @@ export async function verifyWalletLinkSession(sessionId: string, code: string): 
 }
 
 export async function logWalletCheckout(input: { userId: string; amount: number; currency: string; description: string }) {
+  await queryOne(
+    `
+      INSERT INTO wallet_transactions (id, user_id, amount, currency, status, description, reconciliation_ref, settlement_date)
+      VALUES ($1, $2, $3, $4, 'succeeded', $5, $6, $7)
+      RETURNING id
+    `,
+    [nextId("txn"), input.userId, input.amount, input.currency, input.description, `REC-${Date.now()}`, new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()],
+  )
+
   await addActivity(input.userId, {
     type: "checkout",
     description: input.description,

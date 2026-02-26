@@ -3,7 +3,9 @@ import { WalletStore } from "@/lib/data/wallet-store"
 
 export async function GET(request: NextRequest) {
   const userId = request.nextUrl.searchParams.get("userId")
-  return NextResponse.json({ success: true, data: await WalletStore.listCards(userId) })
+  const includeDisabled = request.nextUrl.searchParams.get("includeDisabled") === "true"
+  const cards = await WalletStore.listCards(userId)
+  return NextResponse.json({ success: true, data: includeDisabled ? cards : cards.filter((card) => !card.isDisabled) })
 }
 
 export async function POST(request: NextRequest) {
@@ -21,6 +23,7 @@ export async function POST(request: NextRequest) {
     brand: body.brand,
     billingAddress: body.billingAddress,
     setDefault: Boolean(body.setDefault),
+    setBackup: Boolean(body.setBackup),
   })
 
   return NextResponse.json({ success: true, data: created }, { status: 201 })
