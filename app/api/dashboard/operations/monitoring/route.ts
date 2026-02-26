@@ -5,6 +5,7 @@ import { getAuthSecurityHealthMetrics, getScopedAuthMonitoringData, type Monitor
 import { resolveRequestId } from "@/lib/api/response"
 import { logApiRouteError } from "@/lib/api/logging"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
+import { getWebhookReconciliationHealthMetrics } from "@/lib/services/billing-webhook-service"
 
 export async function GET(request: NextRequest) {
   const requestId = resolveRequestId(request)
@@ -27,9 +28,11 @@ export async function GET(request: NextRequest) {
     }
 
     const visibility: MonitoringVisibility = canViewSystemLogs ? "admin" : canViewAdminAnalytics ? "operator" : "viewer"
+    const webhookMetrics = await getWebhookReconciliationHealthMetrics()
     const payload = {
       monitoring: getScopedAuthMonitoringData(visibility),
       metrics: getAuthSecurityHealthMetrics(60),
+      reconciliation: { webhook: webhookMetrics },
     }
 
     return respondSuccess(request, payload, { requestId, legacy: payload })
