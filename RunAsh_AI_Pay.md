@@ -168,3 +168,12 @@ This document is payment-domain specific. For contributor workflow/process polic
   1. **Risk:** Strict execution-time gate could block legacy intents missing `human_confirmed`/`mfa_verified`. **Mitigation:** confirm route accepts override flags and metadata now persists both fields at create-intent time.
   2. **Rollback:** Revert validator check insertion in `app/api/v1/payment/confirm/route.ts` and `lib/payment-service.ts`, then redeploy previous stable build if false positives are observed.
   3. **Compatibility:** Existing API signatures remain backward compatible; added fields are additive in successful and blocked responses.
+
+
+## 2026-02 payment routing residency policy update (India/US)
+
+- Added centralized payment routing policy module (`lib/payments/edge-routing-policy.ts`) to deterministically choose `IN_EDGE` vs `US_EDGE` based on merchant/customer region context.
+- Routing context metadata now includes `region`, `residencyPolicyVersion`, and `requestId`; these fields are attached to transaction context and provider metadata in compliance-safe form.
+- Outbound provider metadata is minimized to required operational fields and routing context only; sensitive auth/payment details remain redacted via payment logging sanitization.
+- Routing decision audits now persist request-scoped records with route decision + sanitized metadata only (no PAN/CVV/PIN/payment secrets).
+- Operational note: if routing anomalies occur, rollback by reverting routing-context metadata builder usage in checkout/subscription/create-intent handlers while keeping API response contracts unchanged.

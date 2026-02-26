@@ -6,7 +6,9 @@ import { getAuthorizedBillingIdentity, requireScopedBillingAccess } from "@/lib/
 import { createSignedCheckoutReturnState } from "@/lib/payments/checkout-return-state"
 import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
 import {
+  buildComplianceSafePaymentMetadata,
   createPaymentRoutingAuditEvent,
+  createPaymentRoutingContextMetadata,
   resolveEdgeRoutingPolicy,
   withRouteContextMetadata,
 } from "@/lib/payments/edge-routing-policy"
@@ -97,6 +99,10 @@ export async function POST(request: NextRequest) {
         mode,
         currency_hint: priceId,
       },
+    })
+    const routingContextMetadata = createPaymentRoutingContextMetadata({
+      requestId: routeAudit.requestId,
+      routeDecision: edgeRouting,
     })
 
     await logPrivilegedAction({
@@ -193,16 +199,21 @@ export async function POST(request: NextRequest) {
       line_items: [{ price: priceId, quantity: 1 }],
       allow_promotion_codes: true,
       metadata: withRouteContextMetadata(
-        {
-          user_id: sessionUser.userId,
-          organization_id: sessionUser.organizationId ? String(sessionUser.organizationId) : "",
-          tax_country_code: taxComputation.countryCode,
-          tax_state_code: taxComputation.stateCode ?? "",
-          tax_total_amount: String(taxComputation.totalTaxAmount),
-          product_tax_code: product_tax_code ?? "digital_services",
-          validator_decision: JSON.stringify(validatorDecision),
-        },
+        buildComplianceSafePaymentMetadata({
+          requestId: routingContextMetadata.requestId,
+          routeDecision: edgeRouting,
+          metadata: {
+            user_id: sessionUser.userId,
+            organization_id: sessionUser.organizationId ? String(sessionUser.organizationId) : "",
+            tax_country_code: taxComputation.countryCode,
+            tax_state_code: taxComputation.stateCode ?? "",
+            tax_total_amount: String(taxComputation.totalTaxAmount),
+            product_tax_code: product_tax_code ?? "digital_services",
+            validator_decision: JSON.stringify(validatorDecision),
+          },
+        }),
         edgeRouting,
+        routingContextMetadata,
       ),
     })
 

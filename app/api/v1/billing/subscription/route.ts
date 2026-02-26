@@ -9,7 +9,9 @@ import { getAuthorizedBillingIdentity, requireBillingActionAccess } from "@/lib/
 import { Database } from "@/lib/database"
 import { computeTaxForRegion, persistTaxComputation } from "@/lib/services/tax-service"
 import {
+  buildComplianceSafePaymentMetadata,
   createPaymentRoutingAuditEvent,
+  createPaymentRoutingContextMetadata,
   resolveEdgeRoutingPolicy,
   withRouteContextMetadata,
 } from "@/lib/payments/edge-routing-policy"
@@ -45,7 +47,12 @@ function buildStripePolicyContext(request: NextRequest, customerRegion?: string)
     },
   })
 
-  return { edgeRouting, routeAudit }
+  const routingContextMetadata = createPaymentRoutingContextMetadata({
+    requestId: routeAudit.requestId,
+    routeDecision: edgeRouting,
+  })
+
+  return { edgeRouting, routeAudit, routingContextMetadata }
 }
 
 export async function GET(request: NextRequest) {
@@ -131,7 +138,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    const { edgeRouting, routeAudit } = buildStripePolicyContext(request, billing_address?.country)
+    const { edgeRouting, routeAudit, routingContextMetadata } = buildStripePolicyContext(request, billing_address?.country)
 
     await logPrivilegedAction({
       actorUserId: sessionUser.userId,
@@ -149,7 +156,15 @@ export async function POST(request: NextRequest) {
       const stripeCustomer = await stripe.customers.create({
         email: sessionUser.email || undefined,
         name: sessionUser.name || undefined,
-        metadata: withRouteContextMetadata({ user_id: sessionUser.userId }, edgeRouting),
+        metadata: withRouteContextMetadata(
+          buildComplianceSafePaymentMetadata({
+            requestId: routingContextMetadata.requestId,
+            routeDecision: edgeRouting,
+            metadata: { user_id: sessionUser.userId },
+          }),
+          edgeRouting,
+          routingContextMetadata,
+        ),
       })
       stripeCustomerId = stripeCustomer.id
       await Database.query(`UPDATE users SET stripe_customer_id = $1 WHERE id = $2`, [stripeCustomerId, sessionUser.userId])
@@ -162,15 +177,20 @@ export async function POST(request: NextRequest) {
       payment_settings: { save_default_payment_method: "on_subscription" },
       expand: ["latest_invoice.payment_intent"],
       metadata: withRouteContextMetadata(
-        {
-          user_id: sessionUser.userId,
-          plan_id,
-          tax_country_code: taxComputation.countryCode,
-          tax_state_code: taxComputation.stateCode ?? "",
-          tax_total_amount: String(taxComputation.totalTaxAmount),
-          product_tax_code: productTaxCode,
-        },
+        buildComplianceSafePaymentMetadata({
+          requestId: routingContextMetadata.requestId,
+          routeDecision: edgeRouting,
+          metadata: {
+            user_id: sessionUser.userId,
+            plan_id,
+            tax_country_code: taxComputation.countryCode,
+            tax_state_code: taxComputation.stateCode ?? "",
+            tax_total_amount: String(taxComputation.totalTaxAmount),
+            product_tax_code: productTaxCode,
+          },
+        }),
         edgeRouting,
+        routingContextMetadata,
       ),
     }
 

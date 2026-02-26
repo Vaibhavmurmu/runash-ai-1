@@ -8,8 +8,10 @@ import { PaymentService } from "@/lib/payment-service"
 import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
 import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
 import {
+  buildComplianceSafePaymentMetadata,
   createPaymentRoutingAuditEvent,
-  resolveEdgeRoutingPolicy
+  createPaymentRoutingContextMetadata,
+  resolveEdgeRoutingPolicy,
 } from "@/lib/payments/edge-routing-policy"
 import { ingestUsageEvent, type UsageEventIngestionInput } from "@/lib/billing-usage"
 
@@ -120,6 +122,10 @@ export async function POST(request: NextRequest) {
         payment_method_id: paymentMethodId,
       },
     })
+    const routingContextMetadata = createPaymentRoutingContextMetadata({
+      requestId: routeAudit.requestId,
+      routeDecision: edgeRouting,
+    })
 
     await logPrivilegedAction({
       actorUserId: sessionUser.userId,
@@ -139,22 +145,24 @@ export async function POST(request: NextRequest) {
       metadata: metadata || {},
     })
 
-    const mergedMetadata = sanitizePaymentActivityDetails({
-      ...(metadata || {}),
-      user_id: sessionUser.userId,
-      organization_id: sessionUser.organizationId,
-      validatorDecision,
-      validatorGate,
-      human_confirmed: Boolean(humanConfirmed),
-      mfa_verified: Boolean(mfaVerified),
-      usage_hook_attached: Boolean(usageHook),
-      payment_context: {
-        regionRoute: edgeRouting.regionRoute,
-        residencyPolicy: edgeRouting.residencyPolicy,
-      },
-      region_route: edgeRouting.regionRoute,
-      residency_policy: edgeRouting.residencyPolicy,
-      compliance_profile: edgeRouting.complianceProfile,
+    const mergedMetadata = buildComplianceSafePaymentMetadata({
+      requestId: routingContextMetadata.requestId,
+      routeDecision: edgeRouting,
+      metadata: sanitizePaymentActivityDetails({
+        ...(metadata || {}),
+        user_id: sessionUser.userId,
+        organization_id: sessionUser.organizationId,
+        usage_hook_attached: Boolean(usageHook),
+        human_confirmed: Boolean(humanConfirmed),
+        mfa_verified: Boolean(mfaVerified),
+        payment_context: {
+          regionRoute: edgeRouting.regionRoute,
+          region: edgeRouting.region,
+          residencyPolicy: edgeRouting.residencyPolicy,
+          residencyPolicyVersion: routingContextMetadata.residencyPolicyVersion,
+          requestId: routingContextMetadata.requestId,
+        },
+      }),
     })
 
     const intent = await PaymentService.createPaymentIntent(
@@ -185,7 +193,10 @@ export async function POST(request: NextRequest) {
         metadata: metadata || {},
         paymentContext: {
           regionRoute: edgeRouting.regionRoute,
+          region: edgeRouting.region,
           residencyPolicy: edgeRouting.residencyPolicy,
+          residencyPolicyVersion: routingContextMetadata.residencyPolicyVersion,
+          requestId: routingContextMetadata.requestId,
         },
         routeDecision: routeAudit.routeDecision,
         validatorDecision,

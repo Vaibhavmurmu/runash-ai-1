@@ -91,3 +91,11 @@ This document is limited to payment/business implementation policy. Generic cont
 - Impacted flows validated: validator middleware enforcement for create-intent and confirm execution path, including HITL/MFA thresholds normalized across INR/USD.
 - Backward compatibility confirmation: no payment field names removed; response payload includes additive validator-decision metadata only.
 - Rollback: revert validator middleware enforcement in API routes/service and restore prior confirmation behavior if incident metrics indicate false-positive blocking.
+
+
+## 2026-02 residency-aware routing operations addendum
+
+- Startup/business payment flows now evaluate merchant/customer geography for India vs US processing path selection through the shared routing policy module.
+- Compliance-safe metadata contract for outbound gateway calls is now: `region`, `residency_policy_version`, and `request_id` (+ minimal business identifiers).
+- Audit trail requirements: capture `routeDecision`, `requestId`, and sanitized non-sensitive metadata for `billing.checkout`, `billing.subscription`, `payment.create_intent`, and RunAshChat instant checkout relay flows.
+- Risk + rollback: if provider rejects additive metadata keys, remove metadata enrichment from provider calls first (safe rollback) without changing payment API field names/signatures.
