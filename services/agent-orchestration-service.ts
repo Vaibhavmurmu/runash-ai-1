@@ -16,6 +16,7 @@ import {
   pruneExpiredAgentRecords,
 } from "@/lib/repositories/agent-orchestration"
 import { relayAgentSkillModules, type RelayAgentTool } from "@/lib/skills/relay-tool-registry"
+import { logApiEvent } from "@/lib/api/logging"
 import { estimateTaxPreview } from "@/lib/payments/tax-estimator"
 import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
 import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
@@ -27,6 +28,7 @@ export type ToolExecutionContext = {
   sessionId: string
   messageId: string
   tenantId: string
+  correlationId?: string
 }
 
 export type ToolExecutionResult = {
@@ -386,10 +388,22 @@ export async function executeToolWithPolicy(
 ): Promise<ToolExecutionResult> {
   const cacheKey = getToolCacheKey(tool, payload)
   const now = Date.now()
+  const correlationId = context.correlationId ?? `${context.sessionId}:${context.messageId}`
+
+  logApiEvent("info", "relay.tool.execution.started", {
+    route: "relay/tool",
+    requestId: correlationId,
+    details: { tool, sessionId: context.sessionId, messageId: context.messageId, tenantId: context.tenantId, correlationId },
+  })
 
   if (tool === "catalog_lookup") {
     const cached = catalogCache.get(cacheKey)
     if (cached && cached.expiresAt > now) {
+      logApiEvent("info", "relay.tool.execution.cache_hit", {
+        route: "relay/tool",
+        requestId: correlationId,
+        details: { tool, correlationId },
+      })
       return { tool, result: cached.value, fromCache: true }
     }
   }
@@ -422,16 +436,32 @@ export async function executeToolWithPolicy(
         catalogCache.set(cacheKey, { value: result, expiresAt: Date.now() + 30_000 })
       }
 
+      logApiEvent("info", "relay.tool.execution.completed", {
+        route: "relay/tool",
+        requestId: correlationId,
+        details: { tool, correlationId, attempt },
+      })
       return { tool, result, fromCache: false }
     } catch (error) {
       lastError = error
       if (attempt < TOOL_RETRY_COUNT) {
+        logApiEvent("warn", "relay.tool.execution.retry", {
+          route: "relay/tool",
+          requestId: correlationId,
+          details: { tool, correlationId, attempt },
+        })
         await wait(120 * (attempt + 1))
       }
     }
   }
 
   await completeToolCallLineage(lineage.id, "failed")
+  logApiEvent("error", "relay.tool.execution.failed", {
+    route: "relay/tool",
+    requestId: correlationId,
+    error: lastError,
+    details: { tool, correlationId },
+  })
   throw lastError instanceof Error ? lastError : new Error("tool_execution_failed")
 }
 

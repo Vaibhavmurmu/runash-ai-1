@@ -332,3 +332,29 @@ Risks + rollback:
 - Risk/rollback:
   1. If per-domain endpoint routing causes delivery mismatch, temporarily direct Stripe to `POST /api/billing/webhook` (catch-all) while preserving signatures.
   2. If timeline reconciliation introduces noisy events, disable wallet timeline writes by reverting `reconcileWalletTimeline` logic while retaining core billing ledger upserts.
+
+
+## 2026-02 Link funnel observability + callback validation hardening
+
+- Standardized wallet Link endpoints to the canonical API envelope (`success`, `data`, `error`, `requestId`, optional `meta`) without legacy top-level compatibility fields.
+  - `POST /api/wallet/link/session`
+  - `POST /api/wallet/link/verify`
+  - `POST /api/wallet/link/save`
+- Added strict schema validation (Zod) for every Link request payload above, plus Stripe setup-intent webhook callback payload parsing before wallet session status updates.
+- Added funnel metrics emission for Link reliability tracking:
+  - `session_created`
+  - `session_verified`
+  - `autofill_success`
+  - `checkout_completion`
+  - `fallback_usage`
+- Added correlation/tracing propagation across Relay tool execution and provider/API calls:
+  - relay tool execution lifecycle logs (`started`, `cache_hit`, `retry`, `completed`, `failed`)
+  - provider session/save logs tied to request correlation IDs
+  - upstream Link checkout call now forwards `x-correlation-id`.
+- Exposed Link funnel health and alerting in operations monitoring payload under `payments.linkFunnel` with `errorRatePercent` and `alert` severity.
+- Added operator dashboard tiles for Link funnel health and error-rate alerting.
+
+Risks + rollback:
+1. **Risk:** Removal of legacy top-level wallet/link fields can impact stale clients expecting direct `providerRequestId`. **Mitigation:** values remain available in `data` and envelope contract is now canonical; update any stale client mappers.
+2. **Risk:** Strict payload schemas can reject malformed requests previously tolerated. **Mitigation:** explicit validation errors are returned with stable envelope error codes.
+3. **Rollback:** revert Link observability module and wallet route payload parsing changes in one rollback commit; restore previous route handlers and dashboard tile blocks.

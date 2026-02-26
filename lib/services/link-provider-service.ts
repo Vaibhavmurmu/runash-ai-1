@@ -1,5 +1,7 @@
 import { randomUUID } from "crypto"
 
+import { logApiEvent } from "@/lib/api/logging"
+
 export type LinkProviderErrorCode =
   | "LINK_SESSION_FAILED"
   | "LINK_VERIFICATION_FAILED"
@@ -97,15 +99,18 @@ function maskPhoneFallback() {
 
 export async function createLinkProviderSession(input: CreateLinkSessionInput): Promise<LinkProviderSession> {
   const stripe = await createStripeClient()
+  logApiEvent("info", "payments.link.provider.session.create.started", { route: "payments/link/provider", requestId: input.requestId, details: { correlationId: input.requestId, provider: "stripe_link" } })
 
   if (!stripe) {
-    return {
+    const mockResponse = {
       provider: "stripe_link",
       providerSessionId: `lps_${randomUUID()}`,
       providerCustomerId: `cus_${randomUUID().replace(/-/g, "").slice(0, 14)}`,
       maskedPhone: maskPhoneFallback(),
       providerRequestId: `mock_req_${input.requestId}`,
     }
+    logApiEvent("info", "payments.link.provider.session.create.mock", { route: "payments/link/provider", requestId: input.requestId, details: { correlationId: input.requestId } })
+    return mockResponse
   }
 
   try {
@@ -128,13 +133,15 @@ export async function createLinkProviderSession(input: CreateLinkSessionInput): 
       },
     })
 
-    return {
+    const providerResponse = {
       provider: "stripe_link",
       providerSessionId: setupIntent.id,
       providerCustomerId: customer.id,
       maskedPhone: maskPhoneFallback(),
       providerRequestId: setupIntent.lastResponse?.requestId ?? customer.lastResponse?.requestId ?? null,
     }
+    logApiEvent("info", "payments.link.provider.session.create.completed", { route: "payments/link/provider", requestId: input.requestId, details: { correlationId: input.requestId, providerRequestId: providerResponse.providerRequestId } })
+    return providerResponse
   } catch (error) {
     throw toProviderError("LINK_SESSION_FAILED", error)
   }
@@ -168,6 +175,7 @@ export async function fetchLinkVerificationFromProvider(providerSessionId: strin
 
 export async function saveLinkPaymentMethodViaProvider(input: SaveLinkPaymentInput): Promise<LinkProviderSavedPayment> {
   const stripe = await createStripeClient()
+  logApiEvent("info", "payments.link.provider.save.started", { route: "payments/link/provider", requestId: input.requestId, details: { correlationId: input.requestId, provider: "stripe_link" } })
   const sanitizedNumber = input.cardNumber.replace(/\D/g, "")
   const last4 = sanitizedNumber.slice(-4)
 

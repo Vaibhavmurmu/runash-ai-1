@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { z } from "zod"
 import { logApiEvent, createRequestLogContext } from "@/lib/api/logging"
 import { WalletStore } from "@/lib/data/wallet-store"
 import { getWebhookEventByEventId, processWebhookEvent, recordWebhookEvent } from "@/lib/services/billing-webhook-service"
@@ -6,6 +7,20 @@ import { verifyStripeSignedPayload } from "@/lib/auth/plugins/runash-payment"
 import { shouldTreatDuplicateAsProcessed } from "@/lib/services/billing-webhook-idempotency"
 
 const DEFAULT_SIGNATURE_TOLERANCE_SECONDS = 300
+
+const stripeSetupIntentCallbackSchema = z
+  .object({
+    id: z.string().min(1),
+    request: z.string().optional().nullable(),
+    last_setup_error: z
+      .object({
+        code: z.string().optional().nullable(),
+      })
+      .optional()
+      .nullable(),
+  })
+  .passthrough()
+
 
 function getConfiguredToleranceSeconds() {
   const configured = Number(process.env.BILLING_WEBHOOK_SIGNATURE_TOLERANCE_SECONDS ?? DEFAULT_SIGNATURE_TOLERANCE_SECONDS)
@@ -20,8 +35,10 @@ async function syncWalletLinkVerificationFromWebhook(event: { type: string; data
     return
   }
 
-  const providerSessionId = typeof object.id === "string" ? object.id : null
-  if (!providerSessionId) return
+  const parsedCallback = stripeSetupIntentCallbackSchema.safeParse(object)
+  if (!parsedCallback.success) return
+
+  const providerSessionId = parsedCallback.data.id
 
   const status =
     event.type === "setup_intent.succeeded"
@@ -33,8 +50,8 @@ async function syncWalletLinkVerificationFromWebhook(event: { type: string; data
   await WalletStore.updateLinkSessionProviderStatus({
     providerSessionId,
     status,
-    reason: typeof object.last_setup_error?.code === "string" ? object.last_setup_error.code : null,
-    providerRequestId: typeof object.request === "string" ? object.request : null,
+    reason: parsedCallback.data.last_setup_error?.code ?? null,
+    providerRequestId: parsedCallback.data.request ?? null,
   })
 }
 

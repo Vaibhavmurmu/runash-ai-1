@@ -2,22 +2,25 @@ import { NextRequest } from "next/server"
 
 import { respondError, respondSuccess, resolveRequestId } from "@/lib/api/response"
 import { WalletStore } from "@/lib/data/wallet-store"
+import { linkVerifyRequestSchema, trackLinkFunnelMetric } from "@/lib/payments/link-funnel-observability"
 import { logWalletPaymentTransition } from "@/lib/payments/wallet-audit-log"
 import { fetchLinkVerificationFromProvider, toUserSafeProviderError } from "@/lib/services/link-provider-service"
 
 export async function POST(request: NextRequest) {
   const requestId = resolveRequestId(request)
+  const correlationId = request.headers.get("x-correlation-id") ?? requestId
   const body = await request.json().catch(() => null)
+  const parsed = linkVerifyRequestSchema.safeParse(body)
 
-  if (!body?.sessionId) {
+  if (!parsed.success) {
     return respondError(
       request,
-      { code: "LINK_VERIFY_BAD_REQUEST", message: "sessionId is required" },
+      { code: "LINK_VERIFY_BAD_REQUEST", message: "Invalid Link verify payload" },
       { status: 400, requestId },
     )
   }
 
-  const session = await WalletStore.getLinkSessionById(body.sessionId)
+  const session = await WalletStore.getLinkSessionById(parsed.data.sessionId)
   if (!session) {
     return respondError(request, { code: "LINK_VERIFICATION_FAILED", message: "Session not found" }, { status: 404, requestId })
   }
@@ -34,7 +37,7 @@ export async function POST(request: NextRequest) {
     return respondError(
       request,
       { code: "LINK_VERIFICATION_FAILED", message: "Session expired" },
-      { status: 400, requestId, legacy: { providerRequestId: session.providerRequestId ?? null } },
+      { status: 400, requestId },
     )
   }
 
@@ -42,14 +45,14 @@ export async function POST(request: NextRequest) {
     return respondError(
       request,
       { code: "LINK_VERIFICATION_FAILED", message: "Provider session missing" },
-      { status: 400, requestId, legacy: { providerRequestId: session.providerRequestId ?? null } },
+      { status: 400, requestId },
     )
   }
 
   try {
     const providerVerification = await fetchLinkVerificationFromProvider(session.providerSessionId)
 
-    const updated = await WalletStore.updateLinkSessionProviderStatus({
+    await WalletStore.updateLinkSessionProviderStatus({
       sessionId: session.id,
       status: providerVerification.status,
       reason: providerVerification.reason,
@@ -71,15 +74,16 @@ export async function POST(request: NextRequest) {
         {
           status: providerVerification.status === "pending" ? 202 : 400,
           requestId,
-          legacy: {
-            providerRequestId: providerVerification.providerRequestId,
-            verificationStatus: providerVerification.status,
-          },
         },
       )
     }
 
     const autofill = await WalletStore.getLinkAutofillForSession(session.id)
+
+    trackLinkFunnelMetric("session_verified", { requestId, correlationId, sessionId: session.id, userId: session.userId })
+    if (autofill.autofill) {
+      trackLinkFunnelMetric("autofill_success", { requestId, correlationId, sessionId: session.id, userId: session.userId })
+    }
 
     logWalletPaymentTransition({ requestId, action: "wallet.link.verify", status: "success", userId: session.userId, sessionId: session.id })
     return respondSuccess(
@@ -93,10 +97,6 @@ export async function POST(request: NextRequest) {
       },
       {
         requestId,
-        legacy: {
-          providerRequestId: providerVerification.providerRequestId,
-          verificationStatus: updated?.providerVerificationStatus ?? "verified",
-        },
       },
     )
   } catch (error) {
@@ -111,9 +111,6 @@ export async function POST(request: NextRequest) {
       {
         status: 502,
         requestId,
-        legacy: {
-          providerRequestId: mapped.providerRequestId,
-        },
       },
     )
   }

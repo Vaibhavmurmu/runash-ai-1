@@ -286,14 +286,6 @@ export const initiateLinkCheckoutTool = {
           nextAction: "collect_valid_checkout_fields",
           requestId,
         },
-        resolved_handoff_contract: {
-          merchant_id: payload.merchant_id,
-          amount: payload.amount,
-          currency: payload.currency,
-          product_metadata: payload.product_metadata,
-          chat_context: payload.chat_context,
-          idempotency_key: payload.idempotency_key,
-        },
       }
     }
 
@@ -369,14 +361,6 @@ export const initiateLinkCheckoutTool = {
           taxBreakdown,
           nextAction: "collect_valid_checkout_fields",
           requestId,
-        },
-        resolved_handoff_contract: {
-          merchant_id: payload.merchant_id,
-          amount: payload.amount,
-          currency: payload.currency,
-          product_metadata: payload.product_metadata,
-          chat_context: payload.chat_context,
-          idempotency_key: payload.idempotency_key,
         },
       }
     }
@@ -502,14 +486,6 @@ export const initiateLinkCheckoutTool = {
           taxBreakdown,
           nextAction: "retry_or_manual_review",
           requestId,
-        },
-        resolved_handoff_contract: {
-          merchant_id: payload.merchant_id,
-          amount: payload.amount,
-          currency: payload.currency,
-          product_metadata: payload.product_metadata,
-          chat_context: payload.chat_context,
-          idempotency_key: payload.idempotency_key,
         },
       }
     }
