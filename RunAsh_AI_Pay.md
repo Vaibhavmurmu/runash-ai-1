@@ -283,3 +283,11 @@ Risks + rollback:
 1. **Risk:** deterministic idempotency keys may over-deduplicate if upstream intent normalization is too broad. **Mitigation:** key includes session and normalized intent digest.
 2. **Rollback:** revert relay handoff contract generation and registry middleware wrapper in a single commit; API signatures remain backward compatible.
 3. **Compatibility:** existing payload fields remain additive; no breaking changes to payment contract field names.
+
+
+## Link Checkout Reliability + Audit Controls
+
+- Link checkout now enforces validator threshold controls for HITL and MFA before provider session creation.
+- Wallet default payment method updates and subscription lifecycle transitions are treated as high-risk payment actions and require HITL + MFA.
+- Risk engine decisioning includes geo mismatch review, risk-score review/block thresholds, and block-signal deny rules with explicit reason codes.
+- Payment-impacting wallet/link transitions emit structured audit logs with sanitized metadata for compliance review and rollback tracing.
