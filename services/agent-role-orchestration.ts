@@ -37,12 +37,15 @@ const ALL_TOOLS: readonly RelayAgentTool[] = [
   "checkout_preview",
   "web_search",
   "initiate_link_checkout",
+  "create_initial_quote",
+  "submit_counter_offer",
+  "broker_settle_deal",
 ]
 
 export const AGENT_ROLE_POLICY_MAP: Record<AgentRole, RolePolicy> = {
   buyer: {
     role: "buyer",
-    allowedTools: ["catalog_lookup", "inventory_health", "checkout_preview", "web_search", "initiate_link_checkout"],
+    allowedTools: ["catalog_lookup", "inventory_health", "checkout_preview", "web_search", "initiate_link_checkout", "create_initial_quote", "submit_counter_offer"],
     objectiveWeights: {
       price: 0.5,
       sustainability: 0.2,
@@ -57,7 +60,7 @@ export const AGENT_ROLE_POLICY_MAP: Record<AgentRole, RolePolicy> = {
   },
   seller: {
     role: "seller",
-    allowedTools: ["catalog_lookup", "inventory_health", "checkout_preview", "web_search"],
+    allowedTools: ["catalog_lookup", "inventory_health", "checkout_preview", "web_search", "create_initial_quote", "submit_counter_offer"],
     objectiveWeights: {
       price: 0.2,
       sustainability: 0.1,

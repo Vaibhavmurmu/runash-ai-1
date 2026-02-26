@@ -24,6 +24,7 @@ import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer
 import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
 import { searchProductsWithProviders } from "@/services/web-search-service"
 import { postAccountingEvent, type AccountingEventType } from "@/lib/services/runashbook-accounting-service"
+import { getAcceptedDealSnapshot } from "@/services/deal-negotiation-service"
 import { createAgentRoleDecision } from "@/lib/repositories/agent-role-decisions"
 import {
   clampRolePreferences,
@@ -228,8 +229,27 @@ async function executeWebSearch(payload: Record<string, unknown>) {
 }
 
 async function executeInitiateLinkCheckout(payload: Record<string, unknown>) {
-  const amount = Number(payload.amount)
-  const currency = String(payload.currency ?? "USD")
+  const dealId = typeof payload.deal_id === "string" ? payload.deal_id : null
+  const acceptedDealSnapshot = dealId ? await getAcceptedDealSnapshot(dealId) : null
+  const handoffPayload = acceptedDealSnapshot
+    ? {
+      ...payload,
+      amount: acceptedDealSnapshot.final_price_minor,
+      currency: acceptedDealSnapshot.currency,
+      line_items: [
+        {
+          sku: acceptedDealSnapshot.sku,
+          quantity: acceptedDealSnapshot.quantity,
+          unit_amount: acceptedDealSnapshot.final_price_minor,
+        },
+      ],
+      discount_basis: acceptedDealSnapshot.discount_basis,
+      accepted_deal_snapshot: acceptedDealSnapshot,
+    }
+    : payload
+
+  const amount = Number(handoffPayload.amount)
+  const currency = String(handoffPayload.currency ?? "USD")
   const validatorGate = enforcePaymentValidatorMiddleware({
     amountMinor: Number.isFinite(amount) ? Math.round(amount) : 0,
     currency,
@@ -252,15 +272,17 @@ async function executeInitiateLinkCheckout(payload: Record<string, unknown>) {
     }
   }
 
-  const result = (await relayAgentSkillModules.initiate_link_checkout.execute(payload)) as Record<string, unknown>
+  const result = (await relayAgentSkillModules.initiate_link_checkout.execute(handoffPayload)) as Record<string, unknown>
   const accountingSync = await syncCheckoutResultToAccounting({
-    payload,
+    payload: handoffPayload,
     result,
     correlationId: String(payload.idempotency_key ?? payload.correlation_key ?? randomUUID()),
   })
 
   return {
     ...result,
+    deal_id: dealId ?? undefined,
+    accepted_deal_snapshot: acceptedDealSnapshot ?? undefined,
     validatorGate,
     accounting_sync: accountingSync,
     pending_sync: accountingSync.status === "pending_sync",
@@ -521,6 +543,23 @@ export async function executeToolWithPolicy(
     },
     initiate_link_checkout: async () => {
       const execution = await executeRoleConditionedTool({ role, tool: "initiate_link_checkout", args: payload })
+      if (execution.activitySummary.status === "blocked") {
+        return { ...execution.result, activity_summary_role: execution.activitySummary }
+      }
+
+      const checkoutResult = await executeInitiateLinkCheckout(payload)
+      return { ...checkoutResult, activity_summary_role: execution.activitySummary }
+    },
+    create_initial_quote: async () => {
+      const execution = await executeRoleConditionedTool({ role, tool: "create_initial_quote", args: payload })
+      return { ...execution.result, activity_summary_role: execution.activitySummary }
+    },
+    submit_counter_offer: async () => {
+      const execution = await executeRoleConditionedTool({ role, tool: "submit_counter_offer", args: payload })
+      return { ...execution.result, activity_summary_role: execution.activitySummary }
+    },
+    broker_settle_deal: async () => {
+      const execution = await executeRoleConditionedTool({ role, tool: "broker_settle_deal", args: payload })
       return { ...execution.result, activity_summary_role: execution.activitySummary }
     },
   }

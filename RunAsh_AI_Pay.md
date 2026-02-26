@@ -536,3 +536,13 @@ Results
   2. **Mitigation:** search tool remains immediate/read-only and does not execute payment operations.
   3. **Rollback:** revert `resolveRunAshChatToolSelection` mapping and remove `buyer_product_search` registration to restore prior catalog/web-search-only routing.
 
+
+## Negotiation-to-Link Checkout Handoff (2026-02)
+
+RunAsh AI Link now supports deterministic negotiation handoff before Link checkout initiation.
+
+- Relay agents can create and settle negotiated deals through explicit tools: `create_initial_quote`, `submit_counter_offer`, and `broker_settle_deal`.
+- Accepted deals persist a payment-safe snapshot (`deal_id`, `final_price_minor`, `discount_basis`, `sku`, `quantity`, `currency`).
+- `initiate_link_checkout` consumes the accepted snapshot when `deal_id` is provided, ensuring payment amount and line item context match the finalized negotiation outcome.
+- Backward compatibility is preserved: direct `initiate_link_checkout` payloads without `deal_id` continue to work unchanged.
+- No sensitive card/auth data is logged by negotiation services; only deal metadata and pricing outcomes are recorded.

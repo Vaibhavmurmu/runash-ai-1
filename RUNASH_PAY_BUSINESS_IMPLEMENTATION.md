@@ -271,3 +271,17 @@ Results
 - **Primary risk:** repository-backed product catalog may be unavailable in local/dev environments without database connectivity.
 - **Mitigation:** adapters retain safe fallback to local in-memory product seed data to preserve non-prod behavior.
 - **Rollback:** revert adapter wiring in `lib/skills/relay-tool-registry.ts` and orchestration map in `services/agent-orchestration-service.ts` to prior implementation if regression is detected.
+
+## Negotiation Reliability Addendum (2026-02)
+
+This release introduces policy-driven deal negotiation before payment handoff:
+
+1. **Initial quote** creates deterministic `deal_id` values from stable negotiation context.
+2. **Counter-offers** support expiration and automatic accept/reject thresholds from `discount_policies`.
+3. **Broker settlements** finalize outlier negotiations within policy floor/ceiling controls.
+4. **Payment handoff** to AI Link consumes accepted deal snapshots before checkout initiation.
+
+### Risk / Rollback
+- **Risk:** misconfigured discount policy thresholds could over-accept or over-reject offers.
+- **Mitigation:** policies are tenant+SKU scoped and auditable through `deal_events` and `offers`.
+- **Rollback:** disable negotiation tool invocation and continue direct checkout path (`initiate_link_checkout` without `deal_id`).

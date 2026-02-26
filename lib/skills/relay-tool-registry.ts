@@ -8,6 +8,7 @@ import {
   queryCatalogAdapter,
 } from "@/services/relay-commerce-adapters"
 import { searchProductsWithProviders } from "@/services/web-search-service"
+import { brokerMediatedSettlement, counterOffer, createInitialQuote } from "@/services/deal-negotiation-service"
 
 export const RELAY_AGENT_TOOLS = [
   "catalog_lookup",
@@ -16,6 +17,9 @@ export const RELAY_AGENT_TOOLS = [
   "web_search",
   "buyer_product_search",
   "initiate_link_checkout",
+  "create_initial_quote",
+  "submit_counter_offer",
+  "broker_settle_deal",
 ] as const
 
 export type RelayAgentTool = (typeof RELAY_AGENT_TOOLS)[number]
@@ -37,6 +41,9 @@ export const relayToolExecutionMode: Record<RelayAgentTool, "immediate" | "queue
   web_search: "immediate",
   buyer_product_search: "immediate",
   initiate_link_checkout: "immediate",
+  create_initial_quote: "queued",
+  submit_counter_offer: "queued",
+  broker_settle_deal: "queued",
 }
 
 export const relayAgentSkillModules: Record<string, { name: string; execute: (args: unknown) => Promise<unknown> }> = {
@@ -63,6 +70,19 @@ export const relayAgentSkillModules: Record<string, { name: string; execute: (ar
   buyer_product_search: {
     name: "buyer_product_search",
     execute: buyerProductSearchAdapter,
+  },
+
+  create_initial_quote: {
+    name: "create_initial_quote",
+    execute: createInitialQuote,
+  },
+  submit_counter_offer: {
+    name: "submit_counter_offer",
+    execute: counterOffer,
+  },
+  broker_settle_deal: {
+    name: "broker_settle_deal",
+    execute: brokerMediatedSettlement,
   },
   [initiateLinkCheckoutTool.name]: {
     ...initiateLinkCheckoutTool,
