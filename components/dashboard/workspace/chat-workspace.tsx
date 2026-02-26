@@ -589,6 +589,12 @@ export function ChatWorkspace() {
                   ? payload.result.request_id
                   : undefined
 
+            const attemptedMethods = Array.isArray(payload.result?.attempted_methods)
+              ? payload.result.attempted_methods.filter((entry: unknown): entry is string => typeof entry === "string" && entry.length > 0)
+              : Array.isArray(payload.result?.attemptedMethods)
+                ? payload.result.attemptedMethods.filter((entry: unknown): entry is string => typeof entry === "string" && entry.length > 0)
+                : undefined
+
             const attemptTimeline = Array.isArray(payload.result?.attempt_timeline)
               ? payload.result.attempt_timeline
                   .map((entry: unknown) => {
@@ -630,6 +636,7 @@ export function ChatWorkspace() {
                   requestCorrelationId,
                   checkoutId,
                   nextAction,
+                  attemptedMethods,
                   attemptTimeline,
                   confirmationPayload: {
                     merchant_id: typeof linkPayload?.merchant_id === "string" ? linkPayload.merchant_id : "runash-default-merchant",

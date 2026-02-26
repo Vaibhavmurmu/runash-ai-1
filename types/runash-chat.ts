@@ -33,6 +33,7 @@ export interface LinkQuickPayPreview {
   blockedReason?: string
   checkoutId?: string
   nextAction?: "open_link_checkout" | "collect_valid_checkout_fields" | "retry_or_manual_review"
+  attemptedMethods?: string[]
   attemptTimeline?: Array<{
     method: string
     reason: "primary" | "fallback_retry" | "no_retry"

@@ -6,6 +6,7 @@ import {
   type PaymentSafetyPolicyDecision,
 } from "@/lib/payments/validator-safety-gate"
 import { estimateTaxPreview } from "@/lib/payments/tax-estimator"
+import { estimateCheckoutTaxBreakdown } from "@/lib/payments/tax-estimation-utility"
 import { runLinkCheckoutWithFallback } from "@/lib/services/link-checkout-service"
 
 export const initiateLinkCheckoutToolParameters = {
@@ -262,13 +263,20 @@ export const initiateLinkCheckoutTool = {
       },
     })
 
-    const activitySummary = {
-      subtotal: taxPreview.subtotal,
-      tax: taxPreview.gstVatAmount,
-      total: taxPreview.totalPayable,
+    const taxEstimation = estimateCheckoutTaxBreakdown({
+      subtotal: payload.amount / 100,
       currency: payload.currency,
-      tax_label: taxPreview.taxLabel,
-      tax_rate_percent: taxPreview.taxRatePercent,
+      country: payload.country ?? (payload.currency === "INR" ? "IN" : "US"),
+      region: payload.region,
+    })
+
+    const activitySummary = {
+      subtotal: taxEstimation.subtotal,
+      tax: taxEstimation.gstVatAmount,
+      total: taxEstimation.totalAmount,
+      currency: payload.currency,
+      tax_label: taxEstimation.taxLabel,
+      tax_rate_percent: taxEstimation.taxRatePercent,
       country: taxPreview.country,
       region: taxPreview.region,
     } as const
@@ -282,12 +290,12 @@ export const initiateLinkCheckoutTool = {
       })),
     }
     const taxBreakdown = {
-      subtotal: taxPreview.subtotal,
-      tax: taxPreview.gstVatAmount,
-      total: taxPreview.totalPayable,
+      subtotal: taxEstimation.subtotal,
+      tax: taxEstimation.gstVatAmount,
+      total: taxEstimation.totalAmount,
       currency: payload.currency,
-      label: taxPreview.taxLabel,
-      ratePercent: taxPreview.taxRatePercent,
+      label: taxEstimation.taxLabel,
+      ratePercent: taxEstimation.taxRatePercent,
       country: taxPreview.country,
       region: taxPreview.region,
       lineItems: transactionMetadata.tax_line_items.map((lineItem) => ({

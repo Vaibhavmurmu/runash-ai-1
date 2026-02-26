@@ -120,6 +120,7 @@ export default function ChatMessageComponent({ message }: ChatMessageProps) {
                   blockedReason={message.metadata.linkQuickPay.blockedReason}
                   checkoutState={message.metadata.linkQuickPay.status}
                   requestCorrelationId={message.metadata.linkQuickPay.requestCorrelationId}
+                  attemptedMethods={message.metadata.linkQuickPay.attemptedMethods}
                   attemptTimeline={message.metadata.linkQuickPay.attemptTimeline}
                   onPay={async () => {
                     const executeLinkCheckout = async () => {
