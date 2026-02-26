@@ -153,3 +153,15 @@ This document is payment-domain specific. For contributor workflow/process polic
   1. Intent over-matching could trigger checkout tooling for ambiguous prompts; rollback by reverting intent selection helper in `app/api/agents/chat/chat-request-handler.ts`.
   2. If upstream `/v3/pay` payload/response behavior changes, rollback to prior `runLinkCheckoutWithFallback` return mapping while preserving request headers and idempotency behavior.
   3. UI state inconsistencies can be rolled back by reverting `components/chat/link-quick-pay-button.tsx` + `components/dashboard/workspace/chat-workspace.tsx` together to keep metadata/state mapping aligned.
+
+
+## 2026-02 Validator middleware hardening for execution path
+
+- Added currency-normalized policy evaluation in payment validator middleware with explicit thresholds: HITL required when amount exceeds USD-equivalent $100 (`RUNASH_HITL_THRESHOLD_USD_CENTS`, default `10000`) and MFA required when amount exceeds INR-equivalent ₹8,000 (`RUNASH_MFA_THRESHOLD_INR_PAISE`, default `800000`).
+- Enforced validator middleware before both payment intent creation and payment confirmation/execution paths so blocked decisions are returned prior to charge confirmation.
+- Validator decision contract is propagated to callers with stable fields: `requiresHitl`, `requiresMfa`, `allowed`, and `reasonCodes` (plus existing snake_case compatibility fields internally).
+- Payment/auth activity log payloads now mask payment identifiers (e.g., `*4242`) for keys like `paymentMethodId`, `intentId`, and provider transaction identifiers, while continuing to redact PIN/OTP/CVV style secrets.
+- Risks + rollback:
+  1. **Risk:** Strict execution-time gate could block legacy intents missing `human_confirmed`/`mfa_verified`. **Mitigation:** confirm route accepts override flags and metadata now persists both fields at create-intent time.
+  2. **Rollback:** Revert validator check insertion in `app/api/v1/payment/confirm/route.ts` and `lib/payment-service.ts`, then redeploy previous stable build if false positives are observed.
+  3. **Compatibility:** Existing API signatures remain backward compatible; added fields are additive in successful and blocked responses.
