@@ -189,3 +189,35 @@ This document is payment-domain specific. For contributor workflow/process polic
 Risk and rollback notes:
 1. If local storage persistence causes stale states in user sessions, rollback persistence in `app/scan/page.tsx` while retaining backend transaction contracts.
 2. If receipt endpoint integration causes regressions, rollback `app/api/upi/transactions/[transactionId]/route.ts` and disable share/download controls while preserving UPI confirm/status behavior.
+
+
+## Send Money Reliability Hardening (UPI)
+
+RunAsh Pay send-money flows now follow an explicit lifecycle to reduce false-positive success states:
+
+- Initiate payment (`/api/upi/initiate`) with idempotency keys.
+- Confirm payment (`/api/upi/confirm`) with server-side PIN validation and risk controls.
+- Poll final status (`/api/upi/status/:transactionId`) before rendering success UI.
+
+### UX behavior update
+- Success screen is shown only after terminal `success` status.
+- Failed and timeout outcomes are surfaced with retry actions.
+- Transaction reference and details endpoints are exposed for reconciliation.
+
+This change preserves API compatibility while improving operational correctness for payment status handling.
+
+
+## 2026-02 Custom Wallet + Link autofill integration
+
+- Added custom wallet APIs and pages for card vaulting, activity timeline, and subscription management:
+  - `GET/POST /api/wallet/cards`, `PATCH/DELETE /api/wallet/cards/:id`
+  - `GET /api/wallet/activity`
+  - `GET/PATCH /api/wallet/subscriptions`
+  - pages: `/wallet`, `/wallet/activity`, `/wallet/subscriptions`
+- Added Link UX flows aligned to RunAshChat checkout behavior:
+  1. Save payment info at checkout (`POST /api/wallet/link/save`).
+  2. Account verification with one-time code for new device/site (`POST /api/wallet/link/session`, `POST /api/wallet/link/verify`).
+  3. Checkout autofill preview after verification (saved email + masked payment method + billing details).
+- Security and compatibility notes:
+  - Card payloads are reduced to masked last4 storage in wallet records and never expose full PAN in API responses.
+  - Existing payment API signatures remain unchanged; wallet/link routes are additive and can be rolled back independently.
