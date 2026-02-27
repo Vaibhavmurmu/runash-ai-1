@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { SectionFeatureCard } from "@/components/settings/sections/section-feature-card"
+import { SettingsRow } from "@/components/settings/sections/settings-presentation"
 import type { SettingsData, SettingsSection } from "@/components/settings/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -92,18 +93,20 @@ export function SecuritySettings({
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <SectionFeatureCard panelId="password" title="Data Encryption" description="Protect sensitive data at rest and in transit." status="Configured" actionLabel={isSaving ? "Saving..." : "Save security"} disabled={isDisabled} onAction={() => onSave("security")}>
+      <SectionFeatureCard panelId="password" title="Data Encryption" description="Protect sensitive data at rest and in transit." status="configured" actionLabel={isSaving ? "Saving..." : "Save security"} disabled={isDisabled} onAction={() => onSave("security")}>
         <div className="grid gap-2"><Label htmlFor="settings-password">New password</Label><Input id="settings-password" type="password" value={data.security.newPassword} onChange={(event) => onFieldChange("security", "newPassword", event.target.value)} disabled={isDisabled} /></div>
         {errors.security ? <p className="text-sm text-destructive">{errors.security}</p> : null}
       </SectionFeatureCard>
 
-      <SectionFeatureCard panelId="two-factor" title="2FA" description="Add additional verification to sign-ins." status={data.security.twoFactorEnabled ? "Configured" : "Recommended"} actionLabel={data.security.twoFactorEnabled ? "Disable 2FA" : "Save 2FA preference"} disabled={isDisabled} onAction={() => (data.security.twoFactorEnabled ? onAction("disable2FA") : onSave("security"))}>
-        <div className="flex items-center justify-between rounded-md border p-3"><div><p className="text-sm font-medium">Two-factor authentication</p><p className="text-xs text-muted-foreground">Require a secondary factor when signing in.</p></div><Switch checked={data.security.twoFactorEnabled} onCheckedChange={(checked) => onFieldChange("security", "twoFactorEnabled", checked)} disabled={isDisabled} /></div>
+      <SectionFeatureCard panelId="two-factor" title="2FA" description="Add additional verification to sign-ins." status={data.security.twoFactorEnabled ? "configured" : "recommended"} actionLabel={data.security.twoFactorEnabled ? "Disable 2FA" : "Save 2FA preference"} disabled={isDisabled} onAction={() => (data.security.twoFactorEnabled ? onAction("disable2FA") : onSave("security"))}>
+        <SettingsRow title="Two-factor authentication" description="Require a secondary factor when signing in.">
+          <Switch checked={data.security.twoFactorEnabled} onCheckedChange={(checked) => onFieldChange("security", "twoFactorEnabled", checked)} disabled={isDisabled} />
+        </SettingsRow>
       </SectionFeatureCard>
 
-      <SectionFeatureCard panelId="privacy" title="Privacy Controls" description="Manage communication and profile visibility defaults." status="Review" actionLabel={isSaving ? "Saving..." : "Save notifications"} disabled={isDisabled} onAction={() => onSave("notifications")}/>
+      <SectionFeatureCard panelId="privacy" title="Privacy Controls" description="Manage communication and profile visibility defaults." status="review" actionLabel={isSaving ? "Saving..." : "Save notifications"} disabled={isDisabled} onAction={() => onSave("notifications")}/>
 
-      <SectionFeatureCard panelId="api-security" title="API Security" description="Rotate and revoke integration credentials." status="Ready" actionLabel="Regenerate API key" disabled={isDisabled} onAction={() => onAction("regenerateApiKey")}>
+      <SectionFeatureCard panelId="api-security" title="API Security" description="Rotate and revoke integration credentials." status="ready" actionLabel="Regenerate API key" disabled={isDisabled} onAction={() => onAction("regenerateApiKey")} actionSlot={<Button variant="outline" onClick={() => onAction("deleteApiKey")} disabled={isDisabled}>Delete API key</Button>}>
         <div className="space-y-3 rounded-md border p-3">
           <div><p className="text-xs font-medium text-muted-foreground">Current key</p><p className="font-mono text-sm">{data.security.apiKeyMasked || "Not generated"}</p></div>
           {data.security.apiKeyLastRotatedAt ? <p className="text-xs text-muted-foreground">Last rotated: {new Date(data.security.apiKeyLastRotatedAt).toLocaleString()}</p> : null}
@@ -114,10 +117,9 @@ export function SecuritySettings({
             </div>
           ) : null}
         </div>
-        <div className="flex gap-2"><Button variant="destructive" onClick={() => onAction("deleteApiKey")} disabled={isDisabled}>Delete API key</Button></div>
       </SectionFeatureCard>
 
-      <SectionFeatureCard panelId="authorization-scopes" title="Integration authorization scopes" description="View and edit scopes used by user-scoped integrations." status="Review" actionLabel="Refresh scopes" disabled={isDisabled} onAction={() => void loadSecurityTables()}>
+      <SectionFeatureCard panelId="authorization-scopes" title="Integration authorization scopes" description="View and edit scopes used by user-scoped integrations." status="review" actionLabel="Refresh scopes" disabled={isDisabled} onAction={() => void loadSecurityTables()}>
         <div className="space-y-2">
           {sessions.map((session) => (
             <div key={session.id} className="grid gap-2 rounded-md border p-2">
@@ -128,7 +130,7 @@ export function SecuritySettings({
         </div>
       </SectionFeatureCard>
 
-      <SectionFeatureCard panelId="security-devices" title="Trusted devices" description="Review trusted devices associated with your account sessions." status="Configured" actionLabel="Refresh devices" disabled={isDisabled} onAction={() => void loadSecurityTables()}>
+      <SectionFeatureCard panelId="security-devices" title="Trusted devices" description="Review trusted devices associated with your account sessions." status="configured" actionLabel="Refresh devices" disabled={isDisabled} onAction={() => void loadSecurityTables()}>
         <div className="space-y-2">
           {devices.map((device) => (
             <div key={device.deviceId} className="rounded-md border p-2 text-sm">
