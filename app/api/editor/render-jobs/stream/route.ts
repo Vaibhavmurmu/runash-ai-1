@@ -1,4 +1,5 @@
 import { requireEditorUser } from "@/app/api/editor/_lib"
+import { subscribeRenderJobEvents } from "@/lib/editor/render-job-events"
 import { sql } from "@/lib/editor/repository"
 
 type RenderJobRow = {
@@ -6,6 +7,12 @@ type RenderJobRow = {
   status: string
   result: Record<string, unknown> | null
   updated_at: string
+  project_id: string
+  owner_id: string
+  requested_by: string
+  payload: Record<string, unknown> | null
+  output_asset_id: string | null
+  created_at: string
 }
 
 type StreamSnapshot = {
@@ -40,12 +47,12 @@ function formatFrame(event: string, payload: unknown) {
 }
 
 function isTerminal(status: string) {
-  return status === "completed" || status === "failed"
+  return status === "completed" || status === "failed" || status === "canceled"
 }
 
 async function loadJob(ownerId: string, projectId: string, jobId: string): Promise<RenderJobRow | null> {
   const rows = (await sql`
-    SELECT id, status, result, updated_at
+    SELECT *
     FROM editor_render_jobs
     WHERE id=${jobId}
       AND project_id=${projectId}
@@ -76,11 +83,13 @@ export async function GET(request: Request) {
       let stopped = false
       let latestSnapshot: StreamSnapshot | null = null
       let intervalId: ReturnType<typeof setInterval> | null = null
+      let unsubscribe: (() => void) | null = null
 
       const stop = () => {
         if (stopped) return
         stopped = true
         if (intervalId) clearInterval(intervalId)
+        if (unsubscribe) unsubscribe()
         try {
           controller.close()
         } catch {
@@ -99,6 +108,12 @@ export async function GET(request: Request) {
               progress: snapshot.progress,
               stage: snapshot.stage,
             },
+            projectId: job.project_id,
+            ownerId: job.owner_id,
+            requestedBy: job.requested_by,
+            payload: job.payload ?? {},
+            outputAssetId: job.output_asset_id,
+            createdAt: job.created_at,
             updatedAt: snapshot.updatedAt,
           },
         }
@@ -147,12 +162,34 @@ export async function GET(request: Request) {
         }
       }
 
+      unsubscribe = subscribeRenderJobEvents(auth.userId, {
+        jobId,
+        onEvent: (event) => {
+          if (stopped || event.scope.projectId !== projectId) return
+
+          const job: RenderJobRow = {
+            id: event.job.id,
+            status: event.job.status,
+            result: event.job.result,
+            updated_at: event.job.updatedAt,
+            project_id: event.job.projectId,
+            owner_id: event.job.ownerId,
+            requested_by: event.job.requestedBy,
+            payload: event.job.payload,
+            output_asset_id: event.job.outputAssetId,
+            created_at: event.job.createdAt,
+          }
+
+          pushJobEvents(job, latestSnapshot)
+        },
+      })
+
       controller.enqueue(encoder.encode("retry: 2000\n\n"))
       await poll()
 
       intervalId = setInterval(() => {
         void poll()
-      }, 1000)
+      }, 5000)
 
       request.signal.addEventListener("abort", () => {
         stop()

@@ -26,7 +26,7 @@ interface BottomToolbarProps {
   onDuplicate?: () => Promise<void> | void
   onDelete?: () => Promise<void> | void
   onExportMetadata?: () => Promise<void> | void
-  isProjectActionBusy?: boolean
+  isProjectMutationBusy?: boolean
 }
 
 export default function BottomToolbar({
@@ -42,7 +42,7 @@ export default function BottomToolbar({
   onDuplicate,
   onDelete,
   onExportMetadata,
-  isProjectActionBusy = false,
+  isProjectMutationBusy = false,
 }: BottomToolbarProps) {
   const [showMCPDashboard, setShowMCPDashboard] = useState(false)
   const isMobile = useIsMobile()
@@ -91,8 +91,8 @@ export default function BottomToolbar({
 
         {!isMobile && (
           <>
-            <Button variant="ghost" size="sm" onClick={onDuplicate} disabled={isProjectActionBusy} title="Duplicate project" aria-label="Duplicate project">
-              {isProjectActionBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
+            <Button variant="ghost" size="sm" onClick={onDuplicate} disabled={isProjectMutationBusy} title="Duplicate project" aria-label="Duplicate project">
+              {isProjectMutationBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
             </Button>
             <Button variant="ghost" size="sm" title="Share" aria-label="Share project">
               <Share2 className="w-4 h-4" />
@@ -101,13 +101,13 @@ export default function BottomToolbar({
               variant="ghost"
               size="sm"
               onClick={onExportMetadata}
-              disabled={isProjectActionBusy}
+              disabled={isProjectMutationBusy}
               title="Export metadata"
               aria-label="Export metadata"
             >
               <Download className="w-4 h-4" />
             </Button>
-            <Button variant="ghost" size="sm" onClick={onDelete} disabled={isProjectActionBusy} title="Delete project" aria-label="Delete project">
+            <Button variant="ghost" size="sm" onClick={onDelete} disabled={isProjectMutationBusy} title="Delete project" aria-label="Delete project">
               <Trash2 className="w-4 h-4" />
             </Button>
           </>
@@ -120,7 +120,7 @@ export default function BottomToolbar({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => void onDuplicate?.()} disabled={isProjectActionBusy}>
+            <DropdownMenuItem onClick={() => void onDuplicate?.()} disabled={isProjectMutationBusy}>
               <Copy className="w-4 h-4" />
               Duplicate
             </DropdownMenuItem>
@@ -128,11 +128,11 @@ export default function BottomToolbar({
               <Share2 className="w-4 h-4" />
               Share
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void onExportMetadata?.()} disabled={isProjectActionBusy}>
+            <DropdownMenuItem onClick={() => void onExportMetadata?.()} disabled={isProjectMutationBusy}>
               <Download className="w-4 h-4" />
               Export metadata
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void onDelete?.()} disabled={isProjectActionBusy} className="text-destructive focus:text-destructive">
+            <DropdownMenuItem onClick={() => void onDelete?.()} disabled={isProjectMutationBusy} className="text-destructive focus:text-destructive">
               <Trash2 className="w-4 h-4" />
               Delete
             </DropdownMenuItem>
