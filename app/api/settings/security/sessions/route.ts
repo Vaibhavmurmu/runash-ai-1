@@ -3,6 +3,7 @@ import { z } from "zod"
 
 import { listActiveUserSessions, invalidateSession, switchUserSessionScope } from "@/lib/auth/session-modes"
 import { resolveSettingsUserId } from "@/lib/settings-security"
+import { sectionFieldError, settingsError, zodSectionErrors } from "@/app/api/settings/_lib/errors"
 
 const revokeSchema = z
   .object({
@@ -21,7 +22,12 @@ const scopeSchema = z.object({
 export async function GET(request: Request) {
   const userId = await resolveSettingsUserId(request)
   if (!userId) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+    return settingsError({
+      code: "SETTINGS_UNAUTHORIZED",
+      message: "Unauthorized",
+      status: 401,
+      errors: sectionFieldError("security", "_section", "Sign in again to continue."),
+    })
   }
 
   const sessions = await listActiveUserSessions(String(userId))
@@ -46,12 +52,22 @@ export async function GET(request: Request) {
 export async function DELETE(request: Request) {
   const userId = await resolveSettingsUserId(request)
   if (!userId) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+    return settingsError({
+      code: "SETTINGS_UNAUTHORIZED",
+      message: "Unauthorized",
+      status: 401,
+      errors: sectionFieldError("security", "_section", "Sign in again to continue."),
+    })
   }
 
   const parsed = revokeSchema.safeParse(await request.json().catch(() => ({})))
   if (!parsed.success) {
-    return NextResponse.json({ message: "Invalid request" }, { status: 400 })
+    return settingsError({
+      code: "INVALID_SECURITY_ACTION_PAYLOAD",
+      message: "Invalid request",
+      status: 400,
+      errors: zodSectionErrors("security", parsed.error),
+    })
   }
 
   if (parsed.data.revokeAll) {
@@ -66,17 +82,32 @@ export async function DELETE(request: Request) {
 export async function PATCH(request: Request) {
   const userId = await resolveSettingsUserId(request)
   if (!userId) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+    return settingsError({
+      code: "SETTINGS_UNAUTHORIZED",
+      message: "Unauthorized",
+      status: 401,
+      errors: sectionFieldError("security", "_section", "Sign in again to continue."),
+    })
   }
 
   const parsed = scopeSchema.safeParse(await request.json().catch(() => ({})))
   if (!parsed.success) {
-    return NextResponse.json({ message: "Invalid request" }, { status: 400 })
+    return settingsError({
+      code: "INVALID_SECURITY_ACTION_PAYLOAD",
+      message: "Invalid request",
+      status: 400,
+      errors: zodSectionErrors("security", parsed.error),
+    })
   }
 
   const session = await switchUserSessionScope(String(userId), parsed.data.sessionId, parsed.data.scope)
   if (!session) {
-    return NextResponse.json({ message: "Session not found" }, { status: 404 })
+    return settingsError({
+      code: "SETTINGS_SESSION_NOT_FOUND",
+      message: "Session not found",
+      status: 404,
+      errors: sectionFieldError("security", "sessionId", "Session not found."),
+    })
   }
 
   return NextResponse.json({ session })

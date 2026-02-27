@@ -632,3 +632,22 @@ Expanded the Settings Billing contract surface with dedicated endpoints that pre
 1. **Risk:** environments with sparse billing data can surface defaults more often (for example, fallback plan labels).
 2. **Mitigation:** endpoints clamp/normalize outputs and preserve existing defaults to avoid UI regressions.
 3. **Rollback:** revert `app/api/settings/billing/**`, restore prior static responses in `app/api/settings/actions/*` billing routes, and keep UI consuming previously persisted settings-only billing values.
+
+## 2026-02 Settings action error contract hardening (backward-compatible)
+
+Standardized settings action/billing error payloads to include a shared field-map shape:
+
+- `errors: { <section>: { <field>: <message> } }`
+- `error.code` machine-readable codes for action failures, authorization, validation, and rate limits.
+- `error.details.validationErrors` preserved for compatibility with existing clients.
+
+### Sensitive action controls
+- Added/standardized 429 rate-limit responses and explicit error codes for:
+  - 2FA disable (`/api/settings/actions/disable-2fa`)
+  - API key regenerate/delete (`/api/settings/actions/regenerate-api-key`, `/api/settings/actions/delete-api-key`)
+  - Session revocation (`/api/settings/actions/revoke-sessions`)
+
+### Risks + rollback
+1. **Risk:** clients hard-coded to `{ error: string }` only may ignore granular field errors.
+2. **Mitigation:** legacy-compatible `error.message` and `error.details.validationErrors` are still returned.
+3. **Rollback:** revert `app/api/settings/_lib/errors.ts` and route-level formatter adoption in `app/api/settings/**` if downstream compatibility issues surface.

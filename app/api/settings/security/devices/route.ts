@@ -3,6 +3,7 @@ import { z } from "zod"
 
 import { listTrustedDevices, revokeTrustedDevice, trustUserDevice } from "@/lib/auth/session-modes"
 import { resolveSettingsUserId } from "@/lib/settings-security"
+import { sectionFieldError, settingsError, zodSectionErrors } from "@/app/api/settings/_lib/errors"
 
 const trustSchema = z.object({
   deviceId: z.string().trim().min(1).max(128),
@@ -16,7 +17,12 @@ const revokeSchema = z.object({
 export async function GET(request: Request) {
   const userId = await resolveSettingsUserId(request)
   if (!userId) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+    return settingsError({
+      code: "SETTINGS_UNAUTHORIZED",
+      message: "Unauthorized",
+      status: 401,
+      errors: sectionFieldError("security", "_section", "Sign in again to continue."),
+    })
   }
 
   const devices = await listTrustedDevices(String(userId))
@@ -26,12 +32,22 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const userId = await resolveSettingsUserId(request)
   if (!userId) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+    return settingsError({
+      code: "SETTINGS_UNAUTHORIZED",
+      message: "Unauthorized",
+      status: 401,
+      errors: sectionFieldError("security", "_section", "Sign in again to continue."),
+    })
   }
 
   const parsed = trustSchema.safeParse(await request.json().catch(() => ({})))
   if (!parsed.success) {
-    return NextResponse.json({ message: "Invalid request" }, { status: 400 })
+    return settingsError({
+      code: "INVALID_SECURITY_ACTION_PAYLOAD",
+      message: "Invalid request",
+      status: 400,
+      errors: zodSectionErrors("security", parsed.error),
+    })
   }
 
   const trustedDevice = await trustUserDevice({
@@ -46,12 +62,22 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const userId = await resolveSettingsUserId(request)
   if (!userId) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+    return settingsError({
+      code: "SETTINGS_UNAUTHORIZED",
+      message: "Unauthorized",
+      status: 401,
+      errors: sectionFieldError("security", "_section", "Sign in again to continue."),
+    })
   }
 
   const parsed = revokeSchema.safeParse(await request.json().catch(() => ({})))
   if (!parsed.success) {
-    return NextResponse.json({ message: "Invalid request" }, { status: 400 })
+    return settingsError({
+      code: "INVALID_SECURITY_ACTION_PAYLOAD",
+      message: "Invalid request",
+      status: 400,
+      errors: zodSectionErrors("security", parsed.error),
+    })
   }
 
   await revokeTrustedDevice(String(userId), parsed.data.deviceId)
