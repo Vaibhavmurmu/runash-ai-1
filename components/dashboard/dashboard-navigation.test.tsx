@@ -6,20 +6,33 @@ import { applySidebarRouteGuards } from "@/lib/navigation/sidebar-route-guards"
 
 const knownSidebarRoutes = new Set([
   "/dashboard",
+  "/dashboard/create-project",
+  "/dashboard/library",
+  "/dashboard/templates",
+  "/dashboard/design-system",
+  "/dashboard/documentation",
+  "/dashboard/general",
+  "/dashboard/profile",
+  "/dashboard/preferences",
+  "/dashboard/connections",
+  "/dashboard/billing",
+  "/dashboard/usage",
+  "/dashboard/refer",
+  "/dashboard/members",
+  "/dashboard/api",
   "/agents/dashboard",
   "/automation",
   "/workflows",
-  "/payments",
-  "/dashboard/streaming-studio",
-  "/dashboard/editor",
-  "/dashboard/seller-studio",
+  "/stream",
+  "/ecommerce/dashboard",
+  "/seller/dashboard",
 ])
 
 test("required top-level dashboard modules remain present after route guards", () => {
   const guardedItems = applySidebarRouteGuards(dashboardNavigationConfig.items, {
     knownRoutes: knownSidebarRoutes,
     featureFlags: {
-      sidebar_ai_agents: true,
+      sidebar_ai_agents: false,
     },
     routeGuards: {
       "/agents/dashboard": { featureFlag: "sidebar_ai_agents", unavailableBehavior: "disable" },
@@ -29,17 +42,20 @@ test("required top-level dashboard modules remain present after route guards", (
   const labels = guardedItems.map((item) => item.label)
 
   assert.ok(labels.includes("Dashboard"))
+  assert.ok(labels.includes("Workspace"))
   assert.ok(labels.includes("Agents"))
   assert.ok(labels.includes("Automation"))
   assert.ok(labels.includes("Workflows"))
-  assert.ok(labels.includes("Payments"))
+  assert.ok(labels.includes("Team"))
+  assert.ok(labels.includes("Settings"))
+  assert.ok(labels.includes("Billing"))
 })
 
 test("unavailable routes are disabled with the coming soon tooltip", () => {
   const guardedItems = applySidebarRouteGuards(dashboardNavigationConfig.items, {
     knownRoutes: knownSidebarRoutes,
     featureFlags: {
-      sidebar_ai_agents: true,
+      sidebar_ai_agents: false,
     },
     routeGuards: {
       "/agents/dashboard": { featureFlag: "sidebar_ai_agents", unavailableBehavior: "disable" },
@@ -62,8 +78,8 @@ test("workflows nested links include only known optional routes", () => {
 
   assert.ok(workflows)
   assert.deepEqual(workflows.children?.map((child) => child.href), [
-    "/dashboard/streaming-studio",
-    "/dashboard/editor",
-    "/dashboard/seller-studio",
+    "/stream",
+    "/ecommerce/dashboard",
+    "/seller/dashboard",
   ])
 })

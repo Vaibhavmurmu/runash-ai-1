@@ -2,9 +2,11 @@ import type { LucideIcon } from "lucide-react"
 import {
   Bot,
   CreditCard,
+  FolderKanban,
   LayoutDashboard,
   Settings,
   Sparkles,
+  Users,
   Workflow,
 } from "lucide-react"
 
@@ -80,7 +82,28 @@ export const dashboardNavItems: DashboardNavItem[] = [
     href: "/dashboard",
     icon: LayoutDashboard,
     section: "core",
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard"),
+    activeMatch: (pathname) => pathname === "/dashboard",
+  },
+  {
+    label: "Workspace",
+    href: "/dashboard/library",
+    icon: FolderKanban,
+    section: "core",
+    children: [
+      { label: "Create project", href: "/dashboard/create-project" },
+      { label: "Library", href: "/dashboard/library" },
+      { label: "Templates", href: "/dashboard/templates" },
+      { label: "Design system", href: "/dashboard/design-system" },
+      { label: "Documentation", href: "/dashboard/documentation" },
+    ],
+    activeMatch: (pathname) =>
+      [
+        "/dashboard/create-project",
+        "/dashboard/library",
+        "/dashboard/templates",
+        "/dashboard/design-system",
+        "/dashboard/documentation",
+      ].some((prefix) => matchesPathPrefix(pathname, prefix)),
   },
   {
     label: "Agents",
@@ -117,18 +140,48 @@ export const dashboardNavItems: DashboardNavItem[] = [
       matchesPathPrefix(pathname, "/seller"),
   },
   {
-    label: "Settings",
-    href: "/settings",
-    icon: Settings,
-    section: "account",
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/settings"),
+    label: "Team",
+    href: "/dashboard/members",
+    icon: Users,
+    section: "operations",
+    children: [
+      { label: "Members", href: "/dashboard/members" },
+      { label: "API", href: "/dashboard/api" },
+    ],
+    activeMatch: (pathname) =>
+      matchesPathPrefix(pathname, "/dashboard/members") ||
+      matchesPathPrefix(pathname, "/dashboard/api"),
   },
   {
-    label: "Payments",
-    href: "/payments",
+    label: "Settings",
+    href: "/dashboard/general",
+    icon: Settings,
+    section: "account",
+    children: [
+      { label: "General", href: "/dashboard/general" },
+      { label: "Profile", href: "/dashboard/profile" },
+      { label: "Preferences", href: "/dashboard/preferences" },
+      { label: "Connections", href: "/dashboard/connections" },
+    ],
+    activeMatch: (pathname) =>
+      ["/dashboard/general", "/dashboard/profile", "/dashboard/preferences", "/dashboard/connections"].some((prefix) =>
+        matchesPathPrefix(pathname, prefix),
+      ),
+  },
+  {
+    label: "Billing",
+    href: "/dashboard/billing",
     icon: CreditCard,
     section: "account",
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/payments"),
+    children: [
+      { label: "Billing", href: "/dashboard/billing" },
+      { label: "Usage", href: "/dashboard/usage" },
+      { label: "Refer", href: "/dashboard/refer" },
+    ],
+    activeMatch: (pathname) =>
+      ["/dashboard/billing", "/dashboard/usage", "/dashboard/refer"].some((prefix) =>
+        matchesPathPrefix(pathname, prefix),
+      ),
   },
 ]
 
@@ -137,28 +190,29 @@ export const dashboardQuickLinkGroups: DashboardQuickLinkGroup[] = [
     label: "Primary",
     icon: LayoutDashboard,
     items: dashboardNavItems.filter((item) =>
-      ["Dashboard", "Agents", "Automation", "Workflows"].includes(item.label),
+      ["Dashboard", "Workspace", "Agents", "Automation", "Workflows"].includes(item.label),
     ),
   },
   {
     label: "Account",
     icon: CreditCard,
-    items: dashboardNavItems.filter((item) =>
-      ["Settings", "Payments"].includes(item.label),
-    ),
+    items: dashboardNavItems.filter((item) => ["Team", "Settings", "Billing"].includes(item.label)),
   },
 ]
 
 export const dashboardQuickActions: DashboardQuickAction[] = [
   { label: "Dashboard", href: "/dashboard" },
+  { label: "Create project", href: "/dashboard/create-project" },
+  { label: "Library", href: "/dashboard/library" },
+  { label: "Templates", href: "/dashboard/templates" },
+  { label: "Members", href: "/dashboard/members" },
+  { label: "API", href: "/dashboard/api" },
+  { label: "Billing", href: "/dashboard/billing" },
+  { label: "Usage", href: "/dashboard/usage" },
+  { label: "Documentation", href: "/dashboard/documentation" },
   { label: "Agents", href: "/agents/dashboard" },
   { label: "Automation", href: "/automation" },
   { label: "Workflows", href: "/workflows" },
-  { label: "Streaming", href: "/stream" },
-  { label: "Store", href: "/ecommerce/dashboard" },
-  { label: "Seller", href: "/seller/dashboard" },
-  { label: "Settings", href: "/settings" },
-  { label: "Payments", href: "/payments" },
 ]
 
 export const dashboardNavigationConfig: DashboardNavigationConfig = {
@@ -188,6 +242,20 @@ export function isNavItemActive(pathname: string, item: DashboardNavItem) {
 
 const dashboardPathLabels: Record<string, string> = {
   dashboard: "Dashboard",
+  "create-project": "Create Project",
+  library: "Library",
+  billing: "Billing",
+  usage: "Usage",
+  general: "General",
+  profile: "Profile",
+  refer: "Refer",
+  preferences: "Preferences",
+  connections: "Connections",
+  templates: "Templates",
+  "design-system": "Design System",
+  members: "Members",
+  api: "API",
+  documentation: "Documentation",
   stream: "Streaming",
   agents: "Agents",
   automation: "Automation",
@@ -218,8 +286,18 @@ function resolveCurrentSection(pathname: string, fallback: string | undefined) {
   if (matchesPathPrefix(pathname, "/stream")) return "Streaming"
   if (matchesPathPrefix(pathname, "/ecommerce")) return "Store"
   if (matchesPathPrefix(pathname, "/seller")) return "Seller"
-  if (matchesPathPrefix(pathname, "/settings")) return "Settings"
-  if (matchesPathPrefix(pathname, "/payments")) return "Payments"
+  if (["/dashboard/general", "/dashboard/profile", "/dashboard/preferences", "/dashboard/connections"].some((prefix) => matchesPathPrefix(pathname, prefix))) {
+    return "Settings"
+  }
+  if (["/dashboard/billing", "/dashboard/usage", "/dashboard/refer"].some((prefix) => matchesPathPrefix(pathname, prefix))) {
+    return "Billing"
+  }
+  if (["/dashboard/members", "/dashboard/api"].some((prefix) => matchesPathPrefix(pathname, prefix))) {
+    return "Team"
+  }
+  if (["/dashboard/create-project", "/dashboard/library", "/dashboard/templates", "/dashboard/design-system", "/dashboard/documentation"].some((prefix) => matchesPathPrefix(pathname, prefix))) {
+    return "Workspace"
+  }
   if (matchesPathPrefix(pathname, "/dashboard")) return "Dashboard"
 
   return fallback ?? "Dashboard"
