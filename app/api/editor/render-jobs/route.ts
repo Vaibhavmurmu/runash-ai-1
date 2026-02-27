@@ -1,16 +1,26 @@
 import { NextResponse } from "next/server"
+import { z } from "zod"
 import { requireEditorUser } from "@/app/api/editor/_lib"
 import { compileTimelineToVideoGenerationRequest, TimelineCompilationError } from "@/lib/editor/generation/compile-timeline"
 import { publishRenderJobEvent } from "@/lib/editor/render-job-events"
 import { getProjectById, sql } from "@/lib/editor/repository"
-import { buildGenerationDefaults, resolveVideoModelProviderAdapter } from "@/lib/editor/video-models/registry"
-import { normalizeVideoGenerationPayload, validateVideoGenerationPayload } from "@/lib/editor/video-models/validation"
+import { buildGenerationDefaults, executeVideoModelById, validateGenerationConfig } from "@/lib/editor/video-models/registry"
+import {
+  mapVideoModelExecutionError,
+  normalizeVideoGenerationPayload,
+  validateVideoGenerationPayload,
+} from "@/lib/editor/video-models/validation"
 
 const DEFAULT_RATE_LIMIT_WINDOW_SECONDS = Number(process.env.EDITOR_RENDER_RATE_LIMIT_WINDOW_SECONDS ?? 300)
 const DEFAULT_USER_RATE_LIMIT = Number(process.env.EDITOR_RENDER_RATE_LIMIT_USER ?? 20)
 const DEFAULT_PROJECT_RATE_LIMIT = Number(process.env.EDITOR_RENDER_RATE_LIMIT_PROJECT ?? 8)
 const DEFAULT_MAX_DURATION_SECONDS = Number(process.env.EDITOR_RENDER_MAX_DURATION_SECONDS ?? 120)
 const DEFAULT_MAX_RESOLUTION_PIXELS = Number(process.env.EDITOR_RENDER_MAX_RESOLUTION_PIXELS ?? 3686400)
+
+const createRenderJobRequestSchema = z.object({
+  projectId: z.string().trim().min(1).max(120),
+  payload: z.unknown().optional(),
+})
 
 const modelTierOrder = ["standard", "pro", "enterprise"] as const
 type ModelTier = (typeof modelTierOrder)[number]
@@ -142,11 +152,12 @@ export async function POST(request: Request) {
   if ("error" in auth) return auth.error
 
   const body = await request.json()
-  if (!body?.projectId) {
-    return NextResponse.json({ error: "projectId is required" }, { status: 400 })
+  const parsedBody = createRenderJobRequestSchema.safeParse(body)
+  if (!parsedBody.success) {
+    return NextResponse.json({ error: "Invalid request body", issues: parsedBody.error.flatten() }, { status: 400 })
   }
 
-  const parsedPayload = validateVideoGenerationPayload(body.payload ?? {})
+  const parsedPayload = validateVideoGenerationPayload(parsedBody.data.payload ?? {})
   if (!parsedPayload.success) {
     return NextResponse.json(
       {
@@ -162,22 +173,25 @@ export async function POST(request: Request) {
     ...buildGenerationDefaults(normalizedPayload.modelId),
     ...normalizedPayload,
   }
-  const providerAdapter = resolveVideoModelProviderAdapter(effectivePayload.modelId)
-  if (!providerAdapter) {
+
+  const generationConfigErrors = validateGenerationConfig(effectivePayload.modelId, effectivePayload)
+  if (Object.keys(generationConfigErrors).length > 0) {
     return NextResponse.json(
       {
-        error: `Unsupported modelId: ${effectivePayload.modelId}`,
+        error: "Invalid model configuration",
+        code: "VIDEO_MODEL_VALIDATION_FAILED",
+        issues: generationConfigErrors,
       },
       { status: 400 },
     )
   }
 
-  const project = await getProjectById(auth.userId, body.projectId)
+  const project = await getProjectById(auth.userId, parsedBody.data.projectId)
   if (!project) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 })
   }
 
-  const rateLimitError = await enforceRenderRateLimits(auth.userId, body.projectId)
+  const rateLimitError = await enforceRenderRateLimits(auth.userId, parsedBody.data.projectId)
   if (rateLimitError) {
     return NextResponse.json(rateLimitError.payload, { status: rateLimitError.status })
   }
@@ -210,8 +224,19 @@ export async function POST(request: Request) {
     throw error
   }
 
-  const providerPayload = providerAdapter.normalizeRequest(compilation.request)
-  const limitsError = enforceRenderInputLimits(providerPayload)
+  let executionOutput = null
+  try {
+    executionOutput = await executeVideoModelById(compilation.request)
+  } catch (error) {
+    const mappedError = mapVideoModelExecutionError(error)
+    return NextResponse.json({ error: mappedError.message, code: mappedError.code }, { status: 502 })
+  }
+
+  if (!executionOutput) {
+    return NextResponse.json({ error: "Unsupported modelId", code: "VIDEO_MODEL_UNSUPPORTED" }, { status: 400 })
+  }
+
+  const limitsError = enforceRenderInputLimits(executionOutput.providerRequest)
   if (limitsError) {
     return NextResponse.json(limitsError.payload, { status: limitsError.status })
   }
@@ -219,12 +244,13 @@ export async function POST(request: Request) {
   const [job] = await sql`
     INSERT INTO editor_render_jobs (project_id, owner_id, requested_by, status, payload, result, output_asset_id)
     VALUES (
-      ${body.projectId},
+      ${parsedBody.data.projectId},
       ${auth.userId},
       ${auth.userId},
       'queued',
       ${JSON.stringify({
-        providerRequest: providerPayload,
+        provider: executionOutput.progress.provider,
+        providerRequest: executionOutput.providerRequest,
         compiler: {
           summary: compilation.summary,
         },
@@ -234,9 +260,10 @@ export async function POST(request: Request) {
         startedAt: null,
         finishedAt: null,
         lastError: null,
-        progress: 0,
-        stage: "queued",
+        progress: executionOutput.progress.progressPercent,
+        stage: executionOutput.progress.status,
         metadata: {
+          provider: executionOutput.progress.provider,
           compiler: {
             summary: compilation.summary,
           },

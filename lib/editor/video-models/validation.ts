@@ -1,8 +1,9 @@
 import { z } from "zod"
-import type { VideoGenerationRequest } from "@/lib/editor/video-models/types"
+import type { VideoGenerationRequest, VideoModelExecutionErrorCode } from "@/lib/editor/video-models/types"
 
 const resolutionPattern = /^(?<width>\d{2,5})x(?<height>\d{2,5})$/i
 const aspectRatioPattern = /^\d{1,2}:\d{1,2}$/
+const sensitiveTokenPattern = /\b(?:sk|pk|rk)_(?:live|test|proj)_[A-Za-z0-9_-]{8,}\b|\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+\/-]+=*\b|\b(?:api[_-]?key|secret|token)\s*[:=]\s*[^\s,;]+/gi
 
 export const videoGenerationPayloadSchema = z
   .object({
@@ -50,4 +51,25 @@ export function normalizeVideoGenerationPayload(payload: VideoGenerationRequest)
   }
 
   return normalized
+}
+
+function sanitizeErrorMessage(message: string): string {
+  const trimmed = message.trim()
+  const scrubbed = trimmed.replace(sensitiveTokenPattern, "[redacted]")
+
+  return scrubbed.length > 0 ? scrubbed : "Video generation request could not be processed"
+}
+
+export function mapVideoModelExecutionError(error: unknown): { code: VideoModelExecutionErrorCode; message: string } {
+  if (error instanceof Error) {
+    return {
+      code: "VIDEO_MODEL_EXECUTION_FAILED",
+      message: sanitizeErrorMessage(error.message),
+    }
+  }
+
+  return {
+    code: "VIDEO_MODEL_EXECUTION_FAILED",
+    message: "Video generation request could not be processed",
+  }
 }

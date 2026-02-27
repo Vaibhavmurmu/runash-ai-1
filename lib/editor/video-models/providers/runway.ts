@@ -7,10 +7,23 @@ export const runwayVideoModelProviderAdapter: VideoModelProviderAdapter = {
   supportsModel(modelId) {
     return runwayModelMatcher.test(modelId.trim())
   },
-  normalizeRequest(request: VideoGenerationRequest): VideoGenerationRequest {
+  async execute(request: VideoGenerationRequest) {
     return {
-      ...request,
-      modelId: request.modelId.trim(),
+      providerRequest: {
+        ...request,
+        modelId: request.modelId.trim(),
+      },
+      progress: {
+        jobId: "pending",
+        provider: "runway",
+        status: "queued",
+        progressPercent: 0,
+      },
+      result: {
+        jobId: "pending",
+        provider: "runway",
+        modelId: request.modelId.trim(),
+      },
     }
   },
 }
