@@ -296,3 +296,14 @@ Business controls preserved:
 - Existing payment contracts remain additive and backward compatible.
 - Sensitive payment/auth data is not introduced into logs/event payloads.
 - Checkout finalization still requires explicit confirmation pathing in checkout skill gates.
+
+## 2026-02-27 Editor render worker reliability note (non-payment)
+
+- Added dedicated editor render queue worker orchestration (`editor_render_jobs`) in service-layer code.
+- **Payment/auth impact:** none. Payment API contracts, checkout state machine, and auth/session semantics are unchanged.
+- **Security posture:** worker error persistence remains sanitized and excludes secrets/tokens.
+
+### Risk / rollback
+- **Risk:** render queue may accumulate if model/storage dependencies are unavailable.
+- **Mitigation:** bounded retries with attempt tracking and non-sensitive error persistence in job result metadata.
+- **Rollback:** disable the worker invocation/scheduler and continue queue-only behavior while preserving enqueue/list APIs.
