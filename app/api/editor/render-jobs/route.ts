@@ -14,6 +14,8 @@ import {
 const DEFAULT_RATE_LIMIT_WINDOW_SECONDS = Number(process.env.EDITOR_RENDER_RATE_LIMIT_WINDOW_SECONDS ?? 300)
 const DEFAULT_USER_RATE_LIMIT = Number(process.env.EDITOR_RENDER_RATE_LIMIT_USER ?? 20)
 const DEFAULT_PROJECT_RATE_LIMIT = Number(process.env.EDITOR_RENDER_RATE_LIMIT_PROJECT ?? 8)
+const DEFAULT_ACTIVE_USER_QUOTA = Number(process.env.EDITOR_RENDER_ACTIVE_QUOTA_USER ?? 12)
+const DEFAULT_ACTIVE_PROJECT_QUOTA = Number(process.env.EDITOR_RENDER_ACTIVE_QUOTA_PROJECT ?? 6)
 const DEFAULT_MAX_DURATION_SECONDS = Number(process.env.EDITOR_RENDER_MAX_DURATION_SECONDS ?? 120)
 const DEFAULT_MAX_RESOLUTION_PIXELS = Number(process.env.EDITOR_RENDER_MAX_RESOLUTION_PIXELS ?? 3686400)
 
@@ -84,6 +86,49 @@ async function enforceRenderRateLimits(ownerId: string, projectId: string) {
         error: "Render request limit reached for this project",
         code: "EDITOR_RENDER_RATE_LIMIT_PROJECT",
         windowSeconds: DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
+      },
+    }
+  }
+
+  return null
+}
+
+async function enforceRenderQuotas(ownerId: string, projectId: string) {
+  const [counts] = await sql`
+    SELECT
+      COUNT(*) FILTER (
+        WHERE owner_id=${ownerId}
+          AND status IN ('queued', 'processing')
+      )::int AS user_active_count,
+      COUNT(*) FILTER (
+        WHERE owner_id=${ownerId}
+          AND project_id=${projectId}
+          AND status IN ('queued', 'processing')
+      )::int AS project_active_count
+    FROM editor_render_jobs
+  `
+
+  const userActiveCount = Number(counts?.user_active_count ?? 0)
+  const projectActiveCount = Number(counts?.project_active_count ?? 0)
+
+  if (userActiveCount >= DEFAULT_ACTIVE_USER_QUOTA) {
+    return {
+      status: 429,
+      payload: {
+        error: "Active render quota reached for this user",
+        code: "EDITOR_RENDER_QUOTA_USER_ACTIVE",
+        maxActiveJobs: DEFAULT_ACTIVE_USER_QUOTA,
+      },
+    }
+  }
+
+  if (projectActiveCount >= DEFAULT_ACTIVE_PROJECT_QUOTA) {
+    return {
+      status: 429,
+      payload: {
+        error: "Active render quota reached for this project",
+        code: "EDITOR_RENDER_QUOTA_PROJECT_ACTIVE",
+        maxActiveJobs: DEFAULT_ACTIVE_PROJECT_QUOTA,
       },
     }
   }
@@ -196,6 +241,11 @@ export async function POST(request: Request) {
     return NextResponse.json(rateLimitError.payload, { status: rateLimitError.status })
   }
 
+  const quotaError = await enforceRenderQuotas(auth.userId, parsedBody.data.projectId)
+  if (quotaError) {
+    return NextResponse.json(quotaError.payload, { status: quotaError.status })
+  }
+
   const timeline = project.timelines.find((entry) => entry.id === project.activeTimelineId) ?? project.timelines[0]
   if (!timeline) {
     return NextResponse.json({ error: "Project does not contain a timeline" }, { status: 400 })
@@ -224,6 +274,11 @@ export async function POST(request: Request) {
     throw error
   }
 
+  const limitsError = enforceRenderInputLimits(compilation.request)
+  if (limitsError) {
+    return NextResponse.json(limitsError.payload, { status: limitsError.status })
+  }
+
   let executionOutput = null
   try {
     executionOutput = await executeVideoModelById(compilation.request)
@@ -234,11 +289,6 @@ export async function POST(request: Request) {
 
   if (!executionOutput) {
     return NextResponse.json({ error: "Unsupported modelId", code: "VIDEO_MODEL_UNSUPPORTED" }, { status: 400 })
-  }
-
-  const limitsError = enforceRenderInputLimits(executionOutput.providerRequest)
-  if (limitsError) {
-    return NextResponse.json(limitsError.payload, { status: limitsError.status })
   }
 
   const [job] = await sql`
@@ -266,6 +316,11 @@ export async function POST(request: Request) {
           provider: executionOutput.progress.provider,
           compiler: {
             summary: compilation.summary,
+          },
+          policy: {
+            maxAttempts: Number(process.env.EDITOR_RENDER_MAX_ATTEMPTS ?? 3),
+            providerTimeoutMs: Number(process.env.EDITOR_RENDER_PROVIDER_TIMEOUT_MS ?? 20000),
+            providerRetries: Number(process.env.EDITOR_RENDER_PROVIDER_RETRIES ?? 2),
           },
         },
       })}::jsonb,

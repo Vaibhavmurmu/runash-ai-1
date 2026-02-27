@@ -147,10 +147,16 @@ function sanitizePublicError(error: unknown): string {
 }
 
 function stableErrorCode(error: unknown): string {
-  if (error instanceof AIProviderError) return `PROVIDER_${error.code}`
-  if (error instanceof Error && error.name === "AbortError") return "REQUEST_ABORTED"
-  if (error instanceof Error && /timeout/i.test(error.message)) return "PROVIDER_TIMEOUT"
-  return "RENDER_FAILED"
+  if (error instanceof AIProviderError) {
+    if (error.code === "TIMEOUT") return "EDITOR_RENDER_TIMEOUT"
+    if (error.code === "QUOTA") return "EDITOR_RENDER_PROVIDER_QUOTA"
+    if (error.code === "UPSTREAM") return "EDITOR_RENDER_PROVIDER_UNAVAILABLE"
+    return `EDITOR_RENDER_PROVIDER_${error.code}`
+  }
+
+  if (error instanceof Error && error.name === "AbortError") return "EDITOR_RENDER_CANCELED"
+  if (error instanceof Error && /timeout/i.test(error.message)) return "EDITOR_RENDER_TIMEOUT"
+  return "EDITOR_RENDER_FAILED"
 }
 
 function isRetryable(error: unknown): boolean {
@@ -285,7 +291,14 @@ async function fetchJobStatus(jobId: string): Promise<string | null> {
   return row?.status ?? null
 }
 
-async function saveResult(jobId: string, status: "queued" | "completed" | "failed" | "canceled", result: RenderJobResult, outputAssetId?: string) {
+async function saveResult(
+  jobId: string,
+  status: "queued" | "completed" | "failed" | "canceled",
+  result: RenderJobResult,
+  outputAssetId?: string,
+  options?: { allowWhenCanceled?: boolean },
+): Promise<boolean> {
+  const allowWhenCanceled = options?.allowWhenCanceled ?? false
   const rows = (await sql`
     UPDATE editor_render_jobs
     SET status=${status},
@@ -293,11 +306,12 @@ async function saveResult(jobId: string, status: "queued" | "completed" | "faile
         output_asset_id=COALESCE(${outputAssetId ?? null}, output_asset_id),
         updated_at=now()
     WHERE id=${jobId}
+      AND (${allowWhenCanceled}::boolean = true OR status <> 'canceled')
     RETURNING *
   `) as Array<Record<string, unknown>>
 
   const row = rows[0]
-  if (!row) return
+  if (!row) return false
 
   publishRenderJobEvent({
     id: String(row.id),
@@ -311,6 +325,8 @@ async function saveResult(jobId: string, status: "queued" | "completed" | "faile
     createdAt: typeof row.created_at === "string" ? row.created_at : new Date().toISOString(),
     updatedAt: typeof row.updated_at === "string" ? row.updated_at : new Date().toISOString(),
   })
+
+  return true
 }
 
 async function updateJobResult(jobId: string, result: RenderJobResult) {
@@ -342,7 +358,7 @@ async function updateJobResult(jobId: string, result: RenderJobResult) {
 async function ensureNotCanceled(jobId: string) {
   const status = await fetchJobStatus(jobId)
   if (status === "canceled") {
-    throw new AIProviderError("Render job canceled", "BAD_REQUEST")
+    throw new DOMException("Canceled", "AbortError")
   }
 }
 
@@ -442,6 +458,7 @@ export async function processNextEditorRenderJob(adapter: EditorRenderModelProvi
     await updateJobResult(job.id, uploadingResult)
 
     const accessUrl = await CloudStorage.uploadFile(storageKey, renderedOutput.buffer, renderedOutput.mimeType)
+    await ensureNotCanceled(job.id)
 
     const asset = await createEditorAsset({
       projectId: job.project_id,
@@ -471,7 +488,12 @@ export async function processNextEditorRenderJob(adapter: EditorRenderModelProvi
       },
     }
 
-    await saveResult(job.id, "completed", completedResult, asset.id)
+    await ensureNotCanceled(job.id)
+    const completedSave = await saveResult(job.id, "completed", completedResult, asset.id)
+    if (!completedSave) {
+      return { jobId: job.id, status: "canceled" as const }
+    }
+
     return { jobId: job.id, status: "completed" as const, outputAssetId: asset.id }
   } catch (error) {
     const status = await fetchJobStatus(job.id)
@@ -482,10 +504,10 @@ export async function processNextEditorRenderJob(adapter: EditorRenderModelProvi
         progress: 100,
         stage: "canceled",
         lastError: null,
-        errorCode: "CANCELED",
+        errorCode: "EDITOR_RENDER_CANCELED",
       }
 
-      await saveResult(job.id, "canceled", canceledResult)
+      await saveResult(job.id, "canceled", canceledResult, undefined, { allowWhenCanceled: true })
       return { jobId: job.id, status: "canceled" as const }
     }
 
@@ -499,6 +521,14 @@ export async function processNextEditorRenderJob(adapter: EditorRenderModelProvi
       errorCode,
       progress: nextStatus === "failed" ? 100 : 0,
       stage: nextStatus === "failed" ? "failed" : "queued",
+      metadata: {
+        ...(processingResult.metadata ?? {}),
+        retry: {
+          maxAttempts,
+          attemptCount,
+          willRetry: nextStatus === "queued",
+        },
+      },
     }
 
     logProviderEvent("provider-failure", {

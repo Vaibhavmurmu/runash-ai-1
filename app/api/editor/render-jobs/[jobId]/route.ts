@@ -37,7 +37,7 @@ export async function PATCH(request: Request, { params }: { params: { jobId: str
             'progress', 100,
             'stage', 'canceled',
             'lastError', null,
-            'errorCode', 'CANCELED'
+            'errorCode', 'EDITOR_RENDER_CANCELED'
           ),
           '{canceledAt}',
           to_jsonb(now()),
