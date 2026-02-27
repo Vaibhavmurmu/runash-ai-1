@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
 import { sql } from "@/lib/editor/repository"
+import { resolveVideoModelProviderAdapter } from "@/lib/editor/video-models/registry"
+import { normalizeVideoGenerationPayload, validateVideoGenerationPayload } from "@/lib/editor/video-models/validation"
 
 export async function GET(request: Request) {
   const auth = await requireEditorUser(request)
@@ -25,6 +27,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "projectId is required" }, { status: 400 })
   }
 
+  const parsedPayload = validateVideoGenerationPayload(body.payload ?? {})
+  if (!parsedPayload.success) {
+    return NextResponse.json(
+      {
+        error: "Invalid request payload",
+        issues: parsedPayload.error.flatten(),
+      },
+      { status: 400 },
+    )
+  }
+
+  const normalizedPayload = normalizeVideoGenerationPayload(parsedPayload.data)
+  const providerAdapter = resolveVideoModelProviderAdapter(normalizedPayload.modelId)
+  if (!providerAdapter) {
+    return NextResponse.json(
+      {
+        error: `Unsupported modelId: ${normalizedPayload.modelId}`,
+      },
+      { status: 400 },
+    )
+  }
+
+  const providerPayload = providerAdapter.normalizeRequest(normalizedPayload)
+
   const [project] = await sql`SELECT id FROM editor_projects WHERE id=${body.projectId} AND owner_id=${auth.userId}`
   if (!project) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 })
@@ -37,7 +63,7 @@ export async function POST(request: Request) {
       ${auth.userId},
       ${auth.userId},
       'queued',
-      ${JSON.stringify(body.payload || {})}::jsonb,
+      ${JSON.stringify(providerPayload)}::jsonb,
       ${JSON.stringify({ attemptCount: 0, startedAt: null, finishedAt: null, lastError: null })}::jsonb,
       null
     )
