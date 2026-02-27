@@ -113,7 +113,9 @@ test("rejects unsupported overlapping segments", () => {
 
   assert.throws(
     () => compileTimelineToVideoGenerationRequest({ timeline, assets, payload: { modelId: "wan-v1" } }),
-    (error) => error instanceof TimelineCompilationError && error.code === "OVERLAP_UNSUPPORTED",
+    (error) => error instanceof TimelineCompilationError &&
+      error.code === "TIMELINE_VALIDATION_FAILED" &&
+      error.issues.some((issue) => issue.code === "OVERLAP_UNSUPPORTED"),
   )
 })
 
@@ -133,4 +135,31 @@ test("allows gaps when enabled in track metadata", () => {
   })
 
   assert.equal(compiled.shotList.length, 2)
+})
+
+test("returns structured validation issues for segment boundary violations", () => {
+  const timeline = makeTimeline({
+    durationSeconds: 1,
+    segments: [makeSegment({ id: "segment-1", startSeconds: 0, endSeconds: 2 })],
+  })
+
+  assert.throws(
+    () => compileTimelineToVideoGenerationRequest({ timeline, assets, payload: { modelId: "wan-v1" } }),
+    (error) =>
+      error instanceof TimelineCompilationError &&
+      error.issues.some((issue) => issue.code === "OUT_OF_BOUNDS" && issue.segmentId === "segment-1"),
+  )
+})
+
+test("returns structured validation issues for missing assets", () => {
+  const timeline = makeTimeline({
+    segments: [makeSegment({ id: "segment-1", assetId: "asset-missing", startSeconds: 0, endSeconds: 1 })],
+  })
+
+  assert.throws(
+    () => compileTimelineToVideoGenerationRequest({ timeline, assets, payload: { modelId: "wan-v1" } }),
+    (error) =>
+      error instanceof TimelineCompilationError &&
+      error.issues.some((issue) => issue.code === "ASSET_NOT_FOUND" && issue.assetId === "asset-missing"),
+  )
 })

@@ -4,13 +4,31 @@ import type { VideoGenerationRequest } from "@/lib/editor/video-models/types"
 const EPSILON_SECONDS = 1e-6
 const DEFAULT_FPS = 30
 
+export interface TimelineCompilationIssue {
+  code:
+    | "TIMING_INVALID"
+    | "OUT_OF_BOUNDS"
+    | "OVERLAP_UNSUPPORTED"
+    | "GAP_UNSUPPORTED"
+    | "TRACK_NOT_FOUND"
+    | "ASSET_NOT_FOUND"
+  message: string
+  segmentId?: string
+  trackId?: string
+  assetId?: string
+  startSeconds?: number
+  endSeconds?: number
+}
+
 export class TimelineCompilationError extends Error {
   readonly code: string
+  readonly issues: TimelineCompilationIssue[]
 
-  constructor(message: string, code = "TIMELINE_INVALID") {
+  constructor(message: string, code = "TIMELINE_INVALID", issues: TimelineCompilationIssue[] = []) {
     super(message)
     this.name = "TimelineCompilationError"
     this.code = code
+    this.issues = issues
   }
 }
 
@@ -64,6 +82,10 @@ interface CompileTimelineInput {
   payload: VideoGenerationRequest
 }
 
+interface NormalizedShot {
+  shot: CompiledTimelineShot
+}
+
 function asBoolean(value: unknown): boolean {
   return value === true || value === "true" || value === 1 || value === "1"
 }
@@ -79,26 +101,67 @@ function normalizeFps(requested: number | undefined, timelineFps: number | undef
   return Math.min(120, Math.max(1, safe))
 }
 
-function normalizeSegment(segment: EditorSegment, fps: number): Pick<CompiledTimelineShot, "startSeconds" | "endSeconds" | "durationSeconds"> {
+function normalizeSegment(
+  segment: EditorSegment,
+  track: EditorTrack,
+  timeline: EditorTimeline,
+  fps: number,
+  issues: TimelineCompilationIssue[],
+): NormalizedShot | null {
   const startSeconds = normalizeToFrame(segment.startSeconds, fps)
   const endSeconds = normalizeToFrame(segment.endSeconds, fps)
 
   if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds)) {
-    throw new TimelineCompilationError(`Segment ${segment.id} has invalid timing values`, "TIMING_INVALID")
+    issues.push({
+      code: "TIMING_INVALID",
+      message: `Segment ${segment.id} has invalid timing values`,
+      segmentId: segment.id,
+      trackId: segment.trackId,
+    })
+    return null
   }
 
   if (startSeconds < 0 || endSeconds <= startSeconds) {
-    throw new TimelineCompilationError(`Segment ${segment.id} has non-positive duration`, "TIMING_INVALID")
+    issues.push({
+      code: "TIMING_INVALID",
+      message: `Segment ${segment.id} has non-positive duration`,
+      segmentId: segment.id,
+      trackId: segment.trackId,
+      startSeconds,
+      endSeconds,
+    })
+    return null
+  }
+
+  const timelineDuration = Number.isFinite(timeline.durationSeconds) ? Math.max(0, timeline.durationSeconds) : 0
+  if (timelineDuration > 0 && endSeconds > timelineDuration + EPSILON_SECONDS) {
+    issues.push({
+      code: "OUT_OF_BOUNDS",
+      message: `Segment ${segment.id} extends beyond timeline duration`,
+      segmentId: segment.id,
+      trackId: segment.trackId,
+      startSeconds,
+      endSeconds,
+    })
   }
 
   return {
-    startSeconds,
-    endSeconds,
-    durationSeconds: normalizeToFrame(endSeconds - startSeconds, fps),
+    shot: {
+      segmentId: segment.id,
+      trackId: track.id,
+      trackLabel: track.label,
+      trackType: track.trackType,
+      label: segment.label,
+      segmentType: segment.segmentType,
+      assetId: segment.assetId,
+      startSeconds,
+      endSeconds,
+      durationSeconds: normalizeToFrame(endSeconds - startSeconds, fps),
+    },
   }
 }
 
-function validateTrackContinuity(track: EditorTrack, shots: CompiledTimelineShot[], timeline: EditorTimeline) {
+function validateTrackContinuity(track: EditorTrack, shots: CompiledTimelineShot[], timeline: EditorTimeline, issues: TimelineCompilationIssue[]) {
   const allowOverlaps = asBoolean(track.metadata.allowOverlaps) || asBoolean(timeline.metadata.allowOverlaps)
   const allowGaps = asBoolean(track.metadata.allowGaps) || asBoolean(timeline.metadata.allowGaps)
 
@@ -106,14 +169,24 @@ function validateTrackContinuity(track: EditorTrack, shots: CompiledTimelineShot
   for (const shot of shots) {
     if (previousEnd !== null) {
       if (!allowOverlaps && shot.startSeconds < previousEnd - EPSILON_SECONDS) {
-        throw new TimelineCompilationError(
-          `Track ${track.id} has overlapping segments around ${shot.segmentId}`,
-          "OVERLAP_UNSUPPORTED",
-        )
+        issues.push({
+          code: "OVERLAP_UNSUPPORTED",
+          message: `Track ${track.id} has overlapping segments around ${shot.segmentId}`,
+          segmentId: shot.segmentId,
+          trackId: track.id,
+          startSeconds: shot.startSeconds,
+          endSeconds: shot.endSeconds,
+        })
       }
 
       if (!allowGaps && shot.startSeconds > previousEnd + EPSILON_SECONDS) {
-        throw new TimelineCompilationError(`Track ${track.id} has unsupported gap before ${shot.segmentId}`, "GAP_UNSUPPORTED")
+        issues.push({
+          code: "GAP_UNSUPPORTED",
+          message: `Track ${track.id} has unsupported gap before ${shot.segmentId}`,
+          segmentId: shot.segmentId,
+          trackId: track.id,
+          startSeconds: shot.startSeconds,
+        })
       }
     }
 
@@ -144,27 +217,35 @@ export function compileTimelineToVideoGenerationRequest(input: CompileTimelineIn
   const fps = normalizeFps(input.payload.fps, input.timeline.frameRate)
   const tracks = [...input.timeline.tracks].sort((a, b) => a.orderIndex - b.orderIndex)
 
+  const issues: TimelineCompilationIssue[] = []
+  const tracksById = new Map(tracks.map((track) => [track.id, track]))
+
+  for (const segment of input.timeline.segments) {
+    if (!tracksById.has(segment.trackId)) {
+      issues.push({
+        code: "TRACK_NOT_FOUND",
+        message: `Segment ${segment.id} references unknown track ${segment.trackId}`,
+        segmentId: segment.id,
+        trackId: segment.trackId,
+      })
+    }
+  }
+
   const shotList: CompiledTimelineShot[] = []
   for (const track of tracks) {
     const trackSegments = input.timeline.segments
       .filter((segment) => segment.trackId === track.id)
       .sort((a, b) => a.startSeconds - b.startSeconds)
 
-    const trackShots = trackSegments.map((segment) => {
-      const timing = normalizeSegment(segment, fps)
-      return {
-        segmentId: segment.id,
-        trackId: track.id,
-        trackLabel: track.label,
-        trackType: track.trackType,
-        label: segment.label,
-        segmentType: segment.segmentType,
-        assetId: segment.assetId,
-        ...timing,
+    const trackShots: CompiledTimelineShot[] = []
+    for (const segment of trackSegments) {
+      const normalized = normalizeSegment(segment, track, input.timeline, fps, issues)
+      if (normalized) {
+        trackShots.push(normalized.shot)
       }
-    })
+    }
 
-    validateTrackContinuity(track, trackShots, input.timeline)
+    validateTrackContinuity(track, trackShots, input.timeline, issues)
     shotList.push(...trackShots)
   }
 
@@ -178,6 +259,21 @@ export function compileTimelineToVideoGenerationRequest(input: CompileTimelineIn
   }))
 
   const referencedAssetIds = new Set(shotList.map((shot) => shot.assetId).filter((id): id is string => Boolean(id)))
+  const assetById = new Map(input.assets.map((asset) => [asset.id, asset]))
+  for (const assetId of referencedAssetIds) {
+    if (!assetById.has(assetId)) {
+      issues.push({
+        code: "ASSET_NOT_FOUND",
+        message: `Timeline references missing asset ${assetId}`,
+        assetId,
+      })
+    }
+  }
+
+  if (issues.length > 0) {
+    throw new TimelineCompilationError("Unable to compile timeline", "TIMELINE_VALIDATION_FAILED", issues)
+  }
+
   const sourceAssets = input.assets
     .filter((asset) => referencedAssetIds.has(asset.id))
     .map((asset) => ({

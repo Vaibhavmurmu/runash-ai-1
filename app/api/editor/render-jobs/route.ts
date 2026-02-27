@@ -201,6 +201,7 @@ export async function POST(request: Request) {
           error: "Unable to compile timeline",
           detail: error.message,
           code: error.code,
+          issues: error.issues ?? [],
         },
         { status: 400 },
       )
@@ -222,7 +223,12 @@ export async function POST(request: Request) {
       ${auth.userId},
       ${auth.userId},
       'queued',
-      ${JSON.stringify(providerPayload)}::jsonb,
+      ${JSON.stringify({
+        providerRequest: providerPayload,
+        compiler: {
+          summary: compilation.summary,
+        },
+      })}::jsonb,
       ${JSON.stringify({
         attemptCount: 0,
         startedAt: null,
@@ -231,7 +237,9 @@ export async function POST(request: Request) {
         progress: 0,
         stage: "queued",
         metadata: {
-          compiler: compilation.summary,
+          compiler: {
+            summary: compilation.summary,
+          },
         },
       })}::jsonb,
       null
