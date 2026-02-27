@@ -4,9 +4,40 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { usePathname } from "next/navigation"
 import { ModelDialogCard } from "@/components/dashboard/model-dialog-card"
 import { useModelDialog } from "@/lib/hooks/use-model-dialog"
-import type { ModelDialogContract, ModelDialogRunHistoryItem, ModelDialogSseEvent, ModelExecutionState } from "@/lib/types/model-dialog"
+import type {
+  ModelDialogContract,
+  ModelDialogGenerationMode,
+  ModelDialogModeContext,
+  ModelDialogRunHistoryItem,
+  ModelDialogSseEvent,
+  ModelExecutionState,
+} from "@/lib/types/model-dialog"
 
-type DialogExecutionMode = "generic" | "image-generation" | "video-generation" | "live-stream-assist" | "previous-live-optimization"
+type DialogExecutionMode = ModelDialogGenerationMode
+
+type ContextualExecutionMode =
+  | "live-view"
+  | "previous-live-view"
+  | "video-on-demand"
+  | "live-streaming"
+  | "stream"
+  | "scheduling"
+
+const EMPTY_MODE_CONTEXT: ModelDialogModeContext = {
+  datasetId: "",
+  librarySource: "",
+  filters: "",
+  snapshotTime: "",
+}
+
+const EMPTY_MODE_CONTEXTS: Record<ContextualExecutionMode, ModelDialogModeContext> = {
+  "live-view": { ...EMPTY_MODE_CONTEXT },
+  "previous-live-view": { ...EMPTY_MODE_CONTEXT },
+  "video-on-demand": { ...EMPTY_MODE_CONTEXT },
+  "live-streaming": { ...EMPTY_MODE_CONTEXT },
+  stream: { ...EMPTY_MODE_CONTEXT },
+  scheduling: { ...EMPTY_MODE_CONTEXT },
+}
 
 function resolveExecutionMode(payload?: ModelDialogContract["payload"]): DialogExecutionMode {
   if (!payload?.generationMode) {
@@ -14,6 +45,24 @@ function resolveExecutionMode(payload?: ModelDialogContract["payload"]): DialogE
   }
 
   return payload.generationMode
+}
+
+function resolveModeContexts(payload?: ModelDialogContract["payload"]): Record<ContextualExecutionMode, ModelDialogModeContext> {
+  return {
+    "live-view": { ...EMPTY_MODE_CONTEXT, ...(payload?.liveViewContext ?? {}) },
+    "previous-live-view": { ...EMPTY_MODE_CONTEXT, ...(payload?.previousLiveViewContext ?? {}) },
+    "video-on-demand": { ...EMPTY_MODE_CONTEXT, ...(payload?.videoOnDemandContext ?? {}) },
+    "live-streaming": { ...EMPTY_MODE_CONTEXT, ...(payload?.liveStreamingContext ?? {}) },
+    stream: { ...EMPTY_MODE_CONTEXT, ...(payload?.streamContext ?? {}) },
+    scheduling: { ...EMPTY_MODE_CONTEXT, ...(payload?.schedulingContext ?? {}) },
+  }
+}
+
+function appendContextParams(prefix: string, context: ModelDialogModeContext, params: URLSearchParams) {
+  params.set(`${prefix}DatasetId`, context.datasetId?.trim() ?? "")
+  params.set(`${prefix}LibrarySource`, context.librarySource?.trim() ?? "")
+  params.set(`${prefix}Filters`, context.filters?.trim() ?? "")
+  params.set(`${prefix}SnapshotTime`, context.snapshotTime?.trim() ?? "")
 }
 
 interface DashboardModelDialogContextValue {
@@ -52,6 +101,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
   const [streamId, setStreamId] = useState("")
   const [recordingId, setRecordingId] = useState("")
   const [assetId, setAssetId] = useState("")
+  const [modeContexts, setModeContexts] = useState<Record<ContextualExecutionMode, ModelDialogModeContext>>(EMPTY_MODE_CONTEXTS)
   const [executionState, setExecutionState] = useState<ModelExecutionState>("idle")
   const [streamingMessage, setStreamingMessage] = useState<string>("")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -93,6 +143,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
       setStreamId("")
       setRecordingId("")
       setAssetId("")
+      setModeContexts(EMPTY_MODE_CONTEXTS)
       return
     }
 
@@ -102,7 +153,21 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
     setStreamId(payload?.streamId ?? "")
     setRecordingId(payload?.recordingId ?? "")
     setAssetId(payload?.assetId ?? payload?.mediaAssetId ?? "")
+    setModeContexts(resolveModeContexts(payload))
   }, [activeModelDialog])
+
+  const updateModeContext = useCallback(
+    (modeKey: ContextualExecutionMode, field: keyof ModelDialogModeContext, value: string) => {
+      setModeContexts((previous) => ({
+        ...previous,
+        [modeKey]: {
+          ...previous[modeKey],
+          [field]: value,
+        },
+      }))
+    },
+    [],
+  )
 
   const openFromTrigger = useCallback(
     (payload: ModelDialogContract, trigger?: HTMLElement | null) => {
@@ -217,6 +282,20 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
       params.set("executionMode", executionMode)
     }
 
+    if (executionMode === "live-view") {
+      appendContextParams("liveViewContext", modeContexts["live-view"], params)
+    } else if (executionMode === "previous-live-view") {
+      appendContextParams("previousLiveViewContext", modeContexts["previous-live-view"], params)
+    } else if (executionMode === "video-on-demand") {
+      appendContextParams("videoOnDemandContext", modeContexts["video-on-demand"], params)
+    } else if (executionMode === "live-streaming") {
+      appendContextParams("liveStreamingContext", modeContexts["live-streaming"], params)
+    } else if (executionMode === "stream") {
+      appendContextParams("streamContext", modeContexts.stream, params)
+    } else if (executionMode === "scheduling") {
+      appendContextParams("schedulingContext", modeContexts.scheduling, params)
+    }
+
     const eventSource = new EventSource(`/api/dashboard/model-dialog/stream?${params.toString()}`)
     eventSourceRef.current = eventSource
 
@@ -231,7 +310,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
       setErrorMessage("Streaming connection dropped before completion.")
       stopExecutionTracking()
     }
-  }, [activeModelDialog, assetId, executionMode, handleExecutionEvent, mode, qualityPreset, recordingId, sourceModule, stopExecutionTracking, streamId, temperature])
+  }, [activeModelDialog, assetId, executionMode, handleExecutionEvent, mode, modeContexts, qualityPreset, recordingId, sourceModule, stopExecutionTracking, streamId, temperature])
 
   const value = useMemo(
     () => ({
@@ -275,6 +354,8 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
         onRecordingIdChange={setRecordingId}
         assetId={assetId}
         onAssetIdChange={setAssetId}
+        modeContextByMode={modeContexts}
+        onModeContextChange={updateModeContext}
         temperature={temperature}
         onTemperatureChange={setTemperature}
         mode={mode}
