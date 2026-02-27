@@ -19,6 +19,7 @@ import { WelcomeOnboardingModal } from "@/components/dashboard/onboarding/welcom
 import { CreateProjectModal, type QuickStartMode } from "@/components/dashboard/projects/create-project-modal"
 import {
   buildGenerationDefaults,
+  getVideoModelMetadata,
   validateGenerationConfig,
 } from "@/lib/editor/video-models/registry"
 import { validateVideoGenerationPayload } from "@/lib/editor/video-models/validation"
@@ -30,10 +31,56 @@ type OnboardingState = {
 }
 
 function mergeGenerationConfigForModel(modelId: string, savedConfig?: Record<string, unknown> | null): VideoGenerationRequest {
-  return {
-    ...buildGenerationDefaults(modelId),
+  const model = getVideoModelMetadata(modelId)
+  const defaults = buildGenerationDefaults(modelId)
+  const merged = {
+    ...defaults,
     ...(savedConfig ?? {}),
     modelId,
+  }
+
+  const durationPreset =
+    typeof merged.durationPreset === "string" && model.durationPresetOptions.some((entry) => entry.id === merged.durationPreset)
+      ? merged.durationPreset
+      : defaults.durationPreset
+  const durationPresetMeta = model.durationPresetOptions.find((entry) => entry.id === durationPreset)
+
+  return {
+    ...merged,
+    modelId,
+    fps: typeof merged.fps === "number" ? merged.fps : defaults.fps,
+    resolution:
+      typeof merged.resolution === "string" && model.supportedResolutions.includes(merged.resolution)
+        ? merged.resolution
+        : defaults.resolution,
+    aspectRatio:
+      typeof merged.aspectRatio === "string" && model.supportedAspectRatios.includes(merged.aspectRatio)
+        ? merged.aspectRatio
+        : defaults.aspectRatio,
+    durationPreset,
+    durationSeconds: durationPresetMeta?.seconds ?? defaults.durationSeconds,
+    seed: Number.isInteger(merged.seed) && Number(merged.seed) >= 0 ? Number(merged.seed) : defaults.seed,
+    qualityMode: merged.qualityMode === "speed" || merged.qualityMode === "quality" ? merged.qualityMode : defaults.qualityMode,
+  }
+}
+
+function getGenerationValidationErrors(modelId: string, payload: VideoGenerationRequest) {
+  const modelValidation = validateGenerationConfig(modelId, payload)
+  const schemaValidation = validateVideoGenerationPayload(payload)
+  const schemaErrors: Record<string, string> = {}
+
+  if (!schemaValidation.success) {
+    const fieldErrors = schemaValidation.error.flatten().fieldErrors
+    Object.entries(fieldErrors).forEach(([key, value]) => {
+      if (value?.[0]) {
+        schemaErrors[key] = value[0]
+      }
+    })
+  }
+
+  return {
+    ...schemaErrors,
+    ...modelValidation,
   }
 }
 
@@ -433,8 +480,12 @@ export function EditorWorkspace() {
   }
 
   const handleGenerationConfigChange = (nextConfig: VideoGenerationRequest) => {
-    setGenerationConfig(nextConfig)
-    setGenerationValidationErrors({})
+    const mergedConfig = {
+      ...nextConfig,
+      modelId: selectedModel,
+    }
+    setGenerationConfig(mergedConfig)
+    setGenerationValidationErrors(getGenerationValidationErrors(selectedModel, mergedConfig))
   }
 
   const handleGenerateVideo = async () => {
@@ -447,27 +498,25 @@ export function EditorWorkspace() {
       modelId: selectedModel,
     }
 
-    const modelValidation = validateGenerationConfig(selectedModel, basePayload)
-    const schemaValidation = validateVideoGenerationPayload(basePayload)
-    const schemaErrors: Record<string, string> = {}
-    if (!schemaValidation.success) {
-      const fieldErrors = schemaValidation.error.flatten().fieldErrors
-      Object.entries(fieldErrors).forEach(([key, value]) => {
-        if (value?.[0]) {
-          schemaErrors[key] = value[0]
-        }
-      })
-    }
-
-    const combinedErrors = {
-      ...schemaErrors,
-      ...modelValidation,
-    }
+    const combinedErrors = getGenerationValidationErrors(selectedModel, basePayload)
     setGenerationValidationErrors(combinedErrors)
 
     if (Object.keys(combinedErrors).length > 0) {
       toast({ title: "Validation required", description: "Please fix generation settings before enqueueing." })
       return
+    }
+
+    const generationPayload: VideoGenerationRequest = {
+      modelId: selectedModel,
+      prompt: basePayload.prompt,
+      negativePrompt: basePayload.negativePrompt,
+      fps: basePayload.fps,
+      aspectRatio: basePayload.aspectRatio,
+      resolution: basePayload.resolution,
+      seed: basePayload.seed,
+      qualityMode: basePayload.qualityMode,
+      durationPreset: basePayload.durationPreset,
+      durationSeconds: basePayload.durationSeconds,
     }
 
     generationAbortRef.current?.abort()
@@ -625,7 +674,8 @@ export function EditorWorkspace() {
             timelineId: activeTimeline.id,
             timelineDurationSeconds: activeTimeline.durationSeconds,
             segmentCount: activeTimeline.segments.length,
-            ...basePayload,
+            ...generationPayload,
+            generationConfig: generationPayload,
           },
         }),
       })
@@ -664,16 +714,12 @@ export function EditorWorkspace() {
   const totalFrames = Math.max(1, Math.floor((activeTimeline?.durationSeconds ?? 1) * frameRate))
 
   useEffect(() => {
-    setGenerationValidationErrors({})
-    setGenerationConfig((prev) => {
-      const defaults = buildGenerationDefaults(selectedModel)
-      return {
-        ...defaults,
-        prompt: typeof prev.prompt === "string" ? prev.prompt : defaults.prompt,
-        negativePrompt: typeof prev.negativePrompt === "string" ? prev.negativePrompt : defaults.negativePrompt,
-      }
-    })
+    setGenerationConfig((prev) => mergeGenerationConfigForModel(selectedModel, prev))
   }, [selectedModel])
+
+  useEffect(() => {
+    setGenerationValidationErrors(getGenerationValidationErrors(selectedModel, generationConfig))
+  }, [generationConfig, selectedModel])
 
   useEffect(() => {
     if (!project) return
