@@ -11,7 +11,7 @@ import BottomToolbar from "@/components/editor/bottom-toolbar"
 import AIChatPanel from "@/components/editor/ai-chat-panel"
 import CollaborationPanel from "@/components/editor/collaboration-panel"
 import { useToast } from "@/hooks/use-toast"
-import type { EditorProject, EditorTimeline } from "@/lib/editor/domain"
+import type { EditorProject, EditorRenderJob, EditorTimeline } from "@/lib/editor/domain"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
@@ -42,6 +42,9 @@ export function EditorWorkspace() {
   const [showCreateProject, setShowCreateProject] = useState(false)
   const [isCreatingProject, setIsCreatingProject] = useState(false)
   const [isUpdatingOnboarding, setIsUpdatingOnboarding] = useState(false)
+  const [playbackTime, setPlaybackTime] = useState(0)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [, setGenerationJob] = useState<EditorRenderJob | null>(null)
   const searchParams = useSearchParams()
   const queryProjectId = searchParams.get("projectId")
   const queryLibraryItemTitle = searchParams.get("libraryItemTitle")
@@ -350,6 +353,91 @@ export function EditorWorkspace() {
   }
 
   useEffect(() => {
+    if (!activeTimeline) return
+    if (playbackTime <= activeTimeline.durationSeconds) return
+    setPlaybackTime(activeTimeline.durationSeconds)
+  }, [activeTimeline, playbackTime])
+
+  const handleSeek = (time: number) => {
+    const maxDuration = activeTimeline?.durationSeconds ?? 0
+    setPlaybackTime(Math.max(0, Math.min(time, maxDuration)))
+  }
+
+  const handleSkipPrevious = () => {
+    if (!activeTimeline) return
+    const previous = [...activeTimeline.segments]
+      .filter((segment) => segment.startSeconds < playbackTime)
+      .sort((a, b) => b.startSeconds - a.startSeconds)[0]
+
+    setPlaybackTime(previous ? previous.startSeconds : 0)
+  }
+
+  const handleSkipNext = () => {
+    if (!activeTimeline) return
+    const next = [...activeTimeline.segments]
+      .filter((segment) => segment.startSeconds > playbackTime)
+      .sort((a, b) => a.startSeconds - b.startSeconds)[0]
+
+    setPlaybackTime(next ? next.startSeconds : activeTimeline.durationSeconds)
+  }
+
+  const handleGenerateVideo = async () => {
+    if (!project || !activeTimeline) return
+
+    setIsBusy(true)
+    try {
+      const createRes = await fetch("/api/editor/render-jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          payload: {
+            timelineId: activeTimeline.id,
+            timelineDurationSeconds: activeTimeline.durationSeconds,
+            segmentCount: activeTimeline.segments.length,
+            modelId: selectedModel,
+          },
+        }),
+      })
+
+      if (!createRes.ok) throw new Error("Failed to queue generation")
+      const createJson = await createRes.json()
+      const job = createJson.job as EditorRenderJob
+      setGenerationJob(job)
+
+      toast({ title: "Generation queued", description: "Render job started for this timeline." })
+
+      for (let i = 0; i < 30; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+        const pollRes = await fetch(`/api/editor/render-jobs/${job.id}`)
+        if (!pollRes.ok) break
+        const pollJson = await pollRes.json()
+        const polled = pollJson.job as EditorRenderJob
+        setGenerationJob(polled)
+
+        if (polled.status === "completed") {
+          toast({ title: "Generation completed", description: "Your render job has completed." })
+          return
+        }
+
+        if (polled.status === "failed") {
+          throw new Error("Render job failed")
+        }
+      }
+
+      toast({ title: "Generation queued", description: "Job is still processing. Check back shortly." })
+    } catch {
+      toast({ title: "Generation failed", description: "Unable to generate video right now.", variant: "destructive" })
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  const frameRate = activeTimeline?.frameRate ?? 30
+  const frameIndex = Math.max(1, Math.floor(playbackTime * frameRate) + 1)
+  const totalFrames = Math.max(1, Math.floor((activeTimeline?.durationSeconds ?? 1) * frameRate))
+
+  useEffect(() => {
     if (!project) return
 
     const savedModel = project.metadata?.selectedModel
@@ -416,6 +504,13 @@ export function EditorWorkspace() {
             onTimelineChange={handleTimelineChange}
             onUploadMedia={handleUploadMedia}
             uploadInProgress={uploadInProgress}
+            isPlaying={isPlaying}
+            currentTime={playbackTime}
+            onCurrentTimeChange={setPlaybackTime}
+            onPlayPause={() => setIsPlaying((prev) => !prev)}
+            onSkipPrevious={handleSkipPrevious}
+            onSkipNext={handleSkipNext}
+            onGenerateVideo={handleGenerateVideo}
           />
           <RightPanel selectedModel={selectedModel} onModelChange={setSelectedModel} activeTab={activeTab} />
           {isMobile ? (
@@ -429,6 +524,15 @@ export function EditorWorkspace() {
           )}
         </div>
         <BottomToolbar
+          frameLabel={`${frameIndex} / ${totalFrames}`}
+          durationLabel={`${(activeTimeline?.durationSeconds ?? 0).toFixed(1)}s`}
+          currentTimeSeconds={playbackTime}
+          totalDurationSeconds={activeTimeline?.durationSeconds ?? 0}
+          isPlaying={isPlaying}
+          onPlayPause={() => setIsPlaying((prev) => !prev)}
+          onSkipPrevious={handleSkipPrevious}
+          onSkipNext={handleSkipNext}
+          onSeek={handleSeek}
           onDuplicate={handleDuplicate}
           onDelete={handleDelete}
           onExportMetadata={handleExportMetadata}
