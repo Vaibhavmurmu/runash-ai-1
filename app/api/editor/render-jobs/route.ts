@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
-import { sql } from "@/lib/editor/repository"
+import { compileTimelineToVideoGenerationRequest, TimelineCompilationError } from "@/lib/editor/generation/compile-timeline"
+import { getProjectById, sql } from "@/lib/editor/repository"
 import { resolveVideoModelProviderAdapter } from "@/lib/editor/video-models/registry"
 import { normalizeVideoGenerationPayload, validateVideoGenerationPayload } from "@/lib/editor/video-models/validation"
 
@@ -49,12 +50,39 @@ export async function POST(request: Request) {
     )
   }
 
-  const providerPayload = providerAdapter.normalizeRequest(normalizedPayload)
-
-  const [project] = await sql`SELECT id FROM editor_projects WHERE id=${body.projectId} AND owner_id=${auth.userId}`
+  const project = await getProjectById(auth.userId, body.projectId)
   if (!project) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 })
   }
+
+  const timeline = project.timelines.find((entry) => entry.id === project.activeTimelineId) ?? project.timelines[0]
+  if (!timeline) {
+    return NextResponse.json({ error: "Project does not contain a timeline" }, { status: 400 })
+  }
+
+  let compilation
+  try {
+    compilation = compileTimelineToVideoGenerationRequest({
+      timeline,
+      assets: project.assets,
+      payload: normalizedPayload,
+    })
+  } catch (error) {
+    if (error instanceof TimelineCompilationError) {
+      return NextResponse.json(
+        {
+          error: "Unable to compile timeline",
+          detail: error.message,
+          code: error.code,
+        },
+        { status: 400 },
+      )
+    }
+
+    throw error
+  }
+
+  const providerPayload = providerAdapter.normalizeRequest(compilation.request)
 
   const [job] = await sql`
     INSERT INTO editor_render_jobs (project_id, owner_id, requested_by, status, payload, result, output_asset_id)
@@ -64,7 +92,17 @@ export async function POST(request: Request) {
       ${auth.userId},
       'queued',
       ${JSON.stringify(providerPayload)}::jsonb,
-      ${JSON.stringify({ attemptCount: 0, startedAt: null, finishedAt: null, lastError: null, progress: 0, stage: "queued" })}::jsonb,
+      ${JSON.stringify({
+        attemptCount: 0,
+        startedAt: null,
+        finishedAt: null,
+        lastError: null,
+        progress: 0,
+        stage: "queued",
+        metadata: {
+          compiler: compilation.summary,
+        },
+      })}::jsonb,
       null
     )
     RETURNING *
