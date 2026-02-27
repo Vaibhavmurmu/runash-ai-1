@@ -51,7 +51,7 @@ export function EditorWorkspace() {
   const [project, setProject] = useState<EditorProject | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [isProjectActionBusy, setIsProjectActionBusy] = useState(false)
+  const [isProjectMutationBusy, setIsProjectMutationBusy] = useState(false)
   const [isGeneratingRender, setIsGeneratingRender] = useState(false)
   const [isDirty, setIsDirty] = useState(false)
   const [uploadInProgress, setUploadInProgress] = useState(false)
@@ -346,7 +346,7 @@ export function EditorWorkspace() {
 
   const handleDuplicate = async () => {
     if (!project) return
-    setIsProjectActionBusy(true)
+    setIsProjectMutationBusy(true)
     try {
       const res = await fetch(`/api/editor/projects/${project.id}/duplicate`, {
         method: "POST",
@@ -360,13 +360,13 @@ export function EditorWorkspace() {
     } catch {
       toast({ title: "Duplicate failed", variant: "destructive" })
     } finally {
-      setIsProjectActionBusy(false)
+      setIsProjectMutationBusy(false)
     }
   }
 
   const handleDelete = async () => {
     if (!project) return
-    setIsProjectActionBusy(true)
+    setIsProjectMutationBusy(true)
     const deletedId = project.id
     setProject(null)
     try {
@@ -378,13 +378,13 @@ export function EditorWorkspace() {
       toast({ title: "Delete failed", description: "Project could not be deleted.", variant: "destructive" })
       await loadProject()
     } finally {
-      setIsProjectActionBusy(false)
+      setIsProjectMutationBusy(false)
     }
   }
 
   const handleExportMetadata = async () => {
     if (!project) return
-    setIsProjectActionBusy(true)
+    setIsProjectMutationBusy(true)
     try {
       const res = await fetch(`/api/editor/projects/${project.id}/export`)
       if (!res.ok) throw new Error("Export failed")
@@ -399,7 +399,7 @@ export function EditorWorkspace() {
     } catch {
       toast({ title: "Export failed", description: "Could not export metadata.", variant: "destructive" })
     } finally {
-      setIsProjectActionBusy(false)
+      setIsProjectMutationBusy(false)
     }
   }
 
@@ -803,7 +803,7 @@ export function EditorWorkspace() {
           onDuplicate={handleDuplicate}
           onDelete={handleDelete}
           onExportMetadata={handleExportMetadata}
-          isProjectActionBusy={isProjectActionBusy || isLoading || isCreatingProject}
+          isProjectMutationBusy={isProjectMutationBusy || isLoading || isCreatingProject}
         />
         <CollaborationPanel isOpen={isCollaborationOpen} onClose={() => setIsCollaborationOpen(false)} />
       </EditorLayout>
