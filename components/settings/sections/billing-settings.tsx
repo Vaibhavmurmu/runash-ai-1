@@ -2,6 +2,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { SectionFeatureCard } from "@/components/settings/sections/section-feature-card"
+import { SettingsRow, type SettingsStatus } from "@/components/settings/sections/settings-presentation"
 import type { SettingsData, SettingsSection } from "@/components/settings/types"
 
 type BillingAction =
@@ -26,11 +27,11 @@ interface BillingSettingsProps {
   onAction: (action: BillingAction) => void
 }
 
-const statusLabelMap: Record<SettingsData["billing"]["subscriptionStatus"], "Active" | "Trial" | "At risk" | "Past due"> = {
-  active: "Active",
-  trial: "Trial",
-  at_risk: "At risk",
-  past_due: "Past due",
+const statusLabelMap: Record<SettingsData["billing"]["subscriptionStatus"], SettingsStatus> = {
+  active: "active",
+  trial: "trial",
+  at_risk: "atRisk",
+  past_due: "pastDue",
 }
 
 export function BillingSettings({ data, isDisabled, isSaving, errors, onFieldChange, onAction }: BillingSettingsProps) {
@@ -42,7 +43,7 @@ export function BillingSettings({ data, isDisabled, isSaving, errors, onFieldCha
         panelId="upgrade"
         title="Upgrade"
         description="Read-only contract: current plan and trial status before upgrade changes."
-        status="Trial"
+        status="trial"
         actionLabel="Upgrade plan"
         disabled={isDisabled}
         onAction={() => onAction("upgradePlan")}
@@ -66,7 +67,7 @@ export function BillingSettings({ data, isDisabled, isSaving, errors, onFieldCha
         panelId="invoice-delivery"
         title="Invoice delivery"
         description="Set where invoices are delivered. Existing keys remain unchanged."
-        status="Active"
+        status="active"
         actionLabel={isSaving ? "Saving..." : "Save invoice delivery"}
         disabled={isDisabled}
         onAction={() => onAction("saveInvoiceDelivery")}
@@ -88,7 +89,7 @@ export function BillingSettings({ data, isDisabled, isSaving, errors, onFieldCha
         panelId="billing-method"
         title="Billing method summary"
         description="Read-only payment method summary with safe defaults."
-        status="At risk"
+        status="atRisk"
         actionLabel="Review billing method"
         disabled={isDisabled}
         onAction={() => onAction("billingMethodSummary")}
@@ -100,7 +101,7 @@ export function BillingSettings({ data, isDisabled, isSaving, errors, onFieldCha
         panelId="usage-meters"
         title="Usage meters"
         description="Contract usage values before any mutating operations."
-        status="Active"
+        status="active"
         actionLabel="Refresh usage"
         disabled={isDisabled}
         onAction={() => onAction("usageMeters")}
@@ -114,22 +115,18 @@ export function BillingSettings({ data, isDisabled, isSaving, errors, onFieldCha
         panelId="credits-balance"
         title="Credits balance"
         description="Available credit balance (read-only contract snapshot)."
-        status="Available credits"
+        status="credits"
         actionLabel="Refresh credits"
         disabled={isDisabled}
         onAction={() => onAction("creditsBalance")}
       >
-        <div className="flex items-center justify-between rounded-md border p-3">
-          <div>
-            <p className="text-sm font-medium">Auto recharge</p>
-            <p className="text-xs text-muted-foreground">Automatically recharge balance when low.</p>
-          </div>
+        <SettingsRow title="Auto recharge" description="Automatically recharge balance when low.">
           <Switch
             checked={data.billing.autoRechargeEnabled}
             onCheckedChange={(checked) => onFieldChange("billing", "autoRechargeEnabled", checked)}
             disabled={isDisabled}
           />
-        </div>
+        </SettingsRow>
         <p className="text-sm text-muted-foreground">Balance: {data.billing.creditsBalance}</p>
       </SectionFeatureCard>
 
@@ -137,7 +134,7 @@ export function BillingSettings({ data, isDisabled, isSaving, errors, onFieldCha
         panelId="refer-earn"
         title="Refer & earn"
         description="Share referral code and monitor earned rewards."
-        status="Past due"
+        status="pastDue"
         actionLabel="Open referral details"
         disabled={isDisabled}
         onAction={() => onAction("referAndEarn")}

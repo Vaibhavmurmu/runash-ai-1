@@ -156,7 +156,7 @@ export function AccountSettings({ data, isDisabled, isSaving, errors, onFieldCha
     const attachment = data.profile[slot]
     const isUploading = uploadState.activeSlot === slot && uploadState.progress > 0 && uploadState.progress < 100
     return (
-      <div className="space-y-2 rounded-md border p-3">
+      <div className="space-y-2 rounded-md border border-border/70 bg-background/60 p-3">
         <p className="text-sm font-medium">{title}</p>
         <p className="text-xs text-muted-foreground">{description}</p>
         {attachment ? (
@@ -182,7 +182,7 @@ export function AccountSettings({ data, isDisabled, isSaving, errors, onFieldCha
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <SectionFeatureCard panelId="profile" title="Profile" description="Control public profile details across RunAsh." status="Configured" actionLabel={isSaving ? "Saving..." : "Save profile"} disabled={isDisabled} onAction={() => onSave("profile")}>
+      <SectionFeatureCard panelId="profile" title="Profile" description="Control public profile details across RunAsh." status="configured" actionLabel={isSaving ? "Saving..." : "Save profile"} disabled={isDisabled} onAction={() => onSave("profile")}>
         <div className="grid gap-2"><Label htmlFor="settings-display-name">Display name</Label><Input id="settings-display-name" value={data.profile.displayName} onChange={(event) => onFieldChange("profile", "displayName", event.target.value)} disabled={isDisabled} /></div>
         <div className="grid gap-2"><Label htmlFor="settings-bio">Bio</Label><Input id="settings-bio" value={data.profile.bio} onChange={(event) => onFieldChange("profile", "bio", event.target.value)} disabled={isDisabled} /></div>
         {renderUploadSlot("avatarAttachment", "Avatar", "Square profile image used in workspace and account areas.", avatarInputRef)}
@@ -190,13 +190,13 @@ export function AccountSettings({ data, isDisabled, isSaving, errors, onFieldCha
         {errors.profile ? <p className="text-sm text-destructive">{errors.profile}</p> : null}
       </SectionFeatureCard>
 
-      <SectionFeatureCard panelId="authentication" title="Authentication" description="Manage login and identity details." status="Ready" actionLabel={isSaving ? "Saving..." : "Save account"} disabled={isDisabled} onAction={() => onSave("account")}>
+      <SectionFeatureCard panelId="authentication" title="Authentication" description="Manage login and identity details." status="ready" actionLabel={isSaving ? "Saving..." : "Save account"} disabled={isDisabled} onAction={() => onSave("account")}>
         <div className="grid gap-2"><Label htmlFor="settings-email">Email</Label><Input id="settings-email" type="email" value={data.account.email} onChange={(event) => onFieldChange("account", "email", event.target.value)} disabled={isDisabled} /></div>
         <div className="grid gap-2"><Label htmlFor="settings-phone">Phone</Label><Input id="settings-phone" value={data.account.phone} onChange={(event) => onFieldChange("account", "phone", event.target.value)} disabled={isDisabled} /></div>
         {errors.account ? <p className="text-sm text-destructive">{errors.account}</p> : null}
       </SectionFeatureCard>
 
-      <SectionFeatureCard panelId="sessions" title="Sessions" description="Revoke active sessions across all browsers and devices." status="Recommended" actionLabel="Revoke sessions" disabled={isDisabled} onAction={() => onAction("revokeSessions")}>
+      <SectionFeatureCard panelId="sessions" title="Sessions" description="Revoke active sessions across all browsers and devices." status="recommended" actionLabel="Revoke sessions" disabled={isDisabled} onAction={() => onAction("revokeSessions")}>
         <div className="overflow-x-auto rounded-md border">
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-left"><tr><th className="p-2">Device</th><th className="p-2">Mode</th><th className="p-2">Scope</th><th className="p-2">Last seen</th><th className="p-2" /></tr></thead>
@@ -209,7 +209,7 @@ export function AccountSettings({ data, isDisabled, isSaving, errors, onFieldCha
         </div>
       </SectionFeatureCard>
 
-      <SectionFeatureCard panelId="devices" title="Devices" description="Track trusted devices and sign out stale devices quickly." status="Review" actionLabel="Refresh devices" disabled={isDisabled} onAction={() => void loadSecurityData()}>
+      <SectionFeatureCard panelId="devices" title="Devices" description="Track trusted devices and sign out stale devices quickly." status="review" actionLabel="Refresh devices" disabled={isDisabled} onAction={() => void loadSecurityData()}>
         <div className="overflow-x-auto rounded-md border">
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-left"><tr><th className="p-2">Device</th><th className="p-2">Trusted at</th><th className="p-2">Last seen</th><th className="p-2" /></tr></thead>
