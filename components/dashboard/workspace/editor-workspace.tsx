@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import EditorLayout from "@/components/editor/editor-layout"
 import TopBar from "@/components/editor/top-bar"
@@ -45,6 +45,9 @@ export function EditorWorkspace() {
   const [playbackTime, setPlaybackTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [, setGenerationJob] = useState<EditorRenderJob | null>(null)
+  const generationAbortRef = useRef<AbortController | null>(null)
+  const generationRunIdRef = useRef(0)
+  const isMountedRef = useRef(true)
   const searchParams = useSearchParams()
   const queryProjectId = searchParams.get("projectId")
   const queryLibraryItemTitle = searchParams.get("libraryItemTitle")
@@ -161,6 +164,13 @@ export function EditorWorkspace() {
     if (!queryLibraryItemTitle) return
     toast({ title: "Library item selected", description: `${queryLibraryItemTitle} opened with editor context.` })
   }, [queryLibraryItemTitle])
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+      generationAbortRef.current?.abort()
+    }
+  }, [])
 
   const saveProject = async () => {
     if (!project || !activeTimeline) return
@@ -384,11 +394,21 @@ export function EditorWorkspace() {
   const handleGenerateVideo = async () => {
     if (!project || !activeTimeline) return
 
+    generationAbortRef.current?.abort()
+    const controller = new AbortController()
+    generationAbortRef.current = controller
+    generationRunIdRef.current += 1
+    const currentRunId = generationRunIdRef.current
+
+    const isStaleOrCancelled = () =>
+      controller.signal.aborted || generationRunIdRef.current !== currentRunId || !isMountedRef.current
+
     setIsBusy(true)
     try {
       const createRes = await fetch("/api/editor/render-jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           projectId: project.id,
           payload: {
@@ -401,18 +421,29 @@ export function EditorWorkspace() {
       })
 
       if (!createRes.ok) throw new Error("Failed to queue generation")
+      if (isStaleOrCancelled()) return
+
       const createJson = await createRes.json()
       const job = createJson.job as EditorRenderJob
+      if (isStaleOrCancelled()) return
+
       setGenerationJob(job)
 
       toast({ title: "Generation queued", description: "Render job started for this timeline." })
 
       for (let i = 0; i < 30; i += 1) {
+        if (isStaleOrCancelled()) return
         await new Promise((resolve) => setTimeout(resolve, 1000))
-        const pollRes = await fetch(`/api/editor/render-jobs/${job.id}`)
+        if (isStaleOrCancelled()) return
+
+        const pollRes = await fetch(`/api/editor/render-jobs/${job.id}`, { signal: controller.signal })
         if (!pollRes.ok) break
+        if (isStaleOrCancelled()) return
+
         const pollJson = await pollRes.json()
         const polled = pollJson.job as EditorRenderJob
+        if (isStaleOrCancelled()) return
+
         setGenerationJob(polled)
 
         if (polled.status === "completed") {
@@ -426,9 +457,14 @@ export function EditorWorkspace() {
       }
 
       toast({ title: "Generation queued", description: "Job is still processing. Check back shortly." })
-    } catch {
+    } catch (error) {
+      if (isStaleOrCancelled()) return
+      if (error instanceof DOMException && error.name === "AbortError") return
+
       toast({ title: "Generation failed", description: "Unable to generate video right now.", variant: "destructive" })
     } finally {
+      if (!isMountedRef.current) return
+      if (generationRunIdRef.current !== currentRunId) return
       setIsBusy(false)
     }
   }
