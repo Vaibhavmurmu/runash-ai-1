@@ -14,16 +14,7 @@ import UserPreferencesDialog from "@/components/chat/user-preferences-dialog"
 import CartDrawer from "@/components/cart/cart-drawer"
 import VoiceControls from "@/components/chat/voice-controls"
 import { RunAshChatComposer } from "@/components/chat/runash-chat-composer"
-
 import { RunAshChatCommandCenter } from "@/components/chat/runash-chat-command-center"
-
-
-// import { RunAshChatCommandCenter } from "@/components/chat/runash-chat-command-center"
-
-import { RunAshChatFeatureGrid } from "@/components/chat/runash-chat-feature-grid"
-import { RunAshChatTaskBoard } from "@/components/chat/runash-chat-task-board"
-
-
 import {
   ActionPill,
   ChatDataState,
@@ -54,7 +45,9 @@ export function ChatWorkspace() {
   const querySessionId = searchParams.get("sessionId")
   const queryStreamId = searchParams.get("streamId")
   const queryProjectName = searchParams.get("projectName")
+  const queryLibraryItemTitle = searchParams.get("libraryItemTitle")
   const bootstrapCompletedRef = useRef(false)
+  const [bootstrapProjectName, setBootstrapProjectName] = useState<string | null>(null)
   const defaultAssistantMessage: ChatMessage = {
     id: "1",
     content:
@@ -438,6 +431,29 @@ export function ChatWorkspace() {
     if (bootstrapCompletedRef.current) return
 
     bootstrapCompletedRef.current = true
+    const rawContext = localStorage.getItem("runash_chat_bootstrap_context")
+    if (rawContext) {
+      try {
+        const context = JSON.parse(rawContext) as { projectName?: string; templateName?: string; libraryItemIds?: string[] }
+        if (context.projectName) {
+          setBootstrapProjectName(context.projectName)
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `bootstrap-${Date.now()}`,
+              content: `Loaded project context: ${context.projectName}${context.templateName ? ` (${context.templateName})` : ""}.`,
+              role: "assistant",
+              timestamp: new Date(),
+              type: "text",
+              status: "completed",
+            },
+          ])
+        }
+      } catch {
+        // ignore malformed bootstrap context
+      }
+    }
+
     const storedPrompt = localStorage.getItem("runash_initial_prompt")?.trim()
     if (!storedPrompt) return
 
@@ -1125,7 +1141,8 @@ export function ChatWorkspace() {
         onNewChat={handleNewChatSession}
         onDeleteSession={handleDeleteSession}
         streamId={queryStreamId}
-        activeProjectName={queryProjectName ?? currentSession?.title ?? null}
+        activeProjectName={queryProjectName ?? bootstrapProjectName ?? currentSession?.title ?? null}
+        selectedLibraryItemTitle={queryLibraryItemTitle}
         onNavigateToWorkspaceTool={() => {
           if (!isDesktop) {
             setLeftDrawerOpen(false)
@@ -1141,10 +1158,6 @@ export function ChatWorkspace() {
         <ChatDataState state="empty" loadingMessage="" emptyMessage="Quick actions are unavailable right now." errorMessage="" />
       ) : null}
       <RunAshChatCommandCenter quickActions={quickActions} onSelectPrompt={handleSendMessage} />
-      <div className="space-y-3">
-        <RunAshChatFeatureGrid onSelect={handleSendMessage} />
-        <RunAshChatTaskBoard onRunTask={handleSendMessage} />
-      </div>
     </div>
   )
 
