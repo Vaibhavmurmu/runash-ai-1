@@ -15,22 +15,34 @@ const modelDialogRequestSchema = z.object({
   context: z.record(z.string(), z.unknown()).default({}),
 })
 
-type ModelDialogResponseEnvelope = {
-  requestId: string
-  status: "completed" | "accepted" | "failed"
-  output: unknown
-  error: { code: ModelDialogErrorCode; message: string } | null
-}
-
 type ModelDialogErrorCode =
   | "USAGE_LIMIT_REACHED"
   | "PLAN_UPGRADE_REQUIRED"
   | "RATE_LIMITED"
+  | "MODEL_DIALOG_PROVIDER_DOWN"
+  | "MODEL_DIALOG_INVALID_PROMPT_INPUT"
   | "MODEL_DIALOG_INVALID_REQUEST"
   | "MODEL_DIALOG_INTERNAL_ERROR"
 
+type ModelDialogResponseEnvelope = {
+  requestId: string
+  status: "completed" | "accepted" | "failed"
+  output: unknown
+  errorCode: ModelDialogErrorCode | null
+  errorMessage: string | null
+  error: { code: ModelDialogErrorCode; message: string } | null
+  diagnostics: {
+    provider: string
+    modelId: string | null
+    sourceModule: z.infer<typeof sourceModuleSchema> | "dashboard"
+  }
+}
+
 type ModelDialogPolicyError = {
-  code: Extract<ModelDialogErrorCode, "USAGE_LIMIT_REACHED" | "PLAN_UPGRADE_REQUIRED" | "RATE_LIMITED">
+  code: Extract<
+    ModelDialogErrorCode,
+    "USAGE_LIMIT_REACHED" | "PLAN_UPGRADE_REQUIRED" | "RATE_LIMITED" | "MODEL_DIALOG_PROVIDER_DOWN" | "MODEL_DIALOG_INVALID_PROMPT_INPUT"
+  >
   message: string
   status: number
 }
@@ -52,6 +64,22 @@ function resolvePolicyError(context: Record<string, unknown>): ModelDialogPolicy
     }
   }
 
+  if (context.providerDown === true) {
+    return {
+      code: "MODEL_DIALOG_PROVIDER_DOWN",
+      message: "The selected model provider is currently unavailable.",
+      status: 503,
+    }
+  }
+
+  if (context.invalidPromptInput === true) {
+    return {
+      code: "MODEL_DIALOG_INVALID_PROMPT_INPUT",
+      message: "Prompt input is invalid for the selected model. Reduce context and retry.",
+      status: 422,
+    }
+  }
+
   if (context.rateLimited === true) {
     return {
       code: "RATE_LIMITED",
@@ -65,6 +93,14 @@ function resolvePolicyError(context: Record<string, unknown>): ModelDialogPolicy
 
 function buildResponse(envelope: ModelDialogResponseEnvelope) {
   return envelope
+}
+
+function diagnosticsFor(modelId: string | null, sourceModule: z.infer<typeof sourceModuleSchema> | "dashboard") {
+  return {
+    provider: "RunAsh AI",
+    modelId,
+    sourceModule,
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -83,10 +119,13 @@ export async function POST(request: NextRequest) {
           requestId,
           status: "failed",
           output: null,
+          errorCode: "MODEL_DIALOG_INVALID_REQUEST",
+          errorMessage: "Invalid model dialog request payload.",
           error: {
             code: "MODEL_DIALOG_INVALID_REQUEST",
             message: "Invalid model dialog request payload.",
           },
+          diagnostics: diagnosticsFor(null, "dashboard"),
         }),
         { status: 400 },
       )
@@ -101,10 +140,13 @@ export async function POST(request: NextRequest) {
           requestId,
           status: "failed",
           output: null,
+          errorCode: policyError.code,
+          errorMessage: policyError.message,
           error: {
             code: policyError.code,
             message: policyError.message,
           },
+          diagnostics: diagnosticsFor(modelId, sourceModule),
         }),
         { status: policyError.status },
       )
@@ -125,7 +167,10 @@ export async function POST(request: NextRequest) {
           requestId,
           status: "accepted",
           output: { token: `mdl_${runId.replace(/-/g, "")}`, modelId, context, runId },
+          errorCode: null,
+          errorMessage: null,
           error: null,
+          diagnostics: diagnosticsFor(modelId, sourceModule),
         }),
         { status: 202 },
       )
@@ -146,7 +191,10 @@ export async function POST(request: NextRequest) {
         requestId,
         status: "completed",
         output,
+        errorCode: null,
+        errorMessage: null,
         error: null,
+        diagnostics: diagnosticsFor(modelId, sourceModule),
       }),
       { status: 200 },
     )
@@ -164,10 +212,13 @@ export async function POST(request: NextRequest) {
         requestId,
         status: "failed",
         output: null,
+        errorCode: "MODEL_DIALOG_INTERNAL_ERROR",
+        errorMessage: "Unable to process model dialog request.",
         error: {
           code: "MODEL_DIALOG_INTERNAL_ERROR",
           message: "Unable to process model dialog request.",
         },
+        diagnostics: diagnosticsFor(null, "dashboard"),
       }),
       { status: 500 },
     )
