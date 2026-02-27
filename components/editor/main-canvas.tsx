@@ -25,6 +25,9 @@ interface MainCanvasProps {
   onGenerateVideo?: () => Promise<void>
   isGeneratingRender?: boolean
   generationJob?: EditorRenderJob | null
+  generationStatus?: EditorRenderJob["status"] | null
+  generationProgress?: number | null
+  generationStage?: string | null
 }
 
 export default function MainCanvas({
@@ -43,12 +46,15 @@ export default function MainCanvas({
   onGenerateVideo,
   isGeneratingRender = false,
   generationJob,
+  generationStatus,
+  generationProgress,
+  generationStage,
 }: MainCanvasProps) {
   const [internalIsPlaying, setInternalIsPlaying] = useState(false)
   const [internalCurrentTime, setInternalCurrentTime] = useState(0)
   const [duration, setDuration] = useState(timeline?.durationSeconds ?? 10)
   const [isGenerating, setIsGenerating] = useState(false)
-  const [generationProgress, setGenerationProgress] = useState(0)
+  const [localGenerationProgress, setLocalGenerationProgress] = useState(0)
   const [volume, setVolume] = useState(80)
   const [showAdvancedControls, setShowAdvancedControls] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -153,9 +159,10 @@ export default function MainCanvas({
   const segments = useMemo(() => timeline?.segments ?? [], [timeline])
   const isGenerationInProgress = onGenerateVideo ? isGeneratingRender : isGenerating
   const generationStatusLabel = useMemo(() => {
-    if (!generationJob) return null
+    const status = generationStatus ?? generationJob?.status
+    if (!status) return null
 
-    switch (generationJob.status) {
+    switch (status) {
       case "queued":
         return "Queued"
       case "processing":
@@ -165,24 +172,31 @@ export default function MainCanvas({
       case "failed":
         return "Failed"
       default:
-        return generationJob.status
+        return status
     }
-  }, [generationJob])
+  }, [generationJob?.status, generationStatus])
 
   const generationProgressValue = useMemo(() => {
-    if (!generationJob) return Math.round(generationProgress)
+    if (typeof generationProgress === "number") {
+      return Math.round(Math.max(0, Math.min(100, generationProgress)))
+    }
+    if (!generationJob) return Math.round(localGenerationProgress)
     const progress = generationJob.result?.progress
-    return typeof progress === "number" ? Math.round(progress) : Math.round(generationProgress)
-  }, [generationJob, generationProgress])
+    return typeof progress === "number" ? Math.round(progress) : Math.round(localGenerationProgress)
+  }, [generationJob, generationProgress, localGenerationProgress])
 
   const generationStageLabel = useMemo(() => {
+    if (typeof generationStage === "string" && generationStage.trim().length > 0) {
+      return generationStage
+    }
+
     const stage = generationJob?.result?.stage
     if (typeof stage === "string" && stage.trim().length > 0) {
       return stage
     }
 
     return generationStatusLabel
-  }, [generationJob, generationStatusLabel])
+  }, [generationJob, generationStage, generationStatusLabel])
 
   const handleGenerateVideo = async () => {
     if (onGenerateVideo) {
@@ -191,9 +205,9 @@ export default function MainCanvas({
     }
 
     setIsGenerating(true)
-    setGenerationProgress(0)
+    setLocalGenerationProgress(0)
     const interval = setInterval(() => {
-      setGenerationProgress((prev) => {
+      setLocalGenerationProgress((prev) => {
         if (prev >= 100) {
           clearInterval(interval)
           setIsGenerating(false)
@@ -301,23 +315,23 @@ export default function MainCanvas({
         </div>
       )}
 
-      {generationStatusLabel && (
-        <div className="bg-card border border-border rounded-lg px-3 py-2 text-xs text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
-            {generationStatusLabel}
-          </span>
-          <span>Job ID: <span className="font-mono text-foreground">{generationJob?.id}</span></span>
-          {generationStageLabel && <span>Stage: <span className="text-foreground">{generationStageLabel}</span></span>}
-          <span>Progress: <span className="text-foreground">{generationProgressValue}%</span></span>
-          {generationJob?.updatedAt && <span>Updated: {new Date(generationJob.updatedAt).toLocaleString()}</span>}
-        </div>
-      )}
-
       <div className="bg-card border border-border rounded-lg p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-foreground">Timeline</h3>
           <span className="text-xs text-muted-foreground">Model: <span className="font-medium text-foreground">{selectedModel.toUpperCase()}</span></span>
         </div>
+
+        {generationStatusLabel && (
+          <div className="rounded-md border border-border/80 bg-muted/40 px-2.5 py-1.5 text-[11px] text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="inline-flex items-center rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-foreground">
+              {generationStatusLabel}
+            </span>
+            {typeof generationProgress === "number" && <span>{generationProgressValue}%</span>}
+            {typeof generationProgress === "number" && generationStageLabel && (
+              <span className="text-foreground/90">{generationStageLabel}</span>
+            )}
+          </div>
+        )}
 
         <div ref={timelineRef} onClick={handleTimelineClick} className="w-full h-12 bg-background border border-border rounded cursor-pointer hover:border-primary/50 transition-colors relative">
           {segments.map((segment) => (

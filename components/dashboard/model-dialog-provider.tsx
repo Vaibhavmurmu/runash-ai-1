@@ -132,11 +132,13 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
   const [requestId, setRequestId] = useState<string | null>(null)
   const [recentRuns, setRecentRuns] = useState<ModelDialogRunHistoryItem[]>([])
   const [selectedModelId, setSelectedModelId] = useState<string>("gpt-4o-mini")
+
   const modelCatalog = useMemo(() => listModelCatalog(), [])
   const selectedCatalogEntry = useMemo(
     () => modelCatalog.find((entry) => entry.id === selectedModelId) ?? null,
     [modelCatalog, selectedModelId],
   )
+
   const eventSourceRef = useRef<EventSource | null>(null)
   const tickTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startedAtRef = useRef<number>(0)
@@ -375,8 +377,23 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
             resetExecutionState()
           }
         }}
+
         model={dialogModelIdentity}
         modelOptions={modelCatalog.map((entry) => ({ id: entry.id, provider: entry.provider, label: entry.label }))}
+
+        model={{
+          ...BASE_MODEL,
+          name:
+            listModelCatalog().find((entry) => entry.id === selectedModelId)?.label ??
+            activeModelDialog?.model.displayName ??
+            BASE_MODEL.name,
+          provider:
+            listModelCatalog().find((entry) => entry.id === selectedModelId)?.provider ??
+            activeModelDialog?.model.provider ??
+            BASE_MODEL.provider,
+        }}
+        modelOptions={listModelCatalog().map((entry) => ({ id: entry.id, provider: entry.provider, label: entry.label }))}
+
         selectedModelId={selectedModelId}
         onSelectedModelIdChange={setSelectedModelId}
         triggerSource={activeModelDialog?.triggerSource}
