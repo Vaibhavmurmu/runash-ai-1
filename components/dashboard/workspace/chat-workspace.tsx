@@ -46,6 +46,8 @@ export function ChatWorkspace() {
   const { openFromTrigger } = useDashboardModelDialog()
   const searchParams = useSearchParams()
   const querySessionId = searchParams.get("sessionId")
+  const queryStreamId = searchParams.get("streamId")
+  const queryProjectName = searchParams.get("projectName")
   const bootstrapCompletedRef = useRef(false)
   const defaultAssistantMessage: ChatMessage = {
     id: "1",
@@ -963,6 +965,13 @@ export function ChatWorkspace() {
         currentSession={currentSession}
         onNewChat={handleNewChatSession}
         onDeleteSession={handleDeleteSession}
+        streamId={queryStreamId}
+        activeProjectName={queryProjectName ?? currentSession?.title ?? null}
+        onNavigateToWorkspaceTool={() => {
+          if (!isDesktop) {
+            setLeftDrawerOpen(false)
+          }
+        }}
       />
     </div>
   )
