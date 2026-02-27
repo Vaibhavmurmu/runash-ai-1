@@ -54,8 +54,19 @@ export default function MainCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const timelineRef = useRef<HTMLDivElement>(null)
+  const animationFrameRef = useRef<number | null>(null)
+  const lastFrameTimeRef = useRef<number | null>(null)
+  const currentTimeRef = useRef(0)
+  const hasStoppedAtEndRef = useRef(false)
   const isPlaying = controlledIsPlaying ?? internalIsPlaying
   const currentTime = controlledCurrentTime ?? internalCurrentTime
+
+  useEffect(() => {
+    currentTimeRef.current = currentTime
+    if (currentTime < duration) {
+      hasStoppedAtEndRef.current = false
+    }
+  }, [currentTime, duration])
 
   const setCurrentTime = (value: number) => {
     const next = Math.max(0, Math.min(value, duration))
@@ -80,24 +91,64 @@ export default function MainCanvas({
   }, [timeline?.durationSeconds])
 
   useEffect(() => {
-    if (!isPlaying) return
-    const timer = setInterval(() => {
-      setCurrentTime(currentTime + 0.1)
-    }, 100)
-
-    return () => clearInterval(timer)
-  }, [isPlaying, currentTime, duration])
-
-  useEffect(() => {
-    if (currentTime < duration) return
-    if (onPlayPause && isPlaying) {
-      onPlayPause()
+    if (!isPlaying) {
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+      animationFrameRef.current = null
+      lastFrameTimeRef.current = null
+      hasStoppedAtEndRef.current = false
       return
     }
-    if (isPlaying) {
+
+    const stopPlaybackAtEnd = () => {
+      if (hasStoppedAtEndRef.current) return
+      hasStoppedAtEndRef.current = true
+      if (onPlayPause) {
+        onPlayPause()
+        return
+      }
       setInternalIsPlaying(false)
     }
-  }, [currentTime, duration, isPlaying, onPlayPause])
+
+    const tick = (timestamp: number) => {
+      if (lastFrameTimeRef.current === null) {
+        lastFrameTimeRef.current = timestamp
+      }
+
+      const deltaSeconds = (timestamp - lastFrameTimeRef.current) / 1000
+      lastFrameTimeRef.current = timestamp
+
+      const nextTime = Math.min(currentTimeRef.current + deltaSeconds, duration)
+      currentTimeRef.current = nextTime
+      setCurrentTime(nextTime)
+
+      if (nextTime >= duration) {
+        stopPlaybackAtEnd()
+        animationFrameRef.current = null
+        lastFrameTimeRef.current = null
+        return
+      }
+
+      animationFrameRef.current = requestAnimationFrame(tick)
+    }
+
+    if (currentTimeRef.current >= duration) {
+      setCurrentTime(duration)
+      stopPlaybackAtEnd()
+      return
+    }
+
+    animationFrameRef.current = requestAnimationFrame(tick)
+
+    return () => {
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+      animationFrameRef.current = null
+      lastFrameTimeRef.current = null
+    }
+  }, [duration, isPlaying, onPlayPause, onCurrentTimeChange])
 
   const segments = useMemo(() => timeline?.segments ?? [], [timeline])
   const isGenerationInProgress = onGenerateVideo ? isGeneratingRender : isGenerating
