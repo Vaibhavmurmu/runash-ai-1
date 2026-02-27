@@ -17,6 +17,8 @@ interface RenderJobResult {
   startedAt: string | null
   finishedAt: string | null
   lastError: string | null
+  progress: number
+  stage: string
   output?: {
     mimeType: string
     sizeBytes: number
@@ -78,6 +80,8 @@ function parseResult(value: unknown): RenderJobResult {
     startedAt: typeof objectValue.startedAt === "string" ? objectValue.startedAt : null,
     finishedAt: typeof objectValue.finishedAt === "string" ? objectValue.finishedAt : null,
     lastError: typeof objectValue.lastError === "string" ? objectValue.lastError : null,
+    progress: typeof objectValue.progress === "number" ? objectValue.progress : 0,
+    stage: typeof objectValue.stage === "string" ? objectValue.stage : "queued",
   }
 }
 
@@ -136,13 +140,30 @@ export async function processNextEditorRenderJob(adapter: EditorRenderModelProvi
     startedAt: nowIso,
     finishedAt: null,
     lastError: null,
+    progress: 10,
+    stage: "processing",
   }
 
   await sql`UPDATE editor_render_jobs SET result=${JSON.stringify(processingResult)}::jsonb, updated_at=now() WHERE id=${job.id}`
 
   try {
+    const preparingResult: RenderJobResult = {
+      ...processingResult,
+      progress: 35,
+      stage: "Rendering frames",
+    }
+    await sql`UPDATE editor_render_jobs SET result=${JSON.stringify(preparingResult)}::jsonb, updated_at=now() WHERE id=${job.id}`
+
     const renderedOutput = await adapter.render(job.payload ?? {})
     const storageKey = `editor/renders/${job.project_id}/${job.id}/${randomUUID()}.${renderedOutput.fileExtension}`
+
+    const uploadingResult: RenderJobResult = {
+      ...preparingResult,
+      progress: 75,
+      stage: "Uploading output",
+    }
+    await sql`UPDATE editor_render_jobs SET result=${JSON.stringify(uploadingResult)}::jsonb, updated_at=now() WHERE id=${job.id}`
+
     const accessUrl = await CloudStorage.uploadFile(storageKey, renderedOutput.buffer, renderedOutput.mimeType)
 
     const asset = await createEditorAsset({
@@ -160,9 +181,11 @@ export async function processNextEditorRenderJob(adapter: EditorRenderModelProvi
     })
 
     const completedResult: RenderJobResult = {
-      ...processingResult,
+      ...uploadingResult,
       finishedAt: new Date().toISOString(),
       lastError: null,
+      progress: 100,
+      stage: "completed",
       output: {
         mimeType: renderedOutput.mimeType,
         sizeBytes: renderedOutput.buffer.byteLength,
@@ -174,13 +197,15 @@ export async function processNextEditorRenderJob(adapter: EditorRenderModelProvi
     return { jobId: job.id, status: "completed" as const, outputAssetId: asset.id }
   } catch (error) {
     const publicError = sanitizePublicError(error)
+    const nextStatus = attemptCount < maxAttempts ? "queued" : "failed"
     const failedResult: RenderJobResult = {
       ...processingResult,
-      finishedAt: new Date().toISOString(),
+      finishedAt: nextStatus === "failed" ? new Date().toISOString() : null,
       lastError: publicError,
+      progress: nextStatus === "failed" ? 100 : 0,
+      stage: nextStatus === "failed" ? "failed" : "queued",
     }
 
-    const nextStatus = attemptCount < maxAttempts ? "queued" : "failed"
     await saveResult(job.id, nextStatus, failedResult)
     return { jobId: job.id, status: nextStatus, error: publicError }
   }

@@ -48,6 +48,7 @@ export function EditorWorkspace() {
   const [generationJob, setGenerationJob] = useState<EditorRenderJob | null>(null)
   const generationAbortRef = useRef<AbortController | null>(null)
   const generationRunIdRef = useRef(0)
+  const generationStreamRef = useRef<EventSource | null>(null)
   const isMountedRef = useRef(true)
   const searchParams = useSearchParams()
   const queryProjectId = searchParams.get("projectId")
@@ -170,6 +171,7 @@ export function EditorWorkspace() {
     return () => {
       isMountedRef.current = false
       generationAbortRef.current?.abort()
+      generationStreamRef.current?.close()
     }
   }, [])
 
@@ -396,6 +398,8 @@ export function EditorWorkspace() {
     if (!project || !activeTimeline) return
 
     generationAbortRef.current?.abort()
+    generationStreamRef.current?.close()
+
     const controller = new AbortController()
     generationAbortRef.current = controller
     generationRunIdRef.current += 1
@@ -403,6 +407,134 @@ export function EditorWorkspace() {
 
     const isStaleOrCancelled = () =>
       controller.signal.aborted || generationRunIdRef.current !== currentRunId || !isMountedRef.current
+
+    const normalizeJob = (value: unknown): EditorRenderJob | null => {
+      if (!value || typeof value !== "object") return null
+      const row = value as Record<string, unknown>
+      const id = typeof row.id === "string" ? row.id : null
+      const status = typeof row.status === "string" ? row.status : null
+      const projectId = typeof row.projectId === "string" ? row.projectId : typeof row.project_id === "string" ? row.project_id : null
+      const ownerId = typeof row.ownerId === "string" ? row.ownerId : typeof row.owner_id === "string" ? row.owner_id : ""
+      if (!id || !status || !projectId) return null
+
+      return {
+        id,
+        status: status as EditorRenderJob["status"],
+        projectId,
+        ownerId,
+        requestedBy: typeof row.requestedBy === "string" ? row.requestedBy : typeof row.requested_by === "string" ? row.requested_by : "",
+        payload: row.payload && typeof row.payload === "object" ? (row.payload as Record<string, unknown>) : {},
+        result: row.result && typeof row.result === "object" ? (row.result as Record<string, unknown>) : {},
+        outputAssetId:
+          typeof row.outputAssetId === "string"
+            ? row.outputAssetId
+            : typeof row.output_asset_id === "string"
+              ? row.output_asset_id
+              : null,
+        createdAt: typeof row.createdAt === "string" ? row.createdAt : typeof row.created_at === "string" ? row.created_at : "",
+        updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : typeof row.updated_at === "string" ? row.updated_at : new Date().toISOString(),
+      }
+    }
+
+    const pollForCompletion = async (jobId: string) => {
+      for (let i = 0; i < 30; i += 1) {
+        if (isStaleOrCancelled()) return
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+        if (isStaleOrCancelled()) return
+
+        const pollRes = await fetch(`/api/editor/render-jobs/${jobId}`, { signal: controller.signal })
+        if (!pollRes.ok) break
+
+        const pollJson = await pollRes.json()
+        const polled = normalizeJob(pollJson.job)
+        if (!polled || isStaleOrCancelled()) return
+
+        setGenerationJob(polled)
+        if (polled.status === "completed") {
+          toast({ title: "Generation completed", description: "Your render job has completed." })
+          return
+        }
+
+        if (polled.status === "failed") {
+          throw new Error("Render job failed")
+        }
+      }
+
+      toast({ title: "Generation queued", description: "Job is still processing. Check back shortly." })
+    }
+
+    const subscribeToStream = async (jobId: string) => {
+      await new Promise<void>((resolve, reject) => {
+        const url = `/api/editor/render-jobs/stream?projectId=${encodeURIComponent(project.id)}&jobId=${encodeURIComponent(jobId)}`
+        const source = new EventSource(url)
+        generationStreamRef.current = source
+
+        let opened = false
+        const openingTimeout = window.setTimeout(() => {
+          if (!opened) {
+            source.close()
+            if (generationStreamRef.current === source) generationStreamRef.current = null
+            reject(new Error("SSE connection timeout"))
+          }
+        }, 3000)
+
+        const stopStream = () => {
+          window.clearTimeout(openingTimeout)
+          source.close()
+          if (generationStreamRef.current === source) generationStreamRef.current = null
+        }
+
+        source.onopen = () => {
+          opened = true
+          window.clearTimeout(openingTimeout)
+        }
+
+        const handlePayload = (event: MessageEvent<string>) => {
+          if (isStaleOrCancelled()) {
+            stopStream()
+            resolve()
+            return
+          }
+
+          try {
+            const parsed = JSON.parse(event.data) as { job?: unknown }
+            const nextJob = normalizeJob(parsed.job)
+            if (!nextJob) return
+
+            setGenerationJob(nextJob)
+            if (nextJob.status === "completed") {
+              toast({ title: "Generation completed", description: "Your render job has completed." })
+              stopStream()
+              resolve()
+              return
+            }
+
+            if (nextJob.status === "failed") {
+              stopStream()
+              reject(new Error("Render job failed"))
+            }
+          } catch {
+            // skip malformed frames
+          }
+        }
+
+        source.addEventListener("queued", handlePayload as EventListener)
+        source.addEventListener("processing", handlePayload as EventListener)
+        source.addEventListener("progress", handlePayload as EventListener)
+        source.addEventListener("completed", handlePayload as EventListener)
+        source.addEventListener("failed", handlePayload as EventListener)
+
+        source.onerror = () => {
+          stopStream()
+          reject(new Error("SSE unavailable"))
+        }
+
+        controller.signal.addEventListener("abort", () => {
+          stopStream()
+          resolve()
+        })
+      })
+    }
 
     setIsGeneratingRender(true)
     try {
@@ -425,45 +557,25 @@ export function EditorWorkspace() {
       if (isStaleOrCancelled()) return
 
       const createJson = await createRes.json()
-      const job = createJson.job as EditorRenderJob
-      if (isStaleOrCancelled()) return
+      const job = normalizeJob(createJson.job)
+      if (!job || isStaleOrCancelled()) return
 
       setGenerationJob(job)
-
       toast({ title: "Generation queued", description: "Render job started for this timeline." })
 
-      for (let i = 0; i < 30; i += 1) {
-        if (isStaleOrCancelled()) return
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-        if (isStaleOrCancelled()) return
-
-        const pollRes = await fetch(`/api/editor/render-jobs/${job.id}`, { signal: controller.signal })
-        if (!pollRes.ok) break
-        if (isStaleOrCancelled()) return
-
-        const pollJson = await pollRes.json()
-        const polled = pollJson.job as EditorRenderJob
-        if (isStaleOrCancelled()) return
-
-        setGenerationJob(polled)
-
-        if (polled.status === "completed") {
-          toast({ title: "Generation completed", description: "Your render job has completed." })
-          return
-        }
-
-        if (polled.status === "failed") {
-          throw new Error("Render job failed")
-        }
+      try {
+        await subscribeToStream(job.id)
+      } catch {
+        await pollForCompletion(job.id)
       }
-
-      toast({ title: "Generation queued", description: "Job is still processing. Check back shortly." })
     } catch (error) {
       if (isStaleOrCancelled()) return
       if (error instanceof DOMException && error.name === "AbortError") return
 
       toast({ title: "Generation failed", description: "Unable to generate video right now.", variant: "destructive" })
     } finally {
+      generationStreamRef.current?.close()
+      if (generationStreamRef.current) generationStreamRef.current = null
       if (!isMountedRef.current) return
       if (generationRunIdRef.current !== currentRunId) return
       setIsGeneratingRender(false)
