@@ -17,10 +17,24 @@ import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
 import { WelcomeOnboardingModal } from "@/components/dashboard/onboarding/welcome-onboarding-modal"
 import { CreateProjectModal, type QuickStartMode } from "@/components/dashboard/projects/create-project-modal"
+import {
+  buildGenerationDefaults,
+  validateGenerationConfig,
+} from "@/lib/editor/video-models/registry"
+import { validateVideoGenerationPayload } from "@/lib/editor/video-models/validation"
+import type { VideoGenerationRequest } from "@/lib/editor/video-models/types"
 
 type OnboardingState = {
   editorWelcomeCompletedAt?: string
   editorWelcomeSkippedAt?: string
+}
+
+function mergeGenerationConfigForModel(modelId: string, savedConfig?: Record<string, unknown> | null): VideoGenerationRequest {
+  return {
+    ...buildGenerationDefaults(modelId),
+    ...(savedConfig ?? {}),
+    modelId,
+  }
 }
 
 export function EditorWorkspace() {
@@ -29,6 +43,8 @@ export function EditorWorkspace() {
   const isMobile = useIsMobile()
   const [activeTab, setActiveTab] = useState("generate")
   const [selectedModel, setSelectedModel] = useState("wan-2.1")
+  const [generationConfig, setGenerationConfig] = useState<VideoGenerationRequest>(() => buildGenerationDefaults("wan-2.1"))
+  const [generationValidationErrors, setGenerationValidationErrors] = useState<Record<string, string>>({})
   const [isRecording, setIsRecording] = useState(false)
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [isCollaborationOpen, setIsCollaborationOpen] = useState(false)
@@ -112,6 +128,7 @@ export function EditorWorkspace() {
       setProject(createJson.project)
       if (payload.selectedModel) {
         setSelectedModel(payload.selectedModel)
+        setGenerationConfig(buildGenerationDefaults(payload.selectedModel))
       }
       setShowCreateProject(false)
       toast({ title: "Project created", description: "Your editor project is ready." })
@@ -150,6 +167,13 @@ export function EditorWorkspace() {
         if (typeof savedModel === "string" && savedModel.length > 0) {
           setSelectedModel(savedModel)
         }
+
+        const nextModel = typeof savedModel === "string" && savedModel.length > 0 ? savedModel : "wan-2.1"
+        const metadataConfig =
+          json.project?.metadata?.generationConfig && typeof json.project.metadata.generationConfig === "object"
+            ? (json.project.metadata.generationConfig as Record<string, unknown>)
+            : null
+        setGenerationConfig(mergeGenerationConfigForModel(nextModel, metadataConfig))
       }
     } catch {
       toast({ title: "Editor load failed", description: "Could not load project data.", variant: "destructive" })
@@ -191,7 +215,13 @@ export function EditorWorkspace() {
       const metaRes = await fetch(`/api/editor/projects/${project.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ metadata: { ...json.project?.metadata, selectedModel } }),
+        body: JSON.stringify({
+          metadata: {
+            ...json.project?.metadata,
+            selectedModel,
+            generationConfig,
+          },
+        }),
       })
 
       if (!metaRes.ok) throw new Error("Failed to save project metadata")
@@ -394,8 +424,41 @@ export function EditorWorkspace() {
     setPlaybackTime(next ? next.startSeconds : activeTimeline.durationSeconds)
   }
 
+  const handleGenerationConfigChange = (nextConfig: VideoGenerationRequest) => {
+    setGenerationConfig(nextConfig)
+    setGenerationValidationErrors({})
+  }
+
   const handleGenerateVideo = async () => {
     if (!project || !activeTimeline) return
+
+    const basePayload: VideoGenerationRequest = {
+      ...generationConfig,
+      modelId: selectedModel,
+    }
+
+    const modelValidation = validateGenerationConfig(selectedModel, basePayload)
+    const schemaValidation = validateVideoGenerationPayload(basePayload)
+    const schemaErrors: Record<string, string> = {}
+    if (!schemaValidation.success) {
+      const fieldErrors = schemaValidation.error.flatten().fieldErrors
+      Object.entries(fieldErrors).forEach(([key, value]) => {
+        if (value?.[0]) {
+          schemaErrors[key] = value[0]
+        }
+      })
+    }
+
+    const combinedErrors = {
+      ...schemaErrors,
+      ...modelValidation,
+    }
+    setGenerationValidationErrors(combinedErrors)
+
+    if (Object.keys(combinedErrors).length > 0) {
+      toast({ title: "Validation required", description: "Please fix generation settings before enqueueing." })
+      return
+    }
 
     generationAbortRef.current?.abort()
     generationStreamRef.current?.close()
@@ -548,7 +611,7 @@ export function EditorWorkspace() {
             timelineId: activeTimeline.id,
             timelineDurationSeconds: activeTimeline.durationSeconds,
             segmentCount: activeTimeline.segments.length,
-            modelId: selectedModel,
+            ...basePayload,
           },
         }),
       })
@@ -587,21 +650,38 @@ export function EditorWorkspace() {
   const totalFrames = Math.max(1, Math.floor((activeTimeline?.durationSeconds ?? 1) * frameRate))
 
   useEffect(() => {
+    setGenerationValidationErrors({})
+    setGenerationConfig((prev) => {
+      const defaults = buildGenerationDefaults(selectedModel)
+      return {
+        ...defaults,
+        prompt: typeof prev.prompt === "string" ? prev.prompt : defaults.prompt,
+        negativePrompt: typeof prev.negativePrompt === "string" ? prev.negativePrompt : defaults.negativePrompt,
+      }
+    })
+  }, [selectedModel])
+
+  useEffect(() => {
     if (!project) return
 
-    const savedModel = project.metadata?.selectedModel
-    if (savedModel === selectedModel) return
+    const currentMetadata = (project.metadata ?? {}) as Record<string, unknown>
+    const metadataConfig = currentMetadata.generationConfig
+    const matchesModel = currentMetadata.selectedModel === selectedModel
+    const matchesConfig = JSON.stringify(metadataConfig ?? {}) === JSON.stringify(generationConfig)
+
+    if (matchesModel && matchesConfig) return
 
     setProject({
       ...project,
       metadata: {
-        ...project.metadata,
+        ...currentMetadata,
         selectedModel,
+        generationConfig,
       },
       updatedAt: new Date().toISOString(),
     })
     setIsDirty(true)
-  }, [selectedModel, project])
+  }, [generationConfig, selectedModel, project])
 
   useEffect(() => {
     setGenerationJob(null)
@@ -667,7 +747,14 @@ export function EditorWorkspace() {
             isGeneratingRender={isGeneratingRender}
             generationJob={generationJob}
           />
-          <RightPanel selectedModel={selectedModel} onModelChange={setSelectedModel} activeTab={activeTab} />
+          <RightPanel
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
+            generationConfig={generationConfig}
+            validationErrors={generationValidationErrors}
+            onGenerationConfigChange={handleGenerationConfigChange}
+            activeTab={activeTab}
+          />
           {isMobile ? (
             <Sheet open={isChatOpen} onOpenChange={setIsChatOpen}>
               <SheetContent side="left" className="w-[94vw] max-w-sm p-0">

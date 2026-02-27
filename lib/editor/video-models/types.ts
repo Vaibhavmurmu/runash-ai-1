@@ -1,11 +1,16 @@
+export type GenerationQualityMode = "quality" | "speed"
+
 export interface VideoGenerationRequest {
   modelId: string
   prompt?: string
   negativePrompt?: string
   fps?: number
   durationSeconds?: number
+  durationPreset?: string
+  aspectRatio?: string
   resolution?: string
   seed?: number
+  qualityMode?: GenerationQualityMode
   [key: string]: unknown
 }
 

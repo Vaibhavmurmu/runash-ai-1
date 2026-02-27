@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
 import { compileTimelineToVideoGenerationRequest, TimelineCompilationError } from "@/lib/editor/generation/compile-timeline"
 import { getProjectById, sql } from "@/lib/editor/repository"
-import { resolveVideoModelProviderAdapter } from "@/lib/editor/video-models/registry"
+import { buildGenerationDefaults, resolveVideoModelProviderAdapter } from "@/lib/editor/video-models/registry"
 import { normalizeVideoGenerationPayload, validateVideoGenerationPayload } from "@/lib/editor/video-models/validation"
 
 const DEFAULT_RATE_LIMIT_WINDOW_SECONDS = Number(process.env.EDITOR_RENDER_RATE_LIMIT_WINDOW_SECONDS ?? 300)
@@ -157,11 +157,15 @@ export async function POST(request: Request) {
   }
 
   const normalizedPayload = normalizeVideoGenerationPayload(parsedPayload.data)
-  const providerAdapter = resolveVideoModelProviderAdapter(normalizedPayload.modelId)
+  const effectivePayload = {
+    ...buildGenerationDefaults(normalizedPayload.modelId),
+    ...normalizedPayload,
+  }
+  const providerAdapter = resolveVideoModelProviderAdapter(effectivePayload.modelId)
   if (!providerAdapter) {
     return NextResponse.json(
       {
-        error: `Unsupported modelId: ${normalizedPayload.modelId}`,
+        error: `Unsupported modelId: ${effectivePayload.modelId}`,
       },
       { status: 400 },
     )
@@ -187,7 +191,7 @@ export async function POST(request: Request) {
     compilation = compileTimelineToVideoGenerationRequest({
       timeline,
       assets: project.assets,
-      payload: normalizedPayload,
+      payload: effectivePayload,
     })
   } catch (error) {
     if (error instanceof TimelineCompilationError) {
