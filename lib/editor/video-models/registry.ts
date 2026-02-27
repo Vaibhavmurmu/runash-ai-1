@@ -1,7 +1,12 @@
 import { runwayVideoModelProviderAdapter } from "@/lib/editor/video-models/providers/runway"
 import { stabilityVideoModelProviderAdapter } from "@/lib/editor/video-models/providers/stability"
 import { wanVideoModelProviderAdapter } from "@/lib/editor/video-models/providers/wan"
-import type { GenerationQualityMode, VideoGenerationRequest, VideoModelProviderAdapter } from "@/lib/editor/video-models/types"
+import type {
+  GenerationQualityMode,
+  VideoGenerationRequest,
+  VideoModelExecutionOutput,
+  VideoModelProviderAdapter,
+} from "@/lib/editor/video-models/types"
 
 export interface VideoModelRegistryMetadata {
   id: string
@@ -28,11 +33,11 @@ export interface VideoModelRegistryMetadata {
   }
 }
 
-const modelProviderAdapters: VideoModelProviderAdapter[] = [
-  wanVideoModelProviderAdapter,
-  runwayVideoModelProviderAdapter,
-  stabilityVideoModelProviderAdapter,
-]
+const providerAdaptersByProvider: Record<VideoModelProviderAdapter["provider"], VideoModelProviderAdapter> = {
+  wan: wanVideoModelProviderAdapter,
+  runway: runwayVideoModelProviderAdapter,
+  stability: stabilityVideoModelProviderAdapter,
+}
 
 export const VIDEO_MODEL_REGISTRY: VideoModelRegistryMetadata[] = [
   {
@@ -113,12 +118,29 @@ export const VIDEO_MODEL_REGISTRY: VideoModelRegistryMetadata[] = [
   },
 ]
 
+const modelProviderAdapterByModelId = new Map(
+  VIDEO_MODEL_REGISTRY.map((model) => {
+    const adapter = Object.values(providerAdaptersByProvider).find((candidate) => candidate.supportsModel(model.id))
+    if (!adapter) {
+      throw new Error(`Missing provider adapter for modelId: ${model.id}`)
+    }
+
+    return [model.id, adapter] as const
+  }),
+)
+
 const fallbackModel = VIDEO_MODEL_REGISTRY[0]
 
 export function resolveVideoModelProviderAdapter(modelId: string): VideoModelProviderAdapter | null {
   const normalizedModelId = modelId.trim()
+  return modelProviderAdapterByModelId.get(normalizedModelId) ?? null
+}
 
-  return modelProviderAdapters.find((adapter) => adapter.supportsModel(normalizedModelId)) ?? null
+export async function executeVideoModelById(request: VideoGenerationRequest): Promise<VideoModelExecutionOutput | null> {
+  const adapter = resolveVideoModelProviderAdapter(request.modelId)
+  if (!adapter) return null
+
+  return adapter.execute(request)
 }
 
 export function getVideoModelMetadata(modelId: string): VideoModelRegistryMetadata {
