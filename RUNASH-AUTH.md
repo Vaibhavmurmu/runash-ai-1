@@ -646,3 +646,12 @@ Rollback:
 - High-risk wallet mutations (default method switch, subscription status updates) are rejected unless HITL + MFA assertions are present.
 - Geo/risk checks are evaluated at request time and surfaced as explicit reason codes to callers for adaptive auth UX (review queues, challenge loops, or hard-deny).
 - Auth-adjacent telemetry for wallet/link flows is emitted only through sanitized structured logs; secrets, OTP values, and card data are not logged.
+
+## 2026-02 settings security session/device management
+
+- Added user-scoped settings security APIs for session and device operations:
+  - `GET|PATCH|DELETE /api/settings/security/sessions`
+  - `GET|POST|DELETE /api/settings/security/devices`
+- Session responses are constrained to operational metadata (id/mode/scope/device/lastSeen timestamps) and do not expose bearer token values or token hashes.
+- Trusted device management stores and revokes trust state by `(user_id, device_id)` to support auditable recovery and remote sign-out workflows.
+- Settings UI now includes session/device tables and per-session scope editing for user-scoped integrations.
