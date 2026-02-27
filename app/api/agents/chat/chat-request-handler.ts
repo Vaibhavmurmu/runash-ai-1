@@ -10,6 +10,8 @@ import type { ServerAuthSession } from "@/lib/auth/session"
 const INSTANT_CHECKOUT_INTENT = /\b(buy this|confirm purchase|pay now|instant checkout|checkout|confirm)\b/i
 const SEARCH_INTENT = /search|find|best(?:\s+under)?|compare|web|under\s+\$?\d+/i
 const BUYER_PRODUCT_SEARCH_INTENT = /\b(find|compare|best under|under)\b/i
+const SELLER_OPTIMIZATION_INTENT = /\b(optimi[sz]e|pricing|inventory|bundle|promotion|margin)\b/i
+const BROKER_MATCH_INTENT = /\b(broker|match supplier|match buyer|mediate|settlement|deal match)\b/i
 const NON_PRODUCTION_CHECKOUT_FALLBACK = process.env.RUNASH_ALLOW_NON_PRODUCTION_CHECKOUT_FALLBACK === "true"
 
 type CheckoutHandoffInput = {
@@ -116,6 +118,14 @@ export function resolveRunAshChatToolSelection(message: string, requestedTools: 
 
   if (INSTANT_CHECKOUT_INTENT.test(message)) {
     return ["catalog_lookup", "initiate_link_checkout"]
+  }
+
+  if (BROKER_MATCH_INTENT.test(message)) {
+    return ["broker_match_deal", "create_initial_quote", "submit_counter_offer", "broker_settle_deal"]
+  }
+
+  if (SELLER_OPTIMIZATION_INTENT.test(message)) {
+    return ["seller_optimize_commerce", "inventory_health", "catalog_lookup"]
   }
 
   if (SEARCH_INTENT.test(message)) {

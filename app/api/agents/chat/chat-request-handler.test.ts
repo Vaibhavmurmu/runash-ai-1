@@ -88,6 +88,19 @@ test("resolves find/compare/best under intents to buyer_product_search", () => {
   assert.deepEqual(compareTools, ["buyer_product_search", "catalog_lookup", "web_search"])
 })
 
+
+
+test("routes seller optimization intents to seller tool path", () => {
+  const tools = resolveRunAshChatToolSelection("optimize pricing and inventory bundles for my catalog")
+  assert.deepEqual(tools, ["seller_optimize_commerce", "inventory_health", "catalog_lookup"])
+})
+
+test("routes broker match intents to broker negotiation tool path", () => {
+  const tools = resolveRunAshChatToolSelection("broker match supplier with retailer and settle deal")
+  assert.deepEqual(tools, ["broker_match_deal", "create_initial_quote", "submit_counter_offer", "broker_settle_deal"])
+})
+
+
 test("keeps explicit tool requests for backward compatibility", () => {
   const tools = resolveRunAshChatToolSelection("confirm", ["web_search"])
   assert.deepEqual(tools, ["web_search"])

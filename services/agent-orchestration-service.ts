@@ -231,6 +231,18 @@ async function executeWebSearch(payload: Record<string, unknown>) {
 async function executeInitiateLinkCheckout(payload: Record<string, unknown>) {
   const dealId = typeof payload.deal_id === "string" ? payload.deal_id : null
   const acceptedDealSnapshot = dealId ? await getAcceptedDealSnapshot(dealId) : null
+
+  if (dealId && !acceptedDealSnapshot) {
+    return {
+      status: "validation_failed",
+      blockedReason: "deal_not_accepted",
+      blocked_reason: "deal_not_accepted",
+      nextAction: "resolve_negotiation_before_checkout",
+      next_action: "resolve_negotiation_before_checkout",
+      deal_id: dealId,
+    }
+  }
+
   const handoffPayload = acceptedDealSnapshot
     ? {
       ...payload,
@@ -274,7 +286,21 @@ async function executeInitiateLinkCheckout(payload: Record<string, unknown>) {
 
   const result = (await relayAgentSkillModules.initiate_link_checkout.execute(handoffPayload)) as Record<string, unknown>
   const accountingSync = await syncCheckoutResultToAccounting({
-    payload: handoffPayload,
+    payload: {
+      ...handoffPayload,
+      accounting_context: {
+        ...(handoffPayload.accounting_context && typeof handoffPayload.accounting_context === "object"
+          ? (handoffPayload.accounting_context as Record<string, unknown>)
+          : {}),
+        deal: acceptedDealSnapshot
+          ? {
+              deal_id: acceptedDealSnapshot.deal_id,
+              accepted_offer_id: acceptedDealSnapshot.accepted_offer_id,
+              discount_basis: acceptedDealSnapshot.discount_basis,
+            }
+          : null,
+      },
+    },
     result,
     correlationId: String(payload.idempotency_key ?? payload.correlation_key ?? randomUUID()),
   })

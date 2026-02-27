@@ -2,10 +2,12 @@ import { initiateLinkCheckoutTool } from "@/lib/agent-tools/initiate-link-checko
 import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
 import { type AgentRole, isToolAllowedForRole, resolveRolePolicy } from "@/services/agent-role-orchestration"
 import {
+  brokerDealMatchAdapter,
   buyerProductSearchAdapter,
   getCheckoutPreviewAdapter,
   getInventoryHealthAdapter,
   queryCatalogAdapter,
+  sellerOptimizationAdapter,
 } from "@/services/relay-commerce-adapters"
 import { searchProductsWithProviders } from "@/services/web-search-service"
 import { brokerMediatedSettlement, counterOffer, createInitialQuote } from "@/services/deal-negotiation-service"
@@ -16,6 +18,8 @@ export const RELAY_AGENT_TOOLS = [
   "checkout_preview",
   "web_search",
   "buyer_product_search",
+  "seller_optimize_commerce",
+  "broker_match_deal",
   "initiate_link_checkout",
   "create_initial_quote",
   "submit_counter_offer",
@@ -40,6 +44,8 @@ export const relayToolExecutionMode: Record<RelayAgentTool, "immediate" | "queue
   checkout_preview: "queued",
   web_search: "immediate",
   buyer_product_search: "immediate",
+  seller_optimize_commerce: "queued",
+  broker_match_deal: "queued",
   initiate_link_checkout: "immediate",
   create_initial_quote: "queued",
   submit_counter_offer: "queued",
@@ -70,6 +76,15 @@ export const relayAgentSkillModules: Record<string, { name: string; execute: (ar
   buyer_product_search: {
     name: "buyer_product_search",
     execute: buyerProductSearchAdapter,
+  },
+
+  seller_optimize_commerce: {
+    name: "seller_optimize_commerce",
+    execute: sellerOptimizationAdapter,
+  },
+  broker_match_deal: {
+    name: "broker_match_deal",
+    execute: brokerDealMatchAdapter,
   },
 
   create_initial_quote: {
