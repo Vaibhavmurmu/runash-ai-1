@@ -902,9 +902,7 @@ export function ChatWorkspace() {
     } finally {
       window.clearTimeout(timeoutId)
       sendAbortRef.current = null
-      if (streamControllerState !== "failed") {
-        setStreamControllerState((prev) => (prev === "stopping" ? "idle" : prev === "streaming" || prev === "sending" ? "idle" : prev))
-      }
+      setStreamControllerState((prev) => (prev === "stopping" ? "idle" : prev === "streaming" || prev === "sending" ? "idle" : prev))
       setIsTyping(false)
     }
   }

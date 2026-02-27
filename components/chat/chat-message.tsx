@@ -22,6 +22,7 @@ interface ChatMessageProps {
 type MessageActionState = {
   copied: boolean
   feedback: "up" | "down" | null
+  feedbackStatus: "idle" | "pending" | "failed"
   editStatus: "idle" | "pending" | "failed"
   deleteStatus: "idle" | "pending" | "failed"
   shareStatus: "idle" | "pending" | "failed"
@@ -38,6 +39,7 @@ export default function ChatMessageComponent({ message, sessionId }: ChatMessage
   const [state, setState] = useState<MessageActionState>({
     copied: false,
     feedback: null,
+    feedbackStatus: "idle",
     editStatus: "idle",
     deleteStatus: "idle",
     shareStatus: "idle",
@@ -64,7 +66,7 @@ export default function ChatMessageComponent({ message, sessionId }: ChatMessage
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(message.content)
+      await navigator.clipboard.writeText(displayedContent)
       setState((current) => ({ ...current, copied: true }))
       window.setTimeout(() => {
         setState((current) => ({ ...current, copied: false }))
@@ -74,19 +76,30 @@ export default function ChatMessageComponent({ message, sessionId }: ChatMessage
     }
   }
 
-  const handleFeedback = (type: "up" | "down") => {
-    setState((current) => ({ ...current, feedback: type }))
-    fetch("/api/agents/feedback", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId: "chat-ui",
-        messageId: message.id,
-        signal: type === "up" ? "quality" : "safety",
-        score: type === "up" ? 5 : 2,
-        reason: type === "up" ? "helpful" : "needs-improvement",
-      }),
-    }).catch(() => undefined)
+  const handleFeedback = async (type: "up" | "down") => {
+    setState((current) => ({ ...current, feedback: type, feedbackStatus: "pending" }))
+
+    try {
+      const response = await fetch("/api/agents/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "chat-ui",
+          messageId: message.id,
+          signal: type === "up" ? "quality" : "safety",
+          score: type === "up" ? 5 : 2,
+          reason: type === "up" ? "helpful" : "needs-improvement",
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("feedback_failed")
+      }
+
+      setState((current) => ({ ...current, feedbackStatus: "idle" }))
+    } catch {
+      setState((current) => ({ ...current, feedbackStatus: "failed" }))
+    }
   }
 
   const handleShare = async () => {
@@ -98,7 +111,7 @@ export default function ChatMessageComponent({ message, sessionId }: ChatMessage
           text: message.content,
         })
       } else {
-        await navigator.clipboard.writeText(message.content)
+        await navigator.clipboard.writeText(displayedContent)
       }
 
       setState((current) => ({ ...current, shareStatus: "idle", copied: !supportsWebShare }))
@@ -327,8 +340,9 @@ export default function ChatMessageComponent({ message, sessionId }: ChatMessage
                 title="Mark message as helpful"
                 aria-label="Like message"
                 onClick={() => handleFeedback("up")}
+                disabled={state.feedbackStatus === "pending"}
               >
-                <ThumbsUp className={`h-3 w-3 ${state.feedback === "up" ? "text-green-500" : ""}`} /><span className="ml-1">Like</span>
+                {state.feedbackStatus === "pending" && state.feedback === "up" ? <Loader2 className="h-3 w-3 animate-spin" /> : <ThumbsUp className={`h-3 w-3 ${state.feedback === "up" ? "text-green-500" : ""}`} />}<span className="ml-1">Like</span>
               </Button>
               <Button
                 variant="ghost"
@@ -336,8 +350,9 @@ export default function ChatMessageComponent({ message, sessionId }: ChatMessage
                 title="Mark message for improvement"
                 aria-label="Dislike message"
                 onClick={() => handleFeedback("down")}
+                disabled={state.feedbackStatus === "pending"}
               >
-                <ThumbsDown className={`h-3 w-3 ${state.feedback === "down" ? "text-red-500" : ""}`} /><span className="ml-1">Dislike</span>
+                {state.feedbackStatus === "pending" && state.feedback === "down" ? <Loader2 className="h-3 w-3 animate-spin" /> : <ThumbsDown className={`h-3 w-3 ${state.feedback === "down" ? "text-red-500" : ""}`} />}<span className="ml-1">Dislike</span>
               </Button>
               <Button
                 variant="ghost"
@@ -384,7 +399,7 @@ export default function ChatMessageComponent({ message, sessionId }: ChatMessage
               >
                 {state.deleteStatus === "pending" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}<span className="ml-1">Delete</span>
               </Button>
-              {(state.editStatus === "failed" || state.deleteStatus === "failed" || state.shareStatus === "failed") && (
+              {(state.editStatus === "failed" || state.deleteStatus === "failed" || state.shareStatus === "failed" || state.feedbackStatus === "failed") && (
                 <span className="inline-flex items-center text-xs text-red-500" role="status" aria-live="polite">
                   <AlertCircle className="mr-1 h-3 w-3" /> Action failed. Please retry.
                 </span>
