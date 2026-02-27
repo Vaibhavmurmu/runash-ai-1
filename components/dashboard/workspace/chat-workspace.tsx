@@ -14,7 +14,12 @@ import ChatSidebar from "@/components/chat/chat-sidebar"
 import UserPreferencesDialog from "@/components/chat/user-preferences-dialog"
 import CartDrawer from "@/components/cart/cart-drawer"
 import VoiceControls from "@/components/chat/voice-controls"
+
 import { RunAshChatCommandCenter } from "@/components/chat/runash-chat-command-center"
+
+import { RunAshChatFeatureGrid } from "@/components/chat/runash-chat-feature-grid"
+import { RunAshChatTaskBoard } from "@/components/chat/runash-chat-task-board"
+
 import {
   ActionPill,
   ChatDataState,
@@ -940,7 +945,14 @@ export function ChatWorkspace() {
                   errorMessage=""
                 />
               ) : null}
+
               <RunAshChatCommandCenter quickActions={quickActions} onSelectPrompt={handleSendMessage} />
+
+              <QuickActions actions={quickActions} />
+              <div className="mt-3 space-y-3">
+                <RunAshChatFeatureGrid onSelect={handleSendMessage} />
+                <RunAshChatTaskBoard onRunTask={handleSendMessage} />
+              </div>
             </div>
 
             {showEmptyState ? (
