@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto"
 import { createEditorAsset } from "@/lib/editor/assets"
+import { publishRenderJobEvent } from "@/lib/editor/render-job-events"
 import { sql } from "@/lib/editor/repository"
 import { CloudStorage } from "@/lib/cloud-storage"
 import { AIProviderError, generateModelTextWithFallback, resolveModelSelection } from "@/lib/ai/provider-registry"
@@ -8,9 +9,13 @@ type RenderJobRow = {
   id: string
   project_id: string
   owner_id: string
+  requested_by: string
   payload: Record<string, unknown>
   result: Record<string, unknown>
+  output_asset_id: string | null
   status: string
+  created_at: string
+  updated_at: string
 }
 
 interface RenderJobResult {
@@ -241,10 +246,26 @@ async function claimNextQueuedJob() {
         updated_at = now()
     FROM candidate
     WHERE j.id = candidate.id
-    RETURNING j.id, j.project_id, j.owner_id, j.payload, j.result, j.status
+    RETURNING j.id, j.project_id, j.owner_id, j.requested_by, j.payload, j.result, j.output_asset_id, j.status, j.created_at, j.updated_at
   `) as RenderJobRow[]
 
-  return rows[0] ?? null
+  const job = rows[0] ?? null
+  if (job) {
+    publishRenderJobEvent({
+      id: job.id,
+      projectId: job.project_id,
+      ownerId: job.owner_id,
+      status: job.status as "processing",
+      requestedBy: job.requested_by,
+      payload: job.payload ?? {},
+      result: job.result ?? {},
+      outputAssetId: job.output_asset_id,
+      createdAt: job.created_at,
+      updatedAt: job.updated_at,
+    })
+  }
+
+  return job
 }
 
 async function fetchJobStatus(jobId: string): Promise<string | null> {
@@ -253,14 +274,57 @@ async function fetchJobStatus(jobId: string): Promise<string | null> {
 }
 
 async function saveResult(jobId: string, status: "queued" | "completed" | "failed" | "canceled", result: RenderJobResult, outputAssetId?: string) {
-  await sql`
+  const rows = (await sql`
     UPDATE editor_render_jobs
     SET status=${status},
         result=${JSON.stringify(result)}::jsonb,
         output_asset_id=COALESCE(${outputAssetId ?? null}, output_asset_id),
         updated_at=now()
     WHERE id=${jobId}
-  `
+    RETURNING *
+  `) as Array<Record<string, unknown>>
+
+  const row = rows[0]
+  if (!row) return
+
+  publishRenderJobEvent({
+    id: String(row.id),
+    projectId: String(row.project_id),
+    ownerId: String(row.owner_id),
+    status: String(row.status) as "queued" | "completed" | "failed" | "canceled",
+    requestedBy: typeof row.requested_by === "string" ? row.requested_by : "",
+    payload: row.payload && typeof row.payload === "object" ? (row.payload as Record<string, unknown>) : {},
+    result: row.result && typeof row.result === "object" ? (row.result as Record<string, unknown>) : {},
+    outputAssetId: typeof row.output_asset_id === "string" ? row.output_asset_id : null,
+    createdAt: typeof row.created_at === "string" ? row.created_at : new Date().toISOString(),
+    updatedAt: typeof row.updated_at === "string" ? row.updated_at : new Date().toISOString(),
+  })
+}
+
+async function updateJobResult(jobId: string, result: RenderJobResult) {
+  const rows = (await sql`
+    UPDATE editor_render_jobs
+    SET result=${JSON.stringify(result)}::jsonb,
+        updated_at=now()
+    WHERE id=${jobId}
+    RETURNING *
+  `) as Array<Record<string, unknown>>
+
+  const row = rows[0]
+  if (!row) return
+
+  publishRenderJobEvent({
+    id: String(row.id),
+    projectId: String(row.project_id),
+    ownerId: String(row.owner_id),
+    status: String(row.status) as "queued" | "processing" | "completed" | "failed" | "canceled",
+    requestedBy: typeof row.requested_by === "string" ? row.requested_by : "",
+    payload: row.payload && typeof row.payload === "object" ? (row.payload as Record<string, unknown>) : {},
+    result: row.result && typeof row.result === "object" ? (row.result as Record<string, unknown>) : {},
+    outputAssetId: typeof row.output_asset_id === "string" ? row.output_asset_id : null,
+    createdAt: typeof row.created_at === "string" ? row.created_at : new Date().toISOString(),
+    updatedAt: typeof row.updated_at === "string" ? row.updated_at : new Date().toISOString(),
+  })
 }
 
 async function ensureNotCanceled(jobId: string) {
@@ -339,7 +403,7 @@ export async function processNextEditorRenderJob(adapter: EditorRenderModelProvi
     stage: "processing",
   }
 
-  await sql`UPDATE editor_render_jobs SET result=${JSON.stringify(processingResult)}::jsonb, updated_at=now() WHERE id=${job.id}`
+  await updateJobResult(job.id, processingResult)
 
   try {
     await ensureNotCanceled(job.id)
@@ -349,7 +413,7 @@ export async function processNextEditorRenderJob(adapter: EditorRenderModelProvi
       progress: 35,
       stage: "Rendering frames",
     }
-    await sql`UPDATE editor_render_jobs SET result=${JSON.stringify(preparingResult)}::jsonb, updated_at=now() WHERE id=${job.id}`
+    await updateJobResult(job.id, preparingResult)
 
     const providerPolicy = resolveProviderPolicy(job.payload ?? {})
     const renderedOutput = await runWithProviderRetries(job, adapter, providerPolicy)
@@ -362,7 +426,7 @@ export async function processNextEditorRenderJob(adapter: EditorRenderModelProvi
       progress: 75,
       stage: "Uploading output",
     }
-    await sql`UPDATE editor_render_jobs SET result=${JSON.stringify(uploadingResult)}::jsonb, updated_at=now() WHERE id=${job.id}`
+    await updateJobResult(job.id, uploadingResult)
 
     const accessUrl = await CloudStorage.uploadFile(storageKey, renderedOutput.buffer, renderedOutput.mimeType)
 

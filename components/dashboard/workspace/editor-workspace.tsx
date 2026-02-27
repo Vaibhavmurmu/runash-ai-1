@@ -699,6 +699,10 @@ export function EditorWorkspace() {
 
   useEffect(() => {
     setGenerationJob(null)
+    generationAbortRef.current?.abort()
+    generationStreamRef.current?.close()
+    generationStreamRef.current = null
+    setIsGeneratingRender(false)
   }, [project?.id])
 
   const generationStatus = generationJob?.status ?? null
