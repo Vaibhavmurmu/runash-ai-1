@@ -23,6 +23,7 @@ interface MainCanvasProps {
   onSkipPrevious?: () => void
   onSkipNext?: () => void
   onGenerateVideo?: () => Promise<void>
+  isGeneratingRender?: boolean
 }
 
 export default function MainCanvas({
@@ -39,6 +40,7 @@ export default function MainCanvas({
   onSkipPrevious,
   onSkipNext,
   onGenerateVideo,
+  isGeneratingRender = false,
 }: MainCanvasProps) {
   const [internalIsPlaying, setInternalIsPlaying] = useState(false)
   const [internalCurrentTime, setInternalCurrentTime] = useState(0)
@@ -96,6 +98,7 @@ export default function MainCanvas({
   }, [currentTime, duration, isPlaying, onPlayPause])
 
   const segments = useMemo(() => timeline?.segments ?? [], [timeline])
+  const isGenerationInProgress = onGenerateVideo ? isGeneratingRender : isGenerating
 
   const handleGenerateVideo = async () => {
     if (onGenerateVideo) {
@@ -163,7 +166,7 @@ export default function MainCanvas({
           <canvas ref={canvasRef} className="w-full h-full max-w-4xl max-h-full object-contain" />
           <video ref={videoRef} className="hidden w-full h-full" crossOrigin="anonymous" />
 
-          {isGenerating && (
+          {isGenerationInProgress && (
             <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
               <Loader className="w-8 h-8 text-primary animate-spin" />
               <div className="text-center">
@@ -234,8 +237,8 @@ export default function MainCanvas({
         </div>
 
         <div className="flex gap-2">
-          <Button onClick={() => void handleGenerateVideo()} disabled={isGenerating} className="flex-1 gap-2 bg-gradient-to-r from-primary to-accent hover:opacity-90">
-            {isGenerating ? (
+          <Button onClick={() => void handleGenerateVideo()} disabled={isGenerationInProgress} className="flex-1 gap-2 bg-gradient-to-r from-primary to-accent hover:opacity-90">
+            {isGenerationInProgress ? (
               <>
                 <Loader className="w-4 h-4 animate-spin" />
                 Generating...
