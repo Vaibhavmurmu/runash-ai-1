@@ -10,6 +10,12 @@ type ComposerHealthState = "ready" | "usage-limit" | "provider-error" | "network
 type ResponseTone = "balanced" | "friendly" | "professional"
 type ResponseDetailLevel = "concise" | "normal" | "detailed"
 
+type ModelCatalogOption = {
+  id: string
+  provider: string
+  label: string
+}
+
 type RunAshChatComposerProps = {
   value: string
   onChange: (value: string) => void
@@ -24,6 +30,9 @@ type RunAshChatComposerProps = {
   onToneChange?: (tone: ResponseTone) => void
   detailLevel?: ResponseDetailLevel
   onDetailLevelChange?: (level: ResponseDetailLevel) => void
+  modelOptions?: ModelCatalogOption[]
+  selectedModel?: string
+  onSelectedModelChange?: (model: string) => void
 }
 
 type SlashCommand = {
@@ -75,6 +84,9 @@ export function RunAshChatComposer({
   onToneChange,
   detailLevel = "normal",
   onDetailLevelChange,
+  modelOptions = [],
+  selectedModel,
+  onSelectedModelChange,
 }: RunAshChatComposerProps) {
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
@@ -211,6 +223,23 @@ export function RunAshChatComposer({
 
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2">
+            {modelOptions.length > 0 && onSelectedModelChange ? (
+              <label className="flex items-center gap-1 text-zinc-400">
+                Model
+                <select
+                  value={selectedModel}
+                  onChange={(event) => onSelectedModelChange(event.target.value)}
+                  className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100"
+                  aria-label="Select chat model"
+                >
+                  {modelOptions.map((option) => (
+                    <option key={`${option.provider}:${option.id}`} value={option.id}>
+                      {option.label} ({option.provider})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <Button
               type="button"
               size="sm"
