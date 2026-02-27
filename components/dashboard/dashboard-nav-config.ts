@@ -95,6 +95,7 @@ export const dashboardNavItems: DashboardNavItem[] = [
       { label: "Templates", href: "/dashboard/templates" },
       { label: "Design system", href: "/dashboard/design-system" },
       { label: "Documentation", href: "/dashboard/documentation" },
+      { label: "API management", href: "/dashboard/api" },
     ],
     activeMatch: (pathname) =>
       [
@@ -146,11 +147,13 @@ export const dashboardNavItems: DashboardNavItem[] = [
     section: "operations",
     children: [
       { label: "Members", href: "/dashboard/members" },
-      { label: "API", href: "/dashboard/api" },
+      { label: "API keys", href: "/dashboard/api" },
+      { label: "Developer docs", href: "/dashboard/documentation" },
     ],
     activeMatch: (pathname) =>
       matchesPathPrefix(pathname, "/dashboard/members") ||
-      matchesPathPrefix(pathname, "/dashboard/api"),
+      matchesPathPrefix(pathname, "/dashboard/api") ||
+      matchesPathPrefix(pathname, "/dashboard/documentation"),
   },
   {
     label: "Settings",
