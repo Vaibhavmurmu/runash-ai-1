@@ -216,3 +216,36 @@ Rotates API key material while preserving key identity contract.
 - New fields are additive and optional for legacy clients.
 - Payment/auth-sensitive values remain redacted or hashed in transport and storage.
 - Legacy settings action routes remain operational during migration windows.
+
+
+## 7) Milestone delivery plan (feature-flag gated)
+
+All phases are shipped behind independent feature flags and can be rolled back without destructive schema changes.
+
+| Phase | Scope | Feature flags (example) | Telemetry to capture |
+| --- | --- | --- | --- |
+| **Phase 1** | IA shell + route scaffolding + read-only settings views for billing, usage, sessions, and devices. | `FEATURE_FLAG_SETTINGS_IA_SHELL`, `FEATURE_FLAG_SETTINGS_READONLY_VIEWS` | `settings_view_load_failed_total`, `settings_view_load_retry_total`, endpoint-level read latency/error rates |
+| **Phase 2** | Mutations + explicit confirmation dialogs + attachment uploads for settings operations. | `FEATURE_FLAG_SETTINGS_MUTATIONS`, `FEATURE_FLAG_SETTINGS_CONFIRMATIONS`, `FEATURE_FLAG_SETTINGS_ATTACHMENTS` | `settings_mutation_failed_total`, `settings_mutation_retry_total`, `settings_upload_failed_total`, `settings_upload_retry_total` |
+| **Phase 3** | Dedicated storage migration + audit logging + advanced billing/referral flows. | `FEATURE_FLAG_SETTINGS_DEDICATED_STORAGE`, `FEATURE_FLAG_SETTINGS_AUDIT_LOGGING`, `FEATURE_FLAG_SETTINGS_ADVANCED_BILLING` | `settings_migration_failed_total`, `settings_migration_retry_total`, `settings_audit_write_failed_total`, billing/referral failure+retry rates |
+
+### 7.1 Phase gates
+
+- Promote a phase only after failure/retry metrics are stable within SLO and no auth/payment incident triggers are active.
+- Each phase keeps legacy read paths available until post-gate validation succeeds.
+- API contracts remain additive-first during all phases (no field renames/removals without versioning).
+
+### 7.2 Explicit rollback steps per phase
+
+For **each** phase rollback, execute in this order:
+
+1. **Disable phase feature flags** for the affected rollout surface.
+2. **Revert API route bindings** to the prior stable handlers (legacy route/controller/service mapping).
+3. **Restore legacy read path** as the primary data source for user-visible settings pages.
+4. Validate auth/payment/billing/session health and reconcile queued writes before re-attempting rollout.
+
+#### Phase-specific rollback focus
+
+- **Phase 1:** disable IA/read-only flags, remap settings route scaffolding to previous dashboard/settings pages, keep canonical legacy billing/usage/session/device readers active.
+- **Phase 2:** disable mutation/upload/confirm flags, remap mutation routes to stable legacy handlers, force read-only fallback while replaying/reconciling failed writes.
+- **Phase 3:** disable storage/audit/advanced-billing flags, route back to legacy read/write paths, pause advanced referral/billing automation until audit and migration parity checks pass.
+
