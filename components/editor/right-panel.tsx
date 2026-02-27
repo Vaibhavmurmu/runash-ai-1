@@ -25,6 +25,12 @@ function FieldError({ message }: { message?: string }) {
   return <p className="text-xs text-destructive">{message}</p>
 }
 
+function parseOptionalInteger(value: string): number | undefined {
+  if (value.trim().length === 0) return undefined
+  const parsed = Number(value)
+  return Number.isInteger(parsed) ? parsed : undefined
+}
+
 export default function RightPanel({
   selectedModel,
   onModelChange,
@@ -79,6 +85,7 @@ export default function RightPanel({
             onChange={(event) => onGenerationConfigChange({ ...generationConfig, negativePrompt: event.target.value })}
             placeholder="Things you want to avoid"
           />
+          <FieldError message={validationErrors.negativePrompt} />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -126,7 +133,7 @@ export default function RightPanel({
               min={model.fpsRange.min}
               max={model.fpsRange.max}
               value={String(generationConfig.fps ?? "")}
-              onChange={(event) => onGenerationConfigChange({ ...generationConfig, fps: Number(event.target.value) })}
+              onChange={(event) => onGenerationConfigChange({ ...generationConfig, fps: parseOptionalInteger(event.target.value) })}
             />
             <FieldError message={validationErrors.fps} />
           </div>
@@ -165,7 +172,7 @@ export default function RightPanel({
               min={0}
               step={1}
               value={String(generationConfig.seed ?? "")}
-              onChange={(event) => onGenerationConfigChange({ ...generationConfig, seed: Number(event.target.value) })}
+              onChange={(event) => onGenerationConfigChange({ ...generationConfig, seed: parseOptionalInteger(event.target.value) })}
             />
             <FieldError message={validationErrors.seed} />
           </div>
