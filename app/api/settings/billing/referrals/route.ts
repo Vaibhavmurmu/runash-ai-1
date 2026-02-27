@@ -3,17 +3,12 @@ import { NextResponse } from "next/server"
 import { resolveSettingsUserId } from "@/lib/settings-security"
 import { getBillingReferralsPayload } from "@/lib/settings-billing"
 
-export async function POST(request: Request) {
+export async function GET(request: Request) {
   const userId = await resolveSettingsUserId(request)
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const referrals = await getBillingReferralsPayload(userId)
-
-  return NextResponse.json({
-    data: {
-      referralCode: referrals.referralCode,
-    },
-  })
+  const data = await getBillingReferralsPayload(userId)
+  return NextResponse.json({ data })
 }
