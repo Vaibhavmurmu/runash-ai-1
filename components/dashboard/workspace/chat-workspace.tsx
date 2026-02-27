@@ -10,13 +10,16 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Send, Sparkles, Leaf, Settings, History, Bot, Mic, Search, Zap, WandSparkles } from "lucide-react"
 import type { ChatMessage, ChatSession, UserPreferences, QuickAction } from "@/types/runash-chat"
 import ChatMessageComponent from "@/components/chat/chat-message"
-import QuickActions from "@/components/chat/quick-actions"
 import ChatSidebar from "@/components/chat/chat-sidebar"
 import UserPreferencesDialog from "@/components/chat/user-preferences-dialog"
 import CartDrawer from "@/components/cart/cart-drawer"
 import VoiceControls from "@/components/chat/voice-controls"
+
+import { RunAshChatCommandCenter } from "@/components/chat/runash-chat-command-center"
+
 import { RunAshChatFeatureGrid } from "@/components/chat/runash-chat-feature-grid"
 import { RunAshChatTaskBoard } from "@/components/chat/runash-chat-task-board"
+
 import {
   ActionPill,
   ChatDataState,
@@ -942,6 +945,9 @@ export function ChatWorkspace() {
                   errorMessage=""
                 />
               ) : null}
+
+              <RunAshChatCommandCenter quickActions={quickActions} onSelectPrompt={handleSendMessage} />
+
               <QuickActions actions={quickActions} />
               <div className="mt-3 space-y-3">
                 <RunAshChatFeatureGrid onSelect={handleSendMessage} />
