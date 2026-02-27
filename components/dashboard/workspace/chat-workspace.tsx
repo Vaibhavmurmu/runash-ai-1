@@ -5,15 +5,15 @@ import type React from "react"
 import { useState, useEffect, useMemo, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Send, Sparkles, Leaf, Settings, History, Bot, Mic, Search, Zap, WandSparkles } from "lucide-react"
+import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, Zap, WandSparkles } from "lucide-react"
 import type { ChatMessage, ChatSession, UserPreferences, QuickAction } from "@/types/runash-chat"
 import ChatMessageComponent from "@/components/chat/chat-message"
 import ChatSidebar from "@/components/chat/chat-sidebar"
 import UserPreferencesDialog from "@/components/chat/user-preferences-dialog"
 import CartDrawer from "@/components/cart/cart-drawer"
 import VoiceControls from "@/components/chat/voice-controls"
+import { RunAshChatComposer } from "@/components/chat/runash-chat-composer"
 
 import { RunAshChatCommandCenter } from "@/components/chat/runash-chat-command-center"
 
@@ -75,7 +75,6 @@ export function ChatWorkspace() {
     return storedState === "true"
   })
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
 
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => {
     if (typeof window === "undefined") {
@@ -897,14 +896,6 @@ export function ChatWorkspace() {
     }
   }
 
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSendMessage()
-    }
-  }
-
   const handleVoiceInput = (transcript: string) => {
     setVoiceTranscriptHistory((prev) => [transcript, ...prev].slice(0, 5))
     setInputValue(transcript)
@@ -1128,25 +1119,9 @@ export function ChatWorkspace() {
             )}
 
             <div className="border-t border-zinc-800 p-3 sm:p-4">
-              <div className="flex space-x-2">
-                <Input
-                  ref={inputRef}
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Ask about organic products, recipes, sustainability tips, or retail automation..."
-                  className="flex-1 border-zinc-700 bg-zinc-900 text-zinc-100 placeholder:text-zinc-500"
-                />
-                <Button
-                  onClick={() => handleSendMessage()}
-                  disabled={!inputValue.trim()}
-                  className="bg-gradient-to-r from-orange-600 to-yellow-500 hover:from-orange-700 hover:to-yellow-600 text-white"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
+              <RunAshChatComposer value={inputValue} onChange={setInputValue} onSend={handleSendMessage} disabled={isTyping} />
               <div className="flex items-center justify-between mt-2 text-xs text-zinc-500">
-                <span>Press Enter to send, Shift+Enter for new line</span>
+                <span>Prompt composer is optimized for RunAsh task templates and enhanced prompt quality.</span>
                 <div className="flex items-center space-x-4">
                   <span className="flex items-center">
                     <Leaf className="h-3 w-3 mr-1 text-green-500" />
