@@ -296,3 +296,26 @@ Business controls preserved:
 - Existing payment contracts remain additive and backward compatible.
 - Sensitive payment/auth data is not introduced into logs/event payloads.
 - Checkout finalization still requires explicit confirmation pathing in checkout skill gates.
+
+## 2026-02 Settings billing contract governance update (billing/invoice/credits/referrals)
+
+- Added a unified settings architecture/API contract source at `docs/SETTINGS_ARCHITECTURE_API_CONTRACT.md` to standardize business and engineering interpretation of settings billing surfaces.
+- Business-level contract guarantees now explicitly include:
+  - stable billing summary keys,
+  - invoice list totals + link fields,
+  - credit application idempotency,
+  - referral metric consistency (`pendingCredits`, `earnedCredits`, `lifetimeCredits`).
+- No version bump is required; all behavior changes are additive and backward compatible for current startup/business clients.
+
+### Risk + rollback
+
+- **Risk:** projection lag between billing ledger and settings read-model may produce short-lived summary mismatch.
+- **Mitigation:** reconciliation-first update order and strict parity checks before enabling expanded rollout percentages.
+- **Rollback:** application rollback and feature-flag gating for affected settings billing writes while retaining additive schema/data artifacts for safe forward recovery.
+
+### Storage model + migration procedure
+
+1. Keep billing/invoice/credits/referral storage changes additive and replay-safe.
+2. Execute idempotent backfill/rebuild jobs for settings projections.
+3. Validate invoice total parity and credits/referral counters against reconciliation outputs.
+4. If rollback is required, retain new tables/columns and revert read paths first to avoid destructive data loss.
