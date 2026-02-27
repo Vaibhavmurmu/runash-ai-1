@@ -1,31 +1,85 @@
-"use client"
+"use client";
 
-import type { ReactNode } from "react"
-import { useState } from "react"
-import { DashboardModelDialogProvider } from "@/components/dashboard/model-dialog-provider"
-import { DashboardNavbar } from "@/components/dashboard/dashboard-navbar"
-import { dashboardNavigationConfig } from "@/components/dashboard/dashboard-nav-config"
-import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar"
+import type { ReactNode } from "react";
+import { useState } from "react";
+import { DashboardContent } from "@/components/dashboard/dashboard-content";
+import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import { dashboardNavigationConfig } from "@/components/dashboard/dashboard-nav-config";
+import { DashboardSidebarFrame } from "@/components/dashboard/dashboard-sidebar-frame";
+import { DashboardModelDialogProvider } from "@/components/dashboard/model-dialog-provider";
 
-interface DashboardLayoutFrameProps {
-  children: ReactNode
-  footer?: ReactNode
+const SIDEBAR_STORAGE_KEY = "runash.dashboard.sidebar.v1";
+
+function getInitialSidebarCollapsedState() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    const persisted = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
+
+    if (!persisted) {
+      return false;
+    }
+
+    const parsed = JSON.parse(persisted);
+    return typeof parsed?.collapsed === "boolean" ? parsed.collapsed : false;
+  } catch {
+    return false;
+  }
 }
 
-export function DashboardLayoutFrame({ children, footer }: DashboardLayoutFrameProps) {
-  const [mobileOpen, setMobileOpen] = useState(false)
+interface DashboardLayoutFrameProps {
+  children: ReactNode;
+  footer?: ReactNode;
+  header?: ReactNode;
+  contentClassName?: string;
+  contentCollapsedClassName?: string;
+}
+
+export function DashboardLayoutFrame({
+  children,
+  footer,
+  header,
+  contentClassName,
+  contentCollapsedClassName,
+}: DashboardLayoutFrameProps) {
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    getInitialSidebarCollapsedState,
+  );
 
   return (
     <DashboardModelDialogProvider>
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-orange-100/30 dark:to-orange-950/30">
-        <DashboardSidebar mobileOpen={mobileOpen} onMobileOpenChange={setMobileOpen} navConfig={dashboardNavigationConfig} />
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-brand-surface/65 dark:to-brand-surface/45">
+        <DashboardSidebarFrame
+          mobileOpen={mobileOpen}
+          onMobileOpenChange={setMobileOpen}
+          navConfig={dashboardNavigationConfig}
+          onCollapsedChange={setSidebarCollapsed}
+        />
 
-        <div className="flex min-h-screen flex-col md:pl-64">
-          <DashboardNavbar onOpenMobileMenu={() => setMobileOpen(true)} navConfig={dashboardNavigationConfig} />
-          <main className="mx-auto flex w-full max-w-7xl flex-1 p-4 md:p-6">{children}</main>
+        <div
+          className={`flex min-h-screen flex-col transition-[padding] duration-300 ease-out ${sidebarCollapsed ? "md:pl-20" : "md:pl-64"}`}
+        >
+          {header ?? (
+            <DashboardHeader
+              onOpenMobileMenu={() => setMobileOpen(true)}
+              navConfig={dashboardNavigationConfig}
+            />
+          )}
+          <DashboardContent
+            className={
+              sidebarCollapsed
+                ? (contentCollapsedClassName ?? contentClassName)
+                : contentClassName
+            }
+          >
+            {children}
+          </DashboardContent>
           {footer ? <div className="w-full">{footer}</div> : null}
         </div>
       </div>
     </DashboardModelDialogProvider>
-  )
+  );
 }

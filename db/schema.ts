@@ -1,30 +1,112 @@
 /**
- * Drizzle schema anchor.
+ * Database schema registry used by auth/session infrastructure.
  *
- * Production migrations are currently maintained as SQL assets in `scripts/sql`.
- * Keep this file as the canonical registry of database-backed domains that routes depend on.
+ * SQL migrations remain the source of truth for DDL. This file mirrors
+ * canonical table/column names so app code can import a single schema map.
  */
 export const drizzleSchemaStatus = {
-  phase: "planned",
-  sourceOfTruth: "scripts/sql",
+  phase: "active",
+  sourceOfTruth: "db/migrations + scripts/sql",
 } as const
 
-export const databaseDomainTables = {
-  editor: [
-    "editor_projects",
-    "editor_timelines",
-    "editor_tracks",
-    "editor_assets",
-    "editor_segments",
-    "editor_render_jobs",
-  ],
-  dashboard: ["dashboard_stream_invites", "model_dialog_runs"],
-  userSettings: ["user_settings", "user_setting_attachments", "user_settings_audit"],
-} as const
-
-export const dashboardSchemaMappings = {
-  modelDialogRuns: {
-    table: "model_dialog_runs",
-    fields: ["id", "user_id", "model_id", "source_module", "input_summary", "status", "created_at", "updated_at"],
+export const authSchemaTables = {
+  users: {
+    table: "users",
+    fields: ["id", "name", "email", "email_verified", "image", "created_at", "updated_at"],
+  },
+  accounts: {
+    table: "accounts",
+    fields: [
+      "id",
+      "user_id",
+      "account_id",
+      "provider_id",
+      "access_token",
+      "refresh_token",
+      "id_token",
+      "access_token_expires_at",
+      "refresh_token_expires_at",
+      "scope",
+      "password",
+      "created_at",
+      "updated_at",
+    ],
+  },
+  sessions: {
+    table: "sessions",
+    fields: ["id", "user_id", "token", "expires_at", "ip_address", "user_agent", "created_at", "updated_at"],
+  },
+  verificationTokens: {
+    table: "verification_tokens",
+    fields: ["id", "identifier", "value", "expires_at", "created_at", "updated_at"],
+  },
+  authSessionIdentities: {
+    table: "auth_session_identities",
+    fields: ["id", "user_id", "linked_user_id", "linked_at", "created_at"],
+  },
+  authSessionRegistry: {
+    table: "auth_session_registry",
+    fields: [
+      "id",
+      "user_id",
+      "mode",
+      "scope",
+      "status",
+      "linked_from_session_id",
+      "token_hash",
+      "device_metadata",
+      "created_at",
+      "last_seen_at",
+      "invalidated_at",
+      "expires_at",
+      "rotation_due_at",
+    ],
+  },
+  authOneTimeTransferTokens: {
+    table: "auth_one_time_transfer_tokens",
+    fields: ["id", "session_id", "token_hash", "source_domain", "target_domain", "consumed_at", "expires_at", "created_at"],
   },
 } as const
+
+export const appSchemaTables = {
+  waitlistEntries: {
+    table: "waitlist_entries",
+    fields: ["id", "email", "name", "company", "use_case", "created_at"],
+  },
+  accountingChartOfAccounts: {
+    table: "accounting_chart_of_accounts",
+    fields: ["id", "code", "name", "account_type", "currency", "balance", "is_active", "created_at", "updated_at"],
+  },
+  accountingLedgerEntries: {
+    table: "accounting_ledger_entries",
+    fields: ["id", "entry_date", "voucher_code", "account_code", "debit", "credit", "narration", "created_at"],
+  },
+  accountingReconciliationItems: {
+    table: "accounting_reconciliation_items",
+    fields: ["id", "invoice_number", "tax_period", "status", "book_tax", "gst_portal_tax", "created_at", "updated_at"],
+  },
+  accountingCounterparties: {
+    table: "accounting_counterparties",
+    fields: ["id", "entity_type", "name", "gstin", "outstanding", "is_active", "created_at", "updated_at"],
+  },
+  agentRoleDecisions: {
+    table: "agent_role_decisions",
+    fields: [
+      "id",
+      "session_id",
+      "message_id",
+      "tenant_id",
+      "agent_role",
+      "tool_name",
+      "decision_status",
+      "objective_weights",
+      "guardrails",
+      "preferences",
+      "outcome",
+      "created_at",
+    ],
+  },
+} as const
+
+export type AuthSchemaTableName = keyof typeof authSchemaTables
+export type AppSchemaTableName = keyof typeof appSchemaTables

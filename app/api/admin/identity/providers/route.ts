@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { listEnterpriseProviderConfigs, upsertEnterpriseProviderConfig } from "@/lib/auth/plugins/sso-enterprise"
+import { recordAdminAuditLog, respondInternalServerError } from "@/lib/api/admin-route-utils"
 
 const providerSchema = z.object({
   organizationId: z.number().int().positive(),
@@ -29,8 +30,17 @@ export async function GET(request: NextRequest) {
   })
   if (!auth.success) return auth.response
 
-  const providers = await listEnterpriseProviderConfigs()
-  return NextResponse.json({ data: providers })
+  try {
+    const providers = await listEnterpriseProviderConfigs()
+    return NextResponse.json({ data: providers })
+  } catch (error) {
+    return respondInternalServerError(request, error, {
+      event: "admin.identity.providers.read.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_IDENTITY_PROVIDER_READ_FAILED",
+    })
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -45,12 +55,29 @@ export async function POST(request: NextRequest) {
     const payload = providerSchema.parse(body)
     const provider = await upsertEnterpriseProviderConfig(payload)
 
+    await recordAdminAuditLog({
+      actorUserId: auth.userId,
+      action: "identity.provider.upserted",
+      entityType: "sso_provider",
+      entityId: provider.id,
+      metadata: {
+        organizationId: payload.organizationId,
+        providerType: payload.providerType,
+        mappingKeys: Object.keys(payload.orgMappings ?? {}),
+      },
+    })
+
     return NextResponse.json({ data: provider })
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "Invalid provider payload", issues: error.issues }, { status: 400 })
     }
 
-    return NextResponse.json({ error: "Failed to save identity provider" }, { status: 500 })
+    return respondInternalServerError(request, error, {
+      event: "admin.identity.providers.upsert.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_IDENTITY_PROVIDER_UPSERT_FAILED",
+    })
   }
 }

@@ -133,3 +133,37 @@ export interface DashboardScheduledStreamsResponse {
 export interface DashboardStreamTemplatesResponse {
   templates: DashboardStreamTemplate[];
 }
+
+export interface LatestCompletedStreamSummary {
+  snapshotId: string;
+  streamId: string | null;
+  title: string;
+  completedAt: string;
+  keyMetrics: Record<string, unknown>;
+  unresolvedAlerts: Array<Record<string, unknown>>;
+}
+
+export interface LatestCompletedStreamSummaryResponse {
+  summary: LatestCompletedStreamSummary | null;
+}
+
+export interface RestorableStreamDraft {
+  snapshotId: string;
+  streamId: string | null;
+  title: string;
+  lastStreamConfig: Record<string, unknown>;
+  sceneLayout: Record<string, unknown>;
+  keyMetrics: Record<string, unknown>;
+  unresolvedAlerts: Array<Record<string, unknown>>;
+}
+
+export interface RestoreLastStreamDraftResponse {
+  draft: RestorableStreamDraft | null;
+}
+
+export interface FollowUpCreationResponse {
+  snapshotId: string;
+  streamId: string | null;
+  followUpTaskId: string;
+  highlightJobId: string;
+}

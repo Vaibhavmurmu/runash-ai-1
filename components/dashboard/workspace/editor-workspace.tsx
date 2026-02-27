@@ -14,6 +14,13 @@ import type { EditorProject, EditorTimeline } from "@/lib/editor/domain"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
+import { WelcomeOnboardingModal } from "@/components/dashboard/onboarding/welcome-onboarding-modal"
+import { CreateProjectModal, type QuickStartMode } from "@/components/dashboard/projects/create-project-modal"
+
+type OnboardingState = {
+  editorWelcomeCompletedAt?: string
+  editorWelcomeSkippedAt?: string
+}
 
 export function EditorWorkspace() {
   const { toast } = useToast()
@@ -30,34 +37,102 @@ export function EditorWorkspace() {
   const [isBusy, setIsBusy] = useState(false)
   const [isDirty, setIsDirty] = useState(false)
   const [uploadInProgress, setUploadInProgress] = useState(false)
+  const [showOnboarding, setShowOnboarding] = useState(false)
+  const [showCreateProject, setShowCreateProject] = useState(false)
+  const [isCreatingProject, setIsCreatingProject] = useState(false)
+  const [isUpdatingOnboarding, setIsUpdatingOnboarding] = useState(false)
 
   const activeTimeline = useMemo(() => {
     if (!project) return undefined
     return project.timelines.find((timeline) => timeline.id === project.activeTimelineId) ?? project.timelines[0]
   }, [project])
 
+  const persistOnboardingState = async (next: OnboardingState) => {
+    setIsUpdatingOnboarding(true)
+    try {
+      const settingsRes = await fetch("/api/settings")
+      const settingsJson = await settingsRes.json()
+      const settingsData = settingsJson?.data ?? settingsJson
+      const currentPreferences = settingsData?.preferences ?? {}
+      const currentOnboarding = (currentPreferences.editorOnboarding ?? {}) as OnboardingState
+
+      const patchRes = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          preferences: {
+            ...currentPreferences,
+            editorOnboarding: {
+              ...currentOnboarding,
+              ...next,
+            },
+          },
+        }),
+      })
+
+      if (!patchRes.ok) {
+        throw new Error("Unable to persist onboarding state")
+      }
+    } finally {
+      setIsUpdatingOnboarding(false)
+    }
+  }
+
+  const createProject = async (payload: {
+    name: string
+    description?: string
+    quickStart: QuickStartMode
+    selectedModel?: string
+  }) => {
+    setIsCreatingProject(true)
+    try {
+      const createRes = await fetch("/api/editor/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      if (!createRes.ok) {
+        throw new Error("Failed to create project")
+      }
+
+      const createJson = await createRes.json()
+      setProject(createJson.project)
+      if (payload.selectedModel) {
+        setSelectedModel(payload.selectedModel)
+      }
+      setShowCreateProject(false)
+      toast({ title: "Project created", description: "Your editor project is ready." })
+    } catch {
+      toast({ title: "Create project failed", description: "Unable to create a project right now.", variant: "destructive" })
+    } finally {
+      setIsCreatingProject(false)
+    }
+  }
+
   const loadProject = async () => {
     setIsLoading(true)
     try {
+      const settingsRes = await fetch("/api/settings")
+      const settingsJson = await settingsRes.json()
+      const settingsData = settingsJson?.data ?? settingsJson
+      const onboarding = (settingsData?.preferences?.editorOnboarding ?? {}) as OnboardingState
+      const hasSeenOnboarding = Boolean(onboarding.editorWelcomeCompletedAt || onboarding.editorWelcomeSkippedAt)
+      setShowOnboarding(!hasSeenOnboarding)
+
       const listRes = await fetch("/api/editor/projects")
       if (!listRes.ok) throw new Error("Failed to list projects")
       const listJson = await listRes.json()
       const projectId = listJson.projects?.[0]?.id as string | undefined
 
       if (!projectId) {
-        const createRes = await fetch("/api/editor/projects", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: "Untitled Project", metadata: { selectedModel } }),
-        })
-        if (!createRes.ok) throw new Error("Failed to create project")
-        const createJson = await createRes.json()
-        setProject(createJson.project)
+        setShowCreateProject(hasSeenOnboarding)
       } else {
         const res = await fetch(`/api/editor/projects/${projectId}`)
         if (!res.ok) throw new Error("Failed to load project")
         const json = await res.json()
         setProject(json.project)
+        setShowCreateProject(false)
         const savedModel = json.project?.metadata?.selectedModel
         if (typeof savedModel === "string" && savedModel.length > 0) {
           setSelectedModel(savedModel)
@@ -151,8 +226,8 @@ export function EditorWorkspace() {
         const storageRes = await fetch("/api/storage", { method: "POST", body: storageForm })
         if (!storageRes.ok) throw new Error("Upload failed")
         const storageJson = await storageRes.json()
-        storageKey = storageJson.data.key
-        accessUrl = storageJson.data.url
+        storageKey = storageJson.key
+        accessUrl = storageJson.url
       }
 
       const assetRes = await fetch(`/api/editor/projects/${project.id}/assets`, {
@@ -281,54 +356,76 @@ export function EditorWorkspace() {
     setIsDirty(true)
   }, [selectedModel, project])
 
-
   return (
-    <EditorLayout>
-      <TopBar
-        isRecording={isRecording}
-        onRecordingToggle={setIsRecording}
-        onOpenCollaboration={() => setIsCollaborationOpen(true)}
-        onSave={saveProject}
-        isSaving={isSaving}
-        onOpenModelDialog={(trigger) =>
-          openFromTrigger(
-            {
-              triggerSource: "editor",
-              mode: "configure",
-              model: {
-                modelId: selectedModel,
-                provider: "RunAsh AI",
-                displayName: `Editor Model (${selectedModel})`,
-              },
-              payload: { prompt: "Review editor generation settings before launching a new run." },
-            },
-            trigger,
-          )
-        }
+    <>
+      <WelcomeOnboardingModal
+        open={showOnboarding}
+        isSaving={isUpdatingOnboarding}
+        onSkip={() => {
+          void persistOnboardingState({ editorWelcomeSkippedAt: new Date().toISOString() })
+          setShowOnboarding(false)
+          if (!project) setShowCreateProject(true)
+        }}
+        onComplete={() => {
+          void persistOnboardingState({ editorWelcomeCompletedAt: new Date().toISOString() })
+          setShowOnboarding(false)
+          if (!project) setShowCreateProject(true)
+        }}
       />
-      <div className="flex flex-1 overflow-hidden bg-background pb-24 md:pb-0">
-        <LeftSidebar activeTab={activeTab} onTabChange={setActiveTab} isChatOpen={isChatOpen} onChatToggle={setIsChatOpen} />
-        <MainCanvas
-          selectedModel={selectedModel}
+      <CreateProjectModal open={showCreateProject} isSubmitting={isCreatingProject} onCreate={createProject} />
+
+      <EditorLayout>
+        <TopBar
           isRecording={isRecording}
-          timeline={activeTimeline}
-          onTimelineChange={handleTimelineChange}
-          onUploadMedia={handleUploadMedia}
-          uploadInProgress={uploadInProgress}
+          onRecordingToggle={setIsRecording}
+          onOpenCollaboration={() => setIsCollaborationOpen(true)}
+          onSave={saveProject}
+          isSaving={isSaving}
+          onOpenModelDialog={(trigger) =>
+            openFromTrigger(
+              {
+                triggerSource: "editor",
+                mode: "configure",
+                model: {
+                  modelId: selectedModel,
+                  provider: "RunAsh AI",
+                  displayName: `Editor Model (${selectedModel})`,
+                },
+                payload: { prompt: "Review editor generation settings before launching a new run." },
+              },
+              trigger,
+            )
+          }
         />
-        <RightPanel selectedModel={selectedModel} onModelChange={setSelectedModel} activeTab={activeTab} />
-        {isMobile ? (
-          <Sheet open={isChatOpen} onOpenChange={setIsChatOpen}>
-            <SheetContent side="left" className="w-[94vw] max-w-sm p-0">
-              <AIChatPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
-            </SheetContent>
-          </Sheet>
-        ) : (
-          isChatOpen && <AIChatPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
-        )}
-      </div>
-      <BottomToolbar onDuplicate={handleDuplicate} onDelete={handleDelete} onExportMetadata={handleExportMetadata} isBusy={isBusy || isLoading} />
-      <CollaborationPanel isOpen={isCollaborationOpen} onClose={() => setIsCollaborationOpen(false)} />
-    </EditorLayout>
+        <div className="flex flex-1 overflow-hidden bg-background pb-24 md:pb-0">
+          <LeftSidebar activeTab={activeTab} onTabChange={setActiveTab} isChatOpen={isChatOpen} onChatToggle={setIsChatOpen} />
+          <MainCanvas
+            selectedModel={selectedModel}
+            isRecording={isRecording}
+            timeline={activeTimeline}
+            onTimelineChange={handleTimelineChange}
+            onUploadMedia={handleUploadMedia}
+            uploadInProgress={uploadInProgress}
+          />
+          <RightPanel selectedModel={selectedModel} onModelChange={setSelectedModel} activeTab={activeTab} />
+          {isMobile ? (
+            <Sheet open={isChatOpen} onOpenChange={setIsChatOpen}>
+              <SheetContent side="left" className="w-[94vw] max-w-sm p-0">
+                <AIChatPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
+              </SheetContent>
+            </Sheet>
+          ) : (
+            isChatOpen && <AIChatPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
+          )}
+        </div>
+        <BottomToolbar
+          onDuplicate={handleDuplicate}
+          onDelete={handleDelete}
+          onExportMetadata={handleExportMetadata}
+          isBusy={isBusy || isLoading || isCreatingProject}
+        />
+        <CollaborationPanel isOpen={isCollaborationOpen} onClose={() => setIsCollaborationOpen(false)} />
+      </EditorLayout>
+    </>
   )
 }

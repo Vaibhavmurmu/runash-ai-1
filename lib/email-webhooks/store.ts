@@ -79,6 +79,39 @@ export async function recordWebhookEvent(event: NormalizedEmailWebhookEvent, sta
   `
 }
 
+
+export async function recordWebhookRejection(provider: EmailWebhookProvider, payload: {
+  reason: string
+  eventId?: string
+  rawBody?: string
+}) {
+  await ensureTables()
+  const eventId = payload.eventId || `rejected:${Date.now()}:${Math.random().toString(16).slice(2)}`
+  await sql`
+    INSERT INTO email_webhook_events (
+      provider,
+      event_id,
+      event_type,
+      status,
+      error_message,
+      payload
+    ) VALUES (
+      ${provider},
+      ${eventId},
+      ${"verification_failed"},
+      ${"rejected"},
+      ${payload.reason.slice(0, 500)},
+      ${JSON.stringify({ rawBody: payload.rawBody?.slice(0, 5000) })}
+    )
+    ON CONFLICT (provider, event_id)
+    DO UPDATE SET
+      status = EXCLUDED.status,
+      error_message = EXCLUDED.error_message,
+      payload = EXCLUDED.payload,
+      processed_at = NOW()
+  `
+}
+
 export async function getWebhookDiagnostics(options?: { limit?: number; provider?: string; status?: string }) {
   await ensureTables()
   const limit = Math.max(1, Math.min(options?.limit || 100, 500))
@@ -112,8 +145,26 @@ export async function getWebhookDiagnostics(options?: { limit?: number; provider
      ORDER BY count DESC`,
   )
 
+  const rejections = await sql.query(
+    `SELECT provider, COUNT(*)::int AS count
+     FROM email_webhook_events
+     WHERE status = 'rejected' AND created_at > NOW() - INTERVAL '24 hours'
+     GROUP BY provider
+     ORDER BY count DESC`,
+  )
+
+  const reconciliation = await sql.query(
+    `SELECT provider, event_type, COUNT(*)::int AS count
+     FROM email_webhook_events
+     WHERE status = 'processed' AND created_at > NOW() - INTERVAL '24 hours'
+     GROUP BY provider, event_type
+     ORDER BY provider, event_type`,
+  )
+
   return {
     events: rows,
     failuresLast24h: failures,
+    rejectedLast24h: rejections,
+    reconciliationLast24h: reconciliation,
   }
 }

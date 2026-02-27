@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "crypto"
 
+import { trackLinkFunnelMetric } from "@/lib/payments/link-funnel-observability"
 import { recordCheckoutAttemptResult } from "@/services/payment-checkout-profile-service"
 
 const LINK_CHECKOUT_API_URL = process.env.RUNASH_LINK_CHECKOUT_API_URL ?? "https://api.runash.in/v3/pay"
@@ -71,6 +72,7 @@ export interface LinkCheckoutRequest {
 
 export interface LinkCheckoutAttemptResult {
   method: string
+  reason: "primary" | "fallback_retry" | "no_retry"
   success: boolean
   retryable_failure: boolean
   status_code: number | null
@@ -87,6 +89,18 @@ export interface LinkCheckoutAttemptTimelineEntry {
   timestamp: string
 }
 
+export interface LinkCheckoutActivitySummary {
+  provider: "runash_pay"
+  endpoint: string
+  request_correlation_id: string
+  status: "initiated" | "failed"
+  next_action: "open_link_checkout" | "retry_or_manual_review"
+  checkout_session_id: string | null
+  fallback_used: boolean
+  attempts_count: number
+  attempted_methods: string[]
+}
+
 export interface LinkCheckoutFinalResult {
   status: "initiated" | "failed"
   checkout_session_id: string | null
@@ -101,6 +115,7 @@ export interface LinkCheckoutFinalResult {
   attempts: LinkCheckoutAttemptResult[]
   attempt_timeline: LinkCheckoutAttemptTimelineEntry[]
   attemptTimeline: LinkCheckoutAttemptTimelineEntry[]
+  activity_summary: LinkCheckoutActivitySummary
 }
 
 type PersistAttemptFn = (input: {
@@ -217,6 +232,15 @@ async function persistAttempt(
         line_items: input.taxLineItems ?? [],
       },
       attempt_timeline: input.timeline,
+      attempted_methods: input.timeline.map((entry) => entry.method),
+      fallback_used: input.timeline.some((entry, idx) => idx > 0),
+      attempts: input.timeline.map((entry, idx) => ({
+        attempt_number: idx + 1,
+        method: entry.method,
+        reason: entry.reason,
+        status: entry.status,
+        timestamp: entry.timestamp,
+      })),
     },
   })
 }
@@ -238,6 +262,11 @@ export async function runLinkCheckoutWithFallback(
   const attemptedMethodsPlan = [primaryMethod, ...(fallbackMethod ? [fallbackMethod] : [])]
   const methods = attemptedMethodsPlan.filter((method, index, all) => all.indexOf(method) === index)
 
+  const resolveAttemptReason = (index: number, previousRetryableFailure: boolean): "primary" | "fallback_retry" | "no_retry" => {
+    if (index === 0) return "primary"
+    return previousRetryableFailure ? "fallback_retry" : "no_retry"
+  }
+
   const attempts: LinkCheckoutAttemptResult[] = []
   const attemptTimeline: LinkCheckoutAttemptTimelineEntry[] = []
 
@@ -256,6 +285,8 @@ export async function runLinkCheckoutWithFallback(
 
   for (let index = 0; index < methods.length; index += 1) {
     const method = methods[index]
+    const previousRetryableFailure = index > 0 ? attempts[index - 1]?.retryable_failure === true : false
+    const reason = resolveAttemptReason(index, previousRetryableFailure)
 
     try {
       const response = await fetchImpl(LINK_CHECKOUT_API_URL, {
@@ -263,6 +294,7 @@ export async function runLinkCheckoutWithFallback(
         headers: {
           "Content-Type": "application/json",
           "X-RunAsh-Request-Id": requestId,
+          "x-correlation-id": requestId,
           "Idempotency-Key": idempotencyKey,
         },
         body: JSON.stringify({
@@ -285,6 +317,7 @@ export async function runLinkCheckoutWithFallback(
       const success = response.ok && checkoutSessionId != null
       const attemptResult: LinkCheckoutAttemptResult = {
         method,
+        reason,
         success,
         retryable_failure: !success && isRetryableFailure(response.status, responseBody),
         status_code: response.status,
@@ -297,7 +330,7 @@ export async function runLinkCheckoutWithFallback(
       attempts.push(attemptResult)
       attemptTimeline.push({
         method,
-        reason: index === 0 ? "primary" : "fallback_retry",
+        reason,
         status: success ? "initiated" : "failed",
         timestamp: new Date().toISOString(),
       })
@@ -319,6 +352,19 @@ export async function runLinkCheckoutWithFallback(
       }
 
       if (success) {
+        trackLinkFunnelMetric("checkout_completion", {
+          requestId,
+          correlationId: requestId,
+          merchantId: payload.merchant_id,
+        })
+        if (index > 0) {
+          trackLinkFunnelMetric("fallback_usage", {
+            requestId,
+            correlationId: requestId,
+            merchantId: payload.merchant_id,
+          })
+        }
+
         return {
           status: "initiated",
           checkout_session_id: checkoutSessionId,
@@ -333,6 +379,17 @@ export async function runLinkCheckoutWithFallback(
           attempts,
           attempt_timeline: attemptTimeline,
           attemptTimeline,
+          activity_summary: {
+            provider: "runash_pay",
+            endpoint: LINK_CHECKOUT_API_URL,
+            request_correlation_id: requestId,
+            status: "initiated",
+            next_action: "open_link_checkout",
+            checkout_session_id: checkoutSessionId,
+            fallback_used: index > 0,
+            attempts_count: attempts.length,
+            attempted_methods: attempts.map((attempt) => attempt.method),
+          },
         }
       }
 
@@ -340,6 +397,7 @@ export async function runLinkCheckoutWithFallback(
     } catch {
       const attemptResult: LinkCheckoutAttemptResult = {
         method,
+        reason,
         success: false,
         retryable_failure: true,
         status_code: null,
@@ -352,7 +410,7 @@ export async function runLinkCheckoutWithFallback(
       attempts.push(attemptResult)
       attemptTimeline.push({
         method,
-        reason: index === 0 ? "primary" : "fallback_retry",
+        reason,
         status: "failed",
         timestamp: new Date().toISOString(),
       })
@@ -375,6 +433,14 @@ export async function runLinkCheckoutWithFallback(
     }
   }
 
+  if (attempts.some((_, index) => index > 0)) {
+    trackLinkFunnelMetric("fallback_usage", {
+      requestId,
+      correlationId: requestId,
+      merchantId: payload.merchant_id,
+    })
+  }
+
   return {
     status: "failed",
     checkout_session_id: null,
@@ -389,5 +455,16 @@ export async function runLinkCheckoutWithFallback(
     attempts,
     attempt_timeline: attemptTimeline,
     attemptTimeline,
+    activity_summary: {
+      provider: "runash_pay",
+      endpoint: LINK_CHECKOUT_API_URL,
+      request_correlation_id: requestId,
+      status: "failed",
+      next_action: "retry_or_manual_review",
+      checkout_session_id: null,
+      fallback_used: attempts.some((_, index) => index > 0),
+      attempts_count: attempts.length,
+      attempted_methods: attempts.map((attempt) => attempt.method),
+    },
   }
 }

@@ -1,7 +1,11 @@
+import { randomUUID } from "crypto"
+import { logApiEvent } from "./api/logging"
 import { EmailDeliveryTracker } from "./email-delivery"
 import { EmailBounceHandler } from "./email-bounce-handler"
 import { triggerDeliveryStatusEvent } from "./email-realtime"
 import { type EmailAttachment, sendWithEmailProvider } from "./email-provider"
+
+export const AUTH_EMAIL_VERIFICATION_PATH = "/api/auth/verify-email"
 
 export interface EmailSafetyPolicyPayload {
   error: "EMAIL_SAFETY_BLOCKED"
@@ -137,7 +141,13 @@ export async function sendEmail(options: {
       delivery_id = tracking.delivery_id
       message_id = tracking.message_id
     } catch (error) {
-      console.error("Error creating delivery tracking:", error)
+      logApiEvent("error", "email.delivery_tracking.create_failed", {
+        requestId: randomUUID(),
+        route: "internal/email",
+        method: "INTERNAL",
+        details: { event: "delivery_tracking.create", outcome: "error", vendor: "email" },
+        error,
+      })
     }
   }
 
@@ -221,7 +231,13 @@ export async function sendEmail(options: {
 
     return { success: true, message_id, delivery_id }
   } catch (error) {
-    console.error("Error sending email:", error)
+    logApiEvent("error", "email.send.failed", {
+      requestId: randomUUID(),
+      route: "internal/email",
+      method: "INTERNAL",
+      details: { event: "email.send", outcome: "error", vendor: "email" },
+      error,
+    })
 
     if (message_id) {
       await EmailDeliveryTracker.updateDeliveryStatus(message_id, "failed", {
@@ -237,8 +253,50 @@ export async function sendEmail(options: {
   }
 }
 
-export async function sendVerificationEmail(email: string, name: string, token: string) {
-  const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email?token=${token}`
+export async function sendAuthEmail(options: {
+  to: string
+  subject: string
+  html: string
+  text?: string
+  headers?: Record<string, string>
+}) {
+  return sendEmail({
+    ...options,
+    track_delivery: true,
+    headers: {
+      ...options.headers,
+      "X-Email-Category": "auth",
+    },
+  })
+}
+
+export function buildCanonicalVerificationUrl(input: { url?: string; token?: string; callbackURL?: string }) {
+  const baseUrl = process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
+  const verificationUrl = new URL(input.url ?? AUTH_EMAIL_VERIFICATION_PATH, baseUrl)
+
+  verificationUrl.pathname = AUTH_EMAIL_VERIFICATION_PATH
+
+  if (input.token) {
+    verificationUrl.searchParams.set("token", input.token)
+  }
+
+  if (input.callbackURL && !verificationUrl.searchParams.get("callbackURL")) {
+    verificationUrl.searchParams.set("callbackURL", input.callbackURL)
+  }
+
+  return verificationUrl.toString()
+}
+
+export async function sendVerificationEmail(
+  email: string,
+  name: string,
+  verificationTokenOrUrl: string,
+  callbackURL?: string,
+) {
+  const isUrlInput = verificationTokenOrUrl.startsWith("http://") || verificationTokenOrUrl.startsWith("https://") || verificationTokenOrUrl.startsWith("/")
+  const verificationUrl = isUrlInput
+    ? buildCanonicalVerificationUrl({ url: verificationTokenOrUrl, callbackURL })
+    : buildCanonicalVerificationUrl({ token: verificationTokenOrUrl, callbackURL })
 
   const mailOptions = {
     to: email,
@@ -270,7 +328,7 @@ export async function sendVerificationEmail(email: string, name: string, token: 
     `,
   }
 
-  await sendEmail(mailOptions)
+  await sendAuthEmail(mailOptions)
 }
 
 export async function sendPasswordResetEmail(email: string, name: string, token: string) {
@@ -306,5 +364,31 @@ export async function sendPasswordResetEmail(email: string, name: string, token:
     `,
   }
 
-  await sendEmail(mailOptions)
+  await sendAuthEmail(mailOptions)
+}
+
+export async function sendWaitlistConfirmationEmail(options: { to: string; name?: string }) {
+  const greetingName = options.name?.trim() || "there"
+
+  await sendEmail({
+    to: options.to,
+    subject: "You’re on the RunAsh waitlist",
+    html: `
+      <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
+        <h2 style="color: #333; text-align: center;">Thanks for joining the RunAsh waitlist</h2>
+        <p>Hi ${greetingName},</p>
+        <p>We received your request and added you to our early access waitlist.</p>
+        <p>We’ll reach out with updates as soon as we open new spots.</p>
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #666; font-size: 12px;">
+          If you didn’t request this, you can ignore this message.
+        </p>
+      </div>
+    `,
+    text: `Hi ${greetingName},\n\nThanks for joining the RunAsh waitlist. We received your request and will contact you when new spots are available.`,
+    headers: {
+      "X-Email-Category": "waitlist",
+    },
+    track_delivery: true,
+  })
 }

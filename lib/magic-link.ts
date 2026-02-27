@@ -1,8 +1,13 @@
 import { neon } from "@neondatabase/serverless"
-import { randomBytes } from "crypto"
-import { sendEmail } from "./email"
+import { createHash, randomBytes } from "crypto"
+import { sendAuthEmail } from "./email"
+import { logApiEvent } from "./api/logging"
 
 const sql = neon(process.env.DATABASE_URL!)
+
+function hashIdentifier(identifier: string): string {
+  return createHash("sha256").update(identifier).digest("hex").slice(0, 16)
+}
 
 export interface MagicLinkToken {
   id: number
@@ -42,14 +47,28 @@ export async function createMagicLinkToken(email: string): Promise<{ token: stri
 
     return { token, user }
   } catch (error) {
-    console.error("Error creating magic link token:", error)
+    logApiEvent("error", "auth.magic_link.token.create_failed", {
+      requestId: randomBytes(8).toString("hex"),
+      route: "internal/magic-link",
+      method: "INTERNAL",
+      details: { outcome: "error", identifierHash: hashIdentifier(email) },
+      error,
+    })
     return null
   }
 }
 
 export async function verifyMagicLinkToken(token: string): Promise<{ user: any; success: boolean }> {
+  return verifyMagicLinkTokenWithClient(sql, token)
+}
+
+export async function verifyMagicLinkTokenWithClient(
+  sqlClient: ReturnType<typeof neon>,
+  token: string,
+): Promise<{ user: any; success: boolean }> {
+  const requestId = randomBytes(8).toString("hex")
   try {
-    const result = await sql`
+    const result = await sqlClient`
       SELECT t.*, u.id as user_id, u.email, u.name, u.avatar_url, u.role
       FROM email_verification_tokens t
       JOIN users u ON t.user_id = u.id
@@ -65,14 +84,14 @@ export async function verifyMagicLinkToken(token: string): Promise<{ user: any; 
     const tokenData = result[0]
 
     // Mark token as used
-    await sql`
+    await sqlClient`
       UPDATE email_verification_tokens 
       SET used = true 
       WHERE token = ${token}
     `
 
     // Update user's email verification status if not already verified
-    await sql`
+    await sqlClient`
       UPDATE users 
       SET email_verified = true, email_verified_at = NOW()
       WHERE id = ${tokenData.user_id} AND email_verified = false
@@ -89,7 +108,13 @@ export async function verifyMagicLinkToken(token: string): Promise<{ user: any; 
       success: true,
     }
   } catch (error) {
-    console.error("Error verifying magic link token:", error)
+    logApiEvent("error", "auth.magic_link.token.verify_failed", {
+      requestId,
+      route: "internal/magic-link",
+      method: "INTERNAL",
+      details: { outcome: "error" },
+      error,
+    })
     return { user: null, success: false }
   }
 }
@@ -145,14 +170,20 @@ export async function sendMagicLink(email: string, token: string, userName?: str
   `
 
   try {
-    await sendEmail({
+    await sendAuthEmail({
       to: email,
       subject: "Your Magic Link - Sign in instantly",
       html: emailHtml,
     })
     return true
   } catch (error) {
-    console.error("Error sending magic link email:", error)
+    logApiEvent("error", "auth.magic_link.email.send_failed", {
+      requestId: randomBytes(8).toString("hex"),
+      route: "internal/magic-link",
+      method: "INTERNAL",
+      details: { outcome: "error", identifierHash: hashIdentifier(email) },
+      error,
+    })
     return false
   }
 }
@@ -164,6 +195,12 @@ export async function cleanupExpiredTokens(): Promise<void> {
       WHERE expires_at < NOW()
     `
   } catch (error) {
-    console.error("Error cleaning up expired tokens:", error)
+    logApiEvent("error", "auth.magic_link.cleanup_failed", {
+      requestId: randomBytes(8).toString("hex"),
+      route: "internal/magic-link",
+      method: "INTERNAL",
+      details: { outcome: "error" },
+      error,
+    })
   }
 }

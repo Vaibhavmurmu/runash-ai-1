@@ -655,3 +655,97 @@ Success response:
 
 - The route executes the recording edit insert inside an explicit DB transaction (`BEGIN` / `COMMIT`, rollback on fail
 
+
+## Stream Interactions API (`/api/streams/:id/*`)
+
+These endpoints power live interactivity for polls, Q&A, reactions, member-only mode, and pinned message references.
+
+### `GET /api/streams/:id/interactions`
+Returns a combined snapshot:
+- `state`: `{ pinnedMessageId, reactionsEnabled, memberOnly, activePollId, activeQASessionId, updatedAt }`
+- `polls`: poll history for stream
+- `qaSessions`: Q&A session history
+- `questions`: submitted questions list
+
+### `PATCH /api/streams/:id/interactions`
+Auth required.
+
+Payload (all optional):
+```json
+{
+  "reactionsEnabled": true,
+  "memberOnly": false,
+  "pinnedMessageId": "chat-message-id-or-null"
+}
+```
+
+### Poll endpoints
+- `GET /api/streams/:id/polls`
+- `POST /api/streams/:id/polls` (auth required)
+  - payload: `{ "question": string, "options": string[] }`
+  - option count: 2-6
+- `POST /api/streams/:id/polls/:pollId/vote`
+  - payload: `{ "optionId": string }`
+- `POST /api/streams/:id/polls/:pollId/end` (auth required)
+
+### Q&A endpoints
+- `GET /api/streams/:id/qa`
+- `POST /api/streams/:id/qa` (auth required)
+  - payload: `{ "prompt": string }`
+- `POST /api/streams/:id/qa/:sessionId/end` (auth required)
+- `GET /api/streams/:id/qa/questions`
+- `POST /api/streams/:id/qa/questions`
+  - payload: `{ "username"?: string, "text": string }`
+- `PATCH /api/streams/:id/qa/questions/:questionId` (auth required)
+  - payload: `{ "selected": boolean }`
+
+### Storage behavior
+- Uses Upstash Redis when `KV_REST_API_URL` and `KV_REST_API_TOKEN` are configured.
+- Falls back to in-memory store when KV is unavailable (development convenience only).
+
+
+## Studio Realtime Delivery & Polling Fallback
+
+The Streaming Studio runtime uses a **hybrid read model** for live state consistency:
+
+- **Primary transport:** realtime channel events for low-latency updates (viewer count, health, interaction deltas).
+- **Fallback transport:** polling snapshots for continuity and drift correction.
+
+### Realtime behavior contract
+
+1. Mutation endpoints (`create/start/end`, interactions writes) remain API-driven and authoritative.
+2. Realtime events are treated as non-authoritative deltas unless reconciled with API snapshots.
+3. Clients must tolerate duplicate/reordered events and apply idempotent reducers.
+4. On realtime channel health degradation, clients MUST degrade to polling-only until channel health is restored.
+
+### Incident rollback contract
+
+If production stability is impacted by realtime transport:
+- Disable realtime channel delivery (feature flag/config switch).
+- Keep Studio operational with polling-only reads against existing REST endpoints.
+- Re-enable realtime only after mitigation + canary verification.
+
+### API-level checks (recommended)
+
+- `GET /api/streams/:id/health` returns healthy status during live session.
+- `GET /api/streams/:id/metrics/realtime` returns monotonic/non-negative counters.
+- `GET /api/streams/:id/interactions` snapshot remains queryable while realtime channel is disabled.
+
+## Dashboard Live Control Visibility Defaults
+
+`/api/dashboard/streams/live-control/:id` now supports `visibility.creatorAge` as the default visibility resolver input:
+
+- `creatorAge` between 13 and 17 => default visibility resolves to `private`.
+- `creatorAge` 18 and above => default visibility resolves to `public`.
+- explicit visibility, when set, still overrides default resolution.
+
+Example update payload:
+
+```json
+{
+  "visibility": {
+    "creatorAge": 16,
+    "explicitVisibility": null
+  }
+}
+```

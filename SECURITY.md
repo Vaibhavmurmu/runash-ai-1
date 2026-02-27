@@ -249,3 +249,24 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
 - `/api/streams/schedule` now rejects unauthenticated access with `401 Unauthorized` and does not trust caller-supplied identity headers.
 - Schedule records are scoped by verified `session.user.id`; legacy `x-user-id` and `demo-user` fallback behavior has been removed.
 - Optional local development fallback identity is explicitly feature-gated (`ENABLE_DEV_SCHEDULE_USER_FALLBACK=true` + `DEV_SCHEDULE_FALLBACK_USER_ID`) and only honored when `NODE_ENV=development`.
+
+## 11) 2026-02 wallet profile encryption + key rotation policy
+
+- Wallet billing address and email/phone verification profile metadata are encrypted at rest using AES-256-GCM envelope format with key ID metadata (`kid`).
+- Runtime key ring is sourced from `RUNASH_FIELD_ENCRYPTION_KEYS` (`kid:material,kid:material`) with active key set by `RUNASH_FIELD_ENCRYPTION_PRIMARY_KEY_ID`.
+- Rotation strategy:
+  1. add new key material with new `kid` to key ring;
+  2. switch primary key ID;
+  3. allow decrypt fallback for legacy key IDs;
+  4. lazily re-encrypt records on read/write using the new primary key;
+  5. remove retired key only after migration completion verification.
+- Sensitive payment/auth values (PAN/CVV/OTP raw values, verification codes) remain prohibited from logs; only hashed/tokenized representations are allowed.
+
+
+## Wallet + Link Payment Security Controls
+
+- **Validator threshold enforcement (Link checkout):** Wallet Link session creation now enforces payment validator thresholds with HITL (`human_confirmed`) and MFA (`mfa_verified`) signals before initiating provider checkout.
+- **High-risk wallet action gates:** Default payment method changes and subscription state transitions now require both HITL and MFA signals. Missing controls are blocked with explicit reason codes.
+- **Geo + risk policy decisioning:** Wallet/link routes evaluate geo mismatch (`GEO_MISMATCH_REVIEW`), risk score review/block thresholds, and explicit blocklist risk signals. Blocked actions return explicit reason codes in response metadata for deterministic handling.
+- **PII-safe logging:** Wallet/link auditing uses payment-safe sanitization and never logs PAN/CVV/OTP/secrets; user/session identifiers are fingerprinted before audit emission.
+- **Structured audit coverage:** Every payment-impacting transition emits structured audit records (`[wallet.payment.audit]`) with request correlation and normalized status (`blocked|review|success|failed`).

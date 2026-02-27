@@ -1,6 +1,8 @@
 import { queryMany, queryOne } from "@/lib/db"
 import { persistTaxComputation, type TaxComputation } from "@/lib/services/tax-service"
 import { handleSubscriptionLifecycleEvent, syncAuthUserWithPaymentCustomer } from "@/lib/auth/plugins/runash-payment"
+import { WalletStore } from "@/lib/data/wallet-store"
+import { postAccountingEvent } from "@/lib/services/runashbook-accounting-service"
 
 const WEBHOOK_PROVIDER = "stripe"
 const DEAD_LETTER_THRESHOLD = Number(process.env.BILLING_WEBHOOK_DEAD_LETTER_THRESHOLD ?? 10)
@@ -23,6 +25,20 @@ type StripeWebhookEvent = {
     object?: Record<string, any>
   }
 }
+
+const BILLING_TIMELINE_EVENT_TYPES = new Set([
+  "checkout.session.completed",
+  "checkout.session.expired",
+  "checkout.session.async_payment_failed",
+  "checkout.session.async_payment_succeeded",
+  "invoice.payment_succeeded",
+  "invoice.payment_failed",
+  "payment_intent.succeeded",
+  "payment_intent.payment_failed",
+  "customer.subscription.created",
+  "customer.subscription.updated",
+  "customer.subscription.deleted",
+])
 
 function mapStripeInvoiceTax(invoice: Record<string, any>): TaxComputation {
   const subtotal = Number(invoice.subtotal ?? 0) / 100
@@ -78,6 +94,240 @@ function toIsoTimestamp(value: unknown): string | null {
   return new Date(numeric * 1000).toISOString()
 }
 
+function asObject(value: unknown): Record<string, any> | null {
+  return value && typeof value === "object" ? (value as Record<string, any>) : null
+}
+
+function safeUpperCurrency(value: unknown) {
+  return String(value || "usd").toUpperCase()
+}
+
+async function resolveUserIdByPaymentCustomerId(paymentCustomerId: string | null | undefined) {
+  if (!paymentCustomerId) return null
+  const link = await queryOne<{ user_id: string | null }>(
+    `
+      SELECT user_id
+      FROM payment_auth_customer_links
+      WHERE payment_provider = 'stripe' AND payment_customer_id = $1
+      LIMIT 1
+    `,
+    [paymentCustomerId],
+  )
+
+  return link?.user_id ?? null
+}
+
+
+async function ensureWalletActivityTablesReady(userId: string) {
+  await WalletStore.listActivity(userId, { limit: 1, offset: 0 })
+}
+
+async function appendWalletTimelineActivity(input: {
+  userId: string
+  eventType: string
+  description: string
+  amount?: number | null
+  currency?: string | null
+  metadata?: Record<string, unknown>
+  eventId: string
+}) {
+  await ensureWalletActivityTablesReady(input.userId)
+
+  await queryMany(
+    `
+      INSERT INTO wallet_activity_logs (id, user_id, activity_type, description, amount, currency, metadata, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW())
+      ON CONFLICT DO NOTHING
+    `,
+    [
+      `act_webhook_${input.eventId}_${input.eventType}`,
+      input.userId,
+      "checkout",
+      input.description,
+      input.amount ?? null,
+      input.currency ?? null,
+      JSON.stringify({ source: "stripe_webhook", eventType: input.eventType, ...(input.metadata ?? {}) }),
+    ],
+  )
+}
+
+async function reconcileWalletTimeline(event: StripeWebhookEvent) {
+  if (!BILLING_TIMELINE_EVENT_TYPES.has(event.type)) return
+  const stripeObject = asObject(event.data?.object)
+  if (!stripeObject) return
+
+  const customerId = stripeObject.customer ? String(stripeObject.customer) : null
+  const userId = await resolveUserIdByPaymentCustomerId(customerId)
+  if (!userId) return
+
+  if (event.type.startsWith("checkout.session.")) {
+    await appendWalletTimelineActivity({
+      userId,
+      eventType: event.type,
+      description: `Checkout ${String(stripeObject.status ?? "updated")}`,
+      amount: centsToMoney(stripeObject.amount_total),
+      currency: safeUpperCurrency(stripeObject.currency),
+      eventId: event.id,
+      metadata: {
+        checkoutSessionId: stripeObject.id ? String(stripeObject.id) : null,
+        paymentIntentId: stripeObject.payment_intent ? String(stripeObject.payment_intent) : null,
+      },
+    })
+    return
+  }
+
+  if (event.type.startsWith("payment_intent.")) {
+    await appendWalletTimelineActivity({
+      userId,
+      eventType: event.type,
+      description: event.type === "payment_intent.succeeded" ? "Payment captured" : "Payment failed",
+      amount: centsToMoney(stripeObject.amount_received ?? stripeObject.amount),
+      currency: safeUpperCurrency(stripeObject.currency),
+      eventId: event.id,
+      metadata: {
+        paymentIntentId: stripeObject.id ? String(stripeObject.id) : null,
+        invoiceId: stripeObject.invoice ? String(stripeObject.invoice) : null,
+      },
+    })
+    return
+  }
+
+  if (event.type.startsWith("invoice.")) {
+    await appendWalletTimelineActivity({
+      userId,
+      eventType: event.type,
+      description: event.type === "invoice.payment_succeeded" ? "Invoice paid" : "Invoice payment failed",
+      amount: centsToMoney(stripeObject.amount_paid ?? stripeObject.amount_due ?? stripeObject.total),
+      currency: safeUpperCurrency(stripeObject.currency),
+      eventId: event.id,
+      metadata: {
+        invoiceId: stripeObject.id ? String(stripeObject.id) : null,
+        subscriptionId: stripeObject.subscription ? String(stripeObject.subscription) : null,
+      },
+    })
+    return
+  }
+
+  if (event.type.startsWith("customer.subscription.")) {
+    const status = String(stripeObject.status ?? "unknown")
+    const subId = stripeObject.id ? String(stripeObject.id) : null
+    if (subId) {
+      await ensureWalletActivityTablesReady(userId)
+
+      await queryMany(
+        `
+          INSERT INTO wallet_subscription_snapshots (id, user_id, plan, status, next_billing_date, amount, currency, updated_at)
+          VALUES ($1, $2, $3, $4, COALESCE($5, NOW()), COALESCE($6, 0), $7, NOW())
+          ON CONFLICT (id) DO UPDATE
+          SET status = EXCLUDED.status,
+              next_billing_date = EXCLUDED.next_billing_date,
+              amount = EXCLUDED.amount,
+              currency = EXCLUDED.currency,
+              updated_at = NOW()
+        `,
+        [
+          subId,
+          userId,
+          stripeObject.items?.data?.[0]?.price?.nickname ? String(stripeObject.items.data[0].price.nickname) : "RunAsh Plan",
+          status === "canceled" ? "canceled" : status === "paused" ? "paused" : "active",
+          toIsoTimestamp(stripeObject.current_period_end),
+          centsToMoney(stripeObject.items?.data?.[0]?.price?.unit_amount),
+          safeUpperCurrency(stripeObject.currency ?? stripeObject.items?.data?.[0]?.price?.currency),
+        ],
+      )
+    }
+
+    await appendWalletTimelineActivity({
+      userId,
+      eventType: event.type,
+      description: `Subscription ${status}`,
+      eventId: event.id,
+      metadata: { subscriptionId: subId, status },
+    })
+  }
+}
+
+
+async function recordInvoicePaymentAttempt(input: {
+  invoiceReference: string | null
+  status: string
+  amount: number | null
+  currency: string | null
+  providerReference: string | null
+  failureReason?: string | null
+  eventId: string
+  eventType: string
+  occurredAt?: string | null
+  metadata?: Record<string, unknown>
+  providerEventCreatedAt?: number | null
+  checkoutSessionId?: string | null
+}) {
+  if (!input.invoiceReference) return
+
+  const dedupeKey = `${WEBHOOK_PROVIDER}:${input.eventId}:${input.invoiceReference}:${input.status}`
+  const inserted = await queryOne<{ invoice_id: number }>(
+    `
+      INSERT INTO invoice_payment_attempts (
+        id, invoice_id, provider, provider_reference, status, amount, currency, failure_reason,
+        event_source, source_event_id, source_event_created_at, checkout_session_id, dedupe_key, metadata, occurred_at, created_at
+      )
+      SELECT $1, i.id, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, NOW()
+      FROM invoices i
+      WHERE i.id::text = $15 OR i.stripe_invoice_id = $15
+      ON CONFLICT (dedupe_key) DO NOTHING
+      RETURNING invoice_id
+    `,
+    [
+      `${input.eventId}:${input.invoiceReference}:${input.status}`,
+      WEBHOOK_PROVIDER,
+      input.providerReference,
+      input.status,
+      input.amount,
+      input.currency,
+      input.failureReason ?? null,
+      input.eventType,
+      input.eventId,
+      input.providerEventCreatedAt ? toIsoTimestamp(input.providerEventCreatedAt) : null,
+      input.checkoutSessionId ?? null,
+      dedupeKey,
+      JSON.stringify({ source: input.eventType, ...(input.metadata ?? {}) }),
+      input.occurredAt ?? null,
+      input.invoiceReference,
+    ],
+  )
+
+  if (!inserted?.invoice_id) return
+
+  await queryMany(
+    `
+      UPDATE invoices i
+      SET status = CASE
+            WHEN latest.status IN ('succeeded', 'paid', 'completed') THEN 'paid'
+            WHEN latest.status IN ('failed', 'payment_failed') THEN CASE WHEN i.due_date IS NOT NULL AND i.due_date < NOW() THEN 'uncollectible' ELSE 'open' END
+            ELSE i.status
+          END,
+          amount_paid = CASE
+            WHEN latest.status IN ('succeeded', 'paid', 'completed') THEN COALESCE(ROUND(latest.amount * 100)::INTEGER, i.amount_paid)
+            ELSE i.amount_paid
+          END,
+          paid_at = CASE
+            WHEN latest.status IN ('succeeded', 'paid', 'completed') THEN COALESCE(i.paid_at, NOW())
+            WHEN latest.status IN ('failed', 'payment_failed') THEN NULL
+            ELSE i.paid_at
+          END
+      FROM LATERAL (
+        SELECT ipa.status, ipa.amount
+        FROM invoice_payment_attempts ipa
+        WHERE ipa.invoice_id = i.id
+        ORDER BY COALESCE(ipa.source_event_created_at, ipa.occurred_at, ipa.created_at) DESC, ipa.created_at DESC
+        LIMIT 1
+      ) latest
+      WHERE i.id = $1
+    `,
+    [inserted.invoice_id],
+  )
+}
+
 async function ensureWebhookEventsTable() {
   await queryMany(`
     CREATE TABLE IF NOT EXISTS webhook_events (
@@ -118,6 +368,39 @@ async function ensureWebhookEventsTable() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (provider, event_id)
     );
+
+    CREATE TABLE IF NOT EXISTS invoice_payment_attempts (
+      id TEXT PRIMARY KEY,
+      invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL,
+      provider_reference TEXT,
+      status TEXT NOT NULL,
+      amount NUMERIC(15,2),
+      currency TEXT,
+      failure_reason TEXT,
+      event_source TEXT NOT NULL,
+      source_event_id TEXT,
+      source_event_created_at TIMESTAMPTZ,
+      checkout_session_id TEXT,
+      dedupe_key TEXT,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      occurred_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    ALTER TABLE invoice_payment_attempts ADD COLUMN IF NOT EXISTS source_event_id TEXT;
+    ALTER TABLE invoice_payment_attempts ADD COLUMN IF NOT EXISTS source_event_created_at TIMESTAMPTZ;
+    ALTER TABLE invoice_payment_attempts ADD COLUMN IF NOT EXISTS checkout_session_id TEXT;
+    ALTER TABLE invoice_payment_attempts ADD COLUMN IF NOT EXISTS dedupe_key TEXT;
+
+    CREATE INDEX IF NOT EXISTS idx_invoice_payment_attempts_invoice
+      ON invoice_payment_attempts(invoice_id, occurred_at DESC);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_invoice_payment_attempts_dedupe_key
+      ON invoice_payment_attempts(dedupe_key);
+
+    CREATE INDEX IF NOT EXISTS idx_invoice_payment_attempts_checkout_session
+      ON invoice_payment_attempts(checkout_session_id, occurred_at DESC);
 
     CREATE TABLE IF NOT EXISTS billing_webhook_subscriptions (
       subscription_id TEXT PRIMARY KEY,
@@ -204,6 +487,65 @@ export async function recordWebhookEvent(event: StripeWebhookEvent): Promise<{ d
   return { duplicate: false, recordId: inserted.id }
 }
 
+async function emitAccountingEventFromStripe(input: {
+  event: StripeWebhookEvent
+  eventType: "payment_succeeded" | "refund" | "chargeback" | "fee"
+  stripeObject: Record<string, any>
+  amount: number
+  currency: string
+  taxAmount?: number
+  feeAmount?: number
+  providerReference: string
+  correlationKey: string
+  idempotencySuffix: string
+}) {
+  const merchantCountry = normalizeCountryCode(
+    input.stripeObject.account_country ?? input.stripeObject.on_behalf_of_country ?? process.env.RUNASH_MERCHANT_REGION ?? "US",
+  )
+  const customerCountry = normalizeCountryCode(
+    input.stripeObject.billing_details?.address?.country ??
+      input.stripeObject.customer_details?.address?.country ??
+      input.stripeObject.shipping?.address?.country ??
+      null,
+  )
+
+  await postAccountingEvent({
+    event: {
+      eventType: input.eventType,
+      occurredAt: toIsoTimestamp(input.event.created) ?? new Date().toISOString(),
+      amount: input.amount,
+      taxAmount: input.taxAmount,
+      feeAmount: input.feeAmount,
+      currency: input.currency,
+      merchantCountry,
+      merchantEntityId: String(
+        input.stripeObject.metadata?.organization_id ??
+          input.stripeObject.transfer_group ??
+          input.stripeObject.customer ??
+          "runash-default-entity",
+      ),
+      merchantId: String(input.stripeObject.metadata?.user_id ?? input.stripeObject.customer ?? "runash-system"),
+      customerCountry,
+      correlationKey: input.correlationKey,
+      idempotencyKey: `${input.event.id}:${input.idempotencySuffix}`,
+      provider: "stripe",
+      providerReference: input.providerReference,
+      metadata: {
+        stripe_event_type: input.event.type,
+        checkout_session_id:
+          typeof input.stripeObject.metadata?.checkout_session_id === "string"
+            ? String(input.stripeObject.metadata.checkout_session_id)
+            : null,
+      },
+    },
+  })
+}
+
+function normalizeCountryCode(value: unknown): string {
+  if (!value || typeof value !== "string") return "US"
+  return value.toUpperCase()
+}
+
 async function runWebhookDomainHandler(event: StripeWebhookEvent) {
   const stripeObject = event.data?.object as Record<string, any> | undefined
 
@@ -222,6 +564,52 @@ async function runWebhookDomainHandler(event: StripeWebhookEvent) {
           customerName: stripeObject.name ? String(stripeObject.name) : undefined,
         },
       })
+
+      return
+    }
+    case "checkout.session.completed":
+    case "checkout.session.expired":
+    case "checkout.session.async_payment_failed":
+    case "checkout.session.async_payment_succeeded": {
+      if (!stripeObject?.id) return
+      const checkoutSession = stripeObject
+      const paymentIntentId = checkoutSession.payment_intent ? String(checkoutSession.payment_intent) : null
+      const customerId = checkoutSession.customer ? String(checkoutSession.customer) : null
+
+      await queryMany(
+        `
+          INSERT INTO billing_webhook_payments (
+            payment_intent_id, customer_id, invoice_id, status, amount, currency, captured_at,
+            failed_at, failure_reason, last_event_id, metadata, updated_at
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,NOW())
+          ON CONFLICT (payment_intent_id) DO UPDATE
+          SET customer_id = EXCLUDED.customer_id,
+              invoice_id = EXCLUDED.invoice_id,
+              status = EXCLUDED.status,
+              amount = EXCLUDED.amount,
+              currency = EXCLUDED.currency,
+              captured_at = EXCLUDED.captured_at,
+              failed_at = EXCLUDED.failed_at,
+              failure_reason = EXCLUDED.failure_reason,
+              last_event_id = EXCLUDED.last_event_id,
+              metadata = EXCLUDED.metadata,
+              updated_at = NOW()
+        `,
+        [
+          paymentIntentId ?? `checkout:${checkoutSession.id}`,
+          customerId,
+          checkoutSession.invoice ? String(checkoutSession.invoice) : null,
+          event.type.endsWith("failed") || event.type.endsWith("expired") ? "failed" : "succeeded",
+          centsToMoney(checkoutSession.amount_total),
+          safeUpperCurrency(checkoutSession.currency),
+          event.type.endsWith("failed") || event.type.endsWith("expired") ? null : toIsoTimestamp(event.created),
+          event.type.endsWith("failed") || event.type.endsWith("expired") ? toIsoTimestamp(event.created) : null,
+          event.type.endsWith("failed") || event.type.endsWith("expired") ? "checkout_session_failed" : null,
+          event.id,
+          JSON.stringify({ source: event.type, checkout_session_id: String(checkoutSession.id) }),
+        ],
+      )
 
       return
     }
@@ -283,6 +671,20 @@ async function runWebhookDomainHandler(event: StripeWebhookEvent) {
         )
       }
 
+      await recordInvoicePaymentAttempt({
+        invoiceReference: String(invoice.id),
+        status: "succeeded",
+        amount: centsToMoney(invoice.amount_paid ?? invoice.total),
+        currency,
+        providerReference: paymentIntentId,
+        eventId: event.id,
+        eventType: event.type,
+        occurredAt: toIsoTimestamp(invoice.status_transitions?.paid_at ?? invoice.created),
+        providerEventCreatedAt: event.created,
+        checkoutSessionId:
+          typeof invoice.metadata?.checkout_session_id === "string" ? String(invoice.metadata.checkout_session_id) : null,
+      })
+
       await queryMany(
         `
           INSERT INTO billing_webhook_invoices (
@@ -324,6 +726,21 @@ async function runWebhookDomainHandler(event: StripeWebhookEvent) {
       if (!stripeObject?.id) return
       const invoice = stripeObject
       const paymentIntentId = invoice.payment_intent ? String(invoice.payment_intent) : null
+
+      await recordInvoicePaymentAttempt({
+        invoiceReference: String(invoice.id),
+        status: "payment_failed",
+        amount: centsToMoney(invoice.amount_due ?? invoice.total),
+        currency: String(invoice.currency || "usd").toUpperCase(),
+        providerReference: paymentIntentId,
+        failureReason: String(invoice.last_finalization_error?.message ?? "payment_failed"),
+        eventId: event.id,
+        eventType: event.type,
+        occurredAt: toIsoTimestamp(invoice.created),
+        providerEventCreatedAt: event.created,
+        checkoutSessionId:
+          typeof invoice.metadata?.checkout_session_id === "string" ? String(invoice.metadata.checkout_session_id) : null,
+      })
 
       await queryMany(
         `
@@ -457,6 +874,99 @@ async function runWebhookDomainHandler(event: StripeWebhookEvent) {
         ],
       )
 
+      await recordInvoicePaymentAttempt({
+        invoiceReference: paymentIntent.invoice ? String(paymentIntent.invoice) : null,
+        status: isFailed ? "failed" : "succeeded",
+        amount: centsToMoney(paymentIntent.amount_received ?? paymentIntent.amount),
+        currency: String(paymentIntent.currency || "usd").toUpperCase(),
+        providerReference: String(paymentIntent.id),
+        failureReason: isFailed ? String(paymentIntent.last_payment_error?.message ?? "payment_failed") : null,
+        eventId: event.id,
+        eventType: event.type,
+        occurredAt: toIsoTimestamp(paymentIntent.created),
+        providerEventCreatedAt: event.created,
+        checkoutSessionId:
+          typeof paymentIntent.metadata?.checkout_session_id === "string" ? String(paymentIntent.metadata.checkout_session_id) : null,
+      })
+
+      if (!isFailed) {
+        await emitAccountingEventFromStripe({
+          event,
+          eventType: "payment_succeeded",
+          stripeObject: paymentIntent,
+          amount: centsToMoney(paymentIntent.amount_received ?? paymentIntent.amount) ?? 0,
+          currency: String(paymentIntent.currency || "usd").toUpperCase(),
+          taxAmount: centsToMoney(paymentIntent.amount_details?.tip?.amount ?? 0) ?? 0,
+          providerReference: String(paymentIntent.id),
+          correlationKey: String(paymentIntent.id),
+          idempotencySuffix: "payment_succeeded",
+        })
+      }
+
+      return
+    }
+    case "charge.refunded": {
+      if (!stripeObject?.id) return
+      const charge = stripeObject
+      const refundedAmount = centsToMoney(charge.amount_refunded ?? charge.amount) ?? 0
+      const currency = String(charge.currency || "usd").toUpperCase()
+      await emitAccountingEventFromStripe({
+        event,
+        eventType: "refund",
+        stripeObject: charge,
+        amount: refundedAmount,
+        currency,
+        providerReference: String(charge.id),
+        correlationKey: String(charge.payment_intent ?? charge.id),
+        idempotencySuffix: "refund",
+      })
+
+      const feeAmount = centsToMoney(charge.balance_transaction?.fee)
+      if (feeAmount && feeAmount > 0) {
+        await emitAccountingEventFromStripe({
+          event,
+          eventType: "fee",
+          stripeObject: charge,
+          amount: feeAmount,
+          currency,
+          feeAmount,
+          providerReference: String(charge.balance_transaction?.id ?? charge.id),
+          correlationKey: String(charge.payment_intent ?? charge.id),
+          idempotencySuffix: "refund_fee",
+        })
+      }
+
+      return
+    }
+    case "charge.dispute.created":
+    case "charge.dispute.funds_withdrawn": {
+      if (!stripeObject?.id) return
+      const dispute = stripeObject
+      await emitAccountingEventFromStripe({
+        event,
+        eventType: "chargeback",
+        stripeObject: dispute,
+        amount: centsToMoney(dispute.amount) ?? 0,
+        currency: String(dispute.currency || "usd").toUpperCase(),
+        providerReference: String(dispute.id),
+        correlationKey: String(dispute.charge ?? dispute.payment_intent ?? dispute.id),
+        idempotencySuffix: "chargeback",
+      })
+      return
+    }
+    case "application_fee.created": {
+      if (!stripeObject?.id) return
+      const fee = stripeObject
+      await emitAccountingEventFromStripe({
+        event,
+        eventType: "fee",
+        stripeObject: fee,
+        amount: centsToMoney(fee.amount) ?? 0,
+        currency: String(fee.currency || "usd").toUpperCase(),
+        providerReference: String(fee.id),
+        correlationKey: String(fee.charge ?? fee.id),
+        idempotencySuffix: "platform_fee",
+      })
       return
     }
     case "payout.created":
@@ -608,6 +1118,7 @@ export async function processWebhookEvent(event: StripeWebhookEvent) {
 
   try {
     await runWebhookDomainHandler(event)
+    await reconcileWalletTimeline(event)
     await updateWebhookEventStatus({ eventId: event.id, status: "processed", attemptsIncrement: 1, errorMessage: null })
     return { processed: true, attempts: claimed.processing_attempts + 1, duplicateProcessed: false }
   } catch (error) {
@@ -651,7 +1162,7 @@ export async function replayFailedWebhookEvents(limit = 25) {
       WHERE provider = $1
         AND status IN ('failed', 'dead_letter')
         AND (next_retry_at IS NULL OR next_retry_at <= NOW())
-      ORDER BY received_at ASC
+      ORDER BY COALESCE((payload ->> 'created')::bigint, 0) ASC, received_at ASC
       LIMIT $2
     `,
     [WEBHOOK_PROVIDER, Math.max(1, limit)],
@@ -662,32 +1173,12 @@ export async function replayFailedWebhookEvents(limit = 25) {
 
   for (const row of rows) {
     try {
-      await runWebhookDomainHandler(row.payload)
-      replayed += 1
-      await updateWebhookEventStatus({ eventId: row.event_id, status: "processed", attemptsIncrement: 1, errorMessage: null })
-    } catch (error) {
-      failed += 1
-      const nextAttempts = row.processing_attempts + 1
-      const deadLetter = nextAttempts >= DEAD_LETTER_THRESHOLD
-      const message = error instanceof Error ? error.message.slice(0, 500) : "webhook_replay_failed"
-
-      await updateWebhookEventStatus({
-        eventId: row.event_id,
-        status: deadLetter ? "dead_letter" : "failed",
-        attemptsIncrement: 1,
-        errorMessage: message,
-        scheduleRetryMinutes: retryDelayMinutes(nextAttempts),
-      })
-
-      if (deadLetter) {
-        await upsertDeadLetterEvent({
-          eventId: row.event_id,
-          eventType: row.payload.type,
-          errorMessage: message,
-          attempts: nextAttempts,
-          payload: row.payload,
-        })
+      const result = await processWebhookEvent(row.payload)
+      if (result.processed) {
+        replayed += 1
       }
+    } catch {
+      failed += 1
     }
   }
 
@@ -768,4 +1259,101 @@ export async function getWebhookEventByEventId(eventId: string) {
     `,
     [WEBHOOK_PROVIDER, eventId],
   )
+}
+
+export async function listWebhookDeadLetters(limit = 100) {
+  await ensureWebhookEventsTable()
+
+  return queryMany<{
+    event_id: string
+    event_type: string
+    attempts: number
+    last_error: string
+    dead_lettered_at: string
+    updated_at: string
+  }>(
+    `
+      SELECT event_id, event_type, attempts, last_error,
+             dead_lettered_at::text, updated_at::text
+      FROM webhook_dead_letters
+      WHERE provider = $1
+      ORDER BY dead_lettered_at DESC
+      LIMIT $2
+    `,
+    [WEBHOOK_PROVIDER, Math.max(1, limit)],
+  )
+}
+
+export async function retryDeadLetterWebhookEvent(eventId: string) {
+  await ensureWebhookEventsTable()
+  const reset = await rollbackWebhookEvent(eventId)
+  if (!reset) return { found: false, retried: false }
+
+  const replay = await replayWebhookEventById(eventId)
+  if (replay.processed) {
+    await queryMany(`DELETE FROM webhook_dead_letters WHERE provider = $1 AND event_id = $2`, [WEBHOOK_PROVIDER, eventId])
+  }
+
+  return { found: true, retried: replay.processed }
+}
+
+export async function getWebhookReconciliationHealthMetrics() {
+  await ensureWebhookEventsTable()
+
+  const [summary] = await queryMany<{
+    received: number
+    processing: number
+    processed: number
+    failed: number
+    dead_letter: number
+    retry_due: number
+    oldest_unprocessed_seconds: number
+  }>(
+    `
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'received')::int AS received,
+        COUNT(*) FILTER (WHERE status = 'processing')::int AS processing,
+        COUNT(*) FILTER (WHERE status = 'processed')::int AS processed,
+        COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
+        COUNT(*) FILTER (WHERE status = 'dead_letter')::int AS dead_letter,
+        COUNT(*) FILTER (WHERE status IN ('failed', 'dead_letter') AND (next_retry_at IS NULL OR next_retry_at <= NOW()))::int AS retry_due,
+        COALESCE(MAX(EXTRACT(EPOCH FROM (NOW() - received_at)) FILTER (WHERE status <> 'processed')), 0)::int AS oldest_unprocessed_seconds
+      FROM webhook_events
+      WHERE provider = $1
+    `,
+    [WEBHOOK_PROVIDER],
+  )
+
+  const [recentFailure] = await queryMany<{ event_id: string; event_type: string; last_error: string | null; updated_at: string }>(
+    `
+      SELECT event_id, event_type, last_error, updated_at::text
+      FROM webhook_events
+      WHERE provider = $1
+        AND status IN ('failed', 'dead_letter')
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `,
+    [WEBHOOK_PROVIDER],
+  )
+
+  return {
+    provider: WEBHOOK_PROVIDER,
+    backlog: {
+      received: summary?.received ?? 0,
+      processing: summary?.processing ?? 0,
+      failed: summary?.failed ?? 0,
+      deadLetter: summary?.dead_letter ?? 0,
+      retryDue: summary?.retry_due ?? 0,
+    },
+    processed: summary?.processed ?? 0,
+    oldestUnprocessedSeconds: summary?.oldest_unprocessed_seconds ?? 0,
+    recentFailure: recentFailure
+      ? {
+          eventId: recentFailure.event_id,
+          eventType: recentFailure.event_type,
+          lastError: recentFailure.last_error,
+          updatedAt: recentFailure.updated_at,
+        }
+      : null,
+  }
 }

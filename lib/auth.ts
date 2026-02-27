@@ -9,9 +9,11 @@ import { evaluateAccountLinkingPolicy } from "@/lib/auth/plugins/account-linking
 import { resolveGenericOAuthProviders } from "@/lib/auth/plugins/generic-oauth"
 import { buildTrustedAuthOrigins } from "@/lib/auth/plugins/oauth-proxy"
 import { resolveBearerAuthSession } from "@/lib/auth/session-modes"
+import { buildCanonicalVerificationUrl, sendVerificationEmail as sendVerificationEmailMessage } from "@/lib/email"
 
 const baseURL =
   process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
+const emailVerificationCallbackURL = process.env.BETTER_AUTH_EMAIL_VERIFICATION_CALLBACK_URL ?? "/login?emailVerified=1"
 
 const secret = process.env.BETTER_AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
 
@@ -125,6 +127,17 @@ export const auth = betterAuth({
   secret,
   emailAndPassword: {
     enabled: true,
+    requireEmailVerification: true,
+    autoSignIn: false,
+  },
+  emailVerification: {
+    sendOnSignUp: true,
+    autoSignInAfterVerification: false,
+    sendVerificationEmail: async ({ user, url }) => {
+      const verificationUrl = buildCanonicalVerificationUrl({ url, callbackURL: emailVerificationCallbackURL })
+
+      await sendVerificationEmailMessage(user.email, user.name || "there", verificationUrl)
+    },
   },
   account: {
     accountLinking: {
@@ -284,6 +297,41 @@ function parseCookieValue(cookieHeader: string | null, cookieName: string): stri
   return null
 }
 
+
+
+type LegacyFallbackPolicyDecision = {
+  enabled: boolean
+  reason: "disabled" | "sunset_flag" | "sunset_date"
+}
+
+function parseLegacyFallbackSunsetTimestamp() {
+  const rawValue = process.env.FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK_SUNSET_AT
+  if (!rawValue) {
+    return null
+  }
+
+  const parsed = Date.parse(rawValue)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+async function getLegacyFallbackPolicyDecision(): Promise<LegacyFallbackPolicyDecision> {
+  const fallbackEnabled = await isFeatureFlagEnabled("allow_legacy_next_auth_fallback")
+  if (!fallbackEnabled) {
+    return { enabled: false, reason: "disabled" }
+  }
+
+  const sunsetFlagEnabled = await isFeatureFlagEnabled("enforce_legacy_next_auth_fallback_sunset")
+  if (sunsetFlagEnabled) {
+    return { enabled: false, reason: "sunset_flag" }
+  }
+
+  const sunsetTimestamp = parseLegacyFallbackSunsetTimestamp()
+  if (sunsetTimestamp !== null && Date.now() >= sunsetTimestamp) {
+    return { enabled: false, reason: "sunset_date" }
+  }
+
+  return { enabled: true, reason: "disabled" }
+}
 async function readLegacyNextAuthSession(cookieHeader: string | null): Promise<BetterAuthSession | null> {
   const fallbackSecrets = getLegacySessionSecrets()
   if (!cookieHeader || fallbackSecrets.length === 0) {
@@ -359,7 +407,13 @@ export async function getAuthSessionFromHeaders(requestHeaders: Headers): Promis
 
   return resolveSessionFromSources({
     getPrimarySession: () => auth.api.getSession({ headers: requestHeaders }),
-    isLegacyFallbackEnabled: () => isFeatureFlagEnabled("allow_legacy_next_auth_fallback"),
+    isLegacyFallbackEnabled: async () => {
+      const decision = await getLegacyFallbackPolicyDecision()
+      if (!decision.enabled) {
+        recordAuthMetric("auth.legacy_fallback.blocked", { reason: decision.reason })
+      }
+      return decision.enabled
+    },
     getLegacySession: () => readLegacyNextAuthSession(requestHeaders.get("cookie")),
     recordMetric: recordAuthMetric,
     now: () => Date.now(),

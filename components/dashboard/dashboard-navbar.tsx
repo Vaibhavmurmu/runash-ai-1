@@ -1,9 +1,13 @@
 "use client"
 
+import { useRef, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Bell, ChevronRight, Command, Menu, MoreHorizontal, Plus, Search } from "lucide-react"
+import { Bell, ChevronRight, Command, LogOut, Menu, MessageSquare, MoreHorizontal, Plus, Search, Settings, User } from "lucide-react"
+import { signOut } from "@/lib/auth/client"
+import { isDashboardRouteReady } from "@/lib/navigation/dashboard-route-audit"
 import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
+import { FeedbackModal } from "@/components/dashboard/feedback-modal"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -24,9 +28,25 @@ interface DashboardNavbarProps {
 
 export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbarProps) {
   const pathname = usePathname()
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const feedbackTriggerRef = useRef<HTMLButtonElement | null>(null)
   const navContext = resolveDashboardNavContext(pathname)
   const currentPageTitle = navContext.breadcrumbs[navContext.breadcrumbs.length - 1]?.label ?? "Dashboard"
   const { openFromTrigger } = useDashboardModelDialog()
+
+  const handleSignOut = async () => {
+    await signOut({
+      fetchOptions: {
+        onSuccess: () => {
+          window.location.href = "/"
+        },
+      },
+    })
+  }
+
+  const openFeedbackModal = () => {
+    setFeedbackOpen(true)
+  }
 
   const triggerSource = pathname.startsWith("/editor")
     ? "editor"
@@ -34,7 +54,7 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
       ? "seller"
       : pathname.startsWith("/ecommerce")
         ? "store"
-        : pathname.startsWith("/stream") || pathname.startsWith("/dashboard/streams")
+        : pathname.startsWith("/stream")
           ? "streaming"
           : "chat"
 
@@ -47,13 +67,16 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
             <span className="sr-only">Open sidebar</span>
           </Button>
           <div className="space-y-1">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground md:text-xs">{navContext.currentSection}</p>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-foreground/75 md:text-xs">{navContext.currentSection}</p>
             <p className="text-sm font-semibold text-foreground md:hidden">{currentPageTitle}</p>
-            <div className="hidden items-center gap-1 text-sm font-medium text-foreground md:flex" aria-label="Current module breadcrumb">
+            <nav className="hidden items-center gap-1 text-sm font-medium text-foreground md:flex" aria-label="Current module breadcrumb">
               {navContext.breadcrumbs.map((crumb, index) => (
                 <div key={`${crumb.label}-${index}`} className="flex items-center gap-1.5">
                   {crumb.href ? (
-                    <Link href={crumb.href} className="rounded-sm transition-colors hover:text-orange-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60">
+                    <Link
+                      href={crumb.href}
+                      className="rounded-sm transition-colors hover:text-orange-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/80 focus-visible:ring-offset-2"
+                    >
                       {crumb.label}
                     </Link>
                   ) : (
@@ -62,12 +85,17 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
                   {index < navContext.breadcrumbs.length - 1 ? <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" /> : null}
                 </div>
               ))}
-            </div>
+            </nav>
           </div>
         </div>
 
         <div className="flex items-center gap-2 md:gap-3">
-          <Button variant="outline" className="hidden h-10 w-72 justify-between border-border/80 bg-background/80 text-muted-foreground transition-colors hover:bg-card lg:flex">
+          <Button
+            type="button"
+            variant="outline"
+            className="hidden h-10 w-72 justify-between border-border/80 bg-background/80 text-foreground/80 transition-colors hover:bg-card focus-visible:ring-orange-500/80 lg:flex"
+            aria-label="Search or run command"
+          >
             <span className="flex items-center gap-2 text-sm">
               <Search className="h-4 w-4" />
               Search or run command...
@@ -77,7 +105,7 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="hidden h-10 border-border/80 bg-background/75 transition-colors hover:bg-card md:inline-flex">
+              <Button variant="outline" size="sm" className="hidden h-10 border-border/80 bg-background/75 transition-colors hover:bg-card focus-visible:ring-orange-500/80 md:inline-flex">
                 <Plus className="mr-2 h-4 w-4" />
                 Quick Actions
               </Button>
@@ -106,16 +134,55 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
               >
                 Open AI Model Dialog
               </DropdownMenuItem>
-              {navConfig.quickActions.map((action) => (
-                <DropdownMenuItem asChild key={action.href}>
-                  <Link href={action.href}>{action.label}</Link>
-                </DropdownMenuItem>
-              ))}
+              {navConfig.quickActions.map((action) => {
+                const actionIsReady = isDashboardRouteReady(action.href)
+
+                if (!actionIsReady) {
+                  return (
+                    <DropdownMenuItem key={action.href} disabled>
+                      {action.label} · Coming soon
+                    </DropdownMenuItem>
+                  )
+                }
+
+                return (
+                  <DropdownMenuItem asChild key={action.href}>
+                    <Link href={action.href}>{action.label}</Link>
+                  </DropdownMenuItem>
+                )
+              })}
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button variant="ghost" size="icon" className="h-10 w-10 rounded-lg transition-colors hover:bg-card" aria-label="Open notifications">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-10 w-10 rounded-lg transition-colors hover:bg-card focus-visible:ring-orange-500/80"
+            aria-label="Open notifications"
+          >
             <Bell className="h-4 w-4" />
+          </Button>
+
+          {isDashboardRouteReady("/settings/billing") ? (
+            <Button asChild size="sm" className="hidden h-10 md:inline-flex">
+              <Link href="/settings/billing">Upgrade</Link>
+            </Button>
+          ) : (
+            <Button size="sm" className="hidden h-10 md:inline-flex" disabled>
+              Upgrade · Coming soon
+            </Button>
+          )}
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="hidden h-10 border-border/80 bg-background/75 focus-visible:ring-orange-500/80 md:inline-flex"
+            onClick={openFeedbackModal}
+            ref={feedbackTriggerRef}
+          >
+            Feedback
           </Button>
 
           <DropdownMenu>
@@ -128,20 +195,45 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuLabel>User & workspace</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>Switch to Creator Workspace</DropdownMenuItem>
-              <DropdownMenuItem>Switch to Commerce Workspace</DropdownMenuItem>
+              <DropdownMenuLabel>Account</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/dashboard">Account settings</Link>
+                <Link href="/settings/profile">
+                  <User className="mr-2 h-4 w-4" />
+                  Profile
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuLabel>Settings</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/settings">
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuLabel>Support</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={openFeedbackModal}>
+                <MessageSquare className="mr-2 h-4 w-4" />
+                Feedback
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleSignOut}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-10 w-10 rounded-lg md:hidden" aria-label="Open action menu">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 rounded-lg focus-visible:ring-orange-500/80 md:hidden"
+                aria-label="Open action menu"
+              >
                 <MoreHorizontal className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
@@ -174,19 +266,51 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
                 Open AI Model Dialog
               </DropdownMenuItem>
               {navConfig.quickActions.map((action) => (
-                <DropdownMenuItem asChild key={action.href}>
-                  <Link href={action.href}>{action.label}</Link>
-                </DropdownMenuItem>
+                isDashboardRouteReady(action.href) ? (
+                  <DropdownMenuItem asChild key={action.href}>
+                    <Link href={action.href}>{action.label}</Link>
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem key={action.href} disabled>
+                    {action.label} · Coming soon
+                  </DropdownMenuItem>
+                )
               ))}
               <DropdownMenuSeparator />
-              <DropdownMenuItem>Notifications</DropdownMenuItem>
-              <DropdownMenuItem>Switch workspace</DropdownMenuItem>
+              <DropdownMenuLabel>Account</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/settings/profile">
+                  <User className="mr-2 h-4 w-4" />
+                  Profile
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleSignOut}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign out
+              </DropdownMenuItem>
+              <DropdownMenuLabel>Settings</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/settings">
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuLabel>Support</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={openFeedbackModal}>
+                <MessageSquare className="mr-2 h-4 w-4" />
+                Feedback
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
           <ThemeToggle />
         </div>
       </div>
+
+      <FeedbackModal open={feedbackOpen} onOpenChange={setFeedbackOpen} restoreFocusTo={feedbackTriggerRef.current} />
     </header>
   )
 }

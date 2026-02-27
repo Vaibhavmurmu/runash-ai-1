@@ -1,7 +1,7 @@
-import { neon } from "@neondatabase/serverless"
 import { randomBytes } from "crypto"
+import { assertDatabaseConfigured, sql } from "./db"
 
-const sql = neon(process.env.DATABASE_URL!)
+assertDatabaseConfigured("lib/sso.ts")
 
 export interface SSOOrganization {
   id: number

@@ -19,6 +19,7 @@ export function useDashboardRealtime(options: UseDashboardRealtimeOptions = {}) 
   const { onInvalidate } = options
   const [connected, setConnected] = useState(false)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const sessionRequestIdRef = useRef<string>(`dashboard-sse-${Date.now()}`)
 
   const invalidateRef = useRef(onInvalidate)
   invalidateRef.current = onInvalidate
@@ -70,6 +71,15 @@ export function useDashboardRealtime(options: UseDashboardRealtimeOptions = {}) 
 
       source.onerror = () => {
         setConnected(false)
+        console.warn("[api]", JSON.stringify({
+          timestamp: new Date().toISOString(),
+          level: "warn",
+          event: "dashboard.sse.disconnected",
+          details: {
+            requestId: sessionRequestIdRef.current,
+            endpoint: "/api/dashboard/realtime",
+          },
+        }))
         source?.close()
         source = null
 

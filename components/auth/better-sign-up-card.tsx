@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { CardAlert } from "@/components/ui/card-alert"
-import { signUp } from "@/lib/auth-client"
+import { registerWithUnifiedRoute } from "@/lib/auth/register-client"
 
 export function BetterSignUpCard() {
   const [firstName, setFirstName] = useState("")
@@ -27,7 +27,7 @@ export function BetterSignUpCard() {
     <Card className="max-w-md">
       <CardHeader>
         <CardTitle className="text-lg md:text-xl">Sign Up</CardTitle>
-        <CardDescription className="text-xs md:text-sm">Create your account with secure email/password auth.</CardDescription>
+        <CardDescription className="text-xs md:text-sm">Create your account with secure email/password auth. Email verification is required before your first login.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {error ? <CardAlert severity="danger" title="Sign-up failed" description={error} /> : null}
@@ -72,24 +72,31 @@ export function BetterSignUpCard() {
           disabled={loading || password !== passwordConfirmation}
           onClick={async () => {
             setError(null)
-            await signUp.email({
-              email,
-              password,
-              name: `${firstName} ${lastName}`.trim(),
-              callbackURL: "/dashboard",
-              fetchOptions: {
-                onRequest: () => setLoading(true),
-                onResponse: () => setLoading(false),
-                onError: (ctx) => {
-                  setError(ctx.error.message)
-                  toast.error(ctx.error.message)
-                },
-                onSuccess: () => {
-                  toast.success("Account created")
-                  router.push("/dashboard")
-                },
-              },
-            })
+            setLoading(true)
+
+            try {
+              const registration = await registerWithUnifiedRoute({
+                email,
+                password,
+                name: `${firstName} ${lastName}`.trim(),
+              })
+
+              if (!registration.ok) {
+                setError(registration.message)
+                toast.error(registration.message)
+                return
+              }
+
+              const isVerificationPending =
+                registration.user?.emailVerified === false || /verify your account/i.test(registration.message)
+              toast.success(isVerificationPending ? "Check your inbox to verify your email before logging in." : registration.message)
+              router.push("/login")
+            } catch (error) {
+              setError("Unable to create account")
+              toast.error("Unable to create account")
+            } finally {
+              setLoading(false)
+            }
           }}
         >
           {loading ? <Loader2 size={16} className="animate-spin" /> : "Create your account"}

@@ -46,3 +46,19 @@ Initiate rollback if any condition persists for 10 minutes or exceeds on-call th
 - **Impacted flows:** auth sign-in/session lifecycle, admin RBAC checks, payment-adjacent authorization gates.
 - **Risk statement:** medium operational risk from temporary authorization regressions during staged rollout; no external payment API contract/schema changes in this release.
 - **Rollback owner action:** on trigger conditions, disable Better Auth percentage rollout/hard flag, validate legacy compatibility reads, re-run payment auth smoke checks, and freeze promotions until baseline health is restored.
+
+## Addendum — Better Auth schema baseline + session endpoint hardening
+
+### Included in this release
+- Added concrete Better Auth baseline migration for `users` compatibility fields + `accounts`, `sessions`, and `verification_tokens` tables.
+- Updated auth schema registry exports to active table mappings.
+- Added auth session endpoint coverage for concurrent listing, scope switch, and revoke-all/revoke-single flows.
+- Added sunset controls + observability for legacy NextAuth fallback:
+  - `FEATURE_FLAG_ENFORCE_LEGACY_NEXT_AUTH_FALLBACK_SUNSET`
+  - `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK_SUNSET_AT`
+  - metrics: `auth.legacy_fallback.used`, `auth.legacy_fallback.unavailable`, `auth.legacy_fallback.blocked`
+
+### Risk + rollback
+- **Risk:** low-to-medium operational risk during migration rollout if environments rely on legacy fallback unexpectedly.
+- **Mitigation:** additive/idempotent migration, feature-flagged fallback behavior, explicit telemetry.
+- **Rollback:** disable sunset enforcement flag and re-enable legacy fallback flag; no schema rollback required because changes are additive.

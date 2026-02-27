@@ -1,20 +1,14 @@
 import type { LucideIcon } from "lucide-react"
 import {
-  Clapperboard,
-  FolderKanban,
+  Bot,
+  CreditCard,
   LayoutDashboard,
-  LifeBuoy,
-  ListOrdered,
-  MessageSquare,
-  Radio,
-  Receipt,
-  ShoppingBag,
+  Settings,
   Sparkles,
-  Store,
-  Wallet,
+  Workflow,
 } from "lucide-react"
 
-export type DashboardNavSection = "primary"
+export type DashboardNavSection = "core" | "studio" | "intelligence" | "operations" | "account"
 
 export interface DashboardNavItem {
   label: string
@@ -22,8 +16,22 @@ export interface DashboardNavItem {
   icon: LucideIcon
   section: DashboardNavSection
   badge?: string
+  metadata?: DashboardNavItemMetadata
+  children?: DashboardNavChildItem[]
   actionId?: "open-model-dialog"
   activeMatch?: (pathname: string) => boolean
+}
+
+export interface DashboardNavChildItem {
+  label: string
+  href: string
+  optional?: boolean
+}
+
+export interface DashboardNavItemMetadata {
+  badgeCount?: number
+  statusChip?: "live" | "beta" | "pro"
+  quickActionIcon?: LucideIcon
 }
 
 export interface DashboardQuickLinkGroup {
@@ -37,10 +45,24 @@ export interface DashboardQuickAction {
   href: string
 }
 
+export type StreamingStudioActionId =
+  | "start-stream"
+  | "schedule-stream"
+  | "invite-collaborator"
+  | "fetch-integration-key"
+  | "open-previous-live-session-context"
+
+export interface StreamingStudioEntry {
+  label: string
+  href: string
+  actionIds: StreamingStudioActionId[]
+}
+
 export interface DashboardNavigationConfig {
   items: DashboardNavItem[]
   quickLinkGroups: DashboardQuickLinkGroup[]
   quickActions: DashboardQuickAction[]
+  streamingStudioEntry: StreamingStudioEntry
 }
 
 export interface DashboardNavContext {
@@ -57,129 +79,103 @@ export const dashboardNavItems: DashboardNavItem[] = [
     label: "Dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
-    section: "primary",
+    section: "core",
     activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard"),
   },
   {
-    label: "RunAsh Chat",
-    href: "/runash-chat",
-    icon: MessageSquare,
-    section: "primary",
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/runash-chat"),
+    label: "Agents",
+    href: "/agents/dashboard",
+    icon: Bot,
+    section: "intelligence",
+    metadata: {
+      statusChip: "beta",
+      quickActionIcon: Sparkles,
+    },
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/agents"),
   },
   {
-    label: "Editor",
-    href: "/editor",
-    icon: Clapperboard,
-    section: "primary",
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/editor"),
+    label: "Automation",
+    href: "/automation",
+    icon: Workflow,
+    section: "intelligence",
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/automation"),
   },
   {
-    label: "Model",
-    href: "#model-dialog",
-    icon: Sparkles,
-    section: "primary",
-    actionId: "open-model-dialog",
+    label: "Workflows",
+    href: "/workflows",
+    icon: Workflow,
+    section: "operations",
+    children: [
+      { label: "Streaming", href: "/stream", optional: true },
+      { label: "Store", href: "/ecommerce/dashboard", optional: true },
+      { label: "Seller", href: "/seller/dashboard", optional: true },
+    ],
+    activeMatch: (pathname) =>
+      matchesPathPrefix(pathname, "/workflows") ||
+      matchesPathPrefix(pathname, "/stream") ||
+      matchesPathPrefix(pathname, "/ecommerce") ||
+      matchesPathPrefix(pathname, "/seller"),
   },
   {
-    label: "Streaming Studio",
-    href: "/stream",
-    icon: Radio,
-    section: "primary",
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/stream"),
+    label: "Settings",
+    href: "/settings",
+    icon: Settings,
+    section: "account",
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/settings"),
   },
   {
-    label: "Streams",
-    href: "/dashboard/streams",
-    icon: Radio,
-    section: "primary",
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/dashboard/streams"),
-  },
-  {
-    label: "Seller Studio",
-    href: "/seller/dashboard",
-    icon: ShoppingBag,
-    section: "primary",
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/seller"),
-  },
-  {
-    label: "Store",
-    href: "/ecommerce/dashboard",
-    icon: Store,
-    section: "primary",
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/ecommerce"),
-  },
-  {
-    label: "Support",
-    href: "/support",
-    icon: LifeBuoy,
-    section: "primary",
-    activeMatch: (pathname) => matchesPathPrefix(pathname, "/support"),
+    label: "Payments",
+    href: "/payments",
+    icon: CreditCard,
+    section: "account",
+    activeMatch: (pathname) => matchesPathPrefix(pathname, "/payments"),
   },
 ]
 
 export const dashboardQuickLinkGroups: DashboardQuickLinkGroup[] = [
   {
-    label: "Editor",
-    icon: Clapperboard,
-    items: [
-      {
-        label: "Editor Projects",
-        href: "/editor/dashboard",
-        icon: FolderKanban,
-        section: "primary",
-        activeMatch: (pathname) => matchesPathPrefix(pathname, "/editor/dashboard"),
-      },
-    ],
+    label: "Primary",
+    icon: LayoutDashboard,
+    items: dashboardNavItems.filter((item) =>
+      ["Dashboard", "Agents", "Automation", "Workflows"].includes(item.label),
+    ),
   },
   {
-    label: "Store",
-    icon: Store,
-    items: [
-      {
-        label: "Store Orders",
-        href: "/ecommerce/history",
-        icon: ListOrdered,
-        section: "primary",
-        activeMatch: (pathname) => matchesPathPrefix(pathname, "/ecommerce/history"),
-      },
-    ],
-  },
-  {
-    label: "Seller",
-    icon: ShoppingBag,
-    items: [
-      {
-        label: "Seller Payouts",
-        href: "/seller/dashboard",
-        icon: Wallet,
-        section: "primary",
-        activeMatch: (pathname) => matchesPathPrefix(pathname, "/seller"),
-        badge: "Soon",
-      },
-      {
-        label: "Seller Receipts",
-        href: "/ecommerce/invoices",
-        icon: Receipt,
-        section: "primary",
-        activeMatch: (pathname) => matchesPathPrefix(pathname, "/ecommerce/invoices"),
-      },
-    ],
+    label: "Account",
+    icon: CreditCard,
+    items: dashboardNavItems.filter((item) =>
+      ["Settings", "Payments"].includes(item.label),
+    ),
   },
 ]
 
 export const dashboardQuickActions: DashboardQuickAction[] = [
-  { label: "New project", href: "/editor/dashboard" },
-  { label: "Go live", href: "/stream" },
-  { label: "Open chat session", href: "/runash-chat" },
-  { label: "Add product", href: "/ecommerce/dashboard" },
-  { label: "Get support", href: "/support" },
+  { label: "Dashboard", href: "/dashboard" },
+  { label: "Agents", href: "/agents/dashboard" },
+  { label: "Automation", href: "/automation" },
+  { label: "Workflows", href: "/workflows" },
+  { label: "Streaming", href: "/stream" },
+  { label: "Store", href: "/ecommerce/dashboard" },
+  { label: "Seller", href: "/seller/dashboard" },
+  { label: "Settings", href: "/settings" },
+  { label: "Payments", href: "/payments" },
 ]
 
 export const dashboardNavigationConfig: DashboardNavigationConfig = {
   items: dashboardNavItems,
   quickLinkGroups: dashboardQuickLinkGroups,
   quickActions: dashboardQuickActions,
+  streamingStudioEntry: {
+    label: "Streaming",
+    href: "/stream",
+    actionIds: [
+      "start-stream",
+      "schedule-stream",
+      "invite-collaborator",
+      "fetch-integration-key",
+      "open-previous-live-session-context",
+    ],
+  },
 }
 
 export function getNavItemsBySection(section: DashboardNavSection) {
@@ -192,16 +188,14 @@ export function isNavItemActive(pathname: string, item: DashboardNavItem) {
 
 const dashboardPathLabels: Record<string, string> = {
   dashboard: "Dashboard",
-  runash: "RunAsh",
-  chat: "Chat",
-  editor: "Editor",
-  stream: "Streaming Studio",
-  seller: "Seller Studio",
+  stream: "Streaming",
+  agents: "Agents",
+  automation: "Automation",
+  workflows: "Workflows",
   ecommerce: "Store",
-  history: "Order History",
-  invoices: "Invoices",
-  support: "Support",
-  streams: "Streams",
+  seller: "Seller",
+  settings: "Settings",
+  payments: "Payments",
 }
 
 function formatSegmentLabel(segment: string) {
@@ -217,9 +211,25 @@ function formatSegmentLabel(segment: string) {
     .join(" ")
 }
 
+function resolveCurrentSection(pathname: string, fallback: string | undefined) {
+  if (matchesPathPrefix(pathname, "/agents")) return "Agents"
+  if (matchesPathPrefix(pathname, "/automation")) return "Automation"
+  if (matchesPathPrefix(pathname, "/workflows")) return "Workflows"
+  if (matchesPathPrefix(pathname, "/stream")) return "Streaming"
+  if (matchesPathPrefix(pathname, "/ecommerce")) return "Store"
+  if (matchesPathPrefix(pathname, "/seller")) return "Seller"
+  if (matchesPathPrefix(pathname, "/settings")) return "Settings"
+  if (matchesPathPrefix(pathname, "/payments")) return "Payments"
+  if (matchesPathPrefix(pathname, "/dashboard")) return "Dashboard"
+
+  return fallback ?? "Dashboard"
+}
+
 export function resolveDashboardNavContext(pathname: string): DashboardNavContext {
-  const matchedItem = dashboardNavigationConfig.items.find((item) => isNavItemActive(pathname, item))
-  const sectionLabel = matchedItem?.label ?? "Workspace"
+  const matchedItem = dashboardNavigationConfig.items.find((item) =>
+    isNavItemActive(pathname, item),
+  )
+  const currentSection = resolveCurrentSection(pathname, matchedItem?.label)
   const pathSegments = pathname.split("/").filter(Boolean)
 
   const breadcrumbs = pathSegments.length
@@ -235,7 +245,7 @@ export function resolveDashboardNavContext(pathname: string): DashboardNavContex
     : [{ label: "Dashboard" }]
 
   return {
-    currentSection: sectionLabel,
+    currentSection,
     breadcrumbs,
   }
 }

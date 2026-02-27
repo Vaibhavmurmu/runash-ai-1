@@ -2,12 +2,63 @@
 
 Last updated: 2026-02
 
+## Admin auth/org operations update (2026-02)
+
+- Added an admin auth/org route inventory with UI coverage mapping at `docs/ADMIN_AUTH_ORG_ROUTE_INVENTORY.md`.
+- Added a dedicated incident + rollback runbook for privileged org/provider/tenant-user changes at `docs/AUTH_ORG_INCIDENT_RUNBOOK.md`.
+- Admin organization lifecycle, provider mapping, and tenant-scoped user operations now require privileged authorization and write to admin audit logs for traceability.
+
 ## Security hardening update (2026-02)
 
 - OAuth account linking now enforces verified identity linking by default at runtime (no permissive fallback toggle).
 - Sensitive account actions (password change, API key rotation, and session revoke-all) now trigger session invalidation and session cookie revocation to force secure re-authentication.
 - Auth/admin-sensitive APIs are protected with stricter endpoint-specific rate limits in addition to baseline API rate controls.
 - Auth event logging now redacts credentials/tokens/secrets and stores anonymized session identifiers for audit safety.
+
+## Better Auth storage migration update (2026-02)
+
+- `db/migrations/0000_auth_neon_better_auth_baseline.sql` now ships executable DDL (not placeholder text) for Better Auth core tables: `accounts`, `sessions`, and `verification_tokens`, while aligning profile fields on the existing `users` table.
+- The same baseline migration now provisions RunAsh session-mode tables used by `/api/auth/sessions/**`: `auth_session_identities`, `auth_session_registry`, and `auth_one_time_transfer_tokens`.
+- Migration remains idempotent (`IF NOT EXISTS` guards + additive `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`) to support rolling deploys and repeated CI bootstrap runs.
+
+### Migration notes (Better Auth + session registry baseline)
+
+1. Apply migration: `db/migrations/0000_auth_neon_better_auth_baseline.sql`.
+2. Verify table creation: `accounts`, `sessions`, `verification_tokens`, `auth_session_identities`, `auth_session_registry`, `auth_one_time_transfer_tokens`.
+3. Validate runtime endpoints after migration:
+   - `GET /api/auth/sessions` (list)
+   - `DELETE /api/auth/sessions` (single/all revoke)
+   - `POST /api/auth/sessions/switch` (scope switch)
+4. Backward-compatibility guarantees:
+   - Existing `users` table + field names are preserved.
+   - API signatures for session list/switch/revoke are unchanged.
+
+### Rollback guidance (schema + runtime)
+
+- **Preferred rollback:** application-level rollback first (redeploy previous stable app artifact) because this migration is additive and does not drop/rename existing auth columns.
+- **If DB rollback is required:**
+  1. Disable new session-mode writes (temporary feature/config gate) so no new rows are introduced.
+  2. Revert app to the previous release and monitor auth/session error rates.
+  3. Drop only newly created tables if the previous release cannot tolerate them:
+     - `auth_one_time_transfer_tokens`
+     - `auth_session_registry`
+     - `auth_session_identities`
+     - `verification_tokens`
+     - `sessions`
+     - `accounts`
+- **Do not rollback by removing `users` auth profile columns** (`email_verified`, `image`, `name`, `created_at`, `updated_at`) unless a dedicated data-migration plan is approved, because other runtime paths may already depend on them.
+
+## Unified register backend flow update (2026-02)
+
+- `POST /api/auth/register` now delegates account creation to `auth.api.signUpEmail` from `lib/auth.ts`, making Better Auth the registration source of truth.
+- Legacy response fields (`message`, `user`) are preserved via compatibility mapping for existing frontend callers.
+- Signup entrypoints (`app/get-started/page.tsx`, `components/auth/register-form.tsx`, and `components/auth/better-sign-up-card.tsx`) now converge on `/api/auth/register`.
+
+## Email verification delivery hardening update (2026-02)
+
+- Better Auth email verification callbacks now normalize all verification links to the canonical endpoint (`/api/auth/verify-email`) before dispatch.
+- Verification emails now route through the safety-aware `lib/email.ts` utility so allowlist/sink/dry-run controls and provider safeguards are consistently applied.
+- Signup UI copy explicitly states that email/password accounts require verification before first login to reduce onboarding ambiguity.
 
 ## Get-started onboarding flow update (2026-02)
 
@@ -44,6 +95,22 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 - Resend path:
   - `RESEND_API_KEY`
 
+### Required auth database environment matrix
+
+| Priority | Environment variable | Required | Notes |
+|---|---|---|---|
+| 1 | `DATABASE_URL` | Recommended | Canonical auth/runtime DB URL. |
+| 2 | `NEON_DATABASE_URL` | Fallback | Used when `DATABASE_URL` is not set. |
+| 3 | `POSTGRES_URL` | Fallback | Platform-provided pooled Postgres URL. |
+| 4 | `POSTGRES_PRISMA_URL` | Fallback | Prisma-compatible pooled URL fallback. |
+| 5 | `POSTGRES_URL_NON_POOLING` | Fallback | Direct/non-pooled connection fallback. |
+| 6 | `runash_POSTGRES_URL` | Fallback | Legacy project-prefixed pooled URL. |
+| 7 | `runash_POSTGRES_URL_NON_POOLING` | Fallback | Legacy project-prefixed non-pooled URL. |
+
+**Resolution precedence:** `DATABASE_URL -> NEON_DATABASE_URL -> POSTGRES_URL -> POSTGRES_PRISMA_URL -> POSTGRES_URL_NON_POOLING -> runash_POSTGRES_URL -> runash_POSTGRES_URL_NON_POOLING`.
+
+**Runtime guard behavior:** auth/OTP/SSO modules now resolve DB connectivity only through `lib/db.ts`. If no DB URL env is configured, startup/runtime paths throw an actionable error that lists supported env names, precedence order, and an example value format.
+
 ### Migration notes
 
 1. Replace `SMTP_PASS` with `SMTP_PASSWORD` in deployment secrets.
@@ -63,6 +130,19 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 - Model dialog requests are zod-validated (`modelId`, `mode`, `input`, optional `sourceModule/context`) and return a normalized envelope `{ requestId, status, output, error }`.
 - Model dialog runs are persisted in `model_dialog_runs` and exposed through `GET /api/dashboard/model-dialog/recent`, so recent run history survives dashboard refresh/navigation while remaining scoped to the authenticated user.
 
+## Tenant-aware user/account query guard update (2026-02)
+
+- Added a tenant guard utility in `lib/api/route-auth.ts` that resolves `organizationId` from authenticated session (`ssoOrganization`) and produces SQL predicates for tenantized tables.
+- User/account mutable routes now enforce tenant boundary predicates against `users.sso_organization_id` in addition to user-id checks (including `app/api/users/[id]/profile` and `app/api/auth/account`).
+- Compatibility mode is enabled for migration safety: when a session has an organization, predicates allow rows with `NULL` organization (`organization_id IS NULL` equivalent for this schema) to preserve access to legacy records during backfill.
+
+### Tenant migration compatibility + rollback notes
+
+1. **Backfill window:** keep guard compatibility mode (`org = sessionOrg OR org IS NULL`) while tenant backfill migrates legacy null-org rows.
+2. **Cutover:** once null-org user/account rows are backfilled, switch to strict tenant mode (`org = sessionOrg`) by disabling legacy-null fallback in guard call-sites.
+3. **Rollback:** if tenant backfill causes access regressions, temporarily restore compatibility mode and re-run targeted backfill/verification before re-enabling strict mode.
+4. **Safety constraints:** do not broaden predicates beyond same-session tenant scope; do not log tenant/auth identifiers beyond existing redaction policy.
+
 ## OpenAPI + Scalar auth docs update (2026-02)
 
 - Added generated OpenAPI spec output for auth routes at `docs/openapi/auth.openapi.json`.
@@ -71,6 +151,16 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 - Added CI guard to regenerate and diff-check `docs/openapi/auth.openapi.json` to keep docs in sync with route contract changes.
 
 ## 1) Runtime and source-of-truth files
+
+## 2026-02 auth/payment validation note (no auth contract changes)
+
+- **Change type:** validation-only run and policy documentation refresh; no auth endpoint additions/removals and no request/response contract changes.
+- **Impacted auth/payment flows reviewed:**
+  - Session validation (`GET /api/auth/get-session`) used by protected payment surfaces
+  - Login/session continuity behavior for payment-linked routes
+  - Authorization guard posture (`401` unauthenticated, `403` unauthorized) on payment/auth-adjacent pages
+- **Risk assessment:** low behavior risk; primary execution risk remains environment-dependent build failures when required database configuration is missing.
+- **Rollback plan:** revert documentation-only commit; no runtime rollback or credential/session migration is required.
 
 ### Better Auth runtime and adapters
 - `lib/auth.ts` — Better Auth instance, provider config, account-linking hooks, and the canonical server-side session resolver (`getAuthSessionFromHeaders`, `getServerAuthSession`).
@@ -171,6 +261,7 @@ Note: middleware still treats `/signup` as public, but no `app/signup/page.tsx` 
 
 - Protected routes are evaluated in `middleware.ts`.
 - If no valid auth session is resolved, browser routes redirect to `/login`; API routes return `401`.
+- Privileged route prefixes are excluded from the public allowlist: seller surfaces (`/seller/**`, `/api/seller/**`, `/api/v1/seller/**`) and admin surfaces (`/admin/**`, `/ecommerce/admin/**`, `/api/admin/**`) always require authenticated role-aware checks.
 - Session checks rely on Better Auth session cookies, middleware validation through `/api/auth/get-session`, and `auth.api.getSession` in server helpers/accessors.
 - Session minting for passkey and magic-link paths now uses the canonical auth secret resolver in `lib/auth.ts`, keeping a single source-of-truth secret for Better Auth runtime and custom JWT issuance.
 - Legacy NextAuth cookie parsing remains available in session accessor fallback paths when feature-flagged compatibility fallback is enabled.
@@ -201,11 +292,11 @@ Note: middleware still treats `/signup` as public, but no `app/signup/page.tsx` 
 
 ### Added in this update
 - `db/migrations/README.md` — migration ownership and execution status.
-- `db/migrations/0000_auth_neon_better_auth_baseline.sql` — baseline planned migration artifact placeholder for auth/session/account tables.
+- `db/migrations/0000_auth_neon_better_auth_baseline.sql` — executable baseline migration artifact for Better Auth and RunAsh session tables.
 
 ### Planned next steps
-- Convert planned baseline artifact into an executable migration once the canonical Drizzle table definitions are finalized.
 - Add Drizzle migration journal metadata when migration generation is turned on for CI-managed schema rollout.
+- Keep schema registry updates (`db/schema.ts`) synchronized with any auth table contract changes before release cut.
 
 ## 6) Payment-impacting auth notes
 
@@ -492,3 +583,66 @@ These pages include:
 - `/api/streams/schedule` now requires a resolved server session via `getServerAuthSession`; unauthenticated calls return `401 Unauthorized`.
 - Stream schedule ownership is keyed exclusively by `session.user.id`; `x-user-id` overrides and `demo-user` fallback behavior were removed.
 - Development-only fallback identity is available only when explicitly enabled with `ENABLE_DEV_SCHEDULE_USER_FALLBACK=true` plus `DEV_SCHEDULE_FALLBACK_USER_ID` under `NODE_ENV=development`, and remains disabled by default.
+
+ 
+## 2026-02 tenant boundary guard for user profile/admin user management
+
+- Added shared tenant boundary helpers in `lib/api/route-auth.ts` to standardize session `ssoOrganization` resolution and resource-tenant enforcement.
+- `GET|PATCH /api/users/[id]/profile` now enforce tenant scoping for reads and writes.
+- Admin user-management endpoints (`/api/admin/users/*`) now enforce same-tenant access before reading or mutating target users.
+- Legacy compatibility for users with `sso_organization_id IS NULL` is preserved:
+  - Reads remain allowed for authenticated actors in their current tenant scope.
+  - First successful tenant-scoped mutation migrates the legacy row by backfilling `sso_organization_id` with the actor tenant.
+  - Cross-tenant access continues to be denied even when legacy compatibility mode is enabled.
+
+## 2026-02 OTP + passwordless route hardening
+
+- OTP verification now executes explicit query branches for `email` and `phone_number` lookups to avoid mixed-identifier predicate ambiguity.
+- OTP and magic-link internal logs use structured, redacted metadata (`identifierHash`, `purpose`, `outcome`) and avoid emitting raw OTP codes, tokens, email addresses, or phone numbers.
+- `PUT /api/auth/otp/email` login verification now consistently issues both server session records and auth cookies after successful OTP verification.
+- `forgot-password`, `reset-password`, `verify-email`, and magic-link endpoints now align on replay-safe token handling, endpoint-level throttling, and consistent error payloads for invalid/expired token states.
+- Magic-link verification now records a server-side user session before setting browser auth cookies to match password/OTP session issuance expectations.
+
+
+## 2026-02 Better Auth baseline schema + session decommissioning controls
+
+### Migration summary
+- Replaced placeholder migration `db/migrations/0000_auth_neon_better_auth_baseline.sql` with concrete Better Auth baseline SQL for `users`, `accounts`, `sessions`, and `verification_tokens`.
+- Migration is idempotent (`IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`) to support mixed-env rollouts.
+- `db/schema.ts` now exposes active auth/session table mappings consumed by auth/session domain code.
+
+### Session lifecycle behavior verified
+- `GET /api/auth/sessions` now returns active concurrent sessions and `concurrentSessionCount` for UX/state reconciliation.
+- `DELETE /api/auth/sessions` supports both single-session revoke (`sessionId`) and all-session revoke (`revokeAll=true`).
+- `POST /api/auth/sessions/switch` preserves scoped session switching and not-found semantics.
+
+### Legacy NextAuth fallback sunset path
+- Legacy cookie fallback remains behind `allow_legacy_next_auth_fallback`.
+- New kill switch `enforce_legacy_next_auth_fallback_sunset` hard-disables fallback for decommission windows.
+- Optional date cutoff via `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK_SUNSET_AT` (ISO timestamp) disables fallback after the configured instant.
+- Telemetry events for retirement readiness:
+  - `auth.legacy_fallback.used`
+  - `auth.legacy_fallback.unavailable`
+  - `auth.legacy_fallback.blocked`
+
+### Rollout and rollback
+1. Deploy migration to staging and production.
+2. Validate Better Auth login + session listing/revoke/switch flows.
+3. Monitor fallback telemetry; when `auth.legacy_fallback.used` is zero for a full release window, enable `enforce_legacy_next_auth_fallback_sunset`.
+4. Remove legacy cookie parsing in follow-up release after sunset confirmation.
+
+Rollback:
+1. Set `FEATURE_FLAG_ENFORCE_LEGACY_NEXT_AUTH_FALLBACK_SUNSET=false` (or unset) to immediately re-enable fallback eligibility.
+2. If needed, set `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK=true`.
+3. Keep schema changes in place (non-breaking additive migration); no destructive rollback required.
+4. Re-validate auth session endpoints and monitor `auth.legacy_fallback.used` for expected recovery.
+
+
+## Wallet/Link Authentication Hardening
+
+- Wallet Link checkout initiation requires **step-up auth context** for high-value and high-risk operations:
+  - `human_confirmed=true` for HITL approval gates.
+  - `mfa_verified=true` for MFA-gated flows.
+- High-risk wallet mutations (default method switch, subscription status updates) are rejected unless HITL + MFA assertions are present.
+- Geo/risk checks are evaluated at request time and surfaced as explicit reason codes to callers for adaptive auth UX (review queues, challenge loops, or hard-deny).
+- Auth-adjacent telemetry for wallet/link flows is emitted only through sanitized structured logs; secrets, OTP values, and card data are not logged.

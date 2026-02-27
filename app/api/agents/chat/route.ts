@@ -3,7 +3,6 @@ import { openai } from "@ai-sdk/openai"
 import { streamText } from "ai"
 import { z } from "zod"
 import { getServerAuthSession } from "@/lib/auth/session"
-
 import { logApiEvent } from "@/lib/api/logging"
 import { resolveRequestId } from "@/lib/api/response"
 import { rateLimit } from "@/lib/rate-limit"
@@ -13,11 +12,21 @@ import {
   updateAgentMessage,
 } from "@/lib/repositories/agent-orchestration"
 import { RELAY_AGENT_TOOLS } from "@/lib/skills/relay-tool-registry"
+import { AGENT_ROLES } from "@/services/agent-role-orchestration"
 import { AgentOrchestrationService, type SupportedTool } from "@/services/agent-orchestration-service"
 import { enqueueToolJob } from "@/services/agent-tool-queue-worker"
-import { buildToolPlan } from "./chat-request-handler"
+import { buildDefaultToolPayloads, buildToolPlan, resolveRunAshChatToolSelection } from "./chat-request-handler"
 
 const requestSchema = z.object({
+  agentRole: z.enum(AGENT_ROLES).default("broker"),
+  preferences: z
+    .object({
+      prioritizeSustainability: z.boolean().optional(),
+      maxBudgetMinor: z.number().int().nonnegative().optional(),
+      minMarginPercent: z.number().min(0).max(100).optional(),
+      urgencyLevel: z.enum(["low", "medium", "high"]).optional(),
+    })
+    .optional(),
   sessionId: z.string().trim().min(1).optional(),
   title: z.string().trim().min(1).max(120).optional(),
   message: z.string().trim().min(1).max(5000),
@@ -80,16 +89,47 @@ export async function POST(request: NextRequest) {
           await updateAgentMessage(assistantMessage.id, { status: "streaming" })
 
           const toolOutputs: Record<string, unknown> = {}
-          const toolPlan = buildToolPlan(parsed.data.tools as SupportedTool[])
+          const selectedTools = resolveRunAshChatToolSelection(
+            sanitizedMessage,
+            parsed.data.tools as SupportedTool[],
+          )
+          const toolPlan = buildToolPlan(selectedTools)
+          const defaultPayloads = await buildDefaultToolPayloads({
+            message: sanitizedMessage,
+            sessionId: agentSession.id,
+            requestedTools: selectedTools,
+            authSession: session,
+          })
+          const checkoutValidation = defaultPayloads?.checkout_validation as
+            | { status: "blocked"; missing_fields: string[]; next_action: string }
+            | undefined
+
+          if (checkoutValidation?.status === "blocked") {
+            send("tool_result", {
+              tool: "initiate_link_checkout",
+              result: {
+                status: "blocked",
+                reason: "missing_checkout_context",
+                missing_fields: checkoutValidation.missing_fields,
+                next_action: checkoutValidation.next_action,
+              },
+              fromCache: false,
+            })
+          }
 
           for (const tool of toolPlan.immediate) {
+            if (tool === "initiate_link_checkout" && checkoutValidation?.status === "blocked") {
+              continue
+            }
             send("tool_start", { tool, messageId: assistantMessage.id, status: "tool-running" })
 
-            const payload = parsed.data.toolPayloads?.[tool] ?? { query: sanitizedMessage }
+            const payload = parsed.data.toolPayloads?.[tool] ?? defaultPayloads?.[tool] ?? { query: sanitizedMessage }
             const execution = await AgentOrchestrationService.executeToolWithPolicy(tool, payload, {
               sessionId: agentSession.id,
               messageId: assistantMessage.id,
               tenantId: userId,
+              role: parsed.data.agentRole,
+              preferences: parsed.data.preferences,
             })
 
             toolOutputs[tool] = execution.result
@@ -97,8 +137,11 @@ export async function POST(request: NextRequest) {
           }
 
           for (const tool of toolPlan.queued) {
+            if (tool === "initiate_link_checkout" && checkoutValidation?.status === "blocked") {
+              continue
+            }
             send("tool_start", { tool, messageId: assistantMessage.id, status: "tool-running" })
-            const payload = parsed.data.toolPayloads?.[tool] ?? { query: sanitizedMessage }
+            const payload = parsed.data.toolPayloads?.[tool] ?? defaultPayloads?.[tool] ?? { query: sanitizedMessage }
             const jobId = enqueueToolJob({
               tool,
               payload,

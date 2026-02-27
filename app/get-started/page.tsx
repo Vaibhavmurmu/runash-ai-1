@@ -39,6 +39,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { registerWithUnifiedRoute } from "@/lib/auth/register-client"
 
 const ROLE_OPTIONS = [
   { key: "creator", title: "Creator", desc: "Go live, manage streams, engage your audience" },
@@ -137,14 +138,15 @@ export default function GetStartedPage() {
           return
         }
 
-        const response = await fetch("/api/auth/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: formData.email, password: formData.password, name: formData.name }),
+        const registration = await registerWithUnifiedRoute({
+          email: formData.email,
+          password: formData.password,
+          name: formData.name,
+          username: formData.username,
         })
 
-        if (response.ok) setStep(2)
-        else setError("Unable to create account. Please try again.")
+        if (registration.ok) setStep(2)
+        else setError(registration.message || "Unable to create account. Please try again.")
       } else if (step === 2) {
         setStep(3)
       }
@@ -200,9 +202,12 @@ export default function GetStartedPage() {
             RunAsh Auth pages use custom orange, yellow and white gradient styling with both light and dark support.
           </p>
 
-          <div className="flex items-center justify-center gap-3">
+          <div className="flex items-center justify-center gap-3 flex-wrap">
             <Button className="rounded-full px-10 bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-400 text-white hover:opacity-90" onClick={() => { setStep(1); setOpen(true) }}>
               Get started
+            </Button>
+            <Button variant="outline" className="rounded-full px-10 border-orange-200 dark:border-white/20 bg-white/70 dark:bg-black/40" onClick={() => router.push("/waitlist")}>
+              Join waitlist
             </Button>
             <Button variant="outline" className="rounded-full px-10 border-orange-200 dark:border-white/20 bg-white/70 dark:bg-black/40" onClick={() => router.push("/login")}>
               Welcome back
@@ -285,7 +290,7 @@ export default function GetStartedPage() {
             <Card className="mx-auto max-w-2xl border-orange-200 dark:border-white/10 bg-orange-50/40 dark:bg-white/[0.03]">
               <CardHeader className="pb-3 text-center">
                 <CardTitle>Create account</CardTitle>
-                <CardDescription className="text-slate-600 dark:text-white/60">Use OAuth, advanced auth, or continue with email.</CardDescription>
+                <CardDescription className="text-slate-600 dark:text-white/60">Use OAuth, advanced auth, or continue with email. Email/password sign-up requires email verification before login.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
                 {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
@@ -340,6 +345,7 @@ export default function GetStartedPage() {
 
                   <div className="flex items-start gap-2"><Checkbox id="terms" required className="mt-1" /><Label htmlFor="terms" className="text-xs text-slate-600 dark:text-white/60">By continuing you agree to cookies consent, scopes, and claims policy.</Label></div>
                   <Button type="submit" disabled={isLoading} className="w-full rounded-full bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-400 text-white hover:opacity-90">{isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Continue"}</Button>
+                  <p className="text-xs text-slate-500 dark:text-white/50 text-center">After sign-up, verify your email from the link we send before logging in.</p>
                 </form>
 
                 <div className="text-xs text-slate-500 dark:text-white/40">⇪ Upload screenshot-ready onboarding available after sign-in.</div>

@@ -150,7 +150,7 @@ export default function StreamingStudio() {
                 <TabsTrigger value="platforms">Platforms</TabsTrigger>
               </TabsList>
               <TabsContent value="chat" className="mt-4">
-                <StreamChat isStreaming={isStreaming} />
+                <StreamChat isStreaming={isStreaming} streamId={currentStream?.id ?? null} />
               </TabsContent>
               <TabsContent value="analytics" className="mt-4">
                 <StreamAnalytics isStreaming={isStreaming} metrics={streamMetrics} />
@@ -179,7 +179,7 @@ export default function StreamingStudio() {
 
             <Card>
               <CardContent className="p-4">
-                <StreamSettings />
+                <StreamSettings streamId={currentStream?.id ?? null} />
               </CardContent>
             </Card>
 

@@ -556,7 +556,37 @@ Email automation templates are available for:
 
 ## Streaming Session Backend Contract (2026-02)
 
-- `EnhancedStreamingStudio` now uses server-backed stream session APIs for create/start/end lifecycle, live metrics polling, and health telemetry.
+- `EnhancedStreamingStudio` uses server-backed stream session APIs for create/start/end lifecycle and authoritative status transitions.
+- The studio reads live health + metrics through a hybrid realtime strategy: primary realtime channel delivery with polling fallback for continuity.
 - Stream lifecycle status is maintained on the server and mirrored in UI with optimistic updates that rollback when API requests fail.
-- Stream chat relay now persists through `app/api/streams/[id]/chat/*` endpoints with connector/platform metadata to support multi-platform attribution.
+- Stream chat relay persists through `app/api/streams/[id]/chat/*` endpoints with connector/platform metadata for multi-platform attribution.
+
+### Streaming Studio Runtime Architecture
+
+1. **Session authority (API)**
+   - Stream lifecycle transitions (`create`, `start`, `end`) are accepted only through server routes so the backend remains source-of-truth.
+   - Client controls in Studio issue mutation requests and reconcile local state with returned server timestamps/status.
+
+2. **Realtime event path (primary)**
+   - Studio subscribes to a realtime event channel for low-latency stream health, viewer, and interaction signals.
+   - Event handling is append-only and idempotent on the client to avoid duplicate metric jumps during reconnects.
+
+3. **Polling path (fallback and healing)**
+   - Periodic polling remains enabled as a safety net to refill missed events and verify channel health.
+   - Poll cadence is adaptive (faster while live, slower for background/manage views) to balance freshness and load.
+
+4. **Resilience behavior**
+   - On channel interruption, Studio automatically degrades to polling-only mode while surfacing channel health telemetry.
+   - When channel recovery is detected, Studio re-subscribes and keeps polling briefly for state convergence before returning to normal cadence.
+
+### Incident rollback playbook (production)
+
+If realtime delivery contributes to a production incident:
+
+1. Disable the realtime channel subscription at runtime/feature-flag level.
+2. Force Studio + dashboard read paths to polling-only mode.
+3. Validate stream lifecycle + metrics correctness via polling endpoints and health telemetry.
+4. Re-enable realtime channel only after root-cause mitigation and a controlled canary.
+
+This rollback keeps lifecycle controls operational while reducing transport complexity during active incidents. See `docs/API_CONTRACTS.md` for endpoint-level contracts.
 

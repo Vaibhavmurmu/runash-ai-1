@@ -130,7 +130,7 @@ export function RegisterForm() {
           <CardTitle className="text-3xl font-bold bg-gradient-to-r from-orange-500 to-orange-600 bg-clip-text text-transparent">
             Create Account
           </CardTitle>
-          <CardDescription className="text-base">Join us and start your journey today</CardDescription>
+          <CardDescription className="text-base text-foreground/80 dark:text-foreground/75">Join us and start your journey today</CardDescription>
         </CardHeader>
         <CardContent className="relative">
           {error && (
@@ -214,8 +214,9 @@ export function RegisterForm() {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent focus-visible:ring-2 focus-visible:ring-orange-500/80"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4 text-muted-foreground" />
@@ -239,11 +240,11 @@ export function RegisterForm() {
               />
               <Label htmlFor="terms" className="text-sm font-normal leading-5">
                 I agree to the{" "}
-                <Link href="/terms" className="text-orange-600 hover:text-orange-700 hover:underline">
+                <Link href="/terms" className="text-orange-700 dark:text-orange-400 hover:text-orange-800 dark:hover:text-orange-300 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/80 focus-visible:ring-offset-2">
                   Terms of Service
                 </Link>{" "}
                 and{" "}
-                <Link href="/privacy" className="text-orange-600 hover:text-orange-700 hover:underline">
+                <Link href="/privacy" className="text-orange-700 dark:text-orange-400 hover:text-orange-800 dark:hover:text-orange-300 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/80 focus-visible:ring-offset-2">
                   Privacy Policy
                 </Link>
               </Label>
@@ -311,11 +312,11 @@ export function RegisterForm() {
           </div>
         </CardContent>
         <CardFooter className="relative flex flex-col items-center justify-center space-y-2">
-          <div className="text-sm text-muted-foreground">
+          <div className="text-sm text-foreground/75 dark:text-foreground/70">
             Already have an account?{" "}
             <Link
               href="/login"
-              className="text-orange-600 hover:text-orange-700 hover:underline font-medium transition-colors"
+              className="text-orange-700 dark:text-orange-400 hover:text-orange-800 dark:hover:text-orange-300 hover:underline font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/80 focus-visible:ring-offset-2"
             >
               Sign in
             </Link>

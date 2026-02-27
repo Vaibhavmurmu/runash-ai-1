@@ -76,6 +76,14 @@ export default function Home() {
             </Button>
             <Button
               size="lg"
+              variant="secondary"
+              className="bg-white/90 text-orange-700 hover:bg-white"
+              onClick={() => router.push("/waitlist")}
+            >
+              Join Waitlist <Users className="ml-2 h-4 w-4" />
+            </Button>
+            <Button
+              size="lg"
               variant="outline"
               className="border-orange-500 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950"
               onClick={() => router.push("/demo")}

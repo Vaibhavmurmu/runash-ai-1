@@ -37,6 +37,10 @@ const STEP_TYPES = [
   { value: "create_order", label: "Create Order", icon: ShoppingCart, category: "Product" },
   { value: "wait", label: "Wait/Delay", icon: Clock, category: "Control" },
   { value: "webhook", label: "Webhook", icon: Webhook, category: "Integration" },
+  { value: "send_receipt", label: "Send Receipt", icon: Mail, category: "Payment" },
+  { value: "notify_support", label: "Notify Support", icon: Bell, category: "Payment" },
+  { value: "retry_reminder", label: "Retry Reminder", icon: Clock, category: "Payment" },
+  { value: "unlock_feature_entitlement", label: "Unlock Feature Entitlement", icon: Zap, category: "Payment" },
 ]
 
 const TRIGGER_TYPES = [
@@ -226,6 +230,10 @@ export function WorkflowBuilder({ workflow, onSave, onCancel }: WorkflowBuilderP
                 <SelectItem value="order_created">Order Created</SelectItem>
                 <SelectItem value="order_completed">Order Completed</SelectItem>
                 <SelectItem value="product_low_stock">Product Low Stock</SelectItem>
+                <SelectItem value="payment_succeeded">Payment Succeeded</SelectItem>
+                <SelectItem value="payment_failed">Payment Failed</SelectItem>
+                <SelectItem value="invoice_overdue">Invoice Overdue</SelectItem>
+                <SelectItem value="checkout_abandoned">Checkout Abandoned</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -324,6 +332,8 @@ export function WorkflowBuilder({ workflow, onSave, onCancel }: WorkflowBuilderP
                             <SelectItem value="welcome">Welcome Email</SelectItem>
                             <SelectItem value="thank_you">Thank You Email</SelectItem>
                             <SelectItem value="low_stock">Low Stock Alert</SelectItem>
+                            <SelectItem value="receipt">Payment Receipt</SelectItem>
+                            <SelectItem value="retry_payment">Retry Payment Reminder</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>

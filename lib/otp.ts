@@ -1,8 +1,31 @@
-import { neon } from "@neondatabase/serverless"
-import { randomInt } from "crypto"
-import { sendEmail } from "./email"
+import { createHash, randomInt, randomUUID } from "crypto"
+import { logApiEvent } from "./api/logging"
+import { assertDatabaseConfigured, sql } from "./db"
+import { sendAuthEmail } from "./email"
 
-const sql = neon(process.env.DATABASE_URL!)
+assertDatabaseConfigured("lib/otp.ts")
+
+type OtpLogLevel = "info" | "warn" | "error"
+
+function hashIdentifier(identifier: string): string {
+  return createHash("sha256").update(identifier).digest("hex").slice(0, 16)
+}
+
+function logOtpEvent(
+  level: OtpLogLevel,
+  event: string,
+  requestId: string,
+  details: Record<string, unknown>,
+  error?: unknown,
+) {
+  logApiEvent(level, event, {
+    requestId,
+    route: "internal/otp",
+    method: "INTERNAL",
+    details,
+    error,
+  })
+}
 
 export interface OTPCode {
   id: number
@@ -86,7 +109,7 @@ export async function checkOTPRateLimit(
       attemptsLeft,
     }
   } catch (error) {
-    console.error("Error checking OTP rate limit:", error)
+    logOtpEvent("error", "otp.rate_limit.check_failed", randomUUID(), { outcome: "error", type }, error)
     return { allowed: false, attemptsLeft: 0 }
   }
 }
@@ -99,6 +122,7 @@ export async function createEmailOTP(
   ipAddress?: string,
   userAgent?: string,
 ): Promise<{ success: boolean; message: string; expiresIn?: number }> {
+  const requestId = randomUUID()
   try {
     // Check rate limiting
     const rateLimit = await checkOTPRateLimit(email, "email")
@@ -141,7 +165,13 @@ export async function createEmailOTP(
       expiresIn: 10 * 60, // 10 minutes in seconds
     }
   } catch (error) {
-    console.error("Error creating email OTP:", error)
+    logOtpEvent(
+      "error",
+      "otp.email.create_failed",
+      requestId,
+      { outcome: "error", identifierHash: hashIdentifier(email), purpose, vendor: "email" },
+      error,
+    )
     return { success: false, message: "Failed to create OTP" }
   }
 }
@@ -154,6 +184,7 @@ export async function createSMSOTP(
   ipAddress?: string,
   userAgent?: string,
 ): Promise<{ success: boolean; message: string; expiresIn?: number }> {
+  const requestId = randomUUID()
   try {
     // Check rate limiting
     const rateLimit = await checkOTPRateLimit(phoneNumber, "sms")
@@ -196,7 +227,13 @@ export async function createSMSOTP(
       expiresIn: 5 * 60, // 5 minutes in seconds
     }
   } catch (error) {
-    console.error("Error creating SMS OTP:", error)
+    logOtpEvent(
+      "error",
+      "otp.sms.create_failed",
+      requestId,
+      { outcome: "error", identifierHash: hashIdentifier(phoneNumber), purpose, vendor: "mock-sms" },
+      error,
+    )
     return { success: false, message: "Failed to create OTP" }
   }
 }
@@ -208,22 +245,50 @@ export async function verifyOTP(
   purpose: string,
   type: "email" | "sms",
 ): Promise<{ success: boolean; message: string; userId?: number }> {
-  try {
-    const identifierField = type === "email" ? "email" : "phone_number"
+  return verifyOTPWithClient(sql, code, identifier, purpose, type)
+}
 
-    // Find the OTP code
-    const otpResult = await sql`
-      SELECT * FROM otp_codes 
-      WHERE ${sql(identifierField)} = ${identifier} 
-        AND code = ${code} 
-        AND purpose = ${purpose} 
-        AND type = ${type}
-        AND is_active = true 
-        AND expires_at > NOW()
-        AND used_at IS NULL
-      ORDER BY created_at DESC 
-      LIMIT 1
-    `
+export async function verifyOTPWithClient(
+  sqlClient: ReturnType<typeof neon>,
+  code: string,
+  identifier: string, // email or phone number
+  purpose: string,
+  type: "email" | "sms",
+): Promise<{ success: boolean; message: string; userId?: number }> {
+  const requestId = randomUUID()
+  try {
+    const otpResult = await (type === "email"
+      ? sqlClient`
+          SELECT * FROM otp_codes 
+          WHERE email = ${identifier} 
+            AND code = ${code} 
+            AND purpose = ${purpose} 
+            AND type = ${type}
+            AND is_active = true 
+            AND expires_at > NOW()
+            AND used_at IS NULL
+          ORDER BY created_at DESC 
+          LIMIT 1
+        `
+      : sqlClient`
+          SELECT * FROM otp_codes 
+          WHERE phone_number = ${identifier} 
+            AND code = ${code} 
+            AND purpose = ${purpose} 
+            AND type = ${type}
+            AND is_active = true 
+            AND expires_at > NOW()
+            AND used_at IS NULL
+          ORDER BY created_at DESC 
+          LIMIT 1
+        `)
+
+    logOtpEvent("info", "otp.verify.attempt", requestId, {
+      outcome: otpResult.length > 0 ? "candidate_found" : "candidate_missing",
+      type,
+      purpose,
+      identifierHash: hashIdentifier(identifier),
+    })
 
     if (otpResult.length === 0) {
       return { success: false, message: "Invalid or expired OTP code" }
@@ -237,41 +302,67 @@ export async function verifyOTP(
     }
 
     // Increment attempts
-    await sql`
+    await sqlClient`
       UPDATE otp_codes 
       SET attempts = attempts + 1 
       WHERE id = ${otpRecord.id}
     `
 
     // Mark as used
-    await sql`
+    await sqlClient`
       UPDATE otp_codes 
       SET used_at = NOW(), is_active = false 
       WHERE id = ${otpRecord.id}
     `
 
     // Clean up other active OTP codes for this identifier and purpose
-    await sql`
-      UPDATE otp_codes 
-      SET is_active = false 
-      WHERE ${sql(identifierField)} = ${identifier} 
-        AND purpose = ${purpose} 
-        AND id != ${otpRecord.id}
-    `
+    if (type === "email") {
+      await sqlClient`
+        UPDATE otp_codes 
+        SET is_active = false 
+        WHERE email = ${identifier} 
+          AND purpose = ${purpose} 
+          AND id != ${otpRecord.id}
+      `
+    } else {
+      await sqlClient`
+        UPDATE otp_codes 
+        SET is_active = false 
+        WHERE phone_number = ${identifier} 
+          AND purpose = ${purpose} 
+          AND id != ${otpRecord.id}
+      `
+    }
 
-    return {
+    const verifyResult = {
       success: true,
       message: "OTP verified successfully",
       userId: otpRecord.user_id,
     }
+
+    logOtpEvent("info", "otp.verify.success", requestId, {
+      outcome: "verified",
+      type,
+      purpose,
+      identifierHash: hashIdentifier(identifier),
+    })
+
+    return verifyResult
   } catch (error) {
-    console.error("Error verifying OTP:", error)
+    logOtpEvent(
+      "error",
+      "otp.verify.failed",
+      requestId,
+      { outcome: "error", type, purpose, identifierHash: hashIdentifier(identifier) },
+      error,
+    )
     return { success: false, message: "Failed to verify OTP" }
   }
 }
 
 // Send email OTP
 async function sendEmailOTP(email: string, code: string, purpose: string): Promise<boolean> {
+  const requestId = randomUUID()
   const subject = getEmailSubject(purpose)
   const emailHtml = `
     <!DOCTYPE html>
@@ -314,26 +405,38 @@ async function sendEmailOTP(email: string, code: string, purpose: string): Promi
   `
 
   try {
-    await sendEmail({
+    await sendAuthEmail({
       to: email,
       subject,
       html: emailHtml,
     })
     return true
   } catch (error) {
-    console.error("Error sending email OTP:", error)
+    logOtpEvent(
+      "error",
+      "otp.email.email_provider.send_failed",
+      requestId,
+      { outcome: "error", identifierHash: hashIdentifier(email), purpose, vendor: "email" },
+      error,
+    )
     return false
   }
 }
 
 // Send SMS OTP (placeholder - integrate with SMS service like Twilio)
 async function sendSMSOTP(phoneNumber: string, code: string, purpose: string): Promise<boolean> {
+  const requestId = randomUUID()
+  const provider = "mock-sms"
   try {
     // TODO: Integrate with SMS service (Twilio, AWS SNS, etc.)
     // For now, we'll log the SMS content
-    const message = `Your ${purpose} verification code is: ${code}. This code expires in 5 minutes. Don't share this code with anyone.`
-
-    console.log(`SMS to ${phoneNumber}: ${message}`)
+    logOtpEvent("info", "otp.sms.mock_sms.send_attempted", requestId, {
+      vendor: provider,
+      outcome: "simulated",
+      purpose,
+      identifierHash: hashIdentifier(phoneNumber),
+      channel: "sms",
+    })
 
     // In production, replace this with actual SMS service integration:
     /*
@@ -349,7 +452,13 @@ async function sendSMSOTP(phoneNumber: string, code: string, purpose: string): P
 
     return true
   } catch (error) {
-    console.error("Error sending SMS OTP:", error)
+    logOtpEvent(
+      "error",
+      "otp.sms.mock_sms.send_failed",
+      requestId,
+      { vendor: provider, outcome: "error", purpose, identifierHash: hashIdentifier(phoneNumber) },
+      error,
+    )
     return false
   }
 }
@@ -382,7 +491,7 @@ export async function cleanupExpiredOTPs(): Promise<void> {
       WHERE blocked_until IS NOT NULL AND blocked_until < NOW()
     `
   } catch (error) {
-    console.error("Error cleaning up expired OTPs:", error)
+    logOtpEvent("error", "otp.cleanup.failed", randomUUID(), { outcome: "error" }, error)
   }
 }
 
@@ -403,7 +512,13 @@ export async function addMobileVerification(
     `
     return true
   } catch (error) {
-    console.error("Error adding mobile verification:", error)
+    logOtpEvent(
+      "error",
+      "otp.mobile_verification.add_failed",
+      randomUUID(),
+      { outcome: "error", identifierHash: hashIdentifier(phoneNumber) },
+      error,
+    )
     return false
   }
 }
@@ -418,7 +533,13 @@ export async function verifyMobileNumber(userId: number, phoneNumber: string): P
     `
     return result.length > 0
   } catch (error) {
-    console.error("Error verifying mobile number:", error)
+    logOtpEvent(
+      "error",
+      "otp.mobile_verification.verify_failed",
+      randomUUID(),
+      { outcome: "error", identifierHash: hashIdentifier(phoneNumber) },
+      error,
+    )
     return false
   }
 }

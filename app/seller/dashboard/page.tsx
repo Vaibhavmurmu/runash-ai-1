@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
 
-export default function SellerDashboardDeprecatedRoute() {
-  redirect("/dashboard?module=seller")
+export default function SellerDashboardLegacyPage() {
+  redirect("/dashboard/seller-studio")
 }

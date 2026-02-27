@@ -6,6 +6,7 @@ import {
   type PaymentSafetyPolicyDecision,
 } from "@/lib/payments/validator-safety-gate"
 import { estimateTaxPreview } from "@/lib/payments/tax-estimator"
+import { estimateCheckoutTaxBreakdown } from "@/lib/payments/tax-estimation-utility"
 import { runLinkCheckoutWithFallback } from "@/lib/services/link-checkout-service"
 
 export const initiateLinkCheckoutToolParameters = {
@@ -46,6 +47,21 @@ export const initiateLinkCheckoutToolParameters = {
             type: "string",
           },
           description: 'Metadata tags for analytics/risk checks. Must include "via RunAshChat".',
+        },
+      },
+    },
+    chat_context: {
+      type: "object",
+      additionalProperties: false,
+      required: ["session_id", "user_intent"],
+      properties: {
+        session_id: {
+          type: "string",
+          description: "RunAshChat session identifier used for deterministic handoff.",
+        },
+        user_intent: {
+          type: "string",
+          description: "Normalized checkout intent phrase from the chat message.",
         },
       },
     },
@@ -109,6 +125,12 @@ const initiateLinkCheckoutInputSchema = z.object({
         })
       }
     }),
+  chat_context: z
+    .object({
+      session_id: z.string().trim().min(1),
+      user_intent: z.string().trim().min(1),
+    })
+    .optional(),
   human_confirmed: z.boolean().optional(),
   mfa_verified: z.boolean().optional(),
   default_payment_method: z.string().trim().min(1).optional(),
@@ -170,10 +192,23 @@ export type InitiateLinkCheckoutActivityPayload = {
       amount: number
     }>
   }
+  execution_activity_summary?: {
+    provider: "runash_pay"
+    endpoint: string
+    request_correlation_id: string
+    status: "initiated" | "failed"
+    next_action: "open_link_checkout" | "retry_or_manual_review"
+    checkout_session_id: string | null
+    fallback_used: boolean
+    attempts_count: number
+    attempted_methods: string[]
+  }
   activity_summary_payload: {
     status: "initiated" | "validation_failed" | "failed"
     checkoutId: string | null
-    taxBreakdown: {
+    nextAction: "open_link_checkout" | "collect_valid_checkout_fields" | "retry_or_manual_review"
+    requestId: string
+    taxBreakdown?: {
       subtotal: number
       tax: number
       total: number
@@ -190,7 +225,21 @@ export type InitiateLinkCheckoutActivityPayload = {
         amount: number
       }>
     }
-    nextAction: "open_link_checkout" | "collect_valid_checkout_fields" | "retry_or_manual_review"
+  }
+  resolved_handoff_contract?: {
+    merchant_id: string
+    amount: number
+    currency: "INR" | "USD"
+    product_metadata: {
+      item_name: string
+      sku: string
+      tags: string[]
+    }
+    chat_context?: {
+      session_id: string
+      user_intent: string
+    }
+    idempotency_key?: string
   }
 }
 
@@ -235,6 +284,7 @@ export const initiateLinkCheckoutTool = {
             lineItems: [],
           },
           nextAction: "collect_valid_checkout_fields",
+          requestId,
         },
       }
     }
@@ -251,13 +301,20 @@ export const initiateLinkCheckoutTool = {
       },
     })
 
-    const activitySummary = {
-      subtotal: taxPreview.subtotal,
-      tax: taxPreview.gstVatAmount,
-      total: taxPreview.totalPayable,
+    const taxEstimation = estimateCheckoutTaxBreakdown({
+      subtotal: payload.amount / 100,
       currency: payload.currency,
-      tax_label: taxPreview.taxLabel,
-      tax_rate_percent: taxPreview.taxRatePercent,
+      country: payload.country ?? (payload.currency === "INR" ? "IN" : "US"),
+      region: payload.region,
+    })
+
+    const activitySummary = {
+      subtotal: taxEstimation.subtotal,
+      tax: taxEstimation.gstVatAmount,
+      total: taxEstimation.totalAmount,
+      currency: payload.currency,
+      tax_label: taxEstimation.taxLabel,
+      tax_rate_percent: taxEstimation.taxRatePercent,
       country: taxPreview.country,
       region: taxPreview.region,
     } as const
@@ -271,12 +328,12 @@ export const initiateLinkCheckoutTool = {
       })),
     }
     const taxBreakdown = {
-      subtotal: taxPreview.subtotal,
-      tax: taxPreview.gstVatAmount,
-      total: taxPreview.totalPayable,
+      subtotal: taxEstimation.subtotal,
+      tax: taxEstimation.gstVatAmount,
+      total: taxEstimation.totalAmount,
       currency: payload.currency,
-      label: taxPreview.taxLabel,
-      ratePercent: taxPreview.taxRatePercent,
+      label: taxEstimation.taxLabel,
+      ratePercent: taxEstimation.taxRatePercent,
       country: taxPreview.country,
       region: taxPreview.region,
       lineItems: transactionMetadata.tax_line_items.map((lineItem) => ({
@@ -303,6 +360,7 @@ export const initiateLinkCheckoutTool = {
           checkoutId: null,
           taxBreakdown,
           nextAction: "collect_valid_checkout_fields",
+          requestId,
         },
       }
     }
@@ -323,11 +381,23 @@ export const initiateLinkCheckoutTool = {
         policy_decision: policyDecision,
         activity_summary: activitySummary,
         transaction_metadata: transactionMetadata,
+        execution_activity_summary: {
+          provider: "runash_pay",
+          endpoint: "https://api.runash.in/v3/pay",
+          request_correlation_id: requestId,
+          status: "failed",
+          next_action: "retry_or_manual_review",
+          checkout_session_id: null,
+          fallback_used: false,
+          attempts_count: 0,
+          attempted_methods: [],
+        },
         activity_summary_payload: {
           status: "validation_failed",
           checkoutId: null,
           taxBreakdown,
           nextAction: "collect_valid_checkout_fields",
+          requestId,
         },
       }
     }
@@ -373,11 +443,21 @@ export const initiateLinkCheckoutTool = {
         policy_decision: policyDecision,
         activity_summary: activitySummary,
         transaction_metadata: transactionMetadata,
+        execution_activity_summary: checkoutResult.activity_summary,
         activity_summary_payload: {
           status: checkoutResult.status,
           checkoutId: checkoutResult.checkout_session_id,
           taxBreakdown,
           nextAction: checkoutResult.next_action,
+          requestId: checkoutResult.request_id,
+        },
+        resolved_handoff_contract: {
+          merchant_id: payload.merchant_id,
+          amount: payload.amount,
+          currency: payload.currency,
+          product_metadata: payload.product_metadata,
+          chat_context: payload.chat_context,
+          idempotency_key: checkoutResult.idempotency_key,
         },
       }
     } catch {
@@ -389,11 +469,23 @@ export const initiateLinkCheckoutTool = {
         policy_decision: policyDecision,
         activity_summary: activitySummary,
         transaction_metadata: transactionMetadata,
+        execution_activity_summary: {
+          provider: "runash_pay",
+          endpoint: "https://api.runash.in/v3/pay",
+          request_correlation_id: requestId,
+          status: "failed",
+          next_action: "retry_or_manual_review",
+          checkout_session_id: null,
+          fallback_used: false,
+          attempts_count: 0,
+          attempted_methods: [],
+        },
         activity_summary_payload: {
           status: "failed",
           checkoutId: null,
           taxBreakdown,
           nextAction: "retry_or_manual_review",
+          requestId,
         },
       }
     }

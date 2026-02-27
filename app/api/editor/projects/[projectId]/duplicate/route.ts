@@ -3,7 +3,7 @@ import { requireEditorUser } from "@/app/api/editor/_lib"
 import { getProjectById, sql } from "@/lib/editor/repository"
 
 export async function POST(request: Request, { params }: { params: { projectId: string } }) {
-  const auth = await requireEditorUser()
+  const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
   const { projectId } = params
   const body = await request.json().catch(() => ({}))

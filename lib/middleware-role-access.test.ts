@@ -1,0 +1,44 @@
+import assert from "node:assert/strict"
+import test from "node:test"
+
+import { evaluateRoleAccess, resolveRouteAccessRequirement } from "../middleware"
+
+test("admin prefixes require an admin-capable role", () => {
+  const requirement = resolveRouteAccessRequirement("/api/admin/users")
+
+  assert.equal(requirement.requiresSession, true)
+  assert.deepEqual(requirement.requiredRoles, ["admin", "super_admin"])
+
+  assert.equal(evaluateRoleAccess("/api/admin/users", { isAuthenticated: true, role: "user" }).status, "forbidden")
+  assert.equal(evaluateRoleAccess("/api/admin/users", { isAuthenticated: true, role: "admin" }).status, "allowed")
+})
+
+test("seller prefixes reject non-seller sessions", () => {
+  assert.equal(evaluateRoleAccess("/api/seller/settings", { isAuthenticated: true, role: "user" }).status, "forbidden")
+  assert.equal(evaluateRoleAccess("/api/seller/settings", { isAuthenticated: true, role: "seller" }).status, "allowed")
+})
+
+test("seller dashboard routes enforce seller-capable roles", () => {
+  const requirement = resolveRouteAccessRequirement("/seller/dashboard")
+
+  assert.equal(requirement.requiresSession, true)
+  assert.deepEqual(requirement.requiredRoles, ["seller", "admin", "super_admin"])
+
+  assert.equal(evaluateRoleAccess("/seller/dashboard", { isAuthenticated: true, role: "user" }).status, "forbidden")
+  assert.equal(evaluateRoleAccess("/seller/dashboard", { isAuthenticated: true, role: "seller" }).status, "allowed")
+})
+
+test("ecommerce admin routes enforce admin-capable roles", () => {
+  const requirement = resolveRouteAccessRequirement("/ecommerce/admin")
+
+  assert.equal(requirement.requiresSession, true)
+  assert.deepEqual(requirement.requiredRoles, ["admin", "super_admin"])
+
+  assert.equal(evaluateRoleAccess("/ecommerce/admin", { isAuthenticated: true, role: "seller" }).status, "forbidden")
+  assert.equal(evaluateRoleAccess("/ecommerce/admin", { isAuthenticated: true, role: "super_admin" }).status, "allowed")
+})
+
+test("protected user routes require an authenticated session", () => {
+  assert.equal(evaluateRoleAccess("/dashboard", { isAuthenticated: false, role: null }).status, "unauthorized")
+  assert.equal(evaluateRoleAccess("/dashboard", { isAuthenticated: true, role: "user" }).status, "allowed")
+})

@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,11 +10,20 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Send, Sparkles, Leaf, Settings, History, Bot, Mic, Search, Zap, WandSparkles } from "lucide-react"
 import type { ChatMessage, ChatSession, UserPreferences, QuickAction } from "@/types/runash-chat"
 import ChatMessageComponent from "@/components/chat/chat-message"
-import QuickActions from "@/components/chat/quick-actions"
 import ChatSidebar from "@/components/chat/chat-sidebar"
 import UserPreferencesDialog from "@/components/chat/user-preferences-dialog"
 import CartDrawer from "@/components/cart/cart-drawer"
 import VoiceControls from "@/components/chat/voice-controls"
+
+import { RunAshChatCommandCenter } from "@/components/chat/runash-chat-command-center"
+
+
+// import { RunAshChatCommandCenter } from "@/components/chat/runash-chat-command-center"
+
+import { RunAshChatFeatureGrid } from "@/components/chat/runash-chat-feature-grid"
+import { RunAshChatTaskBoard } from "@/components/chat/runash-chat-task-board"
+
+
 import {
   ActionPill,
   ChatDataState,
@@ -26,6 +35,8 @@ import {
   type SuggestionCardItem,
 } from "@/components/chat/shared-chat-primitives"
 import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
+import { buildRunAshChatQuickActions } from "@/lib/runash-chat/quick-actions"
+import { resolveRequestedToolsForMessage } from "@/lib/runash-chat/tooling"
  
 import { getRecommendedProducts, shouldRecommendProducts } from "@/lib/chat-product-recommendations"
 
@@ -213,60 +224,28 @@ export function ChatWorkspace() {
     },
   ])
 
-  const quickActions: QuickAction[] = [
-    {
-      id: "1",
-      label: "Find Organic Products",
-      icon: "leaf",
-      action: () => handleQuickAction("Show me organic products for a healthy breakfast"),
-      category: "product",
-    },
-    {
-      id: "2",
-      label: "Sustainable Recipes",
-      icon: "chef-hat",
-      action: () => handleQuickAction("Suggest eco-friendly recipes with seasonal ingredients"),
-      category: "recipe",
-    },
-    {
-      id: "3",
-      label: "Sustainability Tips",
-      icon: "lightbulb",
-      action: () => handleQuickAction("Give me tips to reduce my carbon footprint"),
-      category: "tip",
-    },
-    {
-      id: "4",
-      label: "Retail Automation",
-      icon: "zap",
-      action: () => handleQuickAction("Help me automate my organic store inventory"),
-      category: "automation",
-    },
-    {
-      id: "5",
-      label: "Web Product Search",
-      icon: "search",
-      action: () => handleQuickAction("Search the web for eco-friendly organic pantry bundles under $30", "search"),
-      category: "search",
-    },
-    {
-      id: "6",
-      label: "Model Assist",
-      icon: "zap",
-      action: (trigger) =>
-        openFromTrigger({
-          triggerSource: "chat",
-          mode: "configure",
-          model: {
-            modelId: "runash-chat-router",
-            provider: "RunAsh AI",
-            displayName: "RunAsh Chat Optimizer",
-          },
-          payload: { prompt: "Optimize this chat workflow for quality, latency, and cost." },
-        }, trigger),
-      category: "automation",
-    },
-  ]
+  const quickActions: QuickAction[] = useMemo(
+    () =>
+      buildRunAshChatQuickActions({
+        onPrompt: (prompt) => handleQuickAction(prompt),
+        onSearch: (prompt) => handleQuickAction(prompt, "search"),
+        openModelConfigurator: (trigger) =>
+          openFromTrigger(
+            {
+              triggerSource: "chat",
+              mode: "configure",
+              model: {
+                modelId: "runash-chat-router",
+                provider: "RunAsh AI",
+                displayName: "RunAsh Chat Optimizer",
+              },
+              payload: { prompt: "Optimize this chat workflow for quality, latency, and cost." },
+            },
+            trigger,
+          ),
+      }),
+    [openFromTrigger],
+  )
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -452,27 +431,9 @@ export function ChatWorkspace() {
     setIsTyping(true)
 
     try {
-      const isInstantCheckoutIntent = /\b(buy this|confirm purchase|pay now|instant checkout|checkout|confirm)\b/i.test(content)
-      const requestedTools = isInstantCheckoutIntent
-        ? ["catalog_lookup", "initiate_link_checkout"]
-        : /search|find|best|compare|web/i.test(content)
-          ? ["catalog_lookup", "web_search"]
-          : ["catalog_lookup"]
+      const requestedTools = resolveRequestedToolsForMessage(content)
 
-      const toolPayloads = isInstantCheckoutIntent
-        ? {
-            initiate_link_checkout: {
-              merchant_id: "runash-default-merchant",
-              amount: 1000,
-              currency: "USD",
-              product_metadata: {
-                item_name: "RunAshChat Instant Checkout Item",
-                sku: "runashchat-instant-checkout",
-                tags: ["via RunAshChat", "instant_checkout", "digital"],
-              },
-            },
-          }
-        : undefined
+      const toolPayloads = undefined
 
       const response = await fetch("/api/agents/chat", {
         method: "POST",
@@ -529,7 +490,7 @@ export function ChatWorkspace() {
           }
 
           if (eventName === "tool_result" && payload.tool === "initiate_link_checkout") {
-            const linkPayload = toolPayloads?.initiate_link_checkout
+            const linkPayload = (payload.result?.handoff_contract ?? payload.result?.resolved_handoff_contract ?? {}) as Record<string, unknown>
             const productMetadata =
               linkPayload && typeof linkPayload.product_metadata === "object" && linkPayload.product_metadata !== null
                 ? (linkPayload.product_metadata as Record<string, unknown>)
@@ -570,6 +531,35 @@ export function ChatWorkspace() {
                 : typeof payload.result?.next_action === "string"
                   ? payload.result.next_action
                   : undefined
+            const requestId =
+              typeof payload.result?.activity_summary_payload?.requestId === "string"
+                ? payload.result.activity_summary_payload.requestId
+                : undefined
+            const checkoutStatusRaw =
+              typeof payload.result?.status === "string"
+                ? payload.result.status
+                : typeof payload.result?.execution_activity_summary?.status === "string"
+                  ? payload.result.execution_activity_summary.status
+                  : ""
+            const checkoutState: "idle" | "processing" | "success" | "failed" =
+              checkoutStatusRaw === "initiated"
+                ? "success"
+                : checkoutStatusRaw === "failed" || checkoutStatusRaw === "validation_failed"
+                  ? "failed"
+                  : "idle"
+            const requestCorrelationId =
+              typeof payload.result?.execution_activity_summary?.request_correlation_id === "string"
+                ? payload.result.execution_activity_summary.request_correlation_id
+                : typeof payload.result?.request_id === "string"
+                  ? payload.result.request_id
+                  : requestId
+
+            const attemptedMethods = Array.isArray(payload.result?.attempted_methods)
+              ? payload.result.attempted_methods.filter((entry: unknown): entry is string => typeof entry === "string" && entry.length > 0)
+              : Array.isArray(payload.result?.attemptedMethods)
+                ? payload.result.attemptedMethods.filter((entry: unknown): entry is string => typeof entry === "string" && entry.length > 0)
+                : undefined
+
             const attemptTimeline = Array.isArray(payload.result?.attempt_timeline)
               ? payload.result.attempt_timeline
                   .map((entry: unknown) => {
@@ -607,14 +597,18 @@ export function ChatWorkspace() {
                   taxLabel: taxLabel === "GST" || taxLabel === "VAT" || taxLabel === "Sales Tax" ? taxLabel : undefined,
                   taxRatePercent,
                   blockedReason,
-                  status: typeof payload.result?.status === "string" ? payload.result.status : undefined,
+                  status: checkoutState,
+                  requestCorrelationId,
                   checkoutId,
                   nextAction,
+                  attemptedMethods,
                   attemptTimeline,
                   confirmationPayload: {
                     merchant_id: typeof linkPayload?.merchant_id === "string" ? linkPayload.merchant_id : "runash-default-merchant",
                     amount: amountMinor,
                     currency: linkPayload?.currency === "INR" ? "INR" : "USD",
+                    idempotency_key:
+                      typeof linkPayload?.idempotency_key === "string" ? linkPayload.idempotency_key : undefined,
                     product_metadata: {
                       item_name:
                         typeof productMetadata?.item_name === "string"
@@ -625,6 +619,19 @@ export function ChatWorkspace() {
                     },
                     country: typeof linkPayload?.country === "string" ? linkPayload.country : undefined,
                     region: typeof linkPayload?.region === "string" ? linkPayload.region : undefined,
+                    chat_context:
+                      linkPayload && typeof linkPayload.chat_context === "object" && linkPayload.chat_context !== null
+                        ? {
+                            session_id:
+                              typeof (linkPayload.chat_context as Record<string, unknown>).session_id === "string"
+                                ? ((linkPayload.chat_context as Record<string, unknown>).session_id as string)
+                                : currentSession?.id ?? querySessionId ?? "",
+                            user_intent:
+                              typeof (linkPayload.chat_context as Record<string, unknown>).user_intent === "string"
+                                ? ((linkPayload.chat_context as Record<string, unknown>).user_intent as string)
+                                : content,
+                          }
+                        : undefined,
                   },
                 },
               },
@@ -942,7 +949,18 @@ export function ChatWorkspace() {
                   errorMessage=""
                 />
               ) : null}
+
+              <RunAshChatCommandCenter quickActions={quickActions} onSelectPrompt={handleSendMessage} />
+
+
+              <RunAshChatCommandCenter quickActions={quickActions} onSelectPrompt={handleSendMessage} />
+
               <QuickActions actions={quickActions} />
+              <div className="mt-3 space-y-3">
+                <RunAshChatFeatureGrid onSelect={handleSendMessage} />
+                <RunAshChatTaskBoard onRunTask={handleSendMessage} />
+              </div>
+
             </div>
 
             {showEmptyState ? (

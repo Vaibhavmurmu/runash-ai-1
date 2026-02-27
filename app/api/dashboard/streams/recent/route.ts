@@ -1,11 +1,12 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { type NextRequest } from "next/server"
+import { respondSuccess } from "@/lib/api/envelope"
 import { listDashboardRecentStreams } from "@/lib/repositories/streams"
 import { getCanonicalStreamUrl, requireStreamDashboardUserId } from "../utils"
 import type { DashboardRecentStreamsResponse } from "@/lib/types/dashboard-streams"
 
 export async function GET(request: NextRequest) {
   const scopedUserId = await requireStreamDashboardUserId(request)
-  if (scopedUserId instanceof NextResponse) return scopedUserId
+  if (scopedUserId instanceof Response) return scopedUserId
 
   const { searchParams } = new URL(request.url)
   const limit = Number.parseInt(searchParams.get("limit") || "6", 10)
@@ -19,5 +20,5 @@ export async function GET(request: NextRequest) {
     })),
   }
 
-  return NextResponse.json(payload)
+  return respondSuccess(request, payload, { legacy: payload })
 }

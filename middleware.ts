@@ -4,6 +4,18 @@ import { logApiEvent } from "@/lib/api/logging"
 import { getAuthEndpointRateLimit } from "@/lib/auth-security-config"
 import { recordAuthMetric } from "@/lib/auth-observability"
 
+type SessionRole = "admin" | "super_admin" | "seller" | "user" | string
+
+type AuthClaims = {
+  isAuthenticated: boolean
+  role: SessionRole | null
+}
+
+type AccessRequirement = {
+  requiresSession: boolean
+  requiredRoles: SessionRole[]
+}
+
 const publicRoutes = [
   "/",
   "/login",
@@ -27,12 +39,6 @@ const publicRoutes = [
   "/cookies",
   "/roadmap",
   "/status",
-  "/creator",
-  "/admin",
-  "/dashboard",
-  "/seller-dashboard",
-  "/grocery",
-  "/editor",
   "/pro",
   "/enterprise",
   "/ai-overview",
@@ -41,6 +47,7 @@ const publicRoutes = [
   "/runash-chat",
   "/chat",
   "/live",
+  "/waitlist",
 ] as const
 
 const publicApiRoutes = [
@@ -48,6 +55,49 @@ const publicApiRoutes = [
   "/api/turn-credentials",
   "/api/users/search", // Public user search
 ] as const
+
+const adminOnlyRoutePrefixes = ["/admin", "/ecommerce/admin", "/api/admin"] as const
+const sellerOnlyRoutePrefixes = ["/seller", "/seller-dashboard", "/api/seller", "/api/v1/seller"] as const
+const authenticatedRoutePrefixes = ["/dashboard", "/settings", "/api/settings", "/api/billing", "/api/upload"] as const
+
+function pathMatchesPrefixes(pathname: string, prefixes: readonly string[]): boolean {
+  return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"))
+}
+
+export function resolveRouteAccessRequirement(pathname: string): AccessRequirement {
+  if (pathMatchesPrefixes(pathname, adminOnlyRoutePrefixes)) {
+    return { requiresSession: true, requiredRoles: ["admin", "super_admin"] }
+  }
+
+  if (pathMatchesPrefixes(pathname, sellerOnlyRoutePrefixes)) {
+    return { requiresSession: true, requiredRoles: ["seller", "admin", "super_admin"] }
+  }
+
+  if (pathMatchesPrefixes(pathname, authenticatedRoutePrefixes)) {
+    return { requiresSession: true, requiredRoles: [] }
+  }
+
+  return { requiresSession: false, requiredRoles: [] }
+}
+
+export function evaluateRoleAccess(pathname: string, claims: AuthClaims): { status: "allowed" | "unauthorized" | "forbidden" } {
+  const requirement = resolveRouteAccessRequirement(pathname)
+  if (!requirement.requiresSession) {
+    return { status: "allowed" }
+  }
+
+  if (!claims.isAuthenticated) {
+    return { status: "unauthorized" }
+  }
+
+  if (requirement.requiredRoles.length > 0) {
+    if (!claims.role || !requirement.requiredRoles.includes(claims.role)) {
+      return { status: "forbidden" }
+    }
+  }
+
+  return { status: "allowed" }
+}
 
 function resolveAuthDecision(pathname: string) {
   const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + "/"))
@@ -78,6 +128,31 @@ async function hasValidAuthSession(request: NextRequest): Promise<boolean> {
     return Boolean(sessionPayload?.user && sessionPayload?.session)
   } catch {
     return false
+  }
+}
+
+async function getAuthClaimsFromSession(request: NextRequest): Promise<AuthClaims> {
+  try {
+    const sessionClaimsResponse = await fetch(new URL("/api/auth/claims", request.url), {
+      method: "GET",
+      headers: {
+        cookie: request.headers.get("cookie") ?? "",
+        authorization: request.headers.get("authorization") ?? "",
+      },
+      cache: "no-store",
+    })
+
+    if (!sessionClaimsResponse.ok) {
+      return { isAuthenticated: false, role: null }
+    }
+
+    const sessionClaims = await sessionClaimsResponse.json()
+    return {
+      isAuthenticated: Boolean(sessionClaims?.authenticated),
+      role: typeof sessionClaims?.role === "string" ? sessionClaims.role : null,
+    }
+  } catch {
+    return { isAuthenticated: false, role: null }
   }
 }
 
@@ -238,7 +313,30 @@ export async function middleware(request: NextRequest) {
         headers: { "Content-Type": "application/json" },
       })
     }
-    return NextResponse.redirect(new URL("/dashboard", request.url))
+    return NextResponse.redirect(new URL("/login", request.url))
+  }
+
+  const authClaims = await getAuthClaimsFromSession(request)
+  const accessDecision = evaluateRoleAccess(pathname, authClaims)
+
+  if (accessDecision.status === "unauthorized") {
+    if (pathname.startsWith("/api/")) {
+      return new NextResponse(JSON.stringify({ message: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+    return NextResponse.redirect(new URL("/login", request.url))
+  }
+
+  if (accessDecision.status === "forbidden") {
+    if (pathname.startsWith("/api/")) {
+      return new NextResponse(JSON.stringify({ message: "Forbidden" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+    return NextResponse.redirect(new URL("/dashboard?error=forbidden", request.url))
   }
 
   // Log security events for audit

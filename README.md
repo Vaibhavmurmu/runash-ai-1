@@ -46,6 +46,33 @@ pnpm install
 - [ ] Create `.env.local` in the project root.
 - [ ] Add the required secrets for auth, AI providers, database, and integrations used in your environment.
 
+### Optional tooling: install Better Auth skills
+
+If you use Codex skills locally, install the Better Auth skill pack:
+
+```bash
+npx skills add better-auth/skills
+```
+
+For reproducible setup and post-install verification, use the project helper:
+
+```bash
+pnpm run setup:skills
+```
+
+`setup:skills` executes the `npx` install command and verifies that skill files are present in expected Codex skill directories:
+- `$CODEX_HOME/skills`
+- `~/.codex/skills`
+
+This step is **optional** for normal RunAsh app development (`pnpm dev`, `pnpm build`, API work), and only needed for Codex Better Auth workflows.
+
+#### Offline/CI fallback guidance
+
+- **Offline or air-gapped machines:** skip skills setup; application development/runtime is unaffected.
+- **CI pipelines:** treat skills setup as non-blocking optional tooling; pre-bake skills into the runner image when needed.
+- **Restricted network/proxy:** use approved internal npm/git mirrors before running install.
+- **Verification command:** rerun `pnpm run setup:skills` to retry install + location checks.
+
 ### 3) Start the development server
 
 ```bash
@@ -115,6 +142,26 @@ RunAsh AI combines live streaming, AI-assisted creation tooling, seller operatio
 - Seller business configuration is now API-backed (`GET/PUT /api/seller/settings`) for persisted operations.
 - Payout tab is API-backed (`GET /api/seller/payouts`) with settlement summaries and weekly history.
 - Inventory supports inline stock edits and guarded deletes for production workflows.
+- Dashboard navigation now resolves from the shared sidebar navigation config and route guards (`components/dashboard/dashboard-nav-config.ts` + `components/dashboard/dashboard-sidebar.tsx`) instead of legacy per-surface sidebar definitions.
+
+### Dashboard navigation map
+
+Primary dashboard sections and routes:
+
+| Section | Routes |
+| --- | --- |
+| Core | `/dashboard` |
+| Studio | `/stream`, `/schedule`, `/upload`, `/recordings`, `/editor` |
+| Intelligence | `/agents/dashboard`, `/automation`, `/runash-chat` |
+| Operations | `/analytics`, `/alerts`, `/seller/dashboard`, `/ecommerce/dashboard` |
+| Account | `/settings` |
+
+Sub-navigation and active-state behaviors are controlled by path-prefix matching in the shared navigation config to keep highlighting and expansion behavior consistent across dashboard shells.
+
+### Risk and rollback (dashboard navigation)
+
+- **Risk:** route mismatch or stale links can send users to unavailable pages when nav entries and route guards drift.
+- **Rollback:** if mismatches are discovered post-merge, revert to the previous dashboard nav config/sidebar mapping and re-run route validation smoke checks for `/dashboard`, `/seller/dashboard`, `/ecommerce/dashboard`, and `/runash-chat`.
 - RunAsh Chat landing (`/runash-chat`) includes an enhanced mini preview with quick agentic commerce/payment prompts, with session continuity dependent on `GET /api/sessions/recent` and `GET /api/messages/session/:id` being available.
 - RunAsh Chat now applies retry + timeout safeguards for `GET /api/sessions/recent` and `POST /api/sessions`, validates session payload IDs before navigation, and stores prompt/action continuity metadata in localStorage before routing to `/chat`.
 - Profile dropdown on `/runash-chat` now includes compact controls for theme (`system`/`dark`/`light`), language selection (default `English`), and chat panel position (`Left`/`Right`), persisted in localStorage with safe defaults for invalid values.
@@ -173,7 +220,28 @@ When safety mode blocks a send in API handlers that surface policy errors, the r
 ```bash
 npm run lint
 npm run build
+npm run test
+npm run test:auth
 ```
+
+## Test command matrix
+- **Local full checks**
+  ```bash
+  npm run lint
+  npm run build
+  npm run test
+  ```
+- **Local quick auth check**
+  ```bash
+  npm run test:auth
+  ```
+- **CI quality job (same scripts to prevent drift)**
+  ```bash
+  npm run lint
+  npm run build
+  npm run test
+  npm run test:auth
+  ```
 
 ## Documentation index
 ### Governance and collaboration
@@ -193,6 +261,8 @@ npm run build
 - [RunAsh_AI_Pay.md](RunAsh_AI_Pay.md)
 - [RUNASH_PAY_BUSINESS_IMPLEMENTATION.md](RUNASH_PAY_BUSINESS_IMPLEMENTATION.md)
 - [docs/PRODUCTION_READINESS_AND_AGENTIC_PLAN.md](docs/PRODUCTION_READINESS_AND_AGENTIC_PLAN.md)
+- [docs/DASHBOARD_NAVIGATION_ARCHITECTURE.md](docs/DASHBOARD_NAVIGATION_ARCHITECTURE.md)
+- [docs/RESPONSIVE_LAYOUT_SPEC.md](docs/RESPONSIVE_LAYOUT_SPEC.md)
 
 ## Contribution
 1. Create a focused branch.

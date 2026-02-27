@@ -1,6 +1,6 @@
-import { neon } from "@neondatabase/serverless"
+import { assertDatabaseConfigured, sql } from "../../db"
 
-const sql = neon(process.env.DATABASE_URL!)
+assertDatabaseConfigured("lib/auth/plugins/sso-enterprise.ts")
 
 export type EnterpriseProviderType = "oidc" | "oauth2" | "saml2"
 
