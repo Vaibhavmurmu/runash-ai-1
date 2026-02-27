@@ -321,3 +321,15 @@ Business controls preserved:
 - Public navigation aliases now map `/payment/business` -> `/enterprises` and `/payment/startup` -> `/partner` to align top-level marketing information architecture.
 - This is a presentation-layer route alias only; startup/business payment API signatures, payment field names, checkout contracts, and webhook contracts remain unchanged.
 - Rollback: remove redirect aliases in `next.config.mjs` to restore legacy public URL paths without touching payment execution logic.
+
+## 2026-02-27 Editor render API hardening note (non-payment)
+
+- Hardened editor render-job APIs with per-user/project throttling plus active-queue quotas to protect shared infrastructure.
+- Added enqueue policy gates for max duration, max resolution, and model-tier allowlist checks before jobs enter queue processing.
+- Added explicit cancellation propagation in worker stages to prevent expensive post-cancel processing and stale result writeback.
+- **Payment/auth impact:** none. Checkout contracts, payment fields, and auth session handling are unchanged.
+
+### Risk / rollback
+- **Risk:** stricter quotas can reject bursts for high-volume creator workflows.
+- **Mitigation:** all limits are environment-configurable and surfaced with stable API error codes.
+- **Rollback:** relax or disable quota/policy env limits while preserving API shape and worker behavior.
