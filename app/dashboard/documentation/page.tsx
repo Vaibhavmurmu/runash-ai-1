@@ -32,7 +32,9 @@ export default function DocumentationPage() {
               <BookMarked className="h-4 w-4" /> OpenAPI source
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">Use <code>docs/openapi/auth.openapi.json</code> as the contract source of truth.</CardContent>
+          <CardContent className="text-sm text-muted-foreground">
+            Use <code>docs/openapi/auth.openapi.json</code> as the contract source of truth.
+          </CardContent>
         </Card>
         <Card className="border-border/60 bg-card/80 shadow-sm">
           <CardHeader>
@@ -63,6 +65,22 @@ export default function DocumentationPage() {
           <CardContent className="text-sm text-muted-foreground">Reference status codes and retry semantics before production launch.</CardContent>
         </Card>
       </section>
+
+      <Card className="border-border/60 bg-card/80 shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Code2 className="h-4 w-4" /> Workspace UI style guide
+          </CardTitle>
+          <CardDescription>
+            Internal guidance for shared page primitives, keyboard flow checks, label quality, and focus ordering.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button asChild variant="outline" className="w-full md:w-auto">
+            <Link href="/dashboard/documentation/workspace-ui-style-guide">Open workspace UI style guide</Link>
+          </Button>
+        </CardContent>
+      </Card>
 
       <OpenApiAuthReference />
 
