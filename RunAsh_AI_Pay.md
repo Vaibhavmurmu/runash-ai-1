@@ -651,3 +651,19 @@ Standardized settings action/billing error payloads to include a shared field-ma
 1. **Risk:** clients hard-coded to `{ error: string }` only may ignore granular field errors.
 2. **Mitigation:** legacy-compatible `error.message` and `error.details.validationErrors` are still returned.
 3. **Rollback:** revert `app/api/settings/_lib/errors.ts` and route-level formatter adoption in `app/api/settings/**` if downstream compatibility issues surface.
+
+## 2026-02 Settings billing/invoice/credits/referral behavior contract update
+
+- Added canonical settings architecture + API contract reference at `docs/SETTINGS_ARCHITECTURE_API_CONTRACT.md` covering billing summary, invoices, usage, credits, redeem-code, referrals, and upgrade behavior.
+- Confirmed backward-compatible stable response keys for settings billing:
+  - `planName`, `subscriptionStatus`, `creditsBalance`, `billingMethodSummary`, `usageThisCycle`, `usageLimit`, `invoiceEmail`, `autoRechargeEnabled`.
+- Invoice contract now documents normalized totals and hosted/PDF links as stable fields for settings consumers.
+- Credits/redeem behavior now documents idempotent code application semantics to prevent duplicate credit grants.
+- Referral behavior now documents stable counters for pending/earned/lifetime credits.
+
+### Storage model + migration/rollback note (billing settings)
+
+1. Billing settings read-models are backed by reconciliation-safe billing/invoice/credit/referral records.
+2. Migration path remains additive: deploy schema + backfills, then switch settings endpoints to canonical projections.
+3. Rollback path is application-first with feature-flag gating for new billing settings mutations while keeping additive schema intact.
+4. Reconciliation parity checks are required before and after rollback to ensure invoice/credit/referral counters remain consistent.

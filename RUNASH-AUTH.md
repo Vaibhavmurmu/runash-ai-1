@@ -655,3 +655,20 @@ Rollback:
 - Session responses are constrained to operational metadata (id/mode/scope/device/lastSeen timestamps) and do not expose bearer token values or token hashes.
 - Trusted device management stores and revokes trust state by `(user_id, device_id)` to support auditable recovery and remote sign-out workflows.
 - Settings UI now includes session/device tables and per-session scope editing for user-scoped integrations.
+
+## 2026-02 settings security API contract + storage model update
+
+- Added canonical settings architecture and endpoint contract documentation at `docs/SETTINGS_ARCHITECTURE_API_CONTRACT.md`.
+- Session/device/2FA/API key settings behaviors are now documented as a single compatibility contract with additive-only response evolution.
+- Storage model documentation now explicitly captures:
+  - session registry and session identity linkage tables,
+  - trusted-device ownership model `(user_id, device_id)`,
+  - API key hash-only persistence and one-time plaintext return behavior,
+  - 2FA enrollment/challenge/recovery storage as metadata + hashes only.
+
+### Migration + rollback procedure (settings security)
+
+1. Roll out additive settings-security schema changes and metadata backfills.
+2. Validate sessions/devices/2FA/API-key settings endpoints against stable response keys.
+3. If incidents are detected, rollback application artifacts first and temporarily gate new settings mutations.
+4. Keep additive schema in place during incident response; avoid destructive rollback.
