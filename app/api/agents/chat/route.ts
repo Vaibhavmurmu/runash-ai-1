@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from "next/server"
-import { openai } from "@ai-sdk/openai"
-import { streamText } from "ai"
 import { z } from "zod"
 import { getServerAuthSession } from "@/lib/auth/session"
 import { logApiEvent } from "@/lib/api/logging"
@@ -15,6 +13,7 @@ import { RELAY_AGENT_TOOLS } from "@/lib/skills/relay-tool-registry"
 import { AGENT_ROLES } from "@/services/agent-role-orchestration"
 import { AgentOrchestrationService, type SupportedTool } from "@/services/agent-orchestration-service"
 import { enqueueToolJob } from "@/services/agent-tool-queue-worker"
+import { AIProviderError, resolveModelSelection, streamModelTextWithFallback } from "@/lib/ai/provider-registry"
 import { buildDefaultToolPayloads, buildToolPlan, resolveRunAshChatToolSelection } from "./chat-request-handler"
 
 const requestSchema = z.object({
@@ -30,6 +29,8 @@ const requestSchema = z.object({
   sessionId: z.string().trim().min(1).optional(),
   title: z.string().trim().min(1).max(120).optional(),
   message: z.string().trim().min(1).max(5000),
+  provider: z.string().trim().min(1).optional(),
+  model: z.string().trim().min(1).optional(),
   tools: z.array(z.enum(RELAY_AGENT_TOOLS)).default([]),
   toolPayloads: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
 })
@@ -76,6 +77,7 @@ export async function POST(request: NextRequest) {
     const userMessage = await createAgentMessage(agentSession.id, "user", sanitizedMessage, "completed")
     const assistantMessage = await createAgentMessage(agentSession.id, "assistant", "", "queued")
 
+    const selection = resolveModelSelection(parsed.data.model, parsed.data.provider)
     const encoder = new TextEncoder()
 
     const eventStream = new ReadableStream({
@@ -159,8 +161,7 @@ export async function POST(request: NextRequest) {
             })
           }
 
-          const completion = streamText({
-            model: openai("gpt-4o-mini"),
+          const completion = await streamModelTextWithFallback(selection, {
             system:
               "You are RunAsh Agent. Keep answers concise, safe, and avoid exposing secrets. If tools are provided, ground your answer in tool results.",
             messages: [
@@ -174,7 +175,7 @@ export async function POST(request: NextRequest) {
           let fullText = ""
           for await (const token of completion.textStream) {
             fullText += token
-            send("token", { token, messageId: assistantMessage.id })
+            send("token", { token, messageId: assistantMessage.id, provider: completion.provider, model: completion.model, requestId })
           }
 
           await updateAgentMessage(assistantMessage.id, { status: "completed", content: fullText })
@@ -185,13 +186,19 @@ export async function POST(request: NextRequest) {
             messageId: assistantMessage.id,
             userMessageId: userMessage.id,
             content: fullText,
+            provider: completion.provider,
+            model: completion.model,
+            requestId,
           })
         } catch (error) {
           await updateAgentMessage(assistantMessage.id, { status: "failed" })
 
+          const providerErrorCode = error instanceof AIProviderError ? error.code : undefined
+
           send("error", {
             message: "Unable to complete agent turn",
             requestId,
+            code: providerErrorCode,
           })
 
           logApiEvent("error", "agents.chat.stream_failed", {
@@ -214,6 +221,7 @@ export async function POST(request: NextRequest) {
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
         "x-request-id": requestId,
+        "x-provider": selection.provider,
       },
     })
   } catch (error) {
