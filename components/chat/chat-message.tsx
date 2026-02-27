@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Bot, User, Copy, ThumbsUp, ThumbsDown, Share, Pencil, Trash2, Loader2, Check, AlertCircle } from "lucide-react"
@@ -33,6 +33,7 @@ export default function ChatMessageComponent({ message, sessionId }: ChatMessage
   const isUser = message.role === "user"
   const [isDeletedLocally, setIsDeletedLocally] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
+  const [displayedContent, setDisplayedContent] = useState(message.content)
   const [draftContent, setDraftContent] = useState(message.content)
   const [state, setState] = useState<MessageActionState>({
     copied: false,
@@ -53,6 +54,13 @@ export default function ChatMessageComponent({ message, sessionId }: ChatMessage
     }),
     [sessionId],
   )
+
+  useEffect(() => {
+    setDisplayedContent(message.content)
+    if (!isEditing) {
+      setDraftContent(message.content)
+    }
+  }, [isEditing, message.content])
 
   const handleCopy = async () => {
     try {
@@ -118,6 +126,7 @@ export default function ChatMessageComponent({ message, sessionId }: ChatMessage
         throw new Error("edit_failed")
       }
 
+      setDisplayedContent(draftContent.trim())
       setState((current) => ({ ...current, editStatus: "idle" }))
       setIsEditing(false)
     } catch {
@@ -185,7 +194,7 @@ export default function ChatMessageComponent({ message, sessionId }: ChatMessage
                 onChange={(event) => setDraftContent(event.target.value)}
               />
             ) : (
-              <p className="text-sm leading-relaxed">{draftContent}</p>
+              <p className="text-sm leading-relaxed">{displayedContent}</p>
             )}
           </div>
 
@@ -350,6 +359,21 @@ export default function ChatMessageComponent({ message, sessionId }: ChatMessage
               >
                 {state.editStatus === "pending" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Pencil className="h-3 w-3" />}<span className="ml-1">{isEditing ? "Save" : "Edit"}</span>
               </Button>
+              {isEditing ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  title="Cancel edit"
+                  aria-label="Cancel edit"
+                  onClick={() => {
+                    setDraftContent(displayedContent)
+                    setIsEditing(false)
+                    setState((current) => ({ ...current, editStatus: "idle" }))
+                  }}
+                >
+                  Cancel
+                </Button>
+              ) : null}
               <Button
                 variant="ghost"
                 size="sm"
