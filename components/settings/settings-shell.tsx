@@ -207,11 +207,19 @@ type PendingSettingsActionDialog = {
 
 type ValidationErrorResponse = {
   error?: {
+    code?: string
     message?: string
     details?: {
       validationErrors?: Partial<Record<SettingsSection, Record<string, string>>>
+      errors?: Partial<Record<SettingsSection, Record<string, string>>>
     }
   }
+  errors?: Partial<Record<SettingsSection, Record<string, string>>>
+}
+
+
+function getValidationErrors(payload: ValidationErrorResponse): Partial<Record<SettingsSection, Record<string, string>>> {
+  return payload?.errors ?? payload?.error?.details?.errors ?? payload?.error?.details?.validationErrors ?? {}
 }
 
 function toSectionErrorMap(errors: Partial<Record<SettingsSection, Partial<Record<string, string>>>>): Partial<Record<SettingsSection, string>> {
@@ -491,7 +499,7 @@ export function SettingsShell({ compact = false, initialSection = "account", ini
       }
 
       if (!response.ok) {
-        const validationErrors = payload?.error?.details?.validationErrors ?? {}
+        const validationErrors = getValidationErrors(payload)
         const fallbackMessage = payload?.error?.message ?? "Failed to save changes. Please retry."
         setErrors((prev) => ({
           ...prev,
@@ -531,28 +539,43 @@ export function SettingsShell({ compact = false, initialSection = "account", ini
     successTitle: string,
     successDescription: string,
     method: "GET" | "POST" | "DELETE" = "POST",
-    body?: Record<string, unknown>
+    body?: Record<string, unknown>,
+    section: SettingsSection = "security"
   ) => {
     const response = await fetch(endpoint, {
       method,
       headers: { "Content-Type": "application/json" },
       ...(body ? { body: JSON.stringify(body) } : {}),
     })
+    const payload = (await response.json().catch(() => ({}))) as ValidationErrorResponse & {
+      data?: Record<string, unknown>
+      apiKey?: string
+    }
+
     if (!response.ok) {
-      toast({ title: "Action failed", description: "Please retry.", variant: "destructive" })
+      const validationErrors = getValidationErrors(payload)
+      const fallbackMessage = payload?.error?.message ?? "Please retry."
+      setErrors((prev) => ({
+        ...prev,
+        [section]: Object.keys(validationErrors?.[section] ?? {}).length > 0
+          ? validationErrors[section]
+          : { _section: fallbackMessage },
+        ...validationErrors,
+      }))
+      toast({ title: "Action failed", description: fallbackMessage, variant: "destructive" })
       return null
     }
 
-    const payload = (await response.json().catch(() => ({}))) as { data?: Record<string, unknown>; apiKey?: string }
     const data = payload?.data ?? payload
 
+    setErrors((prev) => ({ ...prev, [section]: {} }))
     toast({ title: successTitle, description: successDescription })
     return data
   }
 
   const runBillingAction = async (action: BillingAction) => {
     const config = billingActionConfig[action]
-    const data = await executeAction(config.endpoint, config.successTitle, config.successDescription, config.method ?? "POST", config.body)
+    const data = await executeAction(config.endpoint, config.successTitle, config.successDescription, config.method ?? "POST", config.body, "billing")
 
     if (action === "saveInvoiceDelivery") {
       await saveSection("billing")
@@ -712,7 +735,8 @@ export function SettingsShell({ compact = false, initialSection = "account", ini
                         "Sessions revoked",
                         "All sessions were revoked.",
                         "POST",
-                        { confirm: true }
+                        { confirm: true },
+                        "account"
                       )
                       if (!data) {
                         throw new Error("Unable to revoke sessions.")
@@ -761,7 +785,8 @@ export function SettingsShell({ compact = false, initialSection = "account", ini
                         "API key regenerated",
                         "A new API key is now active.",
                         "POST",
-                        { confirm: true }
+                        { confirm: true },
+                        "security"
                       )
                       if (!data) {
                         throw new Error("Unable to regenerate API key.")
@@ -794,7 +819,8 @@ export function SettingsShell({ compact = false, initialSection = "account", ini
                         "API key deleted",
                         "API key access removed.",
                         "DELETE",
-                        { confirm: true }
+                        { confirm: true },
+                        "security"
                       )
                       if (!data) {
                         throw new Error("Unable to delete API key.")
@@ -826,7 +852,8 @@ export function SettingsShell({ compact = false, initialSection = "account", ini
                         "2FA disabled",
                         "Two-factor authentication disabled.",
                         "POST",
-                        { confirm: true }
+                        { confirm: true },
+                        "security"
                       )
                       if (!data) {
                         throw new Error("Unable to disable 2FA.")
