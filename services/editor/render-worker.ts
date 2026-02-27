@@ -31,6 +31,7 @@ interface RenderJobResult {
     sizeBytes: number
     storageKey: string
   }
+  metadata?: Record<string, unknown>
 }
 
 interface RenderOutput {
@@ -132,6 +133,7 @@ function parseResult(value: unknown): RenderJobResult {
     errorCode: typeof objectValue.errorCode === "string" ? objectValue.errorCode : null,
     progress: typeof objectValue.progress === "number" ? objectValue.progress : 0,
     stage: typeof objectValue.stage === "string" ? objectValue.stage : "queued",
+    metadata: objectValue.metadata && typeof objectValue.metadata === "object" ? (objectValue.metadata as Record<string, unknown>) : undefined,
   }
 }
 
@@ -216,6 +218,16 @@ async function withTimeout<T>(factory: () => Promise<T>, timeoutMs: number, sign
   } finally {
     if (timeout) clearTimeout(timeout)
   }
+}
+
+
+function getProviderRequestPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const providerRequest = payload.providerRequest
+  if (providerRequest && typeof providerRequest === "object") {
+    return providerRequest as Record<string, unknown>
+  }
+
+  return payload
 }
 
 function resolveProviderPolicy(payload: Record<string, unknown>) {
@@ -415,8 +427,9 @@ export async function processNextEditorRenderJob(adapter: EditorRenderModelProvi
     }
     await updateJobResult(job.id, preparingResult)
 
-    const providerPolicy = resolveProviderPolicy(job.payload ?? {})
-    const renderedOutput = await runWithProviderRetries(job, adapter, providerPolicy)
+    const providerRequestPayload = getProviderRequestPayload(job.payload ?? {})
+    const providerPolicy = resolveProviderPolicy(providerRequestPayload)
+    const renderedOutput = await runWithProviderRetries({ ...job, payload: providerRequestPayload }, adapter, providerPolicy)
     await ensureNotCanceled(job.id)
 
     const storageKey = `editor/renders/${job.project_id}/${job.id}/${randomUUID()}.${renderedOutput.fileExtension}`
