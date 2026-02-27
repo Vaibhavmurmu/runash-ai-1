@@ -3,7 +3,12 @@
 import { useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Send, Sparkles, Search } from "lucide-react"
+import { Send, Sparkles, Search, OctagonX, RotateCcw } from "lucide-react"
+
+type StreamControllerState = "idle" | "sending" | "streaming" | "stopping" | "failed"
+type ComposerHealthState = "ready" | "usage-limit" | "provider-error" | "network-timeout"
+type ResponseTone = "balanced" | "friendly" | "professional"
+type ResponseDetailLevel = "concise" | "normal" | "detailed"
 
 type RunAshChatComposerProps = {
   value: string
@@ -11,6 +16,14 @@ type RunAshChatComposerProps = {
   onSend: (message?: string) => void
   disabled?: boolean
   placeholder?: string
+  streamState?: StreamControllerState
+  composerHealth?: ComposerHealthState
+  onRetry?: () => void
+  onStop?: () => void
+  tone?: ResponseTone
+  onToneChange?: (tone: ResponseTone) => void
+  detailLevel?: ResponseDetailLevel
+  onDetailLevelChange?: (level: ResponseDetailLevel) => void
 }
 
 type SlashCommand = {
@@ -54,6 +67,14 @@ export function RunAshChatComposer({
   onSend,
   disabled = false,
   placeholder = "Ask about organic products, recipes, sustainability tips, or retail automation...",
+  streamState = "idle",
+  composerHealth = "ready",
+  onRetry,
+  onStop,
+  tone = "balanced",
+  onToneChange,
+  detailLevel = "normal",
+  onDetailLevelChange,
 }: RunAshChatComposerProps) {
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
@@ -170,6 +191,12 @@ export function RunAshChatComposer({
             if (composerError) setComposerError(null)
           }}
           onKeyDown={(event) => {
+            if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "p") {
+              event.preventDefault()
+              void enhancePrompt()
+              return
+            }
+
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault()
               handleSubmit()
@@ -195,7 +222,7 @@ export function RunAshChatComposer({
               <Sparkles className="mr-1 h-3.5 w-3.5" />
               {isEnhancing ? "Enhancing..." : "Enhance Prompt"}
             </Button>
-            <span className="text-zinc-500">Type / for RunAsh templates</span>
+            <span className="text-zinc-500">Type / for RunAsh templates • Ctrl/Cmd+Shift+P to polish</span>
           </div>
 
           <div className="flex items-center gap-3 text-zinc-500">
@@ -204,6 +231,20 @@ export function RunAshChatComposer({
           </div>
         </div>
       </div>
+
+
+      {composerHealth !== "ready" ? (
+        <div className="rounded-md border border-amber-700/60 bg-amber-950/30 px-3 py-2 text-xs text-amber-100">
+          {composerHealth === "usage-limit" ? "Usage limit reached. Wait for your quota window, then retry." : null}
+          {composerHealth === "provider-error" ? "Provider temporarily unavailable. Retry in place to continue." : null}
+          {composerHealth === "network-timeout" ? "Network timeout while streaming. Retry in place to resume." : null}
+          {onRetry ? (
+            <Button type="button" variant="link" className="h-auto px-1 py-0 text-amber-200" onClick={onRetry}>
+              <RotateCcw className="mr-1 h-3.5 w-3.5" /> Retry now
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       {value.startsWith("/") && (
         <div className="rounded-md border border-zinc-700 bg-zinc-950/80 p-2 text-xs text-zinc-300">
@@ -251,15 +292,53 @@ export function RunAshChatComposer({
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between text-xs text-zinc-500">
-        <span>Enter to send • Shift+Enter for newline</span>
-        <Button
-          onClick={() => handleSubmit()}
-          disabled={disabled || !value.trim() || isHardLimitExceeded}
-          className="bg-gradient-to-r from-orange-600 to-yellow-500 text-white hover:from-orange-700 hover:to-yellow-600"
-        >
-          <Send className="h-4 w-4" />
-        </Button>
+      <div className="flex flex-col gap-2 rounded-md border border-zinc-700 bg-zinc-900/60 p-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+        <label className="flex items-center gap-2 text-zinc-400">
+          Tone
+          <select
+            value={tone}
+            onChange={(event) => onToneChange?.(event.target.value as ResponseTone)}
+            className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100"
+          >
+            <option value="balanced">Balanced</option>
+            <option value="friendly">Friendly</option>
+            <option value="professional">Professional</option>
+          </select>
+        </label>
+
+        <div className="flex items-center gap-1" role="group" aria-label="Output detail level">
+          {(["concise", "normal", "detailed"] as ResponseDetailLevel[]).map((level) => (
+            <Button
+              key={level}
+              type="button"
+              size="sm"
+              variant={detailLevel === level ? "secondary" : "outline"}
+              className="h-7 px-2 text-[11px] capitalize"
+              onClick={() => onDetailLevelChange?.(level)}
+              aria-pressed={detailLevel === level}
+            >
+              {level}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
+        <span>Enter to send • Shift+Enter newline • Controls are keyboard accessible.</span>
+        <div className="flex items-center gap-2">
+          {(streamState === "sending" || streamState === "streaming") && onStop ? (
+            <Button type="button" variant="outline" onClick={onStop} className="border-red-700 text-red-200 hover:bg-red-950">
+              <OctagonX className="mr-1 h-4 w-4" /> Stop
+            </Button>
+          ) : null}
+          <Button
+            onClick={() => handleSubmit()}
+            disabled={disabled || !value.trim() || isHardLimitExceeded}
+            className="bg-gradient-to-r from-orange-600 to-yellow-500 text-white hover:from-orange-700 hover:to-yellow-600"
+          >
+            <Send className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   )

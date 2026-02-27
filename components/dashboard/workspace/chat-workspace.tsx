@@ -6,7 +6,7 @@ import { useState, useEffect, useMemo, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, Zap, WandSparkles } from "lucide-react"
+import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, Zap, WandSparkles, OctagonX } from "lucide-react"
 import type { ChatMessage, ChatSession, UserPreferences, QuickAction } from "@/types/runash-chat"
 import ChatMessageComponent from "@/components/chat/chat-message"
 import ChatSidebar from "@/components/chat/chat-sidebar"
@@ -43,6 +43,11 @@ import { getRecommendedProducts, shouldRecommendProducts } from "@/lib/chat-prod
 
 
 export function ChatWorkspace() {
+  type StreamControllerState = "idle" | "sending" | "streaming" | "stopping" | "failed"
+  type ComposerHealthState = "ready" | "usage-limit" | "provider-error" | "network-timeout"
+  type ResponseTone = "balanced" | "friendly" | "professional"
+  type ResponseDetailLevel = "concise" | "normal" | "detailed"
+
   const { openFromTrigger } = useDashboardModelDialog()
   const searchParams = useSearchParams()
   const querySessionId = searchParams.get("sessionId")
@@ -61,6 +66,11 @@ export function ChatWorkspace() {
   const [messages, setMessages] = useState<ChatMessage[]>([defaultAssistantMessage])
   const [inputValue, setInputValue] = useState("")
   const [isTyping, setIsTyping] = useState(false)
+  const [streamControllerState, setStreamControllerState] = useState<StreamControllerState>("idle")
+  const [composerHealth, setComposerHealth] = useState<ComposerHealthState>("ready")
+  const [lastPromptForRetry, setLastPromptForRetry] = useState<string | null>(null)
+  const [selectedTone, setSelectedTone] = useState<ResponseTone>("balanced")
+  const [detailLevel, setDetailLevel] = useState<ResponseDetailLevel>("normal")
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null)
   const [showPreferences, setShowPreferences] = useState(false)
   const [isDesktop, setIsDesktop] = useState(false)
@@ -77,6 +87,7 @@ export function ChatWorkspace() {
     return storedState === "true"
   })
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const sendAbortRef = useRef<AbortController | null>(null)
 
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => {
     if (typeof window === "undefined") {
@@ -265,6 +276,13 @@ export function ChatWorkspace() {
   }, [messages])
 
   useEffect(() => {
+    return () => {
+      sendAbortRef.current?.abort("unmount")
+    }
+  }, [])
+
+
+  useEffect(() => {
     inputRef.current?.focus()
   }, [])
 
@@ -393,6 +411,8 @@ export function ChatWorkspace() {
     setCurrentSession(null)
     setMessages([defaultAssistantMessage])
     setInputValue("")
+    setComposerHealth("ready")
+    setStreamControllerState("idle")
   }
 
   const handleDeleteSession = (sessionId: string) => {
@@ -422,6 +442,40 @@ export function ChatWorkspace() {
     localStorage.removeItem("runash_initial_prompt")
     handleSendMessage(storedPrompt)
   }, [])
+
+  const stopStreamingResponse = () => {
+    if (streamControllerState !== "sending" && streamControllerState !== "streaming") return
+    setStreamControllerState("stopping")
+    sendAbortRef.current?.abort("user_stop")
+  }
+
+  const applyComposerModifiers = (prompt: string) => {
+    const toneInstruction =
+      selectedTone === "friendly"
+        ? "Use a warm, approachable tone."
+        : selectedTone === "professional"
+          ? "Use a professional, concise business tone."
+          : "Use a balanced, helpful tone."
+
+    const detailInstruction =
+      detailLevel === "concise"
+        ? "Keep the response concise with only key points."
+        : detailLevel === "detailed"
+          ? "Provide a detailed response with clear steps and context."
+          : "Provide a normal level of detail."
+
+    return `${prompt}
+
+[Response style instructions]
+- ${toneInstruction}
+- ${detailInstruction}`
+  }
+
+  const retryLastPrompt = () => {
+    if (!lastPromptForRetry) return
+    setComposerHealth("ready")
+    void handleSendMessage(lastPromptForRetry)
+  }
 
   const handleQuickAction = async (message: string, mode: QuickAction["category"] = "product") => {
     setInputValue(message)
@@ -475,10 +529,12 @@ export function ChatWorkspace() {
       return
     }
 
-    handleSendMessage(message)
+    void handleSendMessage(message)
   }
 
   const handleSendMessage = async (messageContent?: string) => {
+    if (streamControllerState === "sending" || streamControllerState === "streaming") return
+
     const content = messageContent || inputValue.trim()
     if (!content) return
 
@@ -504,25 +560,49 @@ export function ChatWorkspace() {
     setMessages((prev) => [...prev, userMessage, assistantMessage])
     setInputValue("")
     setIsTyping(true)
+    setStreamControllerState("sending")
+    setComposerHealth("ready")
+    setLastPromptForRetry(content)
+
+    const abortController = new AbortController()
+    sendAbortRef.current = abortController
+    const timeoutId = window.setTimeout(() => {
+      abortController.abort("timeout")
+    }, 45000)
 
     try {
       const requestedTools = resolveRequestedToolsForMessage(content)
+      const normalizedContent = applyComposerModifiers(content)
 
       const toolPayloads = undefined
 
       const response = await fetch("/api/agents/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: abortController.signal,
         body: JSON.stringify({
           sessionId: currentSession?.id ?? querySessionId ?? undefined,
           title: currentSession?.title ?? "RunAsh Agent Session",
-          message: content,
+          message: normalizedContent,
           tools: requestedTools,
           toolPayloads,
         }),
       })
 
+      if (response.status === 429) {
+        setComposerHealth("usage-limit")
+        setStreamControllerState("failed")
+        throw new Error("usage_limit_reached")
+      }
+
+      if (response.status >= 500) {
+        setComposerHealth("provider-error")
+        setStreamControllerState("failed")
+        throw new Error("provider_error")
+      }
+
       if (!response.ok || !response.body) {
+        setStreamControllerState("failed")
         throw new Error("stream_request_failed")
       }
 
@@ -553,6 +633,7 @@ export function ChatWorkspace() {
           const payload = JSON.parse(payloadLine)
 
           if (eventName === "token") {
+            setStreamControllerState("streaming")
             updateAssistantMessage((existing) => ({
               ...existing,
               status: "streaming",
@@ -722,14 +803,44 @@ export function ChatWorkspace() {
           }
 
           if (eventName === "error") {
+            setComposerHealth("provider-error")
+            setStreamControllerState("failed")
             updateAssistantMessage((existing) => ({ ...existing, status: "failed" }))
           }
         }
       }
-    } catch {
-      const fallback = buildAssistantResponse(content)
-      setMessages((prev) => prev.map((entry) => (entry.id === assistantId ? { ...fallback, id: assistantId } : entry)))
+    } catch (error) {
+      const isAbortError = error instanceof DOMException && error.name === "AbortError"
+      const timeoutAbort = abortController.signal.reason === "timeout"
+
+      if (isAbortError && abortController.signal.reason === "user_stop") {
+        setMessages((prev) =>
+          prev.map((entry) =>
+            entry.id === assistantId
+              ? {
+                  ...entry,
+                  status: "completed",
+                  content: entry.content || "Stopped. You can retry from the composer.",
+                }
+              : entry,
+          ),
+        )
+        setStreamControllerState("idle")
+      } else if (isAbortError && timeoutAbort) {
+        setComposerHealth("network-timeout")
+        setStreamControllerState("failed")
+      } else {
+        setComposerHealth((prev) => (prev === "ready" ? "provider-error" : prev))
+        setStreamControllerState("failed")
+        const fallback = buildAssistantResponse(content)
+        setMessages((prev) => prev.map((entry) => (entry.id === assistantId ? { ...fallback, id: assistantId } : entry)))
+      }
     } finally {
+      window.clearTimeout(timeoutId)
+      sendAbortRef.current = null
+      if (streamControllerState !== "failed") {
+        setStreamControllerState((prev) => (prev === "stopping" ? "idle" : prev === "streaming" || prev === "sending" ? "idle" : prev))
+      }
       setIsTyping(false)
     }
   }
@@ -939,7 +1050,7 @@ export function ChatWorkspace() {
     },
   ]
 
-  const showEmptyState = messages.length === 1 && !inputValue.trim() && !isTyping
+  const showEmptyState = messages.length === 1 && !inputValue.trim() && streamControllerState === "idle"
 
   const leftDrawer = (
     <div className="space-y-2">
@@ -1023,6 +1134,16 @@ export function ChatWorkspace() {
                 <Mic className="mr-1.5 h-3.5 w-3.5" />
                 {voiceEnabled ? "Voice On" : "Voice Off"}
               </ActionPill>
+              {streamControllerState === "sending" || streamControllerState === "streaming" ? (
+                <ActionPill
+                  onClick={stopStreamingResponse}
+                  className="bg-red-950 text-red-200 hover:bg-red-900"
+                  aria-label="Stop generating response"
+                >
+                  <OctagonX className="mr-1.5 h-3.5 w-3.5" />
+                  Stop
+                </ActionPill>
+              ) : null}
             </>
           }
         />
@@ -1081,7 +1202,7 @@ export function ChatWorkspace() {
                   <ChatMessageComponent key={message.id} message={message} sessionId={currentSession?.id} />
                 ))}
 
-                {isTyping && (
+                {(isTyping || streamControllerState === "sending" || streamControllerState === "streaming") && (
                   <div className="flex items-center space-x-2 text-zinc-400" aria-live="polite">
                     <div className="rounded-lg bg-zinc-900 p-3">
                       <div className="flex space-x-1">
@@ -1128,7 +1249,20 @@ export function ChatWorkspace() {
             )}
 
             <div className="border-t border-zinc-800 p-3 sm:p-4">
-              <RunAshChatComposer value={inputValue} onChange={setInputValue} onSend={handleSendMessage} disabled={isTyping} />
+              <RunAshChatComposer
+                value={inputValue}
+                onChange={setInputValue}
+                onSend={handleSendMessage}
+                disabled={streamControllerState === "sending" || streamControllerState === "streaming" || streamControllerState === "stopping"}
+                streamState={streamControllerState}
+                composerHealth={composerHealth}
+                onRetry={retryLastPrompt}
+                onStop={stopStreamingResponse}
+                tone={selectedTone}
+                onToneChange={setSelectedTone}
+                detailLevel={detailLevel}
+                onDetailLevelChange={setDetailLevel}
+              />
               <div className="flex items-center justify-between mt-2 text-xs text-zinc-500">
                 <span>Prompt composer is optimized for RunAsh task templates and enhanced prompt quality.</span>
                 <div className="flex items-center space-x-4">
