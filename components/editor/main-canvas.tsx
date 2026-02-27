@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Download, Loader, Upload } from "lucide-react"
+import { Loader, Settings2, Upload, Video, PlusSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import MediaControls from "./media-controls"
@@ -16,6 +16,13 @@ interface MainCanvasProps {
   onTimelineChange?: (timeline: EditorTimeline) => void
   onUploadMedia?: (file: File) => Promise<void>
   uploadInProgress?: boolean
+  isPlaying?: boolean
+  currentTime?: number
+  onCurrentTimeChange?: (time: number) => void
+  onPlayPause?: () => void
+  onSkipPrevious?: () => void
+  onSkipNext?: () => void
+  onGenerateVideo?: () => Promise<void>
 }
 
 export default function MainCanvas({
@@ -25,9 +32,16 @@ export default function MainCanvas({
   onTimelineChange,
   onUploadMedia,
   uploadInProgress = false,
+  isPlaying: controlledIsPlaying,
+  currentTime: controlledCurrentTime,
+  onCurrentTimeChange,
+  onPlayPause,
+  onSkipPrevious,
+  onSkipNext,
+  onGenerateVideo,
 }: MainCanvasProps) {
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [currentTime, setCurrentTime] = useState(0)
+  const [internalIsPlaying, setInternalIsPlaying] = useState(false)
+  const [internalCurrentTime, setInternalCurrentTime] = useState(0)
   const [duration, setDuration] = useState(timeline?.durationSeconds ?? 10)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationProgress, setGenerationProgress] = useState(0)
@@ -36,14 +50,59 @@ export default function MainCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const timelineRef = useRef<HTMLDivElement>(null)
+  const isPlaying = controlledIsPlaying ?? internalIsPlaying
+  const currentTime = controlledCurrentTime ?? internalCurrentTime
+
+  const setCurrentTime = (value: number) => {
+    const next = Math.max(0, Math.min(value, duration))
+    if (onCurrentTimeChange) {
+      onCurrentTimeChange(next)
+      return
+    }
+    setInternalCurrentTime(next)
+  }
+
+  const togglePlay = () => {
+    if (onPlayPause) {
+      onPlayPause()
+      return
+    }
+    setInternalIsPlaying((prev) => !prev)
+  }
 
 
   useEffect(() => {
     setDuration(timeline?.durationSeconds ?? 10)
   }, [timeline?.durationSeconds])
+
+  useEffect(() => {
+    if (!isPlaying) return
+    const timer = setInterval(() => {
+      setCurrentTime(currentTime + 0.1)
+    }, 100)
+
+    return () => clearInterval(timer)
+  }, [isPlaying, currentTime, duration])
+
+  useEffect(() => {
+    if (currentTime < duration) return
+    if (onPlayPause && isPlaying) {
+      onPlayPause()
+      return
+    }
+    if (isPlaying) {
+      setInternalIsPlaying(false)
+    }
+  }, [currentTime, duration, isPlaying, onPlayPause])
+
   const segments = useMemo(() => timeline?.segments ?? [], [timeline])
 
-  const handleGenerateVideo = () => {
+  const handleGenerateVideo = async () => {
+    if (onGenerateVideo) {
+      await onGenerateVideo()
+      return
+    }
+
     setIsGenerating(true)
     setGenerationProgress(0)
     const interval = setInterval(() => {
@@ -119,7 +178,7 @@ export default function MainCanvas({
         <div className="absolute bottom-4 left-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
           <MediaControls
             isPlaying={isPlaying}
-            onPlayPause={() => setIsPlaying(!isPlaying)}
+            onPlayPause={togglePlay}
             volume={volume}
             onVolumeChange={setVolume}
             currentTime={currentTime}
@@ -141,12 +200,14 @@ export default function MainCanvas({
         <div className="bg-card border border-border rounded-lg p-4">
           <MediaControls
             isPlaying={isPlaying}
-            onPlayPause={() => setIsPlaying(!isPlaying)}
+            onPlayPause={togglePlay}
             volume={volume}
             onVolumeChange={setVolume}
             currentTime={currentTime}
             duration={duration}
             onSeek={setCurrentTime}
+            onSkipPrevious={onSkipPrevious}
+            onSkipNext={onSkipNext}
             onSettings={() => setShowAdvancedControls(false)}
           />
         </div>
@@ -173,14 +234,17 @@ export default function MainCanvas({
         </div>
 
         <div className="flex gap-2">
-          <Button onClick={handleGenerateVideo} disabled={isGenerating} className="flex-1 gap-2 bg-gradient-to-r from-primary to-accent hover:opacity-90">
+          <Button onClick={() => void handleGenerateVideo()} disabled={isGenerating} className="flex-1 gap-2 bg-gradient-to-r from-primary to-accent hover:opacity-90">
             {isGenerating ? (
               <>
                 <Loader className="w-4 h-4 animate-spin" />
                 Generating...
               </>
             ) : (
-              <>Generate Video</>
+              <>
+                <Video className="w-4 h-4" />
+                Generate Video
+              </>
             )}
           </Button>
           <Button variant="outline" size="icon" className="gap-2 bg-transparent" title="Upload Media" onClick={() => document.getElementById("editor-media-upload")?.click()} disabled={uploadInProgress}>
@@ -199,10 +263,10 @@ export default function MainCanvas({
             }}
           />
           <Button variant="outline" size="icon" className="gap-2 bg-transparent" title="Add Segment" onClick={handleAddSegment}>
-            <Download className="w-4 h-4" />
+            <PlusSquare className="w-4 h-4" />
           </Button>
           <Button variant="outline" size="icon" className="gap-2 bg-transparent" title="Advanced Controls" onClick={() => setShowAdvancedControls(!showAdvancedControls)}>
-            <Download className="w-4 h-4" />
+            <Settings2 className="w-4 h-4" />
           </Button>
         </div>
       </div>

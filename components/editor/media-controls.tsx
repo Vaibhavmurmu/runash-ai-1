@@ -16,6 +16,8 @@ interface MediaControlsProps {
   currentTime: number
   duration: number
   onSeek: (time: number) => void
+  onSkipPrevious?: () => void
+  onSkipNext?: () => void
   onFullscreen?: () => void
   onSettings?: () => void
   compact?: boolean
@@ -29,6 +31,8 @@ export default function MediaControls({
   currentTime,
   duration,
   onSeek,
+  onSkipPrevious,
+  onSkipNext,
   onFullscreen,
   onSettings,
   compact = false,
@@ -104,7 +108,7 @@ export default function MediaControls({
           <div className="flex items-center gap-2">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button size="sm" variant="ghost" className="gap-2">
+                <Button size="sm" variant="ghost" className="gap-2" onClick={onSkipPrevious}>
                   <SkipBack className="w-4 h-4" />
                 </Button>
               </TooltipTrigger>
@@ -126,7 +130,7 @@ export default function MediaControls({
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button size="sm" variant="ghost" className="gap-2">
+                <Button size="sm" variant="ghost" className="gap-2" onClick={onSkipNext}>
                   <SkipForward className="w-4 h-4" />
                 </Button>
               </TooltipTrigger>
