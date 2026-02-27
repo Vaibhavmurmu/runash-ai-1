@@ -701,6 +701,14 @@ export function EditorWorkspace() {
     setGenerationJob(null)
   }, [project?.id])
 
+  const generationStatus = generationJob?.status ?? null
+  const generationProgress =
+    typeof generationJob?.result?.progress === "number" ? Math.round(generationJob.result.progress) : null
+  const generationStage =
+    typeof generationJob?.result?.stage === "string" && generationJob.result.stage.trim().length > 0
+      ? generationJob.result.stage
+      : null
+
   return (
     <>
       <WelcomeOnboardingModal
@@ -760,6 +768,9 @@ export function EditorWorkspace() {
             onGenerateVideo={handleGenerateVideo}
             isGeneratingRender={isGeneratingRender}
             generationJob={generationJob}
+            generationStatus={generationStatus}
+            generationProgress={generationProgress}
+            generationStage={generationStage}
           />
           <RightPanel
             selectedModel={selectedModel}
