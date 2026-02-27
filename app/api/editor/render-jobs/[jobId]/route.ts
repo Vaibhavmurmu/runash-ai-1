@@ -2,6 +2,10 @@ import { NextResponse } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
 import { sql } from "@/lib/editor/repository"
 
+function asObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {}
+}
+
 export async function GET(request: Request, { params }: { params: { jobId: string } }) {
   const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
@@ -18,13 +22,21 @@ export async function PATCH(request: Request, { params }: { params: { jobId: str
   if ("error" in auth) return auth.error
   const { jobId } = params
   const body = await request.json()
+  const metadata = asObject(body?.metadata)
 
   const [job] = await sql`
     UPDATE editor_render_jobs
     SET
-      status=COALESCE(${body.status ?? null}, status),
-      result=COALESCE(${body.result ? JSON.stringify(body.result) : null}::jsonb, result),
-      output_asset_id=COALESCE(${body.outputAssetId ?? null}, output_asset_id),
+      payload=CASE
+        WHEN ${Object.keys(metadata).length > 0}
+          THEN jsonb_set(
+            payload,
+            '{metadata}',
+            COALESCE(payload->'metadata', '{}'::jsonb) || ${JSON.stringify(metadata)}::jsonb,
+            true
+          )
+        ELSE payload
+      END,
       updated_at=now()
     WHERE id=${jobId} AND owner_id=${auth.userId}
     RETURNING *
@@ -33,15 +45,4 @@ export async function PATCH(request: Request, { params }: { params: { jobId: str
   if (!job) return NextResponse.json({ error: "Render job not found" }, { status: 404 })
 
   return NextResponse.json({ job })
-}
-
-export async function DELETE(request: Request, { params }: { params: { jobId: string } }) {
-  const auth = await requireEditorUser(request)
-  if ("error" in auth) return auth.error
-  const { jobId } = params
-
-  const rows = await sql`DELETE FROM editor_render_jobs WHERE id=${jobId} AND owner_id=${auth.userId} RETURNING id`
-  if (!rows.length) return NextResponse.json({ error: "Render job not found" }, { status: 404 })
-
-  return NextResponse.json({ deleted: true, jobId })
 }
