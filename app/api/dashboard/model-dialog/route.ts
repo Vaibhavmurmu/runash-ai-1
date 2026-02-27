@@ -19,7 +19,48 @@ type ModelDialogResponseEnvelope = {
   requestId: string
   status: "completed" | "accepted" | "failed"
   output: unknown
-  error: { code: string; message: string } | null
+  error: { code: ModelDialogErrorCode; message: string } | null
+}
+
+type ModelDialogErrorCode =
+  | "USAGE_LIMIT_REACHED"
+  | "PLAN_UPGRADE_REQUIRED"
+  | "RATE_LIMITED"
+  | "MODEL_DIALOG_INVALID_REQUEST"
+  | "MODEL_DIALOG_INTERNAL_ERROR"
+
+type ModelDialogPolicyError = {
+  code: Extract<ModelDialogErrorCode, "USAGE_LIMIT_REACHED" | "PLAN_UPGRADE_REQUIRED" | "RATE_LIMITED">
+  message: string
+  status: number
+}
+
+function resolvePolicyError(context: Record<string, unknown>): ModelDialogPolicyError | null {
+  if (context.usageLimitReached === true) {
+    return {
+      code: "USAGE_LIMIT_REACHED",
+      message: "You have reached your current model usage limit.",
+      status: 429,
+    }
+  }
+
+  if (context.planUpgradeRequired === true) {
+    return {
+      code: "PLAN_UPGRADE_REQUIRED",
+      message: "Your current plan does not include this model capability.",
+      status: 403,
+    }
+  }
+
+  if (context.rateLimited === true) {
+    return {
+      code: "RATE_LIMITED",
+      message: "Model dialog requests are temporarily rate limited. Please retry shortly.",
+      status: 429,
+    }
+  }
+
+  return null
 }
 
 function buildResponse(envelope: ModelDialogResponseEnvelope) {
@@ -52,6 +93,22 @@ export async function POST(request: NextRequest) {
     }
 
     const { modelId, mode, input, context, sourceModule } = parsed.data
+
+    const policyError = resolvePolicyError(context)
+    if (policyError) {
+      return NextResponse.json(
+        buildResponse({
+          requestId,
+          status: "failed",
+          output: null,
+          error: {
+            code: policyError.code,
+            message: policyError.message,
+          },
+        }),
+        { status: policyError.status },
+      )
+    }
 
     const runId = await createModelDialogRun({
       requestId,
