@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
+import { publishRenderJobEvent } from "@/lib/editor/render-job-events"
 import { sql } from "@/lib/editor/repository"
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -62,6 +63,19 @@ export async function PATCH(request: Request, { params }: { params: { jobId: str
         { status: 409 },
       )
     }
+
+    publishRenderJobEvent({
+      id: job.id,
+      projectId: job.project_id,
+      ownerId: job.owner_id,
+      status: job.status,
+      requestedBy: job.requested_by,
+      payload: job.payload ?? {},
+      result: job.result ?? {},
+      outputAssetId: job.output_asset_id,
+      createdAt: job.created_at,
+      updatedAt: job.updated_at,
+    })
 
     return NextResponse.json({ job })
   }

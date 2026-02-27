@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
 import { compileTimelineToVideoGenerationRequest, TimelineCompilationError } from "@/lib/editor/generation/compile-timeline"
+import { publishRenderJobEvent } from "@/lib/editor/render-job-events"
 import { getProjectById, sql } from "@/lib/editor/repository"
 import { buildGenerationDefaults, resolveVideoModelProviderAdapter } from "@/lib/editor/video-models/registry"
 import { normalizeVideoGenerationPayload, validateVideoGenerationPayload } from "@/lib/editor/video-models/validation"
@@ -237,6 +238,19 @@ export async function POST(request: Request) {
     )
     RETURNING *
   `
+
+  publishRenderJobEvent({
+    id: job.id,
+    projectId: job.project_id,
+    ownerId: job.owner_id,
+    status: job.status,
+    requestedBy: job.requested_by,
+    payload: job.payload ?? {},
+    result: job.result ?? {},
+    outputAssetId: job.output_asset_id,
+    createdAt: job.created_at,
+    updatedAt: job.updated_at,
+  })
 
   return NextResponse.json({ job }, { status: 201 })
 }
