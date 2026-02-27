@@ -132,6 +132,13 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
   const [requestId, setRequestId] = useState<string | null>(null)
   const [recentRuns, setRecentRuns] = useState<ModelDialogRunHistoryItem[]>([])
   const [selectedModelId, setSelectedModelId] = useState<string>("gpt-4o-mini")
+
+  const modelCatalog = useMemo(() => listModelCatalog(), [])
+  const selectedCatalogEntry = useMemo(
+    () => modelCatalog.find((entry) => entry.id === selectedModelId) ?? null,
+    [modelCatalog, selectedModelId],
+  )
+
   const eventSourceRef = useRef<EventSource | null>(null)
   const tickTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startedAtRef = useRef<number>(0)
@@ -353,6 +360,11 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
   const promptPreview =
     activeModelDialog?.payload?.prompt ??
     "Tune generation controls, review context, and execute with the selected model policy."
+  const dialogModelIdentity = {
+    ...BASE_MODEL,
+    name: selectedCatalogEntry?.label ?? activeModelDialog?.model.displayName ?? BASE_MODEL.name,
+    provider: selectedCatalogEntry?.provider ?? activeModelDialog?.model.provider ?? BASE_MODEL.provider,
+  }
 
   return (
     <DashboardModelDialogContext.Provider value={value}>
@@ -365,6 +377,10 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
             resetExecutionState()
           }
         }}
+
+        model={dialogModelIdentity}
+        modelOptions={modelCatalog.map((entry) => ({ id: entry.id, provider: entry.provider, label: entry.label }))}
+
         model={{
           ...BASE_MODEL,
           name:
@@ -377,6 +393,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
             BASE_MODEL.provider,
         }}
         modelOptions={listModelCatalog().map((entry) => ({ id: entry.id, provider: entry.provider, label: entry.label }))}
+
         selectedModelId={selectedModelId}
         onSelectedModelIdChange={setSelectedModelId}
         triggerSource={activeModelDialog?.triggerSource}
