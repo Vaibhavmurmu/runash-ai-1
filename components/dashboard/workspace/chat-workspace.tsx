@@ -39,6 +39,7 @@ export function ChatWorkspace() {
   type ResponseTone = "balanced" | "friendly" | "professional"
   type ResponseDetailLevel = "concise" | "normal" | "detailed"
   type ChatRunDiagnostics = { requestId: string | null; provider: string | null; model: string | null; lastErrorCode: string | null }
+  type ModelCatalogEntry = { id: string; provider: string; label: string }
 
   const { openFromTrigger } = useDashboardModelDialog()
   const searchParams = useSearchParams()
@@ -66,6 +67,8 @@ export function ChatWorkspace() {
   const [selectedTone, setSelectedTone] = useState<ResponseTone>("balanced")
   const [detailLevel, setDetailLevel] = useState<ResponseDetailLevel>("normal")
   const [runDiagnostics, setRunDiagnostics] = useState<ChatRunDiagnostics>({ requestId: null, provider: null, model: null, lastErrorCode: null })
+  const [modelCatalog, setModelCatalog] = useState<ModelCatalogEntry[]>([])
+  const [selectedModel, setSelectedModel] = useState("gpt-4o-mini")
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null)
   const [showPreferences, setShowPreferences] = useState(false)
   const [isDesktop, setIsDesktop] = useState(false)
@@ -271,15 +274,37 @@ export function ChatWorkspace() {
   }, [messages])
 
   useEffect(() => {
+    let active = true
+
+    const loadModelCatalog = async () => {
+      try {
+        const response = await fetch("/api/ai/models", { cache: "no-store" })
+        if (!response.ok) return
+        const payload = (await response.json()) as { models?: ModelCatalogEntry[]; defaultModel?: string }
+        if (!active) return
+        const options = Array.isArray(payload.models) ? payload.models : []
+        setModelCatalog(options)
+        if (payload.defaultModel && options.some((item) => item.id === payload.defaultModel)) {
+          setSelectedModel(payload.defaultModel)
+        }
+      } catch {
+        // model catalog endpoint is optional; keep default model
+      }
+    }
+
+    void loadModelCatalog()
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
     return () => {
       sendAbortRef.current?.abort("unmount")
     }
   }, [])
 
-
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
 
   useEffect(() => {
     const syncViewport = () => {
@@ -603,6 +628,8 @@ export function ChatWorkspace() {
           sessionId: currentSession?.id ?? querySessionId ?? undefined,
           title: currentSession?.title ?? "RunAsh Agent Session",
           message: normalizedContent,
+          model: selectedModel,
+          provider: modelCatalog.find((entry) => entry.id === selectedModel)?.provider,
           tools: requestedTools,
           toolPayloads,
         }),
@@ -902,9 +929,7 @@ export function ChatWorkspace() {
     } finally {
       window.clearTimeout(timeoutId)
       sendAbortRef.current = null
-      if (streamControllerState !== "failed") {
-        setStreamControllerState((prev) => (prev === "stopping" ? "idle" : prev === "streaming" || prev === "sending" ? "idle" : prev))
-      }
+      setStreamControllerState((prev) => (prev === "stopping" ? "idle" : prev === "streaming" || prev === "sending" ? "idle" : prev))
       setIsTyping(false)
     }
   }
@@ -1323,6 +1348,9 @@ export function ChatWorkspace() {
                 onToneChange={setSelectedTone}
                 detailLevel={detailLevel}
                 onDetailLevelChange={setDetailLevel}
+                modelOptions={modelCatalog}
+                selectedModel={selectedModel}
+                onSelectedModelChange={setSelectedModel}
               />
               {(streamControllerState === "failed" || runDiagnostics.requestId || runDiagnostics.provider) && (
                 <div className="mt-3 rounded-md border border-zinc-800 bg-zinc-900/60 p-2 text-xs text-zinc-300">
