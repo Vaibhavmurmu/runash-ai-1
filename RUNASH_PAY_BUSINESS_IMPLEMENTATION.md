@@ -307,3 +307,9 @@ Business controls preserved:
 - **Risk:** render queue may accumulate if model/storage dependencies are unavailable.
 - **Mitigation:** bounded retries with attempt tracking and non-sensitive error persistence in job result metadata.
 - **Rollback:** disable the worker invocation/scheduler and continue queue-only behavior while preserving enqueue/list APIs.
+
+## 2026-02 marketing route alias note (non-contract)
+
+- Public navigation aliases now map `/payment/business` -> `/enterprises` and `/payment/startup` -> `/partner` to align top-level marketing information architecture.
+- This is a presentation-layer route alias only; startup/business payment API signatures, payment field names, checkout contracts, and webhook contracts remain unchanged.
+- Rollback: remove redirect aliases in `next.config.mjs` to restore legacy public URL paths without touching payment execution logic.
