@@ -23,6 +23,48 @@ export async function PATCH(request: Request, { params }: { params: { jobId: str
   const { jobId } = params
   const body = await request.json()
   const metadata = asObject(body?.metadata)
+  const shouldCancel = body?.status === "canceled"
+
+  if (shouldCancel) {
+    const [job] = await sql`
+      UPDATE editor_render_jobs
+      SET
+        status='canceled',
+        result=jsonb_set(
+          COALESCE(result, '{}'::jsonb) || jsonb_build_object(
+            'finishedAt', now(),
+            'progress', 100,
+            'stage', 'canceled',
+            'lastError', null,
+            'errorCode', 'CANCELED'
+          ),
+          '{canceledAt}',
+          to_jsonb(now()),
+          true
+        ),
+        updated_at=now()
+      WHERE id=${jobId}
+        AND owner_id=${auth.userId}
+        AND status IN ('queued', 'processing')
+      RETURNING *
+    `
+
+    if (!job) {
+      const [existingJob] = await sql`SELECT * FROM editor_render_jobs WHERE id=${jobId} AND owner_id=${auth.userId}`
+      if (!existingJob) return NextResponse.json({ error: "Render job not found" }, { status: 404 })
+
+      return NextResponse.json(
+        {
+          error: "Render job can only be canceled while queued or processing",
+          code: "EDITOR_RENDER_CANCEL_INVALID_STATE",
+          status: existingJob.status,
+        },
+        { status: 409 },
+      )
+    }
+
+    return NextResponse.json({ job })
+  }
 
   const [job] = await sql`
     UPDATE editor_render_jobs

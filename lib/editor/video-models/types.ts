@@ -12,7 +12,7 @@ export interface VideoGenerationRequest {
 export interface VideoGenerationProgress {
   jobId: string
   provider: string
-  status: "queued" | "processing" | "completed" | "failed"
+  status: "queued" | "processing" | "completed" | "failed" | "canceled"
   progressPercent: number
   etaSeconds?: number
   detail?: string

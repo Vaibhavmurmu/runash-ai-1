@@ -40,7 +40,7 @@ function formatFrame(event: string, payload: unknown) {
 }
 
 function isTerminal(status: string) {
-  return status === "completed" || status === "failed"
+  return status === "completed" || status === "failed" || status === "canceled"
 }
 
 async function loadJob(ownerId: string, projectId: string, jobId: string): Promise<RenderJobRow | null> {

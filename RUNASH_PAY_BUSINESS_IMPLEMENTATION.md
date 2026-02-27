@@ -26,6 +26,14 @@ This document is limited to payment/business implementation policy. Generic cont
 - Auth signup flow was unified through Better Auth server registration (`auth.api.signUpEmail`) with compatibility response mapping; no payment route fields or business payment contracts changed.
 - Incident and rollback runbook reference for auth/org config operations: `docs/AUTH_ORG_INCIDENT_RUNBOOK.md`.
 
+
+## 2026-02 editor render reliability hardening note (non-payment contract change)
+
+- Change scope: editor render job reliability and security hardening (`/api/editor/render-jobs` rate limits, cancel semantics, worker timeout/retry, and log redaction).
+- Payment/auth impact assessment: no payment contract fields, checkout/webhook schemas, or auth/payment API signatures were modified.
+- Risk + rollback: low-to-medium operational risk (queue behavior changes). Rollback by reverting editor render job API/worker patch if cancellation or queue throughput regressions appear.
+- Security posture: provider request/response operational logs are redacted to prevent sensitive token/prompt leakage in shared logs.
+
 ## Compatibility, risk, and rollback
 
 - Backward compatibility is mandatory for payment routes unless a versioned migration is explicitly introduced.
