@@ -976,7 +976,7 @@ export function ChatWorkspace() {
             <ScrollArea className="flex-1 p-3 sm:p-4">
               <div className="space-y-4">
                 {messages.map((message) => (
-                  <ChatMessageComponent key={message.id} message={message} />
+                  <ChatMessageComponent key={message.id} message={message} sessionId={currentSession?.id} />
                 ))}
 
                 {isTyping && (

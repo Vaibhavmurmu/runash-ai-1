@@ -9,8 +9,10 @@ import {
 } from "@/lib/repositories/sessions"
 import {
   createChatSessionMessage,
+  deleteChatSessionMessage,
   listMessagesBySession,
   type ChatSessionMessage,
+  updateChatSessionMessage,
 } from "@/lib/repositories/session-messages"
 
 const DATA_DIR = path.join(process.cwd(), "data")
@@ -116,6 +118,57 @@ export async function listSessionMessages(sessionId: string, limit?: number): Pr
   return filtered.slice(0, limit)
 }
 
+
+export async function updateSessionMessage(
+  sessionId: string,
+  messageId: string | number,
+  content: string,
+): Promise<RunashSessionMessage | null> {
+  if (useDatabaseBackedChatStorage) {
+    return updateChatSessionMessage(sessionId, messageId, content)
+  }
+
+  const messages = readJsonFile<RunashSessionMessage[]>(MESSAGES_FILE, [])
+  const normalizedSessionId = String(sessionId)
+  const normalizedMessageId = String(messageId)
+  const matchIndex = messages.findIndex(
+    (message) => String(message.session_id) === normalizedSessionId && String(message.id) === normalizedMessageId,
+  )
+
+  if (matchIndex < 0) {
+    return null
+  }
+
+  const updatedMessage: RunashSessionMessage = {
+    ...messages[matchIndex],
+    content,
+  }
+
+  messages[matchIndex] = updatedMessage
+  writeJsonFile(MESSAGES_FILE, messages)
+
+  return updatedMessage
+}
+
+export async function deleteSessionMessage(sessionId: string, messageId: string | number): Promise<boolean> {
+  if (useDatabaseBackedChatStorage) {
+    return deleteChatSessionMessage(sessionId, messageId)
+  }
+
+  const messages = readJsonFile<RunashSessionMessage[]>(MESSAGES_FILE, [])
+  const normalizedSessionId = String(sessionId)
+  const normalizedMessageId = String(messageId)
+  const retained = messages.filter(
+    (message) => !(String(message.session_id) === normalizedSessionId && String(message.id) === normalizedMessageId),
+  )
+
+  if (retained.length === messages.length) {
+    return false
+  }
+
+  writeJsonFile(MESSAGES_FILE, retained)
+  return true
+}
 export async function createSessionMessage(
   sessionId: string,
   role: RunashSessionMessage["role"],
