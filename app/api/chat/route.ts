@@ -11,6 +11,7 @@ import {
   resolveModelSelection,
   streamModelTextWithFallback,
 } from "@/lib/ai/provider-registry"
+import { routeToolsToMcp } from "@/lib/runash-chat/tooling"
 
 export const maxDuration = 30
 
@@ -68,6 +69,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { messages, context, provider, model } = validation.data
+    const latestMessage = messages.at(-1)
 
     let systemPrompt = `You are RunAsh AI, a helpful assistant for the RunAsh platform. You help users with live streaming, grocery shopping, and platform features.`
 
@@ -81,6 +83,14 @@ export async function POST(request: NextRequest) {
       role: message.role,
       content: typeof message.content === "string" ? message.content : JSON.stringify(message.content),
     }))
+
+    const toolRouting =
+      latestMessage && typeof latestMessage.content === "string"
+        ? await routeToolsToMcp({
+            message: latestMessage.content,
+            actor: { userId: session.user.id, roles: [] },
+          })
+        : { requestedTools: [], mcpResults: [], fallbackTools: [] }
 
     const selection = resolveModelSelection(model, provider)
     const result = await streamModelTextWithFallback(selection, {
@@ -108,7 +118,14 @@ export async function POST(request: NextRequest) {
       route: "/api/chat",
       method: "POST",
       userId: session.user.id,
-      details: { context, messageCount: messages.length, provider: result.provider, model: result.model },
+      details: {
+        context,
+        messageCount: messages.length,
+        provider: result.provider,
+        model: result.model,
+        requestedTools: toolRouting.requestedTools,
+        fallbackTools: toolRouting.fallbackTools,
+      },
     })
 
     return new Response(stream, {

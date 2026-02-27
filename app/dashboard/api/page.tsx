@@ -134,6 +134,18 @@ export default function ApiPage() {
         <Card className="border-border/60 bg-card/80 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
+              <Shield className="h-4 w-4" /> MCP connectors
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/dashboard/connections">Manage MCP runtime connections</Link>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card className="border-border/60 bg-card/80 shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
               <LifeBuoy className="h-4 w-4" /> Need help?
             </CardTitle>
           </CardHeader>
