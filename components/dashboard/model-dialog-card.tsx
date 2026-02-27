@@ -202,25 +202,49 @@ function formatFieldHint(field: keyof ModelDialogModeContext) {
 }
 
 
-const ERROR_CARD_CONFIG: Partial<Record<ModelDialogErrorCode, {
+type ErrorCardConfig = {
   title: string
   description: string
   ctaLabel: string
-}>> = {
+  ctaHint: string
+}
+
+const ERROR_CARD_CONFIG: Partial<Record<ModelDialogErrorCode, ErrorCardConfig>> = {
   USAGE_LIMIT_REACHED: {
-    title: "Usage limit reached",
+    title: "Usage exhausted",
     description: "You have reached the usage allowance for your current plan.",
-    ctaLabel: "Switch mode/model",
+    ctaLabel: "Switch model",
+    ctaHint: "Try a lighter model or reduce quality preset to continue immediately.",
   },
   PLAN_UPGRADE_REQUIRED: {
     title: "Plan upgrade required",
     description: "This model capability is not available on your current plan tier.",
     ctaLabel: "Upgrade plan",
+    ctaHint: "Upgrade to unlock this model capability for future runs.",
+  },
+  MODEL_DIALOG_PROVIDER_DOWN: {
+    title: "Provider down",
+    description: "The provider is currently unavailable or degraded.",
+    ctaLabel: "Retry",
+    ctaHint: "Retry now or switch to an alternate model while provider health recovers.",
+  },
+  MODEL_DIALOG_INVALID_PROMPT_INPUT: {
+    title: "Invalid prompt/input",
+    description: "The prompt could not be processed in its current shape.",
+    ctaLabel: "Reduce context",
+    ctaHint: "Trim prompt size, remove unsupported tokens, then run again.",
+  },
+  MODEL_DIALOG_INVALID_REQUEST: {
+    title: "Invalid prompt/input",
+    description: "The request payload could not be validated.",
+    ctaLabel: "Reduce context",
+    ctaHint: "Check required fields and shorten payload context before retrying.",
   },
   RATE_LIMITED: {
     title: "Rate limited",
     description: "Too many requests were submitted recently. Please try again shortly.",
-    ctaLabel: "Retry later",
+    ctaLabel: "Retry",
+    ctaHint: "Wait a few seconds and retry to avoid burst throttling.",
   },
 }
 
@@ -275,6 +299,7 @@ export function ModelDialogCard({
 
   const contextMode = executionMode in MODE_CARD_CONFIG ? (executionMode as ModeWithContext) : null
   const errorConfig = errorCode ? ERROR_CARD_CONFIG[errorCode] : null
+  const latestRun = recentRuns[0]
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -460,6 +485,7 @@ export function ModelDialogCard({
                     <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
                       <p className="text-sm font-semibold text-destructive">{errorConfig.title}</p>
                       <p className="mt-1 text-xs text-muted-foreground">{errorConfig.description}</p>
+                      <p className="mt-2 text-xs text-muted-foreground">{errorConfig.ctaHint}</p>
                       <p className="mt-2 text-xs text-muted-foreground">{errorMessage || "Model execution failed."}</p>
                       <Button type="button" variant="outline" size="sm" onClick={onRetry} disabled={!onRetry} className="mt-3">
                         <RotateCcw className="mr-2 h-4 w-4" />
@@ -501,6 +527,25 @@ export function ModelDialogCard({
                   <p>Ready to run with the selected controls and current context.</p>
                 </div>
               )}
+            </section>
+
+            <section className="space-y-2">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recent-run diagnostics</h3>
+              <div className="grid gap-2 rounded-lg border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground sm:grid-cols-2">
+                <p>
+                  <span className="font-medium text-foreground">Request ID:</span> {requestId || "n/a"}
+                </p>
+                <p>
+                  <span className="font-medium text-foreground">Provider:</span> {model.provider}
+                </p>
+                <p>
+                  <span className="font-medium text-foreground">Current model:</span> {model.name}
+                </p>
+                <p>
+                  <span className="font-medium text-foreground">Latest run:</span>{" "}
+                  {latestRun ? `${latestRun.modelId} (${latestRun.status})` : "No recent runs"}
+                </p>
+              </div>
             </section>
 
             <section className="space-y-2">

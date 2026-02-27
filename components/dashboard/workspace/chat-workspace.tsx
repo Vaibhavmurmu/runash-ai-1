@@ -47,6 +47,7 @@ export function ChatWorkspace() {
   type ComposerHealthState = "ready" | "usage-limit" | "provider-error" | "network-timeout"
   type ResponseTone = "balanced" | "friendly" | "professional"
   type ResponseDetailLevel = "concise" | "normal" | "detailed"
+  type ChatRunDiagnostics = { requestId: string | null; provider: string | null; model: string | null; lastErrorCode: string | null }
 
   const { openFromTrigger } = useDashboardModelDialog()
   const searchParams = useSearchParams()
@@ -71,6 +72,7 @@ export function ChatWorkspace() {
   const [lastPromptForRetry, setLastPromptForRetry] = useState<string | null>(null)
   const [selectedTone, setSelectedTone] = useState<ResponseTone>("balanced")
   const [detailLevel, setDetailLevel] = useState<ResponseDetailLevel>("normal")
+  const [runDiagnostics, setRunDiagnostics] = useState<ChatRunDiagnostics>({ requestId: null, provider: null, model: null, lastErrorCode: null })
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null)
   const [showPreferences, setShowPreferences] = useState(false)
   const [isDesktop, setIsDesktop] = useState(false)
@@ -563,6 +565,7 @@ export function ChatWorkspace() {
     setStreamControllerState("sending")
     setComposerHealth("ready")
     setLastPromptForRetry(content)
+    setRunDiagnostics({ requestId: null, provider: "RunAsh AI", model: null, lastErrorCode: null })
 
     const abortController = new AbortController()
     sendAbortRef.current = abortController
@@ -588,6 +591,12 @@ export function ChatWorkspace() {
           toolPayloads,
         }),
       })
+
+      setRunDiagnostics((previous) => ({
+        ...previous,
+        requestId: response.headers.get("x-request-id") || previous.requestId,
+        provider: response.headers.get("x-provider") || previous.provider || "RunAsh AI",
+      }))
 
       if (response.status === 429) {
         setComposerHealth("usage-limit")
@@ -631,6 +640,39 @@ export function ChatWorkspace() {
 
           if (!payloadLine) continue
           const payload = JSON.parse(payloadLine)
+          const payloadRequestId =
+            typeof payload.requestId === "string"
+              ? payload.requestId
+              : typeof payload.request_id === "string"
+                ? payload.request_id
+                : typeof payload.result?.request_id === "string"
+                  ? payload.result.request_id
+                  : null
+          const payloadProvider =
+            typeof payload.provider === "string"
+              ? payload.provider
+              : typeof payload.modelProvider === "string"
+                ? payload.modelProvider
+                : typeof payload.result?.provider === "string"
+                  ? payload.result.provider
+                  : null
+          const payloadModel =
+            typeof payload.model === "string"
+              ? payload.model
+              : typeof payload.modelId === "string"
+                ? payload.modelId
+                : typeof payload.result?.model === "string"
+                  ? payload.result.model
+                  : null
+
+          if (payloadRequestId || payloadProvider || payloadModel) {
+            setRunDiagnostics((previous) => ({
+              requestId: payloadRequestId || previous.requestId,
+              provider: payloadProvider || previous.provider || "RunAsh AI",
+              model: payloadModel || previous.model,
+              lastErrorCode: previous.lastErrorCode,
+            }))
+          }
 
           if (eventName === "token") {
             setStreamControllerState("streaming")
@@ -805,6 +847,10 @@ export function ChatWorkspace() {
           if (eventName === "error") {
             setComposerHealth("provider-error")
             setStreamControllerState("failed")
+            setRunDiagnostics((previous) => ({
+              ...previous,
+              lastErrorCode: typeof payload.code === "string" ? payload.code : typeof payload.errorCode === "string" ? payload.errorCode : "PROVIDER_ERROR",
+            }))
             updateAssistantMessage((existing) => ({ ...existing, status: "failed" }))
           }
         }
@@ -829,9 +875,11 @@ export function ChatWorkspace() {
       } else if (isAbortError && timeoutAbort) {
         setComposerHealth("network-timeout")
         setStreamControllerState("failed")
+        setRunDiagnostics((previous) => ({ ...previous, lastErrorCode: "NETWORK_TIMEOUT" }))
       } else {
         setComposerHealth((prev) => (prev === "ready" ? "provider-error" : prev))
         setStreamControllerState("failed")
+        setRunDiagnostics((previous) => ({ ...previous, lastErrorCode: previous.lastErrorCode || "STREAM_REQUEST_FAILED" }))
         const fallback = buildAssistantResponse(content)
         setMessages((prev) => prev.map((entry) => (entry.id === assistantId ? { ...fallback, id: assistantId } : entry)))
       }
@@ -1263,6 +1311,15 @@ export function ChatWorkspace() {
                 detailLevel={detailLevel}
                 onDetailLevelChange={setDetailLevel}
               />
+              {(streamControllerState === "failed" || runDiagnostics.requestId || runDiagnostics.provider) && (
+                <div className="mt-3 rounded-md border border-zinc-800 bg-zinc-900/60 p-2 text-xs text-zinc-300">
+                  <p className="font-medium text-zinc-100">Recent-run diagnostics</p>
+                  <p>Request ID: {runDiagnostics.requestId || "n/a"}</p>
+                  <p>Provider: {runDiagnostics.provider || "RunAsh AI"}</p>
+                  <p>Model: {runDiagnostics.model || "n/a"}</p>
+                  {runDiagnostics.lastErrorCode ? <p>Error code: {runDiagnostics.lastErrorCode}</p> : null}
+                </div>
+              )}
               <div className="flex items-center justify-between mt-2 text-xs text-zinc-500">
                 <span>Prompt composer is optimized for RunAsh task templates and enhanced prompt quality.</span>
                 <div className="flex items-center space-x-4">
