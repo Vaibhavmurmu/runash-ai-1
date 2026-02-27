@@ -1,13 +1,16 @@
 import { type NextRequest } from "next/server"
 import { DatabaseService } from "../../../lib/database"
-import { openai } from "@ai-sdk/openai"
-import { streamText } from "ai"
 import { z } from "zod"
 import { respondError, respondSuccess } from "../../../lib/api/envelope"
 import { logApiEvent } from "../../../lib/api/logging"
 import { resolveRequestId } from "../../../lib/api/response"
 import { handleGetChat } from "./get-chat-handler"
 import { getServerAuthSession } from "@/lib/auth/session"
+import {
+  AIProviderError,
+  resolveModelSelection,
+  streamModelTextWithFallback,
+} from "@/lib/ai/provider-registry"
 
 export const maxDuration = 30
 
@@ -24,6 +27,8 @@ const chatPostSchema = z.object({
     .min(1)
     .max(100),
   context: z.enum(["grocery", "streaming"]).optional(),
+  provider: z.string().trim().min(1).optional(),
+  model: z.string().trim().min(1).optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -62,7 +67,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { messages, context } = validation.data
+    const { messages, context, provider, model } = validation.data
 
     let systemPrompt = `You are RunAsh AI, a helpful assistant for the RunAsh platform. You help users with live streaming, grocery shopping, and platform features.`
 
@@ -72,12 +77,30 @@ export async function POST(request: NextRequest) {
       systemPrompt += ` You specialize in helping users with live streaming setup, technical issues, content creation tips, and platform features. You can assist with streaming software, hardware recommendations, and audience engagement strategies.`
     }
 
-    const result = streamText({
-      model: openai("gpt-4-turbo"),
+    const normalizedMessages = messages.map((message) => ({
+      role: message.role,
+      content: typeof message.content === "string" ? message.content : JSON.stringify(message.content),
+    }))
+
+    const selection = resolveModelSelection(model, provider)
+    const result = await streamModelTextWithFallback(selection, {
       system: systemPrompt,
-      messages,
+      messages: normalizedMessages,
       temperature: 0.7,
       maxTokens: 1000,
+    })
+
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const delta of result.textStream) {
+            controller.enqueue(encoder.encode(delta))
+          }
+        } finally {
+          controller.close()
+        }
+      },
     })
 
     logApiEvent("info", "chat.post.stream_started", {
@@ -85,11 +108,30 @@ export async function POST(request: NextRequest) {
       route: "/api/chat",
       method: "POST",
       userId: session.user.id,
-      details: { context, messageCount: messages.length },
+      details: { context, messageCount: messages.length, provider: result.provider, model: result.model },
     })
 
-    return result.toDataStreamResponse({ headers: { "x-request-id": requestId } })
+    return new Response(stream, {
+      headers: {
+        "x-request-id": requestId,
+        "content-type": "text/plain; charset=utf-8",
+      },
+    })
   } catch (error) {
+    if (error instanceof AIProviderError) {
+      const status = error.code === "BAD_REQUEST" ? 400 : error.code === "UNSUPPORTED_FEATURE" ? 422 : 503
+      const message =
+        error.code === "UNSUPPORTED_FEATURE"
+          ? "Selected model does not support this feature. Please choose a text-capable model."
+          : error.message
+
+      return respondError(
+        request,
+        { code: error.code, message },
+        { status, legacy: { error: message }, requestId },
+      )
+    }
+
     logApiEvent("error", "chat.post.failed", {
       requestId,
       route: "/api/chat",
