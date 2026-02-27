@@ -61,7 +61,19 @@ export function ChatWorkspace() {
   const [isTyping, setIsTyping] = useState(false)
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null)
   const [showPreferences, setShowPreferences] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isDesktop, setIsDesktop] = useState(false)
+  const [leftDrawerOpen, setLeftDrawerOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false
+    const storedState = window.localStorage.getItem("runash_chat_left_drawer_open")
+    if (storedState === null) return window.innerWidth >= 1024
+    return storedState === "true"
+  })
+  const [rightDrawerOpen, setRightDrawerOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false
+    const storedState = window.localStorage.getItem("runash_chat_right_drawer_open")
+    if (storedState === null) return window.innerWidth >= 1024
+    return storedState === "true"
+  })
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -253,6 +265,68 @@ export function ChatWorkspace() {
 
   useEffect(() => {
     inputRef.current?.focus()
+  }, [])
+
+  useEffect(() => {
+    const syncViewport = () => {
+      if (typeof window === "undefined") return
+      setIsDesktop(window.innerWidth >= 1024)
+    }
+
+    syncViewport()
+    window.addEventListener("resize", syncViewport)
+
+    return () => {
+      window.removeEventListener("resize", syncViewport)
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("runash_chat_left_drawer_open", String(leftDrawerOpen))
+      window.localStorage.setItem("runash_chat_right_drawer_open", String(rightDrawerOpen))
+    } catch {
+      // ignore storage errors
+    }
+  }, [leftDrawerOpen, rightDrawerOpen])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      const isEditable =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target?.isContentEditable === true
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "[") {
+        event.preventDefault()
+        setLeftDrawerOpen((prev) => !prev)
+        return
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "]") {
+        event.preventDefault()
+        setRightDrawerOpen((prev) => !prev)
+        return
+      }
+
+      if (isEditable || !event.altKey) return
+
+      if (event.key === "ArrowLeft") {
+        event.preventDefault()
+        setLeftDrawerOpen((prev) => !prev)
+      }
+
+      if (event.key === "ArrowRight") {
+        event.preventDefault()
+        setRightDrawerOpen((prev) => !prev)
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown)
+    }
   }, [])
 
   useEffect(() => {
@@ -874,6 +948,47 @@ export function ChatWorkspace() {
 
   const showEmptyState = messages.length === 1 && !inputValue.trim() && !isTyping
 
+  const leftDrawer = (
+    <div className="space-y-2">
+      {sessionsStatus === "loading" ? (
+        <ChatDataState
+          state="loading"
+          loadingMessage="Loading session history..."
+          emptyMessage=""
+          errorMessage=""
+        />
+      ) : null}
+      {sessionsStatus === "error" ? (
+        <ChatDataState
+          state="error"
+          loadingMessage=""
+          emptyMessage=""
+          errorMessage="Unable to sync session history. Showing local sessions."
+        />
+      ) : null}
+      <ChatSidebar
+        sessions={chatSessions}
+        onSessionSelect={loadSession}
+        currentSession={currentSession}
+        onNewChat={handleNewChatSession}
+        onDeleteSession={handleDeleteSession}
+      />
+    </div>
+  )
+
+  const rightDrawer = (
+    <div className="h-full space-y-3 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+      {quickActions.length === 0 ? (
+        <ChatDataState state="empty" loadingMessage="" emptyMessage="Quick actions are unavailable right now." errorMessage="" />
+      ) : null}
+      <RunAshChatCommandCenter quickActions={quickActions} onSelectPrompt={handleSendMessage} />
+      <div className="space-y-3">
+        <RunAshChatFeatureGrid onSelect={handleSendMessage} />
+        <RunAshChatTaskBoard onRunTask={handleSendMessage} />
+      </div>
+    </div>
+  )
+
   return (
     <ChatPageFrame>
       <div className="sticky top-0 z-50 mb-4 space-y-3">
@@ -892,9 +1007,13 @@ export function ChatWorkspace() {
                 <Settings className="mr-1.5 h-3.5 w-3.5" />
                 Preferences
               </ActionPill>
-              <ActionPill onClick={() => setSidebarOpen(!sidebarOpen)}>
+              <ActionPill onClick={() => setLeftDrawerOpen((prev) => !prev)} aria-pressed={leftDrawerOpen}>
                 <History className="mr-1.5 h-3.5 w-3.5" />
-                History
+                {leftDrawerOpen ? "Hide History" : "Show History"}
+              </ActionPill>
+              <ActionPill onClick={() => setRightDrawerOpen((prev) => !prev)} aria-pressed={rightDrawerOpen}>
+                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                {rightDrawerOpen ? "Hide Tools" : "Show Tools"}
               </ActionPill>
               <ActionPill
                 onClick={() => setVoiceEnabled(!voiceEnabled)}
@@ -910,57 +1029,40 @@ export function ChatWorkspace() {
       </div>
 
       <div className="flex gap-4">
-        {sidebarOpen && (
-          <div className="w-full space-y-2 lg:w-80">
-            {sessionsStatus === "loading" ? (
-              <ChatDataState
-                state="loading"
-                loadingMessage="Loading session history..."
-                emptyMessage=""
-                errorMessage=""
-              />
-            ) : null}
-            {sessionsStatus === "error" ? (
-              <ChatDataState
-                state="error"
-                loadingMessage=""
-                emptyMessage=""
-                errorMessage="Unable to sync session history. Showing local sessions."
-              />
-            ) : null}
-            <ChatSidebar
-              sessions={chatSessions}
-              onSessionSelect={loadSession}
-              currentSession={currentSession}
-              onNewChat={handleNewChatSession}
-              onDeleteSession={handleDeleteSession}
-            />
-          </div>
-        )}
+        {isDesktop && leftDrawerOpen ? <div className="w-80 shrink-0">{leftDrawer}</div> : null}
 
-        <div className="flex-1">
+        <div className="min-w-0 flex-1">
+          {!isDesktop && leftDrawerOpen ? (
+            <>
+              <button
+                type="button"
+                className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+                aria-label="Close session history"
+                onClick={() => setLeftDrawerOpen(false)}
+              />
+              <aside className="fixed inset-y-0 left-0 z-50 w-[85vw] max-w-sm overflow-y-auto border-r border-zinc-800 bg-zinc-950 p-3 lg:hidden">
+                {leftDrawer}
+              </aside>
+            </>
+          ) : null}
+
+          {!isDesktop && rightDrawerOpen ? (
+            <>
+              <button
+                type="button"
+                className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+                aria-label="Close utilities panel"
+                onClick={() => setRightDrawerOpen(false)}
+              />
+              <aside className="fixed inset-y-0 right-0 z-50 w-[85vw] max-w-sm overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-3 lg:hidden">
+                {rightDrawer}
+              </aside>
+            </>
+          ) : null}
+
           <ChatSurfaceCard className="flex h-[calc(100vh-128px)] flex-col overflow-hidden">
-            <div className="border-b border-zinc-800 p-3 sm:p-4">
-              {quickActions.length === 0 ? (
-                <ChatDataState
-                  state="empty"
-                  loadingMessage=""
-                  emptyMessage="Quick actions are unavailable right now."
-                  errorMessage=""
-                />
-              ) : null}
-
-              <RunAshChatCommandCenter quickActions={quickActions} onSelectPrompt={handleSendMessage} />
-
-
-              <RunAshChatCommandCenter quickActions={quickActions} onSelectPrompt={handleSendMessage} />
-
-              <QuickActions actions={quickActions} />
-              <div className="mt-3 space-y-3">
-                <RunAshChatFeatureGrid onSelect={handleSendMessage} />
-                <RunAshChatTaskBoard onRunTask={handleSendMessage} />
-              </div>
-
+            <div className="border-b border-zinc-800 px-3 py-2 text-xs text-zinc-400 sm:px-4">
+              <span>Shortcuts: Ctrl/Cmd+[ history • Ctrl/Cmd+] tools • Alt+←/→ toggle drawers.</span>
             </div>
 
             {showEmptyState ? (
@@ -1059,6 +1161,10 @@ export function ChatWorkspace() {
             </div>
           </ChatSurfaceCard>
         </div>
+
+        {isDesktop && rightDrawerOpen ? (
+          <div className="hidden w-80 shrink-0 lg:block">{rightDrawer}</div>
+        ) : null}
       </div>
 
       {/* User Preferences Dialog */}
