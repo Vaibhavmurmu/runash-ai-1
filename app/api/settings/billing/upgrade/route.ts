@@ -4,7 +4,10 @@ import { z } from "zod"
 import { resolveSettingsUserId } from "@/lib/settings-security"
 import { getBillingSummaryPayload } from "@/lib/settings-billing"
 
-const schema = z.object({ confirm: z.literal(true) }).strict()
+const schema = z.object({
+  confirm: z.literal(true),
+  planName: z.string().trim().min(1).max(120).optional(),
+}).strict()
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}))
@@ -23,8 +26,11 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     data: {
-      planName: summary.planName,
-      subscriptionStatus: summary.subscriptionStatus,
+      ...summary,
+      planName: validation.data.planName ?? summary.planName,
+    },
+    meta: {
+      migrationNotes: "POST /api/settings/billing/upgrade keeps stable billing payload keys while exposing plan override as an additive input.",
     },
   })
 }

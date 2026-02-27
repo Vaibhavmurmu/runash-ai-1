@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { resolveSettingsUserId } from "@/lib/settings-security"
+import { getBillingSummaryPayload } from "@/lib/settings-billing"
 
 export async function POST(request: Request) {
   const userId = await resolveSettingsUserId(request)
@@ -8,10 +9,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  const summary = await getBillingSummaryPayload(userId)
+
   return NextResponse.json({
     data: {
-      subscriptionStatus: "active",
-      planName: "Growth",
+      planName: summary.planName,
+      subscriptionStatus: summary.subscriptionStatus,
     },
   })
 }

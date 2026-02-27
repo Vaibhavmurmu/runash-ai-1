@@ -610,3 +610,25 @@ Risks and rollback:
 2. If merchant ops prefer manual optimization, rollback by removing `seller_optimize_commerce` from registry/policy while keeping buyer checkout path intact.
 3. If negotiation-gate blocks expected sandbox checkouts, temporarily disable deal-id checkout enforcement in `services/agent-orchestration-service.ts` and re-enable after settlement data integrity validation.
 
+
+## 2026-02 Settings billing contract expansion (backward-compatible)
+
+Expanded the Settings Billing contract surface with dedicated endpoints that preserve stable payload keys consumed by the Settings UI cards.
+
+### New/extended Settings billing endpoints
+- `GET /api/settings/billing/summary`
+- `GET /api/settings/billing/invoices`
+- `GET /api/settings/billing/usage`
+- `POST /api/settings/billing/upgrade`
+- `POST /api/settings/billing/redeem-code`
+- `GET /api/settings/billing/referrals`
+
+### Backward-compatibility notes
+- Existing stable keys are preserved and continue to be returned: `planName`, `subscriptionStatus`, `creditsBalance`, `billingMethodSummary`, `usageThisCycle`, `usageLimit`, `referralCode`, `invoiceEmail`, and `autoRechargeEnabled`.
+- No existing settings billing keys were removed or renamed.
+- Existing action routes remain available and now resolve values from the new settings-billing data layer.
+
+### Risks + rollback
+1. **Risk:** environments with sparse billing data can surface defaults more often (for example, fallback plan labels).
+2. **Mitigation:** endpoints clamp/normalize outputs and preserve existing defaults to avoid UI regressions.
+3. **Rollback:** revert `app/api/settings/billing/**`, restore prior static responses in `app/api/settings/actions/*` billing routes, and keep UI consuming previously persisted settings-only billing values.

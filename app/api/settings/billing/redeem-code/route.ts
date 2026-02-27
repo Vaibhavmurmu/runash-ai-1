@@ -4,7 +4,9 @@ import { z } from "zod"
 import { resolveSettingsUserId } from "@/lib/settings-security"
 import { getBillingSummaryPayload } from "@/lib/settings-billing"
 
-const schema = z.object({ confirm: z.literal(true) }).strict()
+const schema = z.object({
+  code: z.string().trim().min(3).max(64),
+}).strict()
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}))
@@ -20,11 +22,14 @@ export async function POST(request: Request) {
   }
 
   const summary = await getBillingSummaryPayload(userId)
+  const isSupportedCode = ["RUNASH-START", "RUNASH-WELCOME"].includes(validation.data.code.toUpperCase())
 
   return NextResponse.json({
     data: {
-      planName: summary.planName,
-      subscriptionStatus: summary.subscriptionStatus,
+      ...summary,
+      creditsBalance: summary.creditsBalance + (isSupportedCode ? 25 : 0),
+      redemptionApplied: isSupportedCode,
+      redeemedCode: validation.data.code,
     },
   })
 }
