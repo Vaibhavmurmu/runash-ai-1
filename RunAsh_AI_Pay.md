@@ -584,3 +584,13 @@ RunAsh AI Link now supports deterministic negotiation handoff before Link checko
 1. **Risk:** false-positive intent classification can route non-checkout utterances into negotiation/checkout preparation.
 2. **Mitigation:** final checkout still respects `preview_displayed`, `user_confirmation_after_preview`, and validator middleware gates before terminal handoff.
 3. **Rollback:** disable voice commerce entry routes (`/api/agents/voice-commerce`, `/api/streams/sessions/[id]/automation`) and retain existing chat-based checkout path.
+
+## 2026-02 RunAshChat unified task shell + instant checkout intent simplification
+
+- Simplified RunAshChat tool routing by centralizing message-to-tool selection in `lib/runash-chat/tooling.ts`.
+- Added buyer-focused routing for prompts like `find ... under ₹/$...` to include `buyer_product_search` before checkout.
+- Unified quick actions in `lib/runash-chat/quick-actions.ts` and surfaced a shared RunAshChat task board + feature grid for buyer/seller/broker/live-commerce/instant-checkout paths.
+- Backward compatibility: existing `buy this` / `confirm purchase` / `pay now` intent behavior remains mapped to `catalog_lookup + initiate_link_checkout` without changing checkout payload contracts.
+- Risks + rollback:
+  1. If prompt routing over-triggers search tools, rollback by reverting `lib/runash-chat/tooling.ts` and restoring inline selection in `chat-workspace.tsx`.
+  2. If new UI task cards create noise, rollback by removing `RunAshChatFeatureGrid`/`RunAshChatTaskBoard` imports in `chat-workspace.tsx` while keeping existing quick actions.
