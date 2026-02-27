@@ -64,7 +64,7 @@ export async function POST(request: Request) {
       ${auth.userId},
       'queued',
       ${JSON.stringify(providerPayload)}::jsonb,
-      ${JSON.stringify({ attemptCount: 0, startedAt: null, finishedAt: null, lastError: null })}::jsonb,
+      ${JSON.stringify({ attemptCount: 0, startedAt: null, finishedAt: null, lastError: null, progress: 0, stage: "queued" })}::jsonb,
       null
     )
     RETURNING *

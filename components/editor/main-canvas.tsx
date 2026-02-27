@@ -169,6 +169,21 @@ export default function MainCanvas({
     }
   }, [generationJob])
 
+  const generationProgressValue = useMemo(() => {
+    if (!generationJob) return Math.round(generationProgress)
+    const progress = generationJob.result?.progress
+    return typeof progress === "number" ? Math.round(progress) : Math.round(generationProgress)
+  }, [generationJob, generationProgress])
+
+  const generationStageLabel = useMemo(() => {
+    const stage = generationJob?.result?.stage
+    if (typeof stage === "string" && stage.trim().length > 0) {
+      return stage
+    }
+
+    return generationStatusLabel
+  }, [generationJob, generationStatusLabel])
+
   const handleGenerateVideo = async () => {
     if (onGenerateVideo) {
       await onGenerateVideo()
@@ -240,9 +255,10 @@ export default function MainCanvas({
               <Loader className="w-8 h-8 text-primary animate-spin" />
               <div className="text-center">
                 <p className="text-white font-semibold">Generating video...</p>
-                <p className="text-white/70 text-sm mt-1">{Math.round(generationProgress)}%</p>
+                <p className="text-white/70 text-sm mt-1">{generationProgressValue}%</p>
               </div>
-              <Progress value={generationProgress} className="w-48 h-2" />
+              <p className="text-white/70 text-xs">{generationStageLabel ?? "Preparing..."}</p>
+              <Progress value={generationProgressValue} className="w-48 h-2" />
             </div>
           )}
         </div>
@@ -291,6 +307,8 @@ export default function MainCanvas({
             {generationStatusLabel}
           </span>
           <span>Job ID: <span className="font-mono text-foreground">{generationJob?.id}</span></span>
+          {generationStageLabel && <span>Stage: <span className="text-foreground">{generationStageLabel}</span></span>}
+          <span>Progress: <span className="text-foreground">{generationProgressValue}%</span></span>
           {generationJob?.updatedAt && <span>Updated: {new Date(generationJob.updatedAt).toLocaleString()}</span>}
         </div>
       )}
