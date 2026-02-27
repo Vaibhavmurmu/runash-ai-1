@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,11 +10,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Send, Sparkles, Leaf, Settings, History, Bot, Mic, Search, Zap, WandSparkles } from "lucide-react"
 import type { ChatMessage, ChatSession, UserPreferences, QuickAction } from "@/types/runash-chat"
 import ChatMessageComponent from "@/components/chat/chat-message"
-import QuickActions from "@/components/chat/quick-actions"
 import ChatSidebar from "@/components/chat/chat-sidebar"
 import UserPreferencesDialog from "@/components/chat/user-preferences-dialog"
 import CartDrawer from "@/components/cart/cart-drawer"
 import VoiceControls from "@/components/chat/voice-controls"
+import { RunAshChatCommandCenter } from "@/components/chat/runash-chat-command-center"
 import {
   ActionPill,
   ChatDataState,
@@ -26,6 +26,8 @@ import {
   type SuggestionCardItem,
 } from "@/components/chat/shared-chat-primitives"
 import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
+import { buildRunAshChatQuickActions } from "@/lib/runash-chat/quick-actions"
+import { resolveRequestedToolsForMessage } from "@/lib/runash-chat/tooling"
  
 import { getRecommendedProducts, shouldRecommendProducts } from "@/lib/chat-product-recommendations"
 
@@ -213,60 +215,28 @@ export function ChatWorkspace() {
     },
   ])
 
-  const quickActions: QuickAction[] = [
-    {
-      id: "1",
-      label: "Find Organic Products",
-      icon: "leaf",
-      action: () => handleQuickAction("Show me organic products for a healthy breakfast"),
-      category: "product",
-    },
-    {
-      id: "2",
-      label: "Sustainable Recipes",
-      icon: "chef-hat",
-      action: () => handleQuickAction("Suggest eco-friendly recipes with seasonal ingredients"),
-      category: "recipe",
-    },
-    {
-      id: "3",
-      label: "Sustainability Tips",
-      icon: "lightbulb",
-      action: () => handleQuickAction("Give me tips to reduce my carbon footprint"),
-      category: "tip",
-    },
-    {
-      id: "4",
-      label: "Retail Automation",
-      icon: "zap",
-      action: () => handleQuickAction("Help me automate my organic store inventory"),
-      category: "automation",
-    },
-    {
-      id: "5",
-      label: "Web Product Search",
-      icon: "search",
-      action: () => handleQuickAction("Search the web for eco-friendly organic pantry bundles under $30", "search"),
-      category: "search",
-    },
-    {
-      id: "6",
-      label: "Model Assist",
-      icon: "zap",
-      action: (trigger) =>
-        openFromTrigger({
-          triggerSource: "chat",
-          mode: "configure",
-          model: {
-            modelId: "runash-chat-router",
-            provider: "RunAsh AI",
-            displayName: "RunAsh Chat Optimizer",
-          },
-          payload: { prompt: "Optimize this chat workflow for quality, latency, and cost." },
-        }, trigger),
-      category: "automation",
-    },
-  ]
+  const quickActions: QuickAction[] = useMemo(
+    () =>
+      buildRunAshChatQuickActions({
+        onPrompt: (prompt) => handleQuickAction(prompt),
+        onSearch: (prompt) => handleQuickAction(prompt, "search"),
+        openModelConfigurator: (trigger) =>
+          openFromTrigger(
+            {
+              triggerSource: "chat",
+              mode: "configure",
+              model: {
+                modelId: "runash-chat-router",
+                provider: "RunAsh AI",
+                displayName: "RunAsh Chat Optimizer",
+              },
+              payload: { prompt: "Optimize this chat workflow for quality, latency, and cost." },
+            },
+            trigger,
+          ),
+      }),
+    [openFromTrigger],
+  )
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -452,12 +422,7 @@ export function ChatWorkspace() {
     setIsTyping(true)
 
     try {
-      const isInstantCheckoutIntent = /\b(buy this|confirm purchase|pay now|instant checkout|checkout|confirm)\b/i.test(content)
-      const requestedTools = isInstantCheckoutIntent
-        ? ["catalog_lookup", "initiate_link_checkout"]
-        : /search|find|best|compare|web/i.test(content)
-          ? ["catalog_lookup", "web_search"]
-          : ["catalog_lookup"]
+      const requestedTools = resolveRequestedToolsForMessage(content)
 
       const toolPayloads = undefined
 
@@ -975,7 +940,7 @@ export function ChatWorkspace() {
                   errorMessage=""
                 />
               ) : null}
-              <QuickActions actions={quickActions} />
+              <RunAshChatCommandCenter quickActions={quickActions} onSelectPrompt={handleSendMessage} />
             </div>
 
             {showEmptyState ? (
