@@ -65,6 +65,8 @@ export function EditorWorkspace() {
   const generationAbortRef = useRef<AbortController | null>(null)
   const generationRunIdRef = useRef(0)
   const generationStreamRef = useRef<EventSource | null>(null)
+  const projectRef = useRef<EditorProject | null>(null)
+  const activeTimelineIdRef = useRef<string | null>(null)
   const isMountedRef = useRef(true)
   const searchParams = useSearchParams()
   const queryProjectId = searchParams.get("projectId")
@@ -194,10 +196,16 @@ export function EditorWorkspace() {
   useEffect(() => {
     return () => {
       isMountedRef.current = false
-      generationAbortRef.current?.abort()
       generationStreamRef.current?.close()
     }
   }, [])
+
+  useEffect(() => () => generationAbortRef.current?.abort(), [])
+
+  useEffect(() => {
+    projectRef.current = project
+    activeTimelineIdRef.current = activeTimeline?.id ?? null
+  }, [project, activeTimeline])
 
   const saveProject = async () => {
     if (!project || !activeTimeline) return
@@ -431,6 +439,8 @@ export function EditorWorkspace() {
 
   const handleGenerateVideo = async () => {
     if (!project || !activeTimeline) return
+    const sourceProjectId = project.id
+    const sourceTimelineId = activeTimeline.id
 
     const basePayload: VideoGenerationRequest = {
       ...generationConfig,
@@ -469,7 +479,11 @@ export function EditorWorkspace() {
     const currentRunId = generationRunIdRef.current
 
     const isStaleOrCancelled = () =>
-      controller.signal.aborted || generationRunIdRef.current !== currentRunId || !isMountedRef.current
+      controller.signal.aborted ||
+      generationRunIdRef.current !== currentRunId ||
+      !isMountedRef.current ||
+      projectRef.current?.id !== sourceProjectId ||
+      activeTimelineIdRef.current !== sourceTimelineId
 
     const normalizeJob = (value: unknown): EditorRenderJob | null => {
       if (!value || typeof value !== "object") return null
