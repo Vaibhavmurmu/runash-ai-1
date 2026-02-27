@@ -7,6 +7,26 @@ export type ModelDialogTriggerSource =
 
 export type ModelDialogMode = "preview" | "configure" | "execute";
 
+export type ModelDialogGenerationMode =
+  | "generic"
+  | "image-generation"
+  | "video-generation"
+  | "live-stream-assist"
+  | "previous-live-optimization"
+  | "live-view"
+  | "previous-live-view"
+  | "video-on-demand"
+  | "live-streaming"
+  | "stream"
+  | "scheduling";
+
+export interface ModelDialogModeContext {
+  datasetId?: string;
+  librarySource?: string;
+  filters?: string;
+  snapshotTime?: string;
+}
+
 export interface ModelDialogIdentity {
   modelId: string;
   provider: string;
@@ -15,18 +35,20 @@ export interface ModelDialogIdentity {
 
 export interface ModelDialogPayload {
   prompt?: string;
+  context?: string;
   sourceModule?: ModelDialogTriggerSource | "dashboard";
   mediaAssetId?: string;
   assetId?: string;
   productId?: string;
   streamId?: string;
   recordingId?: string;
-  generationMode?:
-    | "generic"
-    | "image-generation"
-    | "video-generation"
-    | "live-stream-assist"
-    | "previous-live-optimization";
+  generationMode?: ModelDialogGenerationMode;
+  liveViewContext?: ModelDialogModeContext;
+  previousLiveViewContext?: ModelDialogModeContext;
+  videoOnDemandContext?: ModelDialogModeContext;
+  liveStreamingContext?: ModelDialogModeContext;
+  streamContext?: ModelDialogModeContext;
+  schedulingContext?: ModelDialogModeContext;
 }
 
 export interface ModelDialogContract {

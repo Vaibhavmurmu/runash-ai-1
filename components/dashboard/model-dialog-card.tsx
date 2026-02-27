@@ -22,7 +22,12 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
-import type { ModelExecutionState, ModelDialogRunHistoryItem } from "@/lib/types/model-dialog"
+import type {
+  ModelDialogGenerationMode,
+  ModelDialogModeContext,
+  ModelDialogRunHistoryItem,
+  ModelExecutionState,
+} from "@/lib/types/model-dialog"
 import { CheckCircle2, Clock3, Loader2, RotateCcw, Sparkles, Wand2, XCircle } from "lucide-react"
 
 type ModelOption = {
@@ -30,7 +35,15 @@ type ModelOption = {
   value: string
 }
 
-type ExecutionMode = "generic" | "image-generation" | "video-generation" | "live-stream-assist" | "previous-live-optimization"
+type ExecutionMode = ModelDialogGenerationMode
+
+type ModeWithContext =
+  | "live-view"
+  | "previous-live-view"
+  | "video-on-demand"
+  | "live-streaming"
+  | "stream"
+  | "scheduling"
 
 type ModelIdentity = {
   name: string
@@ -57,6 +70,8 @@ interface ModelDialogCardProps {
   onRecordingIdChange: (value: string) => void
   assetId: string
   onAssetIdChange: (value: string) => void
+  modeContextByMode: Record<ModeWithContext, ModelDialogModeContext>
+  onModeContextChange: (mode: ModeWithContext, field: keyof ModelDialogModeContext, value: string) => void
   temperature: number
   onTemperatureChange: (value: number) => void
   mode: string
@@ -99,7 +114,60 @@ const EXECUTION_MODE_OPTIONS: Array<{ label: string; value: ExecutionMode }> = [
   { label: "Video generation", value: "video-generation" },
   { label: "Live stream assist", value: "live-stream-assist" },
   { label: "Previous live optimization", value: "previous-live-optimization" },
+  { label: "Live view", value: "live-view" },
+  { label: "Previous live view", value: "previous-live-view" },
+  { label: "Video on demand", value: "video-on-demand" },
+  { label: "Live streaming", value: "live-streaming" },
+  { label: "Stream", value: "stream" },
+  { label: "Scheduling", value: "scheduling" },
 ]
+
+const MODE_CARD_CONFIG: Record<
+  ModeWithContext,
+  {
+    title: string
+    description: string
+    requiredFields: Array<keyof ModelDialogModeContext>
+    optionalFields: Array<keyof ModelDialogModeContext>
+  }
+> = {
+  "live-view": {
+    title: "Live View Context",
+    description: "Use a live dataset snapshot and source library to keep the model aligned with current live view activity.",
+    requiredFields: ["datasetId", "librarySource"],
+    optionalFields: ["filters", "snapshotTime"],
+  },
+  "previous-live-view": {
+    title: "Previous Live View Context",
+    description: "Reference previous live view datasets for replay-style analysis and optimization.",
+    requiredFields: ["datasetId", "snapshotTime"],
+    optionalFields: ["librarySource", "filters"],
+  },
+  "video-on-demand": {
+    title: "Video-on-Demand Context",
+    description: "Provide VOD dataset references and source library metadata for retrospective processing.",
+    requiredFields: ["datasetId", "librarySource"],
+    optionalFields: ["filters", "snapshotTime"],
+  },
+  "live-streaming": {
+    title: "Live Streaming Context",
+    description: "Attach stream dataset filters and temporal hints for real-time handling.",
+    requiredFields: ["datasetId", "filters"],
+    optionalFields: ["librarySource", "snapshotTime"],
+  },
+  stream: {
+    title: "Stream Context",
+    description: "Define stream-focused library lookups and snapshots for context-aware responses.",
+    requiredFields: ["datasetId"],
+    optionalFields: ["librarySource", "filters", "snapshotTime"],
+  },
+  scheduling: {
+    title: "Scheduling Context",
+    description: "Capture scheduling datasets and time snapshots for queue/run-planning logic.",
+    requiredFields: ["datasetId", "snapshotTime"],
+    optionalFields: ["librarySource", "filters"],
+  },
+}
 
 function shouldShowField(field: "streamId" | "recordingId" | "assetId", mode: ExecutionMode) {
   if (mode === "generic") {
@@ -111,10 +179,24 @@ function shouldShowField(field: "streamId" | "recordingId" | "assetId", mode: Ex
   }
 
   if (field === "streamId") {
-    return mode === "live-stream-assist" || mode === "previous-live-optimization"
+    return mode === "live-stream-assist" || mode === "previous-live-optimization" || mode === "live-streaming" || mode === "stream"
   }
 
-  return mode === "video-generation" || mode === "previous-live-optimization"
+  return mode === "video-generation" || mode === "previous-live-optimization" || mode === "video-on-demand"
+}
+
+function formatFieldLabel(field: keyof ModelDialogModeContext) {
+  if (field === "datasetId") return "Dataset ID"
+  if (field === "librarySource") return "Library source"
+  if (field === "filters") return "Filters"
+  return "Snapshot time"
+}
+
+function formatFieldHint(field: keyof ModelDialogModeContext) {
+  if (field === "datasetId") return "Stable dataset identifier, e.g. ds_live_001"
+  if (field === "librarySource") return "Reference origin, e.g. internal-index, s3://bucket/path"
+  if (field === "filters") return "Structured filtering expression, e.g. region=us,status=active"
+  return "ISO timestamp preferred, e.g. 2026-02-24T18:30:00Z"
 }
 
 export function ModelDialogCard({
@@ -135,6 +217,8 @@ export function ModelDialogCard({
   onRecordingIdChange,
   assetId,
   onAssetIdChange,
+  modeContextByMode,
+  onModeContextChange,
   temperature,
   onTemperatureChange,
   mode,
@@ -162,6 +246,8 @@ export function ModelDialogCard({
     .join("")
     .slice(0, 2)
     .toUpperCase()
+
+  const contextMode = executionMode in MODE_CARD_CONFIG ? (executionMode as ModeWithContext) : null
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -236,6 +322,35 @@ export function ModelDialogCard({
                 {contextPreview || "No explicit context payload provided."}
               </div>
             </section>
+
+            {contextMode ? (
+              <section className="space-y-3 rounded-lg border border-border/60 bg-card/40 p-4">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-semibold">{MODE_CARD_CONFIG[contextMode].title}</h3>
+                  <p className="text-xs text-muted-foreground">{MODE_CARD_CONFIG[contextMode].description}</p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {(["datasetId", "librarySource", "filters", "snapshotTime"] as const).map((field) => {
+                    const required = MODE_CARD_CONFIG[contextMode].requiredFields.includes(field)
+                    return (
+                      <div key={field} className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor={`${contextMode}-${field}`}>{formatFieldLabel(field)}</Label>
+                          <Badge variant={required ? "default" : "outline"}>{required ? "Required" : "Optional"}</Badge>
+                        </div>
+                        <Input
+                          id={`${contextMode}-${field}`}
+                          value={modeContextByMode[contextMode][field] ?? ""}
+                          onChange={(event) => onModeContextChange(contextMode, field, event.target.value)}
+                          placeholder={formatFieldHint(field)}
+                        />
+                        <p className="text-xs text-muted-foreground">{formatFieldHint(field)}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+            ) : null}
 
             <section className="grid gap-3 rounded-lg border border-border/60 bg-muted/20 p-4 sm:grid-cols-2">
               <div className="space-y-2">
