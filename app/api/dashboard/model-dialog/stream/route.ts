@@ -25,6 +25,8 @@ function buildEvent(
   message: string,
   elapsedMs: number,
   chunk?: string,
+  errorCode?: ModelDialogSseEvent["errorCode"],
+  errorMessage?: string,
 ): ModelDialogSseEvent {
   return {
     requestId,
@@ -33,6 +35,8 @@ function buildEvent(
     chunk,
     elapsedMs,
     timestamp: new Date().toISOString(),
+    ...(errorCode ? { errorCode } : {}),
+    ...(errorMessage ? { errorMessage } : {}),
   }
 }
 
@@ -129,6 +133,18 @@ export async function GET(request: NextRequest) {
         request.signal.addEventListener("abort", () => {
           timers.forEach((timer) => clearTimeout(timer))
           void updateModelDialogRunStatus(runId, "failed")
+          emit(
+            "failed",
+            buildEvent(
+              streamRequestId,
+              "failed",
+              "Model execution failed before completion.",
+              Date.now() - startedAt,
+              undefined,
+              "MODEL_DIALOG_EXECUTION_FAILED",
+              "Model execution failed before completion.",
+            ),
+          )
           controller.close()
         })
       },

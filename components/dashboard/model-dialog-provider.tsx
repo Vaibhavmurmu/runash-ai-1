@@ -6,6 +6,7 @@ import { ModelDialogCard } from "@/components/dashboard/model-dialog-card"
 import { useModelDialog } from "@/lib/hooks/use-model-dialog"
 import type {
   ModelDialogContract,
+  ModelDialogErrorCode,
   ModelDialogGenerationMode,
   ModelDialogModeContext,
   ModelDialogRunHistoryItem,
@@ -78,6 +79,25 @@ const BASE_MODEL = {
   status: "ready" as const,
 }
 
+
+
+type ModelDialogResponseEnvelope = {
+  requestId?: string
+  status?: "completed" | "accepted" | "failed"
+  output?: unknown
+  error?: {
+    code?: ModelDialogErrorCode
+    message?: string
+  } | null
+}
+
+function parseModelDialogError(payload: ModelDialogSseEvent | ModelDialogResponseEnvelope) {
+  const code = ("errorCode" in payload ? payload.errorCode : payload.error?.code) ?? null
+  const message = ("errorMessage" in payload ? payload.errorMessage : payload.error?.message) ?? null
+
+  return { code, message }
+}
+
 function createExecutionRequestId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID()
@@ -104,6 +124,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
   const [modeContexts, setModeContexts] = useState<Record<ContextualExecutionMode, ModelDialogModeContext>>(EMPTY_MODE_CONTEXTS)
   const [executionState, setExecutionState] = useState<ModelExecutionState>("idle")
   const [streamingMessage, setStreamingMessage] = useState<string>("")
+  const [errorCode, setErrorCode] = useState<ModelDialogErrorCode | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [responseOutput, setResponseOutput] = useState("")
   const [elapsedMs, setElapsedMs] = useState(0)
@@ -129,6 +150,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
     stopExecutionTracking()
     setExecutionState("idle")
     setStreamingMessage("")
+    setErrorCode(null)
     setErrorMessage(null)
     setResponseOutput("")
     setElapsedMs(0)
@@ -225,7 +247,9 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
       }
 
       if (payload.state === "failed") {
-        setErrorMessage(payload.message || "Model execution failed.")
+        const structuredError = parseModelDialogError(payload)
+        setErrorCode(structuredError.code)
+        setErrorMessage(structuredError.message || payload.message || "Model execution failed.")
         stopExecutionTracking()
         void loadRecentRuns()
       }
@@ -244,6 +268,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
     setRequestId(nextRequestId)
     setExecutionState("queued")
     setStreamingMessage("Request queued for model execution.")
+    setErrorCode(null)
     setErrorMessage(null)
     setResponseOutput("")
     setElapsedMs(0)
@@ -307,6 +332,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
 
     eventSource.onerror = () => {
       setExecutionState("failed")
+      setErrorCode("MODEL_DIALOG_STREAM_INTERNAL_ERROR")
       setErrorMessage("Streaming connection dropped before completion.")
       stopExecutionTracking()
     }
@@ -377,6 +403,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
         responseOutput={responseOutput}
         elapsedMs={elapsedMs}
         requestId={requestId}
+        errorCode={errorCode}
         errorMessage={errorMessage}
         onRun={runModel}
         onSavePreset={closeModelDialog}

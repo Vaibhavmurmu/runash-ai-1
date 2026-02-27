@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
 import type {
+  ModelDialogErrorCode,
   ModelDialogGenerationMode,
   ModelDialogModeContext,
   ModelDialogRunHistoryItem,
@@ -85,6 +86,7 @@ interface ModelDialogCardProps {
   responseOutput?: string
   elapsedMs?: number
   requestId?: string | null
+  errorCode?: ModelDialogErrorCode | null
   errorMessage?: string | null
   onRun: () => void
   onSavePreset: () => void
@@ -199,6 +201,29 @@ function formatFieldHint(field: keyof ModelDialogModeContext) {
   return "ISO timestamp preferred, e.g. 2026-02-24T18:30:00Z"
 }
 
+
+const ERROR_CARD_CONFIG: Partial<Record<ModelDialogErrorCode, {
+  title: string
+  description: string
+  ctaLabel: string
+}>> = {
+  USAGE_LIMIT_REACHED: {
+    title: "Usage limit reached",
+    description: "You have reached the usage allowance for your current plan.",
+    ctaLabel: "Switch mode/model",
+  },
+  PLAN_UPGRADE_REQUIRED: {
+    title: "Plan upgrade required",
+    description: "This model capability is not available on your current plan tier.",
+    ctaLabel: "Upgrade plan",
+  },
+  RATE_LIMITED: {
+    title: "Rate limited",
+    description: "Too many requests were submitted recently. Please try again shortly.",
+    ctaLabel: "Retry later",
+  },
+}
+
 export function ModelDialogCard({
   open,
   onOpenChange,
@@ -232,6 +257,7 @@ export function ModelDialogCard({
   responseOutput,
   elapsedMs = 0,
   requestId,
+  errorCode,
   errorMessage,
   onRun,
   onSavePreset,
@@ -248,6 +274,7 @@ export function ModelDialogCard({
     .toUpperCase()
 
   const contextMode = executionMode in MODE_CARD_CONFIG ? (executionMode as ModeWithContext) : null
+  const errorConfig = errorCode ? ERROR_CARD_CONFIG[errorCode] : null
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -429,11 +456,25 @@ export function ModelDialogCard({
             <section className="rounded-lg border border-border/60 bg-muted/30 p-4">
               {executionState === "failed" || errorMessage ? (
                 <div className="space-y-3">
-                  <p className="text-sm font-medium text-destructive">{errorMessage || "Model execution failed."}</p>
-                  <Button type="button" variant="outline" size="sm" onClick={onRetry} disabled={!onRetry}>
-                    <RotateCcw className="mr-2 h-4 w-4" />
-                    Retry
-                  </Button>
+                  {errorConfig ? (
+                    <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
+                      <p className="text-sm font-semibold text-destructive">{errorConfig.title}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{errorConfig.description}</p>
+                      <p className="mt-2 text-xs text-muted-foreground">{errorMessage || "Model execution failed."}</p>
+                      <Button type="button" variant="outline" size="sm" onClick={onRetry} disabled={!onRetry} className="mt-3">
+                        <RotateCcw className="mr-2 h-4 w-4" />
+                        {errorConfig.ctaLabel}
+                      </Button>
+                    </div>
+                  ) : null}
+                  <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
+                    <p className="text-sm font-medium text-destructive">{errorMessage || "Model execution failed."}</p>
+                    {requestId ? <p className="mt-1 text-xs text-muted-foreground">Request ID: {requestId}</p> : null}
+                    <Button type="button" variant="outline" size="sm" onClick={onRetry} disabled={!onRetry} className="mt-3">
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      Retry
+                    </Button>
+                  </div>
                 </div>
               ) : isBusy ? (
                 <div className="space-y-2 text-sm">
