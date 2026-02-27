@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import EditorLayout from "@/components/editor/editor-layout"
 import TopBar from "@/components/editor/top-bar"
 import LeftSidebar from "@/components/editor/left-sidebar"
@@ -41,6 +42,9 @@ export function EditorWorkspace() {
   const [showCreateProject, setShowCreateProject] = useState(false)
   const [isCreatingProject, setIsCreatingProject] = useState(false)
   const [isUpdatingOnboarding, setIsUpdatingOnboarding] = useState(false)
+  const searchParams = useSearchParams()
+  const queryProjectId = searchParams.get("projectId")
+  const queryLibraryItemTitle = searchParams.get("libraryItemTitle")
 
   const activeTimeline = useMemo(() => {
     if (!project) return undefined
@@ -123,7 +127,8 @@ export function EditorWorkspace() {
       const listRes = await fetch("/api/editor/projects")
       if (!listRes.ok) throw new Error("Failed to list projects")
       const listJson = await listRes.json()
-      const projectId = listJson.projects?.[0]?.id as string | undefined
+      const listedProjectId = listJson.projects?.[0]?.id as string | undefined
+      const projectId = queryProjectId ?? listedProjectId
 
       if (!projectId) {
         setShowCreateProject(hasSeenOnboarding)
@@ -147,7 +152,12 @@ export function EditorWorkspace() {
 
   useEffect(() => {
     void loadProject()
-  }, [])
+  }, [queryProjectId])
+
+  useEffect(() => {
+    if (!queryLibraryItemTitle) return
+    toast({ title: "Library item selected", description: `${queryLibraryItemTitle} opened with editor context.` })
+  }, [queryLibraryItemTitle])
 
   const saveProject = async () => {
     if (!project || !activeTimeline) return

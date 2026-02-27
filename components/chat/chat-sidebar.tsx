@@ -18,6 +18,7 @@ interface ChatSidebarProps {
   onDeleteSession?: (sessionId: string) => void
   streamId?: string | null
   activeProjectName?: string | null
+  selectedLibraryItemTitle?: string | null
   onNavigateToWorkspaceTool?: () => void
 }
 
@@ -29,6 +30,7 @@ export default function ChatSidebar({
   onDeleteSession,
   streamId,
   activeProjectName,
+  selectedLibraryItemTitle,
   onNavigateToWorkspaceTool,
 }: ChatSidebarProps) {
   const router = useRouter()
@@ -114,6 +116,12 @@ export default function ChatSidebar({
     if (streamId) {
       params.set("streamId", streamId)
     }
+    if (activeProjectName) {
+      params.set("projectName", activeProjectName)
+    }
+    if (selectedLibraryItemTitle) {
+      params.set("libraryItemTitle", selectedLibraryItemTitle)
+    }
     const query = params.toString()
     return query ? `${path}?${query}` : path
   }
@@ -183,6 +191,7 @@ export default function ChatSidebar({
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {activeProjectName ? <Badge variant="secondary">Project: {activeProjectName}</Badge> : null}
+                      {selectedLibraryItemTitle ? <Badge variant="secondary">Library: {selectedLibraryItemTitle}</Badge> : null}
                       {currentSession?.id ? <Badge variant="outline">Session linked</Badge> : <Badge variant="outline">No session</Badge>}
                     </div>
                   </button>
@@ -198,7 +207,22 @@ export default function ChatSidebar({
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {streamId ? <Badge variant="secondary">Stream available</Badge> : <Badge variant="outline">No active stream</Badge>}
+                      {selectedLibraryItemTitle ? <Badge variant="outline">Library linked</Badge> : null}
                       {currentSession?.id ? <Badge variant="outline">Session linked</Badge> : null}
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="w-full rounded-md border bg-background p-2 text-left transition-colors hover:bg-muted/60"
+                    onClick={() => openWorkspaceTool("/dashboard/library")}
+                  >
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Search className="h-4 w-4" />
+                      Open Library
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {selectedLibraryItemTitle ? <Badge variant="secondary">Selected: {selectedLibraryItemTitle}</Badge> : <Badge variant="outline">Browse items</Badge>}
                     </div>
                   </button>
                 </div>

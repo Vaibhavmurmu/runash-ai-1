@@ -1,6 +1,7 @@
 "use client"
 
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -86,6 +87,27 @@ const upcomingStreams = [
 ]
 
 export function StreamsDashboard() {
+  const searchParams = useSearchParams()
+  const [presetLabel, setPresetLabel] = useState<string | null>(null)
+  const libraryItemTitle = searchParams.get("libraryItemTitle")
+
+  useEffect(() => {
+    const fromQuery = searchParams.get("projectName")
+    if (fromQuery) {
+      setPresetLabel(fromQuery)
+      return
+    }
+
+    const stored = localStorage.getItem("runash_streaming_preset")
+    if (!stored) return
+    try {
+      const parsed = JSON.parse(stored) as { projectName?: string; title?: string }
+      setPresetLabel(parsed.projectName ?? parsed.title ?? null)
+    } catch {
+      setPresetLabel(null)
+    }
+  }, [searchParams])
+
   const streamIds = useMemo(() => liveStreams.map((stream) => stream.id), [])
   const { connected, streams, alerts } = useStreamingStudioRealtime({ initialStreamIds: streamIds })
 
@@ -161,6 +183,15 @@ export function StreamsDashboard() {
             <Badge variant="outline" className="border-amber-400 text-amber-900">
               {latestAlert.severity.toUpperCase()}
             </Badge>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {presetLabel || libraryItemTitle ? (
+        <Card className="border-orange-300 bg-orange-50/70">
+          <CardContent className="p-4 flex flex-wrap items-center gap-2 text-sm">
+            {presetLabel ? <Badge variant="secondary">Project preset: {presetLabel}</Badge> : null}
+            {libraryItemTitle ? <Badge variant="outline">Library item: {libraryItemTitle}</Badge> : null}
           </CardContent>
         </Card>
       ) : null}
