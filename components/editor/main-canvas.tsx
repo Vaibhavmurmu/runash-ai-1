@@ -7,7 +7,7 @@ import { Loader, Settings2, Upload, Video, PlusSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import MediaControls from "./media-controls"
-import type { EditorTimeline } from "@/lib/editor/domain"
+import type { EditorRenderJob, EditorTimeline } from "@/lib/editor/domain"
 
 interface MainCanvasProps {
   selectedModel: string
@@ -24,6 +24,7 @@ interface MainCanvasProps {
   onSkipNext?: () => void
   onGenerateVideo?: () => Promise<void>
   isGeneratingRender?: boolean
+  generationJob?: EditorRenderJob | null
 }
 
 export default function MainCanvas({
@@ -41,6 +42,7 @@ export default function MainCanvas({
   onSkipNext,
   onGenerateVideo,
   isGeneratingRender = false,
+  generationJob,
 }: MainCanvasProps) {
   const [internalIsPlaying, setInternalIsPlaying] = useState(false)
   const [internalCurrentTime, setInternalCurrentTime] = useState(0)
@@ -99,6 +101,22 @@ export default function MainCanvas({
 
   const segments = useMemo(() => timeline?.segments ?? [], [timeline])
   const isGenerationInProgress = onGenerateVideo ? isGeneratingRender : isGenerating
+  const generationStatusLabel = useMemo(() => {
+    if (!generationJob) return null
+
+    switch (generationJob.status) {
+      case "queued":
+        return "Queued"
+      case "processing":
+        return "Processing…"
+      case "completed":
+        return "Completed"
+      case "failed":
+        return "Failed"
+      default:
+        return generationJob.status
+    }
+  }, [generationJob])
 
   const handleGenerateVideo = async () => {
     if (onGenerateVideo) {
@@ -213,6 +231,16 @@ export default function MainCanvas({
             onSkipNext={onSkipNext}
             onSettings={() => setShowAdvancedControls(false)}
           />
+        </div>
+      )}
+
+      {generationStatusLabel && (
+        <div className="bg-card border border-border rounded-lg px-3 py-2 text-xs text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
+            {generationStatusLabel}
+          </span>
+          <span>Job ID: <span className="font-mono text-foreground">{generationJob?.id}</span></span>
+          {generationJob?.updatedAt && <span>Updated: {new Date(generationJob.updatedAt).toLocaleString()}</span>}
         </div>
       )}
 

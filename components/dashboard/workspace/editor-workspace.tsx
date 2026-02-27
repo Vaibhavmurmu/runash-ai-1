@@ -45,7 +45,7 @@ export function EditorWorkspace() {
   const [isUpdatingOnboarding, setIsUpdatingOnboarding] = useState(false)
   const [playbackTime, setPlaybackTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [, setGenerationJob] = useState<EditorRenderJob | null>(null)
+  const [generationJob, setGenerationJob] = useState<EditorRenderJob | null>(null)
   const generationAbortRef = useRef<AbortController | null>(null)
   const generationRunIdRef = useRef(0)
   const isMountedRef = useRef(true)
@@ -491,6 +491,10 @@ export function EditorWorkspace() {
     setIsDirty(true)
   }, [selectedModel, project])
 
+  useEffect(() => {
+    setGenerationJob(null)
+  }, [project?.id])
+
   return (
     <>
       <WelcomeOnboardingModal
@@ -549,6 +553,7 @@ export function EditorWorkspace() {
             onSkipNext={handleSkipNext}
             onGenerateVideo={handleGenerateVideo}
             isGeneratingRender={isGeneratingRender}
+            generationJob={generationJob}
           />
           <RightPanel selectedModel={selectedModel} onModelChange={setSelectedModel} activeTab={activeTab} />
           {isMobile ? (
