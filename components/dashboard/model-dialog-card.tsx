@@ -36,6 +36,12 @@ type ModelOption = {
   value: string
 }
 
+type ModelRegistryOption = {
+  id: string
+  provider: string
+  label: string
+}
+
 type ExecutionMode = ModelDialogGenerationMode
 
 type ModeWithContext =
@@ -57,6 +63,9 @@ interface ModelDialogCardProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   model: ModelIdentity
+  modelOptions: ModelRegistryOption[]
+  selectedModelId: string
+  onSelectedModelIdChange: (value: string) => void
   triggerSource?: string
   dialogMode?: string
   executionMode: ExecutionMode
@@ -252,6 +261,9 @@ export function ModelDialogCard({
   open,
   onOpenChange,
   model,
+  modelOptions,
+  selectedModelId,
+  onSelectedModelIdChange,
   triggerSource,
   dialogMode,
   executionMode,
@@ -345,6 +357,23 @@ export function ModelDialogCard({
           <CardContent className="space-y-5 px-6 py-5">
             <section className="space-y-2">
               <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Generation mode</h3>
+              {modelOptions.length > 0 ? (
+                <div className="space-y-2">
+                  <Label htmlFor="model-id">Model</Label>
+                  <Select value={selectedModelId} onValueChange={onSelectedModelIdChange}>
+                    <SelectTrigger id="model-id">
+                      <SelectValue placeholder="Select model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {modelOptions.map((option) => (
+                        <SelectItem key={`${option.provider}:${option.id}`} value={option.id}>
+                          {option.label} ({option.provider})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
               <div className="flex flex-wrap gap-2">
                 {EXECUTION_MODE_OPTIONS.map((option) => (
                   <Button
