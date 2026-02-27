@@ -17,8 +17,12 @@ import VoiceControls from "@/components/chat/voice-controls"
 
 import { RunAshChatCommandCenter } from "@/components/chat/runash-chat-command-center"
 
+
+// import { RunAshChatCommandCenter } from "@/components/chat/runash-chat-command-center"
+
 import { RunAshChatFeatureGrid } from "@/components/chat/runash-chat-feature-grid"
 import { RunAshChatTaskBoard } from "@/components/chat/runash-chat-task-board"
+
 
 import {
   ActionPill,
@@ -948,11 +952,15 @@ export function ChatWorkspace() {
 
               <RunAshChatCommandCenter quickActions={quickActions} onSelectPrompt={handleSendMessage} />
 
+
+              <RunAshChatCommandCenter quickActions={quickActions} onSelectPrompt={handleSendMessage} />
+
               <QuickActions actions={quickActions} />
               <div className="mt-3 space-y-3">
                 <RunAshChatFeatureGrid onSelect={handleSendMessage} />
                 <RunAshChatTaskBoard onRunTask={handleSendMessage} />
               </div>
+
             </div>
 
             {showEmptyState ? (

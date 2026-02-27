@@ -594,3 +594,19 @@ RunAsh AI Link now supports deterministic negotiation handoff before Link checko
 - Risks + rollback:
   1. If prompt routing over-triggers search tools, rollback by reverting `lib/runash-chat/tooling.ts` and restoring inline selection in `chat-workspace.tsx`.
   2. If new UI task cards create noise, rollback by removing `RunAshChatFeatureGrid`/`RunAshChatTaskBoard` imports in `chat-workspace.tsx` while keeping existing quick actions.
+
+
+## 2026-02 Agentic commerce expansion (buyer/seller/broker + negotiation guardrails)
+
+- Added buyer-preference aware routing and search stack support for prompts such as `find ... under ₹/$...` to execute `buyer_product_search + catalog_lookup + web_search`.
+- Added seller optimization capabilities (`seller_optimize_commerce`) that return pricing recommendations, inventory risk insights, and bundle promotion suggestions.
+- Added broker deal-matching capability (`broker_match_deal`) that returns deal recommendations with negotiation state and settlement recommendation metadata.
+- Added negotiation guardrail on checkout execution: when `deal_id` is provided, checkout is blocked unless the deal has an accepted snapshot, preventing pre-settlement checkout bypass.
+- Expanded role policy tool coverage so buyer/seller/broker permissions include new buyer/seller/broker commerce tools.
+- Accounting sync metadata now carries accepted deal identifiers (`deal_id`, `accepted_offer_id`, `discount_basis`) through accounting context for auditability.
+
+Risks and rollback:
+1. If intent routing over-classifies seller/broker prompts, rollback by reverting intent branches in `app/api/agents/chat/chat-request-handler.ts` and `lib/runash-chat/tooling.ts`.
+2. If merchant ops prefer manual optimization, rollback by removing `seller_optimize_commerce` from registry/policy while keeping buyer checkout path intact.
+3. If negotiation-gate blocks expected sandbox checkouts, temporarily disable deal-id checkout enforcement in `services/agent-orchestration-service.ts` and re-enable after settlement data integrity validation.
+

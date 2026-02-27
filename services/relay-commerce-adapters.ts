@@ -44,6 +44,68 @@ const productSustainabilitySignals: Record<string, string[]> = {
   nutrition: ["vegan", "recycled"],
 }
 
+
+
+const sellerOptimizationInputSchema = z.object({
+  merchant_id: z.string().trim().optional(),
+  tenant_id: z.string().trim().optional(),
+  low_stock_threshold: z.coerce.number().int().positive().max(200).default(15),
+  target_margin_percent: z.coerce.number().min(1).max(90).default(22),
+  bundle_size: z.coerce.number().int().min(2).max(6).default(2),
+})
+
+const brokerMatchInputSchema = z.object({
+  tenant_id: z.string().trim().optional(),
+  demand_query: z.string().trim().default(""),
+  buyer_budget_minor: z.coerce.number().int().positive().optional(),
+  currency: z.string().trim().min(3).max(3).default("USD"),
+  max_results: z.coerce.number().int().positive().max(10).default(3),
+})
+
+export type SellerOptimizationResult = {
+  merchant_id: string
+  generated_at: string
+  pricing_recommendations: Array<{
+    sku: string
+    product_id: string
+    current_price: number
+    recommended_price: number
+    rationale: string[]
+  }>
+  inventory_risk_insights: Array<{
+    sku: string
+    product_id: string
+    inventory_count: number
+    risk_level: "low" | "medium" | "high"
+    action: string
+  }>
+  bundle_promotions: Array<{
+    bundle_id: string
+    skus: string[]
+    suggested_discount_percent: number
+    expected_conversion_lift: number
+  }>
+}
+
+export type BrokerDealMatchResult = {
+  demand_query: string
+  currency: string
+  generated_at: string
+  recommendations: Array<{
+    recommendation_id: string
+    sku: string
+    product_id: string
+    seller_id: string
+    offer_price_minor: number
+    confidence_score: number
+    negotiation_state: "draft" | "pending_counter" | "broker_recommended"
+    settlement_recommendation: {
+      suggested_price_minor: number
+      rationale: string[]
+    }
+  }>
+}
+
 const checkoutPreviewInputSchema = z.object({
   items: z
     .array(
@@ -391,5 +453,118 @@ export async function buyerProductSearchAdapter(args: unknown): Promise<BuyerPro
     catalog_id: scopedIdentity ? `catalog:${scopedIdentity}` : "catalog:global",
     results: ranked,
     generated_at: new Date().toISOString(),
+  }
+}
+
+
+export async function sellerOptimizationAdapter(args: unknown): Promise<SellerOptimizationResult> {
+  const input = sellerOptimizationInputSchema.parse(args ?? {})
+  const scopedIdentity = input.tenant_id ?? input.merchant_id
+  const products = await loadProducts(scopedIdentity)
+  const merchantId = input.merchant_id ?? scopedIdentity ?? "runash-default-merchant"
+
+  const pricingRecommendations = products.slice(0, 8).map((product) => {
+    const inventoryPressure = product.inventory_count <= input.low_stock_threshold ? 0.04 : 0.01
+    const recommendedPrice = Number((product.price * (1 + inventoryPressure)).toFixed(2))
+    return {
+      sku: normalizeSku(product),
+      product_id: product.id,
+      current_price: Number(product.price),
+      recommended_price: recommendedPrice,
+      rationale:
+        inventoryPressure > 0.02
+          ? ["low_inventory_margin_protection", "reduce_discount_depth"]
+          : ["healthy_inventory_enable_promo", "maintain_target_margin"],
+    }
+  })
+
+  const inventoryRiskInsights = products.slice(0, 12).map((product) => {
+    const riskLevel: "low" | "medium" | "high" =
+      product.inventory_count <= Math.max(3, Math.round(input.low_stock_threshold / 3))
+        ? "high"
+        : product.inventory_count <= input.low_stock_threshold
+          ? "medium"
+          : "low"
+
+    return {
+      sku: normalizeSku(product),
+      product_id: product.id,
+      inventory_count: Number(product.inventory_count),
+      risk_level: riskLevel,
+      action:
+        riskLevel === "high"
+          ? "trigger_reorder_and_reduce_promotions"
+          : riskLevel === "medium"
+            ? "monitor_velocity_and_prepare_restock"
+            : "eligible_for_bundle_campaign",
+    }
+  })
+
+  const bundlePromotions = products
+    .filter((product) => product.in_stock)
+    .slice(0, input.bundle_size * 2)
+    .reduce<Array<{ bundle_id: string; skus: string[]; suggested_discount_percent: number; expected_conversion_lift: number }>>((acc, _, idx, arr) => {
+      if (idx % input.bundle_size !== 0) return acc
+      const bundle = arr.slice(idx, idx + input.bundle_size)
+      if (bundle.length < input.bundle_size) return acc
+      const skus = bundle.map((entry) => normalizeSku(entry))
+      acc.push({
+        bundle_id: `bundle_${idx + 1}`,
+        skus,
+        suggested_discount_percent: 6,
+        expected_conversion_lift: 0.14,
+      })
+      return acc
+    }, [])
+
+  return {
+    merchant_id: merchantId,
+    generated_at: new Date().toISOString(),
+    pricing_recommendations: pricingRecommendations,
+    inventory_risk_insights: inventoryRiskInsights,
+    bundle_promotions: bundlePromotions,
+  }
+}
+
+export async function brokerDealMatchAdapter(args: unknown): Promise<BrokerDealMatchResult> {
+  const input = brokerMatchInputSchema.parse(args ?? {})
+  const scopedIdentity = input.tenant_id
+  const products = await loadProducts(scopedIdentity)
+  const preferences = parseBuyerPreferences(input.demand_query)
+  const fxRate = getFxRate("USD", input.currency)
+
+  const recommendations = products
+    .map((product, index) => {
+      const offerPriceMinor = Math.max(1, Math.round(product.price * fxRate * 100))
+      const budgetMinor = typeof input.buyer_budget_minor === "number" ? input.buyer_budget_minor : null
+      const withinBudget = budgetMinor == null ? true : offerPriceMinor <= budgetMinor
+      const confidence = withinBudget ? 0.86 : 0.62
+      const suggested = withinBudget ? offerPriceMinor : Math.max(1, Math.round((budgetMinor ?? offerPriceMinor) * 0.98))
+
+      return {
+        recommendation_id: `broker_rec_${index + 1}`,
+        sku: normalizeSku(product),
+        product_id: product.id,
+        seller_id: product.user_id ?? "seller-default",
+        offer_price_minor: offerPriceMinor,
+        confidence_score: confidence,
+        negotiation_state: withinBudget ? ("broker_recommended" as const) : ("pending_counter" as const),
+        settlement_recommendation: {
+          suggested_price_minor: suggested,
+          rationale: [
+            preferences.category ? `category_focus:${preferences.category}` : "category_general",
+            withinBudget ? "budget_aligned" : "requires_counter_offer",
+          ],
+        },
+      }
+    })
+    .sort((a, b) => b.confidence_score - a.confidence_score)
+    .slice(0, input.max_results)
+
+  return {
+    demand_query: input.demand_query,
+    currency: input.currency.toUpperCase(),
+    generated_at: new Date().toISOString(),
+    recommendations,
   }
 }

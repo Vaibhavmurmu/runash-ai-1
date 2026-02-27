@@ -17,3 +17,16 @@ test("defaults to catalog lookup for generic prompts", () => {
   const tools = resolveRequestedToolsForMessage("hello there")
   assert.deepEqual(tools, ["catalog_lookup"])
 })
+
+
+
+test("routes seller optimization intents", () => {
+  const tools = resolveRequestedToolsForMessage("optimize pricing and inventory bundles")
+  assert.deepEqual(tools, ["seller_optimize_commerce", "inventory_health", "catalog_lookup"])
+})
+
+test("routes broker match intents", () => {
+  const tools = resolveRequestedToolsForMessage("broker match supplier with retailer and settle deal")
+  assert.deepEqual(tools, ["broker_match_deal", "create_initial_quote", "submit_counter_offer", "broker_settle_deal"])
+})
+
