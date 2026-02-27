@@ -48,6 +48,24 @@ export default function Navbar() {
               Features
             </Link>
             <Link
+              href="/agents"
+              className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
+            >
+              Agents
+            </Link>
+            <Link
+              href="/business"
+              className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
+            >
+              Business
+            </Link>
+            <Link
+              href="/startup"
+              className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
+            >
+              Startup
+            </Link>
+            <Link
               href="/pricing"
               className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
             >
@@ -109,6 +127,24 @@ export default function Navbar() {
               className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md"
             >
               Features
+            </Link>
+            <Link
+              href="/agents"
+              className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md"
+            >
+              Agents
+            </Link>
+            <Link
+              href="/business"
+              className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md"
+            >
+              Business
+            </Link>
+            <Link
+              href="/startup"
+              className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md"
+            >
+              Startup
             </Link>
             <Link
               href="/pricing"
