@@ -16,7 +16,8 @@ export default function DashboardPage() {
         ctaHref="/dashboard/streaming-studio"
         secondaryLinks={[
           { label: "Analytics", href: "/dashboard/analytics" },
-          { label: "Alerts", href: "/dashboard/alerts" },
+          { label: "API keys", href: "/dashboard/api" },
+          { label: "Developer docs", href: "/dashboard/documentation" },
           { label: "Settings", href: "/dashboard/settings" },
         ]}
       />
