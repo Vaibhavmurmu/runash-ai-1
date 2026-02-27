@@ -35,7 +35,8 @@ export function EditorWorkspace() {
   const [project, setProject] = useState<EditorProject | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [isBusy, setIsBusy] = useState(false)
+  const [isProjectActionBusy, setIsProjectActionBusy] = useState(false)
+  const [isGeneratingRender, setIsGeneratingRender] = useState(false)
   const [isDirty, setIsDirty] = useState(false)
   const [uploadInProgress, setUploadInProgress] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
@@ -305,7 +306,7 @@ export function EditorWorkspace() {
 
   const handleDuplicate = async () => {
     if (!project) return
-    setIsBusy(true)
+    setIsProjectActionBusy(true)
     try {
       const res = await fetch(`/api/editor/projects/${project.id}/duplicate`, {
         method: "POST",
@@ -319,13 +320,13 @@ export function EditorWorkspace() {
     } catch {
       toast({ title: "Duplicate failed", variant: "destructive" })
     } finally {
-      setIsBusy(false)
+      setIsProjectActionBusy(false)
     }
   }
 
   const handleDelete = async () => {
     if (!project) return
-    setIsBusy(true)
+    setIsProjectActionBusy(true)
     const deletedId = project.id
     setProject(null)
     try {
@@ -337,13 +338,13 @@ export function EditorWorkspace() {
       toast({ title: "Delete failed", description: "Project could not be deleted.", variant: "destructive" })
       await loadProject()
     } finally {
-      setIsBusy(false)
+      setIsProjectActionBusy(false)
     }
   }
 
   const handleExportMetadata = async () => {
     if (!project) return
-    setIsBusy(true)
+    setIsProjectActionBusy(true)
     try {
       const res = await fetch(`/api/editor/projects/${project.id}/export`)
       if (!res.ok) throw new Error("Export failed")
@@ -358,7 +359,7 @@ export function EditorWorkspace() {
     } catch {
       toast({ title: "Export failed", description: "Could not export metadata.", variant: "destructive" })
     } finally {
-      setIsBusy(false)
+      setIsProjectActionBusy(false)
     }
   }
 
@@ -403,7 +404,7 @@ export function EditorWorkspace() {
     const isStaleOrCancelled = () =>
       controller.signal.aborted || generationRunIdRef.current !== currentRunId || !isMountedRef.current
 
-    setIsBusy(true)
+    setIsGeneratingRender(true)
     try {
       const createRes = await fetch("/api/editor/render-jobs", {
         method: "POST",
@@ -465,7 +466,7 @@ export function EditorWorkspace() {
     } finally {
       if (!isMountedRef.current) return
       if (generationRunIdRef.current !== currentRunId) return
-      setIsBusy(false)
+      setIsGeneratingRender(false)
     }
   }
 
@@ -547,6 +548,7 @@ export function EditorWorkspace() {
             onSkipPrevious={handleSkipPrevious}
             onSkipNext={handleSkipNext}
             onGenerateVideo={handleGenerateVideo}
+            isGeneratingRender={isGeneratingRender}
           />
           <RightPanel selectedModel={selectedModel} onModelChange={setSelectedModel} activeTab={activeTab} />
           {isMobile ? (
@@ -572,7 +574,7 @@ export function EditorWorkspace() {
           onDuplicate={handleDuplicate}
           onDelete={handleDelete}
           onExportMetadata={handleExportMetadata}
-          isBusy={isBusy || isLoading || isCreatingProject}
+          isProjectActionBusy={isProjectActionBusy || isLoading || isCreatingProject}
         />
         <CollaborationPanel isOpen={isCollaborationOpen} onClose={() => setIsCollaborationOpen(false)} />
       </EditorLayout>
