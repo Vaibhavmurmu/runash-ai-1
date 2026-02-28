@@ -27,6 +27,16 @@ export interface MembersOnlyMode {
   reason?: string
 }
 
+export type StreamDataSaverPreset = "off" | "balanced" | "aggressive"
+export type StreamManualFallbackOverride = "auto" | "force_standard" | "force_fallback"
+
+export interface StreamNetworkControls {
+  lowLatencyMode: boolean
+  autoQualityFallbackOnWeakNetwork: boolean
+  dataSaverPreset: StreamDataSaverPreset
+  manualFallbackOverride: StreamManualFallbackOverride
+}
+
 export interface LiveControlPollOption {
   id: string
   label: string
@@ -48,6 +58,7 @@ export interface LiveControlState {
   scheduledMetadata: ScheduledStreamMetadata
   dualStream: DualStreamConfiguration
   membersOnly: MembersOnlyMode
+  network: StreamNetworkControls
   moderation: {
     pinnedMessageId: string | null
     qna: {
@@ -114,6 +125,12 @@ export function createDefaultLiveControlState(streamId: string): LiveControlStat
       enabled: false,
       transitionedAt: null,
       reason: "",
+    },
+    network: {
+      lowLatencyMode: false,
+      autoQualityFallbackOnWeakNetwork: true,
+      dataSaverPreset: "balanced",
+      manualFallbackOverride: "auto",
     },
     moderation: {
       pinnedMessageId: null,
