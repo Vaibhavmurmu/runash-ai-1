@@ -123,6 +123,42 @@ export const appSchemaTables = {
       "created_at",
     ],
   },
+  mobileChatMessages: {
+    table: "mobile_chat_messages",
+    fields: ["id", "cursor_seq", "platform", "username", "message", "client_request_id", "created_at"],
+    indexes: ["idx_mobile_chat_cursor_seq", "idx_mobile_chat_client_request_id"],
+  },
+  mobileChatMessageAttachments: {
+    table: "mobile_chat_message_attachments",
+    fields: [
+      "id",
+      "message_id",
+      "attachment_name",
+      "attachment_type",
+      "attachment_size",
+      "attachment_url",
+      "attachment_checksum",
+      "created_at",
+    ],
+  },
+  streamChatMessages: {
+    table: "stream_chat_messages",
+    fields: ["id", "stream_id", "user_id", "username", "text_content", "dedupe_key", "created_at"],
+    indexes: ["idx_stream_chat_messages_dedupe"],
+  },
+  streamChatMessageAttachments: {
+    table: "stream_chat_message_attachments",
+    fields: [
+      "id",
+      "message_id",
+      "attachment_name",
+      "attachment_type",
+      "attachment_size",
+      "attachment_url",
+      "attachment_checksum",
+      "created_at",
+    ],
+  },
 } as const
 
 export type AuthSchemaTableName = keyof typeof authSchemaTables
