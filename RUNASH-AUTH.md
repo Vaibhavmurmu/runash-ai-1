@@ -67,6 +67,13 @@ Last updated: 2026-02
 - Verification emails now route through the safety-aware `lib/email.ts` utility so allowlist/sink/dry-run controls and provider safeguards are consistently applied.
 - Signup UI copy explicitly states that email/password accounts require verification before first login to reduce onboarding ambiguity.
 
+## Email verification flow consistency update (2026-02)
+
+- Better Auth remains the single source of truth for email verification token generation and verification (`auth.api.sendVerificationEmail` + `auth.api.verifyEmail`) with `/api/auth/verify-email` retained as the canonical verifier endpoint.
+- `POST /api/auth/resend-verification` now uses centralized auth rate-limit policy (`AUTH_ENDPOINT_RATE_LIMITS["resend-verification"]`) and always returns the same non-enumerating response message for unknown or already-verified emails.
+- Resend verification delivery continues through Better Auth's verification callback path (which is wired to the Resend-backed email provider abstraction in `lib/email.ts`) and now normalizes callback URL handling through shared auth email URL utilities.
+- Signup UI now surfaces an in-flow verification notice (`"Check your email to verify your account"`) when verification is required, instead of immediately navigating away as if account access was active.
+
 ## Get-started onboarding flow update (2026-02)
 
 - Restored the three-step onboarding journey (`Account -> Profile -> Complete`) inside a dark themed get-started modal while preserving the rich landing hero CTA flow.
