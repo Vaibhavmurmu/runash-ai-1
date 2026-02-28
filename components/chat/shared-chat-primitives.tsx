@@ -7,7 +7,7 @@ import { X } from "lucide-react";
 
 export function ChatPageFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#030405] text-zinc-100">
+    <div className="min-h-[100dvh] bg-[#030405] text-zinc-100">
       <div className="mx-auto w-full max-w-[1280px] px-3 py-3 sm:px-4 sm:py-4">{children}</div>
     </div>
   );
