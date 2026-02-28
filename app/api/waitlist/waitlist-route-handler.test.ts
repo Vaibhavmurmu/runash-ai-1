@@ -12,7 +12,6 @@ test("POST /api/waitlist returns 201 and success contract for valid payload", as
     body: JSON.stringify({
       email: "Founders@RunAsh.in",
       name: "RunAsh Founder",
-      company: "RunAsh",
       useCase: "Streaming ops automation",
     }),
   })
@@ -25,7 +24,6 @@ test("POST /api/waitlist returns 201 and success contract for valid payload", as
         id: "42",
         email: input.email,
         name: input.name ?? null,
-        company: input.company ?? null,
         useCase: input.useCase ?? null,
         createdAt: new Date().toISOString(),
       },
@@ -81,7 +79,6 @@ test("POST /api/waitlist returns duplicate response contract for existing email"
         id: "1",
         email: "duplicate@runash.in",
         name: null,
-        company: null,
         useCase: "Duplicate submit",
         createdAt: new Date().toISOString(),
       },

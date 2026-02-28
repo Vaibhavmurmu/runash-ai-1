@@ -214,8 +214,8 @@ export default function GetStartedPage() {
             <Button className="rounded-full px-10 bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-400 text-white hover:opacity-90" onClick={() => { setStep(1); setOpen(true) }}>
               Get started
             </Button>
-            <Button variant="outline" className="rounded-full px-10 border-orange-200 dark:border-white/20 bg-white/70 dark:bg-black/40" onClick={() => router.push("/waitlist")}>
-              Join waitlist
+            <Button asChild variant="outline" className="rounded-full px-10 border-orange-200 dark:border-white/20 bg-white/70 dark:bg-black/40">
+              <Link href="/waitlist">Join waitlist</Link>
             </Button>
             <Button variant="outline" className="rounded-full px-10 border-orange-200 dark:border-white/20 bg-white/70 dark:bg-black/40" onClick={() => router.push("/login")}>
               Welcome back

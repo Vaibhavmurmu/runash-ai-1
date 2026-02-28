@@ -14,8 +14,8 @@ export async function createWaitlistEntry(input: WaitlistJoinInput): Promise<Wai
   return queryOne<WaitlistEntryRecord>(
     `
       INSERT INTO waitlist_entries (email, name, company, use_case)
-      VALUES ($1, $2, $3, $4)
-      ON CONFLICT (email) DO NOTHING
+      VALUES ($1, $2, NULL, $3)
+      ON CONFLICT DO NOTHING
       RETURNING
         id::text,
         email,
@@ -24,7 +24,7 @@ export async function createWaitlistEntry(input: WaitlistJoinInput): Promise<Wai
         use_case AS "useCase",
         created_at AS "createdAt"
     `,
-    [input.email, input.name ?? null, input.company ?? null, input.useCase ?? null],
+    [input.email, input.name ?? null, input.useCase ?? null],
   )
 }
 
