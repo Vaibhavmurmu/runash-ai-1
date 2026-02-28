@@ -1,0 +1,127 @@
+'use client';
+
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Heart, ShoppingCart, TrendingUp } from 'lucide-react';
+
+export function TrendingProducts() {
+  const products = [
+    {
+      id: 1,
+      name: 'Wireless Earbuds Pro',
+      price: '$199.99',
+      image: '🎧',
+      sales: '2.3K sold',
+      rating: 4.8,
+      discount: '-20%',
+    },
+    {
+      id: 2,
+      name: 'Smart Watch Ultra',
+      price: '$349.99',
+      image: '⌚',
+      sales: '1.8K sold',
+      rating: 4.9,
+      discount: '-15%',
+    },
+    {
+      id: 3,
+      name: 'Camera Lens Kit',
+      price: '$599.99',
+      image: '📷',
+      sales: '892 sold',
+      rating: 4.7,
+      discount: '-10%',
+    },
+    {
+      id: 4,
+      name: 'Portable Speaker',
+      price: '$129.99',
+      image: '🔊',
+      sales: '3.2K sold',
+      rating: 4.6,
+      discount: '-25%',
+    },
+    {
+      id: 5,
+      name: 'Phone Stand Pro',
+      price: '$49.99',
+      image: '📱',
+      sales: '5.1K sold',
+      rating: 4.9,
+      discount: '-30%',
+    },
+    {
+      id: 6,
+      name: 'USB Hub Adapter',
+      price: '$79.99',
+      image: '🔌',
+      sales: '4.5K sold',
+      rating: 4.8,
+      discount: '-18%',
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-3">
+        <TrendingUp className="h-6 w-6 text-orange-500" />
+        <div>
+          <h2 className="text-2xl font-bold">Trending Right Now</h2>
+          <p className="text-muted-foreground text-sm">Most popular products this week</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {products.map((product) => (
+          <Card
+            key={product.id}
+            className="p-4 hover:shadow-lg hover:border-orange-500/50 transition"
+          >
+            <div className="space-y-3">
+              <div className="relative">
+                <div className="h-40 bg-gradient-to-br from-slate-900 to-slate-800 rounded-lg flex items-center justify-center text-5xl">
+                  {product.image}
+                </div>
+                {product.discount && (
+                  <Badge className="absolute top-2 right-2 bg-orange-600">
+                    {product.discount}
+                  </Badge>
+                )}
+              </div>
+
+              <div>
+                <h3 className="font-semibold truncate">{product.name}</h3>
+                <p className="text-sm text-muted-foreground">{product.sales}</p>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-bold text-lg">{product.price}</p>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <span>★</span>
+                    <span>{product.rating}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button
+                  size="sm"
+                  className="flex-1 bg-orange-600 hover:bg-orange-700"
+                >
+                  <ShoppingCart className="h-4 w-4 mr-1" />
+                  Add
+                </Button>
+                <Button size="sm" variant="outline" className="px-3 bg-transparent">
+                  <Heart className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
