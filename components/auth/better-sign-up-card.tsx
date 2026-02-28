@@ -88,7 +88,7 @@ export function BetterSignUpCard() {
               }
 
               const isVerificationPending =
-                registration.user?.emailVerified === false || /verify your account/i.test(registration.message)
+                registration.user?.emailVerified === false || /verify your (account|email)/i.test(registration.message)
               toast.success(isVerificationPending ? "Check your inbox to verify your email before logging in." : registration.message)
               router.push("/login")
             } catch (error) {

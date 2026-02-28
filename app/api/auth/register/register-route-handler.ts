@@ -11,7 +11,6 @@ import { applyAuthCaptchaMiddleware } from "@/lib/auth/captcha-middleware"
 
 type RegisterInput = {
   email: string
-  password: string
   name: string
   username: string
 }
@@ -186,7 +185,7 @@ export async function handleRegister(
       )
     }
 
-    const createdUser = mapSignUpPayload(signUpResult, { email, password, name, username })
+    const createdUser = mapSignUpPayload(signUpResult, { email, name, username })
     const verificationRequired = signUpResult.token == null || !createdUser.emailVerified
     const message = verificationRequired
       ? "User created successfully. Please check your email to verify your account."
