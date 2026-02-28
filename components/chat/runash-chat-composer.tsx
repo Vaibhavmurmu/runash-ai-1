@@ -1,9 +1,9 @@
 "use client"
 
-import { type ChangeEvent, useMemo, useRef, useState } from "react"
+import { type ChangeEvent, type DragEvent, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { ChevronDown, Paperclip, Send, Sparkles, Search, OctagonX, RotateCcw } from "lucide-react"
+import { ChevronDown, Send, Sparkles, Search, OctagonX, RotateCcw, Image as ImageIcon, RefreshCcw, X } from "lucide-react"
 
 type StreamControllerState = "idle" | "sending" | "streaming" | "stopping" | "failed"
 type ComposerHealthState = "ready" | "usage-limit" | "provider-error" | "network-timeout"
@@ -19,6 +19,23 @@ type ModelCatalogOption = {
 type ProjectCatalogOption = {
   id: string
   label: string
+}
+
+export type ComposerAttachmentMetadata = {
+  name: string
+  size: number
+  type: string
+  width?: number
+  height?: number
+}
+
+export type ComposerAttachmentUploadState = "idle" | "uploading" | "failed" | "uploaded"
+
+export type ComposerAttachmentPreview = {
+  metadata: ComposerAttachmentMetadata
+  previewUrl: string
+  uploadState: ComposerAttachmentUploadState
+  error?: string
 }
 
 type RunAshChatComposerProps = {
@@ -41,7 +58,11 @@ type RunAshChatComposerProps = {
   projectOptions?: ProjectCatalogOption[]
   selectedProject?: string
   onSelectedProjectChange?: (projectId: string) => void
-  onAttachFile?: (file: File) => void
+  onAttachFile?: (file: File) => Promise<void> | void
+  attachmentPreview?: ComposerAttachmentPreview | null
+  attachmentError?: string | null
+  onRetryAttachment?: () => void
+  onRemoveAttachment?: () => void
 }
 
 type SlashCommand = {
@@ -100,12 +121,17 @@ export function RunAshChatComposer({
   selectedProject,
   onSelectedProjectChange,
   onAttachFile,
+  attachmentPreview,
+  attachmentError,
+  onRetryAttachment,
+  onRemoveAttachment,
 }: RunAshChatComposerProps) {
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [composerError, setComposerError] = useState<string | null>(null)
   const [isEnhancing, setIsEnhancing] = useState(false)
   const [showSecondaryControls, setShowSecondaryControls] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
   const attachmentInputRef = useRef<HTMLInputElement | null>(null)
 
   const estimatedTokens = useMemo(() => Math.ceil(value.length / 4), [value])
@@ -190,6 +216,16 @@ export function RunAshChatComposer({
       return
     }
 
+    if (attachmentPreview?.uploadState === "failed") {
+      setComposerError("Fix the image upload issue before sending.")
+      return
+    }
+
+    if (attachmentPreview?.uploadState === "uploading") {
+      setComposerError("Please wait for the image upload to finish.")
+      return
+    }
+
     if (content.startsWith("/") && !SLASH_COMMANDS.some((command) => command.command === content.split(" ")[0])) {
       setComposerError("Unknown slash command. Use /campaign, /inventory, /voice, or /enhance.")
       return
@@ -209,13 +245,40 @@ export function RunAshChatComposer({
   function handleAttachmentSelect(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file) return
-    onAttachFile?.(file)
+    void onAttachFile?.(file)
     event.target.value = ""
   }
 
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    setIsDragging(false)
+
+    const file = event.dataTransfer.files?.[0]
+    if (!file || !onAttachFile) return
+    void onAttachFile(file)
+  }
+
+  const attachmentStatusMessage =
+    attachmentPreview?.uploadState === "uploading"
+      ? "Uploading image..."
+      : attachmentPreview?.uploadState === "failed"
+        ? attachmentPreview.error || "Upload failed. Please retry."
+        : attachmentPreview?.uploadState === "uploaded"
+          ? "Image ready to send."
+          : null
+
   return (
     <div className="space-y-2">
-      <div className="rounded-md border border-zinc-700 bg-zinc-900 p-2">
+      <div
+        className={`rounded-md border bg-zinc-900 p-2 transition-colors ${isDragging ? "border-orange-400" : "border-zinc-700"}`}
+        onDragOver={(event) => {
+          event.preventDefault()
+          if (!onAttachFile) return
+          setIsDragging(true)
+        }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={handleDrop}
+      >
         <Textarea
           value={value}
           onChange={(event) => {
@@ -318,6 +381,38 @@ export function RunAshChatComposer({
             </Button>
           </div>
         ) : null}
+
+        {attachmentPreview ? (
+          <div className="mt-3 rounded-md border border-zinc-700 bg-zinc-950/70 p-2">
+            <div className="flex gap-2">
+              <img src={attachmentPreview.previewUrl} alt={attachmentPreview.metadata.name} className="h-20 w-20 rounded border border-zinc-700 object-cover" />
+              <div className="min-w-0 flex-1 text-xs text-zinc-300">
+                <p className="truncate font-medium text-zinc-100">{attachmentPreview.metadata.name}</p>
+                <p>{Math.max(1, Math.round(attachmentPreview.metadata.size / 1024))} KB</p>
+                {attachmentStatusMessage ? (
+                  <p className={attachmentPreview.uploadState === "failed" ? "text-red-300" : "text-zinc-400"}>{attachmentStatusMessage}</p>
+                ) : null}
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {attachmentPreview.uploadState === "failed" && onRetryAttachment ? (
+                    <Button type="button" variant="outline" size="sm" className="h-7 border-zinc-600 bg-zinc-900 text-zinc-200" onClick={onRetryAttachment}>
+                      <RefreshCcw className="mr-1 h-3.5 w-3.5" /> Retry
+                    </Button>
+                  ) : null}
+                  {onAttachFile ? (
+                    <Button type="button" variant="outline" size="sm" className="h-7 border-zinc-600 bg-zinc-900 text-zinc-200" onClick={() => attachmentInputRef.current?.click()}>
+                      Replace
+                    </Button>
+                  ) : null}
+                  {onRemoveAttachment ? (
+                    <Button type="button" variant="outline" size="sm" className="h-7 border-zinc-600 bg-zinc-900 text-zinc-200" onClick={onRemoveAttachment}>
+                      <X className="mr-1 h-3.5 w-3.5" /> Remove
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
 
@@ -380,6 +475,10 @@ export function RunAshChatComposer({
         </div>
       ) : null}
 
+      {attachmentError ? (
+        <div className="rounded-md border border-red-700/60 bg-red-950/30 px-3 py-2 text-xs text-red-200">{attachmentError}</div>
+      ) : null}
+
       {showSecondaryControls ? (
         <div className="rounded-md border border-zinc-700 bg-zinc-900/60 p-2 text-xs">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -425,19 +524,20 @@ export function RunAshChatComposer({
               <input
                 ref={attachmentInputRef}
                 type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
                 className="hidden"
                 onChange={handleAttachmentSelect}
-                aria-label="Attach file"
+                aria-label="Attach image"
               />
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => attachmentInputRef.current?.click()}
                 className="border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
-                aria-label="Attach file"
+                aria-label="Attach image"
               >
-                <Paperclip className="mr-1 h-4 w-4" />
-                Attach
+                <ImageIcon className="mr-1 h-4 w-4" />
+                Image
               </Button>
             </>
           ) : null}
@@ -448,7 +548,7 @@ export function RunAshChatComposer({
           ) : null}
           <Button
             onClick={() => handleSubmit()}
-            disabled={disabled || !value.trim() || isHardLimitExceeded}
+            disabled={disabled || !value.trim() || isHardLimitExceeded || attachmentPreview?.uploadState === "uploading"}
             className="bg-orange-500 px-4 font-semibold text-zinc-950 hover:bg-orange-400"
             aria-label="Send prompt"
           >
@@ -459,7 +559,8 @@ export function RunAshChatComposer({
       </div>
 
       <div className="rounded-md border border-zinc-800/80 bg-zinc-950/60 px-3 py-2 text-[11px] text-zinc-400">
-        Need higher usage limits? <a href="/upgrade" className="text-amber-300 underline underline-offset-2">Upgrade your plan</a>.
+        <span>Need higher usage limits? <a href="/upgrade" className="text-amber-300 underline underline-offset-2">Upgrade your plan</a>.</span>
+        {onAttachFile ? <span className="ml-1">Drag and drop an image on desktop, or tap the image button on mobile.</span> : null}
       </div>
     </div>
   )

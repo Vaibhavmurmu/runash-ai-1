@@ -23,6 +23,7 @@ import UserPreferencesDialog from "@/components/chat/user-preferences-dialog"
 import CartDrawer from "@/components/cart/cart-drawer"
 import VoiceControls from "@/components/chat/voice-controls"
 import { RunAshChatComposer } from "@/components/chat/runash-chat-composer"
+import type { ComposerAttachmentMetadata, ComposerAttachmentPreview } from "@/components/chat/runash-chat-composer"
 import { RunAshChatCommandCenter } from "@/components/chat/runash-chat-command-center"
 import {
   ActionPill,
@@ -149,6 +150,14 @@ export function ChatWorkspace() {
   const [voiceEnabled, setVoiceEnabled] = useState(false)
   const [voiceTranscriptHistory, setVoiceTranscriptHistory] = useState<string[]>([])
   const [sessionsStatus, setSessionsStatus] = useState<"loading" | "ready" | "error">("loading")
+
+  const [attachmentPreview, setAttachmentPreview] = useState<ComposerAttachmentPreview | null>(null)
+  const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const attachmentRetryRef = useRef<File | null>(null)
+
+  const IMAGE_MAX_FILE_SIZE = 8 * 1024 * 1024
+  const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"]
+
 
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([
     {
@@ -588,6 +597,16 @@ export function ChatWorkspace() {
     const content = messageContent || inputValue.trim()
     if (!content) return
 
+    if (attachmentPreview?.uploadState === "failed") {
+      setAttachmentError("Fix the image upload issue before sending.")
+      return
+    }
+
+    if (attachmentPreview?.uploadState === "uploading") {
+      setAttachmentError("Please wait for the image upload to finish.")
+      return
+    }
+
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       content,
@@ -614,6 +633,12 @@ export function ChatWorkspace() {
     setComposerHealth("ready")
     setLastPromptForRetry(content)
     setRunDiagnostics({ requestId: null, provider: "RunAsh AI", model: null, lastErrorCode: null })
+    const attachmentMetadata = attachmentPreview?.metadata ? [attachmentPreview.metadata] : undefined
+    if (attachmentPreview) {
+      URL.revokeObjectURL(attachmentPreview.previewUrl)
+      setAttachmentPreview(null)
+      setAttachmentError(null)
+    }
 
     const abortController = new AbortController()
     sendAbortRef.current = abortController
@@ -639,6 +664,7 @@ export function ChatWorkspace() {
           provider: modelCatalog.find((entry) => entry.id === selectedModel)?.provider,
           tools: requestedTools,
           toolPayloads,
+          attachments: attachmentMetadata,
         }),
       })
 
@@ -939,6 +965,84 @@ export function ChatWorkspace() {
       setStreamControllerState((prev) => (prev === "stopping" ? "idle" : prev === "streaming" || prev === "sending" ? "idle" : prev))
       setIsTyping(false)
     }
+  }
+
+  const processImageAttachment = async (file: File) => {
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setAttachmentError("Unsupported file type. Please upload PNG, JPG, WEBP, or GIF.")
+      return
+    }
+
+    if (file.size > IMAGE_MAX_FILE_SIZE) {
+      setAttachmentError("Image is too large. Please upload a file up to 8 MB.")
+      return
+    }
+
+    attachmentRetryRef.current = file
+    setAttachmentError(null)
+
+    const previewUrl = URL.createObjectURL(file)
+    setAttachmentPreview((existing) => {
+      if (existing) URL.revokeObjectURL(existing.previewUrl)
+      return {
+        metadata: { name: file.name, size: file.size, type: file.type },
+        previewUrl,
+        uploadState: "uploading",
+      }
+    })
+
+    const metadataResult = await new Promise<ComposerAttachmentMetadata>((resolve, reject) => {
+      const image = new Image()
+      image.onload = () => {
+        resolve({
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+        })
+      }
+      image.onerror = () => reject(new Error("image_preview_failed"))
+      image.src = previewUrl
+    }).catch(() => null)
+
+    if (!metadataResult) {
+      setAttachmentPreview((existing) =>
+        existing
+          ? {
+              ...existing,
+              uploadState: "failed",
+              error: "Preview generation failed. Try a different image or retry.",
+            }
+          : null,
+      )
+      return
+    }
+
+    setAttachmentPreview((existing) =>
+      existing
+        ? {
+            ...existing,
+            metadata: metadataResult,
+            uploadState: "uploaded",
+            error: undefined,
+          }
+        : null,
+    )
+  }
+
+  const retryAttachment = () => {
+    if (!attachmentRetryRef.current) return
+    void processImageAttachment(attachmentRetryRef.current)
+  }
+
+  const removeAttachment = () => {
+    setAttachmentPreview((existing) => {
+      if (existing) URL.revokeObjectURL(existing.previewUrl)
+      return null
+    })
+    attachmentRetryRef.current = null
+    setAttachmentError(null)
   }
 
  
@@ -1467,6 +1571,11 @@ export function ChatWorkspace() {
                 modelOptions={modelCatalog}
                 selectedModel={selectedModel}
                 onSelectedModelChange={setSelectedModel}
+                onAttachFile={processImageAttachment}
+                attachmentPreview={attachmentPreview}
+                attachmentError={attachmentError}
+                onRetryAttachment={retryAttachment}
+                onRemoveAttachment={removeAttachment}
               />
               {(streamControllerState === "failed" || runDiagnostics.requestId || runDiagnostics.provider) && (
                 <div className="mt-3 rounded-md border border-zinc-800 bg-zinc-900/60 p-2 text-xs text-zinc-300">
