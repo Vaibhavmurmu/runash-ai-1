@@ -110,6 +110,10 @@ export async function sendEmail(options: {
   from?: string
   headers?: Record<string, string>
   attachments?: EmailAttachment[]
+  replyTo?: string | string[]
+  scheduledAt?: string
+  tags?: Array<{ name: string; value: string }>
+  idempotencyKey?: string
   template_id?: number
   campaign_id?: number
   user_id?: number
@@ -217,6 +221,10 @@ export async function sendEmail(options: {
       text: options.text,
       headers: Object.keys(headers).length > 0 ? headers : undefined,
       attachments: options.attachments,
+      replyTo: options.replyTo,
+      scheduledAt: options.scheduledAt,
+      tags: options.tags,
+      idempotencyKey: options.idempotencyKey,
     })
 
     if (message_id) {

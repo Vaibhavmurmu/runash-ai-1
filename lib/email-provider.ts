@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer"
+import { Resend } from "resend"
 
 type Recipient = string | string[]
 
@@ -16,6 +17,10 @@ export interface SendEmailInput {
   headers?: Record<string, string>
   attachments?: EmailAttachment[]
   from?: string
+  replyTo?: Recipient
+  scheduledAt?: string
+  tags?: Array<{ name: string; value: string }>
+  idempotencyKey?: string
 }
 
 interface EmailProvider {
@@ -78,15 +83,21 @@ class SmtpEmailProvider implements EmailProvider {
 }
 
 class ResendEmailProvider implements EmailProvider {
-  async send(input: SendEmailInput) {
-    const resendApiKey = process.env.RESEND_API_KEY
-    const from = input.from ?? process.env.EMAIL_FROM ?? process.env.SMTP_FROM
+  private resend: Resend
 
-    if (!resendApiKey || !from) {
-      throw new Error("RESEND_API_KEY and EMAIL_FROM are required for EMAIL_PROVIDER=resend")
+  constructor() {
+    this.resend = new Resend(process.env.RESEND_API_KEY)
+  }
+
+  async send(input: SendEmailInput) {
+    const from = input.from ?? process.env.RESEND_VERIFIED_FROM ?? process.env.EMAIL_FROM ?? process.env.SMTP_FROM
+
+    if (!process.env.RESEND_API_KEY || !from) {
+      throw new Error("RESEND_API_KEY and RESEND_VERIFIED_FROM (or EMAIL_FROM) are required for EMAIL_PROVIDER=resend")
     }
 
     const to = Array.isArray(input.to) ? input.to : [input.to]
+    const replyTo = input.replyTo ? (Array.isArray(input.replyTo) ? input.replyTo : [input.replyTo]) : undefined
     const attachments = input.attachments?.map((attachment) => {
       const content =
         typeof attachment.content === "string"
@@ -94,18 +105,14 @@ class ResendEmailProvider implements EmailProvider {
           : attachment.content.toString("base64")
 
       return {
-        name: attachment.filename,
+        filename: attachment.filename,
         content,
+        contentType: attachment.contentType,
       }
     })
 
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    const sendEmail = async () => {
+      const { data, error } = await this.resend.emails.send({
         from,
         to,
         subject: input.subject,
@@ -113,16 +120,73 @@ class ResendEmailProvider implements EmailProvider {
         text: input.text,
         headers: input.headers,
         attachments,
-      }),
-    })
+        replyTo,
+        scheduledAt: input.scheduledAt,
+        tags: input.tags,
+        idempotencyKey: input.idempotencyKey,
+      })
 
-    if (!response.ok) {
-      const errorBody = await response.text()
-      throw new Error(`Resend email send failed (${response.status}): ${errorBody}`)
+      if (error) {
+        throw error
+      }
+
+      return data
     }
 
-    return response.json()
+    return sendWithSafeRetry(sendEmail)
   }
+}
+
+const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504])
+const MAX_EMAIL_SEND_ATTEMPTS = 4
+
+function getErrorStatusCode(error: unknown) {
+  if (typeof error !== "object" || error === null) {
+    return undefined
+  }
+
+  const statusCode = Reflect.get(error, "statusCode")
+  if (typeof statusCode === "number") {
+    return statusCode
+  }
+
+  const status = Reflect.get(error, "status")
+  if (typeof status === "number") {
+    return status
+  }
+
+  return undefined
+}
+
+function isRetryableEmailError(error: unknown) {
+  const statusCode = getErrorStatusCode(error)
+  return statusCode !== undefined && RETRYABLE_STATUS_CODES.has(statusCode)
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function sendWithSafeRetry<T>(operation: () => Promise<T>): Promise<T> {
+  let attempt = 0
+
+  while (attempt < MAX_EMAIL_SEND_ATTEMPTS) {
+    try {
+      return await operation()
+    } catch (error) {
+      attempt += 1
+
+      if (!isRetryableEmailError(error) || attempt >= MAX_EMAIL_SEND_ATTEMPTS) {
+        throw error
+      }
+
+      const baseDelayMs = 300 * 2 ** (attempt - 1)
+      const jitterMs = Math.floor(Math.random() * 150)
+      await sleep(baseDelayMs + jitterMs)
+    }
+  }
+
+  throw new Error("Email send retries exhausted")
 }
 
 function hasSmtpConfig() {
@@ -130,7 +194,7 @@ function hasSmtpConfig() {
 }
 
 function hasResendConfig() {
-  return Boolean(process.env.RESEND_API_KEY && (process.env.EMAIL_FROM || process.env.SMTP_FROM))
+  return Boolean(process.env.RESEND_API_KEY && (process.env.RESEND_VERIFIED_FROM || process.env.EMAIL_FROM || process.env.SMTP_FROM))
 }
 
 function resolveProviderType(): EmailProviderType {
