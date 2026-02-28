@@ -43,6 +43,7 @@ This document is payment-domain specific. For contributor workflow/process polic
 - This auth-session alignment does not change payment API contracts, webhook payloads, or billing field names.
 - Payment-linked auth messaging uses the canonical provider module (`lib/email-provider.ts`) and deterministic provider selection (`EMAIL_PROVIDER=smtp|resend`).
 - Protected payment flows rely on Better Auth session validation via `/api/auth/get-session` and canonical Better Auth session cookies.
+- Better Auth signup verification emails now always resolve to the canonical verification endpoint (`/api/auth/verify-email`) and use safety-aware auth email delivery utilities (`lib/email.ts` -> `lib/email-provider.ts`) to preserve secure, auditable routing.
 - Legacy NextAuth cookie compatibility remains temporary during migration windows to avoid lockouts.
 - RBAC authorization remains aligned with canonical `viewer` / `operator` / `admin` capabilities with compatibility mapping where still required.
 - Middleware and seller/admin route guards enforce role-aware authorization server-side with explicit `401 Unauthorized` (missing session) and `403 Forbidden` (insufficient role) behavior for payment/auth-adjacent surfaces.

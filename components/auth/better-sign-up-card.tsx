@@ -27,7 +27,7 @@ export function BetterSignUpCard() {
     <Card className="max-w-md">
       <CardHeader>
         <CardTitle className="text-lg md:text-xl">Sign Up</CardTitle>
-        <CardDescription className="text-xs md:text-sm">Create your account with secure email/password auth. Email verification is required before your first login.</CardDescription>
+        <CardDescription className="text-xs md:text-sm">Create your account with secure email/password auth. You must verify your email before you can sign in and use protected features.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {error ? <CardAlert severity="danger" title="Sign-up failed" description={error} /> : null}
@@ -101,6 +101,7 @@ export function BetterSignUpCard() {
         >
           {loading ? <Loader2 size={16} className="animate-spin" /> : "Create your account"}
         </Button>
+        <p className="text-center text-xs text-muted-foreground">We'll send a verification link to your inbox right after sign up.</p>
       </CardContent>
       <CardFooter>
         <p className="w-full border-t py-4 text-center text-xs text-neutral-500">Secured by better-auth</p>

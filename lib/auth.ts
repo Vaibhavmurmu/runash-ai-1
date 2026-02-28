@@ -9,11 +9,17 @@ import { evaluateAccountLinkingPolicy } from "@/lib/auth/plugins/account-linking
 import { resolveGenericOAuthProviders } from "@/lib/auth/plugins/generic-oauth"
 import { buildTrustedAuthOrigins } from "@/lib/auth/plugins/oauth-proxy"
 import { resolveBearerAuthSession } from "@/lib/auth/session-modes"
-import { buildCanonicalVerificationUrl, sendVerificationEmail as sendVerificationEmailMessage } from "@/lib/email"
+import {
+  buildCanonicalVerificationUrl,
+  resolveAuthCallbackUrl,
+  sendVerificationEmail as sendVerificationEmailMessage,
+} from "@/lib/email"
 
 const baseURL =
   process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
-const emailVerificationCallbackURL = process.env.BETTER_AUTH_EMAIL_VERIFICATION_CALLBACK_URL ?? "/login?emailVerified=1"
+const emailVerificationCallbackURL = resolveAuthCallbackUrl(
+  process.env.BETTER_AUTH_EMAIL_VERIFICATION_CALLBACK_URL ?? "/login?emailVerified=1",
+)
 
 const secret = process.env.BETTER_AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
 
@@ -133,6 +139,7 @@ export const auth = betterAuth({
   emailVerification: {
     sendOnSignUp: true,
     autoSignInAfterVerification: false,
+    callbackURL: emailVerificationCallbackURL,
     sendVerificationEmail: async ({ user, url }) => {
       const verificationUrl = buildCanonicalVerificationUrl({ url, callbackURL: emailVerificationCallbackURL })
 
