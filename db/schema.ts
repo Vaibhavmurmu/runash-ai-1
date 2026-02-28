@@ -106,6 +106,37 @@ export const appSchemaTables = {
     table: "accounting_counterparties",
     fields: ["id", "entity_type", "name", "gstin", "outstanding", "is_active", "created_at", "updated_at"],
   },
+  inventoryAutomationRecommendations: {
+    table: "inventory_automation_recommendations",
+    fields: [
+      "id",
+      "user_id",
+      "product_id",
+      "recommendation_type",
+      "recommendation_title",
+      "recommendation_payload",
+      "confidence_score",
+      "status",
+      "approved_by",
+      "approved_at",
+      "applied_at",
+      "created_at",
+      "updated_at",
+    ],
+  },
+  inventoryAutomationExecutionLogs: {
+    table: "inventory_automation_execution_logs",
+    fields: [
+      "id",
+      "user_id",
+      "recommendation_id",
+      "action",
+      "action_payload",
+      "recommendation_count",
+      "triggered_by",
+      "created_at",
+    ],
+  },
   agentRoleDecisions: {
     table: "agent_role_decisions",
     fields: [

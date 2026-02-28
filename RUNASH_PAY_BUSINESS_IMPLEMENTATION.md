@@ -333,3 +333,14 @@ Business controls preserved:
 - **Risk:** stricter quotas can reject bursts for high-volume creator workflows.
 - **Mitigation:** all limits are environment-configurable and surfaced with stable API error codes.
 - **Rollback:** relax or disable quota/policy env limits while preserving API shape and worker behavior.
+
+## 2026-02-28 Seller inventory automation note (non-payment)
+
+- Added AI-driven inventory automation for low-stock predictions, reorder recommendations, and fulfillment-priority suggestions in seller operations.
+- Added recommendation approval/apply execution logging for auditability, including forecast recalculation + recommendation apply events.
+- **Payment/auth impact:** none. Payment contracts, field names, and checkout/auth flows are unchanged.
+
+### Risk / rollback
+- **Risk:** over-aggressive reorder suggestions can inflate inventory for low-velocity SKUs.
+- **Mitigation:** human-in-the-loop one-click approval is required before any stock-adjusting recommendation is applied.
+- **Rollback:** disable seller inventory automation routes/scheduler and remove recommendation application actions while preserving existing product CRUD APIs.
