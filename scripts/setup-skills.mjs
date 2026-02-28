@@ -5,13 +5,14 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 const isCi = process.env.CI === "true";
+const optionalSetup = process.env.SKILLS_SETUP_OPTIONAL === "1";
 const codexHome = process.env.CODEX_HOME || join(homedir(), ".codex");
 const skillsRootCandidates = [
   join(codexHome, "skills"),
   join(homedir(), ".codex", "skills"),
 ];
 
-const command = ["npx", "skills", "add", "better-auth/skills"];
+const command = ["npx", "--yes", "skills", "add", "better-auth/skills"];
 console.log(`> ${command.join(" ")}`);
 const install = spawnSync(command[0], command.slice(1), {
   stdio: "inherit",
@@ -31,7 +32,7 @@ for (const root of skillsRootCandidates) {
     }
 
     const dir = join(root, entry.name);
-    if (entry.name.includes("better") || existsSync(join(dir, "SKILL.md"))) {
+    if (entry.name.includes("better-auth") || entry.name.includes("better") || existsSync(join(dir, "SKILL.md"))) {
       discovered.push(dir);
     }
   }
@@ -60,8 +61,11 @@ console.warn("- Offline/air-gapped: skip this setup (skills are optional and do 
 console.warn("- CI: do not fail pipelines on skills setup; pre-bake skill files into runner images when needed.");
 console.warn("- Restricted networks: route npm/git through an internal mirror or approved proxy.");
 
-if (isCi) {
-  console.warn("\nCI detected: exiting successfully despite missing skills.");
+if (isCi || optionalSetup) {
+  console.warn("\nOptional setup mode detected: exiting successfully despite missing skills.");
+  if (!isCi) {
+    console.warn("Set SKILLS_SETUP_OPTIONAL=1 only when setup is intentionally best-effort.");
+  }
   process.exit(0);
 }
 
