@@ -1043,10 +1043,10 @@ export default function Home() {
               <ThemeToggle />
               <div className="flex space-x-6">
                 <a
-                  href="/chat"
+                  href="/dashboard/chat"
                   className="text-gray-600  dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors text-sm"
                 >
-                  Agent 
+                  RunAsh Chat 
                 <Badge varient="secondary" className="bg-green-600 text-white gap-2 space-x-1 dark:bg-green-500 animate-pulse text-xs">New</Badge>
                 </a>
                 <a
