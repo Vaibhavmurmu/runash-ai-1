@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast"
 import { signIn } from "next-auth/react"
 import { PhoneOtpVerification } from "@/components/auth/phone-otp-verification"
 import { PasswordStrengthMeter } from "@/components/auth/password-strength-meter"
+import { registerWithUnifiedRoute } from "@/lib/auth/register-client"
 
 export function RegisterForm() {
   const [isLoading, setIsLoading] = useState(false)
@@ -45,24 +46,15 @@ export function RegisterForm() {
     }
 
     try {
-      const response = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: formData.name,
-          username: formData.username,
-          email: formData.email,
-          password: formData.password,
-          phone: phoneVerification.verified ? phoneVerification.phoneNumber : undefined,
-        }),
+      const registration = await registerWithUnifiedRoute({
+        name: formData.name,
+        username: formData.username,
+        email: formData.email,
+        password: formData.password,
       })
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        setError(data.message || "Registration failed")
+      if (!registration.ok) {
+        setError(registration.message || "Registration failed")
         return
       }
 

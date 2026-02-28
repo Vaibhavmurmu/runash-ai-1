@@ -145,8 +145,16 @@ export default function GetStartedPage() {
           username: formData.username,
         })
 
-        if (registration.ok) setStep(2)
-        else setError(registration.message || "Unable to create account. Please try again.")
+        if (registration.ok) {
+          const needsVerification = registration.user?.emailVerified === false || /verify your account/i.test(registration.message)
+          if (needsVerification) {
+            setError("We sent a verification link to your email. Verify your account, then continue.")
+          }
+
+          setStep(2)
+        } else {
+          setError(registration.message || "Unable to create account. Please try again.")
+        }
       } else if (step === 2) {
         setStep(3)
       }
