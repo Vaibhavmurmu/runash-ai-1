@@ -6,7 +6,13 @@ import { useState, useEffect, useMemo, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, Zap, WandSparkles, OctagonX } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, Zap, WandSparkles, OctagonX, MoreHorizontal } from "lucide-react"
 import type { ChatMessage, ChatSession, UserPreferences, QuickAction } from "@/types/runash-chat"
 import ChatMessageComponent from "@/components/chat/chat-message"
 import ChatSidebar from "@/components/chat/chat-sidebar"
@@ -1188,57 +1194,94 @@ export function ChatWorkspace() {
 
   return (
     <ChatPageFrame>
-      <div className="sticky top-0 z-50 mb-4 space-y-3">
-        <ChatInfoBanner
-          badge="New"
-          message="Unified chat shell is now active with consistent actions and prompt patterns."
-        />
-        <ChatShellHeader
-          title="RunAshChat"
-          subtitle="AI Assistant"
-          icon={<Bot className="h-5 w-5" />}
-          actions={
-            <>
-              <CartDrawer />
-              <ActionPill onClick={() => setShowPreferences(true)}>
-                <Settings className="mr-1.5 h-3.5 w-3.5" />
-                Preferences
-              </ActionPill>
-              <ActionPill onClick={() => setLeftDrawerOpen((prev) => !prev)} aria-pressed={leftDrawerOpen}>
-                <History className="mr-1.5 h-3.5 w-3.5" />
-                {leftDrawerOpen ? "Hide History" : "Show History"}
-              </ActionPill>
-              <ActionPill onClick={() => setRightDrawerOpen((prev) => !prev)} aria-pressed={rightDrawerOpen}>
-                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                {rightDrawerOpen ? "Hide Tools" : "Show Tools"}
-              </ActionPill>
-              <ActionPill
-                onClick={() => setVoiceEnabled(!voiceEnabled)}
-                className={voiceEnabled ? "bg-green-950 text-green-300" : ""}
-                aria-pressed={voiceEnabled}
-              >
-                <Mic className="mr-1.5 h-3.5 w-3.5" />
-                {voiceEnabled ? "Voice On" : "Voice Off"}
-              </ActionPill>
-              {streamControllerState === "sending" || streamControllerState === "streaming" ? (
-                <ActionPill
-                  onClick={stopStreamingResponse}
-                  className="bg-red-950 text-red-200 hover:bg-red-900"
-                  aria-label="Stop generating response"
-                >
-                  <OctagonX className="mr-1.5 h-3.5 w-3.5" />
-                  Stop
-                </ActionPill>
-              ) : null}
-            </>
-          }
-        />
-      </div>
+      <div className="flex min-h-[100dvh] flex-col">
+        <div className="sticky top-0 z-50 mb-4 space-y-3">
+          <ChatInfoBanner
+            badge="New"
+            message="Unified chat shell is now active with consistent actions and prompt patterns."
+          />
+          <ChatShellHeader
+            title="RunAshChat"
+            subtitle="AI Assistant"
+            icon={<Bot className="h-5 w-5" />}
+            actions={
+              <>
+                <div className="flex items-center gap-2 lg:hidden">
+                  <ActionPill onClick={() => setLeftDrawerOpen((prev) => !prev)} aria-pressed={leftDrawerOpen}>
+                    <History className="h-3.5 w-3.5" />
+                    <span className="sr-only">{leftDrawerOpen ? "Hide history" : "Show history"}</span>
+                  </ActionPill>
+                  <ActionPill
+                    onClick={() => setVoiceEnabled(!voiceEnabled)}
+                    className={voiceEnabled ? "bg-green-950 text-green-300" : ""}
+                    aria-pressed={voiceEnabled}
+                  >
+                    <Mic className="h-3.5 w-3.5" />
+                    <span className="sr-only">{voiceEnabled ? "Disable voice" : "Enable voice"}</span>
+                  </ActionPill>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <ActionPill aria-label="Open more actions">
+                        <MoreHorizontal className="h-3.5 w-3.5" />
+                      </ActionPill>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuItem onSelect={() => setRightDrawerOpen((prev) => !prev)}>
+                        {rightDrawerOpen ? "Hide tools" : "Show tools"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => setShowPreferences(true)}>Preferences</DropdownMenuItem>
+                      <DropdownMenuItem onSelect={handleNewChatSession}>New chat</DropdownMenuItem>
+                      {(streamControllerState === "sending" || streamControllerState === "streaming") && (
+                        <DropdownMenuItem onSelect={stopStreamingResponse} className="text-red-300 focus:text-red-200">
+                          Stop generation
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
 
-      <div className="flex gap-4">
+                <div className="hidden items-center gap-2 lg:flex">
+                  <CartDrawer />
+                  <ActionPill onClick={() => setShowPreferences(true)}>
+                    <Settings className="mr-1.5 h-3.5 w-3.5" />
+                    Preferences
+                  </ActionPill>
+                  <ActionPill onClick={() => setLeftDrawerOpen((prev) => !prev)} aria-pressed={leftDrawerOpen}>
+                    <History className="mr-1.5 h-3.5 w-3.5" />
+                    {leftDrawerOpen ? "Hide History" : "Show History"}
+                  </ActionPill>
+                  <ActionPill onClick={() => setRightDrawerOpen((prev) => !prev)} aria-pressed={rightDrawerOpen}>
+                    <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                    {rightDrawerOpen ? "Hide Tools" : "Show Tools"}
+                  </ActionPill>
+                  <ActionPill
+                    onClick={() => setVoiceEnabled(!voiceEnabled)}
+                    className={voiceEnabled ? "bg-green-950 text-green-300" : ""}
+                    aria-pressed={voiceEnabled}
+                  >
+                    <Mic className="mr-1.5 h-3.5 w-3.5" />
+                    {voiceEnabled ? "Voice On" : "Voice Off"}
+                  </ActionPill>
+                  {streamControllerState === "sending" || streamControllerState === "streaming" ? (
+                    <ActionPill
+                      onClick={stopStreamingResponse}
+                      className="bg-red-950 text-red-200 hover:bg-red-900"
+                      aria-label="Stop generating response"
+                    >
+                      <OctagonX className="mr-1.5 h-3.5 w-3.5" />
+                      Stop
+                    </ActionPill>
+                  ) : null}
+                </div>
+              </>
+            }
+          />
+        </div>
+
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         {isDesktop && leftDrawerOpen ? <div className="w-80 shrink-0">{leftDrawer}</div> : null}
 
-        <div className="min-w-0 flex-1">
+        <div className="min-h-0 min-w-0 flex-1">
           {!isDesktop && leftDrawerOpen ? (
             <>
               <button
@@ -1267,8 +1310,8 @@ export function ChatWorkspace() {
             </>
           ) : null}
 
-          <ChatSurfaceCard className="flex h-[calc(100vh-128px)] flex-col overflow-hidden">
-            <div className="border-b border-zinc-800 px-3 py-2 text-xs text-zinc-400 sm:px-4">
+          <ChatSurfaceCard className="flex min-h-[100dvh] flex-col overflow-hidden lg:min-h-0 lg:h-full">
+            <div className="hidden border-b border-zinc-800 px-3 py-2 text-xs text-zinc-400 lg:block sm:px-4">
               <span>Shortcuts: Ctrl/Cmd+[ history • Ctrl/Cmd+] tools • Alt+←/→ toggle drawers.</span>
             </div>
 
@@ -1282,7 +1325,7 @@ export function ChatWorkspace() {
               </div>
             ) : null}
 
-            <ScrollArea className="flex-1 p-3 sm:p-4">
+            <ScrollArea className="min-h-0 flex-1 p-3 sm:p-4">
               <div className="space-y-4">
                 {messages.map((message) => (
                   <ChatMessageComponent key={message.id} message={message} sessionId={currentSession?.id} />
@@ -1334,7 +1377,7 @@ export function ChatWorkspace() {
               </div>
             )}
 
-            <div className="border-t border-zinc-800 p-3 sm:p-4">
+            <div className="border-t border-zinc-800 p-3 pb-4 sm:p-4">
               <RunAshChatComposer
                 value={inputValue}
                 onChange={setInputValue}
@@ -1381,6 +1424,7 @@ export function ChatWorkspace() {
         {isDesktop && rightDrawerOpen ? (
           <div className="hidden w-80 shrink-0 lg:block">{rightDrawer}</div>
         ) : null}
+      </div>
       </div>
 
       {/* User Preferences Dialog */}
