@@ -1,9 +1,9 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { type ChangeEvent, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Send, Sparkles, Search, OctagonX, RotateCcw } from "lucide-react"
+import { ChevronDown, Paperclip, Send, Sparkles, Search, OctagonX, RotateCcw } from "lucide-react"
 
 type StreamControllerState = "idle" | "sending" | "streaming" | "stopping" | "failed"
 type ComposerHealthState = "ready" | "usage-limit" | "provider-error" | "network-timeout"
@@ -13,6 +13,11 @@ type ResponseDetailLevel = "concise" | "normal" | "detailed"
 type ModelCatalogOption = {
   id: string
   provider: string
+  label: string
+}
+
+type ProjectCatalogOption = {
+  id: string
   label: string
 }
 
@@ -33,6 +38,10 @@ type RunAshChatComposerProps = {
   modelOptions?: ModelCatalogOption[]
   selectedModel?: string
   onSelectedModelChange?: (model: string) => void
+  projectOptions?: ProjectCatalogOption[]
+  selectedProject?: string
+  onSelectedProjectChange?: (projectId: string) => void
+  onAttachFile?: (file: File) => void
 }
 
 type SlashCommand = {
@@ -87,11 +96,17 @@ export function RunAshChatComposer({
   modelOptions = [],
   selectedModel,
   onSelectedModelChange,
+  projectOptions = [],
+  selectedProject,
+  onSelectedProjectChange,
+  onAttachFile,
 }: RunAshChatComposerProps) {
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [composerError, setComposerError] = useState<string | null>(null)
   const [isEnhancing, setIsEnhancing] = useState(false)
+  const [showSecondaryControls, setShowSecondaryControls] = useState(false)
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null)
 
   const estimatedTokens = useMemo(() => Math.ceil(value.length / 4), [value])
   const isNearCharLimit = value.length >= SOFT_CHARACTER_LIMIT
@@ -191,6 +206,13 @@ export function RunAshChatComposer({
     onSend(content)
   }
 
+  function handleAttachmentSelect(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    onAttachFile?.(file)
+    event.target.value = ""
+  }
+
   return (
     <div className="space-y-2">
       <div className="rounded-md border border-zinc-700 bg-zinc-900 p-2">
@@ -223,8 +245,31 @@ export function RunAshChatComposer({
 
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setShowSecondaryControls((previous) => !previous)}
+              aria-expanded={showSecondaryControls}
+              aria-controls="composer-secondary-controls"
+              className="border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+            >
+              Advanced options
+              <ChevronDown className={`ml-1 h-3.5 w-3.5 transition-transform ${showSecondaryControls ? "rotate-180" : ""}`} />
+            </Button>
+            <span className="text-zinc-500">Type / for RunAsh templates • Ctrl/Cmd+Shift+P to polish</span>
+          </div>
+
+          <div className="flex items-center gap-3 text-zinc-500">
+            <span className={isNearCharLimit ? "text-amber-400" : ""}>{value.length}/{HARD_CHARACTER_LIMIT} chars</span>
+            <span className={isNearTokenLimit ? "text-amber-400" : ""}>{estimatedTokens}/{HARD_TOKEN_LIMIT} tokens</span>
+          </div>
+        </div>
+
+        {showSecondaryControls ? (
+          <div id="composer-secondary-controls" className="mt-2 flex flex-wrap items-center gap-2 border-t border-zinc-800 pt-2 text-xs text-zinc-400">
             {modelOptions.length > 0 && onSelectedModelChange ? (
-              <label className="flex items-center gap-1 text-zinc-400">
+              <label className="flex items-center gap-1">
                 Model
                 <select
                   value={selectedModel}
@@ -240,6 +285,25 @@ export function RunAshChatComposer({
                 </select>
               </label>
             ) : null}
+
+            {projectOptions.length > 0 && onSelectedProjectChange ? (
+              <label className="flex items-center gap-1">
+                Project
+                <select
+                  value={selectedProject}
+                  onChange={(event) => onSelectedProjectChange(event.target.value)}
+                  className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100"
+                  aria-label="Select chat project"
+                >
+                  {projectOptions.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
             <Button
               type="button"
               size="sm"
@@ -247,18 +311,13 @@ export function RunAshChatComposer({
               onClick={() => void enhancePrompt()}
               disabled={disabled || isEnhancing}
               className="border-zinc-600 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+              aria-label="Enhance prompt"
             >
               <Sparkles className="mr-1 h-3.5 w-3.5" />
               {isEnhancing ? "Enhancing..." : "Enhance Prompt"}
             </Button>
-            <span className="text-zinc-500">Type / for RunAsh templates • Ctrl/Cmd+Shift+P to polish</span>
           </div>
-
-          <div className="flex items-center gap-3 text-zinc-500">
-            <span className={isNearCharLimit ? "text-amber-400" : ""}>{value.length}/{HARD_CHARACTER_LIMIT} chars</span>
-            <span className={isNearTokenLimit ? "text-amber-400" : ""}>{estimatedTokens}/{HARD_TOKEN_LIMIT} tokens</span>
-          </div>
-        </div>
+        ) : null}
       </div>
 
 
@@ -321,40 +380,67 @@ export function RunAshChatComposer({
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-2 rounded-md border border-zinc-700 bg-zinc-900/60 p-2 text-xs sm:flex-row sm:items-center sm:justify-between">
-        <label className="flex items-center gap-2 text-zinc-400">
-          Tone
-          <select
-            value={tone}
-            onChange={(event) => onToneChange?.(event.target.value as ResponseTone)}
-            className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100"
-          >
-            <option value="balanced">Balanced</option>
-            <option value="friendly">Friendly</option>
-            <option value="professional">Professional</option>
-          </select>
-        </label>
+      {showSecondaryControls ? (
+        <div className="rounded-md border border-zinc-700 bg-zinc-900/60 p-2 text-xs">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <label className="flex items-center gap-2 text-zinc-400">
+              Tone
+              <select
+                value={tone}
+                onChange={(event) => onToneChange?.(event.target.value as ResponseTone)}
+                className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100"
+                aria-label="Select response tone"
+              >
+                <option value="balanced">Balanced</option>
+                <option value="friendly">Friendly</option>
+                <option value="professional">Professional</option>
+              </select>
+            </label>
 
-        <div className="flex items-center gap-1" role="group" aria-label="Output detail level">
-          {(["concise", "normal", "detailed"] as ResponseDetailLevel[]).map((level) => (
-            <Button
-              key={level}
-              type="button"
-              size="sm"
-              variant={detailLevel === level ? "secondary" : "outline"}
-              className="h-7 px-2 text-[11px] capitalize"
-              onClick={() => onDetailLevelChange?.(level)}
-              aria-pressed={detailLevel === level}
-            >
-              {level}
-            </Button>
-          ))}
+            <div className="flex items-center gap-1" role="group" aria-label="Output detail level">
+              {(["concise", "normal", "detailed"] as ResponseDetailLevel[]).map((level) => (
+                <Button
+                  key={level}
+                  type="button"
+                  size="sm"
+                  variant={detailLevel === level ? "secondary" : "outline"}
+                  className="h-7 px-2 text-[11px] capitalize"
+                  onClick={() => onDetailLevelChange?.(level)}
+                  aria-pressed={detailLevel === level}
+                  aria-label={`Set output detail to ${level}`}
+                >
+                  {level}
+                </Button>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
         <span>Enter to send • Shift+Enter newline • Controls are keyboard accessible.</span>
         <div className="flex items-center gap-2">
+          {onAttachFile ? (
+            <>
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                className="hidden"
+                onChange={handleAttachmentSelect}
+                aria-label="Attach file"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => attachmentInputRef.current?.click()}
+                className="border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+                aria-label="Attach file"
+              >
+                <Paperclip className="mr-1 h-4 w-4" />
+                Attach
+              </Button>
+            </>
+          ) : null}
           {(streamState === "sending" || streamState === "streaming") && onStop ? (
             <Button type="button" variant="outline" onClick={onStop} className="border-red-700 text-red-200 hover:bg-red-950">
               <OctagonX className="mr-1 h-4 w-4" /> Stop
@@ -363,11 +449,17 @@ export function RunAshChatComposer({
           <Button
             onClick={() => handleSubmit()}
             disabled={disabled || !value.trim() || isHardLimitExceeded}
-            className="bg-gradient-to-r from-orange-600 to-yellow-500 text-white hover:from-orange-700 hover:to-yellow-600"
+            className="bg-orange-500 px-4 font-semibold text-zinc-950 hover:bg-orange-400"
+            aria-label="Send prompt"
           >
-            <Send className="h-4 w-4" />
+            <Send className="mr-1 h-4 w-4" />
+            Send
           </Button>
         </div>
+      </div>
+
+      <div className="rounded-md border border-zinc-800/80 bg-zinc-950/60 px-3 py-2 text-[11px] text-zinc-400">
+        Need higher usage limits? <a href="/upgrade" className="text-amber-300 underline underline-offset-2">Upgrade your plan</a>.
       </div>
     </div>
   )
