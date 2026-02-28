@@ -48,12 +48,34 @@ export interface PeerConnectionData {
 
 export class WebRTCService {
   private static instance: WebRTCService
+  private readonly maxReconnectAttempts = 5
+  private readonly reconnectBaseDelayMs = 1000
+  private readonly reconnectMaxDelayMs = 15000
+  private readonly reconnectJitterRatio = 0.3
+  private readonly disconnectedRecoveryDelayMs = 2000
+  private readonly restartValidationWindowMs = 6000
   private peerConnections: Map<string, PeerConnectionData> = new Map()
   private localStream: MediaStream | null = null
   private config: WebRTCConfig
   private connectionListeners: ((connections: PeerConnectionData[]) => void)[] = []
   private streamListeners: ((hostId: string, stream: MediaStream | null) => void)[] = []
   private dataChannelListeners: ((hostId: string, data: any) => void)[] = []
+  private reconnectStatusListeners: ((
+    hostId: string,
+    status: "reconnecting" | "recovered" | "failed",
+    message: string,
+  ) => void)[] = []
+  private reconnectState: Map<
+    string,
+    {
+      attempts: number
+      timer: ReturnType<typeof setTimeout> | null
+      validationTimer: ReturnType<typeof setTimeout> | null
+      inProgress: boolean
+      recovering: boolean
+      pendingReason: "disconnected" | "failed" | null
+    }
+  > = new Map()
 
   private constructor() {
     this.config = {
@@ -124,6 +146,12 @@ export class WebRTCService {
 
   // Create peer connection for a host
   public async createPeerConnection(hostId: string, isInitiator = false): Promise<PeerConnectionData> {
+    const existing = this.getPeerConnectionByHostId(hostId)
+    if (existing) {
+      this.disposePeerConnection(existing)
+      this.peerConnections.delete(existing.id)
+    }
+
     const connectionId = `${hostId}-${Date.now()}`
 
     const peerConnection = new RTCPeerConnection({
@@ -161,6 +189,7 @@ export class WebRTCService {
     }
 
     this.peerConnections.set(connectionId, peerData)
+    this.clearReconnectState(hostId)
     this.notifyConnectionListeners()
 
     return peerData
@@ -191,7 +220,7 @@ export class WebRTCService {
       }
 
       if (connection.connectionState === "failed" || connection.connectionState === "disconnected") {
-        this.handleConnectionFailure(peerData.id)
+        this.scheduleRecovery(peerData.id, connection.connectionState)
       }
 
       this.notifyConnectionListeners()
@@ -201,6 +230,15 @@ export class WebRTCService {
     connection.oniceconnectionstatechange = () => {
       peerData.iceConnectionState = connection.iceConnectionState
       console.log(`ICE connection state changed for ${hostId}:`, connection.iceConnectionState)
+
+      if (connection.iceConnectionState === "disconnected" || connection.iceConnectionState === "failed") {
+        this.scheduleRecovery(peerData.id, connection.iceConnectionState)
+      }
+
+      if (connection.iceConnectionState === "connected" || connection.iceConnectionState === "completed") {
+        this.markRecoverySuccess(hostId)
+      }
+
       this.notifyConnectionListeners()
     }
 
@@ -458,17 +496,30 @@ export class WebRTCService {
     const peerData = this.getPeerConnectionByHostId(hostId)
     if (!peerData) return
 
-    // Close data channel
-    if (peerData.dataChannel) {
-      peerData.dataChannel.close()
-    }
-
-    // Close peer connection
-    peerData.connection.close()
+    this.clearReconnectState(hostId)
+    this.disposePeerConnection(peerData)
 
     // Remove from map
     this.peerConnections.delete(peerData.id)
     this.notifyConnectionListeners()
+  }
+
+  // Close all resources for a single peer
+  private disposePeerConnection(peerData: PeerConnectionData): void {
+    const { connection, dataChannel } = peerData
+
+    // Close data channel
+    if (dataChannel) {
+      dataChannel.close()
+    }
+
+    // Close peer connection
+    connection.ontrack = null
+    connection.onicecandidate = null
+    connection.oniceconnectionstatechange = null
+    connection.onconnectionstatechange = null
+    connection.ondatachannel = null
+    connection.close()
   }
 
   // Close all connections
@@ -489,17 +540,233 @@ export class WebRTCService {
     return Array.from(this.peerConnections.values()).find((peerData) => peerData.hostId === hostId)
   }
 
-  // Handle connection failure
-  private handleConnectionFailure(connectionId: string): void {
+  // Schedule timed connection recovery for ICE/connection failures
+  private scheduleRecovery(connectionId: string, reason: "disconnected" | "failed"): void {
     const peerData = this.peerConnections.get(connectionId)
     if (!peerData) return
 
-    console.log(`Connection failed for host ${peerData.hostId}, attempting reconnection...`)
+    const state = this.getReconnectState(peerData.hostId)
+    state.pendingReason = reason
 
-    // In a real app, you might implement automatic reconnection logic here
-    setTimeout(() => {
-      this.createPeerConnection(peerData.hostId, peerData.isInitiator)
-    }, 3000)
+    if (state.inProgress) {
+      return
+    }
+
+    if (state.timer) {
+      clearTimeout(state.timer)
+      state.timer = null
+    }
+
+    const delay = reason === "disconnected" ? this.disconnectedRecoveryDelayMs : 0
+    state.timer = setTimeout(() => {
+      this.attemptRecovery(peerData.hostId)
+    }, delay)
+  }
+
+  private async attemptRecovery(hostId: string): Promise<void> {
+    const peerData = this.getPeerConnectionByHostId(hostId)
+    if (!peerData) {
+      return
+    }
+
+    const state = this.getReconnectState(hostId)
+    if (state.inProgress) return
+
+    if (state.attempts >= this.maxReconnectAttempts) {
+      this.emitReconnectStatus(hostId, "failed", "Unable to recover connection. Please reconnect.")
+      return
+    }
+
+    state.inProgress = true
+    state.recovering = true
+    state.attempts += 1
+
+    const retryDelay = this.getReconnectDelayMs(state.attempts)
+    this.emitReconnectStatus(
+      hostId,
+      "reconnecting",
+      `Reconnecting… (attempt ${state.attempts}/${this.maxReconnectAttempts})`,
+    )
+
+    state.timer = setTimeout(async () => {
+      try {
+        const restarted = await this.tryIceRestart(peerData)
+
+        if (restarted) {
+          this.armRestartValidation(hostId)
+        } else {
+          await this.rebuildPeerConnection(peerData)
+          this.armRestartValidation(hostId)
+        }
+      } catch (error) {
+        console.error(`Recovery attempt failed for host ${hostId}:`, error)
+        state.inProgress = false
+        this.scheduleRecovery(peerData.id, "failed")
+      }
+    }, retryDelay)
+  }
+
+  private async tryIceRestart(peerData: PeerConnectionData): Promise<boolean> {
+    try {
+      if (peerData.connection.signalingState === "closed") {
+        return false
+      }
+
+      const restartOffer = await peerData.connection.createOffer({
+        iceRestart: true,
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
+      })
+
+      await peerData.connection.setLocalDescription(restartOffer)
+      this.sendSignalingMessage(peerData.hostId, {
+        type: "offer",
+        sdp: restartOffer,
+      })
+
+      return true
+    } catch (error) {
+      console.warn(`ICE restart failed for host ${peerData.hostId}, rebuilding connection`, error)
+      return false
+    }
+  }
+
+  private async rebuildPeerConnection(peerData: PeerConnectionData): Promise<void> {
+    const metadata = {
+      id: peerData.id,
+      hostId: peerData.hostId,
+      isInitiator: peerData.isInitiator,
+      remoteStream: peerData.remoteStream,
+      candidateStats: peerData.candidateStats,
+      selectedCandidatePair: peerData.selectedCandidatePair,
+    }
+
+    this.disposePeerConnection(peerData)
+
+    const rebuilt = new RTCPeerConnection({
+      iceServers: this.config.iceServers,
+      iceTransportPolicy: this.config.iceTransportPolicy || "all",
+      iceCandidatePoolSize: this.config.iceCandidatePoolSize || 10,
+    })
+
+    peerData.connection = rebuilt
+    peerData.localStream = peerData.localStream || this.localStream || undefined
+    peerData.remoteStream = metadata.remoteStream
+    peerData.candidateStats = metadata.candidateStats
+    peerData.selectedCandidatePair = metadata.selectedCandidatePair
+    peerData.connectionState = rebuilt.connectionState
+    peerData.iceConnectionState = rebuilt.iceConnectionState
+
+    if (peerData.localStream) {
+      peerData.localStream.getTracks().forEach((track) => {
+        rebuilt.addTrack(track, peerData.localStream!)
+      })
+    }
+
+    if (metadata.isInitiator) {
+      peerData.dataChannel = rebuilt.createDataChannel("hostData", {
+        ordered: true,
+      })
+      this.setupDataChannelHandlers(peerData.dataChannel, metadata.hostId)
+    } else {
+      peerData.dataChannel = undefined
+    }
+
+    this.setupPeerConnectionHandlers(peerData)
+    this.peerConnections.set(metadata.id, peerData)
+    this.notifyConnectionListeners()
+
+    if (metadata.isInitiator) {
+      const offer = await rebuilt.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
+      })
+
+      await rebuilt.setLocalDescription(offer)
+      this.sendSignalingMessage(metadata.hostId, {
+        type: "offer",
+        sdp: offer,
+      })
+    }
+  }
+
+  private armRestartValidation(hostId: string): void {
+    const state = this.getReconnectState(hostId)
+    if (state.validationTimer) {
+      clearTimeout(state.validationTimer)
+    }
+
+    state.validationTimer = setTimeout(() => {
+      const peerData = this.getPeerConnectionByHostId(hostId)
+      if (!peerData) {
+        return
+      }
+
+      if (!["connected", "completed"].includes(peerData.iceConnectionState)) {
+        state.inProgress = false
+        this.scheduleRecovery(peerData.id, "failed")
+      }
+    }, this.restartValidationWindowMs)
+
+    state.inProgress = false
+  }
+
+  private markRecoverySuccess(hostId: string): void {
+    const state = this.reconnectState.get(hostId)
+    if (!state) return
+
+    if (state.timer) {
+      clearTimeout(state.timer)
+    }
+    if (state.validationTimer) {
+      clearTimeout(state.validationTimer)
+    }
+
+    const wasRecovering = state.recovering
+    this.reconnectState.delete(hostId)
+
+    if (wasRecovering) {
+      this.emitReconnectStatus(hostId, "recovered", "Recovered")
+    }
+  }
+
+  private clearReconnectState(hostId: string): void {
+    const state = this.reconnectState.get(hostId)
+    if (!state) return
+
+    if (state.timer) {
+      clearTimeout(state.timer)
+    }
+    if (state.validationTimer) {
+      clearTimeout(state.validationTimer)
+    }
+
+    this.reconnectState.delete(hostId)
+  }
+
+  private getReconnectState(hostId: string) {
+    const current = this.reconnectState.get(hostId)
+    if (current) {
+      return current
+    }
+
+    const created = {
+      attempts: 0,
+      timer: null,
+      validationTimer: null,
+      inProgress: false,
+      recovering: false,
+      pendingReason: null,
+    }
+    this.reconnectState.set(hostId, created)
+    return created
+  }
+
+  private getReconnectDelayMs(attempt: number): number {
+    const baseDelay = Math.min(this.reconnectBaseDelayMs * Math.pow(2, attempt - 1), this.reconnectMaxDelayMs)
+    const jitter = baseDelay * this.reconnectJitterRatio
+    const offset = (Math.random() * 2 - 1) * jitter
+    return Math.max(0, Math.floor(baseDelay + offset))
   }
 
   // Simulate signaling server (in a real app, this would be WebSocket/Socket.IO)
@@ -554,6 +821,15 @@ export class WebRTCService {
     }
   }
 
+  public onReconnectStatusChange(
+    callback: (hostId: string, status: "reconnecting" | "recovered" | "failed", message: string) => void,
+  ): () => void {
+    this.reconnectStatusListeners.push(callback)
+    return () => {
+      this.reconnectStatusListeners = this.reconnectStatusListeners.filter((cb) => cb !== callback)
+    }
+  }
+
   // Notify listeners
   private notifyConnectionListeners(): void {
     const connections = Array.from(this.peerConnections.values())
@@ -566,6 +842,14 @@ export class WebRTCService {
 
   private notifyDataChannelListeners(hostId: string, data: any): void {
     this.dataChannelListeners.forEach((listener) => listener(hostId, data))
+  }
+
+  private emitReconnectStatus(
+    hostId: string,
+    status: "reconnecting" | "recovered" | "failed",
+    message: string,
+  ): void {
+    this.reconnectStatusListeners.forEach((listener) => listener(hostId, status, message))
   }
 
   // Get current connections
