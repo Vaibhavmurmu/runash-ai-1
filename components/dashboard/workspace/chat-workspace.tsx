@@ -15,7 +15,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, Zap, WandSparkles, OctagonX, MoreHorizontal } from "lucide-react"
+import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, OctagonX, MoreHorizontal } from "lucide-react"
 import type { ChatMessage, ChatSession, UserPreferences, QuickAction } from "@/types/runash-chat"
 import ChatMessageComponent from "@/components/chat/chat-message"
 import ChatSidebar from "@/components/chat/chat-sidebar"
@@ -31,8 +31,6 @@ import {
   ChatPageFrame,
   ChatShellHeader,
   ChatSurfaceCard,
-  SuggestionCardGrid,
-  type SuggestionCardItem,
 } from "@/components/chat/shared-chat-primitives"
 import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
 import { buildRunAshChatQuickActions } from "@/lib/runash-chat/quick-actions"
@@ -1113,42 +1111,37 @@ export function ChatWorkspace() {
     handleSendMessage(transcript)
   }
 
-  const suggestionItems: SuggestionCardItem[] = [
+  const starterPromptChips = [
     {
-      id: "starter-campaign",
-      title: "Launch promo campaign",
-      description: "Build a short promotional sequence with hooks, CTA moments, and follow-up prompts.",
-      actionLabel: "Create campaign prompt",
-      icon: Sparkles,
-      onAction: () => handleSendMessage("Create a short promo campaign workflow with 3 hooks and a follow-up sequence"),
+      id: "campaign-brief",
+      label: "Create campaign brief",
+      prompt: "Create a campaign brief for a new sustainable skincare launch with goals, audience, channels, and KPIs.",
     },
     {
-      id: "voice-script",
-      title: "Voice-first script",
-      description: "Generate a conversational script optimized for live voice interactions.",
-      actionLabel: "Generate voice script",
-      icon: Mic,
-      onAction: () => handleSendMessage("Generate a voice-friendly script for a live product walkthrough"),
+      id: "product-description",
+      label: "Write product description",
+      prompt: "Write a product description for an organic snack bundle with key benefits, ingredients, and CTA.",
     },
     {
-      id: "inventory-automation",
-      title: "Inventory automation",
-      description: "Create reorder and low-stock automations for high-velocity SKUs.",
-      actionLabel: "Draft automation plan",
-      icon: Zap,
-      onAction: () => handleSendMessage("Draft an inventory automation plan with reorder thresholds and alerts"),
+      id: "summarize-meeting",
+      label: "Summarize meeting",
+      prompt: "Summarize this meeting into decisions, action items, owners, and due dates.",
     },
     {
-      id: "prompt-improve",
-      title: "Improve my prompt",
-      description: "Rewrite a basic prompt into an outcome-focused RunAsh instruction set.",
-      actionLabel: "Enhance prompt",
-      icon: WandSparkles,
-      onAction: () => setInputValue("Rewrite my prompt to include audience, offer, constraints, and CTA."),
+      id: "automation-plan",
+      label: "Plan an automation",
+      prompt: "Draft an automation workflow for inventory alerts, reorder approvals, and weekly reporting.",
+    },
+    {
+      id: "social-posts",
+      label: "Generate social posts",
+      prompt: "Generate 5 social post ideas for an eco-friendly product campaign in a friendly brand tone.",
     },
   ]
 
-  const showEmptyState = messages.length === 1 && !inputValue.trim() && streamControllerState === "idle"
+  const hasUserMessage = messages.some((message) => message.role === "user")
+  const showComposerEmptyState = !hasUserMessage && streamControllerState === "idle"
+  const recentSession = currentSession ?? chatSessions.at(0) ?? null
 
   const leftDrawer = (
     <div className="space-y-2">
@@ -1361,16 +1354,6 @@ export function ChatWorkspace() {
               <span>Shortcuts: Ctrl/Cmd+[ history • Ctrl/Cmd+] tools • Alt+←/→ toggle drawers.</span>
             </div>
 
-            {showEmptyState ? (
-              <div className="border-b border-zinc-800 p-3 sm:p-4">
-                <SuggestionCardGrid
-                  title="Prompt suggestions"
-                  items={suggestionItems}
-                  emptyMessage="No suggestions available right now."
-                />
-              </div>
-            ) : null}
-
             <ScrollArea className="min-h-0 flex-1 p-3 sm:p-4">
               <div className="space-y-4">
                 {messages.map((message) => (
@@ -1422,6 +1405,50 @@ export function ChatWorkspace() {
                 />
               </div>
             )}
+
+            {showComposerEmptyState ? (
+              <div className="border-t border-zinc-800 p-3 sm:p-4">
+                <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 sm:p-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-zinc-100">What do you want to create?</p>
+                    <p className="text-xs text-zinc-400 sm:text-sm">
+                      Start with chat prompts to generate content, summarize work, and automate routine tasks.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {starterPromptChips.map((item) => (
+                      <Button
+                        key={item.id}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleSendMessage(item.prompt)}
+                        className="h-8 rounded-full border-zinc-700 bg-zinc-900/60 px-3 text-xs text-zinc-200 hover:bg-zinc-800"
+                      >
+                        {item.label}
+                      </Button>
+                    ))}
+                  </div>
+
+                  <div className="rounded-md border border-zinc-800 bg-zinc-900/60 p-2.5">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Recent project/session</p>
+                    {recentSession ? (
+                      <button
+                        type="button"
+                        onClick={() => loadSession(recentSession)}
+                        className="mt-1.5 w-full rounded-md border border-transparent px-2 py-1.5 text-left text-xs text-zinc-200 transition hover:border-zinc-700 hover:bg-zinc-800/80"
+                      >
+                        <span className="block font-medium text-zinc-100">{recentSession.title}</span>
+                        <span className="block text-zinc-400">Continue where you left off.</span>
+                      </button>
+                    ) : (
+                      <p className="mt-1.5 text-xs text-zinc-400">No recent sessions yet. Start with a prompt chip above.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             <div className="border-t border-zinc-800 p-3 pb-4 sm:p-4">
               <RunAshChatComposer
