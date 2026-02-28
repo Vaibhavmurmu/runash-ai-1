@@ -1323,15 +1323,6 @@ export function ChatWorkspace() {
                     <History className="h-3.5 w-3.5" />
                     <span className="sr-only">{leftDrawerOpen ? "Hide history" : "Show history"}</span>
                   </ActionPill>
-                  <ActionPill
-                    onClick={() => setVoiceEnabled(!voiceEnabled)}
-                    className={voiceEnabled ? "h-8 w-8 px-0 bg-green-950 text-green-300" : "h-8 w-8 px-0"}
-                    aria-pressed={voiceEnabled}
-                    aria-label={voiceEnabled ? "Disable voice" : "Enable voice"}
-                  >
-                    <Mic className="h-3.5 w-3.5" />
-                    <span className="sr-only">{voiceEnabled ? "Disable voice" : "Enable voice"}</span>
-                  </ActionPill>
                   <Sheet>
                     <SheetTrigger asChild>
                       <ActionPill aria-label="More" className="h-8 gap-1.5 px-2.5">
@@ -1353,6 +1344,15 @@ export function ChatWorkspace() {
                             <ActionPill onClick={() => setShowPreferences(true)} className="h-8 gap-1.5 px-3">
                               <Settings className="h-3.5 w-3.5" />
                               Preferences
+                            </ActionPill>
+                            <ActionPill
+                              onClick={() => setVoiceEnabled(!voiceEnabled)}
+                              className={voiceEnabled ? "h-8 gap-1.5 bg-green-950 px-3 text-green-300" : "h-8 gap-1.5 px-3"}
+                              aria-pressed={voiceEnabled}
+                              aria-label={voiceEnabled ? "Disable voice" : "Enable voice"}
+                            >
+                              <Mic className="h-3.5 w-3.5" />
+                              {voiceEnabled ? "Voice On" : "Voice Off"}
                             </ActionPill>
                             <ActionPill
                               onClick={() => setRightDrawerOpen((prev) => !prev)}
@@ -1401,6 +1401,7 @@ export function ChatWorkspace() {
                     onClick={() => setVoiceEnabled(!voiceEnabled)}
                     className={voiceEnabled ? "bg-green-950 text-green-300" : ""}
                     aria-pressed={voiceEnabled}
+                    aria-label={voiceEnabled ? "Disable voice" : "Enable voice"}
                   >
                     <Mic className="mr-1.5 h-3.5 w-3.5" />
                     {voiceEnabled ? "Voice On" : "Voice Off"}
