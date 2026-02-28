@@ -37,6 +37,18 @@ This document is payment-domain specific. For contributor workflow/process polic
 - **Risk assessment:** low product risk because this update is documentation + validation only; primary operational risk is CI/local build interruption when database environment variables are absent.
 - **Rollback plan:** revert this documentation commit if needed; no data migration, no API rollback, and no payment contract rollback required.
 
+## 2026-02-28 validation run (dependency/environment constrained)
+
+- **Behavior change summary:** no payment/auth runtime behavior changes and no contract/schema changes.
+- **Validation commands + outcomes:**
+  - `npm run lint` -> failed because ESLint is not installed in the current dependency state (`ESLint must be installed`).
+  - `npm run build` -> compilation succeeded, then build failed while collecting page data because database connection env was missing (`No database connection string was provided to neon()`).
+- **Impacted payment/auth flows reviewed:**
+  - Auth-gated payment access checks (`/api/auth/get-session`)
+  - Credits checkout entry handoff (`/pricing?intent=credits`)
+  - Settings payment-adjacent action endpoints (`/api/settings/actions/credits-balance`, `/api/settings/actions/refer-earn`, `/api/settings/actions/upgrade-plan`)
+- **Risk + rollback:** operational release risk is environment readiness (missing lint dependency + DB env), not payment contract behavior. Rollback is documentation-only revert; no payment data migration or API rollback required.
+
 ## Auth dependency notes for payment flows
 
 - OTP email login verification now mints canonical auth sessions and secure Better Auth cookies for `purpose=login`; non-login OTP purposes remain verification-only.
@@ -610,4 +622,3 @@ Risks and rollback:
 1. If intent routing over-classifies seller/broker prompts, rollback by reverting intent branches in `app/api/agents/chat/chat-request-handler.ts` and `lib/runash-chat/tooling.ts`.
 2. If merchant ops prefer manual optimization, rollback by removing `seller_optimize_commerce` from registry/policy while keeping buyer checkout path intact.
 3. If negotiation-gate blocks expected sandbox checkouts, temporarily disable deal-id checkout enforcement in `services/agent-orchestration-service.ts` and re-enable after settlement data integrity validation.
-
