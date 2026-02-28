@@ -55,6 +55,13 @@ This document is payment-domain specific. For contributor workflow/process polic
 - No payment API request/response fields, billing webhook contracts, checkout signatures, or auth/payment token formats were changed.
 - Risk + rollback: low runtime risk (auth UX/message + resend consistency only). Rollback is app-level revert of auth verification routing/UI updates; no payment migration or contract rollback needed.
 
+## 2026-02 seller live chat reliability rollout (no payment contract changes)
+
+- Added seller-scoped AI live chat session APIs and telemetry persistence for replay/moderation/analytics under `services/` + `app/api/seller/live-chat/*`.
+- Payment/auth sensitive data handling remains unchanged: no payment request/response fields, checkout/webhook contracts, or billing token formats were modified.
+- Impacted payment/auth flow review: seller session authorization remains server-session based; no header-identity fallback introduced for new seller APIs.
+- Risk + rollback: medium operational risk isolated to new live-chat routes and DB tables. Rollback by reverting live-chat service/routes/component and migration `0006_ai_live_chat_sessions.sql` (or disable route usage) without payment contract rollback.
+
 ## Auth dependency notes for payment flows
 
 - OTP email login verification now mints canonical auth sessions and secure Better Auth cookies for `purpose=login`; non-login OTP purposes remain verification-only.

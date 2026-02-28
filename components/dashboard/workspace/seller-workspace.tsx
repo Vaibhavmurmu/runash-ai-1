@@ -14,6 +14,7 @@ import { OrderManager } from "@/components/seller/order-manager"
 import { BusinessSettings } from "@/components/seller/business-settings"
 import { InventoryManager } from "@/components/seller/inventory-manager"
 import { PayoutManager } from "@/components/seller/payout-manager"
+import { AiLiveChatPanel } from "@/components/seller/ai-live-chat-panel"
 import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
 import { fetchApiData } from "@/lib/api/client"
 
@@ -153,7 +154,7 @@ export function SellerWorkspace() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-8 overflow-auto">
+          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-9 overflow-auto">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="streams">Streams</TabsTrigger>
             <TabsTrigger value="products">Products</TabsTrigger>
@@ -161,6 +162,7 @@ export function SellerWorkspace() {
             <TabsTrigger value="orders">Orders</TabsTrigger>
             <TabsTrigger value="payouts">Payouts</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            <TabsTrigger value="live-chat">AI Live Chat</TabsTrigger>
             <TabsTrigger value="business">Business</TabsTrigger>
           </TabsList>
 
@@ -219,6 +221,7 @@ export function SellerWorkspace() {
           <TabsContent value="orders"><OrderManager /></TabsContent>
           <TabsContent value="payouts"><PayoutManager /></TabsContent>
           <TabsContent value="analytics"><SellerAnalytics /></TabsContent>
+          <TabsContent value="live-chat"><AiLiveChatPanel /></TabsContent>
           <TabsContent value="business"><BusinessSettings /></TabsContent>
         </Tabs>
       </div>

@@ -9,6 +9,7 @@ Current status:
 - `0002_wallet_link_persistence.sql` provisions RunAsh AI Link wallet persistence tables (cards/link sessions/activity/subscription snapshots/OTP attempts).
 - `0003_accounting_core.sql` + `0004_agent_role_decisions.sql` add accounting and agent decision infrastructure.
 - `0005_waitlist_email_case_insensitive.sql` enforces a case-insensitive unique email index for waitlist duplicate protection.
+- `0006_ai_live_chat_sessions.sql` adds live chat session, participant, and telemetry event tables for replay/moderation/analytics.
 
 Operational guidance:
 1. Keep production-safe migration SQL reviewed and idempotent where practical.
