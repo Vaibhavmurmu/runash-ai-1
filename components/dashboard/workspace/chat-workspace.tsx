@@ -7,11 +7,14 @@ import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
 import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, Zap, WandSparkles, OctagonX, MoreHorizontal } from "lucide-react"
 import type { ChatMessage, ChatSession, UserPreferences, QuickAction } from "@/types/runash-chat"
 import ChatMessageComponent from "@/components/chat/chat-message"
@@ -1204,40 +1207,83 @@ export function ChatWorkspace() {
             title="RunAshChat"
             subtitle="AI Assistant"
             icon={<Bot className="h-5 w-5" />}
-            actions={
+            primaryAction={
+              <ActionPill onClick={handleNewChatSession} className="h-8 gap-1.5 px-3" aria-label="Start a new chat">
+                <Sparkles className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">New chat</span>
+                <span className="sm:sr-only">New chat</span>
+              </ActionPill>
+            }
+            secondaryActions={
               <>
-                <div className="flex items-center gap-2 lg:hidden">
-                  <ActionPill onClick={() => setLeftDrawerOpen((prev) => !prev)} aria-pressed={leftDrawerOpen}>
+                <div className="flex items-center gap-1.5 sm:gap-2 lg:hidden">
+                  <ActionPill
+                    onClick={() => setLeftDrawerOpen((prev) => !prev)}
+                    aria-pressed={leftDrawerOpen}
+                    aria-label={leftDrawerOpen ? "Hide history" : "Show history"}
+                    className="h-8 w-8 px-0"
+                  >
                     <History className="h-3.5 w-3.5" />
                     <span className="sr-only">{leftDrawerOpen ? "Hide history" : "Show history"}</span>
                   </ActionPill>
                   <ActionPill
                     onClick={() => setVoiceEnabled(!voiceEnabled)}
-                    className={voiceEnabled ? "bg-green-950 text-green-300" : ""}
+                    className={voiceEnabled ? "h-8 w-8 px-0 bg-green-950 text-green-300" : "h-8 w-8 px-0"}
                     aria-pressed={voiceEnabled}
+                    aria-label={voiceEnabled ? "Disable voice" : "Enable voice"}
                   >
                     <Mic className="h-3.5 w-3.5" />
                     <span className="sr-only">{voiceEnabled ? "Disable voice" : "Enable voice"}</span>
                   </ActionPill>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <ActionPill aria-label="Open more actions">
+                  <Sheet>
+                    <SheetTrigger asChild>
+                      <ActionPill aria-label="More" className="h-8 gap-1.5 px-2.5">
                         <MoreHorizontal className="h-3.5 w-3.5" />
+                        <span className="text-xs">More</span>
                       </ActionPill>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56">
-                      <DropdownMenuItem onSelect={() => setRightDrawerOpen((prev) => !prev)}>
-                        {rightDrawerOpen ? "Hide tools" : "Show tools"}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => setShowPreferences(true)}>Preferences</DropdownMenuItem>
-                      <DropdownMenuItem onSelect={handleNewChatSession}>New chat</DropdownMenuItem>
-                      {(streamControllerState === "sending" || streamControllerState === "streaming") && (
-                        <DropdownMenuItem onSelect={stopStreamingResponse} className="text-red-300 focus:text-red-200">
-                          Stop generation
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                    </SheetTrigger>
+                    <SheetContent side="right" className="w-[88vw] max-w-sm border-zinc-800 bg-zinc-950 text-zinc-100">
+                      <SheetHeader>
+                        <SheetTitle className="text-zinc-100">More</SheetTitle>
+                        <SheetDescription className="text-zinc-400">
+                          Preferences, tools, and cart controls.
+                        </SheetDescription>
+                      </SheetHeader>
+                      <div className="mt-4 space-y-3">
+                        <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+                          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">Utilities</p>
+                          <div className="flex flex-wrap gap-2">
+                            <ActionPill onClick={() => setShowPreferences(true)} className="h-8 gap-1.5 px-3">
+                              <Settings className="h-3.5 w-3.5" />
+                              Preferences
+                            </ActionPill>
+                            <ActionPill
+                              onClick={() => setRightDrawerOpen((prev) => !prev)}
+                              aria-pressed={rightDrawerOpen}
+                              aria-label={rightDrawerOpen ? "Hide tools" : "Show tools"}
+                              className="h-8 gap-1.5 px-3"
+                            >
+                              <Sparkles className="h-3.5 w-3.5" />
+                              {rightDrawerOpen ? "Hide tools" : "Show tools"}
+                            </ActionPill>
+                            <CartDrawer />
+                          </div>
+                        </div>
+                        {streamControllerState === "sending" || streamControllerState === "streaming" ? (
+                          <SheetClose asChild>
+                            <ActionPill
+                              onClick={stopStreamingResponse}
+                              className="h-8 w-full justify-center bg-red-950 text-red-200 hover:bg-red-900"
+                              aria-label="Stop generating response"
+                            >
+                              <OctagonX className="mr-1.5 h-3.5 w-3.5" />
+                              Stop generation
+                            </ActionPill>
+                          </SheetClose>
+                        ) : null}
+                      </div>
+                    </SheetContent>
+                  </Sheet>
                 </div>
 
                 <div className="hidden items-center gap-2 lg:flex">
