@@ -3,7 +3,8 @@ import { logApiEvent } from "./api/logging"
 import { EmailDeliveryTracker } from "./email-delivery"
 import { EmailBounceHandler } from "./email-bounce-handler"
 import { triggerDeliveryStatusEvent } from "./email-realtime"
-import { type EmailAttachment, sendWithEmailProvider } from "./email-provider"
+import { type EmailAttachment } from "./email-provider"
+import { sendEmailEvent } from "@/services/email"
 
 export const AUTH_EMAIL_VERIFICATION_PATH = "/api/auth/verify-email"
 
@@ -209,14 +210,26 @@ export async function sendEmail(options: {
       }
     }
 
-    const providerResult = await sendWithEmailProvider({
-      from: options.from,
+    const providerResult = await sendEmailEvent({
+      type: "GENERIC_EMAIL",
       to: targetRecipient,
-      subject: options.subject,
-      html,
-      text: options.text,
-      headers: Object.keys(headers).length > 0 ? headers : undefined,
-      attachments: options.attachments,
+      source: "lib/email.sendEmail",
+      metadata: {
+        category: headers["X-Email-Category"],
+        headers: Object.keys(headers).length > 0 ? headers : undefined,
+      },
+      payload: {
+        from: options.from,
+        subject: options.subject,
+        html,
+        text: options.text,
+        attachments: options.attachments,
+        track_delivery: options.track_delivery,
+        template_id: options.template_id,
+        campaign_id: options.campaign_id,
+        user_id: options.user_id,
+        recipient_name: options.recipient_name,
+      },
     })
 
     if (message_id) {
