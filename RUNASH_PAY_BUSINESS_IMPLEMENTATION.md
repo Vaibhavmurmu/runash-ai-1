@@ -333,3 +333,10 @@ Business controls preserved:
 - **Risk:** stricter quotas can reject bursts for high-volume creator workflows.
 - **Mitigation:** all limits are environment-configurable and surfaced with stable API error codes.
 - **Rollback:** relax or disable quota/policy env limits while preserving API shape and worker behavior.
+
+## 2026-02 shorts/reels pipeline release note (business flow auditability)
+
+- Added seller-side AI short-clip generation workflow (ingest -> highlight scoring -> extraction -> caption/title generation) with optional human review queue before publish.
+- Payment/auth impact assessment: **no payment field names, payment API signatures, or auth payment contracts were changed**; this release is content-operations only.
+- Security posture: clip generation and publish services avoid logging sensitive payment/auth payloads.
+- Risk + rollback: if clip job processing or publish target queuing regresses, rollback by reverting seller clip pipeline routes/service and migration while leaving payment services untouched.

@@ -14,6 +14,7 @@ import { OrderManager } from "@/components/seller/order-manager"
 import { BusinessSettings } from "@/components/seller/business-settings"
 import { InventoryManager } from "@/components/seller/inventory-manager"
 import { PayoutManager } from "@/components/seller/payout-manager"
+import { ShortsGenerator } from "@/components/seller/shorts-generator"
 import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
 import { fetchApiData } from "@/lib/api/client"
 
@@ -153,13 +154,14 @@ export function SellerWorkspace() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-8 overflow-auto">
+          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-9 overflow-auto">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="streams">Streams</TabsTrigger>
             <TabsTrigger value="products">Products</TabsTrigger>
             <TabsTrigger value="inventory">Inventory</TabsTrigger>
             <TabsTrigger value="orders">Orders</TabsTrigger>
             <TabsTrigger value="payouts">Payouts</TabsTrigger>
+            <TabsTrigger value="shorts">Shorts/Reels</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
             <TabsTrigger value="business">Business</TabsTrigger>
           </TabsList>
@@ -218,6 +220,7 @@ export function SellerWorkspace() {
           <TabsContent value="inventory"><InventoryManager /></TabsContent>
           <TabsContent value="orders"><OrderManager /></TabsContent>
           <TabsContent value="payouts"><PayoutManager /></TabsContent>
+          <TabsContent value="shorts"><ShortsGenerator /></TabsContent>
           <TabsContent value="analytics"><SellerAnalytics /></TabsContent>
           <TabsContent value="business"><BusinessSettings /></TabsContent>
         </Tabs>
