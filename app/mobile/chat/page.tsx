@@ -155,38 +155,58 @@ export default function MobileChatPage() {
                   : "border-gray-200 dark:border-gray-700"
               }`}
             >
-              <CardContent className="p-3">
-                <div className="flex justify-between items-start mb-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">{message.username}</span>
-                    <Badge variant="outline" className="text-xs">{message.platform}</Badge>
-                    {message.isModerator && <Badge className="text-xs bg-blue-500">Mod</Badge>}
-                    {message.isSubscriber && <Badge className="text-xs bg-purple-500">Sub</Badge>}
+              <CardContent className="p-2.5 sm:p-3">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 mb-1">
+                  <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 min-w-0">
+                    <span
+                      className="font-medium text-[13px] leading-5 truncate max-w-[10rem] sm:max-w-[12rem]"
+                      title={message.username}
+                    >
+                      {message.username}
+                    </span>
+                    <Badge variant="secondary" className="text-[10px] font-medium uppercase tracking-wide">
+                      {message.platform}
+                    </Badge>
+                    {message.isModerator && (
+                      <Badge variant="outline" className="text-[10px] font-medium border-blue-300 text-blue-700 dark:text-blue-300">
+                        Mod
+                      </Badge>
+                    )}
+                    {message.isSubscriber && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] font-medium border-purple-300 text-purple-700 dark:text-purple-300"
+                      >
+                        Sub
+                      </Badge>
+                    )}
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-6 w-6">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleHighlightMessage(message.id)}>
-                        <ThumbsUp className="h-4 w-4 mr-2" /> Highlight
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <Ban className="h-4 w-4 mr-2" /> Timeout User
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <Flag className="h-4 w-4 mr-2" /> Report
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDeleteMessage(message.id)} className="text-red-500">
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <div className="w-8 flex justify-end shrink-0">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleHighlightMessage(message.id)}>
+                          <ThumbsUp className="h-4 w-4 mr-2" /> Highlight
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>
+                          <Ban className="h-4 w-4 mr-2" /> Timeout User
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>
+                          <Flag className="h-4 w-4 mr-2" /> Report
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDeleteMessage(message.id)} className="text-red-500">
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
-                <p className="text-sm">{message.message}</p>
-                <p className="text-xs text-gray-500 mt-1">{new Date(message.timestamp).toLocaleTimeString()}</p>
+                <p className="text-[13px] leading-5">{message.message}</p>
+                <p className="text-[11px] text-gray-500 mt-1">{new Date(message.timestamp).toLocaleTimeString()}</p>
               </CardContent>
             </Card>
           ))}
