@@ -146,7 +146,7 @@ export default function GetStartedPage() {
         })
 
         if (registration.ok) {
-          const needsVerification = registration.user?.emailVerified === false || /verify your account/i.test(registration.message)
+          const needsVerification = registration.user?.emailVerified === false || /verify your (account|email)/i.test(registration.message)
           if (needsVerification) {
             setError("We sent a verification link to your email. Verify your account, then continue.")
           }

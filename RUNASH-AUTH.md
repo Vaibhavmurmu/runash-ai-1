@@ -54,6 +54,13 @@ Last updated: 2026-02
 - Legacy response fields (`message`, `user`) are preserved via compatibility mapping for existing frontend callers.
 - Signup entrypoints (`app/get-started/page.tsx`, `components/auth/register-form.tsx`, and `components/auth/better-sign-up-card.tsx`) now converge on `/api/auth/register`.
 
+## Better Auth canonical signup/session path update (2026-02)
+
+- Better Auth email/password remains the canonical signup provider in `lib/auth.ts` with explicit verification-required behavior (`requireEmailVerification=true`, verification email dispatch on signup, and no auto sign-in before/after verification).
+- `POST /api/auth/register` continues to call Better Auth server-side (`auth.api.signUpEmail`) and now determines verification-required messaging directly from Better Auth user verification state while preserving legacy response fields (`message`, `user`).
+- Signup UI entrypoints (`app/get-started/page.tsx`, `components/auth/register-form.tsx`, `components/auth/better-sign-up-card.tsx`) remain unified through `registerWithUnifiedRoute` -> `/api/auth/register`.
+- Protected API session reads remain centralized through `getAuthSessionFromHeaders` / `getServerAuthSession` from `lib/auth.ts` (via direct import or `lib/auth/session` compatibility wrapper).
+
 ## Email verification delivery hardening update (2026-02)
 
 - Better Auth email verification callbacks now normalize all verification links to the canonical endpoint (`/api/auth/verify-email`) before dispatch.
