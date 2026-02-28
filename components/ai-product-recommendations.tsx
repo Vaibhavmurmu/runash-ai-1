@@ -10,7 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Heart, ShoppingCart, Sparkles, Info, Clock, Eye, Leaf, Award, MapPin, Zap } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { useCart } from "@/hooks/use-cart"
+import { useCart } from "@/contexts/cart-context"
+import type { Product as CartProduct } from "@/types/cart"
 import { useAuth } from "@/hooks/use-auth"
 import { useAnalytics } from "@/components/analytics-provider"
 import { getOrganicProducts, formatPrice, type Product } from "@/lib/products"
@@ -29,7 +30,7 @@ interface ProductRecommendation extends Product {
 
 export default function AIProductRecommendations() {
   const { toast } = useToast()
-  const { addItem } = useCart()
+  const { addToCart } = useCart()
   const { user, isAuthenticated } = useAuth()
   const { trackEvent } = useAnalytics()
   const [isLoading, setIsLoading] = useState(true)
@@ -196,14 +197,24 @@ export default function AIProductRecommendations() {
     loadRecommendations()
   }, [isAuthenticated, trackEvent])
 
+  const toCartProduct = (product: ProductRecommendation): CartProduct => ({
+    id: product.id,
+    name: product.name,
+    description: product.description,
+    price: product.price,
+    category: {
+      id: product.category.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      name: product.category,
+    },
+    isOrganic: Boolean(product.isOrganic),
+    sustainabilityScore: 0,
+    image: product.images[0] || "/placeholder.svg",
+    inStock: product.stock > 0,
+    certifications: product.certifications || [],
+  })
+
   const handleAddToCart = (product: ProductRecommendation) => {
-    addItem({
-      id: product.id,
-      name: product.name,
-      price: product.price,
-      quantity: 1,
-      image: product.images[0],
-    })
+    addToCart(toCartProduct(product), 1)
 
     toast({
       title: "Added to cart",
