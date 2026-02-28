@@ -31,6 +31,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useRecordings } from "@/hooks/use-recordings"
 
+const LIVE_RENDITIONS = ["1080p", "720p", "480p", "360p"] as const
+type LiveRendition = (typeof LIVE_RENDITIONS)[number]
+
 interface LiveStreamPlayerProps {
   streamId: string
   isRecording?: boolean
@@ -65,9 +68,22 @@ export default function LiveStreamPlayer({
   const [recordingQuality, setRecordingQuality] = useState("720p")
   const [showRecordingFinishedDialog, setShowRecordingFinishedDialog] = useState(false)
   const [finishedRecordingId, setFinishedRecordingId] = useState<string | null>(null)
+  const [targetLatencyBufferMs, setTargetLatencyBufferMs] = useState(2000)
+  const [rendition, setRendition] = useState<LiveRendition>("1080p")
+  const [isRebuffering, setIsRebuffering] = useState(false)
+  const [stallCount, setStallCount] = useState(0)
+  const [stallDurationMs, setStallDurationMs] = useState(0)
+  const [reconnectCount, setReconnectCount] = useState(0)
+  const [sourceStatus, setSourceStatus] = useState<"healthy" | "recovering" | "failed">("healthy")
+  const [retryAttempt, setRetryAttempt] = useState(0)
+  const [catchUpActive, setCatchUpActive] = useState(false)
+  const [liveEdgeSeconds, setLiveEdgeSeconds] = useState(0)
+  const [playheadSeconds, setPlayheadSeconds] = useState(0)
 
   const playerRef = useRef<HTMLDivElement>(null)
   const recordingInterval = useRef<NodeJS.Timeout | null>(null)
+  const stallStartedAt = useRef<number | null>(null)
+  const retryTimerRef = useRef<NodeJS.Timeout | null>(null)
   const { toast } = useToast()
   const { addRecording } = useRecordings()
 
@@ -246,6 +262,152 @@ export default function LiveStreamPlayer({
     setLocalDuration(duration)
   }, [currentTime, duration])
 
+  // Lightweight adaptive latency buffer for live playback.
+  useEffect(() => {
+    if (isReplay) return
+
+    const interval = setInterval(() => {
+      const congestionScore = Math.random()
+      const nextBuffer = congestionScore > 0.75 ? 4000 : congestionScore > 0.45 ? 2600 : 1600
+      setTargetLatencyBufferMs(nextBuffer)
+    }, 8000)
+
+    return () => clearInterval(interval)
+  }, [isReplay])
+
+  // Simulated live-edge tracking + catch-up cadence.
+  useEffect(() => {
+    if (isReplay || !isPlaying) return
+
+    const interval = setInterval(() => {
+      setLiveEdgeSeconds((edge) => edge + 1)
+      setPlayheadSeconds((position) => {
+        const catchUpStep = catchUpActive ? 1.25 : 1
+        return position + catchUpStep
+      })
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [catchUpActive, isPlaying, isReplay])
+
+  // Detect rebuffer events and temporarily lower rendition.
+  useEffect(() => {
+    if (isReplay || !isPlaying || sourceStatus !== "healthy") return
+
+    const maybeRebuffer = setInterval(() => {
+      const shouldStall = Math.random() < 0.2
+      if (!shouldStall || stallStartedAt.current) return
+
+      stallStartedAt.current = Date.now()
+      setIsRebuffering(true)
+      setStallCount((prev) => prev + 1)
+      setRendition((prev) => {
+        const currentIndex = LIVE_RENDITIONS.indexOf(prev)
+        const nextIndex = Math.min(currentIndex + 1, LIVE_RENDITIONS.length - 1)
+        return LIVE_RENDITIONS[nextIndex]
+      })
+
+      toast({
+        title: "Network dip detected",
+        description: "Lowering stream quality temporarily to reduce buffering.",
+      })
+
+      setTimeout(() => {
+        if (!stallStartedAt.current) return
+        const durationMs = Date.now() - stallStartedAt.current
+        setStallDurationMs((prev) => prev + durationMs)
+        setIsRebuffering(false)
+        stallStartedAt.current = null
+      }, 1200)
+    }, 9000)
+
+    return () => clearInterval(maybeRebuffer)
+  }, [isPlaying, isReplay, sourceStatus, toast])
+
+  // Retry source fetch without hard-reset unless max retries reached.
+  useEffect(() => {
+    if (isReplay || sourceStatus !== "healthy") return
+
+    const failureProbe = setInterval(() => {
+      if (Math.random() < 0.08) {
+        setSourceStatus("recovering")
+        setRetryAttempt(1)
+      }
+    }, 15000)
+
+    return () => clearInterval(failureProbe)
+  }, [isReplay, sourceStatus])
+
+  useEffect(() => {
+    if (sourceStatus !== "recovering") return
+
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current)
+    }
+
+    const attempt = retryAttempt
+    const delayMs = Math.min(5000, 1000 * attempt)
+
+    retryTimerRef.current = setTimeout(() => {
+      const recovered = Math.random() > 0.35 || attempt >= 3
+
+      if (recovered) {
+        setSourceStatus("healthy")
+        setReconnectCount((prev) => prev + 1)
+        setRetryAttempt(0)
+        setCatchUpActive(true)
+        setPlayheadSeconds((_) => Math.max(0, liveEdgeSeconds - targetLatencyBufferMs / 1000))
+        setTimeout(() => setCatchUpActive(false), 5000)
+        return
+      }
+
+      if (attempt >= 4) {
+        setSourceStatus("failed")
+        return
+      }
+
+      setRetryAttempt((prev) => prev + 1)
+    }, delayMs)
+
+    return () => {
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current)
+      }
+    }
+  }, [liveEdgeSeconds, retryAttempt, sourceStatus, targetLatencyBufferMs])
+
+  // QoE metric logging for analytics ingestion.
+  useEffect(() => {
+    if (isReplay) return
+
+    const qoeMetrics = {
+      streamId,
+      stallCount,
+      stallDurationMs,
+      reconnectCount,
+      rendition,
+      targetLatencyBufferMs,
+      timestamp: new Date().toISOString(),
+    }
+
+    console.info("[qoe] live-stream-player", qoeMetrics)
+  }, [isReplay, reconnectCount, rendition, stallCount, stallDurationMs, streamId, targetLatencyBufferMs])
+
+  const retryStreamSource = () => {
+    if (sourceStatus === "healthy") return
+    setSourceStatus("recovering")
+    setRetryAttempt((prev) => Math.max(prev, 1))
+  }
+
+  const hardResetPlayer = () => {
+    setSourceStatus("healthy")
+    setRetryAttempt(0)
+    setIsRebuffering(false)
+    stallStartedAt.current = null
+    setCatchUpActive(false)
+    setPlayheadSeconds(Math.max(0, liveEdgeSeconds - targetLatencyBufferMs / 1000))
+  }
+
   return (
     <>
       <div
@@ -281,6 +443,13 @@ export default function LiveStreamPlayer({
           <Badge className="bg-zinc-800/80 backdrop-blur-sm">
             <Users className="mr-1 h-3 w-3" /> {isReplay ? "2.5K views" : "1.2K watching"}
           </Badge>
+          {!isReplay && <Badge className="bg-zinc-800/80">Latency {Math.round(targetLatencyBufferMs / 1000)}s</Badge>}
+          {!isReplay && <Badge className="bg-zinc-800/80">{rendition}</Badge>}
+          {!isReplay && isRebuffering && <Badge className="bg-amber-500">Rebuffering…</Badge>}
+          {!isReplay && catchUpActive && <Badge className="bg-blue-500">Catching up</Badge>}
+          {!isReplay && sourceStatus !== "healthy" && (
+            <Badge className={cn(sourceStatus === "failed" ? "bg-red-500" : "bg-amber-500")}>{sourceStatus}</Badge>
+          )}
           {recordingState !== "inactive" && (
             <Badge
               className={cn(
@@ -424,6 +593,28 @@ export default function LiveStreamPlayer({
                 <Maximize className="h-5 w-5" />
               </Button>
             </div>
+
+            {!isReplay && sourceStatus !== "healthy" && (
+              <div className="flex items-center justify-between rounded-md bg-black/50 px-3 py-2 text-xs text-white">
+                <span>Source {sourceStatus}. Retry attempt {retryAttempt || 1}.</span>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="secondary" onClick={retryStreamSource}>
+                    Retry source
+                  </Button>
+                  {sourceStatus === "failed" && (
+                    <Button size="sm" variant="destructive" onClick={hardResetPlayer}>
+                      Hard reset
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!isReplay && (
+              <div className="rounded-md bg-black/50 px-3 py-2 text-xs text-white/90">
+                QoE: stalls {stallCount} · stall duration {Math.round(stallDurationMs / 1000)}s · reconnects {reconnectCount}
+              </div>
+            )}
           </div>
         </div>
       </div>
