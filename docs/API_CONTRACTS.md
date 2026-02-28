@@ -749,3 +749,50 @@ Example update payload:
   }
 }
 ```
+
+## Stream Session Network Telemetry (`/api/streams/sessions/:id/metrics`)
+
+### `POST /api/streams/sessions/:id/metrics`
+Ingests periodic client network telemetry snapshots.
+
+Request payload:
+
+```json
+{
+  "bitrateKbps": 4280,
+  "rttMs": 96,
+  "packetLossPct": 0.35,
+  "droppedFrames": 2,
+  "reconnects": 0,
+  "sampledAt": "2026-02-28T12:00:00.000Z"
+}
+```
+
+Response payload:
+
+```json
+{
+  "telemetry": {
+    "id": "<uuid>",
+    "health": "good",
+    "healthScore": 82,
+    "sampledAt": "2026-02-28T12:00:00.000Z"
+  }
+}
+```
+
+### Derived health thresholds
+- `excellent`: bitrate ≥ 4000 kbps, RTT ≤ 120 ms, packet loss ≤ 1%, low drops/reconnects.
+- `good`: bitrate ≥ 2500 kbps, RTT ≤ 220 ms, packet loss ≤ 2.5%.
+- `fair`: bitrate ≥ 1200 kbps, RTT ≤ 350 ms, packet loss ≤ 5%.
+- `poor`: below fair thresholds or reconnect spikes.
+
+### `GET /api/streams/sessions/:id/metrics`
+Returns existing engagement counters and a `network` block:
+- `network.latest`: latest telemetry snapshot + derived health.
+- `network.series`: historical snapshots ordered by sampled time.
+
+### Retention policy
+- Telemetry retention target is 30 days.
+- Inserts trigger periodic retention sweeps to remove samples older than 30 days.
+- Schema bootstrap + one-time backfill migration are in `scripts/sql/2026-02-28_create_stream_session_network_metrics.sql`.
