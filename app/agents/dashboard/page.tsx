@@ -15,7 +15,7 @@ export default function AgentsDashboardPage() {
         ctaLabel="Open AI agents workspace"
         ctaHref="/ai-agents"
         secondaryLinks={[
-          { label: "RunAsh chat", href: "/dashboard/runash-chat" },
+          { label: "Chat", href: "/dashboard/chat" },
           { label: "Agent feedback", href: "/dashboard/feedback" },
         ]}
       />

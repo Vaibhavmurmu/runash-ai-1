@@ -1,7 +1,5 @@
-"use client"
+import { redirect } from "next/navigation"
 
-import { ChatWorkspace } from "@/components/dashboard/workspace/chat-workspace"
-
-export default function RunAshChatPage() {
-  return <ChatWorkspace />
+export default function ChatLegacyPage() {
+  redirect("/dashboard/chat")
 }
