@@ -3,6 +3,17 @@
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- Bootstrap users table for clean environments; production databases already
+-- carry this table and will skip creation.
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY DEFAULT encode(gen_random_bytes(16), 'hex'),
+  email TEXT,
+  role TEXT,
+  sso_organization_id BIGINT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Better Auth user profile fields are hosted on the existing users table.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS image TEXT;

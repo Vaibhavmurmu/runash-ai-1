@@ -201,7 +201,7 @@ Client/UI
 
 ### Planned (post-baseline, non-blocking)
 
-- Convert `db/migrations/0000_auth_neon_better_auth_baseline.sql` from placeholder to executable migration once canonical Drizzle auth tables are finalized.
+- Keep `db/migrations/0000_auth_neon_better_auth_baseline.sql` immutable post-release and introduce additive follow-up migrations for any auth table evolution.
 - Retire legacy NextAuth compatibility fallback after rollout stability windows complete.
 
 ## 2) Implemented auth routes (API)
@@ -636,6 +636,19 @@ Rollback:
 2. If needed, set `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK=true`.
 3. Keep schema changes in place (non-breaking additive migration); no destructive rollback required.
 4. Re-validate auth session endpoints and monitor `auth.legacy_fallback.used` for expected recovery.
+
+### Operator rollback commands (schema-only emergency path)
+
+```sql
+DROP TABLE IF EXISTS auth_one_time_transfer_tokens;
+DROP TABLE IF EXISTS auth_session_registry;
+DROP TABLE IF EXISTS auth_session_identities;
+DROP TABLE IF EXISTS verification_tokens;
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS accounts;
+```
+
+Use this destructive path only when the application rollback cannot restore service and after pausing auth writes. Because the baseline migration is additive, application rollback without table drops remains the default and safer strategy.
 
 
 ## Wallet/Link Authentication Hardening
