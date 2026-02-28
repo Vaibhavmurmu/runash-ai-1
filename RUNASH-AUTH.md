@@ -70,7 +70,9 @@ Last updated: 2026-02
 ## Email verification flow consistency update (2026-02)
 
 - Better Auth remains the single source of truth for email verification token generation and verification (`auth.api.sendVerificationEmail` + `auth.api.verifyEmail`) with `/api/auth/verify-email` retained as the canonical verifier endpoint.
+- Shared callback URL resolution now lives in `lib/auth.ts` (`emailVerificationCallbackURL`) so signup, resend verification, and verification redirects use the same post-verification destination contract.
 - `POST /api/auth/resend-verification` now uses centralized auth rate-limit policy (`AUTH_ENDPOINT_RATE_LIMITS["resend-verification"]`) and always returns the same non-enumerating response message for unknown or already-verified emails.
+- `GET /verify-email?token=...` now follows the same canonical token path by calling `GET /api/auth/verify-email` and exposing resend UX for known emails without introducing alternate verification token semantics.
 - Resend verification delivery continues through Better Auth's verification callback path (which is wired to the Resend-backed email provider abstraction in `lib/email.ts`) and now normalizes callback URL handling through shared auth email URL utilities.
 - Signup UI now surfaces an in-flow verification notice (`"Check your email to verify your account"`) when verification is required, instead of immediately navigating away as if account access was active.
 

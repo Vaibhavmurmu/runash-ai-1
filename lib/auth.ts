@@ -17,7 +17,7 @@ import {
 
 const baseURL =
   process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
-const emailVerificationCallbackURL = resolveAuthCallbackUrl(
+export const emailVerificationCallbackURL = resolveAuthCallbackUrl(
   process.env.BETTER_AUTH_EMAIL_VERIFICATION_CALLBACK_URL ?? "/login?emailVerified=1",
 )
 const requireEmailVerificationForEmailPassword = true

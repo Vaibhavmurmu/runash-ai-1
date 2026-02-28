@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { auth, emailVerificationCallbackURL } from "@/lib/auth"
 import { registerSchema } from "@/lib/validations/auth"
 import { rateLimit } from "@/lib/rate-limit"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
@@ -14,8 +14,6 @@ type RegisterInput = {
   name: string
   username: string
 }
-
-const emailVerificationCallbackURL = process.env.BETTER_AUTH_EMAIL_VERIFICATION_CALLBACK_URL ?? "/login?emailVerified=1"
 
 type SignUpResponse = {
   user?: {
