@@ -23,11 +23,6 @@ export async function requireSellerSessionUserId(
     return respondError(request, { code: "INVALID_SESSION_USER", message: "Invalid session user id" }, { status: 403, legacy: { error: "Invalid session user id" } })
   }
 
-  const scopedHeaderUserId = request.headers.get("x-user-id")?.trim()
-  if (scopedHeaderUserId && scopedHeaderUserId !== rawUserId) {
-    return respondError(request, { code: "FORBIDDEN", message: "Forbidden" }, { status: 403, legacy: { error: "Forbidden" } })
-  }
-
   if (sessionRole !== "seller" && sessionRole !== "admin" && sessionRole !== "super_admin") {
     return respondError(request, { code: "FORBIDDEN", message: "Forbidden" }, { status: 403, legacy: { error: "Forbidden" } })
   }
