@@ -64,13 +64,20 @@ pnpm run setup:skills
 - `$CODEX_HOME/skills`
 - `~/.codex/skills`
 
+You can also run a manual verification if you want to inspect exact files:
+
+```bash
+find "${CODEX_HOME:-$HOME/.codex}/skills" -maxdepth 3 -type f -name 'SKILL.md'
+```
+
 This step is **optional** for normal RunAsh app development (`pnpm dev`, `pnpm build`, API work), and only needed for Codex Better Auth workflows.
 
 #### Offline/CI fallback guidance
 
 - **Offline or air-gapped machines:** skip skills setup; application development/runtime is unaffected.
-- **CI pipelines:** treat skills setup as non-blocking optional tooling; pre-bake skills into the runner image when needed.
+- **CI pipelines:** treat skills setup as non-blocking optional tooling; pre-bake skills into the runner image when needed. `setup:skills` already exits successfully in CI when verification cannot be completed.
 - **Restricted network/proxy:** use approved internal npm/git mirrors before running install.
+- **Best-effort local setup:** run `SKILLS_SETUP_OPTIONAL=1 pnpm run setup:skills` to avoid failing local scripts when you intentionally run without network access.
 - **Verification command:** rerun `pnpm run setup:skills` to retry install + location checks.
 
 ### 3) Start the development server
