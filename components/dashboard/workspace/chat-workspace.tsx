@@ -15,7 +15,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, OctagonX, MoreHorizontal } from "lucide-react"
+import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, OctagonX, MoreHorizontal, CreditCard } from "lucide-react"
 import type { ChatMessage, ChatSession, UserPreferences, QuickAction } from "@/types/runash-chat"
 import ChatMessageComponent from "@/components/chat/chat-message"
 import ChatSidebar from "@/components/chat/chat-sidebar"
@@ -39,7 +39,7 @@ import { resolveRequestedToolsForMessage } from "@/lib/runash-chat/tooling"
  
 import { getRecommendedProducts, shouldRecommendProducts } from "@/lib/chat-product-recommendations"
 
-
+const UPGRADE_METRICS_KEY = "runash_upgrade_metrics_v2"
 
 export function ChatWorkspace() {
   type StreamControllerState = "idle" | "sending" | "streaming" | "stopping" | "failed"
@@ -94,6 +94,7 @@ export function ChatWorkspace() {
   })
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const sendAbortRef = useRef<AbortController | null>(null)
+  const firstCompletionTrackedRef = useRef(false)
 
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => {
     if (typeof window === "undefined") {
@@ -153,6 +154,7 @@ export function ChatWorkspace() {
 
   const [attachmentPreview, setAttachmentPreview] = useState<ComposerAttachmentPreview | null>(null)
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const [hasCompletedFirstMessage, setHasCompletedFirstMessage] = useState(false)
   const attachmentRetryRef = useRef<File | null>(null)
 
   const IMAGE_MAX_FILE_SIZE = 8 * 1024 * 1024
@@ -918,6 +920,14 @@ export function ChatWorkspace() {
               status: payload.status === "completed" ? "completed" : existing.status,
               content: typeof payload.content === "string" && payload.content.length > 0 ? payload.content : existing.content,
             }))
+
+            if (payload.status === "completed") {
+              setHasCompletedFirstMessage(true)
+              if (!firstCompletionTrackedRef.current) {
+                firstCompletionTrackedRef.current = true
+                trackUpgradeMetric("first_message_completed", "deferred_upgrade_prompt")
+              }
+            }
           }
 
           if (eventName === "error") {
@@ -1245,6 +1255,24 @@ export function ChatWorkspace() {
 
   const hasUserMessage = messages.some((message) => message.role === "user")
   const showComposerEmptyState = !hasUserMessage && streamControllerState === "idle"
+
+
+  const trackUpgradeMetric = (eventName: "upgrade_click" | "first_message_completed", location: string) => {
+    if (typeof window === "undefined") return
+    try {
+      const raw = window.localStorage.getItem(UPGRADE_METRICS_KEY)
+      const parsed = raw ? (JSON.parse(raw) as Record<string, number>) : {}
+      const key = `${eventName}:${location}`
+      parsed[key] = (parsed[key] ?? 0) + 1
+      window.localStorage.setItem(UPGRADE_METRICS_KEY, JSON.stringify(parsed))
+    } catch {
+      return
+    }
+  }
+
+  const handleUpgradeClick = (location: "composer_inline" | "header_account") => {
+    trackUpgradeMetric("upgrade_click", location)
+  }
   const recentSession = currentSession ?? chatSessions.at(0) ?? null
 
   const leftDrawer = (
@@ -1354,6 +1382,12 @@ export function ChatWorkspace() {
                               <Settings className="h-3.5 w-3.5" />
                               Preferences
                             </ActionPill>
+                            <ActionPill asChild className="h-8 gap-1.5 px-3">
+                              <a href="/upgrade" onClick={() => handleUpgradeClick("header_account")}>
+                                <CreditCard className="h-3.5 w-3.5" />
+                                Upgrade
+                              </a>
+                            </ActionPill>
                             <ActionPill
                               onClick={() => setRightDrawerOpen((prev) => !prev)}
                               aria-pressed={rightDrawerOpen}
@@ -1388,6 +1422,12 @@ export function ChatWorkspace() {
                   <ActionPill onClick={() => setShowPreferences(true)}>
                     <Settings className="mr-1.5 h-3.5 w-3.5" />
                     Preferences
+                  </ActionPill>
+                  <ActionPill asChild>
+                    <a href="/upgrade" onClick={() => handleUpgradeClick("header_account")}>
+                      <CreditCard className="mr-1.5 h-3.5 w-3.5" />
+                      Upgrade
+                    </a>
                   </ActionPill>
                   <ActionPill onClick={() => setLeftDrawerOpen((prev) => !prev)} aria-pressed={leftDrawerOpen}>
                     <History className="mr-1.5 h-3.5 w-3.5" />
@@ -1576,6 +1616,8 @@ export function ChatWorkspace() {
                 attachmentError={attachmentError}
                 onRetryAttachment={retryAttachment}
                 onRemoveAttachment={removeAttachment}
+                showUpgradePrompt={hasCompletedFirstMessage}
+                onUpgradeClick={handleUpgradeClick}
               />
               {(streamControllerState === "failed" || runDiagnostics.requestId || runDiagnostics.provider) && (
                 <div className="mt-3 rounded-md border border-zinc-800 bg-zinc-900/60 p-2 text-xs text-zinc-300">
