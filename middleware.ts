@@ -44,9 +44,6 @@ const publicRoutes = [
   "/ai-overview",
   "/models",
   "/company",
-  "/runash-chat",
-  "/chat",
-  "/live",
   "/waitlist",
 ] as const
 
@@ -99,7 +96,7 @@ export function evaluateRoleAccess(pathname: string, claims: AuthClaims): { stat
   return { status: "allowed" }
 }
 
-function resolveAuthDecision(pathname: string) {
+export function resolveAuthDecision(pathname: string) {
   const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + "/"))
   const isPublicApiRoute = publicApiRoutes.some((route) => pathname.startsWith(route))
   const isAuthPage = pathname === "/login" || pathname === "/signup" || pathname === "/get-started"
