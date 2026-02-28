@@ -123,6 +123,29 @@ export const appSchemaTables = {
       "created_at",
     ],
   },
+  marketingWorkflowTemplates: {
+    table: "marketing_workflow_templates",
+    fields: ["id", "seller_user_id", "name", "description", "preset_key", "channels", "content", "is_system", "created_at", "updated_at"],
+  },
+  marketingWorkflowRules: {
+    table: "marketing_workflow_rules",
+    fields: ["id", "seller_user_id", "name", "trigger_type", "template_id", "conditions", "channels", "is_active", "created_at", "updated_at"],
+  },
+  marketingWorkflowRuns: {
+    table: "marketing_workflow_runs",
+    fields: [
+      "id",
+      "rule_id",
+      "seller_user_id",
+      "trigger_type",
+      "status",
+      "trigger_payload",
+      "channel_results",
+      "error_message",
+      "started_at",
+      "completed_at",
+    ],
+  },
 } as const
 
 export type AuthSchemaTableName = keyof typeof authSchemaTables

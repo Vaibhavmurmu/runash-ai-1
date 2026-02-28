@@ -333,3 +333,14 @@ Business controls preserved:
 - **Risk:** stricter quotas can reject bursts for high-volume creator workflows.
 - **Mitigation:** all limits are environment-configurable and surfaced with stable API error codes.
 - **Rollback:** relax or disable quota/policy env limits while preserving API shape and worker behavior.
+
+## 2026-02 Seller marketing workflow automation note (non-payment)
+
+- Added seller marketing workflow orchestration for trigger-based campaigns (`stream_ended`, `cart_abandoned`, `high_intent_viewer`, `repeat_buyer`) with multi-channel delivery routing.
+- Added campaign persistence tables for templates, rules, and run history to support auditability and replay.
+- **Payment/auth impact:** none. Checkout contracts, payment field names, and auth/session interfaces remain unchanged.
+
+### Risk / rollback
+- **Risk:** high-volume trigger traffic could generate excessive outbound notifications.
+- **Mitigation:** rule activation controls, trigger condition gates, and run history observability are included for controlled rollout.
+- **Rollback:** deactivate affected marketing workflows via activation API or remove the new seller marketing tab while preserving existing seller operations.
