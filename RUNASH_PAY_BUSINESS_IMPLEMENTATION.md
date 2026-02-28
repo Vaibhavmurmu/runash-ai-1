@@ -333,3 +333,7 @@ Business controls preserved:
 - **Risk:** stricter quotas can reject bursts for high-volume creator workflows.
 - **Mitigation:** all limits are environment-configurable and surfaced with stable API error codes.
 - **Rollback:** relax or disable quota/policy env limits while preserving API shape and worker behavior.
+
+## Reliability note: feedback/referral operational flows
+- Added guidance that referral invites/conversions and feedback intake are non-payment business flows with independent throttling and email notifications.
+- No payment API contract changes were introduced; rollback path is to disable `/api/referrals*` and `/api/feedback` routes plus revert migration `0006_feedback_and_referrals.sql`.
