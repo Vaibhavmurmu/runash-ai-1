@@ -280,11 +280,23 @@ export function buildCanonicalVerificationUrl(input: { url?: string; token?: str
     verificationUrl.searchParams.set("token", input.token)
   }
 
-  if (input.callbackURL && !verificationUrl.searchParams.get("callbackURL")) {
-    verificationUrl.searchParams.set("callbackURL", input.callbackURL)
+  const resolvedCallbackUrl = resolveAuthCallbackUrl(input.callbackURL)
+
+  if (resolvedCallbackUrl && !verificationUrl.searchParams.get("callbackURL")) {
+    verificationUrl.searchParams.set("callbackURL", resolvedCallbackUrl)
   }
 
   return verificationUrl.toString()
+}
+
+export function resolveAuthCallbackUrl(callbackURL?: string) {
+  if (!callbackURL) {
+    return undefined
+  }
+
+  const baseUrl = process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
+
+  return new URL(callbackURL, baseUrl).toString()
 }
 
 export async function sendVerificationEmail(
