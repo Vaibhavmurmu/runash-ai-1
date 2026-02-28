@@ -55,6 +55,7 @@ export interface Stream {
   created_at: Date
   started_at?: Date
   ended_at?: Date
+  scheduled_for?: Date
 }
 
 export interface Recording {
@@ -366,8 +367,8 @@ export class Database {
 
   static async createStream(data: Omit<Stream, "id" | "created_at">): Promise<Stream> {
     const result = await sql`
-      INSERT INTO streams (title, description, user_id, status, platform, stream_key, viewer_count)
-      VALUES (${data.title}, ${data.description}, ${data.user_id}, ${data.status}, ${data.platform}, ${data.stream_key}, ${data.viewer_count})
+      INSERT INTO streams (title, description, user_id, status, platform, stream_key, viewer_count, started_at)
+      VALUES (${data.title}, ${data.description}, ${data.user_id}, ${data.status}, ${data.platform}, ${data.stream_key}, ${data.viewer_count}, ${data.started_at ?? null})
       RETURNING *
     `
     return result[0] as Stream
