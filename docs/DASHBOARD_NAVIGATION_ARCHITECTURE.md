@@ -27,7 +27,7 @@ The dashboard sidebar uses sectioned navigation with shared active-path matching
 - **Intelligence**
   - `/agents/dashboard`
   - `/automation`
-  - `/runash-chat`
+  - `/dashboard/chat`
 - **Operations**
   - `/analytics`
   - `/alerts`
@@ -43,4 +43,10 @@ Legacy, route-local sidebar lists should not be reintroduced for dashboard surfa
 ## Risk and rollback
 
 - **Risk:** route mismatches can leave users with broken nav destinations or incorrect active-state highlighting.
-- **Rollback plan:** revert to the previous dashboard nav config and sidebar mapping commit if post-merge route mismatches are found, then run smoke checks for `/dashboard`, `/seller/dashboard`, `/ecommerce/dashboard`, and `/runash-chat` before reattempting rollout.
+- **Rollback plan:** revert to the previous dashboard nav config and sidebar mapping commit if post-merge route mismatches are found, then run smoke checks for `/dashboard`, `/seller/dashboard`, `/ecommerce/dashboard`, and `/dashboard/chat` before reattempting rollout.
+
+
+## Legacy route redirects
+
+For chat entry points, standardize user-facing navigation to **Chat** at `/dashboard/chat`.
+Keep redirects from `/dashboard/runash-chat`, `/chat`, and `/runash-chat` for backwards compatibility.
