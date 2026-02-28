@@ -20,6 +20,8 @@ const baseURL =
 const emailVerificationCallbackURL = resolveAuthCallbackUrl(
   process.env.BETTER_AUTH_EMAIL_VERIFICATION_CALLBACK_URL ?? "/login?emailVerified=1",
 )
+const requireEmailVerificationForEmailPassword = true
+const autoSignInAfterEmailPasswordSignUp = false
 
 const secret = process.env.BETTER_AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
 
@@ -133,11 +135,11 @@ export const auth = betterAuth({
   secret,
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: true,
-    autoSignIn: false,
+    requireEmailVerification: requireEmailVerificationForEmailPassword,
+    autoSignIn: autoSignInAfterEmailPasswordSignUp,
   },
   emailVerification: {
-    sendOnSignUp: true,
+    sendOnSignUp: requireEmailVerificationForEmailPassword,
     autoSignInAfterVerification: false,
     callbackURL: emailVerificationCallbackURL,
     sendVerificationEmail: async ({ user, url }) => {
