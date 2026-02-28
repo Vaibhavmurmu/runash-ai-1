@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server"
-import { DatabaseService } from "../../../lib/database"
+import { Database } from "@/lib/database"
 import { z } from "zod"
 import { respondError, respondSuccess } from "../../../lib/api/envelope"
 import { logApiEvent } from "../../../lib/api/logging"
@@ -182,7 +182,7 @@ export async function GET(request: NextRequest) {
       const session = await getServerAuthSession()
       return session?.user?.id ?? null
     },
-    getChatMessages: DatabaseService.getChatMessages,
+    getChatMessages: Database.getChatMessages.bind(Database),
     respondError: (error, options) => respondError(request, error, { ...options, requestId }),
     respondSuccess: (data, options) => respondSuccess(request, data, { ...options, requestId }),
   })
