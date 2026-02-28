@@ -160,7 +160,7 @@ export default function AnalyticsPage() {
           <Card className="p-6 space-y-4">
             <h3 className="font-semibold">Customer Segments</h3>
 
-oncurrentUserMap            <div className="space-y-3">
+            <div className="space-y-3">
               {[
                 { segment: 'Premium', percentage: 35, color: 'bg-orange-600' },
                 { segment: 'Regular', percentage: 45, color: 'bg-blue-600' },
