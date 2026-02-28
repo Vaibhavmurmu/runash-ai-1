@@ -333,3 +333,22 @@ Business controls preserved:
 - **Risk:** stricter quotas can reject bursts for high-volume creator workflows.
 - **Mitigation:** all limits are environment-configurable and surfaced with stable API error codes.
 - **Rollback:** relax or disable quota/policy env limits while preserving API shape and worker behavior.
+
+## 2026-02-28 lifecycle-event implementation update (business reliability)
+
+### Lifecycle mapping coverage
+
+- Billing/subscription lifecycle events are now explicitly mapped from API and webhook sources into typed `payment_lifecycle_events` records.
+- Event-template pairing is deterministic through a centralized map, enabling consistent downstream notification/workflow handling.
+
+### Operational risk and rollback
+
+- **Risk:** additive event emission may increase notification volume if downstream consumers subscribe immediately without filtering.
+- **Mitigation:** event payloads include typed `event_type`, `template_key`, and normalized metadata fields for predictable routing.
+- **Rollback:** disable emit callsites while preserving the additive table; no customer-facing payment contract rollback or schema migration is required.
+
+### Validation capture
+
+- Validation floor executed for payment/auth scope:
+  - `npm run lint`
+  - `npm run build`

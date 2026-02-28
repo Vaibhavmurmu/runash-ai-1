@@ -685,3 +685,14 @@ Use this destructive path only when the application rollback cannot restore serv
 - High-risk wallet mutations (default method switch, subscription status updates) are rejected unless HITL + MFA assertions are present.
 - Geo/risk checks are evaluated at request time and surfaced as explicit reason codes to callers for adaptive auth UX (review queues, challenge loops, or hard-deny).
 - Auth-adjacent telemetry for wallet/link flows is emitted only through sanitized structured logs; secrets, OTP values, and card data are not logged.
+
+## 2026-02-28 auth-sensitive logging posture for billing lifecycle events
+
+- Payment lifecycle event emission uses payment logging sanitizer utilities before any structured log output.
+- Sensitive auth/payment fields are redacted by key-pattern policy (`token`, `secret`, `authorization`, `session`, `customer`, payment-method/card identifiers).
+- This preserves auditability while preventing leakage of provider tokens, customer identifiers, and auth material in billing lifecycle logs.
+
+### Rollback notes (auth-impact posture)
+
+- Reverting lifecycle event emitters does not require auth contract, cookie/session, or RBAC schema rollback.
+- If rollback is needed, keep sanitizer behavior intact and revert only lifecycle event callsites.

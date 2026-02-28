@@ -8,6 +8,7 @@ import { logPrivilegedAction } from "@/lib/audit-logging"
 import { getAuthorizedBillingIdentity, requireBillingActionAccess } from "@/lib/billing-auth"
 import { Database } from "@/lib/database"
 import { computeTaxForRegion, persistTaxComputation } from "@/lib/services/tax-service"
+import { emitPaymentLifecycleEvent } from "@/lib/services/payment-lifecycle-events"
 import {
   buildComplianceSafePaymentMetadata,
   createPaymentRoutingAuditEvent,
@@ -315,6 +316,18 @@ export async function PATCH(request: NextRequest) {
       details: routeAudit,
     })
 
+    await emitPaymentLifecycleEvent({
+      eventType: "plan_upgrade_initiated",
+      userId: sessionUser.userId,
+      subscriptionId: currentSub[0].stripe_subscription_id,
+      source: "api.billing.subscription.patch",
+      metadata: {
+        previousPlan: String(currentSub[0].plan_id),
+        plan: String(plan_id),
+        nextBillingDate: currentSub[0].current_period_end ? new Date(currentSub[0].current_period_end).toISOString() : null,
+      },
+    })
+
     await stripe.subscriptions.update(currentSub[0].stripe_subscription_id, {
       items: [
         {
@@ -329,6 +342,18 @@ export async function PATCH(request: NextRequest) {
       `UPDATE user_subscriptions SET plan_id = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
       [plan_id, currentSub[0].id],
     )
+
+    await emitPaymentLifecycleEvent({
+      eventType: "plan_upgrade_completed",
+      userId: sessionUser.userId,
+      subscriptionId: currentSub[0].stripe_subscription_id,
+      source: "api.billing.subscription.patch",
+      metadata: {
+        previousPlan: String(currentSub[0].plan_id),
+        plan: String(plan_id),
+        nextBillingDate: currentSub[0].current_period_end ? new Date(currentSub[0].current_period_end).toISOString() : null,
+      },
+    })
 
     await logPrivilegedAction({
       actorUserId: sessionUser.userId,

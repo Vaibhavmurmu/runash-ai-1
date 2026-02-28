@@ -6,6 +6,7 @@ import { logApiRouteError } from "@/lib/api/logging"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 import { requireScopedBillingAccess } from "@/lib/billing-auth"
 import { Database } from "@/lib/database"
+import { emitPaymentLifecycleEvent } from "@/lib/services/payment-lifecycle-events"
 import { createPaymentRoutingAuditEvent, resolveEdgeRoutingPolicy } from "@/lib/payments/edge-routing-policy"
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -74,6 +75,19 @@ export async function POST(request: NextRequest) {
 
     const plans = await Database.query(`SELECT * FROM subscription_plans WHERE id = $1 LIMIT 1`, [updated[0].plan_id])
     const subscription = { ...updated[0], plan: plans[0] || null }
+
+    await emitPaymentLifecycleEvent({
+      eventType: "subscription_started",
+      userId: sessionUser.userId,
+      subscriptionId: currentSub.stripe_subscription_id ? String(currentSub.stripe_subscription_id) : String(currentSub.id),
+      source: "api.billing.subscription.reactivate",
+      metadata: {
+        plan: updated[0]?.plan_id ? String(updated[0].plan_id) : null,
+        nextBillingDate: updated[0]?.current_period_end ? new Date(updated[0].current_period_end).toISOString() : null,
+        reason: "reactivated",
+      },
+    })
+
 
     await logPrivilegedAction({
       actorUserId: sessionUser.userId,
