@@ -162,6 +162,18 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 - **Risk assessment:** low behavior risk; primary execution risk remains environment-dependent build failures when required database configuration is missing.
 - **Rollback plan:** revert documentation-only commit; no runtime rollback or credential/session migration is required.
 
+## 2026-02-28 auth/payment validation execution note
+
+- **Behavior change summary:** no auth runtime/contract changes were introduced.
+- **Validation command outcomes captured for release auditability:**
+  - `npm run lint` failed in this environment because `eslint` is not installed.
+  - `npm run build` reached successful compilation but failed during page-data collection due to missing database env (`No database connection string was provided to neon()`).
+- **Impacted auth/payment flows reviewed:**
+  - Session retrieval/validation path (`GET /api/auth/get-session`) that protects payment-adjacent routes.
+  - Authenticated access continuity assumptions for billing/credits entrypoints.
+  - Authorization guard posture (`401` unauthenticated, `403` unauthorized) for auth/payment-adjacent surfaces.
+- **Risk + rollback:** risk is environment/dependency readiness for validation pipelines; rollback remains docs-only revert with no auth schema or session migration changes.
+
 ### Better Auth runtime and adapters
 - `lib/auth.ts` — Better Auth instance, provider config, account-linking hooks, and the canonical server-side session resolver (`getAuthSessionFromHeaders`, `getServerAuthSession`).
 - `app/api/auth/[...nextauth]/route.ts` — Next.js route handler mounted via `toNextJsHandler(auth)`.
