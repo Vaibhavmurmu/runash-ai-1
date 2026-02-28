@@ -11,9 +11,20 @@ export interface EmailEvent {
 export interface RealtimeEmailMetrics {
   totalSent: number
   totalDelivered: number
+  totalDeferred: number
   totalBounced: number
+  totalComplained: number
+  totalSuppressed: number
   totalOpened: number
   totalClicked: number
+  statusCounts: {
+    sent: number
+    delivered: number
+    deferred: number
+    bounced: number
+    complained: number
+    suppressed: number
+  }
   deliveryRate: number
   openRate: number
   clickRate: number
@@ -33,9 +44,13 @@ class EmailRealtimeManager extends EventEmitter {
   private metrics: RealtimeEmailMetrics = {
     totalSent: 0,
     totalDelivered: 0,
+    totalDeferred: 0,
     totalBounced: 0,
+    totalComplained: 0,
+    totalSuppressed: 0,
     totalOpened: 0,
     totalClicked: 0,
+    statusCounts: { sent: 0, delivered: 0, deferred: 0, bounced: 0, complained: 0, suppressed: 0 },
     deliveryRate: 0,
     openRate: 0,
     clickRate: 0,
@@ -160,12 +175,31 @@ class EmailRealtimeManager extends EventEmitter {
       case "delivery_status":
         if (event.data?.status === "sent") {
           this.metrics.totalSent++
+          this.metrics.statusCounts.sent++
         } else if (event.data?.status === "delivered") {
           this.metrics.totalDelivered++
+          this.metrics.statusCounts.delivered++
+        } else if (event.data?.status === "deferred") {
+          this.metrics.totalDeferred++
+          this.metrics.statusCounts.deferred++
+        } else if (event.data?.status === "bounced") {
+          this.metrics.totalBounced++
+          this.metrics.statusCounts.bounced++
+        } else if (event.data?.status === "suppressed") {
+          this.metrics.totalSuppressed++
+          this.metrics.statusCounts.suppressed++
+        } else if (event.data?.status === "complained") {
+          this.metrics.totalComplained++
+          this.metrics.statusCounts.complained++
         }
         break
       case "bounce":
         this.metrics.totalBounced++
+        this.metrics.statusCounts.bounced++
+        break
+      case "complaint":
+        this.metrics.totalComplained++
+        this.metrics.statusCounts.complained++
         break
       case "open":
         this.metrics.totalOpened++
@@ -200,9 +234,13 @@ class EmailRealtimeManager extends EventEmitter {
     this.metrics = {
       totalSent: 0,
       totalDelivered: 0,
+      totalDeferred: 0,
       totalBounced: 0,
+      totalComplained: 0,
+      totalSuppressed: 0,
       totalOpened: 0,
       totalClicked: 0,
+      statusCounts: { sent: 0, delivered: 0, deferred: 0, bounced: 0, complained: 0, suppressed: 0 },
       deliveryRate: 0,
       openRate: 0,
       clickRate: 0,
