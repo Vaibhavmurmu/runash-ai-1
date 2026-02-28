@@ -3,12 +3,16 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import CheckoutForm from "@/components/checkout-form"
 import OrderSummary from "@/components/order-summary"
-import { useCart } from "@/hooks/use-cart"
+import { useCart } from "@/contexts/cart-context"
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
 
 export default function CheckoutClientWrapper() {
-  const { items } = useCart()
+  const {
+    state: {
+      cart: { items },
+    },
+  } = useCart()
   const router = useRouter()
 
   // Redirect to cart if there are no items
