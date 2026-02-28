@@ -39,7 +39,7 @@ export async function findWaitlistEntryByEmail(email: string): Promise<WaitlistE
         use_case AS "useCase",
         created_at AS "createdAt"
       FROM waitlist_entries
-      WHERE email = $1
+      WHERE LOWER(email) = LOWER($1)
       LIMIT 1
     `,
     [email],
