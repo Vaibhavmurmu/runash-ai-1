@@ -1,53 +1,6 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
-import { rateLimit } from "@/lib/rate-limit"
-import { neon } from "@neondatabase/serverless"
-import { logApiRouteError } from "@/lib/api/logging"
+import { type NextRequest } from "next/server"
+import { handleResendVerification } from "./resend-verification-route-handler"
 
-const sql = neon(process.env.DATABASE_URL!)
-
-export async function POST(request: NextRequest) {
-  try {
-    // Rate limiting for resend attempts
-    const rateLimitResult = await rateLimit(request, "resend-verification", 3, 600) // 3 attempts per 10 minutes
-    if (!rateLimitResult.success) {
-      return NextResponse.json({ message: "Too many resend attempts. Please try again later." }, { status: 429 })
-    }
-
-    const { email } = await request.json()
-
-    if (!email) {
-      return NextResponse.json({ message: "Email is required" }, { status: 400 })
-    }
-
-    // Find user by email
-    const [user] = await sql`
-      SELECT id, email, name, email_verified 
-      FROM users 
-      WHERE email = ${email}
-    `
-
-    if (!user) {
-      return NextResponse.json({ message: "If an account with that email exists, we've sent a verification link." })
-    }
-
-    if (user.email_verified) {
-      return NextResponse.json({ message: "Email is already verified" }, { status: 400 })
-    }
-
-    await auth.api.sendVerificationEmail({
-      headers: request.headers,
-      body: {
-        email,
-        callbackURL: process.env.BETTER_AUTH_EMAIL_VERIFICATION_CALLBACK_URL ?? "/login?emailVerified=1",
-      },
-    })
-
-    return NextResponse.json({
-      message: "If an account with that email exists, we've sent a verification link.",
-    })
-  } catch (error) {
-    logApiRouteError(request, "auth.resend_verification.failed", error, { errorCode: "AUTH_RESEND_VERIFICATION_FAILED" })
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
-  }
+export async function POST(request: NextRequest): Promise<Response> {
+  return handleResendVerification(request)
 }

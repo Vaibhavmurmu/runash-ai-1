@@ -19,6 +19,7 @@ export function BetterSignUpCard() {
   const [passwordConfirmation, setPasswordConfirmation] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [verificationNotice, setVerificationNotice] = useState<string | null>(null)
   const router = useRouter()
 
   const passwordStrength = Math.min(100, Math.max(0, password.length * 12.5))
@@ -31,6 +32,7 @@ export function BetterSignUpCard() {
       </CardHeader>
       <CardContent className="space-y-4">
         {error ? <CardAlert severity="danger" title="Sign-up failed" description={error} /> : null}
+        {verificationNotice ? <CardAlert severity="success" title="Verify your account" description={verificationNotice} /> : null}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="grid gap-1.5">
@@ -72,6 +74,7 @@ export function BetterSignUpCard() {
           disabled={loading || password !== passwordConfirmation}
           onClick={async () => {
             setError(null)
+            setVerificationNotice(null)
             setLoading(true)
 
             try {
@@ -89,7 +92,14 @@ export function BetterSignUpCard() {
 
               const isVerificationPending =
                 registration.user?.emailVerified === false || /verify your (account|email)/i.test(registration.message)
-              toast.success(isVerificationPending ? "Check your inbox to verify your email before logging in." : registration.message)
+              if (isVerificationPending) {
+                const pendingMessage = "Check your email to verify your account"
+                setVerificationNotice(pendingMessage)
+                toast.success(pendingMessage)
+                return
+              }
+
+              toast.success(registration.message)
               router.push("/login")
             } catch (error) {
               setError("Unable to create account")
