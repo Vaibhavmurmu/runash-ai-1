@@ -12,7 +12,6 @@ import { waitlistJoinSchema } from "@/lib/validations/waitlist"
 type WaitlistFormState = {
   email: string
   name: string
-  company: string
   useCase: string
 }
 
@@ -23,7 +22,6 @@ type WaitlistFieldErrors = Partial<Record<WaitlistFormField, string>>
 const initialState: WaitlistFormState = {
   email: "",
   name: "",
-  company: "",
   useCase: "",
 }
 
@@ -46,7 +44,6 @@ export default function WaitlistPage() {
     const nextErrors: WaitlistFieldErrors = {
       email: flattenedErrors.email?.[0],
       name: flattenedErrors.name?.[0],
-      company: flattenedErrors.company?.[0],
       useCase: flattenedErrors.useCase?.[0],
     }
 
@@ -93,7 +90,6 @@ export default function WaitlistPage() {
           ...current,
           email: apiFieldErrors?.email?.[0] ?? current.email,
           name: apiFieldErrors?.name?.[0] ?? current.name,
-          company: apiFieldErrors?.company?.[0] ?? current.company,
           useCase: apiFieldErrors?.useCase?.[0] ?? current.useCase,
         }))
         setErrorMessage(message)
@@ -146,18 +142,6 @@ export default function WaitlistPage() {
                   placeholder="Your name"
                 />
                 {fieldErrors.name ? <p className="text-sm text-red-600">{fieldErrors.name}</p> : null}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="company">Company (optional)</Label>
-                <Input
-                  id="company"
-                  value={form.company}
-                  onChange={(event) => handleFieldChange("company", event.target.value)}
-                  aria-invalid={Boolean(fieldErrors.company)}
-                  placeholder="Company or team"
-                />
-                {fieldErrors.company ? <p className="text-sm text-red-600">{fieldErrors.company}</p> : null}
               </div>
 
               <div className="space-y-2">

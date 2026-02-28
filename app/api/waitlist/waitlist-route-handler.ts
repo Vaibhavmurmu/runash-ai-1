@@ -16,7 +16,6 @@ type WaitlistJoinResult = {
     id: string
     email: string
     name: string | null
-    company: string | null
     useCase: string | null
     createdAt: string
   }
@@ -101,7 +100,6 @@ export async function handleWaitlistPost(
           id: result.entry.id,
           email: result.entry.email,
           name: result.entry.name,
-          company: result.entry.company,
           useCase: result.entry.useCase,
           createdAt: result.entry.createdAt,
         },

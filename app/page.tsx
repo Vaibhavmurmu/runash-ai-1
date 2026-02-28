@@ -16,6 +16,7 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { NewsletterSignup } from "@/components/newsletter-signup"
 import { LanguageSelector } from "@/components/language-selector"
 import { CountrySelector } from "@/components/country-selector"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 
@@ -74,13 +75,10 @@ export default function Home() {
             >
               Start Streaming <Play className="ml-2 h-4 w-4" />
             </Button>
-            <Button
-              size="lg"
-              variant="secondary"
-              className="bg-white/90 text-orange-700 hover:bg-white"
-              onClick={() => router.push("/waitlist")}
-            >
-              Join Waitlist <Users className="ml-2 h-4 w-4" />
+            <Button asChild size="lg" variant="secondary" className="bg-white/90 text-orange-700 hover:bg-white">
+              <Link href="/waitlist">
+                Join Waitlist <Users className="ml-2 h-4 w-4" />
+              </Link>
             </Button>
             <Button
               size="lg"
