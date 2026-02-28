@@ -55,6 +55,14 @@ This document is payment-domain specific. For contributor workflow/process polic
 - No payment API request/response fields, billing webhook contracts, checkout signatures, or auth/payment token formats were changed.
 - Risk + rollback: low runtime risk (auth UX/message + resend consistency only). Rollback is app-level revert of auth verification routing/UI updates; no payment migration or contract rollback needed.
 
+
+## 2026-02 stream network resilience automation (no payment contract changes)
+
+- Added orchestration-layer stream reliability automation for the new trigger `network_quality_degraded` with idempotent fallback actions (lower profile, reduce non-essential overlays/effects, chat notice, and host dashboard alert), plus gradual recovery rollback when network quality returns.
+- Added automation timeline exposure for stream host transparency via stream dashboard/session automation APIs.
+- **Impacted payment/auth flows identified:** none. This change is stream orchestration + dashboard visibility only; payment API fields, webhook schemas, checkout signatures, and auth/session contracts are unchanged.
+- **Risk + rollback:** medium operational UX risk (aggressive quality downgrade if noisy network telemetry). Rollback by reverting orchestration/network trigger handling and dashboard timeline surface; no payment data migration required.
+
 ## Auth dependency notes for payment flows
 
 - OTP email login verification now mints canonical auth sessions and secure Better Auth cookies for `purpose=login`; non-login OTP purposes remain verification-only.
