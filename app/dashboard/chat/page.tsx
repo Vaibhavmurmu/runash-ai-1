@@ -9,8 +9,8 @@ const ChatWorkspace = dynamic(() => import("@/components/dashboard/workspace/cha
 })
 
 export const metadata: Metadata = createDashboardMetadata({
-  title: "Chat",
-  description: "Manage AI chat workspace operations and collaborative chat workflows from your dashboard.",
+  title: "RunAsh Chat",
+  description: "RunAsh Chat workspace for AI assistant conversations, collaborative handoffs, and operator workflows.",
   path: "/dashboard/chat",
 })
 
