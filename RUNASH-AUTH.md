@@ -198,6 +198,20 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
   - Authorization guard posture (`401` unauthenticated, `403` unauthorized) for auth/payment-adjacent surfaces.
 - **Risk + rollback:** risk is environment/dependency readiness for validation pipelines; rollback remains docs-only revert with no auth schema or session migration changes.
 
+
+## 2026-02-28 auth/payment validation rerun (release checklist)
+
+- **Behavior change summary:** none; this rerun only records validation evidence for release auditability.
+- **Validation command outcomes (latest run):**
+  - `npm run lint` failed because the environment is missing `eslint` (`next lint` reported `ESLint must be installed`).
+  - `npm run build` compiled successfully, then failed during page-data collection because Neon database configuration is unset (`No database connection string was provided to neon()`).
+- **Impacted auth/payment flows reviewed:**
+  - Auth session retrieval guard (`GET /api/auth/get-session`) used by payment-adjacent routes.
+  - Authenticated continuity assumptions across billing/credits entrypoints.
+  - Authorization posture (`401` unauthenticated, `403` unauthorized) for auth/payment-adjacent surfaces.
+- **Risks:** validation confidence is gated by local dependency/env readiness (`eslint` package and DB connection string).
+- **Rollback steps:** documentation-only rollback by reverting this commit; no API/schema/session migration rollback is required.
+
 ### Better Auth runtime and adapters
 - `lib/auth.ts` — Better Auth instance, provider config, account-linking hooks, and the canonical server-side session resolver (`getAuthSessionFromHeaders`, `getServerAuthSession`).
 - `app/api/auth/[...nextauth]/route.ts` — Next.js route handler mounted via `toNextJsHandler(auth)`.
