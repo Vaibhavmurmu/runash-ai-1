@@ -1322,8 +1322,8 @@ export function ChatWorkspace() {
 
   return (
     <ChatPageFrame>
-      <div className="flex min-h-[100dvh] flex-col">
-        <div className="sticky top-0 z-50 mb-4 space-y-3">
+      <div className="flex min-h-[100dvh] min-h-0 flex-1 flex-col">
+        <div className="sticky top-0 z-50 mb-3 space-y-2.5 sm:mb-4 sm:space-y-3">
           <ChatInfoBanner
             badge="New"
             message="Unified chat shell is now active with consistent actions and prompt patterns."
@@ -1461,10 +1461,10 @@ export function ChatWorkspace() {
           />
         </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
+      <div className="mx-auto flex min-h-0 w-full flex-1 flex-col gap-4 lg:flex-row lg:items-stretch">
         {isDesktop && leftDrawerOpen ? <div className="w-80 shrink-0">{leftDrawer}</div> : null}
 
-        <div className="min-h-0 min-w-0 flex-1">
+        <div className="min-h-0 min-w-0 flex-1 lg:max-w-5xl xl:max-w-6xl">
           {!isDesktop && leftDrawerOpen ? (
             <>
               <button
@@ -1493,7 +1493,7 @@ export function ChatWorkspace() {
             </>
           ) : null}
 
-          <ChatSurfaceCard className="flex min-h-[100dvh] flex-col overflow-hidden lg:min-h-0 lg:h-full">
+          <ChatSurfaceCard className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <div className="hidden border-b border-zinc-800 px-3 py-2 text-xs text-zinc-400 lg:block sm:px-4">
               <span>Shortcuts: Ctrl/Cmd+[ history • Ctrl/Cmd+] tools • Alt+←/→ toggle drawers.</span>
             </div>
@@ -1594,7 +1594,7 @@ export function ChatWorkspace() {
               </div>
             ) : null}
 
-            <div className="border-t border-zinc-800 p-3 pb-4 sm:p-4">
+            <div className="sticky bottom-0 z-20 border-t border-zinc-800 bg-[#050607]/95 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur sm:p-4 sm:pb-[calc(env(safe-area-inset-bottom)+1rem)]">
               <RunAshChatComposer
                 value={inputValue}
                 onChange={setInputValue}
