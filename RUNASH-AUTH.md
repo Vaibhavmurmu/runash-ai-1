@@ -2,6 +2,14 @@
 
 Last updated: 2026-02
 
+
+## Middleware/admin authorization hardening update (2026-02)
+
+- Middleware public API matching now allowlists only explicit unauthenticated auth endpoints instead of treating the full `/api/auth/**` tree as public.
+- Privileged auth endpoints such as `GET /api/auth/claims` and `GET /api/auth/permissions` now stay behind authenticated session validation at middleware boundary.
+- `requireAdminAuthorization` now enforces an explicit admin-capable role gate (`admin`/`super_admin`) before permission evaluation, preserving response contracts (`401` unauthenticated, `403` unauthorized).
+- No payment request/response contracts or field names were changed by this hardening pass.
+
 ## Admin auth/org operations update (2026-02)
 
 - Added an admin auth/org route inventory with UI coverage mapping at `docs/ADMIN_AUTH_ORG_ROUTE_INVENTORY.md`.
