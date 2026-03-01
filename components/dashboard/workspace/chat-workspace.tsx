@@ -1663,6 +1663,7 @@ export function ChatWorkspace() {
             </div>
           </ChatSurfaceCard>
         </div>
+        </div>
 
         {isDesktop && rightDrawerOpen ? (
           <div className="hidden w-80 shrink-0 lg:block">{rightDrawer}</div>
