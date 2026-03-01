@@ -27,3 +27,14 @@ Reusable playbooks for contributors and coding agents.
 - `auth-payment-change-workflow.md`
 - `docs-review-workflow.md`
 
+## Codex skill installation notes
+
+- Codex user-installed skills are expected under: `/opt/codex/skills`.
+- In this environment, only system skills are currently present under `/opt/codex/skills/.system`.
+- Attempted installs:
+  - `npx skills add better-auth/skills`
+  - `npx skills add resend/resend-skills`
+  - `npx skills add resend/email-best-practices`
+  - `npx add-mcp https://resend.com/docs/mcp`
+- Result: install commands returned `npm ERR! code E403` from the npm registry, so no additional skills/MCP entries were added.
+- Restart note: **Restart Codex to pick up new skills.**
