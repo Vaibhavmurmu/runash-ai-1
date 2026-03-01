@@ -11,7 +11,6 @@ const optionalTrimmedString = (maxLength: number) =>
 export const waitlistJoinSchema = z.object({
   email: z.string().trim().email("Please enter a valid email address").max(255).transform((value) => value.toLowerCase()),
   name: optionalTrimmedString(100),
-  company: optionalTrimmedString(120),
   useCase: optionalTrimmedString(500),
 })
 

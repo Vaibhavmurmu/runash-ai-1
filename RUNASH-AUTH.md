@@ -54,11 +54,25 @@ Last updated: 2026-02
 - Legacy response fields (`message`, `user`) are preserved via compatibility mapping for existing frontend callers.
 - Signup entrypoints (`app/get-started/page.tsx`, `components/auth/register-form.tsx`, and `components/auth/better-sign-up-card.tsx`) now converge on `/api/auth/register`.
 
+## Better Auth canonical signup/session path update (2026-02)
+
+- Better Auth email/password remains the canonical signup provider in `lib/auth.ts` with explicit verification-required behavior (`requireEmailVerification=true`, verification email dispatch on signup, and no auto sign-in before/after verification).
+- `POST /api/auth/register` continues to call Better Auth server-side (`auth.api.signUpEmail`) and now determines verification-required messaging directly from Better Auth user verification state while preserving legacy response fields (`message`, `user`).
+- Signup UI entrypoints (`app/get-started/page.tsx`, `components/auth/register-form.tsx`, `components/auth/better-sign-up-card.tsx`) remain unified through `registerWithUnifiedRoute` -> `/api/auth/register`.
+- Protected API session reads remain centralized through `getAuthSessionFromHeaders` / `getServerAuthSession` from `lib/auth.ts` (via direct import or `lib/auth/session` compatibility wrapper).
+
 ## Email verification delivery hardening update (2026-02)
 
 - Better Auth email verification callbacks now normalize all verification links to the canonical endpoint (`/api/auth/verify-email`) before dispatch.
 - Verification emails now route through the safety-aware `lib/email.ts` utility so allowlist/sink/dry-run controls and provider safeguards are consistently applied.
 - Signup UI copy explicitly states that email/password accounts require verification before first login to reduce onboarding ambiguity.
+
+## Email verification flow consistency update (2026-02)
+
+- Better Auth remains the single source of truth for email verification token generation and verification (`auth.api.sendVerificationEmail` + `auth.api.verifyEmail`) with `/api/auth/verify-email` retained as the canonical verifier endpoint.
+- `POST /api/auth/resend-verification` now uses centralized auth rate-limit policy (`AUTH_ENDPOINT_RATE_LIMITS["resend-verification"]`) and always returns the same non-enumerating response message for unknown or already-verified emails.
+- Resend verification delivery continues through Better Auth's verification callback path (which is wired to the Resend-backed email provider abstraction in `lib/email.ts`) and now normalizes callback URL handling through shared auth email URL utilities.
+- Signup UI now surfaces an in-flow verification notice (`"Check your email to verify your account"`) when verification is required, instead of immediately navigating away as if account access was active.
 
 ## Get-started onboarding flow update (2026-02)
 
@@ -162,6 +176,18 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 - **Risk assessment:** low behavior risk; primary execution risk remains environment-dependent build failures when required database configuration is missing.
 - **Rollback plan:** revert documentation-only commit; no runtime rollback or credential/session migration is required.
 
+## 2026-02-28 auth/payment validation execution note
+
+- **Behavior change summary:** no auth runtime/contract changes were introduced.
+- **Validation command outcomes captured for release auditability:**
+  - `npm run lint` failed in this environment because `eslint` is not installed.
+  - `npm run build` reached successful compilation but failed during page-data collection due to missing database env (`No database connection string was provided to neon()`).
+- **Impacted auth/payment flows reviewed:**
+  - Session retrieval/validation path (`GET /api/auth/get-session`) that protects payment-adjacent routes.
+  - Authenticated access continuity assumptions for billing/credits entrypoints.
+  - Authorization guard posture (`401` unauthenticated, `403` unauthorized) for auth/payment-adjacent surfaces.
+- **Risk + rollback:** risk is environment/dependency readiness for validation pipelines; rollback remains docs-only revert with no auth schema or session migration changes.
+
 ### Better Auth runtime and adapters
 - `lib/auth.ts` — Better Auth instance, provider config, account-linking hooks, and the canonical server-side session resolver (`getAuthSessionFromHeaders`, `getServerAuthSession`).
 - `app/api/auth/[...nextauth]/route.ts` — Next.js route handler mounted via `toNextJsHandler(auth)`.
@@ -201,7 +227,7 @@ Client/UI
 
 ### Planned (post-baseline, non-blocking)
 
-- Convert `db/migrations/0000_auth_neon_better_auth_baseline.sql` from placeholder to executable migration once canonical Drizzle auth tables are finalized.
+- Keep `db/migrations/0000_auth_neon_better_auth_baseline.sql` immutable post-release and introduce additive follow-up migrations for any auth table evolution.
 - Retire legacy NextAuth compatibility fallback after rollout stability windows complete.
 
 ## 2) Implemented auth routes (API)
@@ -261,7 +287,7 @@ Note: middleware still treats `/signup` as public, but no `app/signup/page.tsx` 
 
 - Protected routes are evaluated in `middleware.ts`.
 - If no valid auth session is resolved, browser routes redirect to `/login`; API routes return `401`.
-- Privileged route prefixes are excluded from the public allowlist: seller surfaces (`/seller/**`, `/api/seller/**`, `/api/v1/seller/**`) and admin surfaces (`/admin/**`, `/ecommerce/admin/**`, `/api/admin/**`) always require authenticated role-aware checks.
+- Privileged route prefixes are excluded from the public allowlist: seller surfaces (`/seller/**`, `/api/seller/**`, `/api/v1/seller/**`) and admin surfaces (`/admin/**`, `/ecommerce/admin/**`, `/api/admin/**`) always require authenticated role-aware checks. Interactive app surfaces (`/chat`, `/runash-chat`, `/live`) are also treated as protected routes and require a valid session.
 - Session checks rely on Better Auth session cookies, middleware validation through `/api/auth/get-session`, and `auth.api.getSession` in server helpers/accessors.
 - Session minting for passkey and magic-link paths now uses the canonical auth secret resolver in `lib/auth.ts`, keeping a single source-of-truth secret for Better Auth runtime and custom JWT issuance.
 - Legacy NextAuth cookie parsing remains available in session accessor fallback paths when feature-flagged compatibility fallback is enabled.
@@ -636,6 +662,19 @@ Rollback:
 2. If needed, set `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK=true`.
 3. Keep schema changes in place (non-breaking additive migration); no destructive rollback required.
 4. Re-validate auth session endpoints and monitor `auth.legacy_fallback.used` for expected recovery.
+
+### Operator rollback commands (schema-only emergency path)
+
+```sql
+DROP TABLE IF EXISTS auth_one_time_transfer_tokens;
+DROP TABLE IF EXISTS auth_session_registry;
+DROP TABLE IF EXISTS auth_session_identities;
+DROP TABLE IF EXISTS verification_tokens;
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS accounts;
+```
+
+Use this destructive path only when the application rollback cannot restore service and after pausing auth writes. Because the baseline migration is additive, application rollback without table drops remains the default and safer strategy.
 
 
 ## Wallet/Link Authentication Hardening

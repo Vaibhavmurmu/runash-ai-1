@@ -19,6 +19,7 @@ export function BetterSignUpCard() {
   const [passwordConfirmation, setPasswordConfirmation] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [verificationNotice, setVerificationNotice] = useState<string | null>(null)
   const router = useRouter()
 
   const passwordStrength = Math.min(100, Math.max(0, password.length * 12.5))
@@ -27,10 +28,11 @@ export function BetterSignUpCard() {
     <Card className="max-w-md">
       <CardHeader>
         <CardTitle className="text-lg md:text-xl">Sign Up</CardTitle>
-        <CardDescription className="text-xs md:text-sm">Create your account with secure email/password auth. Email verification is required before your first login.</CardDescription>
+        <CardDescription className="text-xs md:text-sm">Create your account with secure email/password auth. You must verify your email before you can sign in and use protected features.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {error ? <CardAlert severity="danger" title="Sign-up failed" description={error} /> : null}
+        {verificationNotice ? <CardAlert severity="success" title="Verify your account" description={verificationNotice} /> : null}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="grid gap-1.5">
@@ -72,6 +74,7 @@ export function BetterSignUpCard() {
           disabled={loading || password !== passwordConfirmation}
           onClick={async () => {
             setError(null)
+            setVerificationNotice(null)
             setLoading(true)
 
             try {
@@ -88,8 +91,15 @@ export function BetterSignUpCard() {
               }
 
               const isVerificationPending =
-                registration.user?.emailVerified === false || /verify your account/i.test(registration.message)
-              toast.success(isVerificationPending ? "Check your inbox to verify your email before logging in." : registration.message)
+                registration.user?.emailVerified === false || /verify your (account|email)/i.test(registration.message)
+              if (isVerificationPending) {
+                const pendingMessage = "Check your email to verify your account"
+                setVerificationNotice(pendingMessage)
+                toast.success(pendingMessage)
+                return
+              }
+
+              toast.success(registration.message)
               router.push("/login")
             } catch (error) {
               setError("Unable to create account")
@@ -101,6 +111,7 @@ export function BetterSignUpCard() {
         >
           {loading ? <Loader2 size={16} className="animate-spin" /> : "Create your account"}
         </Button>
+        <p className="text-center text-xs text-muted-foreground">We'll send a verification link to your inbox right after sign up.</p>
       </CardContent>
       <CardFooter>
         <p className="w-full border-t py-4 text-center text-xs text-neutral-500">Secured by better-auth</p>

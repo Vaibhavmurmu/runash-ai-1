@@ -7,6 +7,8 @@ Current status:
 - `0000_auth_neon_better_auth_baseline.sql` is the executable baseline for Better Auth tables plus RunAsh session registry tables.
 - `0001_waitlist_entries.sql` provisions `waitlist_entries` for waitlist signups and duplicate-safe email capture.
 - `0002_wallet_link_persistence.sql` provisions RunAsh AI Link wallet persistence tables (cards/link sessions/activity/subscription snapshots/OTP attempts).
+- `0003_accounting_core.sql` + `0004_agent_role_decisions.sql` add accounting and agent decision infrastructure.
+- `0005_waitlist_email_case_insensitive.sql` enforces a case-insensitive unique email index for waitlist duplicate protection.
 
 Operational guidance:
 1. Keep production-safe migration SQL reviewed and idempotent where practical.

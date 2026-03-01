@@ -100,6 +100,21 @@ test("DELETE /api/auth/sessions returns 400 for invalid payload", async () => {
   assert.equal(payload.message, "Invalid request")
 })
 
+
+test("DELETE /api/auth/sessions returns 400 for malformed JSON", async () => {
+  const input = new Request("http://localhost/api/auth/sessions", {
+    method: "DELETE",
+    headers: { "content-type": "application/json" },
+    body: "{",
+  })
+
+  const response = await handleRevokeSessions(input, { id: "user_1" })
+  const payload = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.equal(payload.message, "Invalid request")
+})
+
 test("DELETE /api/auth/sessions returns 401 without authenticated user", async () => {
   const input = new Request("http://localhost/api/auth/sessions", {
     method: "DELETE",

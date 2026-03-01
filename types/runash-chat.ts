@@ -76,6 +76,7 @@ export interface Product {
   isOrganic: boolean
   sustainabilityScore: number
   image: string
+  mediaAssets?: ProductMediaAsset[]
   arModelUrl?: string
   imageHd?: string
   imageThumb?: string
@@ -85,6 +86,17 @@ export interface Product {
   nutritionalInfo?: NutritionalInfo
   supplier?: string
   carbonFootprint?: number
+}
+
+export interface ProductMediaAsset {
+  id?: string
+  type?: "image" | "video" | "model"
+  url: string
+  thumbnailUrl?: string
+  hdUrl?: string
+  alt?: string
+  title?: string
+  metadata?: Record<string, string | number | boolean>
 }
 
 export interface Recipe {

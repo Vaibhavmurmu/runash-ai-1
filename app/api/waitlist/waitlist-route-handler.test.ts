@@ -12,7 +12,6 @@ test("POST /api/waitlist returns 201 and success contract for valid payload", as
     body: JSON.stringify({
       email: "Founders@RunAsh.in",
       name: "RunAsh Founder",
-      company: "RunAsh",
       useCase: "Streaming ops automation",
     }),
   })
@@ -25,7 +24,6 @@ test("POST /api/waitlist returns 201 and success contract for valid payload", as
         id: "42",
         email: input.email,
         name: input.name ?? null,
-        company: input.company ?? null,
         useCase: input.useCase ?? null,
         createdAt: new Date().toISOString(),
       },
@@ -81,7 +79,6 @@ test("POST /api/waitlist returns duplicate response contract for existing email"
         id: "1",
         email: "duplicate@runash.in",
         name: null,
-        company: null,
         useCase: "Duplicate submit",
         createdAt: new Date().toISOString(),
       },
@@ -94,4 +91,29 @@ test("POST /api/waitlist returns duplicate response contract for existing email"
   assert.equal(payload.success, false)
   assert.equal(payload.error.code, "WAITLIST_DUPLICATE")
   assert.equal(payload.message, "This email is already on the waitlist")
+})
+
+
+test("POST /api/waitlist returns 429 when rate limit is exceeded", async () => {
+  const request = new Request("http://localhost/api/waitlist", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      email: "limited@runash.in",
+      useCase: "Rate-limit test",
+    }),
+  })
+
+  const response = await handleWaitlistPostRequest(request, {
+    enforceRateLimit: async () => ({ success: false, remaining: 0, resetTime: Date.now() + 60_000 }) as never,
+    join: async () => {
+      throw new Error("Should not join when rate limit is exceeded")
+    },
+  })
+
+  const payload = await response.json()
+
+  assert.equal(response.status, 429)
+  assert.equal(payload.success, false)
+  assert.equal(payload.error.code, "RATE_LIMITED")
 })

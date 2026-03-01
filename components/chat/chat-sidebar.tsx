@@ -1,12 +1,13 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { Search, Plus, Trash2 } from "lucide-react"
+import { Search, Plus, Trash2, ChevronDown, ChevronRight, RadioTower, SquarePen } from "lucide-react"
 import type { ChatSession } from "@/types/runash-chat"
 
 interface ChatSidebarProps {
@@ -15,10 +16,26 @@ interface ChatSidebarProps {
   currentSession: ChatSession | null
   onNewChat?: () => void
   onDeleteSession?: (sessionId: string) => void
+  streamId?: string | null
+  activeProjectName?: string | null
+  selectedLibraryItemTitle?: string | null
+  onNavigateToWorkspaceTool?: () => void
 }
 
-export default function ChatSidebar({ sessions, onSessionSelect, currentSession, onNewChat, onDeleteSession }: ChatSidebarProps) {
+export default function ChatSidebar({
+  sessions,
+  onSessionSelect,
+  currentSession,
+  onNewChat,
+  onDeleteSession,
+  streamId,
+  activeProjectName,
+  selectedLibraryItemTitle,
+  onNavigateToWorkspaceTool,
+}: ChatSidebarProps) {
+  const router = useRouter()
   const [searchQuery, setSearchQuery] = useState("")
+  const [workspaceToolsOpen, setWorkspaceToolsOpen] = useState(true)
 
   const fallbackSessions: ChatSession[] = [
     {
@@ -91,6 +108,29 @@ export default function ChatSidebar({ sessions, onSessionSelect, currentSession,
     onDeleteSession?.(sessionId)
   }
 
+  const buildWorkspaceHref = (path: string) => {
+    const params = new URLSearchParams()
+    if (currentSession?.id) {
+      params.set("sessionId", currentSession.id)
+    }
+    if (streamId) {
+      params.set("streamId", streamId)
+    }
+    if (activeProjectName) {
+      params.set("projectName", activeProjectName)
+    }
+    if (selectedLibraryItemTitle) {
+      params.set("libraryItemTitle", selectedLibraryItemTitle)
+    }
+    const query = params.toString()
+    return query ? `${path}?${query}` : path
+  }
+
+  const openWorkspaceTool = (path: string) => {
+    router.push(buildWorkspaceHref(path))
+    onNavigateToWorkspaceTool?.()
+  }
+
   const getSessionIcon = (session: ChatSession) => {
     if (session.context.preferences.businessType) {
       return "🏪"
@@ -126,7 +166,69 @@ export default function ChatSidebar({ sessions, onSessionSelect, currentSession,
 
       <CardContent className="p-0">
         <ScrollArea className="h-[calc(100vh-300px)]">
-          <div className="space-y-2 p-3">
+          <div className="space-y-3 p-3">
+            <section className="rounded-lg border bg-muted/20">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between px-3 py-2 text-left"
+                onClick={() => setWorkspaceToolsOpen((prev) => !prev)}
+                aria-expanded={workspaceToolsOpen}
+              >
+                <span className="text-sm font-medium">Workspace tools</span>
+                {workspaceToolsOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              </button>
+
+              {workspaceToolsOpen ? (
+                <div className="space-y-2 border-t px-3 pb-3 pt-2">
+                  <button
+                    type="button"
+                    className="w-full rounded-md border bg-background p-2 text-left transition-colors hover:bg-muted/60"
+                    onClick={() => openWorkspaceTool("/dashboard/editor")}
+                  >
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <SquarePen className="h-4 w-4" />
+                      Open Editor
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {activeProjectName ? <Badge variant="secondary">Project: {activeProjectName}</Badge> : null}
+                      {selectedLibraryItemTitle ? <Badge variant="secondary">Library: {selectedLibraryItemTitle}</Badge> : null}
+                      {currentSession?.id ? <Badge variant="outline">Session linked</Badge> : <Badge variant="outline">No session</Badge>}
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="w-full rounded-md border bg-background p-2 text-left transition-colors hover:bg-muted/60"
+                    onClick={() => openWorkspaceTool("/dashboard/streaming-studio")}
+                  >
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <RadioTower className="h-4 w-4" />
+                      Open Streaming Studio
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {streamId ? <Badge variant="secondary">Stream available</Badge> : <Badge variant="outline">No active stream</Badge>}
+                      {selectedLibraryItemTitle ? <Badge variant="outline">Library linked</Badge> : null}
+                      {currentSession?.id ? <Badge variant="outline">Session linked</Badge> : null}
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="w-full rounded-md border bg-background p-2 text-left transition-colors hover:bg-muted/60"
+                    onClick={() => openWorkspaceTool("/dashboard/library")}
+                  >
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Search className="h-4 w-4" />
+                      Open Library
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {selectedLibraryItemTitle ? <Badge variant="secondary">Selected: {selectedLibraryItemTitle}</Badge> : <Badge variant="outline">Browse items</Badge>}
+                    </div>
+                  </button>
+                </div>
+              ) : null}
+            </section>
+
             {filteredSessions.map((session) => (
               <div
                 key={session.id}

@@ -26,6 +26,14 @@ This document is limited to payment/business implementation policy. Generic cont
 - Auth signup flow was unified through Better Auth server registration (`auth.api.signUpEmail`) with compatibility response mapping; no payment route fields or business payment contracts changed.
 - Incident and rollback runbook reference for auth/org config operations: `docs/AUTH_ORG_INCIDENT_RUNBOOK.md`.
 
+
+## 2026-02 editor render reliability hardening note (non-payment contract change)
+
+- Change scope: editor render job reliability and security hardening (`/api/editor/render-jobs` rate limits, cancel semantics, worker timeout/retry, and log redaction).
+- Payment/auth impact assessment: no payment contract fields, checkout/webhook schemas, or auth/payment API signatures were modified.
+- Risk + rollback: low-to-medium operational risk (queue behavior changes). Rollback by reverting editor render job API/worker patch if cancellation or queue throughput regressions appear.
+- Security posture: provider request/response operational logs are redacted to prevent sensitive token/prompt leakage in shared logs.
+
 ## Compatibility, risk, and rollback
 
 - Backward compatibility is mandatory for payment routes unless a versioned migration is explicitly introduced.
@@ -297,6 +305,35 @@ Business controls preserved:
 - Sensitive payment/auth data is not introduced into logs/event payloads.
 - Checkout finalization still requires explicit confirmation pathing in checkout skill gates.
 
+## 2026-02-27 Editor render worker reliability note (non-payment)
+
+- Added dedicated editor render queue worker orchestration (`editor_render_jobs`) in service-layer code.
+- **Payment/auth impact:** none. Payment API contracts, checkout state machine, and auth/session semantics are unchanged.
+- **Security posture:** worker error persistence remains sanitized and excludes secrets/tokens.
+
+### Risk / rollback
+- **Risk:** render queue may accumulate if model/storage dependencies are unavailable.
+- **Mitigation:** bounded retries with attempt tracking and non-sensitive error persistence in job result metadata.
+- **Rollback:** disable the worker invocation/scheduler and continue queue-only behavior while preserving enqueue/list APIs.
+
+## 2026-02 marketing route alias note (non-contract)
+
+- Public navigation aliases now map `/payment/business` -> `/enterprises` and `/payment/startup` -> `/partner` to align top-level marketing information architecture.
+- This is a presentation-layer route alias only; startup/business payment API signatures, payment field names, checkout contracts, and webhook contracts remain unchanged.
+- Rollback: remove redirect aliases in `next.config.mjs` to restore legacy public URL paths without touching payment execution logic.
+
+## 2026-02-27 Editor render API hardening note (non-payment)
+
+- Hardened editor render-job APIs with per-user/project throttling plus active-queue quotas to protect shared infrastructure.
+- Added enqueue policy gates for max duration, max resolution, and model-tier allowlist checks before jobs enter queue processing.
+- Added explicit cancellation propagation in worker stages to prevent expensive post-cancel processing and stale result writeback.
+- **Payment/auth impact:** none. Checkout contracts, payment fields, and auth session handling are unchanged.
+
+### Risk / rollback
+- **Risk:** stricter quotas can reject bursts for high-volume creator workflows.
+- **Mitigation:** all limits are environment-configurable and surfaced with stable API error codes.
+- **Rollback:** relax or disable quota/policy env limits while preserving API shape and worker behavior.
+
 ## 2026-02 Settings billing contract governance update (billing/invoice/credits/referrals)
 
 - Added a unified settings architecture/API contract source at `docs/SETTINGS_ARCHITECTURE_API_CONTRACT.md` to standardize business and engineering interpretation of settings billing surfaces.
@@ -347,4 +384,5 @@ For every phase, use this rollback sequence:
 4. Reconcile partial writes/events before retrying rollout.
 
 Backward compatibility remains mandatory: existing billing/payment field names and API signatures are preserved throughout all phases unless versioned migration notes are explicitly approved.
+
 

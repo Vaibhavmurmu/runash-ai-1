@@ -371,13 +371,13 @@ export function EnhancedDashboard() {
         title: "Chat",
         description: "Start a new assistant conversation or continue your recent session context.",
         primaryLabel: "New Chat",
-        primaryHref: "/dashboard/runash-chat",
+        primaryHref: "/dashboard/chat",
         continuityLabel: recentChatSession?.id
           ? `Continue: ${recentChatSession.title ?? "Recent session"}`
           : "Continue recent session",
         continuityHref: recentChatSession?.id
-          ? `/dashboard/runash-chat?sessionId=${encodeURIComponent(recentChatSession.id)}`
-          : "/dashboard/runash-chat",
+          ? `/dashboard/chat?sessionId=${encodeURIComponent(recentChatSession.id)}`
+          : "/dashboard/chat",
         continuityDisabled: !recentChatSession?.id,
         lastUpdatedLabel: formatLastUpdated(recentChatSession?.created_at),
         icon: MessageSquare,

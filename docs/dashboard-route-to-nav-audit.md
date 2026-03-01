@@ -30,7 +30,10 @@ This audit covers route destinations referenced by:
 | `/dashboard/feedback` | Sidebar nav | ✅ Ready | Route exists. |
 | `/agents/dashboard` | Sidebar nav | ⚠️ Coming soon | No `app/agents/dashboard/page.tsx`; rendered disabled. |
 | `/automation` | Sidebar nav + quick actions | ✅ Ready | Route exists. |
-| `/dashboard/runash-chat` | Sidebar nav + quick actions | ✅ Ready | Route exists. |
+| `/dashboard/chat` | Sidebar nav + quick actions | ✅ Ready | Canonical chat workspace route. |
+| `/dashboard/runash-chat` | Legacy chat entry point | ✅ Ready | Redirects to `/dashboard/chat`. |
+| `/chat` | Legacy chat entry point | ✅ Ready | Redirects to `/dashboard/chat`. |
+| `/runash-chat` | Legacy chat entry point | ✅ Ready | Redirects to `/dashboard/chat`. |
 | `/dashboard/editor` | Sidebar nav + quick actions | ✅ Ready | Route exists. |
 | `/dashboard/seller-studio` | Sidebar nav | ✅ Ready | Route exists. |
 | `/dashboard/store` | Sidebar nav + quick actions | ✅ Ready | Route exists. |
@@ -45,3 +48,10 @@ This audit covers route destinations referenced by:
 
 - `lib/navigation/dashboard-route-audit.ts` is the source of truth used by sidebar/navbar route guards.
 - A regression test ensures all required ready routes resolve to valid app pages.
+
+
+## Canonical route mapping
+
+- Product label: **Chat**
+- Primary route: `/dashboard/chat`
+- Legacy redirects: `/dashboard/runash-chat`, `/chat`, `/runash-chat` → `/dashboard/chat`

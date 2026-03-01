@@ -86,7 +86,7 @@ function buildNavigationConfig(baseConfig: DashboardNavigationConfig, counts: Da
       updatedMetadata.badgeCount = counts.pendingAutomation
     }
 
-    if (item.href === "/payments") {
+    if (item.href === "/dashboard/billing") {
       updatedMetadata.badgeCount = counts.alerts
     }
 
@@ -101,8 +101,12 @@ function buildNavigationConfig(baseConfig: DashboardNavigationConfig, counts: Da
         return withRouteMatcher({ ...item, metadata }, pathPrefix("/automation", ["/workflows"]))
       case "/workflows":
         return withRouteMatcher({ ...item, metadata }, pathPrefix("/workflows", ["/dashboard/streaming-studio", "/dashboard/editor", "/dashboard/seller-studio"]))
-      case "/payments":
-        return withRouteMatcher({ ...item, metadata }, pathPrefix("/payments", ["/dashboard/billing", "/payment/dashboard"]))
+      case "/dashboard/billing":
+        return withRouteMatcher({ ...item, metadata }, pathPrefix("/dashboard/billing", ["/payment/dashboard", "/dashboard/usage", "/dashboard/refer"]))
+      case "/dashboard/general":
+        return withRouteMatcher({ ...item, metadata }, pathPrefix("/dashboard/general", ["/dashboard/profile", "/dashboard/preferences", "/dashboard/connections"]))
+      case "/dashboard/members":
+        return withRouteMatcher({ ...item, metadata }, pathPrefix("/dashboard/members", ["/dashboard/api"]))
       default:
         return { ...item, metadata }
     }

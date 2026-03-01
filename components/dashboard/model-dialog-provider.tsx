@@ -4,9 +4,42 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { usePathname } from "next/navigation"
 import { ModelDialogCard } from "@/components/dashboard/model-dialog-card"
 import { useModelDialog } from "@/lib/hooks/use-model-dialog"
-import type { ModelDialogContract, ModelDialogRunHistoryItem, ModelDialogSseEvent, ModelExecutionState } from "@/lib/types/model-dialog"
+import { listModelCatalog } from "@/lib/ai/provider-registry"
+import type {
+  ModelDialogContract,
+  ModelDialogErrorCode,
+  ModelDialogGenerationMode,
+  ModelDialogModeContext,
+  ModelDialogRunHistoryItem,
+  ModelDialogSseEvent,
+  ModelExecutionState,
+} from "@/lib/types/model-dialog"
 
-type DialogExecutionMode = "generic" | "image-generation" | "video-generation" | "live-stream-assist" | "previous-live-optimization"
+type DialogExecutionMode = ModelDialogGenerationMode
+
+type ContextualExecutionMode =
+  | "live-view"
+  | "previous-live-view"
+  | "video-on-demand"
+  | "live-streaming"
+  | "stream"
+  | "scheduling"
+
+const EMPTY_MODE_CONTEXT: ModelDialogModeContext = {
+  datasetId: "",
+  librarySource: "",
+  filters: "",
+  snapshotTime: "",
+}
+
+const EMPTY_MODE_CONTEXTS: Record<ContextualExecutionMode, ModelDialogModeContext> = {
+  "live-view": { ...EMPTY_MODE_CONTEXT },
+  "previous-live-view": { ...EMPTY_MODE_CONTEXT },
+  "video-on-demand": { ...EMPTY_MODE_CONTEXT },
+  "live-streaming": { ...EMPTY_MODE_CONTEXT },
+  stream: { ...EMPTY_MODE_CONTEXT },
+  scheduling: { ...EMPTY_MODE_CONTEXT },
+}
 
 function resolveExecutionMode(payload?: ModelDialogContract["payload"]): DialogExecutionMode {
   if (!payload?.generationMode) {
@@ -14,6 +47,24 @@ function resolveExecutionMode(payload?: ModelDialogContract["payload"]): DialogE
   }
 
   return payload.generationMode
+}
+
+function resolveModeContexts(payload?: ModelDialogContract["payload"]): Record<ContextualExecutionMode, ModelDialogModeContext> {
+  return {
+    "live-view": { ...EMPTY_MODE_CONTEXT, ...(payload?.liveViewContext ?? {}) },
+    "previous-live-view": { ...EMPTY_MODE_CONTEXT, ...(payload?.previousLiveViewContext ?? {}) },
+    "video-on-demand": { ...EMPTY_MODE_CONTEXT, ...(payload?.videoOnDemandContext ?? {}) },
+    "live-streaming": { ...EMPTY_MODE_CONTEXT, ...(payload?.liveStreamingContext ?? {}) },
+    stream: { ...EMPTY_MODE_CONTEXT, ...(payload?.streamContext ?? {}) },
+    scheduling: { ...EMPTY_MODE_CONTEXT, ...(payload?.schedulingContext ?? {}) },
+  }
+}
+
+function appendContextParams(prefix: string, context: ModelDialogModeContext, params: URLSearchParams) {
+  params.set(`${prefix}DatasetId`, context.datasetId?.trim() ?? "")
+  params.set(`${prefix}LibrarySource`, context.librarySource?.trim() ?? "")
+  params.set(`${prefix}Filters`, context.filters?.trim() ?? "")
+  params.set(`${prefix}SnapshotTime`, context.snapshotTime?.trim() ?? "")
 }
 
 interface DashboardModelDialogContextValue {
@@ -27,6 +78,25 @@ const BASE_MODEL = {
   name: "RunAsh Model Router",
   provider: "RunAsh AI",
   status: "ready" as const,
+}
+
+
+
+type ModelDialogResponseEnvelope = {
+  requestId?: string
+  status?: "completed" | "accepted" | "failed"
+  output?: unknown
+  error?: {
+    code?: ModelDialogErrorCode
+    message?: string
+  } | null
+}
+
+function parseModelDialogError(payload: ModelDialogSseEvent | ModelDialogResponseEnvelope) {
+  const code = ("errorCode" in payload ? payload.errorCode : payload.error?.code) ?? null
+  const message = ("errorMessage" in payload ? payload.errorMessage : payload.error?.message) ?? null
+
+  return { code, message }
 }
 
 function createExecutionRequestId() {
@@ -52,13 +122,23 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
   const [streamId, setStreamId] = useState("")
   const [recordingId, setRecordingId] = useState("")
   const [assetId, setAssetId] = useState("")
+  const [modeContexts, setModeContexts] = useState<Record<ContextualExecutionMode, ModelDialogModeContext>>(EMPTY_MODE_CONTEXTS)
   const [executionState, setExecutionState] = useState<ModelExecutionState>("idle")
   const [streamingMessage, setStreamingMessage] = useState<string>("")
+  const [errorCode, setErrorCode] = useState<ModelDialogErrorCode | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [responseOutput, setResponseOutput] = useState("")
   const [elapsedMs, setElapsedMs] = useState(0)
   const [requestId, setRequestId] = useState<string | null>(null)
   const [recentRuns, setRecentRuns] = useState<ModelDialogRunHistoryItem[]>([])
+  const [selectedModelId, setSelectedModelId] = useState<string>("gpt-4o-mini")
+
+  const modelCatalog = useMemo(() => listModelCatalog(), [])
+  const selectedCatalogEntry = useMemo(
+    () => modelCatalog.find((entry) => entry.id === selectedModelId) ?? null,
+    [modelCatalog, selectedModelId],
+  )
+
   const eventSourceRef = useRef<EventSource | null>(null)
   const tickTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startedAtRef = useRef<number>(0)
@@ -79,6 +159,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
     stopExecutionTracking()
     setExecutionState("idle")
     setStreamingMessage("")
+    setErrorCode(null)
     setErrorMessage(null)
     setResponseOutput("")
     setElapsedMs(0)
@@ -93,8 +174,11 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
       setStreamId("")
       setRecordingId("")
       setAssetId("")
+      setModeContexts(EMPTY_MODE_CONTEXTS)
       return
     }
+
+    setSelectedModelId(activeModelDialog.model.modelId)
 
     const payload = activeModelDialog.payload
     setExecutionMode(resolveExecutionMode(payload))
@@ -102,7 +186,21 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
     setStreamId(payload?.streamId ?? "")
     setRecordingId(payload?.recordingId ?? "")
     setAssetId(payload?.assetId ?? payload?.mediaAssetId ?? "")
+    setModeContexts(resolveModeContexts(payload))
   }, [activeModelDialog])
+
+  const updateModeContext = useCallback(
+    (modeKey: ContextualExecutionMode, field: keyof ModelDialogModeContext, value: string) => {
+      setModeContexts((previous) => ({
+        ...previous,
+        [modeKey]: {
+          ...previous[modeKey],
+          [field]: value,
+        },
+      }))
+    },
+    [],
+  )
 
   const openFromTrigger = useCallback(
     (payload: ModelDialogContract, trigger?: HTMLElement | null) => {
@@ -160,7 +258,9 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
       }
 
       if (payload.state === "failed") {
-        setErrorMessage(payload.message || "Model execution failed.")
+        const structuredError = parseModelDialogError(payload)
+        setErrorCode(structuredError.code)
+        setErrorMessage(structuredError.message || payload.message || "Model execution failed.")
         stopExecutionTracking()
         void loadRecentRuns()
       }
@@ -179,6 +279,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
     setRequestId(nextRequestId)
     setExecutionState("queued")
     setStreamingMessage("Request queued for model execution.")
+    setErrorCode(null)
     setErrorMessage(null)
     setResponseOutput("")
     setElapsedMs(0)
@@ -190,7 +291,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
     }, 250)
 
     const params = new URLSearchParams({
-      modelId: activeModelDialog.model.modelId,
+      modelId: selectedModelId || activeModelDialog.model.modelId,
       input:
         activeModelDialog.payload?.prompt ||
         "Tune generation controls, review context, and execute with the selected model policy.",
@@ -217,6 +318,20 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
       params.set("executionMode", executionMode)
     }
 
+    if (executionMode === "live-view") {
+      appendContextParams("liveViewContext", modeContexts["live-view"], params)
+    } else if (executionMode === "previous-live-view") {
+      appendContextParams("previousLiveViewContext", modeContexts["previous-live-view"], params)
+    } else if (executionMode === "video-on-demand") {
+      appendContextParams("videoOnDemandContext", modeContexts["video-on-demand"], params)
+    } else if (executionMode === "live-streaming") {
+      appendContextParams("liveStreamingContext", modeContexts["live-streaming"], params)
+    } else if (executionMode === "stream") {
+      appendContextParams("streamContext", modeContexts.stream, params)
+    } else if (executionMode === "scheduling") {
+      appendContextParams("schedulingContext", modeContexts.scheduling, params)
+    }
+
     const eventSource = new EventSource(`/api/dashboard/model-dialog/stream?${params.toString()}`)
     eventSourceRef.current = eventSource
 
@@ -228,10 +343,11 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
 
     eventSource.onerror = () => {
       setExecutionState("failed")
+      setErrorCode("MODEL_DIALOG_STREAM_INTERNAL_ERROR")
       setErrorMessage("Streaming connection dropped before completion.")
       stopExecutionTracking()
     }
-  }, [activeModelDialog, assetId, executionMode, handleExecutionEvent, mode, qualityPreset, recordingId, sourceModule, stopExecutionTracking, streamId, temperature])
+  }, [activeModelDialog, assetId, executionMode, handleExecutionEvent, mode, modeContexts, qualityPreset, recordingId, selectedModelId, sourceModule, stopExecutionTracking, streamId, temperature])
 
   const value = useMemo(
     () => ({
@@ -244,6 +360,11 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
   const promptPreview =
     activeModelDialog?.payload?.prompt ??
     "Tune generation controls, review context, and execute with the selected model policy."
+  const dialogModelIdentity = {
+    ...BASE_MODEL,
+    name: selectedCatalogEntry?.label ?? activeModelDialog?.model.displayName ?? BASE_MODEL.name,
+    provider: selectedCatalogEntry?.provider ?? activeModelDialog?.model.provider ?? BASE_MODEL.provider,
+  }
 
   return (
     <DashboardModelDialogContext.Provider value={value}>
@@ -256,11 +377,25 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
             resetExecutionState()
           }
         }}
+
+        model={dialogModelIdentity}
+        modelOptions={modelCatalog.map((entry) => ({ id: entry.id, provider: entry.provider, label: entry.label }))}
+
         model={{
           ...BASE_MODEL,
-          name: activeModelDialog?.model.displayName ?? BASE_MODEL.name,
-          provider: activeModelDialog?.model.provider ?? BASE_MODEL.provider,
+          name:
+            listModelCatalog().find((entry) => entry.id === selectedModelId)?.label ??
+            activeModelDialog?.model.displayName ??
+            BASE_MODEL.name,
+          provider:
+            listModelCatalog().find((entry) => entry.id === selectedModelId)?.provider ??
+            activeModelDialog?.model.provider ??
+            BASE_MODEL.provider,
         }}
+        modelOptions={listModelCatalog().map((entry) => ({ id: entry.id, provider: entry.provider, label: entry.label }))}
+
+        selectedModelId={selectedModelId}
+        onSelectedModelIdChange={setSelectedModelId}
         triggerSource={activeModelDialog?.triggerSource}
         dialogMode={activeModelDialog?.mode}
         executionMode={executionMode}
@@ -275,6 +410,8 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
         onRecordingIdChange={setRecordingId}
         assetId={assetId}
         onAssetIdChange={setAssetId}
+        modeContextByMode={modeContexts}
+        onModeContextChange={updateModeContext}
         temperature={temperature}
         onTemperatureChange={setTemperature}
         mode={mode}
@@ -296,6 +433,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
         responseOutput={responseOutput}
         elapsedMs={elapsedMs}
         requestId={requestId}
+        errorCode={errorCode}
         errorMessage={errorMessage}
         onRun={runModel}
         onSavePreset={closeModelDialog}

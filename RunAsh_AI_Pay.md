@@ -37,12 +37,31 @@ This document is payment-domain specific. For contributor workflow/process polic
 - **Risk assessment:** low product risk because this update is documentation + validation only; primary operational risk is CI/local build interruption when database environment variables are absent.
 - **Rollback plan:** revert this documentation commit if needed; no data migration, no API rollback, and no payment contract rollback required.
 
+## 2026-02-28 validation run (dependency/environment constrained)
+
+- **Behavior change summary:** no payment/auth runtime behavior changes and no contract/schema changes.
+- **Validation commands + outcomes:**
+  - `npm run lint` -> failed because ESLint is not installed in the current dependency state (`ESLint must be installed`).
+  - `npm run build` -> compilation succeeded, then build failed while collecting page data because database connection env was missing (`No database connection string was provided to neon()`).
+- **Impacted payment/auth flows reviewed:**
+  - Auth-gated payment access checks (`/api/auth/get-session`)
+  - Credits checkout entry handoff (`/pricing?intent=credits`)
+  - Settings payment-adjacent action endpoints (`/api/settings/actions/credits-balance`, `/api/settings/actions/refer-earn`, `/api/settings/actions/upgrade-plan`)
+- **Risk + rollback:** operational release risk is environment readiness (missing lint dependency + DB env), not payment contract behavior. Rollback is documentation-only revert; no payment data migration or API rollback required.
+
+## 2026-02-28 auth verification routing consistency (no payment contract changes)
+
+- Better Auth email verification remains canonical for auth-gated payment surfaces; signup + resend verification now consistently use Better Auth verification dispatch and the canonical verifier endpoint (`/api/auth/verify-email`).
+- No payment API request/response fields, billing webhook contracts, checkout signatures, or auth/payment token formats were changed.
+- Risk + rollback: low runtime risk (auth UX/message + resend consistency only). Rollback is app-level revert of auth verification routing/UI updates; no payment migration or contract rollback needed.
+
 ## Auth dependency notes for payment flows
 
 - OTP email login verification now mints canonical auth sessions and secure Better Auth cookies for `purpose=login`; non-login OTP purposes remain verification-only.
 - This auth-session alignment does not change payment API contracts, webhook payloads, or billing field names.
 - Payment-linked auth messaging uses the canonical provider module (`lib/email-provider.ts`) and deterministic provider selection (`EMAIL_PROVIDER=smtp|resend`).
 - Protected payment flows rely on Better Auth session validation via `/api/auth/get-session` and canonical Better Auth session cookies.
+- Better Auth signup verification emails now always resolve to the canonical verification endpoint (`/api/auth/verify-email`) and use safety-aware auth email delivery utilities (`lib/email.ts` -> `lib/email-provider.ts`) to preserve secure, auditable routing.
 - Legacy NextAuth cookie compatibility remains temporary during migration windows to avoid lockouts.
 - RBAC authorization remains aligned with canonical `viewer` / `operator` / `admin` capabilities with compatibility mapping where still required.
 - Middleware and seller/admin route guards enforce role-aware authorization server-side with explicit `401 Unauthorized` (missing session) and `403 Forbidden` (insufficient role) behavior for payment/auth-adjacent surfaces.
@@ -611,6 +630,7 @@ Risks and rollback:
 3. If negotiation-gate blocks expected sandbox checkouts, temporarily disable deal-id checkout enforcement in `services/agent-orchestration-service.ts` and re-enable after settlement data integrity validation.
 
 
+
 ## 2026-02 Settings billing contract expansion (backward-compatible)
 
 Expanded the Settings Billing contract surface with dedicated endpoints that preserve stable payload keys consumed by the Settings UI cards.
@@ -667,3 +687,4 @@ Standardized settings action/billing error payloads to include a shared field-ma
 2. Migration path remains additive: deploy schema + backfills, then switch settings endpoints to canonical projections.
 3. Rollback path is application-first with feature-flag gating for new billing settings mutations while keeping additive schema intact.
 4. Reconciliation parity checks are required before and after rollback to ensure invoice/credit/referral counters remain consistent.
+

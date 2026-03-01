@@ -13,6 +13,7 @@ export const authSchemaTables = {
   users: {
     table: "users",
     fields: ["id", "name", "email", "email_verified", "image", "created_at", "updated_at"],
+    indexes: ["idx_users_email_unique_not_null"],
   },
   accounts: {
     table: "accounts",
@@ -31,18 +32,26 @@ export const authSchemaTables = {
       "created_at",
       "updated_at",
     ],
+    indexes: ["idx_accounts_user_id", "idx_accounts_provider_account"],
+    uniqueConstraints: ["provider_id,account_id"],
   },
   sessions: {
     table: "sessions",
     fields: ["id", "user_id", "token", "expires_at", "ip_address", "user_agent", "created_at", "updated_at"],
+    indexes: ["idx_sessions_user_id", "idx_sessions_expires_at"],
+    uniqueConstraints: ["token"],
   },
   verificationTokens: {
     table: "verification_tokens",
     fields: ["id", "identifier", "value", "expires_at", "created_at", "updated_at"],
+    indexes: ["idx_verification_tokens_identifier", "idx_verification_tokens_expires_at"],
+    uniqueConstraints: ["identifier,value"],
   },
   authSessionIdentities: {
     table: "auth_session_identities",
     fields: ["id", "user_id", "linked_user_id", "linked_at", "created_at"],
+    indexes: ["idx_auth_session_identities_user_id", "idx_auth_session_identities_linked_user_id"],
+    uniqueConstraints: ["user_id"],
   },
   authSessionRegistry: {
     table: "auth_session_registry",
@@ -61,10 +70,18 @@ export const authSchemaTables = {
       "expires_at",
       "rotation_due_at",
     ],
+    indexes: [
+      "idx_auth_session_registry_user_last_seen",
+      "idx_auth_session_registry_token_hash",
+      "idx_auth_session_registry_status_expires",
+    ],
+    uniqueConstraints: ["user_id,scope,id"],
   },
   authOneTimeTransferTokens: {
     table: "auth_one_time_transfer_tokens",
     fields: ["id", "session_id", "token_hash", "source_domain", "target_domain", "consumed_at", "expires_at", "created_at"],
+    indexes: ["idx_auth_transfer_tokens_hash", "idx_auth_transfer_tokens_session_id", "idx_auth_transfer_tokens_expires_at"],
+    uniqueConstraints: ["token_hash"],
   },
 } as const
 

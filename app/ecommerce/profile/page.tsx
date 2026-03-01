@@ -1,212 +1,128 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { User, Lock, Bell, MapPin, CreditCard, LogOut } from 'lucide-react';
+import { useProfileData } from '@/hooks/use-commerce-data';
+import { Loader2, Save } from 'lucide-react';
+
+type ProfileForm = {
+  name: string;
+  username: string;
+  bio: string;
+  location: string;
+  website: string;
+};
 
 export default function ProfilePage() {
-  const [activeTab, setActiveTab] = useState('profile');
+  const { data, loading, error, reload } = useProfileData();
+  const [form, setForm] = useState<ProfileForm>({ name: '', username: '', bio: '', location: '', website: '' });
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!data) return;
+    setForm({
+      name: String(data.name ?? ''),
+      username: String(data.username ?? ''),
+      bio: String(data.bio ?? ''),
+      location: String(data.location ?? ''),
+      website: String(data.website ?? ''),
+    });
+  }, [data]);
+
+  const onSave = async () => {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const response = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+
+      const payload = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        throw new Error(payload.message ?? 'Failed to update profile');
+      }
+
+      setMessage('Profile updated successfully.');
+      await reload();
+    } catch (saveError) {
+      setMessage(saveError instanceof Error ? saveError.message : 'Failed to update profile');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading profile...
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return <div className="container mx-auto px-4 py-8 text-red-600">{error}</div>;
+  }
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
+      <div className="container mx-auto space-y-6 px-4 py-8">
+        <div>
           <h1 className="text-3xl font-bold">My Account</h1>
-          <p className="text-muted-foreground mt-2">Manage your profile and preferences</p>
+          <p className="mt-2 text-muted-foreground">Manage your commerce profile and checkout details.</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          {[
-            { label: 'Total Orders', value: '24', icon: '📦' },
-            { label: 'Loyalty Points', value: '2,450', icon: '⭐' },
-            { label: 'Saved Addresses', value: '3', icon: '📍' },
-            { label: 'Payment Methods', value: '2', icon: '💳' },
-          ].map((stat) => (
-            <Card key={stat.label} className="p-4 space-y-2">
-              <p className="text-3xl">{stat.icon}</p>
-              <p className="text-sm text-muted-foreground">{stat.label}</p>
-              <p className="text-2xl font-bold">{stat.value}</p>
-            </Card>
-          ))}
-        </div>
+        <Card className="space-y-4 p-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <Badge className="bg-orange-500/10 text-orange-600">Profile</Badge>
+            <p className="text-sm text-muted-foreground">Keep this information updated for faster checkout.</p>
+          </div>
 
-        <Card className="p-6">
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="profile" className="gap-2">
-                <User className="h-4 w-4" />
-                <span className="hidden sm:inline">Profile</span>
-              </TabsTrigger>
-              <TabsTrigger value="addresses" className="gap-2">
-                <MapPin className="h-4 w-4" />
-                <span className="hidden sm:inline">Addresses</span>
-              </TabsTrigger>
-              <TabsTrigger value="payments" className="gap-2">
-                <CreditCard className="h-4 w-4" />
-                <span className="hidden sm:inline">Payments</span>
-              </TabsTrigger>
-              <TabsTrigger value="security" className="gap-2">
-                <Lock className="h-4 w-4" />
-                <span className="hidden sm:inline">Security</span>
-              </TabsTrigger>
-            </TabsList>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="name">Name</Label>
+              <Input id="name" value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="username">Username</Label>
+              <Input id="username" value={form.username} onChange={(event) => setForm((prev) => ({ ...prev, username: event.target.value }))} />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="bio">Bio</Label>
+              <textarea
+                id="bio"
+                rows={4}
+                value={form.bio}
+                onChange={(event) => setForm((prev) => ({ ...prev, bio: event.target.value }))}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="location">Location</Label>
+              <Input id="location" value={form.location} onChange={(event) => setForm((prev) => ({ ...prev, location: event.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="website">Website</Label>
+              <Input id="website" value={form.website} onChange={(event) => setForm((prev) => ({ ...prev, website: event.target.value }))} />
+            </div>
+          </div>
 
-            <TabsContent value="profile" className="space-y-6 mt-6">
-              <div className="space-y-4">
-                <div className="flex items-center gap-4">
-                  <div className="h-20 w-20 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-2xl">
-                    👤
-                  </div>
-                  <div>
-                    <p className="font-semibold">John Doe</p>
-                    <p className="text-sm text-muted-foreground">Member since 2022</p>
-                    <Badge className="mt-2 bg-orange-600">Gold Member</Badge>
-                  </div>
-                </div>
+          {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
 
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-sm font-semibold">Full Name</label>
-                    <Input defaultValue="John Doe" className="mt-1" />
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-sm font-semibold">Email</label>
-                      <Input
-                        defaultValue="john@example.com"
-                        type="email"
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-semibold">Phone</label>
-                      <Input
-                        defaultValue="+1 (555) 123-4567"
-                        className="mt-1"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold">Bio</label>
-                    <textarea
-                      defaultValue="Fashion enthusiast and product reviewer"
-                      className="w-full mt-1 px-3 py-2 bg-muted rounded border border-border/40 text-sm"
-                      rows={3}
-                    />
-                  </div>
-                </div>
-
-                <Button className="bg-orange-600 hover:bg-orange-700">
-                  Save Changes
-                </Button>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="addresses" className="space-y-4 mt-6">
-              {[
-                {
-                  type: 'Home',
-                  address: '123 Main Street, San Francisco, CA 94105',
-                  default: true,
-                },
-                {
-                  type: 'Work',
-                  address: '456 Business Ave, San Francisco, CA 94106',
-                  default: false,
-                },
-              ].map((addr) => (
-                <Card key={addr.type} className="p-4 space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="font-semibold">{addr.type}</p>
-                      <p className="text-sm text-muted-foreground">{addr.address}</p>
-                    </div>
-                    {addr.default && (
-                      <Badge className="bg-orange-600">Default</Badge>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline">
-                      Edit
-                    </Button>
-                    <Button size="sm" variant="outline">
-                      Delete
-                    </Button>
-                  </div>
-                </Card>
-              ))}
-              <Button className="w-full bg-orange-600 hover:bg-orange-700">
-                Add New Address
-              </Button>
-            </TabsContent>
-
-            <TabsContent value="payments" className="space-y-4 mt-6">
-              {[
-                { last4: '4242', brand: 'Visa', exp: '12/25' },
-                { last4: '5555', brand: 'Mastercard', exp: '08/26' },
-              ].map((card) => (
-                <Card key={card.last4} className="p-4 space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="font-semibold">{card.brand}</p>
-                      <p className="text-sm text-muted-foreground">
-                        •••• {card.last4} • Expires {card.exp}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline">
-                      Edit
-                    </Button>
-                    <Button size="sm" variant="outline">
-                      Delete
-                    </Button>
-                  </div>
-                </Card>
-              ))}
-              <Button className="w-full bg-orange-600 hover:bg-orange-700">
-                Add Payment Method
-              </Button>
-            </TabsContent>
-
-            <TabsContent value="security" className="space-y-4 mt-6">
-              <Card className="p-4 space-y-4">
-                <h3 className="font-semibold">Password</h3>
-                <Button variant="outline" className="w-full justify-start gap-2 bg-transparent">
-                  <Lock className="h-4 w-4" />
-                  Change Password
-                </Button>
-              </Card>
-
-              <Card className="p-4 space-y-4">
-                <h3 className="font-semibold">Two-Factor Authentication</h3>
-                <p className="text-sm text-muted-foreground">
-                  Add an extra layer of security to your account
-                </p>
-                <Button variant="outline" className="w-full justify-start gap-2 bg-transparent">
-                  <Bell className="h-4 w-4" />
-                  Enable 2FA
-                </Button>
-              </Card>
-
-              <Card className="p-4 space-y-4 border-red-200 bg-red-500/5">
-                <h3 className="font-semibold text-red-700">Danger Zone</h3>
-                <Button
-                  variant="outline"
-                  className="w-full justify-start gap-2 text-red-600 hover:text-red-700 bg-transparent"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Delete Account
-                </Button>
-              </Card>
-            </TabsContent>
-          </Tabs>
+          <Button onClick={onSave} disabled={saving} className="bg-orange-600 hover:bg-orange-700">
+            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            Save Changes
+          </Button>
         </Card>
       </div>
     </div>
   );
-    }
+}
