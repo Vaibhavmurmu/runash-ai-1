@@ -1,6 +1,10 @@
 import { type NextRequest } from "next/server"
-import { handleRegister } from "./register-route-handler"
+import { auth } from "@/lib/auth"
+import { defaultRegisterHandlerDependencies, handleRegister } from "./register-route-handler"
 
 export async function POST(request: NextRequest): Promise<Response> {
-  return handleRegister(request)
+  return handleRegister(request, {
+    ...defaultRegisterHandlerDependencies,
+    signUpEmail: (args) => auth.api.signUpEmail(args) as ReturnType<typeof defaultRegisterHandlerDependencies.signUpEmail>,
+  })
 }
