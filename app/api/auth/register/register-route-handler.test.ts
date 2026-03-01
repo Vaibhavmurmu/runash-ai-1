@@ -140,5 +140,5 @@ test("POST /api/auth/register forwards callbackURL so Better Auth can send verif
   })
 
   assert.equal(response.status, 201)
-  assert.equal(signUpPayload?.callbackURL, "/login?emailVerified=1")
+  assert.equal(signUpPayload?.callbackURL, "http://localhost:3000/login?emailVerified=1")
 })

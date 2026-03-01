@@ -47,10 +47,23 @@ const publicRoutes = [
   "/waitlist",
 ] as const
 
-const publicApiRoutes = [
-  "/api/auth",
-  "/api/turn-credentials",
-  "/api/users/search", // Public user search
+const publicApiRouteMatchers = [
+  { pattern: /^\/api\/auth\/(signin|signout|callback|csrf|providers|error|verify-request)(?:\/|$)/ },
+  { path: "/api/auth/get-session", type: "exact" },
+  { path: "/api/auth/session", type: "exact" },
+  { path: "/api/auth/refresh", type: "exact" },
+  { path: "/api/auth/siwe/nonce", type: "exact" },
+  { path: "/api/auth/siwe/verify", type: "exact" },
+  { path: "/api/auth/magic-link", type: "prefix" },
+  { path: "/api/auth/phone-otp", type: "exact" },
+  { path: "/api/auth/ott/issue", type: "exact" },
+  { path: "/api/auth/ott/verify", type: "exact" },
+  { path: "/api/auth/google-one-tap/callback", type: "exact" },
+  { path: "/api/auth/anonymous", type: "exact" },
+  { path: "/api/auth/resend-verification", type: "exact" },
+  { path: "/api/auth/sso/check", type: "exact" },
+  { path: "/api/turn-credentials", type: "exact" },
+  { path: "/api/users/search", type: "exact" }, // Public user search
 ] as const
 
 const adminOnlyRoutePrefixes = ["/admin", "/ecommerce/admin", "/api/admin"] as const
@@ -98,7 +111,17 @@ export function evaluateRoleAccess(pathname: string, claims: AuthClaims): { stat
 
 export function resolveAuthDecision(pathname: string) {
   const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + "/"))
-  const isPublicApiRoute = publicApiRoutes.some((route) => pathname.startsWith(route))
+  const isPublicApiRoute = publicApiRouteMatchers.some((matcher) => {
+    if ("pattern" in matcher) {
+      return matcher.pattern.test(pathname)
+    }
+
+    if (matcher.type === "exact") {
+      return pathname === matcher.path
+    }
+
+    return pathname === matcher.path || pathname.startsWith(matcher.path + "/")
+  })
   const isAuthPage = pathname === "/login" || pathname === "/signup" || pathname === "/get-started"
 
   return {
