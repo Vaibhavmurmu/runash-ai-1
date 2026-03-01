@@ -1,6 +1,6 @@
 "use client"
 
-import { type ChangeEvent, type DragEvent, useMemo, useRef, useState } from "react"
+import { type ChangeEvent, type DragEvent, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ChevronDown, Send, Sparkles, Search, OctagonX, RotateCcw, Image as ImageIcon, RefreshCcw, X } from "lucide-react"
@@ -63,7 +63,11 @@ type RunAshChatComposerProps = {
   attachmentError?: string | null
   onRetryAttachment?: () => void
   onRemoveAttachment?: () => void
+  showUpgradePrompt?: boolean
+  onUpgradeClick?: (location: "composer_inline") => void
 }
+
+const UPGRADE_PROMPT_DISMISSED_KEY = "runash_upgrade_prompt_dismissed_v1"
 
 type SlashCommand = {
   command: string
@@ -125,6 +129,8 @@ export function RunAshChatComposer({
   attachmentError,
   onRetryAttachment,
   onRemoveAttachment,
+  showUpgradePrompt = false,
+  onUpgradeClick,
 }: RunAshChatComposerProps) {
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
@@ -132,6 +138,10 @@ export function RunAshChatComposer({
   const [isEnhancing, setIsEnhancing] = useState(false)
   const [showSecondaryControls, setShowSecondaryControls] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+  const [upgradePromptDismissed, setUpgradePromptDismissed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false
+    return window.localStorage.getItem(UPGRADE_PROMPT_DISMISSED_KEY) === "1"
+  })
   const attachmentInputRef = useRef<HTMLInputElement | null>(null)
 
   const estimatedTokens = useMemo(() => Math.ceil(value.length / 4), [value])
@@ -266,6 +276,13 @@ export function RunAshChatComposer({
         : attachmentPreview?.uploadState === "uploaded"
           ? "Image ready to send."
           : null
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    window.localStorage.setItem(UPGRADE_PROMPT_DISMISSED_KEY, upgradePromptDismissed ? "1" : "0")
+  }, [upgradePromptDismissed])
+
+  const shouldShowUpgradePrompt = showUpgradePrompt && !upgradePromptDismissed
 
   return (
     <div className="space-y-2">
@@ -559,8 +576,32 @@ export function RunAshChatComposer({
       </div>
 
       <div className="rounded-md border border-zinc-800/80 bg-zinc-950/60 px-3 py-2 text-[11px] text-zinc-400">
-        <span>Need higher usage limits? <a href="/upgrade" className="text-amber-300 underline underline-offset-2">Upgrade your plan</a>.</span>
-        {onAttachFile ? <span className="ml-1">Drag and drop an image on desktop, or tap the image button on mobile.</span> : null}
+        {shouldShowUpgradePrompt ? (
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              Need higher usage limits?{" "}
+              <a
+                href="/upgrade"
+                className="text-amber-300 underline underline-offset-2"
+                onClick={() => onUpgradeClick?.("composer_inline")}
+              >
+                Upgrade your plan
+              </a>
+              .
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[11px] text-zinc-500 hover:text-zinc-200"
+              onClick={() => setUpgradePromptDismissed(true)}
+              aria-label="Dismiss upgrade prompt"
+            >
+              Dismiss
+            </Button>
+          </div>
+        ) : null}
+        {onAttachFile ? <span className={shouldShowUpgradePrompt ? "mt-1 block" : ""}>Drag and drop an image on desktop, or tap the image button on mobile.</span> : null}
       </div>
     </div>
   )

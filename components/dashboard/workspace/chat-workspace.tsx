@@ -15,7 +15,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, OctagonX, MoreHorizontal } from "lucide-react"
+import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, OctagonX, MoreHorizontal, CreditCard } from "lucide-react"
 import type { ChatMessage, ChatSession, UserPreferences, QuickAction } from "@/types/runash-chat"
 import ChatMessageComponent from "@/components/chat/chat-message"
 import ChatSidebar from "@/components/chat/chat-sidebar"
@@ -39,7 +39,7 @@ import { resolveRequestedToolsForMessage } from "@/lib/runash-chat/tooling"
  
 import { getRecommendedProducts, shouldRecommendProducts } from "@/lib/chat-product-recommendations"
 
-
+const UPGRADE_METRICS_KEY = "runash_upgrade_metrics_v2"
 
 export function ChatWorkspace() {
   type StreamControllerState = "idle" | "sending" | "streaming" | "stopping" | "failed"
@@ -94,6 +94,7 @@ export function ChatWorkspace() {
   })
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const sendAbortRef = useRef<AbortController | null>(null)
+  const firstCompletionTrackedRef = useRef(false)
 
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => {
     if (typeof window === "undefined") {
@@ -153,6 +154,7 @@ export function ChatWorkspace() {
 
   const [attachmentPreview, setAttachmentPreview] = useState<ComposerAttachmentPreview | null>(null)
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const [hasCompletedFirstMessage, setHasCompletedFirstMessage] = useState(false)
   const attachmentRetryRef = useRef<File | null>(null)
 
   const IMAGE_MAX_FILE_SIZE = 8 * 1024 * 1024
@@ -918,6 +920,14 @@ export function ChatWorkspace() {
               status: payload.status === "completed" ? "completed" : existing.status,
               content: typeof payload.content === "string" && payload.content.length > 0 ? payload.content : existing.content,
             }))
+
+            if (payload.status === "completed") {
+              setHasCompletedFirstMessage(true)
+              if (!firstCompletionTrackedRef.current) {
+                firstCompletionTrackedRef.current = true
+                trackUpgradeMetric("first_message_completed", "deferred_upgrade_prompt")
+              }
+            }
           }
 
           if (eventName === "error") {
@@ -1245,6 +1255,24 @@ export function ChatWorkspace() {
 
   const hasUserMessage = messages.some((message) => message.role === "user")
   const showComposerEmptyState = !hasUserMessage && streamControllerState === "idle"
+
+
+  const trackUpgradeMetric = (eventName: "upgrade_click" | "first_message_completed", location: string) => {
+    if (typeof window === "undefined") return
+    try {
+      const raw = window.localStorage.getItem(UPGRADE_METRICS_KEY)
+      const parsed = raw ? (JSON.parse(raw) as Record<string, number>) : {}
+      const key = `${eventName}:${location}`
+      parsed[key] = (parsed[key] ?? 0) + 1
+      window.localStorage.setItem(UPGRADE_METRICS_KEY, JSON.stringify(parsed))
+    } catch {
+      return
+    }
+  }
+
+  const handleUpgradeClick = (location: "composer_inline" | "header_account") => {
+    trackUpgradeMetric("upgrade_click", location)
+  }
   const recentSession = currentSession ?? chatSessions.at(0) ?? null
 
   const leftDrawer = (
@@ -1294,8 +1322,8 @@ export function ChatWorkspace() {
 
   return (
     <ChatPageFrame>
-      <div className="flex min-h-[100dvh] flex-col">
-        <div className="sticky top-0 z-50 mb-4 space-y-3">
+      <div className="flex min-h-[100dvh] min-h-0 flex-1 flex-col">
+        <div className="sticky top-0 z-50 mb-3 space-y-2.5 sm:mb-4 sm:space-y-3">
           <ChatInfoBanner
             badge="New"
             message="Unified chat shell is now active with consistent actions and prompt patterns."
@@ -1354,6 +1382,12 @@ export function ChatWorkspace() {
                               <Settings className="h-3.5 w-3.5" />
                               Preferences
                             </ActionPill>
+                            <ActionPill asChild className="h-8 gap-1.5 px-3">
+                              <a href="/upgrade" onClick={() => handleUpgradeClick("header_account")}>
+                                <CreditCard className="h-3.5 w-3.5" />
+                                Upgrade
+                              </a>
+                            </ActionPill>
                             <ActionPill
                               onClick={() => setRightDrawerOpen((prev) => !prev)}
                               aria-pressed={rightDrawerOpen}
@@ -1389,6 +1423,12 @@ export function ChatWorkspace() {
                     <Settings className="mr-1.5 h-3.5 w-3.5" />
                     Preferences
                   </ActionPill>
+                  <ActionPill asChild>
+                    <a href="/upgrade" onClick={() => handleUpgradeClick("header_account")}>
+                      <CreditCard className="mr-1.5 h-3.5 w-3.5" />
+                      Upgrade
+                    </a>
+                  </ActionPill>
                   <ActionPill onClick={() => setLeftDrawerOpen((prev) => !prev)} aria-pressed={leftDrawerOpen}>
                     <History className="mr-1.5 h-3.5 w-3.5" />
                     {leftDrawerOpen ? "Hide History" : "Show History"}
@@ -1421,10 +1461,10 @@ export function ChatWorkspace() {
           />
         </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
+      <div className="mx-auto flex min-h-0 w-full flex-1 flex-col gap-4 lg:flex-row lg:items-stretch">
         {isDesktop && leftDrawerOpen ? <div className="w-80 shrink-0">{leftDrawer}</div> : null}
 
-        <div className="min-h-0 min-w-0 flex-1">
+        <div className="min-h-0 min-w-0 flex-1 lg:max-w-5xl xl:max-w-6xl">
           {!isDesktop && leftDrawerOpen ? (
             <>
               <button
@@ -1453,7 +1493,7 @@ export function ChatWorkspace() {
             </>
           ) : null}
 
-          <ChatSurfaceCard className="flex min-h-[100dvh] flex-col overflow-hidden lg:min-h-0 lg:h-full">
+          <ChatSurfaceCard className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <div className="hidden border-b border-zinc-800 px-3 py-2 text-xs text-zinc-400 lg:block sm:px-4">
               <span>Shortcuts: Ctrl/Cmd+[ history • Ctrl/Cmd+] tools • Alt+←/→ toggle drawers.</span>
             </div>
@@ -1554,7 +1594,7 @@ export function ChatWorkspace() {
               </div>
             ) : null}
 
-            <div className="border-t border-zinc-800 p-3 pb-4 sm:p-4">
+            <div className="sticky bottom-0 z-20 border-t border-zinc-800 bg-[#050607]/95 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur sm:p-4 sm:pb-[calc(env(safe-area-inset-bottom)+1rem)]">
               <RunAshChatComposer
                 value={inputValue}
                 onChange={setInputValue}
@@ -1576,6 +1616,8 @@ export function ChatWorkspace() {
                 attachmentError={attachmentError}
                 onRetryAttachment={retryAttachment}
                 onRemoveAttachment={removeAttachment}
+                showUpgradePrompt={hasCompletedFirstMessage}
+                onUpgradeClick={handleUpgradeClick}
               />
               {(streamControllerState === "failed" || runDiagnostics.requestId || runDiagnostics.provider) && (
                 <div className="mt-3 rounded-md border border-zinc-800 bg-zinc-900/60 p-2 text-xs text-zinc-300">
