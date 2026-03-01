@@ -103,6 +103,8 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
   - `EMAIL_PROVIDER=resend` -> use Resend when configured, otherwise fallback to SMTP if available.
   - unset/invalid `EMAIL_PROVIDER` -> auto-select SMTP first, then Resend.
 - Standardized environment variables on `SMTP_PASSWORD` (canonical) and `EMAIL_FROM` (canonical sender). Legacy aliases `SMTP_PASS` and `SMTP_FROM` remain temporary compatibility fallbacks for migration safety.
+- Resend transport now uses the official SDK client initialization path (`new Resend(process.env.RESEND_API_KEY)`) and sends with explicit `{ data, error }` handling plus bounded retry for rate-limit/transient failures (HTTP `429`, `5xx`, `408`, `425`).
+- Resend send options support optional `replyTo`, `scheduledAt`, `tags`, `attachments`, and `idempotencyKey` fields via the canonical provider abstraction.
 - Existing auth send paths continue through `sendVerificationEmail` and `sendPasswordResetEmail`, but the final transport now resolves through the canonical provider path and keeps delivery tracking + realtime status events unchanged.
 
 ### Required email environment variables
@@ -110,6 +112,8 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 - Shared:
   - `EMAIL_PROVIDER` (`smtp` or `resend`)
   - `EMAIL_FROM` (recommended canonical sender, for both providers)
+- Resend-specific sender domain control:
+  - `RESEND_VERIFIED_FROM` (recommended; verified production sending identity/domain, used before `EMAIL_FROM`)
 - SMTP path:
   - `SMTP_HOST`
   - `SMTP_PORT` (optional, defaults `587`)

@@ -111,6 +111,10 @@ export async function sendEmail(options: {
   from?: string
   headers?: Record<string, string>
   attachments?: EmailAttachment[]
+  replyTo?: string | string[]
+  scheduledAt?: string
+  tags?: Array<{ name: string; value: string }>
+  idempotencyKey?: string
   template_id?: number
   campaign_id?: number
   user_id?: number
@@ -213,6 +217,17 @@ export async function sendEmail(options: {
     const providerResult = await sendEmailEvent({
       type: "GENERIC_EMAIL",
       to: targetRecipient,
+
+      subject: options.subject,
+      html,
+      text: options.text,
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
+      attachments: options.attachments,
+      replyTo: options.replyTo,
+      scheduledAt: options.scheduledAt,
+      tags: options.tags,
+      idempotencyKey: options.idempotencyKey,
+
       source: "lib/email.sendEmail",
       metadata: {
         category: headers["X-Email-Category"],
@@ -230,6 +245,7 @@ export async function sendEmail(options: {
         user_id: options.user_id,
         recipient_name: options.recipient_name,
       },
+
     })
 
     if (message_id) {
