@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { auth } from "@/lib/auth"
-import { resolveAuthCallbackUrl } from "@/lib/email"
+import { auth, emailVerificationCallbackURL } from "@/lib/auth"
 import { rateLimit } from "@/lib/rate-limit"
 import { logApiRouteError } from "@/lib/api/logging"
 import { AUTH_ENDPOINT_RATE_LIMITS } from "@/lib/auth-security-config"
@@ -66,13 +65,11 @@ export async function handleResendVerification(
       return NextResponse.json(successResponse)
     }
 
-    const callbackURL = resolveAuthCallbackUrl(process.env.BETTER_AUTH_EMAIL_VERIFICATION_CALLBACK_URL ?? "/login?emailVerified=1")
-
     await dependencies.sendVerificationEmail({
       headers: request.headers,
       body: {
         email: normalizedEmail,
-        callbackURL,
+        callbackURL: emailVerificationCallbackURL,
       },
     })
 

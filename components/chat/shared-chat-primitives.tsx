@@ -7,8 +7,8 @@ import { X } from "lucide-react";
 
 export function ChatPageFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#030405] text-zinc-100">
-      <div className="mx-auto w-full max-w-[1280px] px-3 py-3 sm:px-4 sm:py-4">{children}</div>
+    <div className="min-h-[100dvh] bg-[#030405] text-zinc-100">
+      <div className="mx-auto w-full max-w-[1280px] px-3 py-2 sm:px-4 sm:py-3">{children}</div>
     </div>
   );
 }
@@ -31,19 +31,25 @@ export function ChatShellHeader({
   secondaryActions?: ReactNode;
 }) {
   return (
+
     <header className="rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2.5 backdrop-blur sm:p-3">
-      <div className="flex items-center justify-between gap-2 lg:gap-3">
+      <div className="flex min-w-0 flex-nowrap items-center justify-between gap-2 lg:gap-3">
+
+    
         <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
-          <div className="rounded-xl bg-gradient-to-r from-orange-600 to-yellow-500 p-2 text-white">{icon}</div>
+          <div className="rounded-lg bg-gradient-to-r from-orange-600 to-yellow-500 p-1.5 text-white sm:rounded-xl sm:p-2">{icon}</div>
           <div className="min-w-0">
+
             <h1 className="text-base font-semibold tracking-tight text-zinc-100 sm:text-lg">{title}</h1>
-            <p className="text-xs text-zinc-400">{subtitle}</p>
+            <p className="truncate text-xs text-zinc-400">{subtitle}</p>
+
+            
           </div>
         </div>
         {primaryAction || secondaryActions ? (
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
             {primaryAction ? <div className="flex items-center">{primaryAction}</div> : null}
-            {secondaryActions ? <div className="flex items-center gap-1.5 sm:gap-2">{secondaryActions}</div> : null}
+            {secondaryActions ? <div className="flex flex-nowrap items-center gap-1.5 sm:gap-2">{secondaryActions}</div> : null}
           </div>
         ) : null}
       </div>

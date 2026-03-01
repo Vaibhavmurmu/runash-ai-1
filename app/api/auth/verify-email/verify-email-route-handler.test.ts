@@ -48,9 +48,6 @@ test("GET /api/auth/verify-email treats already-verified email as success", asyn
     verifyEmail: async () => ({ status: true, user: null }),
   })
 
-  const payload = await response.json()
-
-  assert.equal(response.status, 200)
-  assert.equal(payload.success, true)
-  assert.equal(payload.message, "Email verified successfully")
+  assert.equal(response.status, 307)
+  assert.equal(response.headers.get("location"), "http://localhost:3000/login?emailVerified=1")
 })
