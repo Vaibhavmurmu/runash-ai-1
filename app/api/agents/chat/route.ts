@@ -33,6 +33,18 @@ const requestSchema = z.object({
   model: z.string().trim().min(1).optional(),
   tools: z.array(z.enum(RELAY_AGENT_TOOLS)).default([]),
   toolPayloads: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+  attachments: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(255),
+        size: z.number().int().positive().max(8 * 1024 * 1024),
+        type: z.string().trim().min(1).max(120),
+        width: z.number().int().positive().optional(),
+        height: z.number().int().positive().optional(),
+      }),
+    )
+    .max(3)
+    .optional(),
 })
 
 const AGENT_CHAT_ENABLED = process.env.RUNASH_AGENT_CHAT_ENABLED !== "false"
@@ -166,6 +178,10 @@ export async function POST(request: NextRequest) {
               "You are RunAsh Agent. Keep answers concise, safe, and avoid exposing secrets. If tools are provided, ground your answer in tool results.",
             messages: [
               { role: "user", content: `User prompt: ${sanitizedMessage}` },
+              {
+                role: "system",
+                content: `Attachment metadata: ${JSON.stringify(parsed.data.attachments ?? [])}`,
+              },
               { role: "system", content: `Tool outputs: ${JSON.stringify(toolOutputs)}` },
             ],
             temperature: 0.4,
