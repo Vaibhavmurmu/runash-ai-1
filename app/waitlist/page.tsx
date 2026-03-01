@@ -53,6 +53,11 @@ export default function WaitlistPage() {
 
   function handleFieldChange(field: WaitlistFormField, value: string) {
     setForm((current) => ({ ...current, [field]: value }))
+    setErrorMessage(null)
+
+    if (fieldErrors[field]) {
+      setFieldErrors((current) => ({ ...current, [field]: undefined }))
+    }
 
     if (fieldErrors[field]) {
       validateForm({ ...form, [field]: value })
@@ -113,7 +118,7 @@ export default function WaitlistPage() {
           <CardHeader>
             <CardTitle className="text-3xl">Join the RunAsh Waitlist</CardTitle>
             <CardDescription>
-              Get early access updates for upcoming RunAsh features. We only need your email.
+              Get early access updates for upcoming RunAsh features. Add your email and optional context so we can prioritize invites.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -158,11 +163,15 @@ export default function WaitlistPage() {
               </div>
 
               {successMessage ? (
-                <p className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{successMessage}</p>
+                <p role="status" className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                  {successMessage}
+                </p>
               ) : null}
 
               {errorMessage ? (
-                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{errorMessage}</p>
+                <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {errorMessage}
+                </p>
               ) : null}
 
               <Button type="submit" disabled={isSubmitting} className="w-full bg-gradient-to-r from-orange-600 to-yellow-500 text-white">
