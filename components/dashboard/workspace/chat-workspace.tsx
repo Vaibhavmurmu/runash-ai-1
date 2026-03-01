@@ -1692,7 +1692,7 @@ export function ChatWorkspace() {
               </div>
             </div>
           </ChatSurfaceCard>
-        </div>
+        
         
 
         {isDesktop && rightDrawerOpen ? (
