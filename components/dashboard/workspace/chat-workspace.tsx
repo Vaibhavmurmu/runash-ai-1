@@ -15,7 +15,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, OctagonX, MoreHorizontal, CreditCard } from "lucide-react"
+
+import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, OctagonX, MoreHorizontal, FileText, CreditCard, Megaphone, Workflow, ListChecks } from "lucide-react"
 import type { ChatMessage, ChatSession, UserPreferences, QuickAction } from "@/types/runash-chat"
 import ChatMessageComponent from "@/components/chat/chat-message"
 import ChatSidebar from "@/components/chat/chat-sidebar"
@@ -31,6 +32,7 @@ import {
   ChatInfoBanner,
   ChatPageFrame,
   ChatShellHeader,
+  SuggestionCardGrid,
   ChatSurfaceCard,
 } from "@/components/chat/shared-chat-primitives"
 import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
@@ -1225,30 +1227,45 @@ export function ChatWorkspace() {
     handleSendMessage(transcript)
   }
 
-  const starterPromptChips = [
+  const starterPromptCards = [
     {
       id: "campaign-brief",
-      label: "Create campaign brief",
+      title: "Create campaign brief",
+      description: "Define goals, audience, channels, and KPIs for a launch.",
+      actionLabel: "Draft brief",
+      icon: Megaphone,
       prompt: "Create a campaign brief for a new sustainable skincare launch with goals, audience, channels, and KPIs.",
     },
     {
       id: "product-description",
-      label: "Write product description",
+      title: "Write product description",
+      description: "Generate benefits-first copy with ingredients and CTA.",
+      actionLabel: "Generate copy",
+      icon: FileText,
       prompt: "Write a product description for an organic snack bundle with key benefits, ingredients, and CTA.",
     },
     {
       id: "summarize-meeting",
-      label: "Summarize meeting",
+      title: "Summarize meeting",
+      description: "Extract decisions, next steps, owners, and due dates.",
+      actionLabel: "Summarize notes",
+      icon: ListChecks,
       prompt: "Summarize this meeting into decisions, action items, owners, and due dates.",
     },
     {
       id: "automation-plan",
-      label: "Plan an automation",
+      title: "Plan an automation",
+      description: "Map triggers, approvals, and reporting for your workflow.",
+      actionLabel: "Build workflow",
+      icon: Workflow,
       prompt: "Draft an automation workflow for inventory alerts, reorder approvals, and weekly reporting.",
     },
     {
       id: "social-posts",
-      label: "Generate social posts",
+      title: "Generate social posts",
+      description: "Create campaign-ready post ideas in your brand voice.",
+      actionLabel: "Create posts",
+      icon: Sparkles,
       prompt: "Generate 5 social post ideas for an eco-friendly product campaign in a friendly brand tone.",
     },
   ]
@@ -1493,7 +1510,11 @@ export function ChatWorkspace() {
             </>
           ) : null}
 
-          <ChatSurfaceCard className="flex min-h-0 flex-1 flex-col overflow-hidden">
+
+          <ChatSurfaceCard className="flex min-h-[72dvh] min-h-0 flex-col overflow-hidden lg:h-full lg:min-h-0">
+
+          
+
             <div className="hidden border-b border-zinc-800 px-3 py-2 text-xs text-zinc-400 lg:block sm:px-4">
               <span>Shortcuts: Ctrl/Cmd+[ history • Ctrl/Cmd+] tools • Alt+←/→ toggle drawers.</span>
             </div>
@@ -1551,31 +1572,29 @@ export function ChatWorkspace() {
             )}
 
             {showComposerEmptyState ? (
-              <div className="border-t border-zinc-800 p-3 sm:p-4">
-                <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 sm:p-4">
+              <div className="border-t border-zinc-800 p-2.5 sm:p-3">
+                <div className="space-y-2.5 rounded-lg border border-zinc-800 bg-zinc-950/40 p-2.5 sm:space-y-3 sm:p-3">
                   <div className="space-y-1">
                     <p className="text-sm font-medium text-zinc-100">What do you want to create?</p>
-                    <p className="text-xs text-zinc-400 sm:text-sm">
-                      Start with chat prompts to generate content, summarize work, and automate routine tasks.
+                    <p className="text-xs text-zinc-400">
+                      Create faster content, automate repeat work, and summarize complex tasks in seconds.
                     </p>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    {starterPromptChips.map((item) => (
-                      <Button
-                        key={item.id}
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleSendMessage(item.prompt)}
-                        className="h-8 rounded-full border-zinc-700 bg-zinc-900/60 px-3 text-xs text-zinc-200 hover:bg-zinc-800"
-                      >
-                        {item.label}
-                      </Button>
-                    ))}
-                  </div>
+                  <SuggestionCardGrid
+                    title="Starter prompts"
+                    items={starterPromptCards.map((item) => ({
+                      id: item.id,
+                      title: item.title,
+                      description: item.description,
+                      actionLabel: item.actionLabel,
+                      icon: item.icon,
+                      onAction: () => handleSendMessage(item.prompt),
+                    }))}
+                    emptyMessage="Starter prompts are unavailable right now."
+                  />
 
-                  <div className="rounded-md border border-zinc-800 bg-zinc-900/60 p-2.5">
+                  <div className="rounded-md border border-zinc-800 bg-zinc-900/60 p-2">
                     <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Recent project/session</p>
                     {recentSession ? (
                       <button
@@ -1644,6 +1663,7 @@ export function ChatWorkspace() {
             </div>
           </ChatSurfaceCard>
         </div>
+        
 
         {isDesktop && rightDrawerOpen ? (
           <div className="hidden w-80 shrink-0 lg:block">{rightDrawer}</div>
