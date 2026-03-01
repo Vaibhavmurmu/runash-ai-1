@@ -611,6 +611,8 @@ export function ChatWorkspace() {
       return
     }
 
+    const queuedAttachment = attachmentPreview?.uploadState === "uploaded" ? attachmentPreview.metadata : null
+
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       content,
@@ -618,6 +620,7 @@ export function ChatWorkspace() {
       timestamp: new Date(),
       type: "text",
       status: "completed",
+      metadata: queuedAttachment ? { attachments: [queuedAttachment] } : undefined,
     }
 
     const assistantId = `${Date.now()}-assistant`
@@ -637,7 +640,7 @@ export function ChatWorkspace() {
     setComposerHealth("ready")
     setLastPromptForRetry(content)
     setRunDiagnostics({ requestId: null, provider: "RunAsh AI", model: null, lastErrorCode: null })
-    const attachmentMetadata = attachmentPreview?.metadata ? [attachmentPreview.metadata] : undefined
+    const attachmentMetadata = queuedAttachment ? [queuedAttachment] : undefined
     if (attachmentPreview) {
       URL.revokeObjectURL(attachmentPreview.previewUrl)
       setAttachmentPreview(null)
