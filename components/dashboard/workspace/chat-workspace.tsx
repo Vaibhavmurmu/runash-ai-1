@@ -1538,10 +1538,6 @@ export function ChatWorkspace() {
             ) : null}
 
 
-          <ChatSurfaceCard className="flex min-h-[72dvh] min-h-0 flex-col overflow-hidden lg:h-full lg:min-h-0">
-
-          
-
             <div className="hidden border-b border-zinc-800 px-3 py-2 text-xs text-zinc-400 lg:block sm:px-4">
               <span>Shortcuts: Ctrl/Cmd+[ history • Ctrl/Cmd+] tools • Alt+←/→ toggle drawers.</span>
             </div>
@@ -1692,7 +1688,7 @@ export function ChatWorkspace() {
               </div>
             </div>
           </ChatSurfaceCard>
-        
+        </div>
         
 
         {isDesktop && rightDrawerOpen ? (
