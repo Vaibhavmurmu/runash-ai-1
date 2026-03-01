@@ -145,7 +145,7 @@ export default function ChatSidebar({
   }
 
   return (
-    <Card className="h-full">
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">Chat History</CardTitle>
@@ -164,8 +164,8 @@ export default function ChatSidebar({
         </div>
       </CardHeader>
 
-      <CardContent className="p-0">
-        <ScrollArea className="h-[calc(100vh-300px)]">
+      <CardContent className="min-h-0 flex-1 overflow-hidden p-0">
+        <ScrollArea className="h-full">
           <div className="space-y-3 p-3">
             <section className="rounded-lg border bg-muted/20">
               <button

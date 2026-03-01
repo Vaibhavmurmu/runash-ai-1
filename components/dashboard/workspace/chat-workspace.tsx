@@ -82,6 +82,7 @@ export function ChatWorkspace() {
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null)
   const [showPreferences, setShowPreferences] = useState(false)
   const [isDesktop, setIsDesktop] = useState(false)
+  const [isTouchDevice, setIsTouchDevice] = useState(false)
   const [leftDrawerOpen, setLeftDrawerOpen] = useState<boolean>(() => {
     if (typeof window === "undefined") return false
     const storedState = window.localStorage.getItem("runash_chat_left_drawer_open")
@@ -327,16 +328,30 @@ export function ChatWorkspace() {
 
 
   useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const pointerQuery = window.matchMedia("(pointer: coarse)")
     const syncViewport = () => {
-      if (typeof window === "undefined") return
       setIsDesktop(window.innerWidth >= 1024)
+      setIsTouchDevice(pointerQuery.matches)
     }
 
     syncViewport()
     window.addEventListener("resize", syncViewport)
 
+    if (typeof pointerQuery.addEventListener === "function") {
+      pointerQuery.addEventListener("change", syncViewport)
+    } else {
+      pointerQuery.addListener(syncViewport)
+    }
+
     return () => {
       window.removeEventListener("resize", syncViewport)
+      if (typeof pointerQuery.removeEventListener === "function") {
+        pointerQuery.removeEventListener("change", syncViewport)
+      } else {
+        pointerQuery.removeListener(syncViewport)
+      }
     }
   }, [])
 
@@ -1490,11 +1505,11 @@ export function ChatWorkspace() {
             <>
               <button
                 type="button"
-                className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+                className="fixed inset-x-0 top-0 bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] z-40 bg-black/60 lg:hidden"
                 aria-label="Close session history"
                 onClick={() => setLeftDrawerOpen(false)}
               />
-              <aside className="fixed inset-y-0 left-0 z-50 w-[85vw] max-w-sm overflow-y-auto border-r border-zinc-800 bg-zinc-950 p-3 lg:hidden">
+              <aside className="fixed left-0 top-0 bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] z-50 w-[85vw] max-w-sm overflow-y-auto border-r border-zinc-800 bg-zinc-950 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] lg:hidden">
                 {leftDrawer}
               </aside>
             </>
@@ -1504,24 +1519,29 @@ export function ChatWorkspace() {
             <>
               <button
                 type="button"
-                className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+                className="fixed inset-x-0 top-0 bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] z-40 bg-black/60 lg:hidden"
                 aria-label="Close utilities panel"
                 onClick={() => setRightDrawerOpen(false)}
               />
-              <aside className="fixed inset-y-0 right-0 z-50 w-[85vw] max-w-sm overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-3 lg:hidden">
+              <aside className="fixed right-0 top-0 bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] z-50 w-[85vw] max-w-sm overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] lg:hidden">
                 {rightDrawer}
               </aside>
             </>
           ) : null}
 
 
-          <ChatSurfaceCard className="flex min-h-[72dvh] min-h-0 flex-col overflow-hidden lg:h-full lg:min-h-0">
+          <ChatSurfaceCard className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {!isTouchDevice ? (
+              <div className="hidden border-b border-zinc-800 px-3 py-2 text-xs text-zinc-400 lg:block sm:px-4">
+                <span>Shortcuts: Ctrl/Cmd+[ history • Ctrl/Cmd+] tools • Alt+←/→ toggle drawers.</span>
+              </div>
+            ) : null}
 
-          
 
             <div className="hidden border-b border-zinc-800 px-3 py-2 text-xs text-zinc-400 lg:block sm:px-4">
               <span>Shortcuts: Ctrl/Cmd+[ history • Ctrl/Cmd+] tools • Alt+←/→ toggle drawers.</span>
             </div>
+
 
             <ScrollArea className="min-h-0 flex-1 p-3 sm:p-4">
               <div className="space-y-4">
@@ -1617,7 +1637,9 @@ export function ChatWorkspace() {
               </div>
             ) : null}
 
-            <div className="sticky bottom-0 z-20 border-t border-zinc-800 bg-[#050607]/95 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur sm:p-4 sm:pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+
+            <div className="sticky bottom-0 border-t border-zinc-800 bg-[#050607]/95 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur supports-[backdrop-filter]:bg-[#050607]/90 sm:p-4 sm:pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+
               <RunAshChatComposer
                 value={inputValue}
                 onChange={setInputValue}
@@ -1651,7 +1673,7 @@ export function ChatWorkspace() {
                   {runDiagnostics.lastErrorCode ? <p>Error code: {runDiagnostics.lastErrorCode}</p> : null}
                 </div>
               )}
-              <div className="flex items-center justify-between mt-2 text-xs text-zinc-500">
+              <div className="mt-2 flex items-center justify-between text-xs text-zinc-500">
                 <span>Prompt composer is optimized for RunAsh task templates and enhanced prompt quality.</span>
                 <div className="flex items-center space-x-4">
                   <span className="flex items-center">
