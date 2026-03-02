@@ -2,20 +2,21 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Menu, X } from "lucide-react"
+import { Menu, X, ChevronDown, ArrowRight } from "lucide-react"
 import Link from "next/link"
+import Image from "next/image"
 import { ThemeSelector } from "@/components/theme-selector"
 
 export default function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [isFeaturesOpen, setIsFeaturesOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
 
   useEffect(() => {
     const handleScroll = () => {
-      if (window.scrollY > 10) {
-        setScrolled(true)
-      } else {
-        setScrolled(false)
+      setScrolled(window.scrollY > 10)
+      if (window.scrollY > 40) {
+        setIsTemplatesOpen(false)
       }
     }
 
@@ -39,54 +40,45 @@ export default function Navbar() {
             </Link>
           </div>
 
-          {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
-            <Link
-              href="/features"
-              className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
-            >
-              Features
-            </Link>
-            <Link
-              href="/agents"
-              className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
-            >
-              Agents
-            </Link>
-            <Link
-              href="/business"
-              className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
-            >
-              Business
-            </Link>
-            <Link
-              href="/startup"
-              className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
-            >
-              Startup
-            </Link>
-            <Link
-              href="/pricing"
-              className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
-            >
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsTemplatesOpen((prev) => !prev)}
+                className="inline-flex items-center gap-1 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
+              >
+                Features <ChevronDown className="h-4 w-4" />
+              </button>
+              {isFeaturesOpen && (
+                <div className="absolute left-0 top-10 w-[540px] rounded-xl border border-orange-100 bg-white p-4 shadow-2xl dark:border-orange-900/30 dark:bg-gray-900">
+                  <div className="grid grid-cols-2 gap-4">
+                    <Link href="/editor" className="group rounded-lg border border-gray-200 p-2 dark:border-gray-700">
+                      <div className="relative h-24 w-full overflow-hidden rounded-md">
+                        <Image src="/runash studio.webp" alt="Featured templates" fill className="object-cover" />
+                      </div>
+                      <div className="mt-2">
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">Features</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-300">AI Curated features.</p>
+                      </div>
+                    </Link>
+                    <div className="space-y-2 text-sm">
+                      <Link href="/runashchat" className="block rounded-md px-3 py-2 text-gray-700 hover:bg-orange-50 hover:text-orange-600 dark:text-gray-300 dark:hover:bg-orange-900/20">RunAshChat</Link>
+                      <Link href="/editor" className="block rounded-md px-3 py-2 text-gray-700 hover:bg-orange-50 hover:text-orange-600 dark:text-gray-300 dark:hover:bg-orange-900/20">AI Editor</Link>
+                      <Link href="/studio" className="block rounded-md px-3 py-2 text-gray-700 hover:bg-orange-50 hover:text-orange-600 dark:text-gray-300 dark:hover:bg-orange-900/20">AI Studio</Link>
+                      <Link href="/workflows" className="block rounded-md px-3 py-2 text-gray-700 hover:bg-orange-50 hover:text-orange-600 dark:text-gray-300 dark:hover:bg-orange-900/20">AI Workflow</Link>
+                      <Link href="/dashboard" className="inline-flex items-center px-3 py-2 text-orange-600 font-medium">Browse all <ArrowRight className="ml-1 h-4 w-4" />Dashboard</Link>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <Link href="/pricing" className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors">
               Pricing
             </Link>
-            <Link
-              href="/docs"
-              className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
-            >
+            <Link href="/docs" className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors">
               Docs
             </Link>
-            <Link
-              href="/blog"
-              className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
-            >
-              Blog
-            </Link>
-            <Link
-              href="/waitlist"
-              className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
-            >
+            <Link href="/waitlist" className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors">
               Waitlist
             </Link>
           </div>
@@ -94,10 +86,7 @@ export default function Navbar() {
           <div className="hidden md:flex items-center space-x-4">
             <ThemeSelector />
             <Link href="/login">
-              <Button
-                variant="ghost"
-                className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400"
-              >
+              <Button variant="ghost" className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400">
                 Log In
               </Button>
             </Link>
@@ -108,7 +97,6 @@ export default function Navbar() {
             </Link>
           </div>
 
-          {/* Mobile menu button */}
           <div className="md:hidden flex items-center space-x-4">
             <ThemeSelector />
             <Button variant="ghost" onClick={() => setIsMenuOpen(!isMenuOpen)}>
@@ -118,65 +106,17 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* Mobile Navigation */}
       {isMenuOpen && (
         <div className="md:hidden bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-orange-100 dark:border-orange-900/20">
           <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
-            <Link
-              href="/features"
-              className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md"
-            >
-              Features
-            </Link>
-            <Link
-              href="/agents"
-              className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md"
-            >
-              Agents
-            </Link>
-            <Link
-              href="/business"
-              className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md"
-            >
-              Business
-            </Link>
-            <Link
-              href="/startup"
-              className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md"
-            >
-              Startup
-            </Link>
-            <Link
-              href="/pricing"
-              className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md"
-            >
-              Pricing
-            </Link>
-            <Link
-              href="/docs"
-              className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md"
-            >
-              Documentation
-            </Link>
-            <Link
-              href="/blog"
-              className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md"
-            >
-              Blog
-            </Link>
-            <Link
-              href="/waitlist"
-              className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md"
-            >
-              Waitlist
-            </Link>
+            <Link href="/editor" className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md">Templates</Link>
+            <Link href="/pricing" className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md">Pricing</Link>
+            <Link href="/docs" className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md">Documentation</Link>
+            <Link href="/waitlist" className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md">Waitlist</Link>
           </div>
           <div className="px-5 py-4 border-t border-orange-100 dark:border-gray-800 flex flex-col space-y-3">
             <Link href="/login">
-              <Button
-                variant="ghost"
-                className="justify-center text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400"
-              >
+              <Button variant="ghost" className="justify-center text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400">
                 Log In
               </Button>
             </Link>
