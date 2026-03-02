@@ -44,7 +44,7 @@ export default function Navbar() {
             <div className="relative">
               <button
                 type="button"
-                onClick={() => setIsTemplatesOpen((prev) => !prev)}
+                onClick={() => setIsFeaturesOpen((prev) => !prev)}
                 className="inline-flex items-center gap-1 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
               >
                 Features <ChevronDown className="h-4 w-4" />
