@@ -54,7 +54,7 @@ export default function Navbar() {
                   <div className="grid grid-cols-2 gap-4">
                     <Link href="/editor" className="group rounded-lg border border-gray-200 p-2 dark:border-gray-700">
                       <div className="relative h-24 w-full overflow-hidden rounded-md">
-                        <Image src="/runash studio.webp" alt="Featured templates" fill className="object-cover" />
+                        <Image src="/runashchat.png" alt="Featured templates" fill className="object-cover" />
                       </div>
                       <div className="mt-2">
                         <p className="text-sm font-semibold text-gray-900 dark:text-white">Features</p>
