@@ -196,8 +196,8 @@ export default function GetStartedPage() {
             className="rounded-full border-orange-200 dark:border-white/20 bg-white/70 dark:bg-white/10 text-slate-700 dark:text-white"
           >
             <Bell className="w-4 h-4" />
-            <span className="text-orange-600 dark:text-orange-400 font-medium text-sm">
-               <Badge varient="secondary" className="bg-green-600 text-white gap-2 space-x-1 dark:bg-green-500 animate-pulse text-xs">New</Badge>
+            <span className="text-orange-600 dark:text-orange-400 gap-2 font-medium text-sm">
+               <Badge varient="secondary" className="bg-orange-600 text-white gap-2 space-x-1 dark:bg-orange-500 border animate-pulse text-xs">New</Badge>
                  RunAsh Auth is in active development!{" "}
               <a href="https://doc.runash.in/roadmap" className="underline font-semibold hover:text-orange-200">
                 Learn more
@@ -207,7 +207,7 @@ export default function GetStartedPage() {
 
           <h1 className="text-5xl sm:text-6xl font-semibold tracking-tight">Get started in minutes</h1>
           <p className="text-base text-slate-600 dark:text-white/65 max-w-2xl mx-auto">
-            RunAsh Auth pages use custom orange, yellow and white gradient styling with both light and dark support.
+            RunAsh-Auth a comprehensive  customizable authentication features.
           </p>
 
           <div className="flex items-center justify-center gap-3 flex-wrap">
@@ -224,8 +224,8 @@ export default function GetStartedPage() {
 
           <Card className="mx-auto max-w-3xl text-left border-orange-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 shadow-2xl">
             <CardContent className="p-5 space-y-3">
-              <div className="font-semibold">✨ Model dialog card customization</div>
-              <p className="text-sm text-slate-600 dark:text-white/60">Post-login, configure model dialog cards for upload screenshots, trusted client scopes, and consent-aware prompts.</p>
+              <div className="font-semibold">✨ SSO is available for Team & Enterprise accounts</div>
+              <p className="text-sm text-slate-600 dark:text-white/60">Give your organization the enterprise grand security access controls, dedicated support and more.</p>
             </CardContent>
           </Card>
         </div>
