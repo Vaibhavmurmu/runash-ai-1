@@ -189,11 +189,11 @@ export default function GetStartedPage() {
       </header>
 
       <main className="relative z-10 flex min-h-[calc(100vh-160px)] items-center justify-center px-6">
-        <div className="w-full max-w-4xl text-center space-y-8">
+        <div className=" flex w-full max-w-4xl text-center gap-2 space-y-8">
           <Button
             variant="outline"
             onClick={() => setShowRoadmap(true)}
-            className="rounded-full border-orange-200 dark:border-white/20 bg-white/70 dark:bg-white/10 text-slate-700 dark:text-white gap-2"
+            className="rounded-full border-orange-200 dark:border-white/20 bg-white/70 dark:bg-white/10 text-slate-700 dark:text-white"
           >
             <Bell className="w-4 h-4" />
             <span className="text-orange-600 dark:text-orange-400 gap-2 font-medium text-sm">
