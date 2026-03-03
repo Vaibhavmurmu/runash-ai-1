@@ -24,6 +24,7 @@ This document is limited to payment/business implementation policy. Generic cont
 - Auth hardening updates (verified linking, session invalidation, throttling) are contract-compatible for payment APIs.
 - Admin auth/org tooling updates (organization lifecycle + provider mapping + tenant user assignment) are operational-only and do not modify payment field contracts or payment API signatures.
 - Auth signup flow was unified through Better Auth server registration (`auth.api.signUpEmail`) with compatibility response mapping; no payment route fields or business payment contracts changed.
+- Register API routing now invokes Better Auth server registration directly from `app/api/auth/register/route.ts` (delegating validation/compat mapping to the shared handler); response contract remains backward compatible for existing frontend consumers.
 - Incident and rollback runbook reference for auth/org config operations: `docs/AUTH_ORG_INCIDENT_RUNBOOK.md`.
 
 
@@ -334,6 +335,31 @@ Business controls preserved:
 - **Mitigation:** all limits are environment-configurable and surfaced with stable API error codes.
 - **Rollback:** relax or disable quota/policy env limits while preserving API shape and worker behavior.
 
+
+## 2026-02-28 lifecycle-event implementation update (business reliability)
+
+### Lifecycle mapping coverage
+
+- Billing/subscription lifecycle events are now explicitly mapped from API and webhook sources into typed `payment_lifecycle_events` records.
+- Event-template pairing is deterministic through a centralized map, enabling consistent downstream notification/workflow handling.
+
+### Operational risk and rollback
+
+- **Risk:** additive event emission may increase notification volume if downstream consumers subscribe immediately without filtering.
+- **Mitigation:** event payloads include typed `event_type`, `template_key`, and normalized metadata fields for predictable routing.
+- **Rollback:** disable emit callsites while preserving the additive table; no customer-facing payment contract rollback or schema migration is required.
+
+### Validation capture
+
+- Validation floor executed for payment/auth scope:
+  - `npm run lint`
+  - `npm run build`
+
+
+## Reliability note: feedback/referral operational flows
+- Added guidance that referral invites/conversions and feedback intake are non-payment business flows with independent throttling and email notifications.
+- No payment API contract changes were introduced; rollback path is to disable `/api/referrals*` and `/api/feedback` routes plus revert migration `0006_feedback_and_referrals.sql`.
+
 ## 2026-02 Settings billing contract governance update (billing/invoice/credits/referrals)
 
 - Added a unified settings architecture/API contract source at `docs/SETTINGS_ARCHITECTURE_API_CONTRACT.md` to standardize business and engineering interpretation of settings billing surfaces.
@@ -384,5 +410,7 @@ For every phase, use this rollback sequence:
 4. Reconcile partial writes/events before retrying rollout.
 
 Backward compatibility remains mandatory: existing billing/payment field names and API signatures are preserved throughout all phases unless versioned migration notes are explicitly approved.
+
+
 
 

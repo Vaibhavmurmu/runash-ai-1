@@ -1,10 +1,9 @@
 "use client"
 
-import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   DropdownMenu,
@@ -14,26 +13,20 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  Search,
-  Filter,
-  MoreVertical,
-  Play,
-  Download,
-  Trash2,
-  Edit,
-  Share2,
-  Clock,
-  Eye,
-  Tag,
-  FileVideo,
-  Scissors,
-} from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Search, MoreVertical, Play, Download, Trash2, Edit, Share2, Clock, Eye, FileVideo, Scissors } from "lucide-react"
 import Image from "next/image"
 import type { RecordedStream } from "@/types/recording"
+import type { LibraryQueryParams } from "@/lib/recording-service"
 
 interface RecordedStreamsLibraryProps {
   streams: RecordedStream[]
+  query: LibraryQueryParams
+  isLoading: boolean
+  isLoadingMore: boolean
+  hasMore: boolean
+  onQueryChange: (query: LibraryQueryParams) => void
+  onLoadMore: () => void
   onPlay: (stream: RecordedStream) => void
   onEdit: (stream: RecordedStream) => void
   onDelete: (streamId: string) => void
@@ -44,6 +37,12 @@ interface RecordedStreamsLibraryProps {
 
 export default function RecordedStreamsLibrary({
   streams,
+  query,
+  isLoading,
+  isLoadingMore,
+  hasMore,
+  onQueryChange,
+  onLoadMore,
   onPlay,
   onEdit,
   onDelete,
@@ -51,10 +50,6 @@ export default function RecordedStreamsLibrary({
   onShare,
   onCreateClip,
 }: RecordedStreamsLibraryProps) {
-  const [searchQuery, setSearchQuery] = useState("")
-  const [sortBy, setSortBy] = useState("date-desc")
-  const [activeTab, setActiveTab] = useState("all")
-
   const formatDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600)
     const minutes = Math.floor((seconds % 3600) / 60)
@@ -66,14 +61,6 @@ export default function RecordedStreamsLibrary({
     return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`
   }
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return "0 Bytes"
-    const k = 1024
-    const sizes = ["Bytes", "KB", "MB", "GB", "TB"]
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
-  }
-
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
     return date.toLocaleDateString("en-US", {
@@ -83,168 +70,138 @@ export default function RecordedStreamsLibrary({
     })
   }
 
-  // Filter streams based on search query and active tab
-  const filteredStreams = streams.filter((stream) => {
-    const matchesSearch =
-      stream.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (stream.description && stream.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      stream.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-
-    if (activeTab === "all") return matchesSearch
-    if (activeTab === "public") return matchesSearch && stream.isPublic
-    if (activeTab === "private") return matchesSearch && !stream.isPublic
-    if (activeTab === "processing") return matchesSearch && stream.isProcessing
-
-    return matchesSearch
-  })
-
-  // Sort streams based on selected sort option
-  const sortedStreams = [...filteredStreams].sort((a, b) => {
-    switch (sortBy) {
-      case "date-desc":
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      case "date-asc":
-        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      case "title-asc":
-        return a.title.localeCompare(b.title)
-      case "title-desc":
-        return b.title.localeCompare(a.title)
-      case "duration-desc":
-        return b.duration - a.duration
-      case "duration-asc":
-        return a.duration - b.duration
-      case "views-desc":
-        return b.viewCount - a.viewCount
-      case "views-asc":
-        return a.viewCount - b.viewCount
-      default:
-        return 0
-    }
-  })
+  const formatPlatform = (platforms: string[]) => {
+    if (platforms.length === 0) return "Unknown"
+    return platforms.join(", ")
+  }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <h2 className="text-2xl font-bold">Recorded Streams</h2>
-        <div className="flex items-center space-x-2">
-          <div className="relative">
-            <Search className="h-4 w-4 absolute left-2.5 top-2.5 text-gray-500" />
+        <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row">
+          <div className="relative w-full md:w-72">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
             <Input
               type="search"
               placeholder="Search recordings..."
               className="pl-9"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={query.search ?? ""}
+              onChange={(e) => onQueryChange({ ...query, search: e.target.value, page: 1 })}
             />
           </div>
-          <Select value={sortBy} onValueChange={setSortBy}>
-            <SelectTrigger className="w-[180px]">
-              <div className="flex items-center">
-                <Filter className="h-4 w-4 mr-2" />
-                <span>Sort by</span>
-              </div>
+          <Select
+            value={query.sort ?? "date-desc"}
+            onValueChange={(value) =>
+              onQueryChange({ ...query, sort: value as LibraryQueryParams["sort"], page: 1 })
+            }
+          >
+            <SelectTrigger className="w-full md:w-[170px]">
+              <SelectValue placeholder="Sort by" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="date-desc">Newest first</SelectItem>
-              <SelectItem value="date-asc">Oldest first</SelectItem>
+              <SelectItem value="date-desc">Newest</SelectItem>
+              <SelectItem value="date-asc">Oldest</SelectItem>
               <SelectItem value="title-asc">Title (A-Z)</SelectItem>
               <SelectItem value="title-desc">Title (Z-A)</SelectItem>
-              <SelectItem value="duration-desc">Longest first</SelectItem>
-              <SelectItem value="duration-asc">Shortest first</SelectItem>
               <SelectItem value="views-desc">Most viewed</SelectItem>
               <SelectItem value="views-asc">Least viewed</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            value={query.platform ?? "all"}
+            onValueChange={(value) => onQueryChange({ ...query, platform: value, page: 1 })}
+          >
+            <SelectTrigger className="w-full md:w-[150px]">
+              <SelectValue placeholder="Platform" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All platforms</SelectItem>
+              <SelectItem value="youtube">YouTube</SelectItem>
+              <SelectItem value="twitch">Twitch</SelectItem>
+              <SelectItem value="unknown">Unknown</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={query.status ?? "all"} onValueChange={(value) => onQueryChange({ ...query, status: value, page: 1 })}>
+            <SelectTrigger className="w-full md:w-[150px]">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All status</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="processing">Processing</SelectItem>
+              <SelectItem value="live">Live</SelectItem>
+              <SelectItem value="scheduled">Scheduled</SelectItem>
+              <SelectItem value="ended">Ended</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={query.segment ?? "recent"} onValueChange={(value) => onQueryChange({ ...query, segment: value as LibraryQueryParams["segment"], page: 1 })}>
         <TabsList>
-          <TabsTrigger value="all">All Recordings</TabsTrigger>
-          <TabsTrigger value="public">Public</TabsTrigger>
-          <TabsTrigger value="private">Private</TabsTrigger>
-          <TabsTrigger value="processing">Processing</TabsTrigger>
+          <TabsTrigger value="recent">Recent</TabsTrigger>
+          <TabsTrigger value="latest">Latest</TabsTrigger>
+          <TabsTrigger value="previous">Previous</TabsTrigger>
         </TabsList>
+      </Tabs>
 
-        <TabsContent value={activeTab} className="mt-4">
-          {sortedStreams.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <FileVideo className="h-16 w-16 text-gray-400 mb-4" />
-              <h3 className="text-lg font-medium mb-1">No recordings found</h3>
-              <p className="text-sm text-gray-500 max-w-md">
-                {searchQuery
-                  ? "No recordings match your search criteria. Try different keywords."
-                  : "Start streaming with automatic recording enabled to see your recordings here."}
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {sortedStreams.map((stream) => (
-                <Card key={stream.id} className="overflow-hidden">
-                  <div className="relative aspect-video bg-gray-100 dark:bg-gray-800">
-                    {stream.thumbnailUrl ? (
-                      <Image
-                        src={stream.thumbnailUrl || "/placeholder.svg"}
-                        alt={stream.title}
-                        fill
-                        style={{ objectFit: "cover" }}
-                        className="hover:scale-105 transition-transform duration-300"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <FileVideo className="h-12 w-12 text-gray-400" />
-                      </div>
-                    )}
-                    {stream.isProcessing && (
-                      <div className="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center">
-                        <div className="text-white text-center">
-                          <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                          <p className="text-sm">Processing...</p>
-                        </div>
-                      </div>
-                    )}
-                    <div className="absolute bottom-2 right-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
-                      {formatDuration(stream.duration)}
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Card key={`skeleton-${index}`} className="h-72 animate-pulse" />
+          ))}
+        </div>
+      ) : streams.length === 0 ? (
+        <div className="rounded-lg border border-dashed p-10 text-center text-gray-500">No recordings match these filters.</div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {streams.map((stream) => (
+              <Card key={`${stream.sourceType}-${stream.id}`} className="overflow-hidden">
+                <div className="relative aspect-video bg-gray-100 dark:bg-gray-800">
+                  {stream.thumbnailUrl ? (
+                    <Image
+                      src={stream.thumbnailUrl || "/placeholder.svg"}
+                      alt={stream.title}
+                      fill
+                      style={{ objectFit: "cover" }}
+                      className="transition-transform duration-300 hover:scale-105"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <FileVideo className="h-12 w-12 text-gray-400" />
+                    </div>
+                  )}
+                  <div className="absolute left-2 top-2 flex gap-2">
+                    <Badge variant="secondary">{stream.sourceType ?? "recording"}</Badge>
+                    <Badge variant={stream.isProcessing ? "destructive" : "outline"}>{stream.status ?? "completed"}</Badge>
+                  </div>
+                  <div className="absolute bottom-2 right-2 rounded bg-black/70 px-2 py-1 text-xs text-white">
+                    {formatDuration(stream.duration)}
+                  </div>
+                </div>
+
+                <CardHeader className="pb-2">
+                  <CardTitle className="line-clamp-1 text-lg">{stream.title}</CardTitle>
+                </CardHeader>
+
+                <CardContent className="space-y-2 pb-2">
+                  <div className="flex items-center justify-between text-sm text-gray-500">
+                    <div className="flex items-center">
+                      <Clock className="mr-1 h-3 w-3" />
+                      <span>{formatDate(stream.createdAt)}</span>
+                    </div>
+                    <div className="flex items-center">
+                      <Eye className="mr-1 h-3 w-3" />
+                      <span>{stream.viewCount} views</span>
                     </div>
                   </div>
+                  <div className="text-xs text-gray-500">Platform: {formatPlatform(stream.platforms)}</div>
+                </CardContent>
 
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg line-clamp-1">{stream.title}</CardTitle>
-                  </CardHeader>
-
-                  <CardContent className="pb-2">
-                    <div className="flex items-center justify-between text-sm text-gray-500 mb-2">
-                      <div className="flex items-center">
-                        <Clock className="h-3 w-3 mr-1" />
-                        <span>{formatDate(stream.createdAt)}</span>
-                      </div>
-                      <div className="flex items-center">
-                        <Eye className="h-3 w-3 mr-1" />
-                        <span>{stream.viewCount} views</span>
-                      </div>
-                    </div>
-
-                    {stream.tags.length > 0 && (
-                      <div className="flex items-center space-x-1 mb-2 overflow-x-auto scrollbar-hide">
-                        <Tag className="h-3 w-3 text-gray-500 flex-shrink-0" />
-                        {stream.tags.slice(0, 3).map((tag, index) => (
-                          <span
-                            key={index}
-                            className="text-xs bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded-full whitespace-nowrap"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                        {stream.tags.length > 3 && (
-                          <span className="text-xs text-gray-500">+{stream.tags.length - 3} more</span>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="text-xs text-gray-500">Size: {formatFileSize(stream.fileSize)}</div>
-                  </CardContent>
-
-                  <CardFooter className="pt-0 flex justify-between">
+                <CardFooter className="flex justify-between pt-0">
+                  <div className="flex gap-2">
                     <Button
                       variant="default"
                       size="sm"
@@ -252,52 +209,55 @@ export default function RecordedStreamsLibrary({
                       onClick={() => onPlay(stream)}
                       disabled={stream.isProcessing}
                     >
-                      <Play className="h-4 w-4 mr-1" />
+                      <Play className="mr-1 h-4 w-4" />
                       Play
                     </Button>
+                    <Button size="sm" variant="outline" onClick={() => onShare(stream)} disabled={stream.isProcessing}>
+                      <Share2 className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => onDownload(stream)} disabled={stream.isProcessing}>
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  </div>
 
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => onEdit(stream)}>
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit details
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onDownload(stream)} disabled={stream.isProcessing}>
-                          <Download className="h-4 w-4 mr-2" />
-                          Download
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onShare(stream)} disabled={stream.isProcessing}>
-                          <Share2 className="h-4 w-4 mr-2" />
-                          Share
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onCreateClip(stream)} disabled={stream.isProcessing}>
-                          <Scissors className="h-4 w-4 mr-2" />
-                          Create clip
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => onDelete(stream.id)}
-                          className="text-red-600 focus:text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </CardFooter>
-                </Card>
-              ))}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>Quick actions</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => onEdit(stream)}>
+                        <Edit className="mr-2 h-4 w-4" />
+                        Edit details
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onCreateClip(stream)} disabled={stream.isProcessing}>
+                        <Scissors className="mr-2 h-4 w-4" />
+                        Create clip
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => onDelete(stream.id)} className="text-red-600 focus:text-red-600">
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+
+          {hasMore ? (
+            <div className="flex justify-center pt-2">
+              <Button variant="outline" onClick={onLoadMore} disabled={isLoadingMore}>
+                {isLoadingMore ? "Loading..." : "Load more"}
+              </Button>
             </div>
-          )}
-        </TabsContent>
-      </Tabs>
+          ) : null}
+        </>
+      )}
     </div>
   )
 }

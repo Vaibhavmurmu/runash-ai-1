@@ -49,6 +49,13 @@ This document is payment-domain specific. For contributor workflow/process polic
   - Settings payment-adjacent action endpoints (`/api/settings/actions/credits-balance`, `/api/settings/actions/refer-earn`, `/api/settings/actions/upgrade-plan`)
 - **Risk + rollback:** operational release risk is environment readiness (missing lint dependency + DB env), not payment contract behavior. Rollback is documentation-only revert; no payment data migration or API rollback required.
 
+## 2026-02-28 seller commerce API session-scoping hardening (no payment contract changes)
+
+- Seller commerce APIs for products/orders now derive seller identity from the authenticated server session instead of `x-user-id` headers on mutable/listing endpoints.
+- Missing session and invalid-role access continue to return explicit `401`/`403` envelope responses via shared seller auth guards.
+- No payment API request/response fields, webhook schemas, or checkout contracts were changed.
+- Risk + rollback: low-to-medium auth access risk (seller-only data scoping). Rollback is reverting seller API auth guard adoption in `app/api/products/*` and `app/api/orders/*`; no payment migration required.
+
 ## 2026-02-28 auth verification routing consistency (no payment contract changes)
 
 - Better Auth email verification remains canonical for auth-gated payment surfaces; signup + resend verification now consistently use Better Auth verification dispatch and the canonical verifier endpoint (`/api/auth/verify-email`).
@@ -629,6 +636,60 @@ Risks and rollback:
 2. If merchant ops prefer manual optimization, rollback by removing `seller_optimize_commerce` from registry/policy while keeping buyer checkout path intact.
 3. If negotiation-gate blocks expected sandbox checkouts, temporarily disable deal-id checkout enforcement in `services/agent-orchestration-service.ts` and re-enable after settlement data integrity validation.
 
+## 2026-02 email dispatch webhook observability flags (billing-safe rollout)
+
+- Added structured dispatch status metrics for email dispatch + webhook reconciliation with explicit counters: `sent`, `delivered`, `deferred`, `bounced`, `complained`, `suppressed`.
+- Added provider-agnostic webhook status ingestion endpoint `POST /api/email/webhook/status` for normalized status updates (`provider` + `payload`) while preserving existing provider-native webhook routes.
+- Billing-facing rollout is gated by module-level feature flags with explicit rollback toggles:
+  - `FEATURE_FLAG_EMAIL_DISPATCH_BILLING=true|false`
+  - `FEATURE_FLAG_EMAIL_DISPATCH_BILLING_ROLLBACK=true|false`
+- Contact/newsletter module gates follow the same control-plane pattern for staged rollout + rapid rollback:
+  - `FEATURE_FLAG_EMAIL_DISPATCH_CONTACT(_ROLLBACK)`
+  - `FEATURE_FLAG_EMAIL_DISPATCH_NEWSLETTER(_ROLLBACK)`
+- Payment/auth compatibility posture: no billing API contract shape changes, no webhook schema removals, and no payment/auth sensitive data logging added.
+- Risk + rollback:
+  1. If billing email status ingestion causes noisy metrics, set `FEATURE_FLAG_EMAIL_DISPATCH_BILLING_ROLLBACK=true` for immediate module rollback.
+  2. If only campaign/contact paths regress, disable `FEATURE_FLAG_EMAIL_DISPATCH_NEWSLETTER` and/or `FEATURE_FLAG_EMAIL_DISPATCH_CONTACT` while keeping billing enabled.
+
+
+## 2026-02-28 billing/subscription lifecycle event matrix (typed + templated)
+
+Payment services now emit typed lifecycle events into `payment_lifecycle_events` with template binding + dynamic metadata for amount, plan, next billing date, and invoice link.
+
+### Event matrix
+
+| Event type | Trigger source | Template key | Dynamic metadata |
+| --- | --- | --- | --- |
+| `plan_upgrade_initiated` | `PATCH /api/v1/billing/subscription` before Stripe mutation | `billing.plan-upgrade-initiated` | `previousPlan`, `plan`, `nextBillingDate` |
+| `plan_upgrade_completed` | `PATCH /api/v1/billing/subscription` after DB update | `billing.plan-upgrade-completed` | `previousPlan`, `plan`, `nextBillingDate` |
+| `invoice_generated` | Billing webhook `invoice.created` / `invoice.payment_succeeded` flow | `billing.invoice-generated` | `amount`, `currency`, `invoiceLink`, `nextBillingDate` |
+| `invoice_paid` | Billing webhook paid invoice flow | `billing.invoice-paid` | `amount`, `currency`, `invoiceLink`, `nextBillingDate` |
+| `invoice_failed` | Billing webhook `invoice.payment_failed` | `billing.invoice-failed` | `amount`, `currency`, `invoiceLink`, `reason` |
+| `payment_method_updated` | Payment profile method add/update APIs | `billing.payment-method-updated` | `paymentMethodLast4`, `reason` |
+| `payment_method_expired` | Payment profile method disable/remove APIs | `billing.payment-method-expired` | `reason`, optional `paymentMethodLast4` |
+| `subscription_started` | Subscription create/reactivate web + webhook create flows | `billing.subscription-started` | `plan`, `nextBillingDate`, `amount`, `currency` |
+| `subscription_renewed` | Billing webhook `customer.subscription.updated` | `billing.subscription-renewed` | `plan`, `nextBillingDate`, `amount`, `currency` |
+| `subscription_canceled` | Cancel API + webhook delete/canceled status | `billing.subscription-canceled` | `plan`, `nextBillingDate`, `reason` |
+| `subscription_trial_ending` | Webhook trialing subscriptions with `trial_end` | `billing.subscription-trial-ending` | `plan`, `nextBillingDate`, `amount`, `currency` |
+
+### Logging + redaction hardening
+
+- Lifecycle event metadata is sanitized with payment/auth redaction rules before persistence/logging.
+- Sensitive keys (`token`, `secret`, `authorization`, `paymentMethod*`, `customer*`, etc.) are redacted.
+- No raw payment method IDs, provider tokens, customer emails, or auth secrets are logged in lifecycle event logs.
+
+### Rollback notes
+
+1. Revert lifecycle emit callsites in:
+   - `app/api/v1/billing/subscription/route.ts`
+   - `app/api/billing/subscription/cancel/route.ts`
+   - `app/api/billing/subscription/reactivate/route.ts`
+   - `app/api/v1/payment/profile/methods/route.ts`
+   - `app/api/v1/payment/profile/methods/[id]/route.ts`
+   - `lib/services/billing-webhook-service.ts`
+2. If required, keep `payment_lifecycle_events` table in place (non-breaking additive schema) and stop writes by reverting callers.
+3. Existing payment API signatures and webhook contracts remain unchanged; rollback is code-only and does not require field or payload migrations.
+
 
 
 ## 2026-02 Settings billing contract expansion (backward-compatible)
@@ -687,4 +748,5 @@ Standardized settings action/billing error payloads to include a shared field-ma
 2. Migration path remains additive: deploy schema + backfills, then switch settings endpoints to canonical projections.
 3. Rollback path is application-first with feature-flag gating for new billing settings mutations while keeping additive schema intact.
 4. Reconciliation parity checks are required before and after rollback to ensure invoice/credit/referral counters remain consistent.
+
 
