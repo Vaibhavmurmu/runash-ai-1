@@ -9,6 +9,7 @@ Current status:
 - `0002_wallet_link_persistence.sql` provisions RunAsh AI Link wallet persistence tables (cards/link sessions/activity/subscription snapshots/OTP attempts).
 - `0003_accounting_core.sql` + `0004_agent_role_decisions.sql` add accounting and agent decision infrastructure.
 - `0005_waitlist_email_case_insensitive.sql` enforces a case-insensitive unique email index for waitlist duplicate protection.
+- `0006_seller_settings.sql` provisions typed seller business profile storage keyed by `user_id`.
 
 - `0006_chat_attachment_storage.sql` adds chat attachment metadata storage linked to session/message rows.
 
