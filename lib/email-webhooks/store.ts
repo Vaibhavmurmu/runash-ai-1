@@ -161,10 +161,38 @@ export async function getWebhookDiagnostics(options?: { limit?: number; provider
      ORDER BY provider, event_type`,
   )
 
+  const recentSummary = await sql.query(
+    `SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE status = 'processed')::int AS processed,
+      COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
+      COUNT(*) FILTER (WHERE status = 'rejected')::int AS rejected,
+      MAX(created_at) AS last_event_at
+     FROM email_webhook_events
+     WHERE created_at > NOW() - INTERVAL '1 hour'`,
+  )
+
+  const recent = recentSummary[0] || { total: 0, processed: 0, failed: 0, rejected: 0, last_event_at: null }
+  const total = Number(recent.total || 0)
+  const failedCount = Number(recent.failed || 0)
+  const rejectedCount = Number(recent.rejected || 0)
+  const unhealthy = total > 0 && (failedCount + rejectedCount) / total >= 0.25
+
   return {
     events: rows,
     failuresLast24h: failures,
     rejectedLast24h: rejections,
     reconciliationLast24h: reconciliation,
+    status: {
+      totalLastHour: total,
+      failedLastHour: failedCount,
+      rejectedLastHour: rejectedCount,
+      failureRateLastHour: total > 0 ? (failedCount + rejectedCount) / total : 0,
+      lastEventAt: recent.last_event_at,
+      level: unhealthy ? "degraded" : "healthy",
+      action: unhealthy
+        ? "Investigate webhook signature verification and provider delivery events."
+        : "No action required.",
+    },
   }
 }

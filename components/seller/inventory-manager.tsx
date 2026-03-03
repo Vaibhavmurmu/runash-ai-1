@@ -30,7 +30,7 @@ export function InventoryManager() {
     mutate,
     isLoading,
   } = useSWR<InventoryProduct[]>("/api/products", (url) =>
-    fetch(url, { headers: { "x-user-id": "1" } }).then((r) =>
+    fetch(url).then((r) =>
       r.ok ? r.json() : Promise.reject(new Error("Failed to fetch products")),
     ),
   )
@@ -55,7 +55,7 @@ export function InventoryManager() {
     try {
       const response = await fetch(`/api/products/${product.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-user-id": "1" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ stock: newStock, row_version: product.row_version }),
       })
 
@@ -101,7 +101,7 @@ export function InventoryManager() {
     try {
       const response = await fetch(`/api/products/${product.id}`, {
         method: "DELETE",
-        headers: { "x-user-id": "1", "if-match": `"${product.row_version}"` },
+        headers: { "if-match": `"${product.row_version}"` },
       })
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}))
