@@ -30,6 +30,7 @@ import {
   MultiPlatformService,
   type StreamingPlatform,
   type PlatformAnalytics,
+  type MultiPlatformServiceError,
 } from "@/lib/multi-platform-service";
 import type { PlatformTestResult } from "@/lib/streaming-platform-test";
 import { useToast } from "@/hooks/use-toast";
@@ -42,6 +43,17 @@ interface PlatformConnectionType {
   serverUrl?: string;
   isActive: boolean;
   isConnected: boolean;
+}
+
+
+function isUnsupportedCapabilityError(error: unknown) {
+  const candidate = error as MultiPlatformServiceError;
+  return (
+    candidate?.code?.includes("UNSUPPORTED") ||
+    candidate?.code?.includes("CAPABILITY") ||
+    candidate?.status === 409 ||
+    candidate?.status === 501
+  );
 }
 
 interface MultiPlatformStreamingProps {
@@ -183,8 +195,12 @@ export default function MultiPlatformStreaming({
     } catch (error) {
       console.error("Failed to toggle platform:", error);
       toast({
-        title: "Error",
-        description: "Failed to update platform status",
+        title: isUnsupportedCapabilityError(error)
+          ? "Unsupported Capability"
+          : "Error",
+        description: isUnsupportedCapabilityError(error)
+          ? "This platform does not support the requested streaming capability yet."
+          : "Failed to update platform status",
         variant: "destructive",
       });
     } finally {
@@ -212,8 +228,12 @@ export default function MultiPlatformStreaming({
     } catch (error) {
       console.error("Failed to optimize bandwidth:", error);
       toast({
-        title: "Error",
-        description: "Failed to optimize bandwidth",
+        title: isUnsupportedCapabilityError(error)
+          ? "Unsupported Capability"
+          : "Error",
+        description: isUnsupportedCapabilityError(error)
+          ? "Bandwidth optimization is not supported for one or more selected platforms."
+          : "Failed to optimize bandwidth",
         variant: "destructive",
       });
     }

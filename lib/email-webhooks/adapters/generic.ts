@@ -13,6 +13,11 @@ function mapGenericType(eventType?: string): NormalizedEmailWebhookEvent["type"]
     case "bounced":
     case "bounce":
       return "bounced"
+    case "deferred":
+      return "deferred"
+    case "suppressed":
+    case "dropped":
+      return "suppressed"
     case "complaint":
     case "complained":
       return "complaint"

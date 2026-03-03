@@ -56,3 +56,10 @@ test("privileged chat and live routes are no longer treated as public", () => {
   assert.equal(resolveAuthDecision("/runash-chat").requiresSessionValidation, true)
   assert.equal(resolveAuthDecision("/live").requiresSessionValidation, true)
 })
+
+
+test("auth permission and claims APIs require authenticated sessions", () => {
+  assert.equal(resolveAuthDecision("/api/auth/permissions").requiresSessionValidation, true)
+  assert.equal(resolveAuthDecision("/api/auth/claims").requiresSessionValidation, true)
+  assert.equal(resolveAuthDecision("/api/auth/get-session").requiresSessionValidation, false)
+})
