@@ -197,17 +197,17 @@ export default function GetStartedPage() {
           >
             <Bell className="w-4 h-4" />
             <span className="text-orange-600 dark:text-orange-400 gap-2 font-medium text-sm">
-               <Badge varient="secondary" className="bg-orange-600 text-white gap-2 space-x-2 dark:bg-orange-500 border animate-pulse text-xs">New</Badge>
-                 RunAsh Auth is in active development!{" "}
+               <Badge varient="secondary" className="bg-orange-600 text-white gap-2 space-x-1 dark:bg-orange-500 border animate-pulse text-xs">New</Badge>
+                 <p className="gap-2">RunAsh Auth is in active development!{" "}
               <a href="https://doc.runash.in/roadmap" className="underline font-semibold hover:text-orange-200">
-                Learn more
-              </a>
+                Learn more  
+              </a></p>
             </span>
           </Button>
 
           <h1 className="text-5xl sm:text-6xl font-semibold tracking-tight">Get started in minutes</h1>
           <p className="text-base text-slate-600 dark:text-white/65 max-w-2xl mx-auto">
-            RunAsh-Auth a comprehensive  customizable authentication features.
+            RunAsh-Auth a comprehensive customizable authentication features.
           </p>
 
           <div className="flex items-center justify-center gap-3 flex-wrap">
@@ -234,21 +234,21 @@ export default function GetStartedPage() {
       <Dialog open={showRoadmap} onOpenChange={setShowRoadmap}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto border border-orange-200 dark:border-white/15 bg-white dark:bg-[#101424]">
           <DialogHeader>
-            <DialogTitle>RunAsh Auth roadmap</DialogTitle>
+            <DialogTitle>RunAsh-Auth roadmap</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 text-sm">
             <p className="font-medium">What&apos;s supported today and what&apos;s coming next</p>
             <Card className="border-orange-200 dark:border-white/10">
               <CardContent className="p-4 space-y-2">
                 <p><strong>Beta</strong></p>
-                <p>RunAsh Auth is in Beta. Share feedback on Discord or via RunAsh Console.</p>
+                <p>RunAsh-Auth is in Beta. Share feedback on Discord or via RunAsh Console.</p>
                 <p className="text-slate-600 dark:text-white/70">RunAsh-Auth is in active development. This page shows what&apos;s currently supported and what we&apos;re working on next.</p>
               </CardContent>
             </Card>
             <Card className="border-orange-200 dark:border-white/10">
               <CardContent className="p-4">
                 <p><strong>General availability</strong></p>
-                <p>RunAsh Auth is targeting general availability this quarter. We&apos;re actively working on additional plugins and features to bring RunAsh-Auth out of beta.</p>
+                <p>RunAsh-Auth is targeting general availability this quarter. We&apos;re actively working on additional plugins and features to bring RunAsh-Auth out of beta.</p>
               </CardContent>
             </Card>
             <Card className="border-orange-200 dark:border-white/10">
