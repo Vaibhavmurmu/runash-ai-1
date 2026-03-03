@@ -25,7 +25,7 @@ type PayoutResponse = {
 }
 
 const fetcher = (url: string) =>
-  fetch(url, { headers: { "x-user-id": "1" } }).then((r) =>
+  fetch(url).then((r) =>
     r.ok ? r.json() : Promise.reject(new Error("Failed to load payouts")),
   )
 

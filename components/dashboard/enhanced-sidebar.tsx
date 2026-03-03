@@ -69,7 +69,7 @@ const navigationSections = [
     label: "Account",
     items: [
       { name: "Audience", href: "/dashboard/audience", icon: Users, badge: null },
-      { name: "Chat", href: "/dashboard/chat", icon: MessageSquare, badge: "12" },
+      { name: "RunAsh Chat", href: "/dashboard/chat", icon: MessageSquare, badge: "12" },
       { name: "Settings", href: "/dashboard/settings", icon: Settings, badge: null },
       { name: "Notifications", href: "/dashboard/notifications", icon: Bell, badge: "5" },
     ],
@@ -99,7 +99,7 @@ const itemDescriptions: Record<string, string> = {
   Upload: "Upload and convert your media files for streaming.",
   Schedule: "Plan and schedule your upcoming streams.",
   Audience: "Track audience growth and segment your community.",
-  Chat: "Review conversation threads and respond faster.",
+  "RunAsh Chat": "Review conversation threads and respond faster.",
   Settings: "Configure your account-level workspace settings.",
   Notifications: "Control activity alerts and update delivery channels.",
   "Keyboard Shortcuts": "Quickly navigate your workspace using shortcuts.",

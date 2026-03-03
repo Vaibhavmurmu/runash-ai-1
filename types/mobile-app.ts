@@ -23,9 +23,22 @@ export interface ChatMessage {
   username: string
   message: string
   timestamp: string
+  cursor?: string
+  clientRequestId?: string
   isHighlighted?: boolean
   isModerator?: boolean
   isSubscriber?: boolean
+}
+
+export interface ChatAttachmentMetadata {
+  id?: string
+  url?: string
+  name: string
+  size: number
+  type: string
+  width?: number
+  height?: number
+  checksum?: string
 }
 
 export interface MobileChatListResponse {
@@ -37,12 +50,15 @@ export interface MobileSendChatMessageRequest {
   platform: string
   username: string
   message: string
+  clientRequestId?: string
+  attachments?: ChatAttachmentMetadata[]
   isModerator?: boolean
   isSubscriber?: boolean
 }
 
 export interface MobileSendChatMessageResponse {
   message: ChatMessage
+  deduped?: boolean
 }
 
 export interface StreamAnalytics {

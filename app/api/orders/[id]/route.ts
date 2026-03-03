@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getSql } from "@/lib/db/neon"
+import { requireSellerSessionUserId } from "@/app/api/seller/_auth"
 
 function getExpectedRowVersion(req: Request, body: { row_version?: number } | null): number | null {
   const headerValue = req.headers.get("if-match")
@@ -16,7 +17,8 @@ function getExpectedRowVersion(req: Request, body: { row_version?: number } | nu
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   try {
-    const userId = Number(req.headers.get("x-user-id") || 1)
+    const userId = await requireSellerSessionUserId(req)
+    if (userId instanceof Response) return userId
     const sql = getSql()
     const [order] = await sql /* sql */`
       SELECT o.*, COALESCE(json_agg(json_build_object('name', oi.name, 'quantity', oi.quantity, 'price', oi.price))
@@ -29,14 +31,15 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     `
     if (!order) return NextResponse.json({ error: "Not found" }, { status: 404 })
     return NextResponse.json(order)
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: "Failed to load order" }, { status: 500 })
   }
 }
 
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
   try {
-    const userId = Number(req.headers.get("x-user-id") || 1)
+    const userId = await requireSellerSessionUserId(req)
+    if (userId instanceof Response) return userId
     const body = await req.json()
     const expectedRowVersion = getExpectedRowVersion(req, body)
     const { status } = body
@@ -60,14 +63,15 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     }
 
     return NextResponse.json(row)
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: "Failed to update order" }, { status: 500 })
   }
 }
 
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   try {
-    const userId = Number(req.headers.get("x-user-id") || 1)
+    const userId = await requireSellerSessionUserId(req)
+    if (userId instanceof Response) return userId
     const expectedRowVersion = getExpectedRowVersion(req, null)
     const sql = getSql()
     const res = await sql`
@@ -85,7 +89,7 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
     }
 
     return NextResponse.json({ ok: true, count: res.count ?? 0 })
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: "Failed to delete order" }, { status: 500 })
   }
 }

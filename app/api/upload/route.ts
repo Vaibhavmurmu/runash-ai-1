@@ -1,9 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { sql } from "@/lib/db"
 import { CloudStorage } from "@/lib/cloud-storage"
-import { getServerAuthSession } from "@/lib/auth/session"
 
-const sql = neon(process.env.DATABASE_URL!)
 
 const ALLOWED_CONTENT_TYPES = new Set([
   "image/jpeg",
@@ -29,9 +27,14 @@ function sanitizePathSegment(input: string, fallback: string): string {
   return sanitized || fallback
 }
 
+async function getSession() {
+  const { getServerAuthSession } = await import("@/lib/auth/session")
+  return getServerAuthSession()
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerAuthSession()
+    const session = await getSession()
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
