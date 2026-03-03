@@ -1,6 +1,6 @@
 "use client"
 
-import { type ChangeEvent, type DragEvent, useMemo, useRef, useState } from "react"
+import { type ChangeEvent, type DragEvent, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ChevronDown, Send, Sparkles, Search, OctagonX, RotateCcw, Image as ImageIcon, RefreshCcw, X } from "lucide-react"
@@ -63,7 +63,11 @@ type RunAshChatComposerProps = {
   attachmentError?: string | null
   onRetryAttachment?: () => void
   onRemoveAttachment?: () => void
+  showUpgradePrompt?: boolean
+  onUpgradeClick?: (location: "composer_inline") => void
 }
+
+const UPGRADE_PROMPT_DISMISSED_KEY = "runash_upgrade_prompt_dismissed_v1"
 
 type SlashCommand = {
   command: string
@@ -125,6 +129,8 @@ export function RunAshChatComposer({
   attachmentError,
   onRetryAttachment,
   onRemoveAttachment,
+  showUpgradePrompt = false,
+  onUpgradeClick,
 }: RunAshChatComposerProps) {
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
@@ -132,7 +138,24 @@ export function RunAshChatComposer({
   const [isEnhancing, setIsEnhancing] = useState(false)
   const [showSecondaryControls, setShowSecondaryControls] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+
+  const [isTouchDevice, setIsTouchDevice] = useState(false)
+
+  const [upgradePromptDismissed, setUpgradePromptDismissed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false
+    return window.localStorage.getItem(UPGRADE_PROMPT_DISMISSED_KEY) === "1"
+  })
+
   const attachmentInputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return
+    const mediaQuery = window.matchMedia("(pointer: coarse)")
+    const updateInputMode = () => setIsTouchDevice(mediaQuery.matches)
+    updateInputMode()
+    mediaQuery.addEventListener("change", updateInputMode)
+    return () => mediaQuery.removeEventListener("change", updateInputMode)
+  }, [])
 
   const estimatedTokens = useMemo(() => Math.ceil(value.length / 4), [value])
   const isNearCharLimit = value.length >= SOFT_CHARACTER_LIMIT
@@ -254,18 +277,25 @@ export function RunAshChatComposer({
     setIsDragging(false)
 
     const file = event.dataTransfer.files?.[0]
-    if (!file || !onAttachFile) return
+    if (!file || !onAttachFile || isTouchDevice) return
     void onAttachFile(file)
   }
 
   const attachmentStatusMessage =
     attachmentPreview?.uploadState === "uploading"
-      ? "Uploading image..."
+      ? "Uploading image metadata..."
       : attachmentPreview?.uploadState === "failed"
         ? attachmentPreview.error || "Upload failed. Please retry."
         : attachmentPreview?.uploadState === "uploaded"
           ? "Image ready to send."
           : null
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    window.localStorage.setItem(UPGRADE_PROMPT_DISMISSED_KEY, upgradePromptDismissed ? "1" : "0")
+  }, [upgradePromptDismissed])
+
+  const shouldShowUpgradePrompt = showUpgradePrompt && !upgradePromptDismissed
 
   return (
     <div className="space-y-2">
@@ -273,7 +303,7 @@ export function RunAshChatComposer({
         className={`rounded-md border bg-zinc-900 p-2 transition-colors ${isDragging ? "border-orange-400" : "border-zinc-700"}`}
         onDragOver={(event) => {
           event.preventDefault()
-          if (!onAttachFile) return
+          if (!onAttachFile || isTouchDevice) return
           setIsDragging(true)
         }}
         onDragLeave={() => setIsDragging(false)}
@@ -320,6 +350,29 @@ export function RunAshChatComposer({
               Advanced options
               <ChevronDown className={`ml-1 h-3.5 w-3.5 transition-transform ${showSecondaryControls ? "rotate-180" : ""}`} />
             </Button>
+            {onAttachFile ? (
+              <>
+                <input
+                  ref={attachmentInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  className="hidden"
+                  onChange={handleAttachmentSelect}
+                  aria-label="Attach image"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => attachmentInputRef.current?.click()}
+                  className="h-8 border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+                  aria-label="Attach image"
+                >
+                  <ImageIcon className="mr-1 h-3.5 w-3.5" />
+                  Attach
+                </Button>
+              </>
+            ) : null}
             <span className="text-zinc-500">Type / for RunAsh templates • Ctrl/Cmd+Shift+P to polish</span>
           </div>
 
@@ -383,34 +436,33 @@ export function RunAshChatComposer({
         ) : null}
 
         {attachmentPreview ? (
-          <div className="mt-3 rounded-md border border-zinc-700 bg-zinc-950/70 p-2">
-            <div className="flex gap-2">
-              <img src={attachmentPreview.previewUrl} alt={attachmentPreview.metadata.name} className="h-20 w-20 rounded border border-zinc-700 object-cover" />
-              <div className="min-w-0 flex-1 text-xs text-zinc-300">
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-zinc-700 bg-zinc-950/70 p-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900/70 px-2 py-1 text-xs text-zinc-300">
+              <img src={attachmentPreview.previewUrl} alt={attachmentPreview.metadata.name} className="h-8 w-8 rounded object-cover" />
+              <div className="min-w-0">
                 <p className="truncate font-medium text-zinc-100">{attachmentPreview.metadata.name}</p>
-                <p>{Math.max(1, Math.round(attachmentPreview.metadata.size / 1024))} KB</p>
-                {attachmentStatusMessage ? (
-                  <p className={attachmentPreview.uploadState === "failed" ? "text-red-300" : "text-zinc-400"}>{attachmentStatusMessage}</p>
-                ) : null}
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {attachmentPreview.uploadState === "failed" && onRetryAttachment ? (
-                    <Button type="button" variant="outline" size="sm" className="h-7 border-zinc-600 bg-zinc-900 text-zinc-200" onClick={onRetryAttachment}>
-                      <RefreshCcw className="mr-1 h-3.5 w-3.5" /> Retry
-                    </Button>
-                  ) : null}
-                  {onAttachFile ? (
-                    <Button type="button" variant="outline" size="sm" className="h-7 border-zinc-600 bg-zinc-900 text-zinc-200" onClick={() => attachmentInputRef.current?.click()}>
-                      Replace
-                    </Button>
-                  ) : null}
-                  {onRemoveAttachment ? (
-                    <Button type="button" variant="outline" size="sm" className="h-7 border-zinc-600 bg-zinc-900 text-zinc-200" onClick={onRemoveAttachment}>
-                      <X className="mr-1 h-3.5 w-3.5" /> Remove
-                    </Button>
-                  ) : null}
-                </div>
+                <p className={attachmentPreview.uploadState === "failed" ? "text-red-300" : "text-zinc-400"}>
+                  {Math.max(1, Math.round(attachmentPreview.metadata.size / 1024))} KB
+                  {attachmentStatusMessage ? ` • ${attachmentStatusMessage}` : ""}
+                </p>
               </div>
             </div>
+
+            {attachmentPreview.uploadState === "failed" && onRetryAttachment ? (
+              <Button type="button" variant="outline" size="sm" className="h-7 border-zinc-600 bg-zinc-900 text-zinc-200" onClick={onRetryAttachment}>
+                <RefreshCcw className="mr-1 h-3.5 w-3.5" /> Retry
+              </Button>
+            ) : null}
+            {onAttachFile ? (
+              <Button type="button" variant="outline" size="sm" className="h-7 border-zinc-600 bg-zinc-900 text-zinc-200" onClick={() => attachmentInputRef.current?.click()}>
+                Replace
+              </Button>
+            ) : null}
+            {onRemoveAttachment ? (
+              <Button type="button" variant="outline" size="sm" className="h-7 border-zinc-600 bg-zinc-900 text-zinc-200" onClick={onRemoveAttachment}>
+                <X className="mr-1 h-3.5 w-3.5" /> Remove
+              </Button>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -519,28 +571,6 @@ export function RunAshChatComposer({
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
         <span>Enter to send • Shift+Enter newline • Controls are keyboard accessible.</span>
         <div className="flex items-center gap-2">
-          {onAttachFile ? (
-            <>
-              <input
-                ref={attachmentInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                className="hidden"
-                onChange={handleAttachmentSelect}
-                aria-label="Attach image"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => attachmentInputRef.current?.click()}
-                className="border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
-                aria-label="Attach image"
-              >
-                <ImageIcon className="mr-1 h-4 w-4" />
-                Image
-              </Button>
-            </>
-          ) : null}
           {(streamState === "sending" || streamState === "streaming") && onStop ? (
             <Button type="button" variant="outline" onClick={onStop} className="border-red-700 text-red-200 hover:bg-red-950">
               <OctagonX className="mr-1 h-4 w-4" /> Stop
@@ -559,8 +589,37 @@ export function RunAshChatComposer({
       </div>
 
       <div className="rounded-md border border-zinc-800/80 bg-zinc-950/60 px-3 py-2 text-[11px] text-zinc-400">
+
         <span>Need higher usage limits? <a href="/upgrade" className="text-amber-300 underline underline-offset-2">Upgrade your plan</a>.</span>
-        {onAttachFile ? <span className="ml-1">Drag and drop an image on desktop, or tap the image button on mobile.</span> : null}
+        {onAttachFile ? <span className="ml-1">{isTouchDevice ? "Tap Attach to pick an image." : "Drag and drop an image, or click Attach."}</span> : null}
+
+        {shouldShowUpgradePrompt ? (
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              Need higher usage limits?{" "}
+              <a
+                href="/upgrade"
+                className="text-amber-300 underline underline-offset-2"
+                onClick={() => onUpgradeClick?.("composer_inline")}
+              >
+                Upgrade your plan
+              </a>
+              .
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[11px] text-zinc-500 hover:text-zinc-200"
+              onClick={() => setUpgradePromptDismissed(true)}
+              aria-label="Dismiss upgrade prompt"
+            >
+              Dismiss
+            </Button>
+          </div>
+        ) : null}
+        {onAttachFile ? <span className={shouldShowUpgradePrompt ? "mt-1 block" : ""}>Drag and drop an image on desktop, or tap the image button on mobile.</span> : null}
+
       </div>
     </div>
   )

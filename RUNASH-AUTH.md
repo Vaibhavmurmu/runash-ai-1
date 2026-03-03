@@ -2,6 +2,14 @@
 
 Last updated: 2026-02
 
+
+## Middleware/admin authorization hardening update (2026-02)
+
+- Middleware public API matching now allowlists only explicit unauthenticated auth endpoints instead of treating the full `/api/auth/**` tree as public.
+- Privileged auth endpoints such as `GET /api/auth/claims` and `GET /api/auth/permissions` now stay behind authenticated session validation at middleware boundary.
+- `requireAdminAuthorization` now enforces an explicit admin-capable role gate (`admin`/`super_admin`) before permission evaluation, preserving response contracts (`401` unauthenticated, `403` unauthorized).
+- No payment request/response contracts or field names were changed by this hardening pass.
+
 ## Admin auth/org operations update (2026-02)
 
 - Added an admin auth/org route inventory with UI coverage mapping at `docs/ADMIN_AUTH_ORG_ROUTE_INVENTORY.md`.
@@ -70,7 +78,9 @@ Last updated: 2026-02
 ## Email verification flow consistency update (2026-02)
 
 - Better Auth remains the single source of truth for email verification token generation and verification (`auth.api.sendVerificationEmail` + `auth.api.verifyEmail`) with `/api/auth/verify-email` retained as the canonical verifier endpoint.
+- Shared callback URL resolution now lives in `lib/auth.ts` (`emailVerificationCallbackURL`) so signup, resend verification, and verification redirects use the same post-verification destination contract.
 - `POST /api/auth/resend-verification` now uses centralized auth rate-limit policy (`AUTH_ENDPOINT_RATE_LIMITS["resend-verification"]`) and always returns the same non-enumerating response message for unknown or already-verified emails.
+- `GET /verify-email?token=...` now follows the same canonical token path by calling `GET /api/auth/verify-email` and exposing resend UX for known emails without introducing alternate verification token semantics.
 - Resend verification delivery continues through Better Auth's verification callback path (which is wired to the Resend-backed email provider abstraction in `lib/email.ts`) and now normalizes callback URL handling through shared auth email URL utilities.
 - Signup UI now surfaces an in-flow verification notice (`"Check your email to verify your account"`) when verification is required, instead of immediately navigating away as if account access was active.
 
@@ -93,6 +103,8 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
   - `EMAIL_PROVIDER=resend` -> use Resend when configured, otherwise fallback to SMTP if available.
   - unset/invalid `EMAIL_PROVIDER` -> auto-select SMTP first, then Resend.
 - Standardized environment variables on `SMTP_PASSWORD` (canonical) and `EMAIL_FROM` (canonical sender). Legacy aliases `SMTP_PASS` and `SMTP_FROM` remain temporary compatibility fallbacks for migration safety.
+- Resend transport now uses the official SDK client initialization path (`new Resend(process.env.RESEND_API_KEY)`) and sends with explicit `{ data, error }` handling plus bounded retry for rate-limit/transient failures (HTTP `429`, `5xx`, `408`, `425`).
+- Resend send options support optional `replyTo`, `scheduledAt`, `tags`, `attachments`, and `idempotencyKey` fields via the canonical provider abstraction.
 - Existing auth send paths continue through `sendVerificationEmail` and `sendPasswordResetEmail`, but the final transport now resolves through the canonical provider path and keeps delivery tracking + realtime status events unchanged.
 
 ### Required email environment variables
@@ -100,6 +112,8 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 - Shared:
   - `EMAIL_PROVIDER` (`smtp` or `resend`)
   - `EMAIL_FROM` (recommended canonical sender, for both providers)
+- Resend-specific sender domain control:
+  - `RESEND_VERIFIED_FROM` (recommended; verified production sending identity/domain, used before `EMAIL_FROM`)
 - SMTP path:
   - `SMTP_HOST`
   - `SMTP_PORT` (optional, defaults `587`)
@@ -187,6 +201,20 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
   - Authenticated access continuity assumptions for billing/credits entrypoints.
   - Authorization guard posture (`401` unauthenticated, `403` unauthorized) for auth/payment-adjacent surfaces.
 - **Risk + rollback:** risk is environment/dependency readiness for validation pipelines; rollback remains docs-only revert with no auth schema or session migration changes.
+
+
+## 2026-02-28 auth/payment validation rerun (release checklist)
+
+- **Behavior change summary:** none; this rerun only records validation evidence for release auditability.
+- **Validation command outcomes (latest run):**
+  - `npm run lint` failed because the environment is missing `eslint` (`next lint` reported `ESLint must be installed`).
+  - `npm run build` compiled successfully, then failed during page-data collection because Neon database configuration is unset (`No database connection string was provided to neon()`).
+- **Impacted auth/payment flows reviewed:**
+  - Auth session retrieval guard (`GET /api/auth/get-session`) used by payment-adjacent routes.
+  - Authenticated continuity assumptions across billing/credits entrypoints.
+  - Authorization posture (`401` unauthenticated, `403` unauthorized) for auth/payment-adjacent surfaces.
+- **Risks:** validation confidence is gated by local dependency/env readiness (`eslint` package and DB connection string).
+- **Rollback steps:** documentation-only rollback by reverting this commit; no API/schema/session migration rollback is required.
 
 ### Better Auth runtime and adapters
 - `lib/auth.ts` — Better Auth instance, provider config, account-linking hooks, and the canonical server-side session resolver (`getAuthSessionFromHeaders`, `getServerAuthSession`).
@@ -685,3 +713,29 @@ Use this destructive path only when the application rollback cannot restore serv
 - High-risk wallet mutations (default method switch, subscription status updates) are rejected unless HITL + MFA assertions are present.
 - Geo/risk checks are evaluated at request time and surfaced as explicit reason codes to callers for adaptive auth UX (review queues, challenge loops, or hard-deny).
 - Auth-adjacent telemetry for wallet/link flows is emitted only through sanitized structured logs; secrets, OTP values, and card data are not logged.
+
+## 2026-02 settings security session/device management
+
+- Added user-scoped settings security APIs for session and device operations:
+  - `GET|PATCH|DELETE /api/settings/security/sessions`
+  - `GET|POST|DELETE /api/settings/security/devices`
+- Session responses are constrained to operational metadata (id/mode/scope/device/lastSeen timestamps) and do not expose bearer token values or token hashes.
+- Trusted device management stores and revokes trust state by `(user_id, device_id)` to support auditable recovery and remote sign-out workflows.
+- Settings UI now includes session/device tables and per-session scope editing for user-scoped integrations.
+
+## 2026-02 settings security API contract + storage model update
+
+- Added canonical settings architecture and endpoint contract documentation at `docs/SETTINGS_ARCHITECTURE_API_CONTRACT.md`.
+- Session/device/2FA/API key settings behaviors are now documented as a single compatibility contract with additive-only response evolution.
+- Storage model documentation now explicitly captures:
+  - session registry and session identity linkage tables,
+  - trusted-device ownership model `(user_id, device_id)`,
+  - API key hash-only persistence and one-time plaintext return behavior,
+  - 2FA enrollment/challenge/recovery storage as metadata + hashes only.
+
+### Migration + rollback procedure (settings security)
+
+1. Roll out additive settings-security schema changes and metadata backfills.
+2. Validate sessions/devices/2FA/API-key settings endpoints against stable response keys.
+3. If incidents are detected, rollback application artifacts first and temporarily gate new settings mutations.
+4. Keep additive schema in place during incident response; avoid destructive rollback.
