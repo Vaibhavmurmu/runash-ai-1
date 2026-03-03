@@ -780,3 +780,18 @@ Use this destructive path only when the application rollback cannot restore serv
 
 - **Risk:** low; changes are scoped to OTP verification and testability seams, with no public request/response schema changes.
 - **Rollback:** revert the OTP hardening commit to restore previous OTP query/logging behavior and test structure; no migration is required.
+
+
+## 2026-03 auth/session tenant consistency migration
+
+- Added SQL migration `scripts/sql/2026-03-03_auth_session_tenant_consistency.sql` to harden tenant-aware auth session storage while preserving compatibility for existing rows.
+- `auth_session_registry` and `auth_trusted_devices` now include nullable `organization_id` columns with backfill from `users.sso_organization_id` for existing records.
+- Added idempotent foreign-key hardening for `auth_session_identities` and `auth_session_registry` to align script-driven environments with baseline migration guarantees.
+- Added missing operational indexes for tenant-scoped session/device queries and transfer-token expiry/session lookups.
+
+### Migration guidance
+
+1. Apply: `scripts/sql/2026-03-03_auth_session_tenant_consistency.sql` after the Better Auth baseline migration.
+2. Validate backfill: compare non-null `organization_id` counts in `auth_session_registry` and `auth_trusted_devices` against users with non-null `sso_organization_id`.
+3. Validate contract compatibility: run `GET /api/auth/sessions`, `DELETE /api/auth/sessions`, and settings security device/session endpoints.
+4. Rollback: this migration is additive; rollback should be application-level first. For emergency DB rollback, drop only the new indexes/columns after traffic pause.
