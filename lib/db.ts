@@ -44,21 +44,10 @@ export function assertDatabaseConfigured(context?: string): string {
   return url
 }
 
-function getClient() {
+export function getSql() {
   if (_client) return _client
 
-  let url: string
-  try {
-    url = assertDatabaseConfigured("lib/db.ts:getClient")
-  } catch (error) {
-    const errFn = (() => {
-      throw error
-    }) as unknown as ReturnType<typeof neon>
-
-    _client = errFn
-    return _client
-  }
-
+  const url = assertDatabaseConfigured("lib/db.ts:getSql")
   _client = neon(url)
   return _client
 }
@@ -68,13 +57,11 @@ export function getDatabaseEnvResolutionOrder(): readonly string[] {
 }
 
 export function sql<T = any>(strings: TemplateStringsArray, ...values: any[]): Promise<T[]> {
-  const c = getClient() as any
-  return c(strings, ...values)
+  return getSql()(strings, ...values)
 }
 
 ;(sql as any).unsafe = (query: string, params?: any[]) => {
-  const c = getClient() as any
-  return c.unsafe(query, params)
+  return (getSql() as any).unsafe(query, params)
 }
 
 export async function one<T = any>(queryPromise: Promise<T[]>): Promise<T | null> {

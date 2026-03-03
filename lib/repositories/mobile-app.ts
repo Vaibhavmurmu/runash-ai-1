@@ -1,4 +1,5 @@
 import { one, queryMany, sql } from "@/lib/db"
+import { decodeMobileCursor, encodeMobileCursor } from "@/lib/chat-contracts"
 import type {
   ChatMessage,
   MobileChatListResponse,
@@ -15,9 +16,11 @@ import type {
 
 type MobileChatRow = {
   id: string
+  cursor_seq: number
   platform: string
   username: string
   message: string
+  client_request_id: string | null
   created_at: string
   is_highlighted: boolean | null
   is_moderator: boolean | null
@@ -49,12 +52,32 @@ async function ensureTables() {
   await sql`
     create table if not exists mobile_chat_messages (
       id uuid primary key default gen_random_uuid(),
+      cursor_seq bigserial not null,
       platform text not null,
       username text not null,
       message text not null,
+      client_request_id text,
       is_highlighted boolean not null default false,
       is_moderator boolean not null default false,
       is_subscriber boolean not null default false,
+      created_at timestamptz not null default now()
+    )
+  `
+
+  await sql`alter table mobile_chat_messages add column if not exists cursor_seq bigserial`
+  await sql`alter table mobile_chat_messages add column if not exists client_request_id text`
+  await sql`create unique index if not exists idx_mobile_chat_client_request_id on mobile_chat_messages (client_request_id) where client_request_id is not null`
+  await sql`create unique index if not exists idx_mobile_chat_cursor_seq on mobile_chat_messages (cursor_seq)`
+
+  await sql`
+    create table if not exists mobile_chat_message_attachments (
+      id uuid primary key default gen_random_uuid(),
+      message_id uuid not null references mobile_chat_messages(id) on delete cascade,
+      attachment_name text not null,
+      attachment_type text not null,
+      attachment_size integer not null,
+      attachment_url text,
+      attachment_checksum text,
       created_at timestamptz not null default now()
     )
   `
@@ -126,6 +149,8 @@ function toChatMessage(row: MobileChatRow): ChatMessage {
     isHighlighted: Boolean(row.is_highlighted),
     isModerator: Boolean(row.is_moderator),
     isSubscriber: Boolean(row.is_subscriber),
+    clientRequestId: row.client_request_id ?? undefined,
+    cursor: encodeMobileCursor(Number(row.cursor_seq ?? 0)),
   }
 }
 
@@ -152,33 +177,53 @@ function toScheduledStream(row: MobileScheduleRow): ScheduledStream {
 
 export async function listMobileChatMessages(limit = 200, since?: string): Promise<MobileChatListResponse> {
   await init()
-  const rows = since
-    ? await queryMany<MobileChatRow>(
-        `select id, platform, username, message, created_at, is_highlighted, is_moderator, is_subscriber
-         from mobile_chat_messages where created_at > $1 order by created_at asc limit $2`,
-        [since, limit],
-      )
-    : await queryMany<MobileChatRow>(
-        `select id, platform, username, message, created_at, is_highlighted, is_moderator, is_subscriber
-         from mobile_chat_messages order by created_at asc limit $1`,
-        [limit],
-      )
+  const cursorSequence = decodeMobileCursor(since)
+  const rows = await queryMany<MobileChatRow>(
+    `select id, cursor_seq, platform, username, message, client_request_id, created_at, is_highlighted, is_moderator, is_subscriber
+     from mobile_chat_messages
+     where cursor_seq > $1
+     order by cursor_seq asc
+     limit $2`,
+    [cursorSequence, limit],
+  )
 
   return {
     messages: rows.map(toChatMessage),
-    cursor: rows.length > 0 ? rows[rows.length - 1].created_at : since ?? new Date().toISOString(),
+    cursor: rows.length > 0 ? encodeMobileCursor(Number(rows[rows.length - 1].cursor_seq)) : encodeMobileCursor(cursorSequence),
   }
 }
 
 export async function createMobileChatMessage(payload: MobileSendChatMessageRequest): Promise<MobileSendChatMessageResponse> {
   await init()
+
+  if (payload.clientRequestId) {
+    const existing = await one<MobileChatRow>(sql<MobileChatRow[]>`
+      select id, cursor_seq, platform, username, message, client_request_id, created_at, is_highlighted, is_moderator, is_subscriber
+      from mobile_chat_messages
+      where client_request_id = ${payload.clientRequestId}
+      limit 1
+    `)
+    if (existing) {
+      return { message: toChatMessage(existing), deduped: true }
+    }
+  }
+
   const [row] = await sql<MobileChatRow[]>`
-    insert into mobile_chat_messages (platform, username, message, is_moderator, is_subscriber)
-    values (${payload.platform}, ${payload.username}, ${payload.message}, ${payload.isModerator ?? false}, ${payload.isSubscriber ?? false})
-    returning id, platform, username, message, created_at, is_highlighted, is_moderator, is_subscriber
+    insert into mobile_chat_messages (platform, username, message, client_request_id, is_moderator, is_subscriber)
+    values (${payload.platform}, ${payload.username}, ${payload.message}, ${payload.clientRequestId ?? null}, ${payload.isModerator ?? false}, ${payload.isSubscriber ?? false})
+    returning id, cursor_seq, platform, username, message, client_request_id, created_at, is_highlighted, is_moderator, is_subscriber
   `
 
-  return { message: toChatMessage(row) }
+  if (payload.attachments?.length) {
+    for (const attachment of payload.attachments) {
+      await sql`
+        insert into mobile_chat_message_attachments (message_id, attachment_name, attachment_type, attachment_size, attachment_url, attachment_checksum)
+        values (${row.id}, ${attachment.name}, ${attachment.type}, ${attachment.size}, ${attachment.url ?? null}, ${attachment.checksum ?? null})
+      `
+    }
+  }
+
+  return { message: toChatMessage(row), deduped: false }
 }
 
 function buildSyncMeta(lastSyncedAt: string): MobileScheduleSyncMetadata {

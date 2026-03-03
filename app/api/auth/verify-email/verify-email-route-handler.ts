@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { auth } from "@/lib/auth"
+import { auth, emailVerificationCallbackURL } from "@/lib/auth"
 import { logApiRouteError } from "@/lib/api/logging"
 import { rateLimit } from "@/lib/rate-limit"
 import { AUTH_ENDPOINT_RATE_LIMITS } from "@/lib/auth-security-config"
@@ -58,8 +58,10 @@ async function handleVerifyEmail(
     },
   })
 
-  if (input.callbackURL) {
-    return NextResponse.redirect(input.callbackURL)
+  const redirectTarget = input.callbackURL ?? emailVerificationCallbackURL
+
+  if (redirectTarget) {
+    return NextResponse.redirect(redirectTarget)
   }
 
   return NextResponse.json({

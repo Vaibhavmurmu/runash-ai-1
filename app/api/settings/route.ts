@@ -600,7 +600,10 @@ async function updateSettings(request: NextRequest) {
           {
             code: "INVALID_SECURITY_PAYLOAD",
             message: "Invalid security settings payload",
-            details: { validationErrors: mapZodErrorsToFieldMap("security", securityValidation.error.issues) },
+            details: {
+              errors: mapZodErrorsToFieldMap("security", securityValidation.error.issues),
+              validationErrors: mapZodErrorsToFieldMap("security", securityValidation.error.issues),
+            },
           },
           { status: 400, legacy: { error: "Invalid security settings payload" } },
         )
@@ -621,7 +624,10 @@ async function updateSettings(request: NextRequest) {
           {
             code: "INVALID_PROFILE_ATTACHMENT_PAYLOAD",
             message: "Invalid profile attachment metadata",
-            details: { validationErrors: mapZodErrorsToFieldMap("profile", profileAttachmentValidation.error.issues) },
+            details: {
+              errors: mapZodErrorsToFieldMap("profile", profileAttachmentValidation.error.issues),
+              validationErrors: mapZodErrorsToFieldMap("profile", profileAttachmentValidation.error.issues),
+            },
           },
           { status: 400, legacy: { error: "Invalid profile attachment metadata" } },
         )
@@ -641,7 +647,10 @@ async function updateSettings(request: NextRequest) {
           {
             code: "INVALID_FEEDBACK_ATTACHMENT_PAYLOAD",
             message: "Invalid feedback attachment metadata",
-            details: { validationErrors: mapZodErrorsToFieldMap("preferences", preferencesAttachmentValidation.error.issues) },
+            details: {
+              errors: mapZodErrorsToFieldMap("preferences", preferencesAttachmentValidation.error.issues),
+              validationErrors: mapZodErrorsToFieldMap("preferences", preferencesAttachmentValidation.error.issues),
+            },
           },
           { status: 400, legacy: { error: "Invalid feedback attachment metadata" } },
         )
@@ -656,7 +665,10 @@ async function updateSettings(request: NextRequest) {
           {
             code: "INVALID_BILLING_PAYLOAD",
             message: "Invalid billing metadata payload",
-            details: { validationErrors: mapZodErrorsToFieldMap("billing", billingValidation.error.issues) },
+            details: {
+              errors: mapZodErrorsToFieldMap("billing", billingValidation.error.issues),
+              validationErrors: mapZodErrorsToFieldMap("billing", billingValidation.error.issues),
+            },
           },
           { status: 400, legacy: { error: "Invalid billing metadata payload" } },
         )
@@ -697,6 +709,11 @@ async function updateSettings(request: NextRequest) {
           code: "SETTINGS_VERSION_CONFLICT",
           message: "Settings were updated by another request. Refresh and retry.",
           details: {
+            errors: {
+              account: {
+                _section: "Settings are out of date. Please refresh before saving.",
+              },
+            },
             validationErrors: {
               account: {
                 _section: "Settings are out of date. Please refresh before saving.",

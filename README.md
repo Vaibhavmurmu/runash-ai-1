@@ -46,6 +46,31 @@ pnpm install
 - [ ] Create `.env.local` in the project root.
 - [ ] Add the required secrets for auth, AI providers, database, and integrations used in your environment.
 
+#### Neon CLI bootstrap (recommended for new environments)
+
+Use Neon CLI to initialize/select the PostgreSQL project + branch that RunAsh should use:
+
+```bash
+export NEON_API_KEY="<your-neon-api-key>"
+npx neonctl@latest init
+```
+
+During `init`, authenticate with your Neon account/API key, then select:
+
+- the Neon **project** for this deployment target,
+- the Neon **branch** (`dev`, `staging`, or `prod`),
+- the target database/role if prompted.
+
+Map the resulting Neon connection string into app env vars as follows:
+
+- Preferred: `DATABASE_URL` (first in runtime resolution order).
+- Optional explicit alias: `NEON_DATABASE_URL`.
+- Fallbacks recognized by `lib/db.ts`: `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `POSTGRES_URL_NON_POOLING`, `runash_POSTGRES_URL`, `runash_POSTGRES_URL_NON_POOLING`.
+
+`lib/db.ts` resolves these vars in precedence order and throws if none are set, so you can safely standardize on `DATABASE_URL` while keeping backward-compatible fallbacks for existing environments.
+
+For branch conventions and a safe migration workflow, see [`scripts/neon/README.md`](./scripts/neon/README.md).
+
 ### Optional tooling: install Better Auth skills
 
 If you use Codex skills locally, install the Better Auth skill pack:
