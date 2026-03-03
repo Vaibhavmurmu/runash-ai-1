@@ -28,7 +28,7 @@ type SellerOrder = {
 }
 
 const fetcher = (url: string) =>
-  fetch(url, { headers: { "x-user-id": "1" } }).then((r) => {
+  fetch(url).then((r) => {
     if (!r.ok) throw new Error("Failed to load orders")
     return r.json()
   })
@@ -63,7 +63,7 @@ export function OrderManager() {
     try {
       const res = await fetch(`/api/orders/${order.id}`, {
         method: "PUT",
-        headers: { "content-type": "application/json", "x-user-id": "1" },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ status: newStatus, row_version: order.row_version }),
       })
       if (!res.ok) {

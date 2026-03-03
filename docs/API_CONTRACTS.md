@@ -749,3 +749,95 @@ Example update payload:
   }
 }
 ```
+
+## Chat Contract Canonicalization (2026-02)
+
+### Canonical request fields
+
+Applicable to `POST /api/chat`, `POST /api/agents/chat`, and `POST /api/mobile/chat`:
+
+- `clientRequestId` (string, optional): idempotency key supplied by client. If repeated, server returns previously accepted message/result when available.
+- `attachments` (array, optional): metadata-only references, max 3-4 items depending on endpoint.
+  - `name` (required)
+  - `type` (required)
+  - `size` (required, positive, max 8MB)
+  - `url`, `checksum`, `width`, `height`, `id` (optional)
+- `retry` (object, optional for streaming endpoints):
+  - `mode`: `none | auto | manual`
+  - `maxAttempts`: `0..3`
+
+### Canonical error codes
+
+| Code | Meaning |
+| --- | --- |
+| `AUTH_REQUIRED` | Auth/session missing for endpoint requiring identity. |
+| `RATE_LIMITED` | Adaptive throttle/rate limit exceeded. |
+| `INVALID_ATTACHMENT` | Attachment metadata failed validation. |
+| `PROVIDER_TIMEOUT` | Upstream AI provider timed out. |
+| `INVALID_REQUEST` | Payload schema validation failure. |
+
+### `POST /api/mobile/chat` example
+
+Request:
+
+```json
+{
+  "platform": "youtube",
+  "username": "creator_mod",
+  "message": "Pinned message for checkout",
+  "clientRequestId": "mob-req-20260228-00041",
+  "attachments": [
+    {
+      "name": "promo.png",
+      "type": "image/png",
+      "size": 140231,
+      "url": "https://cdn.runash.in/chat/promo.png",
+      "checksum": "sha256:abc123"
+    }
+  ]
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": {
+      "id": "c4a2...",
+      "platform": "youtube",
+      "username": "creator_mod",
+      "message": "Pinned message for checkout",
+      "timestamp": "2026-02-28T08:01:44.311Z",
+      "cursor": "mc_1882",
+      "clientRequestId": "mob-req-20260228-00041"
+    },
+    "deduped": false
+  },
+  "error": null,
+  "requestId": "req_..."
+}
+```
+
+### Mobile chat cursor guarantees
+
+- `/api/mobile/chat` and `/api/mobile/chat/stream` use a monotonic cursor: `mc_<cursor_seq>`.
+- Cursor progression is based on `mobile_chat_messages.cursor_seq` (bigserial), not wall-clock timestamps.
+- History and stream polling both query with `cursor_seq > last_seen`, ensuring stable ordering and no duplicate/skip due to same timestamp values.
+
+### `POST /api/agents/chat` idempotent replay behavior
+
+When `clientRequestId` is repeated for the same session and a completed assistant message exists, endpoint returns a non-stream replay response:
+
+```json
+{
+  "deduped": true,
+  "requestId": "req_...",
+  "sessionId": "as_...",
+  "messageId": "am_...",
+  "content": "Previously generated assistant response"
+}
+```
+
+Attachment metadata is persisted and linked to the originating user message for auditability.

@@ -36,3 +36,20 @@ test("verifyWebhookSignature enforces strict mode for missing generic secret", (
 
   delete process.env.EMAIL_WEBHOOK_STRICT_SIGNATURE
 })
+
+test("verifyWebhookSignature rejects stale resend signatures in strict mode", () => {
+  process.env.RESEND_WEBHOOK_SECRET = "resend-secret"
+  process.env.EMAIL_WEBHOOK_STRICT_SIGNATURE = "true"
+  process.env.EMAIL_WEBHOOK_MAX_SIGNATURE_AGE_SECONDS = "60"
+
+  const payload = JSON.stringify({ ping: true })
+  const signature = `t=1,v1=${sign(process.env.RESEND_WEBHOOK_SECRET, payload)}`
+  const headers = new Headers({ "resend-signature": signature })
+
+  const result = verifyWebhookSignature("resend", payload, headers)
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, "Stale Resend signature timestamp")
+
+  delete process.env.EMAIL_WEBHOOK_STRICT_SIGNATURE
+  delete process.env.EMAIL_WEBHOOK_MAX_SIGNATURE_AGE_SECONDS
+})
