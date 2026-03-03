@@ -189,7 +189,7 @@ export default function GetStartedPage() {
       </header>
 
       <main className="relative z-10 flex min-h-[calc(100vh-160px)] items-center justify-center px-6">
-        <div className=" flex w-full max-w-4xl text-center gap-2 space-y-8">
+        <div className="w-full max-w-4xl text-center space-y-8">
           <Button
             variant="outline"
             onClick={() => setShowRoadmap(true)}
@@ -197,7 +197,7 @@ export default function GetStartedPage() {
           >
             <Bell className="w-4 h-4" />
             <span className="text-orange-600 dark:text-orange-400 gap-2 font-medium text-sm">
-               <Badge varient="secondary" className="bg-orange-600 text-white gap-2 space-x-1 dark:bg-orange-500 border animate-pulse text-xs">New</Badge>
+               <Badge varient="secondary" className="bg-orange-600 text-white gap-2 space-x-2 dark:bg-orange-500 border animate-pulse text-xs">New</Badge>
                  RunAsh Auth is in active development!{" "}
               <a href="https://doc.runash.in/roadmap" className="underline font-semibold hover:text-orange-200">
                 Learn more
