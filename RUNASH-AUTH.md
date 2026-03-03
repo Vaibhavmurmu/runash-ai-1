@@ -23,6 +23,14 @@ Last updated: 2026-02
 - Auth/admin-sensitive APIs are protected with stricter endpoint-specific rate limits in addition to baseline API rate controls.
 - Auth event logging now redacts credentials/tokens/secrets and stores anonymized session identifiers for audit safety.
 
+
+## Stream session API authorization hardening update (2026-02)
+
+- Added server-session authentication gates (`getServerAuthSession`) to stream session start/end/recordings routes under `app/api/streams/sessions/[id]/**`.
+- Added tenant ownership checks so only the stream owner can start/end a session or read/create recordings. Unauthorized requests now return consistent auth envelopes with `401` (unauthenticated), `403` (cross-tenant forbidden), and `404` (session missing).
+- Added non-sensitive audit logging for `streams.sessions.start`, `streams.sessions.end`, and `streams.sessions.recordings.{read|create}` events with request/user/session identifiers only (no credentials/tokens/keys).
+- Added regression tests for unauthorized and cross-tenant access attempts in `app/api/streams/sessions/route-authz.test.ts`.
+
 ## Better Auth storage migration update (2026-02)
 
 - `db/migrations/0000_auth_neon_better_auth_baseline.sql` now ships executable DDL (not placeholder text) for Better Auth core tables: `accounts`, `sessions`, and `verification_tokens`, while aligning profile fields on the existing `users` table.
