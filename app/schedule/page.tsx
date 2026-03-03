@@ -46,6 +46,20 @@ type TemplateForm = {
   isPublic: boolean;
 };
 
+type DurableSchedule = {
+  id: string;
+  name: string;
+  frequency: "hourly" | "daily" | "weekly" | "monthly";
+  format: "CSV" | "PDF" | "Excel";
+  jobType: "report_generation" | "notification_dispatch" | "support_bot_automation";
+  recipients?: string;
+  nextRun: string | null;
+  lastRun: string | null;
+  lastStatus: "queued" | "processing" | "succeeded" | "failed" | null;
+  lastError: string | null;
+};
+
+
 const defaultTemplateForm: TemplateForm = {
   name: "",
   title: "",
@@ -119,6 +133,9 @@ export default function SchedulePage() {
   const [templateForm, setTemplateForm] =
     useState<TemplateForm>(defaultTemplateForm);
   const [templateSaveLoading, setTemplateSaveLoading] = useState(false);
+  const [durableSchedules, setDurableSchedules] = useState<DurableSchedule[]>([]);
+  const [durableScheduleLoading, setDurableScheduleLoading] = useState(true);
+  const [durableScheduleError, setDurableScheduleError] = useState<string | null>(null);
 
   const loadStreams = async () => {
     setStreamsLoading(true);
@@ -151,6 +168,23 @@ export default function SchedulePage() {
     }
   };
 
+  const loadDurableSchedules = async () => {
+    setDurableScheduleLoading(true);
+    setDurableScheduleError(null);
+    try {
+      const response = await fetch("/api/analytics/schedules");
+      if (!response.ok) throw new Error("Failed to load durable schedules");
+      const payload = (await response.json()) as DurableSchedule[];
+      setDurableSchedules(payload);
+    } catch (error) {
+      setDurableScheduleError(
+        error instanceof Error ? error.message : "Failed to load durable schedules",
+      );
+    } finally {
+      setDurableScheduleLoading(false);
+    }
+  };
+
   const loadTemplates = async () => {
     setTemplatesLoading(true);
     setTemplatesError(null);
@@ -173,6 +207,7 @@ export default function SchedulePage() {
   useEffect(() => {
     loadStreams();
     loadTemplates();
+    loadDurableSchedules();
   }, []);
 
   const calendarEvents: CalendarEvent[] = useMemo(
@@ -432,11 +467,47 @@ export default function SchedulePage() {
           </Button>
         </div>
 
-        {(streamsError || templatesError) && (
+        {(streamsError || templatesError || durableScheduleError) && (
           <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {streamsError || templatesError}
+            {streamsError || templatesError || durableScheduleError}
           </div>
         )}
+
+        <div className="mb-6 rounded-lg border bg-white/70 p-4 shadow-sm dark:bg-gray-900/70">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Durable job schedule health
+            </h2>
+            <Button variant="outline" size="sm" onClick={loadDurableSchedules}>
+              Refresh
+            </Button>
+          </div>
+          {durableScheduleLoading ? (
+            <p className="text-sm text-muted-foreground">Loading durable scheduler state...</p>
+          ) : durableSchedules.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No durable schedules configured yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {durableSchedules.map((schedule) => (
+                <div key={schedule.id} className="rounded-md border p-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-medium">{schedule.name}</p>
+                    <span className="text-xs text-muted-foreground">
+                      {schedule.jobType.replaceAll("_", " ")} • {schedule.frequency}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Last run: {schedule.lastRun ? new Date(schedule.lastRun).toLocaleString() : "Never"} • Next run: {schedule.nextRun ? new Date(schedule.nextRun).toLocaleString() : "Not queued"}
+                  </p>
+                  <p className="mt-1 text-xs">
+                    Status: <span className="font-medium">{schedule.lastStatus ?? "not started"}</span>
+                    {schedule.lastError ? ` • Error: ${schedule.lastError}` : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <Tabs
           value={activeTab}

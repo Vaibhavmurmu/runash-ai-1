@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import Image from "next/image"
+import { ChangeEvent, useRef, useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -13,6 +14,9 @@ import { Switch } from "@/components/ui/switch"
 import { Plus, Search, Filter, Edit, Trash2, Package, TrendingUp, Star, ShoppingCart, Upload } from "lucide-react"
 import useSWR from "swr"
 import { useToast } from "@/hooks/use-toast"
+
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"])
+const MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024
 
 type Product = {
   id: number
@@ -29,7 +33,7 @@ type Product = {
 }
 
 const fetcher = (url: string) =>
-  fetch(url, { headers: { "x-user-id": "1" } }).then((r) => {
+  fetch(url).then((r) => {
     if (!r.ok) throw new Error("Failed to load products")
     return r.json()
   })
@@ -40,6 +44,11 @@ export function ProductManager() {
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [newProductCategory, setNewProductCategory] = useState<string | undefined>()
+  const [uploadedImage, setUploadedImage] = useState<{ url: string; key: string } | null>(null)
+  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [isUploadingImage, setIsUploadingImage] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { data: productsData = [], mutate, isLoading } = useSWR<Product[]>(
     `/api/products?q=${encodeURIComponent(searchTerm)}&category=${selectedCategory}`,
@@ -78,6 +87,96 @@ export function ProductManager() {
     return matchesSearch && matchesCategory
   })
 
+  function validateImage(file: File) {
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+      return "Please upload a JPG, PNG, WEBP, or GIF image."
+    }
+
+    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+      return "Image is too large. Maximum allowed size is 5MB."
+    }
+
+    return null
+  }
+
+  async function uploadImage(file: File) {
+    setIsUploadingImage(true)
+    setUploadError(null)
+
+    try {
+      const formData = new FormData()
+      formData.append("action", "upload")
+      formData.append("folder", "products")
+      formData.append("file", file)
+
+      const res = await fetch("/api/storage", {
+        method: "POST",
+        body: formData,
+      })
+
+      const payload = await res.json().catch(() => null)
+      if (!res.ok || !payload?.success) {
+        const message = payload?.error?.message || "Could not upload image. Please retry."
+        throw new Error(message)
+      }
+
+      const url = payload?.data?.url
+      const key = payload?.data?.key
+      if (!url || !key) {
+        throw new Error("Upload completed but file data was missing.")
+      }
+
+      setUploadedImage({ url, key })
+      setPendingImageFile(file)
+      toast({ title: "Image uploaded", description: "Product image is ready." })
+    } catch (error: any) {
+      setUploadError(error?.message || "Could not upload image.")
+      toast({ title: "Upload failed", description: error?.message || "Could not upload image.", variant: "destructive" })
+    } finally {
+      setIsUploadingImage(false)
+    }
+  }
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const validationError = validateImage(file)
+    if (validationError) {
+      setUploadError(validationError)
+      setPendingImageFile(file)
+      toast({ title: "Invalid image", description: validationError, variant: "destructive" })
+      return
+    }
+
+    setPendingImageFile(file)
+    void uploadImage(file)
+  }
+
+  function handleRemoveImage() {
+    setUploadedImage(null)
+    setPendingImageFile(null)
+    setUploadError(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }
+
+  function handleRetryUpload() {
+    if (!pendingImageFile) {
+      setUploadError("Select an image before retrying upload.")
+      return
+    }
+
+    const validationError = validateImage(pendingImageFile)
+    if (validationError) {
+      setUploadError(validationError)
+      return
+    }
+
+    void uploadImage(pendingImageFile)
+  }
+
   async function handleCreate() {
     try {
       const name = (document.getElementById("product-name") as HTMLInputElement)?.value
@@ -100,20 +199,21 @@ export function ProductManager() {
         status: stock > 0 ? "active" : "out_of_stock",
         rating: 0,
         sales: 0,
-        image: null,
+        image: uploadedImage?.url ?? null,
         row_version: 0,
       }
       await mutate([optimistic, ...productsData], { revalidate: false })
 
       const res = await fetch("/api/products", {
         method: "POST",
-        headers: { "content-type": "application/json", "x-user-id": "1" },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name,
           description,
           price,
           stock,
           category: optimistic.category,
+          image: uploadedImage?.url,
         }),
       })
       if (!res.ok) {
@@ -128,6 +228,7 @@ export function ProductManager() {
       )
       setIsCreateDialogOpen(false)
       setNewProductCategory(undefined)
+      handleRemoveImage()
       toast({ title: "Product created", description: "Your product has been added." })
     } catch (e: any) {
       await mutate()
@@ -145,7 +246,7 @@ export function ProductManager() {
     try {
       const res = await fetch(`/api/products/${product.id}`, {
         method: "DELETE",
-        headers: { "x-user-id": "1", "if-match": `"${product.row_version}"` },
+        headers: { "if-match": `"${product.row_version}"` },
       })
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}))
@@ -171,7 +272,7 @@ export function ProductManager() {
       const res = await fetch(`/api/products/${product.id}`, {
         method: "PUT",
         headers: { "content-type": "application/json", "x-user-id": "1" },
-        body: JSON.stringify({ status: nextStatus, row_version: product.row_version }),
+        body: JSON.stringify({ status: nextStatus, row_version: product.row_version, image: product.image }),
       })
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}))
@@ -261,9 +362,37 @@ export function ProductManager() {
               </div>
               <div className="space-y-2">
                 <Label>Product Images</Label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                  <Upload className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                  <p className="text-sm text-gray-600">Click to upload or drag and drop</p>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center space-y-3">
+                  {uploadedImage ? (
+                    <div className="relative mx-auto h-36 w-36 overflow-hidden rounded-md border">
+                      <Image src={uploadedImage.url} alt="Uploaded product" fill className="object-cover" sizes="144px" unoptimized />
+                    </div>
+                  ) : (
+                    <Upload className="h-8 w-8 mx-auto text-gray-400" />
+                  )}
+
+                  <Input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    onChange={handleFileChange}
+                    disabled={isUploadingImage}
+                  />
+
+                  <p className="text-xs text-gray-600">Allowed: JPG, PNG, WEBP, GIF. Max size: 5MB.</p>
+
+                  {uploadError ? <p className="text-sm text-red-600">{uploadError}</p> : null}
+
+                  <div className="flex justify-center gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={handleRetryUpload} disabled={isUploadingImage || !pendingImageFile}>
+                      Retry Upload
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={handleRemoveImage} disabled={isUploadingImage && !uploadedImage}>
+                      Remove Image
+                    </Button>
+                  </div>
+
+                  {isUploadingImage ? <p className="text-sm text-muted-foreground">Uploading image…</p> : null}
                 </div>
               </div>
               <div className="flex items-center space-x-2">
@@ -315,7 +444,7 @@ export function ProductManager() {
           filteredProducts.map((product) => (
             <Card key={product.id} className="border-0 shadow-lg bg-white/80 backdrop-blur overflow-hidden">
               <div className="aspect-square bg-gray-100 relative">
-                <img src={product.image || "/placeholder.svg"} alt={product.name} className="w-full h-full object-cover" />
+                <Image src={product.image || "/placeholder.svg"} alt={product.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, 33vw" unoptimized />
                 <Badge className={`absolute top-2 right-2 ${getStatusColor(product.status)} text-white`}>{getStatusText(product.status)}</Badge>
               </div>
               <CardContent className="p-4">
