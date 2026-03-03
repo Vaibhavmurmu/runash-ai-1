@@ -1,5 +1,6 @@
-import { type EmailAttachment, sendWithEmailProvider } from "./email-provider"
+import { type EmailAttachment } from "./email-provider"
 import { applyEmailSafetyPolicy } from "./email"
+import { sendEmailEvent } from "@/services/email"
 
 export async function sendReportEmail({
   to,
@@ -33,12 +34,20 @@ export async function sendReportEmail({
     }
   }
 
-  return sendWithEmailProvider({
+  return sendEmailEvent({
+    type: "GENERIC_EMAIL",
     to: recipient,
-    subject,
-    text,
-    html: reportHtml,
-    headers,
-    attachments,
+    source: "lib/emails.sendReportEmail",
+    metadata: {
+      category: "report",
+      headers,
+    },
+    payload: {
+      subject,
+      text,
+      html: reportHtml,
+      attachments,
+      track_delivery: false,
+    },
   })
 }

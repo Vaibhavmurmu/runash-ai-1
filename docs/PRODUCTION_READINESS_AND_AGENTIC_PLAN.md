@@ -321,3 +321,109 @@ No explicit inline review comment thread was included in the task payload. To ad
   - error rate
   - first-token latency
   - tool failure rate
+
+## 9) Deployment readiness artifacts (chat, streaming, attachments)
+
+### 9.1 Required environment variables and secret management
+
+Use environment-scoped secrets (`.env.local`, `.env.staging`, `.env.production`) with production values sourced from a secrets manager (e.g., Vercel/Cloud provider secret store) rather than committed files.
+
+| Domain | Variable | Required | Purpose | Secret handling guidance |
+| --- | --- | --- | --- | --- |
+| Chat API | `RUNASH_AGENT_CHAT_ENABLED` | yes | Hard gate for agentic routes and staged rollout. | Non-secret feature flag; change only via controlled release change set. |
+| Chat API | `RUNASH_CHAT_API_TIMEOUT_MS` | yes | Upper bound timeout for chat orchestration request lifecycle. | Non-secret config; must be consistent with upstream gateway timeout. |
+| Streaming | `RUNASH_CHAT_STREAM_HEARTBEAT_MS` | yes | SSE heartbeat cadence to keep downstream clients connected. | Non-secret config; validate against load balancer idle timeout. |
+| Streaming | `RUNASH_CHAT_STREAM_MAX_DURATION_MS` | yes | Max stream lifetime before server-side termination. | Non-secret config; required to avoid runaway streams. |
+| Attachment storage | `RUNASH_ATTACHMENT_STORAGE_PROVIDER` | yes | Storage backend selector (`s3`, `gcs`, `r2`, etc.). | Non-secret selector; keep stable across release window. |
+| Attachment storage | `RUNASH_ATTACHMENT_BUCKET` | yes | Bucket/container for chat attachments. | Non-secret identifier, but treat as infra-sensitive metadata. |
+| Attachment storage | `RUNASH_ATTACHMENT_REGION` | yes | Region selection for attachment object storage. | Non-secret config. |
+| Attachment storage | `RUNASH_ATTACHMENT_KMS_KEY_ID` | recommended | Customer-managed encryption key for attachments at rest. | Secret-adjacent; do not log values, rotate per policy. |
+| Attachment storage | `RUNASH_ATTACHMENT_SIGNED_URL_TTL_SECONDS` | yes | Expiration for upload/download signed URLs. | Non-secret config; keep short (e.g., 300-900s). |
+| Attachment storage | `RUNASH_ATTACHMENT_MAX_BYTES` | yes | Max allowed attachment size per object upload. | Non-secret policy control. |
+| Credentials | `RUNASH_ATTACHMENT_ACCESS_KEY_ID` | yes | Object storage API credential ID. | **Secret**: store in manager, never in logs, rotate every 90 days. |
+| Credentials | `RUNASH_ATTACHMENT_SECRET_ACCESS_KEY` | yes | Object storage API secret. | **Secret**: manager-only, no plaintext in CI logs or PRs. |
+
+Secret management requirements:
+1. No secret values in source, build logs, telemetry, or error payloads.
+2. Rotate chat/attachment credentials on release cutover and after incidents.
+3. Keep least-privilege IAM policy (bucket-scoped access, no wildcard admin).
+4. Validate runtime secret injection with startup checks that fail closed.
+
+### 9.2 Migration ordering + rollback for chat/attachment tables
+
+Execution order for chat persistence and attachment support:
+1. `scripts/sql/2026-02-11_create_runash_chat_session_tables.sql`
+2. `scripts/sql/2026-02-28_create_runash_chat_attachment_tables.sql`
+
+Rollback order (reverse):
+1. `scripts/sql/2026-02-28_rollback_runash_chat_attachment_tables.sql`
+2. (Optional, data-destructive) drop legacy chat tables only if full chat rollback is approved by Product + Backend + Security.
+
+Operational rollback constraints:
+- Attachment rollback is destructive for metadata; preserve object storage snapshots before executing rollback.
+- If rollout fails after partial traffic shift, disable uploads first, drain in-flight streams, then execute rollback migration.
+
+### 9.3 Blue/green + canary rollout for chat API changes
+
+Release strategy:
+1. **Blue deploy** remains current production baseline.
+2. **Green deploy** introduces new chat API contract + attachment path behind `RUNASH_AGENT_CHAT_ENABLED=false` by default.
+3. Run smoke checks on green (auth, chat send, stream token events, attachment upload metadata insert).
+4. Enable feature flag for internal cohort (1-5% traffic via allowlist).
+5. Progressive canary ramps: 10% -> 25% -> 50% -> 100%, with hold points at each stage.
+6. Roll back immediately to blue if guardrail thresholds breach for 5 minutes.
+
+Guardrail thresholds:
+- `POST /api/chat` and `POST /api/agents/chat` 5xx rate > 1.5%
+- p95 first-token latency > 3.0s
+- Attachment upload error rate > 2.0%
+
+### 9.4 SLO/SLA targets + incident response checklist
+
+Chat service targets:
+- **SLO: Availability** >= 99.9% monthly for chat send + stream-init endpoints.
+- **SLO: First token latency** p95 <= 2.5s, p99 <= 4.0s.
+- **SLO: Stream completion success** >= 99.5% (non-user-cancelled).
+- **SLO: Attachment upload success** >= 99.0%.
+- **Internal SLA: SEV-1 acknowledgment** <= 15 minutes, mitigation start <= 30 minutes.
+
+Incident checklist for chat degradation:
+1. Declare severity and assign incident commander.
+2. Confirm blast radius (chat-only vs cross-service impact).
+3. Freeze rollout and disable canary flag expansion.
+4. If thresholds are exceeded, revert traffic to blue and disable new attachment uploads.
+5. Capture timeline, request IDs, and affected cohort.
+6. Validate recovery metrics for 30 minutes before resuming rollout.
+7. Publish incident summary + follow-up action owners.
+
+### 9.5 Backup and restore strategy (chat + attachments)
+
+Data classes:
+- **Relational metadata:** chat sessions/messages/attachment rows in Postgres.
+- **Blob data:** binary attachments in object storage bucket.
+
+Backup policy:
+1. Postgres PITR enabled with daily full snapshot + 15-minute WAL archival.
+2. Object storage versioning enabled on attachment bucket.
+3. Daily bucket inventory report + integrity hash sampling for newly uploaded objects.
+4. Cross-region replica for metadata snapshots and bucket replication (RPO target <= 15 minutes).
+
+Restore runbook summary:
+1. Restore database to incident timestamp into isolated recovery environment.
+2. Restore object storage objects by prefix + version marker for impacted window.
+3. Run integrity reconciliation query between `runash_chat_attachments` rows and object keys.
+4. Repoint read-only verification job before restoring write traffic.
+5. Obtain Backend + DevOps + Security go/no-go before full traffic restore.
+
+### 9.6 Final go-live checklist with owner sign-offs
+
+| Checklist item | Owner | Status (`pending`/`done`) | Sign-off name | Timestamp (UTC) |
+| --- | --- | --- | --- | --- |
+| Env vars + secrets present in staging/prod | DevOps | pending |  |  |
+| Chat + attachment migrations applied in order | Backend | pending |  |  |
+| Canary rollout plan approved and rehearsed | Backend + DevOps | pending |  |  |
+| SLO dashboards + alerts active | SRE/DevOps | pending |  |  |
+| Backup/restore dry run completed | DevOps + DBA | pending |  |  |
+| Incident runbook reviewed with on-call | Engineering Manager | pending |  |  |
+| Security review complete (secret handling + logging redaction) | Security | pending |  |  |
+| Product launch approval for GA | Product | pending |  |  |

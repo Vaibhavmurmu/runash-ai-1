@@ -68,6 +68,10 @@ import {
   getStreamLiveMetrics,
   startStreamSession,
 } from "@/lib/stream-session-contract"
+import { saveStudioConsent } from "@/lib/streams-studio-pro-client"
+
+type StreamStage = "permissions" | "preview" | "live"
+type DevicePermissionStatus = "idle" | "granted" | "denied" | "error"
 
 export function EnhancedStreamingStudio() {
   const pipeline = useMemo(() => new MediaAIPipeline(), [])
@@ -85,6 +89,22 @@ export function EnhancedStreamingStudio() {
   const [selectedLayout, setSelectedLayout] = useState("standard")
   const [streamQuality, setStreamQuality] = useState(85)
   const [aiSettings, setAiSettings] = useState<MediaAIPipelineSettings>(defaultMediaAIPipelineSettings)
+  const [stage, setStage] = useState<StreamStage>("permissions")
+  const [isPreviewVisible, setIsPreviewVisible] = useState(false)
+  const [consentPreferences, setConsentPreferences] = useState({
+    allowMic: true,
+    allowCamera: true,
+    allowScreenShare: true,
+    allowRecording: false,
+    preferredLanguage: "en" as "en" | "hi",
+  })
+  const [deviceStatus, setDeviceStatus] = useState<Record<"mic" | "camera" | "screen", DevicePermissionStatus>>({
+    mic: "idle",
+    camera: "idle",
+    screen: "idle",
+  })
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState({ mic: "", camera: "" })
+  const [isMetadataHydrated, setIsMetadataHydrated] = useState(false)
   const router = useRouter()
   const studioStreamId = "studio-default"
 
@@ -93,19 +113,69 @@ export function EnhancedStreamingStudio() {
   }, [pipeline])
 
   useEffect(() => {
-    pipeline.persistSettings(aiSettings)
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        "runash.stream.session.metadata",
-        JSON.stringify({
-          updatedAt: new Date().toISOString(),
-          aiSettings,
-          streamQuality,
-          selectedLayout,
-        }),
-      )
+    if (typeof window === "undefined") return
+    const raw = window.localStorage.getItem("runash.stream.session.metadata")
+    if (!raw) {
+      setIsMetadataHydrated(true)
+      return
     }
-  }, [aiSettings, streamQuality, selectedLayout, pipeline])
+
+    try {
+      const parsed = JSON.parse(raw) as {
+        aiSettings?: MediaAIPipelineSettings
+        streamQuality?: number
+        selectedLayout?: string
+        isMuted?: boolean
+        isCameraOn?: boolean
+        selectedDeviceIds?: { mic?: string; camera?: string }
+        consentPreferences?: typeof consentPreferences
+      }
+
+      if (parsed.aiSettings) setAiSettings(parsed.aiSettings)
+      if (typeof parsed.streamQuality === "number") setStreamQuality(parsed.streamQuality)
+      if (parsed.selectedLayout) setSelectedLayout(parsed.selectedLayout)
+      if (typeof parsed.isMuted === "boolean") setIsMuted(parsed.isMuted)
+      if (typeof parsed.isCameraOn === "boolean") setIsCameraOn(parsed.isCameraOn)
+      if (parsed.selectedDeviceIds) {
+        setSelectedDeviceIds({ mic: parsed.selectedDeviceIds.mic ?? "", camera: parsed.selectedDeviceIds.camera ?? "" })
+      }
+      if (parsed.consentPreferences) {
+        setConsentPreferences((prev) => ({ ...prev, ...parsed.consentPreferences }))
+      }
+    } catch {
+      // no-op on corrupted local storage payload
+    } finally {
+      setIsMetadataHydrated(true)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isMetadataHydrated || typeof window === "undefined") return
+    pipeline.persistSettings(aiSettings)
+    window.localStorage.setItem(
+      "runash.stream.session.metadata",
+      JSON.stringify({
+        updatedAt: new Date().toISOString(),
+        aiSettings,
+        streamQuality,
+        selectedLayout,
+        isMuted,
+        isCameraOn,
+        selectedDeviceIds,
+        consentPreferences,
+      }),
+    )
+  }, [
+    aiSettings,
+    streamQuality,
+    selectedLayout,
+    pipeline,
+    isMetadataHydrated,
+    isMuted,
+    isCameraOn,
+    selectedDeviceIds,
+    consentPreferences,
+  ])
 
   // Simulated real-time data
   const [realtimeStats, setRealtimeStats] = useState({
@@ -142,6 +212,60 @@ export function EnhancedStreamingStudio() {
       alive = false
     }
   }, [streamSessionId])
+
+  const syncConsent = async (payload = consentPreferences) => {
+    if (!streamSessionId) return
+    try {
+      await saveStudioConsent(streamSessionId, payload)
+    } catch {
+      toast({ title: "Consent Sync Failed", description: "Could not save consent settings.", variant: "destructive" })
+    }
+  }
+
+  const requestMediaPermission = async (kind: "mic" | "camera") => {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setDeviceStatus((prev) => ({ ...prev, [kind]: "error" }))
+        return
+      }
+
+      const constraint = kind === "mic"
+        ? { audio: selectedDeviceIds.mic ? { deviceId: { exact: selectedDeviceIds.mic } } : true, video: false }
+        : { audio: false, video: selectedDeviceIds.camera ? { deviceId: { exact: selectedDeviceIds.camera } } : true }
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraint)
+      const track = kind === "mic" ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0]
+      const deviceId = track?.getSettings().deviceId
+      if (deviceId) {
+        setSelectedDeviceIds((prev) => ({ ...prev, [kind]: deviceId }))
+      }
+      stream.getTracks().forEach((trackItem) => trackItem.stop())
+      setDeviceStatus((prev) => ({ ...prev, [kind]: "granted" }))
+    } catch (error) {
+      setDeviceStatus((prev) => ({ ...prev, [kind]: error instanceof DOMException && error.name === "NotAllowedError" ? "denied" : "error" }))
+    }
+  }
+
+  const requestScreenSharePermission = async () => {
+    try {
+      if (!navigator.mediaDevices?.getDisplayMedia) {
+        setDeviceStatus((prev) => ({ ...prev, screen: "error" }))
+        return
+      }
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+      stream.getTracks().forEach((track) => track.stop())
+      setDeviceStatus((prev) => ({ ...prev, screen: "granted" }))
+    } catch (error) {
+      setDeviceStatus((prev) => ({ ...prev, screen: error instanceof DOMException && error.name === "NotAllowedError" ? "denied" : "error" }))
+    }
+  }
+
+  const areRequiredPermissionsGranted =
+    (!consentPreferences.allowMic || deviceStatus.mic === "granted") &&
+    (!consentPreferences.allowCamera || deviceStatus.camera === "granted") &&
+    (!consentPreferences.allowScreenShare || deviceStatus.screen === "granted")
+
+  const canStartLive = areRequiredPermissionsGranted && isPreviewVisible && stage !== "permissions"
 
   useEffect(() => {
     if (!streamSessionId) return
@@ -184,9 +308,20 @@ export function EnhancedStreamingStudio() {
     const previous = isStreaming
     setIsStreaming(!previous)
     if (!isStreaming) {
+      if (!canStartLive) {
+        setIsStreaming(previous)
+        toast({
+          title: "Setup Required",
+          description: "Grant required permissions and open preview before going live.",
+          variant: "destructive",
+        })
+        return
+      }
       // Starting stream
       try {
+        await syncConsent()
         await startStreamSession(streamSessionId)
+        setStage("live")
         toast({
           title: "Stream Started",
           description: "Your stream is now live on your selected platforms.",
@@ -207,6 +342,7 @@ export function EnhancedStreamingStudio() {
         })
         setIsRecording(false)
         setActivePlatforms([])
+        setStage("preview")
       } catch {
         setIsStreaming(previous)
         toast({ title: "End Failed", description: "Could not end stream session.", variant: "destructive" })
@@ -446,6 +582,87 @@ export function EnhancedStreamingStudio() {
           <div className="h-full flex flex-col">
             {/* Stream Preview */}
             <div className="relative flex-1 bg-black overflow-hidden">
+              <div className="absolute top-4 right-4 z-20 space-y-2">
+                <Badge variant="secondary">Stage: {stage}</Badge>
+                <div className="flex gap-2">
+                  <Badge variant={deviceStatus.mic === "granted" || !consentPreferences.allowMic ? "default" : "destructive"}>Mic: {consentPreferences.allowMic ? deviceStatus.mic : "optional"}</Badge>
+                  <Badge variant={deviceStatus.camera === "granted" || !consentPreferences.allowCamera ? "default" : "destructive"}>Cam: {consentPreferences.allowCamera ? deviceStatus.camera : "optional"}</Badge>
+                  <Badge variant={deviceStatus.screen === "granted" || !consentPreferences.allowScreenShare ? "default" : "destructive"}>Screen: {consentPreferences.allowScreenShare ? deviceStatus.screen : "optional"}</Badge>
+                </div>
+              </div>
+
+              {!isStreaming && (
+                <Card className="absolute left-4 top-4 z-20 w-full max-w-xl bg-background/95">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Live Setup</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <label className="flex items-center justify-between rounded border p-2 text-sm">
+                        <span>Allow mic</span>
+                        <Switch
+                          checked={consentPreferences.allowMic}
+                          onCheckedChange={(checked) => {
+                            const next = { ...consentPreferences, allowMic: checked }
+                            setConsentPreferences(next)
+                            void syncConsent(next)
+                          }}
+                        />
+                      </label>
+                      <label className="flex items-center justify-between rounded border p-2 text-sm">
+                        <span>Allow camera</span>
+                        <Switch
+                          checked={consentPreferences.allowCamera}
+                          onCheckedChange={(checked) => {
+                            const next = { ...consentPreferences, allowCamera: checked }
+                            setConsentPreferences(next)
+                            void syncConsent(next)
+                          }}
+                        />
+                      </label>
+                      <label className="flex items-center justify-between rounded border p-2 text-sm">
+                        <span>Allow screen share</span>
+                        <Switch
+                          checked={consentPreferences.allowScreenShare}
+                          onCheckedChange={(checked) => {
+                            const next = { ...consentPreferences, allowScreenShare: checked }
+                            setConsentPreferences(next)
+                            void syncConsent(next)
+                          }}
+                        />
+                      </label>
+                      <label className="flex items-center justify-between rounded border p-2 text-sm">
+                        <span>Allow recording</span>
+                        <Switch
+                          checked={consentPreferences.allowRecording}
+                          onCheckedChange={(checked) => {
+                            const next = { ...consentPreferences, allowRecording: checked }
+                            setConsentPreferences(next)
+                            void syncConsent(next)
+                          }}
+                        />
+                      </label>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {stage === "permissions" && (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => void requestMediaPermission("mic")}>Grant microphone</Button>
+                          <Button size="sm" variant="outline" onClick={() => void requestMediaPermission("camera")}>Grant camera</Button>
+                          <Button size="sm" variant="outline" onClick={() => void requestScreenSharePermission()}>Grant screen share</Button>
+                          <Button size="sm" disabled={!areRequiredPermissionsGranted} onClick={() => setStage("preview")}>Continue to preview</Button>
+                        </>
+                      )}
+                      {stage === "preview" && (
+                        <Button size="sm" onClick={() => setIsPreviewVisible(true)}>
+                          {isPreviewVisible ? "Preview visible" : "Show preview"}
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               <ScreenShareWithAnnotations
                 isStreaming={isStreaming}
                 initialSettings={aiSettings}
@@ -506,7 +723,12 @@ export function EnhancedStreamingStudio() {
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="rounded-full text-white hover:bg-white/20">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="rounded-full text-white hover:bg-white/20"
+                        onClick={() => void requestScreenSharePermission()}
+                      >
                         <ScreenShare className="h-5 w-5" />
                       </Button>
                     </TooltipTrigger>
@@ -526,6 +748,7 @@ export function EnhancedStreamingStudio() {
                       : "bg-gradient-to-r from-orange-500 to-amber-400 hover:from-orange-600 hover:to-amber-500"
                   }
                   onClick={handleToggleStream}
+                  disabled={!isStreaming && !canStartLive}
                 >
                   {isStreaming ? "End Stream" : "Go Live"}
                 </Button>

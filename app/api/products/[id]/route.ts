@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getSql } from "@/lib/db/neon"
+import { requireSellerSessionUserId } from "@/app/api/seller/_auth"
 
 function getExpectedRowVersion(req: Request, body: { row_version?: number } | null): number | null {
   const headerValue = req.headers.get("if-match")
@@ -16,7 +17,8 @@ function getExpectedRowVersion(req: Request, body: { row_version?: number } | nu
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   try {
-    const userId = Number(req.headers.get("x-user-id") || 1)
+    const userId = await requireSellerSessionUserId(req)
+    if (userId instanceof Response) return userId
     const sql = getSql()
     const [row] = await sql`
       SELECT id, user_id, name, description, price, stock, category, status, rating, sales, image, row_version, created_at, updated_at
@@ -26,14 +28,15 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     `
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 })
     return NextResponse.json(row)
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: "Failed to load product" }, { status: 500 })
   }
 }
 
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
   try {
-    const userId = Number(req.headers.get("x-user-id") || 1)
+    const userId = await requireSellerSessionUserId(req)
+    if (userId instanceof Response) return userId
     const body = await req.json()
     const expectedRowVersion = getExpectedRowVersion(req, body)
     const fields = {
@@ -74,8 +77,8 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     }
 
     return NextResponse.json(row)
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: "Failed to update product" }, { status: 500 })
   }
 }
 
@@ -85,7 +88,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   try {
-    const userId = Number(req.headers.get("x-user-id") || 1)
+    const userId = await requireSellerSessionUserId(req)
+    if (userId instanceof Response) return userId
     const expectedRowVersion = getExpectedRowVersion(req, null)
     const sql = getSql()
     const res = await sql`
@@ -103,7 +107,7 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
     }
 
     return NextResponse.json({ ok: true, count: res.count ?? 0 })
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: "Failed to delete product" }, { status: 500 })
   }
 }

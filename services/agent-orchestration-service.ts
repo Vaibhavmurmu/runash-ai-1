@@ -15,6 +15,7 @@ import {
   createToolResult,
   pruneExpiredAgentRecords,
 } from "@/lib/repositories/agent-orchestration"
+import { createStreamSessionAutomationEvent } from "@/lib/repositories/stream-session-automation-events"
 import {
   executeRoleConditionedTool,
   type RelayAgentTool,
@@ -106,6 +107,202 @@ type AccountingSyncResult = {
   idempotencyKey?: string
   correlationKey?: string
   pendingReason?: string
+}
+
+type StreamProfile = "ultra" | "high" | "balanced" | "low"
+
+export type NetworkAutomationState = {
+  degradationActive: boolean
+  activeProfile: StreamProfile
+  overlaysReduced: boolean
+  effectsReduced: boolean
+  hostDashboardAlerted: boolean
+  gradualRestoreStep: 0 | 1 | 2 | 3
+}
+
+export type NetworkQualityTrigger = "network_quality_degraded" | "network_quality_recovered"
+
+export type NetworkAutomationTimelineEntry = {
+  idempotencyKey: string
+  action: "lower_stream_profile" | "reduce_overlays_effects" | "post_chat_notice" | "alert_host_dashboard" | "restore_profile_gradually"
+  status: "applied" | "noop"
+  details: Record<string, unknown>
+}
+
+export type NetworkAutomationResult = {
+  trigger: NetworkQualityTrigger
+  state: NetworkAutomationState
+  timeline: NetworkAutomationTimelineEntry[]
+}
+
+const defaultNetworkAutomationState: NetworkAutomationState = {
+  degradationActive: false,
+  activeProfile: "high",
+  overlaysReduced: false,
+  effectsReduced: false,
+  hostDashboardAlerted: false,
+  gradualRestoreStep: 0,
+}
+
+const profileRestoreByStep: Record<NetworkAutomationState["gradualRestoreStep"], StreamProfile> = {
+  0: "low",
+  1: "balanced",
+  2: "high",
+  3: "ultra",
+}
+
+function getNetworkAutomationIdempotencyKey(sessionId: string, trigger: NetworkQualityTrigger, action: string, payload: Record<string, unknown>) {
+  const digest = createHash("sha256")
+    .update(JSON.stringify({ sessionId, trigger, action, payload }))
+    .digest("hex")
+    .slice(0, 20)
+  return `network-automation:${trigger}:${action}:${digest}`
+}
+
+async function persistNetworkAutomationAuditEvent(input: {
+  sessionId: string
+  streamId?: string | null
+  actorRole?: string
+  trigger: NetworkQualityTrigger
+  timelineEntry: NetworkAutomationTimelineEntry
+}) {
+  const eventId = `ssa_${createHash("sha256").update(`${input.sessionId}:${input.timelineEntry.idempotencyKey}`).digest("hex").slice(0, 26)}`
+
+  try {
+    await createStreamSessionAutomationEvent({
+      id: eventId,
+      sessionId: input.sessionId,
+      streamId: input.streamId ?? input.sessionId,
+      eventType: `stream_automation.${input.trigger}.${input.timelineEntry.action}`,
+      stage: "intermediate",
+      actorRole: input.actorRole ?? "seller_ai",
+      eventPayload: {
+        ...input.timelineEntry.details,
+        idempotency_key: input.timelineEntry.idempotencyKey,
+        status: input.timelineEntry.status,
+      },
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : ""
+    if (!/duplicate key|already exists|unique/i.test(message)) {
+      throw error
+    }
+  }
+}
+
+export async function orchestrateNetworkQualityAutomation(input: {
+  sessionId: string
+  streamId?: string | null
+  trigger: NetworkQualityTrigger
+  actorRole?: string
+  state?: Partial<NetworkAutomationState>
+}) {
+  const priorState: NetworkAutomationState = {
+    ...defaultNetworkAutomationState,
+    ...input.state,
+  }
+  const nextState: NetworkAutomationState = { ...priorState }
+  const timeline: NetworkAutomationTimelineEntry[] = []
+
+  const appendTimeline = async (action: NetworkAutomationTimelineEntry["action"], status: NetworkAutomationTimelineEntry["status"], details: Record<string, unknown>) => {
+    const idempotencyKey = getNetworkAutomationIdempotencyKey(input.sessionId, input.trigger, action, {
+      ...details,
+      active_profile: nextState.activeProfile,
+      gradual_restore_step: nextState.gradualRestoreStep,
+    })
+    const timelineEntry: NetworkAutomationTimelineEntry = {
+      idempotencyKey,
+      action,
+      status,
+      details,
+    }
+    timeline.push(timelineEntry)
+    await persistNetworkAutomationAuditEvent({
+      sessionId: input.sessionId,
+      streamId: input.streamId,
+      actorRole: input.actorRole,
+      trigger: input.trigger,
+      timelineEntry,
+    })
+  }
+
+  if (input.trigger === "network_quality_degraded") {
+    nextState.degradationActive = true
+    nextState.gradualRestoreStep = 0
+
+    if (nextState.activeProfile !== "low") {
+      nextState.activeProfile = "low"
+      await appendTimeline("lower_stream_profile", "applied", { to_profile: "low" })
+    } else {
+      await appendTimeline("lower_stream_profile", "noop", { reason: "already_low_profile" })
+    }
+
+    if (!nextState.overlaysReduced || !nextState.effectsReduced) {
+      nextState.overlaysReduced = true
+      nextState.effectsReduced = true
+      await appendTimeline("reduce_overlays_effects", "applied", { overlays_reduced: true, effects_reduced: true })
+    } else {
+      await appendTimeline("reduce_overlays_effects", "noop", { reason: "already_reduced" })
+    }
+
+    if (!priorState.degradationActive) {
+      await appendTimeline("post_chat_notice", "applied", { message: "Optimizing stream for connection" })
+    } else {
+      await appendTimeline("post_chat_notice", "noop", { reason: "notice_already_posted" })
+    }
+
+    if (!nextState.hostDashboardAlerted) {
+      nextState.hostDashboardAlerted = true
+      await appendTimeline("alert_host_dashboard", "applied", { level: "warning", trigger: input.trigger })
+    } else {
+      await appendTimeline("alert_host_dashboard", "noop", { reason: "already_alerted", trigger: input.trigger })
+    }
+  }
+
+  if (input.trigger === "network_quality_recovered") {
+    if (!priorState.degradationActive && priorState.gradualRestoreStep >= 2) {
+      await appendTimeline("restore_profile_gradually", "noop", { reason: "already_recovered" })
+    } else {
+      const nextStep = Math.min(priorState.gradualRestoreStep + 1, 2) as NetworkAutomationState["gradualRestoreStep"]
+      nextState.gradualRestoreStep = nextStep
+      nextState.activeProfile = profileRestoreByStep[nextStep]
+      nextState.degradationActive = nextStep < 2
+
+      if (nextStep >= 1) {
+        nextState.overlaysReduced = false
+        nextState.effectsReduced = false
+      }
+      if (!nextState.degradationActive) {
+        nextState.hostDashboardAlerted = false
+      }
+
+      await appendTimeline("restore_profile_gradually", "applied", {
+        restore_step: nextStep,
+        restored_profile: nextState.activeProfile,
+        overlays_reduced: nextState.overlaysReduced,
+        effects_reduced: nextState.effectsReduced,
+        degradation_active: nextState.degradationActive,
+      })
+    }
+  }
+
+  logApiEvent("info", "stream.network_automation.processed", {
+    route: "stream/network-automation",
+    requestId: `${input.sessionId}:${input.trigger}`,
+    details: {
+      sessionId: input.sessionId,
+      streamId: input.streamId ?? null,
+      trigger: input.trigger,
+      timeline,
+      state: nextState,
+    },
+  })
+
+  return {
+    trigger: input.trigger,
+    state: nextState,
+    timeline,
+  } satisfies NetworkAutomationResult
 }
 
 export function shouldPostAccountingEvent(checkoutStatus: unknown, paymentStatus: unknown) {
@@ -664,6 +861,7 @@ export const AgentOrchestrationService = {
   hasPromptInjection,
   isHighRiskAction,
   orchestrateProtocolRelease,
+  orchestrateNetworkQualityAutomation,
   executeToolWithPolicy,
   enforceAdaptiveThrottle,
   runRetentionSweep: pruneExpiredAgentRecords,
