@@ -193,7 +193,7 @@ export default function GetStartedPage() {
           <Button
             variant="outline"
             onClick={() => setShowRoadmap(true)}
-            className="rounded-full border-orange-200 dark:border-white/20 bg-white/70 dark:bg-white/10 text-slate-700 dark:text-white"
+            className="rounded-full border-orange-200 dark:border-white/20 bg-white/70 dark:bg-white/10 text-slate-700 dark:text-white gap-2"
           >
             <Bell className="w-4 h-4" />
             <span className="text-orange-600 dark:text-orange-400 gap-2 font-medium text-sm">
@@ -224,7 +224,7 @@ export default function GetStartedPage() {
 
           <Card className="mx-auto max-w-3xl text-left border-orange-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 shadow-2xl">
             <CardContent className="p-5 space-y-3">
-              <div className="font-semibold">✨ SSO is available for Team & Enterprise accounts</div>
+              <div className="font-semibold">✨ SSO for Team & Enterprise accounts.</div>
               <p className="text-sm text-slate-600 dark:text-white/60">Give your organization the enterprise grand security access controls, dedicated support and more.</p>
             </CardContent>
           </Card>
@@ -242,13 +242,13 @@ export default function GetStartedPage() {
               <CardContent className="p-4 space-y-2">
                 <p><strong>Beta</strong></p>
                 <p>RunAsh Auth is in Beta. Share feedback on Discord or via RunAsh Console.</p>
-                <p className="text-slate-600 dark:text-white/70">RunAsh Auth is in active development. This page shows what&apos;s currently supported and what we&apos;re working on next.</p>
+                <p className="text-slate-600 dark:text-white/70">RunAsh-Auth is in active development. This page shows what&apos;s currently supported and what we&apos;re working on next.</p>
               </CardContent>
             </Card>
             <Card className="border-orange-200 dark:border-white/10">
               <CardContent className="p-4">
                 <p><strong>General availability</strong></p>
-                <p>RunAsh Auth is targeting general availability this quarter. We&apos;re actively working on additional plugins and features to bring RunAsh Auth out of beta.</p>
+                <p>RunAsh Auth is targeting general availability this quarter. We&apos;re actively working on additional plugins and features to bring RunAsh-Auth out of beta.</p>
               </CardContent>
             </Card>
             <Card className="border-orange-200 dark:border-white/10">
@@ -262,7 +262,7 @@ export default function GetStartedPage() {
             </Card>
             <Card className="border-orange-200 dark:border-white/10">
               <CardContent className="p-4 space-y-2">
-                <p className="font-semibold">Better Auth plugins</p>
+                <p className="font-semibold">RunAsh-Auth plugins</p>
                 <p>✅ Supported: Email & password, Social OAuth (Google, GitHub), Email OTP, Admin, JWT, Open API.</p>
                 <p>⚠️ Partial: Organization (invitation emails, JWT token claims in progress).</p>
                 <p>🔜 Coming soon: Magic link, webhooks, phone BYO SMS provider, MFA, plugin customization.</p>
