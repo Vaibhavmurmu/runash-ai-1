@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge"
 import { ChevronLeft, ChevronRight, ShoppingCart, Heart, Star, Clock, Zap, ExternalLink } from "lucide-react"
 import { useCartSafe } from "@/hooks/use-cart-safe"
 import { useCurrency } from "@/contexts/currency-context"
+import { ProductMediaModal, type ProductMediaItem } from "@/components/grocery/product-media-modal"
+import { LiveMediaRail } from "@/components/grocery/live-shopping/live-media-rail"
 
 type CatalogProduct = {
   id: string
@@ -15,11 +17,13 @@ type CatalogProduct = {
   description: string
   price: number
   salePrice?: number
+  brand?: string
   averageRating: number
   inStock: boolean
   stockQuantity: number
   tags: string[]
   images: string[]
+  videos?: string[]
 }
 
 interface FeaturedProductCarouselProps {
@@ -33,6 +37,8 @@ export default function FeaturedProductCarousel({ streamId, featuredProductIds =
   const [loadingProducts, setLoadingProducts] = useState(true)
   const [productsError, setProductsError] = useState<string | null>(null)
   const [timeLeft, setTimeLeft] = useState(600)
+  const [mediaModalOpen, setMediaModalOpen] = useState(false)
+  const [mediaStartIndex, setMediaStartIndex] = useState(0)
   const { addItem } = useCartSafe()
   const { formatPrice, convertPrice } = useCurrency()
 
@@ -136,6 +142,46 @@ export default function FeaturedProductCarousel({ streamId, featuredProductIds =
   const prevProduct = () => setCurrentIndex((prev) => (prev - 1 + products.length) % products.length)
   const currentPrice = currentProduct.salePrice ?? currentProduct.price
   const discount = getDiscount(currentProduct)
+  const productMedia: ProductMediaItem[] = [
+    ...(currentProduct.images ?? []).map((src, index) => ({
+      id: `${currentProduct.id}-img-${index}`,
+      type: "image" as const,
+      src,
+      alt: `${currentProduct.name} image ${index + 1}`,
+    })),
+    ...(currentProduct.videos ?? []).map((src, index) => ({
+      id: `${currentProduct.id}-video-${index}`,
+      type: "video" as const,
+      src,
+      thumbnail: currentProduct.images?.[0],
+      alt: `${currentProduct.name} video ${index + 1}`,
+    })),
+  ]
+
+  const railCards = products.map((product) => {
+    const itemPrice = product.salePrice ?? product.price
+    const productDiscount = getDiscount(product)
+
+    return {
+      id: product.id,
+      title: product.name,
+      sellerName: product.brand || "RunAsh Seller",
+      image: product.images?.[0] || "/placeholder.svg",
+      fallbackImage: product.images?.[1] || "/placeholder.svg",
+      isLive: true,
+      mediaType: product.videos?.length ? ("video" as const) : ("image" as const),
+      priceLabel: formatPrice(convertPrice(itemPrice)),
+      originalPriceLabel: product.salePrice ? formatPrice(convertPrice(product.price)) : undefined,
+      discountLabel: productDiscount > 0 ? `${productDiscount}% OFF` : undefined,
+      inStock: product.inStock,
+      onOpen: () => {
+        setCurrentIndex(products.findIndex((item) => item.id === product.id))
+        setMediaStartIndex(0)
+        setMediaModalOpen(true)
+      },
+      onPrimaryAction: () => handleAddToCart(product),
+    }
+  })
 
   return (
     <div className="space-y-4">
@@ -150,18 +196,29 @@ export default function FeaturedProductCarousel({ streamId, featuredProductIds =
           <CardContent className="p-0">
             <div className="relative">
               <div className="aspect-square bg-gradient-to-br from-green-50 to-emerald-50 dark:from-gray-800 dark:to-gray-700 flex items-center justify-center">
-                <img src={currentProduct.images?.[0] || "/placeholder.svg"} alt={currentProduct.name} className="w-full h-full object-cover" />
+                <button
+                  type="button"
+                  className="h-full w-full"
+                  onClick={() => {
+                    setMediaStartIndex(0)
+                    setMediaModalOpen(true)
+                  }}
+                  aria-label={`Open ${currentProduct.name} media in fullscreen`}
+                >
+                  <img src={currentProduct.images?.[0] || "/placeholder.svg"} alt={currentProduct.name} className="w-full h-full object-cover" />
+                </button>
 
-                <div className="absolute top-3 left-3 flex flex-col space-y-2">
+                <div className="absolute top-3 left-3 flex flex-col space-y-2 pointer-events-none">
                   <Badge className="bg-purple-600 text-white">
                     <Star className="h-3 w-3 mr-1" />
                     Featured
                   </Badge>
+                  <Badge className="bg-black/80 text-white">{currentProduct.brand || "RunAsh Seller"}</Badge>
                   {discount > 0 && <Badge className="bg-red-600 text-white">{discount}% OFF</Badge>}
                 </div>
 
                 {currentProduct.stockQuantity <= 10 && (
-                  <div className="absolute bottom-3 left-3">
+                  <div className="absolute bottom-3 left-3 pointer-events-none">
                     <Badge variant="destructive" className="animate-pulse">
                       <Clock className="h-3 w-3 mr-1" />
                       Only {currentProduct.stockQuantity} left!
@@ -222,6 +279,19 @@ export default function FeaturedProductCarousel({ streamId, featuredProductIds =
           ))}
         </div>
       </div>
+
+      <section className="space-y-3" aria-label="Live videos and images">
+        <h4 className="text-sm font-semibold">Live videos & images</h4>
+        <LiveMediaRail cards={railCards} loading={loadingProducts} />
+      </section>
+
+      <ProductMediaModal
+        open={mediaModalOpen}
+        onOpenChange={setMediaModalOpen}
+        media={productMedia}
+        title={currentProduct.name}
+        startIndex={mediaStartIndex}
+      />
     </div>
   )
 }

@@ -12,8 +12,8 @@ function parseProvider(value: string): EmailWebhookProvider | null {
   return SUPPORTED_PROVIDERS.includes(normalized) ? normalized : null
 }
 
-export async function POST(request: NextRequest, { params }: { params: { provider: string } }) {
-  const provider = parseProvider(params.provider)
+export async function handleEmailWebhookPost(request: Request, providerParam: string) {
+  const provider = parseProvider(providerParam)
   if (!provider) {
     return NextResponse.json({ error: "Unsupported email webhook provider" }, { status: 404 })
   }
@@ -26,7 +26,14 @@ export async function POST(request: NextRequest, { params }: { params: { provide
       return NextResponse.json({ error: verification.reason || "Invalid signature" }, { status: 401 })
     }
 
-    const payload = rawBody ? (JSON.parse(rawBody) as Record<string, any>) : {}
+    let payload: Record<string, unknown>
+    try {
+      payload = rawBody ? (JSON.parse(rawBody) as Record<string, unknown>) : {}
+    } catch {
+      await recordWebhookRejection(provider, { reason: "Invalid JSON payload", rawBody })
+      return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 })
+    }
+
     const normalization = normalizeProviderWebhook(provider, payload)
     const summary = await ingestNormalizedEvents(normalization.events)
     summary.ignored += normalization.ignoredCount
@@ -43,4 +50,8 @@ export async function POST(request: NextRequest, { params }: { params: { provide
     })
     return NextResponse.json({ error: "Failed to process email webhook" }, { status: 500 })
   }
+}
+
+export async function POST(request: NextRequest, { params }: { params: { provider: string } }) {
+  return handleEmailWebhookPost(request, params.provider)
 }

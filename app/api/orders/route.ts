@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server"
 import { getSql } from "@/lib/db/neon"
+import { requireSellerSessionUserId } from "@/app/api/seller/_auth"
 
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url)
     const status = url.searchParams.get("status") || "all"
     const search = (url.searchParams.get("q") || "").toLowerCase()
-    const userId = Number(req.headers.get("x-user-id") || 1)
+    const userId = await requireSellerSessionUserId(req)
+    if (userId instanceof Response) return userId
 
     const sql = getSql()
     const orders = await sql /* sql */`
@@ -24,15 +26,16 @@ export async function GET(req: Request) {
       LIMIT 200
     `
     return NextResponse.json(orders)
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: "Failed to list orders" }, { status: 500 })
   }
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const userId = Number(req.headers.get("x-user-id") || 1)
+    const userId = await requireSellerSessionUserId(req)
+    if (userId instanceof Response) return userId
     const sql = getSql()
 
     const { buyer_name, buyer_email, buyer_phone, shipping_address, payment_method, items = [] } = body
@@ -58,7 +61,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ id: order.id, total, status: order.status, row_version: order.row_version }, { status: 201 })
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: "Failed to create order" }, { status: 500 })
   }
 }

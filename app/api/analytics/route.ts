@@ -1,13 +1,16 @@
 import { type NextRequest } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { sql } from "@/lib/db"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
-import { getServerAuthSession } from "@/lib/auth/session"
 
-const sql = neon(process.env.DATABASE_URL!)
+
+async function getSession() {
+  const { getServerAuthSession } = await import("@/lib/auth/session")
+  return getServerAuthSession()
+}
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerAuthSession()
+    const session = await getSession()
     if (!session) {
       return respondError(
         req,
