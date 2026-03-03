@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server"
 import { getSql } from "@/lib/db/neon"
+import { requireSellerSessionUserId } from "@/app/api/seller/_auth"
 
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url)
     const search = url.searchParams.get("q")?.toLowerCase() || ""
     const category = url.searchParams.get("category") || "all"
-    const userId = Number(req.headers.get("x-user-id") || 1)
+    const userId = await requireSellerSessionUserId(req)
+    if (userId instanceof Response) return userId
 
     const sql = getSql()
     const rows = await sql`
@@ -19,15 +21,16 @@ export async function GET(req: Request) {
       LIMIT 200
     `
     return NextResponse.json(rows)
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: "Failed to list products" }, { status: 500 })
   }
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const userId = Number(req.headers.get("x-user-id") || 1)
+    const userId = await requireSellerSessionUserId(req)
+    if (userId instanceof Response) return userId
     const { name, description, price, stock, category, status = "active", image } = body
 
     if (!name || price == null) {
@@ -41,7 +44,7 @@ export async function POST(req: Request) {
       RETURNING id, name, description, price, stock, category, status, rating, sales, image, row_version, created_at, updated_at
     `
     return NextResponse.json(row, { status: 201 })
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: "Failed to create product" }, { status: 500 })
   }
 }

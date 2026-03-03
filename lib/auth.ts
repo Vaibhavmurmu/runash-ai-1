@@ -17,14 +17,13 @@ import {
 
 const baseURL =
   process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
-const emailVerificationCallbackURL = resolveAuthCallbackUrl(
+export const emailVerificationCallbackURL = resolveAuthCallbackUrl(
   process.env.BETTER_AUTH_EMAIL_VERIFICATION_CALLBACK_URL ?? "/login?emailVerified=1",
 )
 const requireEmailVerificationForEmailPassword = true
 const sendVerificationEmailOnSignUp = true
 const autoSignInAfterEmailPasswordSignUp = false
 
-const secret = process.env.BETTER_AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
 
 export const AUTH_COOKIE_NAMES = ["better-auth.session-token", "__Secure-better-auth.session-token"] as const
 const LEGACY_NEXT_AUTH_COOKIE_NAMES = ["next-auth.session-token", "__Secure-next-auth.session-token"] as const
@@ -133,7 +132,7 @@ function auditAccountLinkEvent(
 export const auth = betterAuth({
   appName: "RunAsh AI",
   baseURL,
-  secret,
+  secret: getAuthSecret(),
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: requireEmailVerificationForEmailPassword,

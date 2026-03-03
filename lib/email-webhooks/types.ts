@@ -2,6 +2,8 @@ export type EmailWebhookProvider = "resend" | "sendgrid" | "ses" | "generic"
 
 export type NormalizedEmailWebhookEventType =
   | "delivered"
+  | "deferred"
+  | "suppressed"
   | "opened"
   | "clicked"
   | "bounced"

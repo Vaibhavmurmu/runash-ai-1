@@ -20,8 +20,16 @@ export type AuthSessionRecord = {
   lastSeenAt: string
   expiresAt: string
   linkedFromSessionId: string | null
+  deviceId: string | null
   deviceName: string | null
   userAgent: string | null
+}
+
+export type TrustedDeviceRecord = {
+  deviceId: string
+  deviceName: string | null
+  lastSeenAt: string
+  trustedAt: string
 }
 
 const AUTH_SESSION_MIGRATIONS = [
@@ -72,6 +80,19 @@ const AUTH_SESSION_MIGRATIONS = [
   `,
   `
   CREATE INDEX IF NOT EXISTS idx_auth_transfer_tokens_hash ON auth_one_time_transfer_tokens(token_hash);
+  `,
+  `
+  CREATE TABLE IF NOT EXISTS auth_trusted_devices (
+    user_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    device_name TEXT,
+    trusted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, device_id)
+  );
+  `,
+  `
+  CREATE INDEX IF NOT EXISTS idx_auth_trusted_devices_user_last_seen ON auth_trusted_devices(user_id, last_seen_at DESC);
   `,
 ] as const
 
@@ -150,6 +171,16 @@ export async function createAuthSession(input: {
 
   recordAuthMetric("auth.session.created", { mode: input.mode, scope: input.scope ?? "default" })
 
+  if (input.device?.deviceId) {
+    await queryMany(
+      `INSERT INTO auth_trusted_devices (user_id, device_id, device_name, last_seen_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (user_id, device_id)
+       DO UPDATE SET device_name = EXCLUDED.device_name, last_seen_at = NOW()`,
+      [input.userId, input.device.deviceId, input.device.deviceName ?? null],
+    )
+  }
+
   return {
     id: sessionId,
     userId: input.userId,
@@ -164,12 +195,44 @@ export async function listActiveUserSessions(userId: string): Promise<AuthSessio
 
   return queryMany<AuthSessionRecord>(
     `SELECT id, user_id AS "userId", mode, scope, created_at AS "createdAt", last_seen_at AS "lastSeenAt", expires_at AS "expiresAt",
-            linked_from_session_id AS "linkedFromSessionId", device_metadata->>'deviceName' AS "deviceName", device_metadata->>'userAgent' AS "userAgent"
+            linked_from_session_id AS "linkedFromSessionId", device_metadata->>'deviceId' AS "deviceId",
+            device_metadata->>'deviceName' AS "deviceName", device_metadata->>'userAgent' AS "userAgent"
      FROM auth_session_registry
      WHERE user_id = $1 AND status = 'active' AND (invalidated_at IS NULL) AND expires_at > NOW()
      ORDER BY last_seen_at DESC`,
     [userId],
   )
+}
+
+export async function listTrustedDevices(userId: string): Promise<TrustedDeviceRecord[]> {
+  await ensureAuthSessionModeTables()
+
+  return queryMany<TrustedDeviceRecord>(
+    `SELECT device_id AS "deviceId", device_name AS "deviceName", last_seen_at AS "lastSeenAt", trusted_at AS "trustedAt"
+     FROM auth_trusted_devices
+     WHERE user_id = $1
+     ORDER BY last_seen_at DESC`,
+    [userId],
+  )
+}
+
+export async function trustUserDevice(input: { userId: string; deviceId: string; deviceName?: string | null }) {
+  await ensureAuthSessionModeTables()
+
+  return queryOne<TrustedDeviceRecord>(
+    `INSERT INTO auth_trusted_devices (user_id, device_id, device_name, trusted_at, last_seen_at)
+     VALUES ($1, $2, $3, NOW(), NOW())
+     ON CONFLICT (user_id, device_id)
+     DO UPDATE SET device_name = COALESCE(EXCLUDED.device_name, auth_trusted_devices.device_name), trusted_at = NOW(), last_seen_at = NOW()
+     RETURNING device_id AS "deviceId", device_name AS "deviceName", last_seen_at AS "lastSeenAt", trusted_at AS "trustedAt"`,
+    [input.userId, input.deviceId, input.deviceName ?? null],
+  )
+}
+
+export async function revokeTrustedDevice(userId: string, deviceId: string) {
+  await ensureAuthSessionModeTables()
+
+  await queryMany(`DELETE FROM auth_trusted_devices WHERE user_id = $1 AND device_id = $2`, [userId, deviceId])
 }
 
 export async function switchUserSessionScope(userId: string, sessionId: string, scope: string) {
@@ -187,16 +250,21 @@ export async function switchUserSessionScope(userId: string, sessionId: string, 
 export async function invalidateSession(options: { sessionId?: string; userId?: string; reason: string }) {
   await ensureAuthSessionModeTables()
 
-  if (options.sessionId) {
+  if (options.sessionId && options.userId) {
+    await queryMany(
+      `UPDATE auth_session_registry
+       SET status = 'invalidated', invalidated_at = NOW(), last_seen_at = NOW()
+       WHERE id = $1 AND user_id = $2`,
+      [options.sessionId, options.userId],
+    )
+  } else if (options.sessionId) {
     await queryMany(
       `UPDATE auth_session_registry
        SET status = 'invalidated', invalidated_at = NOW(), last_seen_at = NOW()
        WHERE id = $1`,
       [options.sessionId],
     )
-  }
-
-  if (options.userId) {
+  } else if (options.userId) {
     await queryMany(
       `UPDATE auth_session_registry
        SET status = 'invalidated', invalidated_at = NOW(), last_seen_at = NOW()

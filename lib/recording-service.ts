@@ -44,6 +44,26 @@ export interface UpdateRecordingData {
   thumbnailUrl?: string
 }
 
+export interface LibraryQueryParams {
+  page?: number
+  pageSize?: number
+  segment?: "recent" | "latest" | "previous" | "all"
+  search?: string
+  sort?: "date-desc" | "date-asc" | "title-asc" | "title-desc" | "views-desc" | "views-asc"
+  platform?: string
+  status?: string
+}
+
+export interface LibraryResponse {
+  items: RecordedStream[]
+  pagination: {
+    page: number
+    pageSize: number
+    total: number
+    hasMore: boolean
+  }
+}
+
 interface SaveEditedVideoPayload {
   originalId: string
   title: string
@@ -193,9 +213,41 @@ export class RecordingService {
     return recording
   }
 
+  public async getLibraryRecordings(params: LibraryQueryParams = {}): Promise<LibraryResponse> {
+    const searchParams = new URLSearchParams({
+      page: String(params.page ?? 1),
+      pageSize: String(params.pageSize ?? 12),
+      segment: params.segment ?? "all",
+      search: params.search ?? "",
+      sort: params.sort ?? "date-desc",
+      platform: params.platform ?? "all",
+      status: params.status ?? "all",
+    })
+
+    const response = await this.request<{
+      data?: {
+        items: RecordedStream[]
+        pagination: LibraryResponse["pagination"]
+      }
+      items?: RecordedStream[]
+      pagination?: LibraryResponse["pagination"]
+    }>(`/api/streams/library?${searchParams.toString()}`)
+
+    const payload = response.data ?? response
+    return {
+      items: payload.items ?? [],
+      pagination: payload.pagination ?? {
+        page: params.page ?? 1,
+        pageSize: params.pageSize ?? 12,
+        total: 0,
+        hasMore: false,
+      },
+    }
+  }
+
   public async getRecordings(): Promise<RecordedStream[]> {
-    const recordings = await this.getUserRecordings()
-    return recordings.map((recording) => this.toRecordedStream(recording))
+    const library = await this.getLibraryRecordings({ page: 1, pageSize: 100 })
+    return library.items
   }
 
   public async getStorageUsage(): Promise<StorageUsage> {
@@ -267,6 +319,10 @@ export class RecordingService {
 
   public static getRecordings() {
     return RecordingService.service.getRecordings()
+  }
+
+  public static getLibraryRecordings(params: LibraryQueryParams = {}) {
+    return RecordingService.service.getLibraryRecordings(params)
   }
 
   public static getStorageUsage() {
