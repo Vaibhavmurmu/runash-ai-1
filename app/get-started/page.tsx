@@ -215,7 +215,7 @@ export default function GetStartedPage() {
               Get started
             </Button>
             <Button asChild variant="outline" className="rounded-full px-10 border-orange-200 dark:border-white/20 bg-white/70 dark:bg-black/40">
-              <Link href="/waitlist">Join waitlist</Link>
+              <Link href="/waitlist" aria-label="Join the RunAsh waitlist">Join waitlist</Link>
             </Button>
             <Button variant="outline" className="rounded-full px-10 border-orange-200 dark:border-white/20 bg-white/70 dark:bg-black/40" onClick={() => router.push("/login")}>
               Welcome back

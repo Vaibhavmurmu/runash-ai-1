@@ -9,9 +9,11 @@ function mapSendgridType(eventType?: string): NormalizedEmailWebhookEvent["type"
     case "click":
       return "clicked"
     case "bounce":
-    case "dropped":
-    case "deferred":
       return "bounced"
+    case "deferred":
+      return "deferred"
+    case "dropped":
+      return "suppressed"
     case "spamreport":
       return "complaint"
     case "unsubscribe":
