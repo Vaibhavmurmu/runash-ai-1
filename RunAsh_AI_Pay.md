@@ -629,6 +629,21 @@ Risks and rollback:
 2. If merchant ops prefer manual optimization, rollback by removing `seller_optimize_commerce` from registry/policy while keeping buyer checkout path intact.
 3. If negotiation-gate blocks expected sandbox checkouts, temporarily disable deal-id checkout enforcement in `services/agent-orchestration-service.ts` and re-enable after settlement data integrity validation.
 
+## 2026-02 email dispatch webhook observability flags (billing-safe rollout)
+
+- Added structured dispatch status metrics for email dispatch + webhook reconciliation with explicit counters: `sent`, `delivered`, `deferred`, `bounced`, `complained`, `suppressed`.
+- Added provider-agnostic webhook status ingestion endpoint `POST /api/email/webhook/status` for normalized status updates (`provider` + `payload`) while preserving existing provider-native webhook routes.
+- Billing-facing rollout is gated by module-level feature flags with explicit rollback toggles:
+  - `FEATURE_FLAG_EMAIL_DISPATCH_BILLING=true|false`
+  - `FEATURE_FLAG_EMAIL_DISPATCH_BILLING_ROLLBACK=true|false`
+- Contact/newsletter module gates follow the same control-plane pattern for staged rollout + rapid rollback:
+  - `FEATURE_FLAG_EMAIL_DISPATCH_CONTACT(_ROLLBACK)`
+  - `FEATURE_FLAG_EMAIL_DISPATCH_NEWSLETTER(_ROLLBACK)`
+- Payment/auth compatibility posture: no billing API contract shape changes, no webhook schema removals, and no payment/auth sensitive data logging added.
+- Risk + rollback:
+  1. If billing email status ingestion causes noisy metrics, set `FEATURE_FLAG_EMAIL_DISPATCH_BILLING_ROLLBACK=true` for immediate module rollback.
+  2. If only campaign/contact paths regress, disable `FEATURE_FLAG_EMAIL_DISPATCH_NEWSLETTER` and/or `FEATURE_FLAG_EMAIL_DISPATCH_CONTACT` while keeping billing enabled.
+
 
 ## 2026-02-28 billing/subscription lifecycle event matrix (typed + templated)
 
@@ -726,4 +741,5 @@ Standardized settings action/billing error payloads to include a shared field-ma
 2. Migration path remains additive: deploy schema + backfills, then switch settings endpoints to canonical projections.
 3. Rollback path is application-first with feature-flag gating for new billing settings mutations while keeping additive schema intact.
 4. Reconciliation parity checks are required before and after rollback to ensure invoice/credit/referral counters remain consistent.
+
 
