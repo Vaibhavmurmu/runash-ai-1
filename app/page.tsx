@@ -40,8 +40,10 @@ export default function Home() {
             <div className="flex items-center justify-center space-x-2">
               <Bell className="w-4 h-4" />
               <span className="text-orange-600 dark:text-orange-400 font-medium text-sm">
-               🎉 New Live AI Video Generation Model Pre Released!{" "}
-               <a href="/blog/new-model" className="underline font-semibold hover:text-orange-200">
+               <Badge varient="secondary" className="bg-orange-600 text-white gap-2 space-x-1 dark:bg-orange-500 animate-pulse border text-xs">New</Badge>
+                
+                Real-Time Live Streaming Video Generation Model!{" "}
+               <a href="https://blog.runash.in/real-time" className="underline font-semibold hover:text-orange-200">
                 Learn more
               </a>
             </span>
@@ -58,7 +60,7 @@ export default function Home() {
         <div className="container relative z-10 mx-auto px-4 text-center">
           <div className="inline-block  mb-4 px-3 py-1 rounded-full bg-orange-100/80 dark:bg-orange-900/30 backdrop-blur-sm border border-orange-200 dark:border-orange-800/50">
             <span className="text-orange-600 dark:text-orange-400 font-medium text-sm">
-              Introducing RunAsh AI 
+              Introducing RunAsh
             </span>
           </div>
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold mb-6 bg-gradient-to-r from-orange-600 via-orange-500 to-yellow-500 dark:from-orange-400 dark:via-orange-300 dark:to-yellow-300 text-transparent bg-clip-text">
@@ -454,7 +456,7 @@ export default function Home() {
                 </li>
                 <li>
                   <a
-                    href="/"
+                    href="/runash-chat"
                     className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
                   >
                    RunAshChat
@@ -514,7 +516,7 @@ export default function Home() {
               <ul className="space-y-2">
                 <li>
                   <a
-                    href="/blog"
+                    href="https://blog.runash.in"
                     className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
                   >
                     Blog
@@ -522,7 +524,7 @@ export default function Home() {
                 </li>
                 <li>
                   <a
-                    href="/learn"
+                    href="https://docs.runash.in/learn"
                     className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
                   >
                     Learn
@@ -530,7 +532,7 @@ export default function Home() {
                 </li>
                 <li>
                   <a
-                    href="/tutorials"
+                    href="https://docs.runash.in/tutorials"
                     className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
                   >
                     Tutorials
@@ -538,7 +540,7 @@ export default function Home() {
                 </li>
                 <li>
                   <a
-                    href="/docs"
+                    href="https://docs.runash.in"
                     className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
                   >
                     Documentation 
@@ -576,7 +578,7 @@ export default function Home() {
                     <span>X</span>
                   </a>
                   <a
-                    href="https://discord.com/runash_ai"
+                    href="https://discord.com/invite/runash_ai"
                     className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
                   >
                     <svg
@@ -692,10 +694,10 @@ export default function Home() {
                 <ul className="space-y-1 text-sm">
                   <li>
                     <a
-                      href="/"
+                      href="/runash-chat"
                       className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
                     >
-                      AI Assistant 
+                      AI Agents
                     </a>
                   </li>
                   <li>
@@ -883,7 +885,7 @@ export default function Home() {
                   </li>
                   <li>
                     <a
-                      href="/model"
+                      href="/models"
                       className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
                     >
                      Models
@@ -928,7 +930,7 @@ export default function Home() {
                 <ul className="space-y-1 text-sm">
                   <li>
                     <a
-                      href="mailto:hi@runash.in"
+                      href="/students"
                       className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
                     >
                      Students 
@@ -981,7 +983,7 @@ export default function Home() {
                 <ul className="space-y-1 text-sm">
                   <li>
                     <a
-                      href="/"
+                      href="/api"
                       className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
                     >
                       API
@@ -989,7 +991,7 @@ export default function Home() {
                   </li>
                   <li>
                     <a
-                      href="/"
+                      href="/editor"
                       className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
                     >
                       Editor 
