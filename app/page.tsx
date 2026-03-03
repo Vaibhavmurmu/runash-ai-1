@@ -40,10 +40,9 @@ export default function Home() {
             <div className="flex items-center justify-center space-x-2">
               <Bell className="w-4 h-4" />
               <span className="text-orange-600 dark:text-orange-400 font-medium text-sm">
-               <Badge varient="secondary" className="bg-orange-600 text-white gap-2 space-x-1 dark:bg-orange-500 animate-pulse border text-xs">New</Badge>
-                
-                Real-Time Live Streaming Video Generation Model!{" "}
-               <a href="https://blog.runash.in/real-time" className="underline font-semibold hover:text-orange-200">
+               <Badge varient="secondary" className="bg-orange-600 text-white gap-2 space-x-2 dark:bg-orange-500 animate-pulse border text-xs">New</Badge>
+                  Real Time Live Streaming Video Generation Model! {" "}
+               <a href="https://blog.runash.in/real-time" className="underline gap-2 font-semibold hover:text-orange-200">
                 Learn more
               </a>
             </span>
@@ -67,7 +66,7 @@ export default function Home() {
           The AI Live Streaming Platform 
           </h1>
           <p className="text-xl md:text-2xl mb-8 max-w-3xl mx-auto text-gray-700 dark:text-gray-300">
-            The next generation of AI live streaming platform for creators, sellers, and businesses
+            The next generation of AI live streaming automation agents for creators, sellers, and businesses
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button
@@ -1045,11 +1044,10 @@ export default function Home() {
               <ThemeToggle />
               <div className="flex space-x-6">
                 <a
-                  href="/dashboard/chat"
+                  href="/security"
                   className="text-gray-600  dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors text-sm"
                 >
-                  RunAsh Chat 
-                <Badge varient="secondary" className="bg-green-600 text-white gap-2 space-x-1 dark:bg-green-500 animate-pulse text-xs">New</Badge>
+                  Security 
                 </a>
                 <a
                   href="/help"
