@@ -12,6 +12,7 @@ import {
   streamModelTextWithFallback,
 } from "@/lib/ai/provider-registry"
 import { routeToolsToMcp } from "@/lib/runash-chat/tooling"
+import { CHAT_ERROR_CODES, chatAttachmentSchema, clientRequestIdSchema, streamRetrySchema } from "@/lib/chat-contracts"
 
 export const maxDuration = 30
 
@@ -30,6 +31,9 @@ const chatPostSchema = z.object({
   context: z.enum(["grocery", "streaming"]).optional(),
   provider: z.string().trim().min(1).optional(),
   model: z.string().trim().min(1).optional(),
+  clientRequestId: clientRequestIdSchema.optional(),
+  attachments: z.array(chatAttachmentSchema).max(4).optional(),
+  retry: streamRetrySchema.optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -41,7 +45,7 @@ export async function POST(request: NextRequest) {
     if (!session?.user?.id) {
       return respondError(
         request,
-        { code: "UNAUTHORIZED", message: "Unauthorized" },
+        { code: CHAT_ERROR_CODES.AUTH_REQUIRED, message: "Unauthorized" },
         { status: 401, legacy: { error: "Unauthorized" }, requestId },
       )
     }
@@ -63,12 +67,12 @@ export async function POST(request: NextRequest) {
 
       return respondError(
         request,
-        { code: "INVALID_REQUEST", message: "Invalid chat payload", details: validation.error.flatten() },
+        { code: CHAT_ERROR_CODES.INVALID_REQUEST, message: "Invalid chat payload", details: validation.error.flatten() },
         { status: 400, legacy: { error: "Invalid chat payload" }, requestId },
       )
     }
 
-    const { messages, context, provider, model } = validation.data
+    const { messages, context, provider, model, attachments, retry } = validation.data
     const latestMessage = messages.at(-1)
 
     let systemPrompt = `You are RunAsh AI, a helpful assistant for the RunAsh platform. You help users with live streaming, grocery shopping, and platform features.`
@@ -125,6 +129,8 @@ export async function POST(request: NextRequest) {
         model: result.model,
         requestedTools: toolRouting.requestedTools,
         fallbackTools: toolRouting.fallbackTools,
+        attachmentCount: attachments?.length ?? 0,
+        retryMode: retry?.mode ?? "auto",
       },
     })
 
@@ -136,7 +142,7 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     if (error instanceof AIProviderError) {
-      const status = error.code === "BAD_REQUEST" ? 400 : error.code === "UNSUPPORTED_FEATURE" ? 422 : 503
+      const status = error.code === "BAD_REQUEST" ? 400 : error.code === "UNSUPPORTED_FEATURE" ? 422 : error.code === "TIMEOUT" ? 504 : 503
       const message =
         error.code === "UNSUPPORTED_FEATURE"
           ? "Selected model does not support this feature. Please choose a text-capable model."
@@ -144,7 +150,7 @@ export async function POST(request: NextRequest) {
 
       return respondError(
         request,
-        { code: error.code, message },
+        { code: error.code === "TIMEOUT" ? CHAT_ERROR_CODES.PROVIDER_TIMEOUT : error.code, message },
         { status, legacy: { error: message }, requestId },
       )
     }

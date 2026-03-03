@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { SectionFeatureCard } from "@/components/settings/sections/section-feature-card"
+import { SettingsRow } from "@/components/settings/sections/settings-presentation"
 import type { AttachmentMetadata, SettingsData, SettingsSection } from "@/components/settings/types"
 
 interface PreferencesSettingsProps {
@@ -128,33 +129,25 @@ export function PreferencesSettings({ data, isDisabled, isSaving, errors, onFiel
         panelId="notifications"
         title="Notifications"
         description="Choose which updates and announcements are sent to you."
-        status="Configured"
+        status="configured"
         actionLabel={isSaving ? "Saving..." : "Save notifications"}
         disabled={isDisabled}
         onAction={() => onSave("notifications")}
       >
-        <div className="flex items-center justify-between rounded-md border p-3">
-          <div>
-            <p className="text-sm font-medium">Marketing emails</p>
-            <p className="text-xs text-muted-foreground">Receive announcements and launch updates.</p>
-          </div>
+        <SettingsRow title="Marketing emails" description="Receive announcements and launch updates.">
           <Switch
             checked={data.notifications.marketingEmailsEnabled}
             onCheckedChange={(checked) => onFieldChange("notifications", "marketingEmailsEnabled", checked)}
             disabled={isDisabled}
           />
-        </div>
-        <div className="flex items-center justify-between rounded-md border p-3">
-          <div>
-            <p className="text-sm font-medium">Product updates</p>
-            <p className="text-xs text-muted-foreground">Get maintenance and release alerts.</p>
-          </div>
+        </SettingsRow>
+        <SettingsRow title="Product updates" description="Get maintenance and release alerts.">
           <Switch
             checked={data.notifications.productUpdatesEnabled}
             onCheckedChange={(checked) => onFieldChange("notifications", "productUpdatesEnabled", checked)}
             disabled={isDisabled}
           />
-        </div>
+        </SettingsRow>
         {errors.notifications ? <p className="text-sm text-destructive">{errors.notifications}</p> : null}
       </SectionFeatureCard>
 
@@ -162,7 +155,7 @@ export function PreferencesSettings({ data, isDisabled, isSaving, errors, onFiel
         panelId="appearance"
         title="Theme / Language"
         description="Set your interface defaults across devices."
-        status="Configured"
+        status="configured"
         actionLabel={isSaving ? "Saving..." : "Save preferences"}
         disabled={isDisabled}
         onAction={() => onSave("preferences")}
@@ -205,7 +198,7 @@ export function PreferencesSettings({ data, isDisabled, isSaving, errors, onFiel
         panelId="feedback"
         title="Feedback"
         description="Share workflow feedback to improve the product."
-        status="Review"
+        status="review"
         actionLabel={isSaving ? "Saving..." : "Submit feedback"}
         disabled={isDisabled}
         onAction={() => onSave("preferences")}
