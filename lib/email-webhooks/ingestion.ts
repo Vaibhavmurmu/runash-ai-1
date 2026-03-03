@@ -1,6 +1,8 @@
+import { isEmailDispatchModuleEnabled, resolveDispatchModule, type EmailDispatchModule } from "@/lib/email-dispatch-flags"
+import { mapEventToStructuredMetric, type StructuredDispatchStatusMetrics } from "@/lib/email-webhooks/dispatch-metrics"
 import { EmailBounceHandler } from "@/lib/email-bounce-handler"
 import { EmailDeliveryTracker } from "@/lib/email-delivery"
-import { triggerEmailEvent } from "@/lib/email-realtime"
+import { triggerDeliveryStatusEvent, triggerEmailEvent } from "@/lib/email-realtime"
 import { recordWebhookEvent, wasEventProcessed } from "@/lib/email-webhooks/store"
 import { type NormalizedEmailWebhookEvent } from "@/lib/email-webhooks/types"
 
@@ -10,6 +12,15 @@ export interface IngestionSummary {
   ignored: number
   duplicates: number
   failed: number
+  statusMetrics: StructuredDispatchStatusMetrics
+  reconciliation: {
+    deliveryUpdated: number
+    deliveryMissing: number
+    engagementTracked: number
+    engagementMissing: number
+    suppressionApplied: number
+  }
+  moduleRollout: Record<EmailDispatchModule, { enabled: boolean; ignored: number }>
 }
 
 function mapDeliveryStatus(type: NormalizedEmailWebhookEvent["type"]) {
@@ -33,9 +44,36 @@ export async function ingestNormalizedEvents(events: NormalizedEmailWebhookEvent
     ignored: 0,
     duplicates: 0,
     failed: 0,
+    statusMetrics: {
+      sent: 0,
+      delivered: 0,
+      deferred: 0,
+      bounced: 0,
+      complained: 0,
+      suppressed: 0,
+    },
+    reconciliation: {
+      deliveryUpdated: 0,
+      deliveryMissing: 0,
+      engagementTracked: 0,
+      engagementMissing: 0,
+      suppressionApplied: 0,
+    },
+    moduleRollout: {
+      contact: { enabled: isEmailDispatchModuleEnabled("contact"), ignored: 0 },
+      newsletter: { enabled: isEmailDispatchModuleEnabled("newsletter"), ignored: 0 },
+      billing: { enabled: isEmailDispatchModuleEnabled("billing"), ignored: 0 },
+    },
   }
 
   for (const event of events) {
+    const dispatchModule = resolveDispatchModule(event.metadata)
+    if (!summary.moduleRollout[dispatchModule].enabled) {
+      summary.moduleRollout[dispatchModule].ignored += 1
+      summary.ignored += 1
+      continue
+    }
+
     const alreadyProcessed = await wasEventProcessed(event.provider, event.providerEventId)
     if (alreadyProcessed) {
       summary.duplicates++
@@ -45,7 +83,7 @@ export async function ingestNormalizedEvents(events: NormalizedEmailWebhookEvent
     try {
       const status = mapDeliveryStatus(event.type)
       if (status) {
-        await EmailDeliveryTracker.updateDeliveryStatus(event.messageId, status, {
+        const updated = await EmailDeliveryTracker.updateDeliveryStatus(event.messageId, status, {
           bounce_reason: event.reason,
           tracking_data: {
             provider: event.provider,
@@ -54,11 +92,13 @@ export async function ingestNormalizedEvents(events: NormalizedEmailWebhookEvent
             webhook_event_id: event.providerEventId,
           },
         })
+        if (updated) summary.reconciliation.deliveryUpdated += 1
+        else summary.reconciliation.deliveryMissing += 1
       }
 
       const engagement = mapEngagementType(event.type)
       if (engagement) {
-        await EmailDeliveryTracker.trackEngagement(event.messageId, engagement, {
+        const tracked = await EmailDeliveryTracker.trackEngagement(event.messageId, engagement, {
           ip_address: event.ipAddress,
           user_agent: event.userAgent,
           event_data: {
@@ -68,6 +108,8 @@ export async function ingestNormalizedEvents(events: NormalizedEmailWebhookEvent
             webhook_event_id: event.providerEventId,
           },
         })
+        if (tracked) summary.reconciliation.engagementTracked += 1
+        else summary.reconciliation.engagementMissing += 1
       }
 
       if (event.type === "bounced" || event.type === "complaint") {
@@ -83,10 +125,34 @@ export async function ingestNormalizedEvents(events: NormalizedEmailWebhookEvent
             raw: event.raw,
           },
         })
+        summary.reconciliation.suppressionApplied += 1
       }
 
+      const metricKey = mapEventToStructuredMetric(event.type)
+      if (metricKey) {
+        summary.statusMetrics[metricKey] += 1
+        triggerDeliveryStatusEvent(event.messageId, event.recipientEmail, metricKey, {
+          provider: event.provider,
+          reason: event.reason,
+          metadata: event.metadata,
+        })
+      }
+
+      const realtimeEventType =
+        event.type === "opened"
+          ? "open"
+          : event.type === "clicked"
+            ? "click"
+            : event.type === "unsubscribed"
+              ? "unsubscribe"
+              : event.type === "complaint"
+                ? "complaint"
+                : event.type === "suppressed" || event.type === "bounced"
+                  ? "bounce"
+                  : "delivery_status"
+
       triggerEmailEvent({
-        type: event.type,
+        type: realtimeEventType,
         messageId: event.messageId,
         email: event.recipientEmail,
         timestamp: event.timestamp,
@@ -94,6 +160,7 @@ export async function ingestNormalizedEvents(events: NormalizedEmailWebhookEvent
           provider: event.provider,
           reason: event.reason,
           metadata: event.metadata,
+          status: metricKey ?? event.type,
         },
       })
 

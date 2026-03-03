@@ -3,7 +3,8 @@ import { logApiEvent } from "./api/logging"
 import { EmailDeliveryTracker } from "./email-delivery"
 import { EmailBounceHandler } from "./email-bounce-handler"
 import { triggerDeliveryStatusEvent } from "./email-realtime"
-import { type EmailAttachment, sendWithEmailProvider } from "./email-provider"
+import { type EmailAttachment } from "./email-provider"
+import { sendEmailEvent } from "@/services/email"
 
 export const AUTH_EMAIL_VERIFICATION_PATH = "/api/auth/verify-email"
 
@@ -110,6 +111,10 @@ export async function sendEmail(options: {
   from?: string
   headers?: Record<string, string>
   attachments?: EmailAttachment[]
+  replyTo?: string | string[]
+  scheduledAt?: string
+  tags?: Array<{ name: string; value: string }>
+  idempotencyKey?: string
   template_id?: number
   campaign_id?: number
   user_id?: number
@@ -209,14 +214,38 @@ export async function sendEmail(options: {
       }
     }
 
-    const providerResult = await sendWithEmailProvider({
-      from: options.from,
+    const providerResult = await sendEmailEvent({
+      type: "GENERIC_EMAIL",
       to: targetRecipient,
+
       subject: options.subject,
       html,
       text: options.text,
       headers: Object.keys(headers).length > 0 ? headers : undefined,
       attachments: options.attachments,
+      replyTo: options.replyTo,
+      scheduledAt: options.scheduledAt,
+      tags: options.tags,
+      idempotencyKey: options.idempotencyKey,
+
+      source: "lib/email.sendEmail",
+      metadata: {
+        category: headers["X-Email-Category"],
+        headers: Object.keys(headers).length > 0 ? headers : undefined,
+      },
+      payload: {
+        from: options.from,
+        subject: options.subject,
+        html,
+        text: options.text,
+        attachments: options.attachments,
+        track_delivery: options.track_delivery,
+        template_id: options.template_id,
+        campaign_id: options.campaign_id,
+        user_id: options.user_id,
+        recipient_name: options.recipient_name,
+      },
+
     })
 
     if (message_id) {
@@ -268,6 +297,126 @@ export async function sendAuthEmail(options: {
       "X-Email-Category": "auth",
     },
   })
+}
+
+export async function sendMagicLinkEmail(options: {
+  to: string
+  magicLinkUrl: string
+  userName?: string
+}) {
+  const greeting = options.userName ? `<p style="color: #333; font-size: 16px; margin-bottom: 20px;">Hi ${options.userName},</p>` : ""
+
+  return sendAuthEmail({
+    to: options.to,
+    subject: "Your Magic Link - Sign in instantly",
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Magic Link Login</title>
+      </head>
+      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%); min-height: 100vh;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+          <div style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px); border-radius: 20px; padding: 40px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);">
+            <div style="text-align: center; margin-bottom: 30px;">
+              <h1 style="color: #1a1a1a; font-size: 28px; font-weight: 700; margin: 0 0 10px 0;">Magic Link Login</h1>
+              <p style="color: #666; font-size: 16px; margin: 0;">Click the button below to sign in instantly</p>
+            </div>
+
+            ${greeting}
+
+            <p style="color: #333; font-size: 16px; line-height: 1.6; margin-bottom: 30px;">
+              You requested a magic link to sign in to your account. Click the button below to sign in instantly - no password required!
+            </p>
+
+            <div style="text-align: center; margin: 40px 0;">
+              <a href="${options.magicLinkUrl}" style="display: inline-block; background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%); color: white; text-decoration: none; padding: 16px 32px; border-radius: 12px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 15px rgba(255, 107, 53, 0.3); transition: all 0.3s ease;">
+                Sign In with Magic Link
+              </a>
+            </div>
+
+            <div style="background: #f8f9fa; border-radius: 12px; padding: 20px; margin: 30px 0;">
+              <p style="color: #666; font-size: 14px; margin: 0 0 10px 0; font-weight: 600;">Security Notice:</p>
+              <ul style="color: #666; font-size: 14px; margin: 0; padding-left: 20px;">
+                <li>This link expires in 15 minutes</li>
+                <li>It can only be used once</li>
+                <li>If you didn't request this, you can safely ignore this email</li>
+              </ul>
+            </div>
+
+            <p style="color: #999; font-size: 12px; text-align: center; margin-top: 30px;">
+              If the button doesn't work, copy and paste this link into your browser:<br>
+              <span style="word-break: break-all;">${options.magicLinkUrl}</span>
+            </p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+  })
+}
+
+export async function sendOtpCodeEmail(options: {
+  to: string
+  code: string
+  purpose: string
+}) {
+  return sendAuthEmail({
+    to: options.to,
+    subject: getOtpEmailSubject(options.purpose),
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Your Verification Code</title>
+      </head>
+      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%); min-height: 100vh;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+          <div style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px); border-radius: 20px; padding: 40px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);">
+            <div style="text-align: center; margin-bottom: 30px;">
+              <h1 style="color: #1a1a1a; font-size: 28px; font-weight: 700; margin: 0 0 10px 0;">Verification Code</h1>
+              <p style="color: #666; font-size: 16px; margin: 0;">Enter this code to complete your ${options.purpose}</p>
+            </div>
+
+            <div style="text-align: center; margin: 40px 0;">
+              <div style="display: inline-block; background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%); color: white; font-size: 32px; font-weight: 700; padding: 20px 40px; border-radius: 12px; letter-spacing: 8px; font-family: 'Courier New', monospace; box-shadow: 0 4px 15px rgba(255, 107, 53, 0.3);">
+                ${options.code}
+              </div>
+            </div>
+
+            <div style="background: #f8f9fa; border-radius: 12px; padding: 20px; margin: 30px 0;">
+              <p style="color: #666; font-size: 14px; margin: 0 0 10px 0; font-weight: 600;">Security Notice:</p>
+              <ul style="color: #666; font-size: 14px; margin: 0; padding-left: 20px;">
+                <li>This code expires in 10 minutes</li>
+                <li>Don't share this code with anyone</li>
+                <li>If you didn't request this, please ignore this email</li>
+              </ul>
+            </div>
+
+            <p style="color: #999; font-size: 12px; text-align: center; margin-top: 30px;">
+              This verification code was sent to ${options.to}
+            </p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+  })
+}
+
+function getOtpEmailSubject(purpose: string): string {
+  const purposeMap: Record<string, string> = {
+    login: "Your Login Verification Code",
+    signup: "Complete Your Registration",
+    "password-reset": "Password Reset Verification Code",
+    verification: "Email Verification Code",
+  }
+
+  return purposeMap[purpose] || "Your Verification Code"
 }
 
 export function buildCanonicalVerificationUrl(input: { url?: string; token?: string; callbackURL?: string }) {
@@ -400,6 +549,107 @@ export async function sendWaitlistConfirmationEmail(options: { to: string; name?
     text: `Hi ${greetingName},\n\nThanks for joining the RunAsh waitlist. We received your request and will contact you when new spots are available.`,
     headers: {
       "X-Email-Category": "waitlist",
+    },
+    track_delivery: true,
+  })
+}
+
+
+export async function sendFeedbackConfirmationEmail(options: { to: string; name?: string }) {
+  const greetingName = options.name?.trim() || "there"
+
+  await sendEmail({
+    to: options.to,
+    subject: "We received your feedback",
+    html: `
+      <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
+        <h2 style="color: #333; text-align: center;">Thanks for your feedback</h2>
+        <p>Hi ${greetingName},</p>
+        <p>We’ve logged your feedback and shared it with our product triage team.</p>
+        <p>Thanks for helping us improve RunAsh.</p>
+      </div>
+    `,
+    headers: {
+      "X-Email-Category": "feedback-confirmation",
+    },
+    track_delivery: true,
+  })
+}
+
+export async function sendFeedbackTriageEmail(options: {
+  to: string
+  userId: string
+  score: number
+  message: string
+  source: string
+}) {
+  await sendEmail({
+    to: options.to,
+    subject: `New feedback triage item from ${options.source}`,
+    html: `
+      <div style="max-width: 650px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
+        <h2 style="color: #333;">New feedback submitted</h2>
+        <p><strong>User ID:</strong> ${options.userId}</p>
+        <p><strong>Score:</strong> ${options.score}</p>
+        <p><strong>Source:</strong> ${options.source}</p>
+        <p><strong>Message:</strong></p>
+        <p style="white-space: pre-wrap; border-left: 3px solid #f7931e; padding-left: 12px;">${options.message}</p>
+      </div>
+    `,
+    headers: {
+      "X-Email-Category": "feedback-triage",
+    },
+    track_delivery: true,
+  })
+}
+
+export async function sendReferralInviteEmail(options: {
+  to: string
+  inviteCode: string
+  inviterName?: string | null
+}) {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+  const inviteUrl = `${appUrl}/signup?ref=${encodeURIComponent(options.inviteCode)}`
+  const inviterLabel = options.inviterName?.trim() || "A RunAsh user"
+
+  await sendEmail({
+    to: options.to,
+    subject: `${inviterLabel} invited you to RunAsh`,
+    html: `
+      <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
+        <h2 style="color: #333; text-align: center;">You’ve been invited to RunAsh</h2>
+        <p>${inviterLabel} sent you a referral invite.</p>
+        <p>Use the link below to get started:</p>
+        <p><a href="${inviteUrl}">${inviteUrl}</a></p>
+      </div>
+    `,
+    headers: {
+      "X-Email-Category": "referral-invite",
+    },
+    track_delivery: true,
+  })
+}
+
+export async function sendReferralMilestoneEmail(options: {
+  to: string
+  name?: string | null
+  totalConversions: number
+}) {
+  const greetingName = options.name?.trim() || "there"
+
+  await sendEmail({
+    to: options.to,
+    subject: `Referral milestone unlocked: ${options.totalConversions} conversions`,
+    html: `
+      <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
+        <h2 style="color: #333; text-align: center;">Referral milestone reached 🎉</h2>
+        <p>Hi ${greetingName},</p>
+        <p>You now have <strong>${options.totalConversions} referral conversions</strong>.</p>
+        <p>Thanks for growing the RunAsh community.</p>
+      </div>
+    `,
+    headers: {
+      "X-Email-Category": "referral-milestone",
     },
     track_delivery: true,
   })
