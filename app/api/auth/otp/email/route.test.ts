@@ -131,3 +131,39 @@ test("PUT /api/auth/otp/email replayed otp is rejected and no session is issued"
   assert.match(firstResponse.headers.get("set-cookie") ?? "", /better-auth\.session-token=session-1/)
   assert.equal(secondResponse.headers.get("set-cookie"), null)
 })
+
+test("PUT /api/auth/otp/email non-login purpose does not issue session cookies", async () => {
+  const request = new Request("http://localhost/api/auth/otp/email", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      email: "register@example.com",
+      code: "222222",
+      purpose: "registration",
+    }),
+  })
+
+  let issuedSession = false
+
+  const response = await handleVerifyEmailOtp(request, {
+    verifyOtp: async () => ({ success: true, message: "OTP verified successfully" }),
+    resolveOrCreateUserIdentity: async () => {
+      throw new Error("identity should not be resolved for non-login verification")
+    },
+    issueLoginSession: async () => {
+      issuedSession = true
+      return "should-not-be-issued"
+    },
+    setSessionCookies: () => {
+      throw new Error("cookies should not be set for non-login verification")
+    },
+    onError,
+  })
+
+  const payload = await response.json()
+
+  assert.equal(response.status, 200)
+  assert.equal(payload.success, true)
+  assert.equal(issuedSession, false)
+  assert.equal(response.headers.get("set-cookie"), null)
+})
