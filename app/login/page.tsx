@@ -133,8 +133,8 @@ export default function LoginPage() {
                     <Select value={organization} onValueChange={setOrganization}>
                       <SelectTrigger className="h-10 border-orange-200 dark:border-white/15 bg-white/70 dark:bg-white/5 text-slate-800 dark:text-white"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="runash-core">RunAsh Core</SelectItem>
-                        <SelectItem value="runash-studio">RunAsh Studio</SelectItem>
+                        <SelectItem value="runash-core">RunAsh AI</SelectItem>
+                        <SelectItem value="runash-chat">RunAshChat</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -145,6 +145,7 @@ export default function LoginPage() {
                       <SelectContent>
                         <SelectItem value="web">web</SelectItem>
                         <SelectItem value="mobile">mobile</SelectItem>
+                        <SelectItem value="mobile">API</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -227,7 +228,7 @@ export default function LoginPage() {
                   <Button type="submit" disabled={isLoading} className="w-full h-12 rounded-full bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-400 text-white hover:opacity-90 font-medium">{isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Signing in...</> : "Sign in"}</Button>
                 </form>
 
-                <Card className="border-orange-100 dark:border-white/10 bg-orange-50/60 dark:bg-white/[0.02]"><CardContent className="p-4"><p className="font-medium">✨ Model dialog card customization</p><p className="text-xs text-slate-600 dark:text-white/55 mt-1">Post-login, configure model dialog cards for upload screenshots, trusted client scopes, and pass/biometric login roadmap states.</p></CardContent></Card>
+                <Card className="border-orange-100 dark:border-white/10 bg-orange-50/60 dark:bg-white/[0.02]"><CardContent className="p-4"><p className="font-medium">✨ SSO for Team & Enterprise accounts.</p><p className="text-xs text-slate-600 dark:text-white/55 mt-1">Give your organization the enterprise grand security access controls, dedicated support and more..</p></CardContent></Card>
 
                 <div className="text-center pt-2"><p className="text-sm text-slate-600 dark:text-white/65">Don&apos;t have an account? <Link href="/get-started" className="font-medium text-orange-600 dark:text-white hover:opacity-80">Sign up for free</Link></p></div>
               </CardContent>
