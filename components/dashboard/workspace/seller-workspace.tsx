@@ -14,7 +14,7 @@ import { OrderManager } from "@/components/seller/order-manager"
 import { BusinessSettings } from "@/components/seller/business-settings"
 import { InventoryManager } from "@/components/seller/inventory-manager"
 import { PayoutManager } from "@/components/seller/payout-manager"
-import { ShortsGenerator } from "@/components/seller/shorts-generator"
+import { MarketingWorkflowBuilder } from "@/components/seller/marketing-workflow-builder"
 import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
 import { fetchApiData } from "@/lib/api/client"
 
@@ -164,6 +164,7 @@ export function SellerWorkspace() {
             <TabsTrigger value="shorts">Shorts/Reels</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
             <TabsTrigger value="business">Business</TabsTrigger>
+            <TabsTrigger value="marketing">Marketing</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
@@ -223,6 +224,7 @@ export function SellerWorkspace() {
           <TabsContent value="shorts"><ShortsGenerator /></TabsContent>
           <TabsContent value="analytics"><SellerAnalytics /></TabsContent>
           <TabsContent value="business"><BusinessSettings /></TabsContent>
+          <TabsContent value="marketing"><MarketingWorkflowBuilder /></TabsContent>
         </Tabs>
       </div>
     </div>

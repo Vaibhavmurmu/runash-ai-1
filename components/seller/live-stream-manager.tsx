@@ -38,7 +38,7 @@ import {
 } from "lucide-react"
 
 const fetcher = (url: string) =>
-  fetch(url, { headers: { "x-user-id": "1" } }).then((r) => {
+  fetch(url).then((r) => {
     if (!r.ok) throw new Error("Failed to load streams")
     return r.json()
   })
@@ -71,7 +71,7 @@ export function LiveStreamManager() {
       const when = new Date(`${format(selectedDate, "yyyy-MM-dd")}T${time}:00`)
       const res = await fetch("/api/streams", {
         method: "POST",
-        headers: { "content-type": "application/json", "x-user-id": "1" },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           title,
           description,

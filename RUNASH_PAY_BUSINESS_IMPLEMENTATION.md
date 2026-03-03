@@ -24,6 +24,7 @@ This document is limited to payment/business implementation policy. Generic cont
 - Auth hardening updates (verified linking, session invalidation, throttling) are contract-compatible for payment APIs.
 - Admin auth/org tooling updates (organization lifecycle + provider mapping + tenant user assignment) are operational-only and do not modify payment field contracts or payment API signatures.
 - Auth signup flow was unified through Better Auth server registration (`auth.api.signUpEmail`) with compatibility response mapping; no payment route fields or business payment contracts changed.
+- Register API routing now invokes Better Auth server registration directly from `app/api/auth/register/route.ts` (delegating validation/compat mapping to the shared handler); response contract remains backward compatible for existing frontend consumers.
 - Incident and rollback runbook reference for auth/org config operations: `docs/AUTH_ORG_INCIDENT_RUNBOOK.md`.
 
 
@@ -334,9 +335,13 @@ Business controls preserved:
 - **Mitigation:** all limits are environment-configurable and surfaced with stable API error codes.
 - **Rollback:** relax or disable quota/policy env limits while preserving API shape and worker behavior.
 
-## 2026-02 shorts/reels pipeline release note (business flow auditability)
+## 2026-02 Seller marketing workflow automation note (non-payment)
 
-- Added seller-side AI short-clip generation workflow (ingest -> highlight scoring -> extraction -> caption/title generation) with optional human review queue before publish.
-- Payment/auth impact assessment: **no payment field names, payment API signatures, or auth payment contracts were changed**; this release is content-operations only.
-- Security posture: clip generation and publish services avoid logging sensitive payment/auth payloads.
-- Risk + rollback: if clip job processing or publish target queuing regresses, rollback by reverting seller clip pipeline routes/service and migration while leaving payment services untouched.
+- Added seller marketing workflow orchestration for trigger-based campaigns (`stream_ended`, `cart_abandoned`, `high_intent_viewer`, `repeat_buyer`) with multi-channel delivery routing.
+- Added campaign persistence tables for templates, rules, and run history to support auditability and replay.
+- **Payment/auth impact:** none. Checkout contracts, payment field names, and auth/session interfaces remain unchanged.
+
+### Risk / rollback
+- **Risk:** high-volume trigger traffic could generate excessive outbound notifications.
+- **Mitigation:** rule activation controls, trigger condition gates, and run history observability are included for controlled rollout.
+- **Rollback:** deactivate affected marketing workflows via activation API or remove the new seller marketing tab while preserving existing seller operations.
