@@ -335,6 +335,11 @@ Business controls preserved:
 - **Mitigation:** all limits are environment-configurable and surfaced with stable API error codes.
 - **Rollback:** relax or disable quota/policy env limits while preserving API shape and worker behavior.
 
+
+## Reliability note: feedback/referral operational flows
+- Added guidance that referral invites/conversions and feedback intake are non-payment business flows with independent throttling and email notifications.
+- No payment API contract changes were introduced; rollback path is to disable `/api/referrals*` and `/api/feedback` routes plus revert migration `0006_feedback_and_referrals.sql`.
+
 ## 2026-02 Settings billing contract governance update (billing/invoice/credits/referrals)
 
 - Added a unified settings architecture/API contract source at `docs/SETTINGS_ARCHITECTURE_API_CONTRACT.md` to standardize business and engineering interpretation of settings billing surfaces.
@@ -385,5 +390,6 @@ For every phase, use this rollback sequence:
 4. Reconcile partial writes/events before retrying rollout.
 
 Backward compatibility remains mandatory: existing billing/payment field names and API signatures are preserved throughout all phases unless versioned migration notes are explicitly approved.
+
 
 
