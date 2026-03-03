@@ -40,8 +40,8 @@ export default function Home() {
             <div className="flex items-center justify-center space-x-2">
               
               <span className="text-orange-600 dark:text-orange-400 font-medium text-sm">
-               <Badge varient="secondary" className="bg-orange-600 text-white gap-2 space-x-1 dark:bg-orange-500 animate-pulse border text-xs"><Bell className="w-4 h-4" />New</Badge>
-                    Real Time Live Streaming Video Generation Model! {" "}
+               <Badge varient="secondary" className="bg-orange-600 text-white gap-2 space-x-1 dark:bg-orange-500 animate-pulse border text-xs"><Bell />New</Badge>
+                   {" "} Real Time Live Streaming Video Generation Model! {" "}
                <a href="https://blog.runash.in/real-time" className="underline gap-2 font-semibold hover:text-orange-200">
                     Learn more
               </a>
