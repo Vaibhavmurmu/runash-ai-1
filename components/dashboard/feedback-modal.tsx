@@ -43,16 +43,15 @@ export function FeedbackModal({ open, onOpenChange, onSubmitted, restoreFocusTo 
     setSuccess(null)
 
     try {
-      const response = await fetch("/api/agents/feedback", {
+      const response = await fetch("/api/feedback", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          sessionId: "dashboard-navbar",
-          signal: "quality",
           score: Number(score),
-          reason: reason.trim() || "Dashboard feedback submitted",
+          message: reason.trim() || "Dashboard feedback submitted",
+          source: "dashboard",
         }),
       })
 
@@ -119,7 +118,7 @@ export function FeedbackModal({ open, onOpenChange, onSubmitted, restoreFocusTo 
               id="feedback-reason"
               value={reason}
               onChange={(event) => setReason(event.target.value)}
-              maxLength={500}
+              maxLength={1000}
               placeholder="Tell us what is working well or what we should improve..."
             />
           </div>
