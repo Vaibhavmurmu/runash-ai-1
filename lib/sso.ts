@@ -1,7 +1,9 @@
 import { randomBytes } from "crypto"
 import { assertDatabaseConfigured, sql } from "./db"
 
-assertDatabaseConfigured("lib/sso.ts")
+function ensureSsoDbConfigured() {
+  assertDatabaseConfigured("lib/sso.ts")
+}
 
 export interface SSOOrganization {
   id: number
@@ -56,6 +58,7 @@ export interface SSOUserMapping {
 // Get organization by domain
 export async function getOrganizationByDomain(domain: string): Promise<SSOOrganization | null> {
   try {
+    ensureSsoDbConfigured()
     const result = await sql`
       SELECT * FROM sso_organizations 
       WHERE domain = ${domain} AND is_active = true
@@ -71,6 +74,7 @@ export async function getOrganizationByDomain(domain: string): Promise<SSOOrgani
 // Get organization by slug
 export async function getOrganizationBySlug(slug: string): Promise<SSOOrganization | null> {
   try {
+    ensureSsoDbConfigured()
     const result = await sql`
       SELECT * FROM sso_organizations 
       WHERE slug = ${slug} AND is_active = true
@@ -89,6 +93,7 @@ export async function getSSOProvider(
   providerType?: "saml" | "oidc" | "oauth",
 ): Promise<SSOProvider | null> {
   try {
+    ensureSsoDbConfigured()
     let query = sql`
       SELECT * FROM sso_providers 
       WHERE organization_id = ${organizationId} AND is_active = true
@@ -124,6 +129,7 @@ export async function createSSOOrganization(
   } = {},
 ): Promise<SSOOrganization | null> {
   try {
+    ensureSsoDbConfigured()
     const result = await sql`
       INSERT INTO sso_organizations (
         name, domain, slug, sso_enabled, auto_provision, default_role, created_by
@@ -162,6 +168,7 @@ export async function createSSOProvider(
   config: Partial<SSOProvider>,
 ): Promise<SSOProvider | null> {
   try {
+    ensureSsoDbConfigured()
     const result = await sql`
       INSERT INTO sso_providers (
         organization_id, provider_type, provider_name, client_id, client_secret,
@@ -213,6 +220,7 @@ export async function createSSOUserMapping(
   externalAttributes?: Record<string, any>,
 ): Promise<SSOUserMapping | null> {
   try {
+    ensureSsoDbConfigured()
     const result = await sql`
       INSERT INTO sso_user_mappings (
         user_id, organization_id, provider_id, external_id, external_email, external_attributes
@@ -247,6 +255,7 @@ export async function provisionSSOUser(
   attributes: Record<string, any> = {},
 ): Promise<{ user: any; isNew: boolean } | null> {
   try {
+    ensureSsoDbConfigured()
     const organization = await sql`
       SELECT * FROM sso_organizations WHERE id = ${organizationId}
     `
@@ -323,6 +332,7 @@ export async function logSSOLoginAttempt(
   } = {},
 ): Promise<void> {
   try {
+    ensureSsoDbConfigured()
     await sql`
       INSERT INTO sso_login_attempts (
         organization_id, provider_id, user_id, external_id, email, success, 
@@ -345,6 +355,7 @@ export async function generateDomainVerification(
   method: "dns" | "file" | "email" = "dns",
 ): Promise<{ token: string; expiresAt: Date } | null> {
   try {
+    ensureSsoDbConfigured()
     const token = randomBytes(32).toString("hex")
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
 
@@ -372,6 +383,7 @@ export async function generateDomainVerification(
 // Verify domain ownership
 export async function verifyDomainOwnership(organizationId: number, domain: string, token: string): Promise<boolean> {
   try {
+    ensureSsoDbConfigured()
     const result = await sql`
       UPDATE domain_verifications 
       SET is_verified = true, verified_at = NOW()
@@ -406,6 +418,7 @@ export async function getSSOConfigForDomain(domain: string): Promise<{
   provider: SSOProvider
 } | null> {
   try {
+    ensureSsoDbConfigured()
     const result = await sql`
       SELECT 
         o.*,

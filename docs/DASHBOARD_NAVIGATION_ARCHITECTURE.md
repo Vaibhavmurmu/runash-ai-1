@@ -48,5 +48,12 @@ Legacy, route-local sidebar lists should not be reintroduced for dashboard surfa
 
 ## Legacy route redirects
 
-For chat entry points, standardize user-facing navigation to **Chat** at `/dashboard/chat`.
+For chat entry points, standardize user-facing navigation to **RunAsh Chat** at `/dashboard/chat`.
 Keep redirects from `/dashboard/runash-chat`, `/chat`, and `/runash-chat` for backwards compatibility.
+
+
+## Canonical chat route mapping
+
+- Canonical product label: **RunAsh Chat**
+- Canonical route: `/dashboard/chat`
+- Legacy compatibility routes (redirect): `/chat`, `/runash-chat`, `/dashboard/runash-chat`

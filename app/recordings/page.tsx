@@ -15,6 +15,7 @@ import ClipEditor from "@/components/streaming/recording/clip-editor"
 import VideoEditor from "@/components/streaming/recording/video-editor"
 import { RecordingService, DEFAULT_CLOUD_PROVIDERS } from "@/lib/recording-service"
 import { toast } from "@/components/ui/use-toast"
+import type { LibraryQueryParams } from "@/lib/recording-service"
 import type {
   RecordedStream,
   RecordingSettings,
@@ -23,9 +24,23 @@ import type {
   StreamHighlight,
 } from "@/types/recording"
 
+const DEFAULT_LIBRARY_QUERY: LibraryQueryParams = {
+  page: 1,
+  pageSize: 8,
+  segment: "recent",
+  search: "",
+  sort: "date-desc",
+  platform: "all",
+  status: "all",
+}
+
 export default function RecordingsPage() {
   const [activeTab, setActiveTab] = useState("library")
   const [recordings, setRecordings] = useState<RecordedStream[]>([])
+  const [libraryQuery, setLibraryQuery] = useState<LibraryQueryParams>(DEFAULT_LIBRARY_QUERY)
+  const [hasMoreRecordings, setHasMoreRecordings] = useState(false)
+  const [isLibraryLoading, setIsLibraryLoading] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [selectedStream, setSelectedStream] = useState<RecordedStream | null>(null)
   const [isPlaybackOpen, setIsPlaybackOpen] = useState(false)
   const [isShareOpen, setIsShareOpen] = useState(false)
@@ -53,19 +68,39 @@ export default function RecordingsPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
 
+  const loadLibrary = useCallback(async (query: LibraryQueryParams, append = false) => {
+    try {
+      if (append) {
+        setIsLoadingMore(true)
+      } else {
+        setIsLibraryLoading(true)
+      }
+
+      const response = await RecordingService.getLibraryRecordings(query)
+      setHasMoreRecordings(response.pagination.hasMore)
+      setRecordings((prev) => (append ? [...prev, ...response.items] : response.items))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load library"
+      setLoadError(message)
+      toast({ title: "Unable to load library", description: message })
+    } finally {
+      setIsLibraryLoading(false)
+      setIsLoadingMore(false)
+    }
+  }, [])
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true)
       setLoadError(null)
-      const [recordingsData, storageData, settingsData] = await Promise.all([
-        RecordingService.getRecordings(),
+      const [storageData, settingsData] = await Promise.all([
         RecordingService.getStorageUsage(),
         RecordingService.getSettings(),
       ])
 
-      setRecordings(recordingsData)
       setStorageUsage(storageData)
       setRecordingSettings(settingsData)
+      await loadLibrary(DEFAULT_LIBRARY_QUERY)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to load recordings"
       setLoadError(message)
@@ -76,11 +111,30 @@ export default function RecordingsPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [loadLibrary])
 
   useEffect(() => {
     void loadData()
   }, [loadData])
+
+  const handleLibraryQueryChange = (nextQuery: LibraryQueryParams) => {
+    setLibraryQuery(nextQuery)
+    void loadLibrary(nextQuery)
+  }
+
+  const handleLoadMore = () => {
+    if (!hasMoreRecordings) {
+      return
+    }
+
+    const nextQuery = {
+      ...libraryQuery,
+      page: (libraryQuery.page ?? 1) + 1,
+    }
+
+    setLibraryQuery(nextQuery)
+    void loadLibrary(nextQuery, true)
+  }
 
   const handlePlayRecording = (stream: RecordedStream) => {
     setSelectedStream(stream)
@@ -95,7 +149,7 @@ export default function RecordingsPage() {
   const handleDeleteRecording = async (streamId: string) => {
     try {
       await RecordingService.deleteRecording(streamId)
-      await loadData()
+      await loadLibrary(libraryQuery)
       toast({ title: "Recording deleted" })
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to delete recording"
@@ -163,7 +217,7 @@ export default function RecordingsPage() {
     try {
       await RecordingService.createClip(selectedStream.id, clip)
       setIsClipEditorOpen(false)
-      await loadData()
+      await loadLibrary(libraryQuery)
       toast({ title: "Clip created", description: `Saved clip "${clip.title}"` })
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to save clip"
@@ -192,7 +246,7 @@ export default function RecordingsPage() {
         endTime: new Date((editedVideo.endTime ?? 0) * 1000).toISOString(),
       })
       setIsVideoEditorOpen(false)
-      await loadData()
+      await loadLibrary(libraryQuery)
       toast({ title: "Edit queued", description: "Your edited video is being processed." })
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to save edited video"
@@ -310,6 +364,12 @@ export default function RecordingsPage() {
           <TabsContent value="library" className="mt-0">
             <RecordedStreamsLibrary
               streams={recordings}
+              query={libraryQuery}
+              isLoading={isLibraryLoading}
+              isLoadingMore={isLoadingMore}
+              hasMore={hasMoreRecordings}
+              onQueryChange={handleLibraryQueryChange}
+              onLoadMore={handleLoadMore}
               onPlay={handlePlayRecording}
               onEdit={handleEditRecording}
               onDelete={handleDeleteRecording}

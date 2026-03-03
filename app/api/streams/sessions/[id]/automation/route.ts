@@ -9,6 +9,7 @@ import {
   listStreamSessionAutomationEvents,
 } from "@/lib/repositories/stream-session-automation-events"
 import { orchestrateVoiceCommerceTurn } from "@/services/voice-commerce-orchestrator"
+import { orchestrateNetworkQualityAutomation } from "@/services/agent-orchestration-service"
 
 const actionSchema = z.object({
   action: z.enum([
@@ -18,9 +19,11 @@ const actionSchema = z.object({
     "trigger_limited_time_discount",
     "initiate_approved_deal",
     "voice_turn",
+    "network_quality_degraded",
+    "network_quality_recovered",
   ]),
-  seller_id: z.string().trim().min(1),
-  buyer_id: z.string().trim().min(1),
+  seller_id: z.string().trim().min(1).optional(),
+  buyer_id: z.string().trim().min(1).optional(),
   buyer_query: z.string().trim().optional(),
   query: z.string().trim().optional(),
   sku: z.string().trim().optional(),
@@ -47,6 +50,48 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   }
 
   const action = parsed.data.action
+
+  if (action === "network_quality_degraded" || action === "network_quality_recovered") {
+    const events = await listStreamSessionAutomationEvents(params.id)
+    const prior = events
+      .filter((event) => event.eventType === "stream_automation.state_snapshot")
+      .at(-1)?.eventPayload
+
+    const state = prior && typeof prior === "object" ? (prior as Record<string, unknown>) : undefined
+    const result = await orchestrateNetworkQualityAutomation({
+      sessionId: params.id,
+      streamId: params.id,
+      trigger: action,
+      actorRole: "seller_ai",
+      state: state as Parameters<typeof orchestrateNetworkQualityAutomation>[0]["state"],
+    })
+
+    const snapshot = await createStreamSessionAutomationEvent({
+      id: `ssa_${randomUUID().replace(/-/g, "")}`,
+      sessionId: params.id,
+      streamId: params.id,
+      eventType: "stream_automation.state_snapshot",
+      stage: "intermediate",
+      actorRole: "seller_ai",
+      eventPayload: result.state as Record<string, unknown>,
+    })
+
+    return NextResponse.json({
+      action,
+      session_id: params.id,
+      trigger: result.trigger,
+      automation_timeline: result.timeline,
+      automation_state: result.state,
+      state_snapshot: snapshot,
+    })
+  }
+
+  if (action !== "network_quality_degraded" && action !== "network_quality_recovered") {
+    if (!parsed.data.seller_id || !parsed.data.buyer_id) {
+      return NextResponse.json({ error: "seller_id and buyer_id are required for this action" }, { status: 400 })
+    }
+  }
+
   if (action === "voice_turn") {
     const run = await orchestrateVoiceCommerceTurn({
       session_id: params.id,
