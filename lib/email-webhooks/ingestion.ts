@@ -1,6 +1,8 @@
+import { isEmailDispatchModuleEnabled, resolveDispatchModule, type EmailDispatchModule } from "@/lib/email-dispatch-flags"
+import { mapEventToStructuredMetric, type StructuredDispatchStatusMetrics } from "@/lib/email-webhooks/dispatch-metrics"
 import { EmailBounceHandler } from "@/lib/email-bounce-handler"
 import { EmailDeliveryTracker } from "@/lib/email-delivery"
-import { triggerEmailEvent } from "@/lib/email-realtime"
+import { triggerDeliveryStatusEvent, triggerEmailEvent } from "@/lib/email-realtime"
 import { recordWebhookEvent, wasEventProcessed } from "@/lib/email-webhooks/store"
 import { type NormalizedEmailWebhookEvent } from "@/lib/email-webhooks/types"
 
@@ -10,6 +12,8 @@ export interface IngestionSummary {
   ignored: number
   duplicates: number
   failed: number
+  statusMetrics: StructuredDispatchStatusMetrics
+  moduleRollout: Record<EmailDispatchModule, { enabled: boolean; ignored: number }>
 }
 
 function mapDeliveryStatus(type: NormalizedEmailWebhookEvent["type"]) {
@@ -33,9 +37,29 @@ export async function ingestNormalizedEvents(events: NormalizedEmailWebhookEvent
     ignored: 0,
     duplicates: 0,
     failed: 0,
+    statusMetrics: {
+      sent: 0,
+      delivered: 0,
+      deferred: 0,
+      bounced: 0,
+      complained: 0,
+      suppressed: 0,
+    },
+    moduleRollout: {
+      contact: { enabled: isEmailDispatchModuleEnabled("contact"), ignored: 0 },
+      newsletter: { enabled: isEmailDispatchModuleEnabled("newsletter"), ignored: 0 },
+      billing: { enabled: isEmailDispatchModuleEnabled("billing"), ignored: 0 },
+    },
   }
 
   for (const event of events) {
+    const dispatchModule = resolveDispatchModule(event.metadata)
+    if (!summary.moduleRollout[dispatchModule].enabled) {
+      summary.moduleRollout[dispatchModule].ignored += 1
+      summary.ignored += 1
+      continue
+    }
+
     const alreadyProcessed = await wasEventProcessed(event.provider, event.providerEventId)
     if (alreadyProcessed) {
       summary.duplicates++
@@ -85,8 +109,31 @@ export async function ingestNormalizedEvents(events: NormalizedEmailWebhookEvent
         })
       }
 
+      const metricKey = mapEventToStructuredMetric(event.type)
+      if (metricKey) {
+        summary.statusMetrics[metricKey] += 1
+        triggerDeliveryStatusEvent(event.messageId, event.recipientEmail, metricKey, {
+          provider: event.provider,
+          reason: event.reason,
+          metadata: event.metadata,
+        })
+      }
+
+      const realtimeEventType =
+        event.type === "opened"
+          ? "open"
+          : event.type === "clicked"
+            ? "click"
+            : event.type === "unsubscribed"
+              ? "unsubscribe"
+              : event.type === "complaint"
+                ? "complaint"
+                : event.type === "suppressed" || event.type === "bounced"
+                  ? "bounce"
+                  : "delivery_status"
+
       triggerEmailEvent({
-        type: event.type,
+        type: realtimeEventType,
         messageId: event.messageId,
         email: event.recipientEmail,
         timestamp: event.timestamp,
@@ -94,6 +141,7 @@ export async function ingestNormalizedEvents(events: NormalizedEmailWebhookEvent
           provider: event.provider,
           reason: event.reason,
           metadata: event.metadata,
+          status: metricKey ?? event.type,
         },
       })
 

@@ -1,6 +1,8 @@
 import { assertDatabaseConfigured, sql } from "../../db"
 
-assertDatabaseConfigured("lib/auth/plugins/sso-enterprise.ts")
+function ensureSsoEnterpriseDbConfigured() {
+  assertDatabaseConfigured("lib/auth/plugins/sso-enterprise.ts")
+}
 
 export type EnterpriseProviderType = "oidc" | "oauth2" | "saml2"
 
@@ -24,6 +26,7 @@ export interface EnterpriseProviderConfig {
 }
 
 export async function upsertEnterpriseProviderConfig(config: EnterpriseProviderConfig) {
+  ensureSsoEnterpriseDbConfigured()
   const providerType = config.providerType === "oauth2" ? "oauth" : config.providerType === "saml2" ? "saml" : "oidc"
 
   const provider = await sql`
@@ -100,6 +103,7 @@ export async function upsertEnterpriseProviderConfig(config: EnterpriseProviderC
 }
 
 export async function listEnterpriseProviderConfigs() {
+  ensureSsoEnterpriseDbConfigured()
   return sql`
     SELECT
       p.id,

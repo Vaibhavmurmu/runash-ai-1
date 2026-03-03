@@ -3,6 +3,7 @@ import { persistTaxComputation, type TaxComputation } from "@/lib/services/tax-s
 import { handleSubscriptionLifecycleEvent, syncAuthUserWithPaymentCustomer } from "@/lib/auth/plugins/runash-payment"
 import { WalletStore } from "@/lib/data/wallet-store"
 import { postAccountingEvent } from "@/lib/services/runashbook-accounting-service"
+import { emitPaymentLifecycleEvent } from "@/lib/services/payment-lifecycle-events"
 
 const WEBHOOK_PROVIDER = "stripe"
 const DEAD_LETTER_THRESHOLD = Number(process.env.BILLING_WEBHOOK_DEAD_LETTER_THRESHOLD ?? 10)
@@ -247,6 +248,47 @@ async function reconcileWalletTimeline(event: StripeWebhookEvent) {
   }
 }
 
+
+
+
+async function emitLifecycleEventForCustomer(input: {
+  eventType:
+    | "invoice_generated"
+    | "invoice_paid"
+    | "invoice_failed"
+    | "subscription_started"
+    | "subscription_renewed"
+    | "subscription_canceled"
+    | "subscription_trial_ending"
+  customerId?: string | null
+  subscriptionId?: string | null
+  invoiceId?: string | null
+  amount?: number | null
+  currency?: string | null
+  plan?: string | null
+  nextBillingDate?: string | null
+  source: string
+  extra?: Record<string, unknown>
+}) {
+  const userId = await resolveUserIdByPaymentCustomerId(input.customerId)
+
+  await emitPaymentLifecycleEvent({
+    eventType: input.eventType,
+    userId,
+    customerId: input.customerId ?? null,
+    subscriptionId: input.subscriptionId ?? null,
+    invoiceId: input.invoiceId ?? null,
+    source: input.source,
+    metadata: {
+      amount: input.amount ?? null,
+      currency: input.currency ?? null,
+      plan: input.plan ?? null,
+      nextBillingDate: input.nextBillingDate ?? null,
+      invoiceLink: input.invoiceId ? `https://dashboard.stripe.com/invoices/${input.invoiceId}` : null,
+      ...(input.extra ?? {}),
+    },
+  })
+}
 
 async function recordInvoicePaymentAttempt(input: {
   invoiceReference: string | null
@@ -627,6 +669,18 @@ async function runWebhookDomainHandler(event: StripeWebhookEvent) {
         computation: taxComputation,
       })
 
+
+      await emitLifecycleEventForCustomer({
+        eventType: "invoice_generated",
+        customerId: invoice.customer ? String(invoice.customer) : null,
+        subscriptionId: invoice.subscription ? String(invoice.subscription) : null,
+        invoiceId: String(invoice.id),
+        amount: centsToMoney(invoice.amount_due ?? invoice.total),
+        currency,
+        nextBillingDate: toIsoTimestamp(invoice.next_payment_attempt ?? invoice.due_date),
+        source: event.type,
+      })
+
       const paymentIntentId = invoice.payment_intent ? String(invoice.payment_intent) : null
 
       if (paymentIntentId) {
@@ -685,6 +739,18 @@ async function runWebhookDomainHandler(event: StripeWebhookEvent) {
           typeof invoice.metadata?.checkout_session_id === "string" ? String(invoice.metadata.checkout_session_id) : null,
       })
 
+
+      await emitLifecycleEventForCustomer({
+        eventType: "invoice_paid",
+        customerId: invoice.customer ? String(invoice.customer) : null,
+        subscriptionId: invoice.subscription ? String(invoice.subscription) : null,
+        invoiceId: String(invoice.id),
+        amount: centsToMoney(invoice.amount_paid ?? invoice.total),
+        currency,
+        nextBillingDate: toIsoTimestamp(invoice.next_payment_attempt ?? invoice.period_end),
+        source: event.type,
+      })
+
       await queryMany(
         `
           INSERT INTO billing_webhook_invoices (
@@ -740,6 +806,20 @@ async function runWebhookDomainHandler(event: StripeWebhookEvent) {
         providerEventCreatedAt: event.created,
         checkoutSessionId:
           typeof invoice.metadata?.checkout_session_id === "string" ? String(invoice.metadata.checkout_session_id) : null,
+      })
+
+
+      await emitLifecycleEventForCustomer({
+        eventType: "invoice_failed",
+        customerId: invoice.customer ? String(invoice.customer) : null,
+        subscriptionId: invoice.subscription ? String(invoice.subscription) : null,
+        invoiceId: String(invoice.id),
+        amount: centsToMoney(invoice.amount_due ?? invoice.total),
+        currency: String(invoice.currency || "usd").toUpperCase(),
+        source: event.type,
+        extra: {
+          reason: String(invoice.last_finalization_error?.message ?? "payment_failed"),
+        },
       })
 
       await queryMany(
@@ -830,6 +910,39 @@ async function runWebhookDomainHandler(event: StripeWebhookEvent) {
           JSON.stringify({ source: event.type }),
         ],
       )
+
+      const currentStatus = String(subscription.status ?? "unknown")
+      const lifecycleEventType: "subscription_started" | "subscription_renewed" | "subscription_canceled" =
+        event.type === "customer.subscription.created"
+          ? "subscription_started"
+          : event.type === "customer.subscription.deleted" || currentStatus === "canceled"
+            ? "subscription_canceled"
+            : "subscription_renewed"
+
+      await emitLifecycleEventForCustomer({
+        eventType: lifecycleEventType,
+        customerId: subscription.customer ? String(subscription.customer) : null,
+        subscriptionId: String(subscription.id),
+        amount: centsToMoney(subscription.items?.data?.[0]?.price?.unit_amount),
+        currency: safeUpperCurrency(subscription.currency ?? subscription.items?.data?.[0]?.price?.currency),
+        plan: subscription.items?.data?.[0]?.price?.nickname ? String(subscription.items.data[0].price.nickname) : null,
+        nextBillingDate: toIsoTimestamp(subscription.current_period_end),
+        source: event.type,
+      })
+
+      const trialEnd = toIsoTimestamp(subscription.trial_end)
+      if (currentStatus === "trialing" && trialEnd) {
+        await emitLifecycleEventForCustomer({
+          eventType: "subscription_trial_ending",
+          customerId: subscription.customer ? String(subscription.customer) : null,
+          subscriptionId: String(subscription.id),
+          amount: centsToMoney(subscription.items?.data?.[0]?.price?.unit_amount),
+          currency: safeUpperCurrency(subscription.currency ?? subscription.items?.data?.[0]?.price?.currency),
+          plan: subscription.items?.data?.[0]?.price?.nickname ? String(subscription.items.data[0].price.nickname) : null,
+          nextBillingDate: trialEnd,
+          source: `${event.type}:trial`,
+        })
+      }
 
       return
     }

@@ -3,26 +3,18 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { logApiEvent } from "@/lib/api/logging"
 import { Database } from "@/lib/database"
 import { getServerAuthSession } from "@/lib/auth/session"
+import { handleGetStream } from "./stream-route-handler"
 
 const ROUTE = "/api/streams/[id]"
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  const requestId = req.headers.get("x-correlation-id") ?? req.headers.get("x-request-id") ?? crypto.randomUUID()
   try {
-    const session = await getServerAuthSession()
-    if (!session) {
-      return respondError(req, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401, requestId })
-    }
-
-    const streamId = Number.parseInt(params.id)
-    const stream = await Database.getStreamById(streamId)
-
-    if (!stream) {
-      return respondError(req, { code: "STREAM_NOT_FOUND", message: "Stream not found" }, { status: 404, requestId })
-    }
-
-    return respondSuccess(req, { stream }, { requestId })
+    return await handleGetStream(req, params, {
+      getSession: getServerAuthSession,
+      getStreamById: (id) => Database.getStreamById(id),
+    })
   } catch (error) {
+    const requestId = req.headers.get("x-correlation-id") ?? req.headers.get("x-request-id") ?? crypto.randomUUID()
     logApiEvent("error", "streams.get.failed", {
       requestId,
       route: ROUTE,
@@ -42,7 +34,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       return respondError(req, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401, requestId })
     }
 
-    const streamId = Number.parseInt(params.id)
+    const streamId = params.id
     const stream = await Database.getStreamById(streamId)
 
     if (!stream || stream.user_id !== session.user.id) {
