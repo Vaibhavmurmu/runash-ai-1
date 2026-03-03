@@ -630,6 +630,45 @@ Risks and rollback:
 3. If negotiation-gate blocks expected sandbox checkouts, temporarily disable deal-id checkout enforcement in `services/agent-orchestration-service.ts` and re-enable after settlement data integrity validation.
 
 
+## 2026-02-28 billing/subscription lifecycle event matrix (typed + templated)
+
+Payment services now emit typed lifecycle events into `payment_lifecycle_events` with template binding + dynamic metadata for amount, plan, next billing date, and invoice link.
+
+### Event matrix
+
+| Event type | Trigger source | Template key | Dynamic metadata |
+| --- | --- | --- | --- |
+| `plan_upgrade_initiated` | `PATCH /api/v1/billing/subscription` before Stripe mutation | `billing.plan-upgrade-initiated` | `previousPlan`, `plan`, `nextBillingDate` |
+| `plan_upgrade_completed` | `PATCH /api/v1/billing/subscription` after DB update | `billing.plan-upgrade-completed` | `previousPlan`, `plan`, `nextBillingDate` |
+| `invoice_generated` | Billing webhook `invoice.created` / `invoice.payment_succeeded` flow | `billing.invoice-generated` | `amount`, `currency`, `invoiceLink`, `nextBillingDate` |
+| `invoice_paid` | Billing webhook paid invoice flow | `billing.invoice-paid` | `amount`, `currency`, `invoiceLink`, `nextBillingDate` |
+| `invoice_failed` | Billing webhook `invoice.payment_failed` | `billing.invoice-failed` | `amount`, `currency`, `invoiceLink`, `reason` |
+| `payment_method_updated` | Payment profile method add/update APIs | `billing.payment-method-updated` | `paymentMethodLast4`, `reason` |
+| `payment_method_expired` | Payment profile method disable/remove APIs | `billing.payment-method-expired` | `reason`, optional `paymentMethodLast4` |
+| `subscription_started` | Subscription create/reactivate web + webhook create flows | `billing.subscription-started` | `plan`, `nextBillingDate`, `amount`, `currency` |
+| `subscription_renewed` | Billing webhook `customer.subscription.updated` | `billing.subscription-renewed` | `plan`, `nextBillingDate`, `amount`, `currency` |
+| `subscription_canceled` | Cancel API + webhook delete/canceled status | `billing.subscription-canceled` | `plan`, `nextBillingDate`, `reason` |
+| `subscription_trial_ending` | Webhook trialing subscriptions with `trial_end` | `billing.subscription-trial-ending` | `plan`, `nextBillingDate`, `amount`, `currency` |
+
+### Logging + redaction hardening
+
+- Lifecycle event metadata is sanitized with payment/auth redaction rules before persistence/logging.
+- Sensitive keys (`token`, `secret`, `authorization`, `paymentMethod*`, `customer*`, etc.) are redacted.
+- No raw payment method IDs, provider tokens, customer emails, or auth secrets are logged in lifecycle event logs.
+
+### Rollback notes
+
+1. Revert lifecycle emit callsites in:
+   - `app/api/v1/billing/subscription/route.ts`
+   - `app/api/billing/subscription/cancel/route.ts`
+   - `app/api/billing/subscription/reactivate/route.ts`
+   - `app/api/v1/payment/profile/methods/route.ts`
+   - `app/api/v1/payment/profile/methods/[id]/route.ts`
+   - `lib/services/billing-webhook-service.ts`
+2. If required, keep `payment_lifecycle_events` table in place (non-breaking additive schema) and stop writes by reverting callers.
+3. Existing payment API signatures and webhook contracts remain unchanged; rollback is code-only and does not require field or payload migrations.
+
+
 
 ## 2026-02 Settings billing contract expansion (backward-compatible)
 

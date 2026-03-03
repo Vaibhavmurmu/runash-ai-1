@@ -336,6 +336,26 @@ Business controls preserved:
 - **Rollback:** relax or disable quota/policy env limits while preserving API shape and worker behavior.
 
 
+## 2026-02-28 lifecycle-event implementation update (business reliability)
+
+### Lifecycle mapping coverage
+
+- Billing/subscription lifecycle events are now explicitly mapped from API and webhook sources into typed `payment_lifecycle_events` records.
+- Event-template pairing is deterministic through a centralized map, enabling consistent downstream notification/workflow handling.
+
+### Operational risk and rollback
+
+- **Risk:** additive event emission may increase notification volume if downstream consumers subscribe immediately without filtering.
+- **Mitigation:** event payloads include typed `event_type`, `template_key`, and normalized metadata fields for predictable routing.
+- **Rollback:** disable emit callsites while preserving the additive table; no customer-facing payment contract rollback or schema migration is required.
+
+### Validation capture
+
+- Validation floor executed for payment/auth scope:
+  - `npm run lint`
+  - `npm run build`
+
+
 ## Reliability note: feedback/referral operational flows
 - Added guidance that referral invites/conversions and feedback intake are non-payment business flows with independent throttling and email notifications.
 - No payment API contract changes were introduced; rollback path is to disable `/api/referrals*` and `/api/feedback` routes plus revert migration `0006_feedback_and_referrals.sql`.
@@ -390,6 +410,7 @@ For every phase, use this rollback sequence:
 4. Reconcile partial writes/events before retrying rollout.
 
 Backward compatibility remains mandatory: existing billing/payment field names and API signatures are preserved throughout all phases unless versioned migration notes are explicitly approved.
+
 
 
 
