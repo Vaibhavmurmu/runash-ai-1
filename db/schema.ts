@@ -123,6 +123,31 @@ export const appSchemaTables = {
       "created_at",
     ],
   },
+  feedbackEntries: {
+    table: "feedback_entries",
+    fields: ["id", "user_id", "score", "message", "source", "status", "triage_notes", "created_at", "updated_at"],
+    indexes: ["idx_feedback_entries_user_created_at", "idx_feedback_entries_status_created_at"],
+  },
+  referralInvites: {
+    table: "referral_invites",
+    fields: [
+      "id",
+      "inviter_user_id",
+      "inviter_email",
+      "invitee_email",
+      "invite_code",
+      "status",
+      "sent_at",
+      "converted_at",
+      "last_sent_ip",
+    ],
+    indexes: ["idx_referral_invites_inviter_invitee_unique", "idx_referral_invites_inviter_status"],
+  },
+  referralConversions: {
+    table: "referral_conversions",
+    fields: ["id", "invite_id", "inviter_user_id", "converted_user_id", "conversion_source", "created_at"],
+    indexes: ["idx_referral_conversions_inviter_created_at"],
+  },
 } as const
 
 export type AuthSchemaTableName = keyof typeof authSchemaTables

@@ -75,7 +75,7 @@ export default function Home() {
             >
               Start Streaming <Play className="ml-2 h-4 w-4" />
             </Button>
-            <Button asChild size="lg" variant="secondary" className="bg-white/90 text-orange-700 hover:bg-white">
+            <Button asChild size="lg" variant="secondary" className="bg-white/90 text-orange-700 hover:bg-white" aria-label="Join the RunAsh waitlist">
               <Link href="/waitlist">
                 Join Waitlist <Users className="ml-2 h-4 w-4" />
               </Link>
@@ -1043,10 +1043,10 @@ export default function Home() {
               <ThemeToggle />
               <div className="flex space-x-6">
                 <a
-                  href="/chat"
+                  href="/dashboard/chat"
                   className="text-gray-600  dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors text-sm"
                 >
-                  Agent 
+                  RunAsh Chat 
                 <Badge varient="secondary" className="bg-green-600 text-white gap-2 space-x-1 dark:bg-green-500 animate-pulse text-xs">New</Badge>
                 </a>
                 <a

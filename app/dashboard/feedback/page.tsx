@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { MessageSquare } from "lucide-react"
 import { FeedbackModal } from "@/components/dashboard/feedback-modal"
 import { DashboardStatePattern, type DashboardViewState } from "@/components/dashboard/dashboard-state-pattern"
@@ -10,7 +10,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 export default function DashboardFeedbackPage() {
   const [open, setOpen] = useState(false)
   const [state, setState] = useState<DashboardViewState>("empty")
-  const [lastSubmission, setLastSubmission] = useState<{ score: number; reason: string } | null>(null)
+  const [lastSubmission, setLastSubmission] = useState<{ score: number; reason: string; status?: string } | null>(null)
+
+  useEffect(() => {
+    let active = true
+    void fetch("/api/feedback")
+      .then(async (response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!active || !payload?.data?.latest) return
+        setLastSubmission({
+          score: payload.data.latest.score,
+          reason: payload.data.latest.message,
+          status: payload.data.latest.status,
+        })
+        setState("ready")
+      })
+      .catch(() => null)
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   return (
     <div className="container mx-auto space-y-6 p-4 md:p-6 lg:p-8">
@@ -18,7 +38,7 @@ export default function DashboardFeedbackPage() {
         open={open}
         onOpenChange={setOpen}
         onSubmitted={(payload) => {
-          setLastSubmission(payload)
+          setLastSubmission({ ...payload, status: "new" })
           setState("ready")
         }}
       />
@@ -46,6 +66,7 @@ export default function DashboardFeedbackPage() {
           <CardContent className="space-y-3 text-sm">
             <p>Score: {lastSubmission?.score ?? "n/a"}</p>
             <p className="text-muted-foreground">{lastSubmission?.reason ?? "No reason captured yet."}</p>
+            <p>Status: {lastSubmission?.status ?? "n/a"}</p>
             <Button variant="outline" onClick={() => setOpen(true)}>Submit more feedback</Button>
           </CardContent>
         </Card>
