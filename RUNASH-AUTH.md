@@ -103,6 +103,14 @@ This document tracks the **currently implemented** auth runtime, files, and rout
 
 Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 
+
+## Auth email safety + webhook diagnostics update (2026-03)
+
+- Magic link and email OTP delivery now render through centralized auth-email helpers in `lib/email.ts`, ensuring verification, password reset, magic link, and OTP mail all inherit the same safety policy (safe-mode allowlist/sink + dry-run) and delivery tracking behavior.
+- Email provider diagnostics now expose primary/fallback runtime configuration and failover readiness, with admin visibility at `GET /api/admin/email-provider/health`.
+- Webhook signature verification now supports strict empty-payload checks and timestamp freshness validation (configurable via `EMAIL_WEBHOOK_MAX_SIGNATURE_AGE_SECONDS`) to reduce replay risk.
+- Webhook ingestion diagnostics now include reconciliation counters and actionable status summaries in admin webhook APIs for faster incident triage.
+
 ## Auth email provider unification update (2026-02)
 
 - Introduced one canonical provider module at `lib/email-provider.ts` used by both transactional auth mail (`lib/email.ts`) and report mail (`lib/emails.ts`).
