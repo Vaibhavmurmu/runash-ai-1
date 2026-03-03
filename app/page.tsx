@@ -41,7 +41,7 @@ export default function Home() {
               <Bell className="w-4 h-4" />
               <span className="text-orange-600 dark:text-orange-400 font-medium text-sm">
                🎉 New Live AI Video Generation Model Pre Released!{" "}
-               <a href="/blog/new-model" className="underline font-semibold hover:text-orange-200">
+               <a href="/realtime-live-vllm" className="underline font-semibold hover:text-orange-200">
                 Learn more
               </a>
             </span>
