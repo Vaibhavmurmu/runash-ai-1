@@ -198,10 +198,10 @@ export default function GetStartedPage() {
             <Bell className="w-4 h-4" />
             <span className="text-orange-600 dark:text-orange-400 gap-2 font-medium text-sm">
                <Badge varient="secondary" className="bg-orange-600 text-white gap-2 space-x-1 dark:bg-orange-500 border animate-pulse text-xs">New</Badge>
-                 <p className="gap-2">RunAsh Auth is in active development!{" "}
+              {" "} RunAsh Auth is in active development!{" "}
               <a href="https://doc.runash.in/roadmap" className="underline font-semibold hover:text-orange-200">
                 Learn more  
-              </a></p>
+              </a>
             </span>
           </Button>
 
