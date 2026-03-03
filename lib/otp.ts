@@ -3,7 +3,9 @@ import { logApiEvent } from "./api/logging"
 import { assertDatabaseConfigured, sql } from "./db"
 import { sendAuthEmail } from "./email"
 
-assertDatabaseConfigured("lib/otp.ts")
+function ensureOtpDbConfigured() {
+  assertDatabaseConfigured("lib/otp.ts")
+}
 
 type OtpLogLevel = "info" | "warn" | "error"
 
@@ -72,6 +74,7 @@ export async function checkOTPRateLimit(
   windowMinutes = 15,
 ): Promise<{ allowed: boolean; attemptsLeft: number; blockedUntil?: Date }> {
   try {
+    ensureOtpDbConfigured()
     const windowStart = new Date(Date.now() - windowMinutes * 60 * 1000)
 
     // Get or create rate limit record
@@ -332,6 +335,7 @@ export async function verifyOTPWithClient(
 ): Promise<{ success: boolean; message: string; userId?: number }> {
   const requestId = randomUUID()
   try {
+    ensureOtpDbConfigured()
     const otpResult = await (type === "email"
       ? sqlClient`
           SELECT * FROM otp_codes 
@@ -558,6 +562,7 @@ function getEmailSubject(purpose: string): string {
 // Clean up expired OTP codes
 export async function cleanupExpiredOTPs(): Promise<void> {
   try {
+    ensureOtpDbConfigured()
     await sql`
       DELETE FROM otp_codes WHERE expires_at < NOW()
     `
@@ -577,6 +582,7 @@ export async function addMobileVerification(
   countryCode: string,
 ): Promise<boolean> {
   try {
+    ensureOtpDbConfigured()
     await sql`
       INSERT INTO mobile_verifications (user_id, phone_number, country_code)
       VALUES (${userId}, ${phoneNumber}, ${countryCode})
@@ -601,6 +607,7 @@ export async function addMobileVerification(
 // Verify mobile number
 export async function verifyMobileNumber(userId: number, phoneNumber: string): Promise<boolean> {
   try {
+    ensureOtpDbConfigured()
     const result = await sql`
       UPDATE mobile_verifications 
       SET is_verified = true, verified_at = NOW(), updated_at = NOW()
