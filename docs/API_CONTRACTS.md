@@ -750,49 +750,94 @@ Example update payload:
 }
 ```
 
-## Stream Session Network Telemetry (`/api/streams/sessions/:id/metrics`)
+## Chat Contract Canonicalization (2026-02)
 
-### `POST /api/streams/sessions/:id/metrics`
-Ingests periodic client network telemetry snapshots.
+### Canonical request fields
 
-Request payload:
+Applicable to `POST /api/chat`, `POST /api/agents/chat`, and `POST /api/mobile/chat`:
+
+- `clientRequestId` (string, optional): idempotency key supplied by client. If repeated, server returns previously accepted message/result when available.
+- `attachments` (array, optional): metadata-only references, max 3-4 items depending on endpoint.
+  - `name` (required)
+  - `type` (required)
+  - `size` (required, positive, max 8MB)
+  - `url`, `checksum`, `width`, `height`, `id` (optional)
+- `retry` (object, optional for streaming endpoints):
+  - `mode`: `none | auto | manual`
+  - `maxAttempts`: `0..3`
+
+### Canonical error codes
+
+| Code | Meaning |
+| --- | --- |
+| `AUTH_REQUIRED` | Auth/session missing for endpoint requiring identity. |
+| `RATE_LIMITED` | Adaptive throttle/rate limit exceeded. |
+| `INVALID_ATTACHMENT` | Attachment metadata failed validation. |
+| `PROVIDER_TIMEOUT` | Upstream AI provider timed out. |
+| `INVALID_REQUEST` | Payload schema validation failure. |
+
+### `POST /api/mobile/chat` example
+
+Request:
 
 ```json
 {
-  "bitrateKbps": 4280,
-  "rttMs": 96,
-  "packetLossPct": 0.35,
-  "droppedFrames": 2,
-  "reconnects": 0,
-  "sampledAt": "2026-02-28T12:00:00.000Z"
+  "platform": "youtube",
+  "username": "creator_mod",
+  "message": "Pinned message for checkout",
+  "clientRequestId": "mob-req-20260228-00041",
+  "attachments": [
+    {
+      "name": "promo.png",
+      "type": "image/png",
+      "size": 140231,
+      "url": "https://cdn.runash.in/chat/promo.png",
+      "checksum": "sha256:abc123"
+    }
+  ]
 }
 ```
 
-Response payload:
+Response:
 
 ```json
 {
-  "telemetry": {
-    "id": "<uuid>",
-    "health": "good",
-    "healthScore": 82,
-    "sampledAt": "2026-02-28T12:00:00.000Z"
-  }
+  "success": true,
+  "data": {
+    "message": {
+      "id": "c4a2...",
+      "platform": "youtube",
+      "username": "creator_mod",
+      "message": "Pinned message for checkout",
+      "timestamp": "2026-02-28T08:01:44.311Z",
+      "cursor": "mc_1882",
+      "clientRequestId": "mob-req-20260228-00041"
+    },
+    "deduped": false
+  },
+  "error": null,
+  "requestId": "req_..."
 }
 ```
 
-### Derived health thresholds
-- `excellent`: bitrate ≥ 4000 kbps, RTT ≤ 120 ms, packet loss ≤ 1%, low drops/reconnects.
-- `good`: bitrate ≥ 2500 kbps, RTT ≤ 220 ms, packet loss ≤ 2.5%.
-- `fair`: bitrate ≥ 1200 kbps, RTT ≤ 350 ms, packet loss ≤ 5%.
-- `poor`: below fair thresholds or reconnect spikes.
+### Mobile chat cursor guarantees
 
-### `GET /api/streams/sessions/:id/metrics`
-Returns existing engagement counters and a `network` block:
-- `network.latest`: latest telemetry snapshot + derived health.
-- `network.series`: historical snapshots ordered by sampled time.
+- `/api/mobile/chat` and `/api/mobile/chat/stream` use a monotonic cursor: `mc_<cursor_seq>`.
+- Cursor progression is based on `mobile_chat_messages.cursor_seq` (bigserial), not wall-clock timestamps.
+- History and stream polling both query with `cursor_seq > last_seen`, ensuring stable ordering and no duplicate/skip due to same timestamp values.
 
-### Retention policy
-- Telemetry retention target is 30 days.
-- Inserts trigger periodic retention sweeps to remove samples older than 30 days.
-- Schema bootstrap + one-time backfill migration are in `scripts/sql/2026-02-28_create_stream_session_network_metrics.sql`.
+### `POST /api/agents/chat` idempotent replay behavior
+
+When `clientRequestId` is repeated for the same session and a completed assistant message exists, endpoint returns a non-stream replay response:
+
+```json
+{
+  "deduped": true,
+  "requestId": "req_...",
+  "sessionId": "as_...",
+  "messageId": "am_...",
+  "content": "Previously generated assistant response"
+}
+```
+
+Attachment metadata is persisted and linked to the originating user message for auditability.

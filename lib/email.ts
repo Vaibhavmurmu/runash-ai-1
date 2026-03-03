@@ -3,7 +3,8 @@ import { logApiEvent } from "./api/logging"
 import { EmailDeliveryTracker } from "./email-delivery"
 import { EmailBounceHandler } from "./email-bounce-handler"
 import { triggerDeliveryStatusEvent } from "./email-realtime"
-import { type EmailAttachment, sendWithEmailProvider } from "./email-provider"
+import { type EmailAttachment } from "./email-provider"
+import { sendEmailEvent } from "@/services/email"
 
 export const AUTH_EMAIL_VERIFICATION_PATH = "/api/auth/verify-email"
 
@@ -110,6 +111,10 @@ export async function sendEmail(options: {
   from?: string
   headers?: Record<string, string>
   attachments?: EmailAttachment[]
+  replyTo?: string | string[]
+  scheduledAt?: string
+  tags?: Array<{ name: string; value: string }>
+  idempotencyKey?: string
   template_id?: number
   campaign_id?: number
   user_id?: number
@@ -209,14 +214,38 @@ export async function sendEmail(options: {
       }
     }
 
-    const providerResult = await sendWithEmailProvider({
-      from: options.from,
+    const providerResult = await sendEmailEvent({
+      type: "GENERIC_EMAIL",
       to: targetRecipient,
+
       subject: options.subject,
       html,
       text: options.text,
       headers: Object.keys(headers).length > 0 ? headers : undefined,
       attachments: options.attachments,
+      replyTo: options.replyTo,
+      scheduledAt: options.scheduledAt,
+      tags: options.tags,
+      idempotencyKey: options.idempotencyKey,
+
+      source: "lib/email.sendEmail",
+      metadata: {
+        category: headers["X-Email-Category"],
+        headers: Object.keys(headers).length > 0 ? headers : undefined,
+      },
+      payload: {
+        from: options.from,
+        subject: options.subject,
+        html,
+        text: options.text,
+        attachments: options.attachments,
+        track_delivery: options.track_delivery,
+        template_id: options.template_id,
+        campaign_id: options.campaign_id,
+        user_id: options.user_id,
+        recipient_name: options.recipient_name,
+      },
+
     })
 
     if (message_id) {
@@ -400,6 +429,107 @@ export async function sendWaitlistConfirmationEmail(options: { to: string; name?
     text: `Hi ${greetingName},\n\nThanks for joining the RunAsh waitlist. We received your request and will contact you when new spots are available.`,
     headers: {
       "X-Email-Category": "waitlist",
+    },
+    track_delivery: true,
+  })
+}
+
+
+export async function sendFeedbackConfirmationEmail(options: { to: string; name?: string }) {
+  const greetingName = options.name?.trim() || "there"
+
+  await sendEmail({
+    to: options.to,
+    subject: "We received your feedback",
+    html: `
+      <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
+        <h2 style="color: #333; text-align: center;">Thanks for your feedback</h2>
+        <p>Hi ${greetingName},</p>
+        <p>We’ve logged your feedback and shared it with our product triage team.</p>
+        <p>Thanks for helping us improve RunAsh.</p>
+      </div>
+    `,
+    headers: {
+      "X-Email-Category": "feedback-confirmation",
+    },
+    track_delivery: true,
+  })
+}
+
+export async function sendFeedbackTriageEmail(options: {
+  to: string
+  userId: string
+  score: number
+  message: string
+  source: string
+}) {
+  await sendEmail({
+    to: options.to,
+    subject: `New feedback triage item from ${options.source}`,
+    html: `
+      <div style="max-width: 650px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
+        <h2 style="color: #333;">New feedback submitted</h2>
+        <p><strong>User ID:</strong> ${options.userId}</p>
+        <p><strong>Score:</strong> ${options.score}</p>
+        <p><strong>Source:</strong> ${options.source}</p>
+        <p><strong>Message:</strong></p>
+        <p style="white-space: pre-wrap; border-left: 3px solid #f7931e; padding-left: 12px;">${options.message}</p>
+      </div>
+    `,
+    headers: {
+      "X-Email-Category": "feedback-triage",
+    },
+    track_delivery: true,
+  })
+}
+
+export async function sendReferralInviteEmail(options: {
+  to: string
+  inviteCode: string
+  inviterName?: string | null
+}) {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+  const inviteUrl = `${appUrl}/signup?ref=${encodeURIComponent(options.inviteCode)}`
+  const inviterLabel = options.inviterName?.trim() || "A RunAsh user"
+
+  await sendEmail({
+    to: options.to,
+    subject: `${inviterLabel} invited you to RunAsh`,
+    html: `
+      <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
+        <h2 style="color: #333; text-align: center;">You’ve been invited to RunAsh</h2>
+        <p>${inviterLabel} sent you a referral invite.</p>
+        <p>Use the link below to get started:</p>
+        <p><a href="${inviteUrl}">${inviteUrl}</a></p>
+      </div>
+    `,
+    headers: {
+      "X-Email-Category": "referral-invite",
+    },
+    track_delivery: true,
+  })
+}
+
+export async function sendReferralMilestoneEmail(options: {
+  to: string
+  name?: string | null
+  totalConversions: number
+}) {
+  const greetingName = options.name?.trim() || "there"
+
+  await sendEmail({
+    to: options.to,
+    subject: `Referral milestone unlocked: ${options.totalConversions} conversions`,
+    html: `
+      <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
+        <h2 style="color: #333; text-align: center;">Referral milestone reached 🎉</h2>
+        <p>Hi ${greetingName},</p>
+        <p>You now have <strong>${options.totalConversions} referral conversions</strong>.</p>
+        <p>Thanks for growing the RunAsh community.</p>
+      </div>
+    `,
+    headers: {
+      "X-Email-Category": "referral-milestone",
     },
     track_delivery: true,
   })
