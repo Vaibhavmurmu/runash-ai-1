@@ -134,3 +134,40 @@ MCP servers provide structured project/runtime context to agents for safer edits
 - If resource read fails: check URI correctness and access scope.
 - If context is stale: refresh listing and re-read authoritative resources.
 
+
+## Resend MCP + Skills bootstrap log (2026-02-28)
+
+For reproducibility, the following commands were executed from `/workspace/runash.in`:
+
+1. `npx skills add better-auth/skills`
+2. `npx add-mcp https://resend.com/docs/mcp`
+3. `npx skills add resend/resend-skills` (optional)
+4. `npx skills add resend/email-best-practices` (optional)
+
+### Result
+
+- No skills or MCP package were installed in this environment.
+- All four commands failed with `npm ERR! code E403` while trying to resolve npm packages (`skills` and `add-mcp`) from `https://registry.npmjs.org/`.
+
+### Environment versions
+
+- `node`: `v22.21.1`
+- `npm`: `11.4.2`
+- `npx`: `11.4.2`
+
+### Artifacts and paths
+
+- npm debug logs generated at:
+  - `/root/.npm/_logs/2026-02-28T08_43_05_710Z-debug-0.log`
+  - `/root/.npm/_logs/2026-02-28T08_43_12_153Z-debug-0.log`
+  - `/root/.npm/_logs/2026-02-28T08_43_17_511Z-debug-0.log`
+  - `/root/.npm/_logs/2026-02-28T08_43_22_016Z-debug-0.log`
+- No repository files/directories were created by these installers.
+
+### Usage notes (when installation succeeds)
+
+After re-running the same commands in an environment that allows fetching these npm packages:
+
+1. Verify installed skills/MCP configuration with your Codex tooling command set.
+2. Run a minimal MCP discovery check to confirm server availability.
+3. **Restart Codex to pick up new skills.**

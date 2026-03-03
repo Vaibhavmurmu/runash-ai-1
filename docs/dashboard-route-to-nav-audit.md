@@ -52,6 +52,12 @@ This audit covers route destinations referenced by:
 
 ## Canonical route mapping
 
-- Product label: **Chat**
+| Legacy route | Canonical route | Purpose |
+| --- | --- | --- |
+| `/chat` | `/dashboard/chat` | Backward-compatible redirect for historic home/footer links. |
+| `/runash-chat` | `/dashboard/chat` | Backward-compatible redirect for product-named path. |
+| `/dashboard/runash-chat` | `/dashboard/chat` | Backward-compatible redirect for previous dashboard entry point. |
+
+- Product label: **RunAsh Chat**
 - Primary route: `/dashboard/chat`
 - Legacy redirects: `/dashboard/runash-chat`, `/chat`, `/runash-chat` → `/dashboard/chat`
