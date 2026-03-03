@@ -29,7 +29,7 @@ type Product = {
 }
 
 const fetcher = (url: string) =>
-  fetch(url, { headers: { "x-user-id": "1" } }).then((r) => {
+  fetch(url).then((r) => {
     if (!r.ok) throw new Error("Failed to load products")
     return r.json()
   })
@@ -107,7 +107,7 @@ export function ProductManager() {
 
       const res = await fetch("/api/products", {
         method: "POST",
-        headers: { "content-type": "application/json", "x-user-id": "1" },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name,
           description,
@@ -145,7 +145,7 @@ export function ProductManager() {
     try {
       const res = await fetch(`/api/products/${product.id}`, {
         method: "DELETE",
-        headers: { "x-user-id": "1", "if-match": `"${product.row_version}"` },
+        headers: { "if-match": `"${product.row_version}"` },
       })
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}))
@@ -170,7 +170,7 @@ export function ProductManager() {
     try {
       const res = await fetch(`/api/products/${product.id}`, {
         method: "PUT",
-        headers: { "content-type": "application/json", "x-user-id": "1" },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ status: nextStatus, row_version: product.row_version }),
       })
       if (!res.ok) {

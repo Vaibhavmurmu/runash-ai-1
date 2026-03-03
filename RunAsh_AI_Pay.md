@@ -49,6 +49,13 @@ This document is payment-domain specific. For contributor workflow/process polic
   - Settings payment-adjacent action endpoints (`/api/settings/actions/credits-balance`, `/api/settings/actions/refer-earn`, `/api/settings/actions/upgrade-plan`)
 - **Risk + rollback:** operational release risk is environment readiness (missing lint dependency + DB env), not payment contract behavior. Rollback is documentation-only revert; no payment data migration or API rollback required.
 
+## 2026-02-28 seller commerce API session-scoping hardening (no payment contract changes)
+
+- Seller commerce APIs for products/orders now derive seller identity from the authenticated server session instead of `x-user-id` headers on mutable/listing endpoints.
+- Missing session and invalid-role access continue to return explicit `401`/`403` envelope responses via shared seller auth guards.
+- No payment API request/response fields, webhook schemas, or checkout contracts were changed.
+- Risk + rollback: low-to-medium auth access risk (seller-only data scoping). Rollback is reverting seller API auth guard adoption in `app/api/products/*` and `app/api/orders/*`; no payment migration required.
+
 ## 2026-02-28 auth verification routing consistency (no payment contract changes)
 
 - Better Auth email verification remains canonical for auth-gated payment surfaces; signup + resend verification now consistently use Better Auth verification dispatch and the canonical verifier endpoint (`/api/auth/verify-email`).
