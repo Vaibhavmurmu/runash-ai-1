@@ -27,6 +27,9 @@ export interface RecordedStream {
   isProcessing: boolean
   isPublic: boolean
   tags: string[]
+  status?: string
+  sourceType?: "recording" | "stream"
+  segment?: "recent" | "latest" | "previous"
   category?: string
   chapters?: StreamChapter[]
   highlights?: StreamHighlight[]

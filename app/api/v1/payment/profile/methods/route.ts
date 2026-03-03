@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server"
 import { z } from "zod"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { ensureCustomerScopedAccess, requireBillingActionAccess } from "@/lib/billing-auth"
+import { emitPaymentLifecycleEvent } from "@/lib/services/payment-lifecycle-events"
 import {
   addCustomerPaymentMethodReference,
   listCustomerPaymentMethodReferences,
@@ -50,6 +51,17 @@ export async function POST(request: NextRequest) {
       customerId: access.sessionUser.userId,
       payload: body,
       ...parsed.data,
+    })
+
+    await emitPaymentLifecycleEvent({
+      eventType: "payment_method_updated",
+      userId: access.sessionUser.userId,
+      customerId: access.sessionUser.userId,
+      source: "api.payment.profile.methods.post",
+      metadata: {
+        paymentMethodLast4: created.last4,
+        reason: "added",
+      },
     })
 
     return respondSuccess(request, created, { status: 201 })
