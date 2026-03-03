@@ -38,11 +38,11 @@ export default function Home() {
       <div className="container relative z-10 mx-auto px-4 text-center">
           <div className="inline-block  mt-16 mb-0 px-3 py-3 rounded-full bg-orange-100/80 dark:bg-orange-900/30 backdrop-blur-sm border border-orange-200 dark:border-orange-800/50">
             <div className="flex items-center justify-center space-x-2">
-              <Bell className="w-4 h-4" />
+              <Bell className="w-4 h-4 gap-2 space-x-1" />
               <span className="text-orange-600 dark:text-orange-400 gap-2 font-medium text-sm">
                <Badge varient="secondary" className="bg-orange-600 text-white gap-2 space-x-1 dark:bg-orange-500 animate-pulse border text-xs">New</Badge>
-                   {" "} Real Time Live Streaming Video Generation Model! {" "}
-               <a href="https://blog.runash.in/real-time" className="underline gap-2 font-semibold hover:text-orange-200">
+                   {" "} Real-time live streaming video generation model! {" "}
+               <a href="/ai-overview" className="underline gap-2 font-semibold hover:text-orange-200">
                     Learn more
               </a>
             </span>
