@@ -184,7 +184,7 @@ type BillingActionConfig = {
   endpoint: string
   successTitle: string
   successDescription: string
-  method?: "POST" | "DELETE"
+  method?: "GET" | "POST" | "DELETE"
   body?: Record<string, unknown>
   requiresConfirmation?: boolean
   confirmationTitle?: string
@@ -207,11 +207,19 @@ type PendingSettingsActionDialog = {
 
 type ValidationErrorResponse = {
   error?: {
+    code?: string
     message?: string
     details?: {
       validationErrors?: Partial<Record<SettingsSection, Record<string, string>>>
+      errors?: Partial<Record<SettingsSection, Record<string, string>>>
     }
   }
+  errors?: Partial<Record<SettingsSection, Record<string, string>>>
+}
+
+
+function getValidationErrors(payload: ValidationErrorResponse): Partial<Record<SettingsSection, Record<string, string>>> {
+  return payload?.errors ?? payload?.error?.details?.errors ?? payload?.error?.details?.validationErrors ?? {}
 }
 
 function toSectionErrorMap(errors: Partial<Record<SettingsSection, Partial<Record<string, string>>>>): Partial<Record<SettingsSection, string>> {
@@ -226,7 +234,7 @@ function toSectionErrorMap(errors: Partial<Record<SettingsSection, Partial<Recor
 
 const billingActionConfig: Record<BillingAction, BillingActionConfig> = {
   upgradePlan: {
-    endpoint: "/api/settings/actions/upgrade-plan",
+    endpoint: "/api/settings/billing/upgrade",
     successTitle: "Upgrade initialized",
     successDescription: "Upgrade flow is ready.",
     requiresConfirmation: true,
@@ -235,7 +243,8 @@ const billingActionConfig: Record<BillingAction, BillingActionConfig> = {
     body: { confirm: true },
   },
   manageSubscription: {
-    endpoint: "/api/settings/actions/manage-subscription",
+    endpoint: "/api/settings/billing/summary",
+    method: "GET",
     successTitle: "Subscription status loaded",
     successDescription: "Latest subscription contract data refreshed.",
   },
@@ -249,25 +258,47 @@ const billingActionConfig: Record<BillingAction, BillingActionConfig> = {
     body: { confirm: true },
   },
   billingMethodSummary: {
-    endpoint: "/api/settings/actions/billing-method-summary",
+    endpoint: "/api/settings/billing/summary",
+    method: "GET",
     successTitle: "Billing method refreshed",
     successDescription: "Latest billing method summary loaded.",
   },
   usageMeters: {
-    endpoint: "/api/settings/actions/usage-meters",
+    endpoint: "/api/settings/billing/usage",
+    method: "GET",
     successTitle: "Usage refreshed",
     successDescription: "Latest usage meter values loaded.",
   },
   creditsBalance: {
-    endpoint: "/api/settings/actions/credits-balance",
+    endpoint: "/api/settings/billing/summary",
+    method: "GET",
     successTitle: "Credits refreshed",
     successDescription: "Latest credits balance loaded.",
   },
   referAndEarn: {
-    endpoint: "/api/settings/actions/refer-earn",
+    endpoint: "/api/settings/billing/referrals",
+    method: "GET",
     successTitle: "Referral details loaded",
     successDescription: "Refer & earn contract data refreshed.",
   },
+}
+
+async function fetchBillingCardsData() {
+  const [summaryResponse, usageResponse, referralsResponse] = await Promise.all([
+    fetch("/api/settings/billing/summary"),
+    fetch("/api/settings/billing/usage"),
+    fetch("/api/settings/billing/referrals"),
+  ])
+
+  const summaryPayload = await summaryResponse.json().catch(() => ({}))
+  const usagePayload = await usageResponse.json().catch(() => ({}))
+  const referralsPayload = await referralsResponse.json().catch(() => ({}))
+
+  return {
+    ...(summaryPayload?.data ?? {}),
+    ...(usagePayload?.data ?? {}),
+    ...(referralsPayload?.data ?? {}),
+  } as Partial<SettingsData["billing"]>
 }
 
 export function SettingsShell({ compact = false, initialSection = "account", initialPanel }: SettingsShellProps) {
@@ -329,6 +360,15 @@ export function SettingsShell({ compact = false, initialSection = "account", ini
           notifications: { ...prev.notifications, ...(data?.notifications ?? {}) },
           preferences: { ...prev.preferences, ...(data?.preferences ?? {}) },
           billing: { ...prev.billing, ...(data?.billing ?? {}) },
+        }))
+
+        const nextBilling = await fetchBillingCardsData()
+        setSettingsData((prev) => ({
+          ...prev,
+          billing: {
+            ...prev.billing,
+            ...nextBilling,
+          },
         }))
       } catch {
         toast({ title: "Failed to load settings", description: "Please refresh and try again.", variant: "destructive" })
@@ -459,7 +499,7 @@ export function SettingsShell({ compact = false, initialSection = "account", ini
       }
 
       if (!response.ok) {
-        const validationErrors = payload?.error?.details?.validationErrors ?? {}
+        const validationErrors = getValidationErrors(payload)
         const fallbackMessage = payload?.error?.message ?? "Failed to save changes. Please retry."
         setErrors((prev) => ({
           ...prev,
@@ -498,29 +538,44 @@ export function SettingsShell({ compact = false, initialSection = "account", ini
     endpoint: string,
     successTitle: string,
     successDescription: string,
-    method: "POST" | "DELETE" = "POST",
-    body?: Record<string, unknown>
+    method: "GET" | "POST" | "DELETE" = "POST",
+    body?: Record<string, unknown>,
+    section: SettingsSection = "security"
   ) => {
     const response = await fetch(endpoint, {
       method,
       headers: { "Content-Type": "application/json" },
       ...(body ? { body: JSON.stringify(body) } : {}),
     })
+    const payload = (await response.json().catch(() => ({}))) as ValidationErrorResponse & {
+      data?: Record<string, unknown>
+      apiKey?: string
+    }
+
     if (!response.ok) {
-      toast({ title: "Action failed", description: "Please retry.", variant: "destructive" })
+      const validationErrors = getValidationErrors(payload)
+      const fallbackMessage = payload?.error?.message ?? "Please retry."
+      setErrors((prev) => ({
+        ...prev,
+        [section]: Object.keys(validationErrors?.[section] ?? {}).length > 0
+          ? validationErrors[section]
+          : { _section: fallbackMessage },
+        ...validationErrors,
+      }))
+      toast({ title: "Action failed", description: fallbackMessage, variant: "destructive" })
       return null
     }
 
-    const payload = (await response.json().catch(() => ({}))) as { data?: Record<string, unknown>; apiKey?: string }
     const data = payload?.data ?? payload
 
+    setErrors((prev) => ({ ...prev, [section]: {} }))
     toast({ title: successTitle, description: successDescription })
     return data
   }
 
   const runBillingAction = async (action: BillingAction) => {
     const config = billingActionConfig[action]
-    const data = await executeAction(config.endpoint, config.successTitle, config.successDescription, config.method ?? "POST", config.body)
+    const data = await executeAction(config.endpoint, config.successTitle, config.successDescription, config.method ?? "POST", config.body, "billing")
 
     if (action === "saveInvoiceDelivery") {
       await saveSection("billing")
@@ -680,7 +735,8 @@ export function SettingsShell({ compact = false, initialSection = "account", ini
                         "Sessions revoked",
                         "All sessions were revoked.",
                         "POST",
-                        { confirm: true }
+                        { confirm: true },
+                        "account"
                       )
                       if (!data) {
                         throw new Error("Unable to revoke sessions.")
@@ -729,7 +785,8 @@ export function SettingsShell({ compact = false, initialSection = "account", ini
                         "API key regenerated",
                         "A new API key is now active.",
                         "POST",
-                        { confirm: true }
+                        { confirm: true },
+                        "security"
                       )
                       if (!data) {
                         throw new Error("Unable to regenerate API key.")
@@ -762,7 +819,8 @@ export function SettingsShell({ compact = false, initialSection = "account", ini
                         "API key deleted",
                         "API key access removed.",
                         "DELETE",
-                        { confirm: true }
+                        { confirm: true },
+                        "security"
                       )
                       if (!data) {
                         throw new Error("Unable to delete API key.")
@@ -794,7 +852,8 @@ export function SettingsShell({ compact = false, initialSection = "account", ini
                         "2FA disabled",
                         "Two-factor authentication disabled.",
                         "POST",
-                        { confirm: true }
+                        { confirm: true },
+                        "security"
                       )
                       if (!data) {
                         throw new Error("Unable to disable 2FA.")

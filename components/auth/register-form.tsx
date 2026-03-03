@@ -61,7 +61,7 @@ export function RegisterForm() {
       setSuccess(true)
       toast({
         title: "Account created!",
-        description: "Please check your email to verify your account.",
+        description: registration.message || "Please verify your email before signing in.",
       })
 
       // Redirect to login after 3 seconds
@@ -101,7 +101,8 @@ export function RegisterForm() {
                 <h3 className="text-xl font-semibold">Account Created!</h3>
                 <p className="text-muted-foreground mt-2">
                   We've sent a verification email to <strong>{formData.email}</strong>. Please check your inbox and
-                  click the verification link to activate your account.
+                  click the verification link to activate your account. You need to verify your email before full
+                  access is enabled.
                 </p>
               </div>
               <Button asChild className="w-full">

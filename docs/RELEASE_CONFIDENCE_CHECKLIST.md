@@ -97,3 +97,38 @@ A release PR is considered auditable when all of the following exist:
 4. Rollback plan with trigger thresholds.
 
 Keep this checklist synchronized with `.github/pull_request_template.md`.
+
+## 7) Chat + attachment deployment readiness
+
+Complete for releases that touch chat APIs, streaming, or attachment storage.
+
+### Required environment + secret checks
+
+| Check | Owner | Status | Evidence |
+| --- | --- | --- | --- |
+| `RUNASH_AGENT_CHAT_ENABLED` default verified per environment | Backend | ⬜ | Config diff / env snapshot |
+| Stream timeout and heartbeat vars configured (`RUNASH_CHAT_API_TIMEOUT_MS`, `RUNASH_CHAT_STREAM_HEARTBEAT_MS`) | Backend | ⬜ | Runtime config output |
+| Attachment storage config present (`RUNASH_ATTACHMENT_STORAGE_PROVIDER`, `RUNASH_ATTACHMENT_BUCKET`, `RUNASH_ATTACHMENT_REGION`) | DevOps | ⬜ | IaC/env evidence |
+| Attachment credentials present in secret manager only (`RUNASH_ATTACHMENT_ACCESS_KEY_ID`, `RUNASH_ATTACHMENT_SECRET_ACCESS_KEY`) | Security + DevOps | ⬜ | Secret manager audit log |
+| Signed URL and size limits configured (`RUNASH_ATTACHMENT_SIGNED_URL_TTL_SECONDS`, `RUNASH_ATTACHMENT_MAX_BYTES`) | Backend | ⬜ | API config check |
+
+### Migration ordering + rollback checks
+
+| Check | Owner | Status | Evidence |
+| --- | --- | --- | --- |
+| Applied `2026-02-11_create_runash_chat_session_tables.sql` before attachment migration | Backend | ⬜ | DB migration log |
+| Applied `2026-02-28_create_runash_chat_attachment_tables.sql` | Backend | ⬜ | DB migration log |
+| Rollback script reviewed: `2026-02-28_rollback_runash_chat_attachment_tables.sql` | Backend + DBA | ⬜ | Runbook reference |
+| Data retention/backup checkpoint captured before rollback-capable deploy | DevOps + DBA | ⬜ | Snapshot ID |
+
+## 8) Go-live owner sign-off block (required)
+
+| Area | Required owner | Sign-off (`approved`/`blocked`) | Name | Date (UTC) | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Product scope + launch readiness | Product |  |  |  |  |
+| API contract compatibility | Backend |  |  |  |  |
+| Migration + rollback readiness | DBA / Backend |  |  |  |  |
+| Runtime config + secrets | DevOps |  |  |  |  |
+| Monitoring + alerting | SRE/DevOps |  |  |  |  |
+| Security review (data handling, redaction, IAM) | Security |  |  |  |  |
+| On-call incident readiness | Engineering Manager |  |  |  |  |
