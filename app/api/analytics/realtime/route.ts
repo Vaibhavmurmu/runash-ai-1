@@ -1,40 +1,44 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { Database } from "@/lib/database"
-import { getServerAuthSession } from "@/lib/auth/session"
+import { parseOptionalStreamId, requireAnalyticsSession } from "@/app/api/analytics/_lib"
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerAuthSession()
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const sessionState = await requireAnalyticsSession()
+    if ("error" in sessionState) {
+      return sessionState.error
     }
 
-    const userId = session.user.id
+    const streamState = parseOptionalStreamId(new URL(req.url).searchParams)
+    if (!streamState.ok) {
+      return streamState.response
+    }
 
-    // Get current active streams
+    const userId = sessionState.userId
+    const scopedLiveCondition = streamState.streamId ? "AND s.id = $2" : ""
+    const scopedParams = streamState.streamId ? [userId, streamState.streamId] : [userId]
+
     const activeStreams = await Database.query(
       `
       SELECT s.*, sa.* FROM streams s
       LEFT JOIN stream_analytics sa ON s.id = sa.stream_id
-      WHERE s.user_id = $1 AND s.status = 'live'
+      WHERE s.user_id = $1 AND s.status = 'live' ${scopedLiveCondition}
     `,
-      [userId],
+      scopedParams,
     )
 
-    // Get current viewer counts
     const currentViewers = await Database.query(
       `
       SELECT COUNT(*) as count FROM stream_viewers sv
       JOIN streams s ON sv.stream_id = s.id
-      WHERE s.user_id = $1 AND sv.left_at IS NULL
+      WHERE s.user_id = $1 AND sv.left_at IS NULL ${scopedLiveCondition}
     `,
-      [userId],
+      scopedParams,
     )
 
-    // Get today's metrics
     const todayMetrics = await Database.query(
       `
-      SELECT 
+      SELECT
         COALESCE(SUM(sa.total_views), 0) as total_views,
         COALESCE(MAX(sa.peak_viewers), 0) as peak_viewers,
         COALESCE(AVG(sa.average_viewers), 0) as average_viewers,
@@ -45,12 +49,11 @@ export async function GET(req: NextRequest) {
         COALESCE(AVG(sa.engagement), 0) as engagement
       FROM stream_analytics sa
       JOIN streams s ON sa.stream_id = s.id
-      WHERE s.user_id = $1 AND DATE(sa.created_at) = CURRENT_DATE
+      WHERE s.user_id = $1 AND DATE(sa.created_at) = CURRENT_DATE ${scopedLiveCondition}
     `,
-      [userId],
+      scopedParams,
     )
 
-    // Calculate revenue from subscriptions and donations
     const revenue = await Database.query(
       `
       SELECT COALESCE(SUM(amount), 0) as total_revenue
@@ -61,7 +64,6 @@ export async function GET(req: NextRequest) {
       [userId],
     )
 
-    // Get subscription count
     const subscriptions = await Database.query(
       `
       SELECT COUNT(*) as count FROM user_subscriptions
@@ -73,7 +75,7 @@ export async function GET(req: NextRequest) {
     const metrics = todayMetrics[0] || {}
     const streamHealth = calculateStreamHealth(activeStreams[0])
 
-    const analyticsData = {
+    return NextResponse.json({
       totalViews: Number.parseInt(metrics.total_views) || 0,
       currentViewers: Number.parseInt(currentViewers[0]?.count) || 0,
       peakViewers: Number.parseInt(metrics.peak_viewers) || 0,
@@ -86,9 +88,7 @@ export async function GET(req: NextRequest) {
       streamHealth,
       revenue: Number.parseFloat(revenue[0]?.total_revenue) || 0,
       subscriptions: Number.parseInt(subscriptions[0]?.count) || 0,
-    }
-
-    return NextResponse.json(analyticsData)
+    })
   } catch (error) {
     console.error("Real-time analytics error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

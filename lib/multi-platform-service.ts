@@ -80,6 +80,25 @@ export interface MultiStreamSession {
   };
 }
 
+
+export interface MultiPlatformServiceError extends Error {
+  code?: string;
+  status?: number;
+}
+
+async function toServiceError(
+  response: Response,
+  fallbackMessage: string,
+): Promise<MultiPlatformServiceError> {
+  const payload = await response.json().catch(() => null);
+  const error = new Error(
+    payload?.message || payload?.error || fallbackMessage,
+  ) as MultiPlatformServiceError;
+  error.code = payload?.code;
+  error.status = response.status;
+  return error;
+}
+
 export class MultiPlatformService {
   private static instance: MultiPlatformService;
 
@@ -132,7 +151,7 @@ export class MultiPlatformService {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
       });
-      if (!response.ok) throw new Error("Failed to update platform");
+      if (!response.ok) throw await toServiceError(response, "Failed to update platform");
       return await response.json();
     } catch (error) {
       console.error("Failed to update platform:", error);
@@ -255,7 +274,7 @@ export class MultiPlatformService {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(sessionData),
       });
-      if (!response.ok) throw new Error("Failed to start multi-stream");
+      if (!response.ok) throw await toServiceError(response, "Failed to start multi-stream");
       return await response.json();
     } catch (error) {
       console.error("Failed to start multi-stream:", error);
@@ -271,7 +290,7 @@ export class MultiPlatformService {
           method: "POST",
         },
       );
-      if (!response.ok) throw new Error("Failed to stop multi-stream");
+      if (!response.ok) throw await toServiceError(response, "Failed to stop multi-stream");
     } catch (error) {
       console.error("Failed to stop multi-stream:", error);
       throw error;
@@ -333,7 +352,7 @@ export class MultiPlatformService {
           body: JSON.stringify({ title }),
         },
       );
-      if (!response.ok) throw new Error("Failed to update stream title");
+      if (!response.ok) throw await toServiceError(response, "Failed to update stream title");
     } catch (error) {
       console.error("Failed to update stream title:", error);
       throw error;
@@ -393,7 +412,7 @@ export class MultiPlatformService {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ platforms }),
       });
-      if (!response.ok) throw new Error("Failed to optimize bandwidth");
+      if (!response.ok) throw await toServiceError(response, "Failed to optimize bandwidth");
       return await response.json();
     } catch (error) {
       console.error("Failed to optimize bandwidth:", error);
