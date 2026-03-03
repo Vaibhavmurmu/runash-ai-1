@@ -11,6 +11,9 @@ import { recordSecurityAuditEvent } from "@/lib/security-audit-events"
 
 const sql = neon(process.env.DATABASE_URL!)
 
+
+const ADMIN_ROLES = new Set(["admin", "super_admin"])
+
 export interface AuthMiddlewareOptions {
   requiredPermissions?: string[]
   requiredRole?: string
@@ -160,6 +163,47 @@ export async function requireAdminAuthorization(
       return {
         success: false,
         response: respondAdminError(request, 401, "Unauthorized", requestId),
+      }
+    }
+
+    if (!ADMIN_ROLES.has(token.role ?? "")) {
+      recordAuthMetric("auth.forbidden.action", {
+        endpoint: request.nextUrl.pathname,
+        method: request.method,
+        reason: "missing_admin_role",
+      })
+      recordAuthMetric("auth.permission.abuse", {
+        endpoint: request.nextUrl.pathname,
+        method: request.method,
+        reason: "role_denied",
+      })
+      await recordSecurityAuditEvent({
+        event: "auth.forbidden.access",
+        actorUserId: token.id,
+        resource: request.nextUrl.pathname,
+        request,
+        details: {
+          kind: "authorization",
+          outcome: "forbidden",
+          reason: "missing_admin_role",
+          method: request.method,
+          role: token.role ?? null,
+          auditEvent: options.auditEvent,
+        },
+      })
+      logApiEvent("warn", `${options.auditEvent}.forbidden`, {
+        requestId,
+        route: request.nextUrl.pathname,
+        method: request.method,
+        userId: token.id,
+        details: {
+          reason: "missing_admin_role",
+        },
+      })
+
+      return {
+        success: false,
+        response: respondAdminError(request, 403, "Forbidden", requestId),
       }
     }
 

@@ -106,6 +106,61 @@ export const appSchemaTables = {
     table: "accounting_counterparties",
     fields: ["id", "entity_type", "name", "gstin", "outstanding", "is_active", "created_at", "updated_at"],
   },
+  schedulerSchedules: {
+    table: "scheduler_schedules",
+    fields: ["id", "name", "frequency", "recipients", "format", "job_type", "active", "next_run_at", "metadata", "created_at", "updated_at"],
+    indexes: ["idx_scheduler_schedules_next_run"],
+  },
+  schedulerJobQueue: {
+    table: "scheduler_job_queue",
+    fields: [
+      "id",
+      "schedule_id",
+      "job_type",
+      "idempotency_key",
+      "due_at",
+      "status",
+      "attempts",
+      "max_attempts",
+      "last_error",
+      "lock_token",
+      "locked_at",
+      "next_retry_at",
+      "processed_at",
+      "payload",
+      "created_at",
+      "updated_at",
+    ],
+    indexes: ["idx_scheduler_job_queue_due"],
+    uniqueConstraints: ["idempotency_key"],
+  },
+  schedulerWorkflowRuns: {
+    table: "scheduler_workflow_runs",
+    fields: [
+      "id",
+      "queue_id",
+      "schedule_id",
+      "job_type",
+      "idempotency_key",
+      "state",
+      "attempt",
+      "error_message",
+      "started_at",
+      "completed_at",
+      "created_at",
+      "updated_at",
+    ],
+    indexes: ["idx_scheduler_workflow_runs_schedule_started"],
+    uniqueConstraints: ["idempotency_key"],
+  },
+  schedulerExecutionLogs: {
+    table: "scheduler_execution_logs",
+    fields: ["id", "schedule_id", "queue_id", "workflow_run_id", "level", "message", "context", "created_at"],
+  },
+  schedulerWorkerLeases: {
+    table: "scheduler_worker_leases",
+    fields: ["lease_name", "worker_id", "leased_until", "updated_at"],
+  },
   agentRoleDecisions: {
     table: "agent_role_decisions",
     fields: [
@@ -122,6 +177,69 @@ export const appSchemaTables = {
       "outcome",
       "created_at",
     ],
+  },
+
+  mobileChatMessages: {
+    table: "mobile_chat_messages",
+    fields: ["id", "cursor_seq", "platform", "username", "message", "client_request_id", "created_at"],
+    indexes: ["idx_mobile_chat_cursor_seq", "idx_mobile_chat_client_request_id"],
+  },
+  mobileChatMessageAttachments: {
+    table: "mobile_chat_message_attachments",
+    fields: [
+      "id",
+      "message_id",
+      "attachment_name",
+      "attachment_type",
+      "attachment_size",
+      "attachment_url",
+      "attachment_checksum",
+      "created_at",
+    ],
+  },
+  streamChatMessages: {
+    table: "stream_chat_messages",
+    fields: ["id", "stream_id", "user_id", "username", "text_content", "dedupe_key", "created_at"],
+    indexes: ["idx_stream_chat_messages_dedupe"],
+  },
+  streamChatMessageAttachments: {
+    table: "stream_chat_message_attachments",
+    fields: [
+      "id",
+      "message_id",
+      "attachment_name",
+      "attachment_type",
+      "attachment_size",
+      "attachment_url",
+      "attachment_checksum",
+      "created_at",
+    ],
+
+  feedbackEntries: {
+    table: "feedback_entries",
+    fields: ["id", "user_id", "score", "message", "source", "status", "triage_notes", "created_at", "updated_at"],
+    indexes: ["idx_feedback_entries_user_created_at", "idx_feedback_entries_status_created_at"],
+  },
+  referralInvites: {
+    table: "referral_invites",
+    fields: [
+      "id",
+      "inviter_user_id",
+      "inviter_email",
+      "invitee_email",
+      "invite_code",
+      "status",
+      "sent_at",
+      "converted_at",
+      "last_sent_ip",
+    ],
+    indexes: ["idx_referral_invites_inviter_invitee_unique", "idx_referral_invites_inviter_status"],
+  },
+  referralConversions: {
+    table: "referral_conversions",
+    fields: ["id", "invite_id", "inviter_user_id", "converted_user_id", "conversion_source", "created_at"],
+    indexes: ["idx_referral_conversions_inviter_created_at"],
+
   },
 } as const
 

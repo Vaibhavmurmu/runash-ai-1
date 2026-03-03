@@ -270,3 +270,17 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
 - **Geo + risk policy decisioning:** Wallet/link routes evaluate geo mismatch (`GEO_MISMATCH_REVIEW`), risk score review/block thresholds, and explicit blocklist risk signals. Blocked actions return explicit reason codes in response metadata for deterministic handling.
 - **PII-safe logging:** Wallet/link auditing uses payment-safe sanitization and never logs PAN/CVV/OTP/secrets; user/session identifiers are fingerprinted before audit emission.
 - **Structured audit coverage:** Every payment-impacting transition emits structured audit records (`[wallet.payment.audit]`) with request correlation and normalized status (`blocked|review|success|failed`).
+
+## 2026-02 settings security contract alignment (session/device/2FA/API keys)
+
+- Added centralized settings architecture + API contract reference in `docs/SETTINGS_ARCHITECTURE_API_CONTRACT.md` to reduce auth/security drift.
+- Session and device settings contracts now formally require metadata-only responses (no bearer token values, no token hashes, no secret material).
+- 2FA and API key settings contracts now formalize one-time secret return semantics and persistent hash-only storage.
+- Security controls for settings flows now require step-up verification for 2FA disable and API key rotation/revocation actions.
+
+### Storage + migration + rollback guidance
+
+- Storage changes are additive and auditable: session registry identity tables, trusted device records, API key hash records, 2FA metadata/recovery-code hashes.
+- Rollout path: migrate schema -> backfill safely -> deploy contracts -> validate smoke checks.
+- Rollback path: application rollback first, gate new writes by feature flag, retain additive schema, and re-validate auth + settings error budgets.
+- Diagnostics and telemetry must remain redacted (never log raw keys, OTP values, auth/session tokens, or payment secrets).

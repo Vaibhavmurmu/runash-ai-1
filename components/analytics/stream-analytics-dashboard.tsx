@@ -17,17 +17,16 @@ import { AnalyticsExport } from "./analytics-export"
 import { AIInsightsPanel } from "./ai-insights-panel"
 import { ComparativeAnalytics } from "./comparative-analytics"
 import useSWR from "swr"
+import { AnalyticsService } from "@/lib/analytics-service"
 
 interface StreamAnalyticsDashboardProps {
   streamId?: string
   isLive?: boolean
 }
 
-const fetcher = (url: string) =>
-  fetch(url, { headers: { "x-user-id": "1" } }).then((r) => {
-    if (!r.ok) throw new Error("Failed to load analytics")
-    return r.json()
-  })
+const analyticsService = AnalyticsService.getInstance()
+
+const fetchOverview = (period: string, streamId?: string) => analyticsService.getOverviewAnalytics(period, streamId)
 
 export function StreamAnalyticsDashboard({ streamId, isLive = false }: StreamAnalyticsDashboardProps) {
   const [activeTab, setActiveTab] = useState("overview")
@@ -36,7 +35,9 @@ export function StreamAnalyticsDashboard({ streamId, isLive = false }: StreamAna
   const [showFilters, setShowFilters] = useState(false)
   const [mounted, setMounted] = useState(false)
 
-  const { data: overview } = useSWR(`/api/analytics/overview?period=${selectedPeriod}`, fetcher)
+  const { data: overview } = useSWR(["analytics-overview", selectedPeriod, streamId], ([, period, scopedStreamId]) =>
+    fetchOverview(period, scopedStreamId),
+  )
 
   useEffect(() => {
     setMounted(true)
