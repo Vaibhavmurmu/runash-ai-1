@@ -9,6 +9,9 @@ function ensureOtpDbConfigured() {
 
 type OtpLogLevel = "info" | "warn" | "error"
 
+type SqlClient = (strings: TemplateStringsArray, ...values: unknown[]) => Promise<Array<Record<string, any>>>
+
+
 function hashIdentifier(identifier: string): string {
   return createHash("sha256").update(identifier).digest("hex").slice(0, 16)
 }
@@ -125,11 +128,39 @@ export async function createEmailOTP(
   ipAddress?: string,
   userAgent?: string,
 ): Promise<{ success: boolean; message: string; expiresIn?: number }> {
+  return createEmailOTPWithClient(sql, email, purpose, {
+    userId,
+    ipAddress,
+    userAgent,
+    deliverEmailOtp: sendEmailOTP,
+  })
+}
+
+export async function createEmailOTPWithClient(
+  sqlClient: SqlClient,
+  email: string,
+  purpose: string,
+  options: {
+    userId?: number
+    ipAddress?: string
+    userAgent?: string
+    deliverEmailOtp?: (email: string, code: string, purpose: string) => Promise<boolean>
+    checkRateLimit?: typeof checkOTPRateLimit
+  } = {},
+): Promise<{ success: boolean; message: string; expiresIn?: number }> {
   const requestId = randomUUID()
+  const deliverEmailOtp = options.deliverEmailOtp ?? sendEmailOTP
+  const checkRateLimit = options.checkRateLimit ?? checkOTPRateLimit
   try {
-    ensureOtpDbConfigured()
+    logOtpEvent("info", "otp.email.create.attempt", requestId, {
+      outcome: "attempted",
+      identifierHash: hashIdentifier(email),
+      purpose,
+      vendor: "email",
+    })
+
     // Check rate limiting
-    const rateLimit = await checkOTPRateLimit(email, "email")
+    const rateLimit = await checkRateLimit(email, "email")
     if (!rateLimit.allowed) {
       return {
         success: false,
@@ -140,7 +171,7 @@ export async function createEmailOTP(
     }
 
     // Deactivate existing OTP codes for this email and purpose
-    await sql`
+    await sqlClient`
       UPDATE otp_codes 
       SET is_active = false 
       WHERE email = ${email} AND purpose = ${purpose} AND is_active = true
@@ -151,17 +182,24 @@ export async function createEmailOTP(
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
 
     // Store OTP code
-    await sql`
+    await sqlClient`
       INSERT INTO otp_codes (user_id, email, code, type, purpose, expires_at, ip_address, user_agent)
-      VALUES (${userId || null}, ${email}, ${code}, 'email', ${purpose}, ${expiresAt}, ${ipAddress || null}, ${userAgent || null})
+      VALUES (${options.userId || null}, ${email}, ${code}, 'email', ${purpose}, ${expiresAt}, ${options.ipAddress || null}, ${options.userAgent || null})
     `
 
     // Send email
-    const emailSent = await sendEmailOTP(email, code, purpose)
+    const emailSent = await deliverEmailOtp(email, code, purpose)
 
     if (!emailSent) {
       return { success: false, message: "Failed to send OTP email" }
     }
+
+    logOtpEvent("info", "otp.email.create.success", requestId, {
+      outcome: "sent",
+      identifierHash: hashIdentifier(email),
+      purpose,
+      vendor: "email",
+    })
 
     return {
       success: true,
@@ -188,11 +226,39 @@ export async function createSMSOTP(
   ipAddress?: string,
   userAgent?: string,
 ): Promise<{ success: boolean; message: string; expiresIn?: number }> {
+  return createSMSOTPWithClient(sql, phoneNumber, purpose, {
+    userId,
+    ipAddress,
+    userAgent,
+    deliverSmsOtp: sendSMSOTP,
+  })
+}
+
+export async function createSMSOTPWithClient(
+  sqlClient: SqlClient,
+  phoneNumber: string,
+  purpose: string,
+  options: {
+    userId?: number
+    ipAddress?: string
+    userAgent?: string
+    deliverSmsOtp?: (phoneNumber: string, code: string, purpose: string) => Promise<boolean>
+    checkRateLimit?: typeof checkOTPRateLimit
+  } = {},
+): Promise<{ success: boolean; message: string; expiresIn?: number }> {
   const requestId = randomUUID()
+  const deliverSmsOtp = options.deliverSmsOtp ?? sendSMSOTP
+  const checkRateLimit = options.checkRateLimit ?? checkOTPRateLimit
   try {
-    ensureOtpDbConfigured()
+    logOtpEvent("info", "otp.sms.create.attempt", requestId, {
+      outcome: "attempted",
+      identifierHash: hashIdentifier(phoneNumber),
+      purpose,
+      vendor: "mock-sms",
+    })
+
     // Check rate limiting
-    const rateLimit = await checkOTPRateLimit(phoneNumber, "sms")
+    const rateLimit = await checkRateLimit(phoneNumber, "sms")
     if (!rateLimit.allowed) {
       return {
         success: false,
@@ -203,7 +269,7 @@ export async function createSMSOTP(
     }
 
     // Deactivate existing OTP codes for this phone and purpose
-    await sql`
+    await sqlClient`
       UPDATE otp_codes 
       SET is_active = false 
       WHERE phone_number = ${phoneNumber} AND purpose = ${purpose} AND is_active = true
@@ -214,17 +280,24 @@ export async function createSMSOTP(
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000) // 5 minutes (shorter for SMS)
 
     // Store OTP code
-    await sql`
+    await sqlClient`
       INSERT INTO otp_codes (user_id, phone_number, code, type, purpose, expires_at, ip_address, user_agent)
-      VALUES (${userId || null}, ${phoneNumber}, ${code}, 'sms', ${purpose}, ${expiresAt}, ${ipAddress || null}, ${userAgent || null})
+      VALUES (${options.userId || null}, ${phoneNumber}, ${code}, 'sms', ${purpose}, ${expiresAt}, ${options.ipAddress || null}, ${options.userAgent || null})
     `
 
     // Send SMS
-    const smsSent = await sendSMSOTP(phoneNumber, code, purpose)
+    const smsSent = await deliverSmsOtp(phoneNumber, code, purpose)
 
     if (!smsSent) {
       return { success: false, message: "Failed to send SMS OTP" }
     }
+
+    logOtpEvent("info", "otp.sms.create.success", requestId, {
+      outcome: "sent",
+      identifierHash: hashIdentifier(phoneNumber),
+      purpose,
+      vendor: "mock-sms",
+    })
 
     return {
       success: true,
@@ -254,7 +327,7 @@ export async function verifyOTP(
 }
 
 export async function verifyOTPWithClient(
-  sqlClient: ReturnType<typeof neon>,
+  sqlClient: SqlClient,
   code: string,
   identifier: string, // email or phone number
   purpose: string,

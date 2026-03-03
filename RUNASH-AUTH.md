@@ -760,3 +760,15 @@ Use this destructive path only when the application rollback cannot restore serv
 3. If incidents are detected, rollback application artifacts first and temporarily gate new settings mutations.
 4. Keep additive schema in place during incident response; avoid destructive rollback.
 
+
+## 2026-03 OTP verification/session hardening update
+
+- `verifyOTP()` now uses explicit identifier predicates for both variants (`email` and `phone_number`) instead of dynamic identifier-column construction, preserving query contract compatibility while reducing injection-risk surface.
+- OTP observability was tightened to structured/redacted events only; auth logs continue to carry identifier hashes rather than raw email/phone/OTP values.
+- Email OTP `PUT /api/auth/otp/email` login verification continues to issue a persisted auth session token and response cookies after successful OTP verification; non-login OTP purposes remain verification-only with no session issuance.
+- Added OTP regression coverage for send/verify flow behavior, invalid and replayed OTP handling, and login-session cookie issuance boundaries.
+
+### Risks + rollback
+
+- **Risk:** low; changes are scoped to OTP verification and testability seams, with no public request/response schema changes.
+- **Rollback:** revert the OTP hardening commit to restore previous OTP query/logging behavior and test structure; no migration is required.
