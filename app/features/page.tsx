@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Zap, Shield, Users, Sparkles, Layers, Globe, Cpu, Gauge } from "lucide-react"
 import FeatureCard from "@/components/feature-card"
@@ -52,17 +53,21 @@ export default function FeaturesPage() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button
+                asChild
                 size="lg"
                 className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white"
               >
-                Start Free Trial <ArrowRight className="ml-2 h-4 w-4" />
+                <Link href="/signup">
+                  Start Free Trial <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
               </Button>
               <Button
+                asChild
                 size="lg"
                 variant="outline"
                 className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50"
               >
-                View Demo
+                <Link href="/recordings/live">View Demo</Link>
               </Button>
             </div>
           </div>
@@ -246,33 +251,42 @@ export default function FeaturesPage() {
                       description="Watch how our AI instantly improves video quality in challenging lighting conditions."
                       videoThumbnail="/real%20time%20video%20processing.webp"
                       duration="2:45"
+                      videoUrl="https://www.youtube.com/watch?v=jfKfPfyJRdk"
+                      embedUrl="https://www.youtube.com/embed/jfKfPfyJRdk"
                     />
                     <FeatureVideo
                       title="Virtual Backgrounds"
                       description="See how our AI creates professional virtual backgrounds without a green screen."
                       videoThumbnail="/futuristic-ai-video-background.jpg"
                       duration="3:12"
+                      videoUrl="https://vimeo.com/76979871"
                     />
                     <FeatureVideo
                       title="Multi-platform Streaming"
                       description="Learn how to stream to multiple platforms simultaneously with optimized settings."
                       videoThumbnail="/multi%20platform%20streaming.webp"
                       duration="4:30"
+                      videoUrl="https://www.youtube.com/watch?v=ysz5S6PUM-U"
+                      embedUrl="https://www.youtube.com/embed/ysz5S6PUM-U"
                     />
                     <FeatureVideo
                       title="Live Translation"
                       description="Watch our real-time caption translation in action, reaching global audiences."
                       videoThumbnail="/runash%20live.webp"
                       duration="2:18"
+                      videoUrl="https://www.youtube.com/watch?v=aqz-KE-bpKQ"
                     />
                   </div>
 
                   <div className="mt-12 text-center">
                     <Button
+                      asChild
                       size="lg"
                       className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white"
                     >
-                      View All Tutorials <ArrowRight className="ml-2 h-4 w-4" />
+                      <Link href="/tutorials">
+                        View All Tutorials <ArrowRight className="ml-2 h-4 w-4" />
+                      </Link>
                     </Button>
                   </div>
                 </div>
@@ -317,6 +331,8 @@ export default function FeaturesPage() {
                       icon="/logo.png"
                       iconAlt="RunAsh integration icon for Twitch"
                       gradient="from-purple-500 to-purple-700"
+                      href="https://help.twitch.tv/s/article/stream-using-broadcasting-software"
+                      ctaLabel="View Twitch guide"
                     />
                     <IntegrationCard
                       name="YouTube"
@@ -324,6 +340,8 @@ export default function FeaturesPage() {
                       icon="/runashlogo.jpg"
                       iconAlt="RunAsh integration icon for YouTube"
                       gradient="from-red-500 to-red-700"
+                      href="https://support.google.com/youtube/answer/2907883"
+                      ctaLabel="View YouTube setup"
                     />
                     <IntegrationCard
                       name="Discord"
@@ -331,6 +349,8 @@ export default function FeaturesPage() {
                       icon="/RunAshChat.png"
                       iconAlt="RunAsh integration icon for Discord"
                       gradient="from-indigo-500 to-indigo-700"
+                      href="https://discord.com/developers/docs/intro"
+                      ctaLabel="Open Discord docs"
                     />
                     <IntegrationCard
                       name="OBS Studio"
@@ -338,6 +358,8 @@ export default function FeaturesPage() {
                       icon="/runash%20studio.webp"
                       iconAlt="RunAsh integration icon for OBS Studio"
                       gradient="from-blue-500 to-blue-700"
+                      href="https://obsproject.com/kb/"
+                      ctaLabel="Open OBS resources"
                     />
                     <IntegrationCard
                       name="Streamlabs"
@@ -345,6 +367,8 @@ export default function FeaturesPage() {
                       icon="/runash%20organic.webp"
                       iconAlt="RunAsh integration icon for Streamlabs"
                       gradient="from-green-500 to-green-700"
+                      href="https://streamlabs.com/content-hub/post/getting-started-with-streamlabs-desktop"
+                      ctaLabel="View Streamlabs guide"
                     />
                     <IntegrationCard
                       name="TikTok Live"
@@ -352,7 +376,61 @@ export default function FeaturesPage() {
                       icon="/runash%20live%20selling.webp"
                       iconAlt="RunAsh integration icon for TikTok Live"
                       gradient="from-black to-gray-800"
+                      href="https://support.tiktok.com/en/live-gifts-wallet/tiktok-live/how-to-go-live-on-tiktok"
+                      ctaLabel="Read TikTok Live docs"
                     />
+                  </div>
+
+                  <div className="mt-10 p-8 rounded-xl bg-white dark:bg-gray-900 border border-orange-200 dark:border-orange-800/30 shadow-sm">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+                      <div>
+                        <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Download Studio</h3>
+                        <p className="mt-2 text-gray-700 dark:text-gray-300">
+                          Install official desktop tools and plugin packages to run RunAsh AI in your existing broadcast setup.
+                        </p>
+                      </div>
+                      <Button
+                        asChild
+                        variant="outline"
+                        className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50"
+                      >
+                        <a href="/integrations">Open Integrations Hub</a>
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="p-6 bg-orange-50/60 dark:bg-orange-950/20 rounded-lg border border-orange-200/70 dark:border-orange-800/40">
+                        <p className="text-xs uppercase tracking-wide text-orange-600 dark:text-orange-400 font-semibold">OBS plugin</p>
+                        <h4 className="mt-2 font-bold text-gray-900 dark:text-white">RunAsh OBS Plugin</h4>
+                        <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Stable channel • Recommended for production streams</p>
+                        <Button asChild size="sm" className="mt-4 bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 text-white">
+                          <a href="https://obsproject.com/forum/plugins/">Download stable plugin</a>
+                        </Button>
+                      </div>
+
+                      <div className="p-6 bg-orange-50/60 dark:bg-orange-950/20 rounded-lg border border-orange-200/70 dark:border-orange-800/40">
+                        <p className="text-xs uppercase tracking-wide text-orange-600 dark:text-orange-400 font-semibold">Desktop studio</p>
+                        <h4 className="mt-2 font-bold text-gray-900 dark:text-white">RunAsh Studio Installers</h4>
+                        <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Stable channel • Windows/macOS/Linux desktop packages</p>
+                        <Button asChild size="sm" className="mt-4 bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 text-white">
+                          <a href="https://obsproject.com/download">Get desktop installers</a>
+                        </Button>
+                      </div>
+
+                      <div className="p-6 bg-orange-50/60 dark:bg-orange-950/20 rounded-lg border border-orange-200/70 dark:border-orange-800/40">
+                        <p className="text-xs uppercase tracking-wide text-orange-600 dark:text-orange-400 font-semibold">Beta previews</p>
+                        <h4 className="mt-2 font-bold text-gray-900 dark:text-white">Early Access Builds</h4>
+                        <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Beta channel • Preview new plugin and studio features</p>
+                        <Button
+                          asChild
+                          size="sm"
+                          variant="outline"
+                          className="mt-4 border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50"
+                        >
+                          <a href="https://obsproject.com/forum/list/beta-testers.20/">View beta notes</a>
+                        </Button>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="mt-16 p-8 rounded-xl bg-gradient-to-br from-orange-100 to-yellow-100 dark:from-orange-900/30 dark:to-yellow-900/30 border border-orange-200 dark:border-orange-800/30">
@@ -461,17 +539,21 @@ export default function FeaturesPage() {
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button
+                asChild
                 size="lg"
                 className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white"
               >
-                Start Free Trial <ArrowRight className="ml-2 h-4 w-4" />
+                <Link href="/signup">
+                  Start Free Trial <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
               </Button>
               <Button
+                asChild
                 size="lg"
                 variant="outline"
                 className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50"
               >
-                Schedule a Demo
+                <Link href="/schedule">Schedule a Demo</Link>
               </Button>
             </div>
           </div>
