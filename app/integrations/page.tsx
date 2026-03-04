@@ -17,6 +17,8 @@ const IntegrationCard = ({
   status,
   featured = false,
   comingSoon = false,
+  href,
+  external = false,
 }: {
   name: string
   description: string
@@ -25,7 +27,18 @@ const IntegrationCard = ({
   status: "connected" | "available" | "coming-soon"
   featured?: boolean
   comingSoon?: boolean
+  href?: string
+  external?: boolean
 }) => {
+  const actionLabel = status === "connected" ? "Configure" : status === "coming-soon" ? "Coming Soon" : "Connect"
+
+  const buttonClassName =
+    status === "connected"
+      ? "border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50"
+      : status === "coming-soon"
+        ? "opacity-50 cursor-not-allowed"
+        : "bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white"
+
   return (
     <Card
       className={`${featured ? "border-orange-500/50 bg-orange-50/50 dark:bg-orange-950/20" : "border-orange-200/50 dark:border-orange-900/30"} hover:border-orange-500/50 dark:hover:border-orange-500/50 transition-all duration-300`}
@@ -64,21 +77,24 @@ const IntegrationCard = ({
             {status === "coming-soon" && <Badge variant="secondary">Coming Soon</Badge>}
           </div>
 
-          <Button
-            size="sm"
-            variant={status === "connected" ? "outline" : "default"}
-            className={
-              status === "connected"
-                ? "border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50"
-                : status === "coming-soon"
-                  ? "opacity-50 cursor-not-allowed"
-                  : "bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white"
-            }
-            disabled={status === "coming-soon"}
-          >
-            {status === "connected" ? "Configure" : status === "coming-soon" ? "Coming Soon" : "Connect"}
-            {status !== "coming-soon" && <ExternalLink className="ml-1 h-3 w-3" />}
-          </Button>
+          {href && status !== "coming-soon" ? (
+            <Button size="sm" variant={status === "connected" ? "outline" : "default"} className={buttonClassName} asChild>
+              <a href={href} target={external ? "_blank" : undefined} rel={external ? "noreferrer" : undefined}>
+                {actionLabel}
+                <ExternalLink className="ml-1 h-3 w-3" />
+              </a>
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant={status === "connected" ? "outline" : "default"}
+              className={buttonClassName}
+              disabled={status === "coming-soon"}
+            >
+              {actionLabel}
+              {status !== "coming-soon" && <ExternalLink className="ml-1 h-3 w-3" />}
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -230,6 +246,33 @@ export default function IntegrationsPage() {
                       status="available"
                     />
                     <IntegrationCard
+                      name="Hugging Face"
+                      description="Access state-of-the-art models and share community demos for your AI-powered workflows."
+                      icon="/placeholder.svg?height=32&width=32"
+                      category="AI Platform"
+                      status="available"
+                      href="https://huggingface.co"
+                      external={true}
+                    />
+                    <IntegrationCard
+                      name="Google Colab"
+                      description="Prototype and run notebooks in the cloud for rapid experimentation and model tuning."
+                      icon="/placeholder.svg?height=32&width=32"
+                      category="AI Platform"
+                      status="available"
+                      href="https://colab.research.google.com"
+                      external={true}
+                    />
+                    <IntegrationCard
+                      name="Kaggle"
+                      description="Leverage datasets, competitions, and notebooks to benchmark and improve your models."
+                      icon="/placeholder.svg?height=32&width=32"
+                      category="AI Platform"
+                      status="available"
+                      href="https://www.kaggle.com"
+                      external={true}
+                    />
+                    <IntegrationCard
                       name="Slack"
                       description="Get stream notifications and manage your team communication."
                       icon="/placeholder.svg?height=32&width=32"
@@ -298,6 +341,33 @@ export default function IntegrationsPage() {
                     icon="/placeholder.svg?height=32&width=32"
                     category="Creator Tool"
                     status="available"
+                  />
+                  <IntegrationCard
+                    name="Hugging Face"
+                    description="Access state-of-the-art models and share community demos for your AI-powered workflows."
+                    icon="/placeholder.svg?height=32&width=32"
+                    category="AI Platform"
+                    status="available"
+                    href="https://huggingface.co"
+                    external={true}
+                  />
+                  <IntegrationCard
+                    name="Google Colab"
+                    description="Prototype and run notebooks in the cloud for rapid experimentation and model tuning."
+                    icon="/placeholder.svg?height=32&width=32"
+                    category="AI Platform"
+                    status="available"
+                    href="https://colab.research.google.com"
+                    external={true}
+                  />
+                  <IntegrationCard
+                    name="Kaggle"
+                    description="Leverage datasets, competitions, and notebooks to benchmark and improve your models."
+                    icon="/placeholder.svg?height=32&width=32"
+                    category="AI Platform"
+                    status="available"
+                    href="https://www.kaggle.com"
+                    external={true}
                   />
                 </div>
               </TabsContent>
