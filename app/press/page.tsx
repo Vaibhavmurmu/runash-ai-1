@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import { useRouter } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -19,6 +20,8 @@ import ThemeToggle from "@/components/theme-toggle"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function PressPage() {
+  const router = useRouter()
+
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-white">
       {/* Hero Section */}
@@ -66,7 +69,7 @@ export default function PressPage() {
                 size="lg"
                 variant="outline"
                 className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50"
-              onClick={() => router.push("/media")}
+                onClick={() => router.push("/press#media-kit")}
               >
                 Media Kit <Download className="ml-2 h-4 w-4" />
               </Button>
@@ -155,7 +158,7 @@ export default function PressPage() {
                 </div>
               </TabsContent>
 
-              <TabsContent value="media-kit" className="mt-6">
+              <TabsContent value="media-kit" id="media-kit" className="mt-6">
                 <div className="bg-white dark:bg-gray-900 rounded-xl p-8 border border-orange-200/50 dark:border-orange-900/30">
                   <h2 className="text-2xl font-bold mb-6">Media Kit Resources</h2>
                   <p className="text-gray-700 dark:text-gray-300 mb-8">
@@ -327,7 +330,7 @@ export default function PressPage() {
                 size="lg"
                 variant="outline"
                 className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50"
-               onClick={() => router.push("/request-demo")}
+                onClick={() => router.push("/request")}
               >
                 Request Demo
               </Button>
@@ -409,10 +412,10 @@ export default function PressPage() {
               <ul className="space-y-2">
                 <li>
                   <a
-                    href="/docs"
+                    href="/docs/auth-api"
                     className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
                   >
-                    Documentation
+                    API Docs
                   </a>
                 </li>
                 <li>
@@ -425,10 +428,10 @@ export default function PressPage() {
                 </li>
                 <li>
                   <a
-                    href="/blog"
+                    href="/press"
                     className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
                   >
-                    Blog
+                    Press Updates
                   </a>
                 </li>
               </ul>
@@ -448,18 +451,18 @@ export default function PressPage() {
                 </li>
                 <li>
                   <a
-                    href="#"
+                    href="/community"
                     className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
                   >
-                    Twitter
+                    Community
                   </a>
                 </li>
                 <li>
                   <a
-                    href="#"
+                    href="/support"
                     className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
                   >
-                    Discord
+                    Support
                   </a>
                 </li>
               </ul>
