@@ -62,6 +62,7 @@ export const authSchemaTables = {
       "scope",
       "status",
       "linked_from_session_id",
+      "organization_id",
       "token_hash",
       "device_metadata",
       "created_at",
@@ -82,6 +83,12 @@ export const authSchemaTables = {
     fields: ["id", "session_id", "token_hash", "source_domain", "target_domain", "consumed_at", "expires_at", "created_at"],
     indexes: ["idx_auth_transfer_tokens_hash", "idx_auth_transfer_tokens_session_id", "idx_auth_transfer_tokens_expires_at"],
     uniqueConstraints: ["token_hash"],
+  },
+  authTrustedDevices: {
+    table: "auth_trusted_devices",
+    fields: ["user_id", "device_id", "device_name", "organization_id", "trusted_at", "last_seen_at"],
+    indexes: ["idx_auth_trusted_devices_user_last_seen", "idx_auth_trusted_devices_org_user_last_seen"],
+    uniqueConstraints: ["user_id,device_id"],
   },
 } as const
 

@@ -345,3 +345,19 @@ Business controls preserved:
 - **Risk:** high-volume trigger traffic could generate excessive outbound notifications.
 - **Mitigation:** rule activation controls, trigger condition gates, and run history observability are included for controlled rollout.
 - **Rollback:** deactivate affected marketing workflows via activation API or remove the new seller marketing tab while preserving existing seller operations.
+
+
+## 2026-03 auth/session tenant consistency linkage
+
+### Impacted payment/auth flows
+- Authenticated merchant/operator session resolution for payment-adjacent routes now benefits from tenant-indexed auth session lookups (`auth_session_registry.organization_id`).
+- Trusted-device/session-security controls used by payment-sensitive actions continue using unchanged API contracts; persistence is hardened with tenant backfill/indexing.
+
+### Compatibility + risk
+- Payment API contracts, field names, webhook payloads, and checkout route signatures are unchanged.
+- Migration is additive; risk is limited to migration runtime/index creation overhead on large auth-session tables.
+
+### Rollback strategy
+1. Application rollback is preferred; no payment contract rollback is required.
+2. If DB rollback is required, remove only newly added indexes first, then `organization_id` columns after controlled maintenance window.
+3. Re-run payment authorization smoke checks after rollback before re-enabling rollout flags.

@@ -284,3 +284,11 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
 - Rollout path: migrate schema -> backfill safely -> deploy contracts -> validate smoke checks.
 - Rollback path: application rollback first, gate new writes by feature flag, retain additive schema, and re-validate auth + settings error budgets.
 - Diagnostics and telemetry must remain redacted (never log raw keys, OTP values, auth/session tokens, or payment secrets).
+
+
+## 8) 2026-03 tenant-scoped auth session consistency controls
+
+- Session and trusted-device storage now support tenant-scoped indexing via nullable `organization_id` columns populated from `users.sso_organization_id`.
+- Auth session/user linkage foreign keys are enforced in script-driven environments to reduce orphaned identity/session rows.
+- New migration remains additive and backward compatible: legacy rows without tenant assignment remain readable while being progressively backfilled.
+- Logging posture is unchanged: no sensitive auth/payment material is introduced in migration or runtime telemetry.
