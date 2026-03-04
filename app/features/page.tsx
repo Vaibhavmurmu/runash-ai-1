@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Zap, Shield, Users, Sparkles, Layers, Globe, Cpu, Gauge } from "lucide-react"
 import FeatureCard from "@/components/feature-card"
@@ -52,17 +53,21 @@ export default function FeaturesPage() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button
+                asChild
                 size="lg"
                 className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white"
               >
-                Start Free Trial <ArrowRight className="ml-2 h-4 w-4" />
+                <Link href="/signup">
+                  Start Free Trial <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
               </Button>
               <Button
+                asChild
                 size="lg"
                 variant="outline"
                 className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50"
               >
-                View Demo
+                <Link href="/recordings/live">View Demo</Link>
               </Button>
             </div>
           </div>
@@ -275,10 +280,13 @@ export default function FeaturesPage() {
 
                   <div className="mt-12 text-center">
                     <Button
+                      asChild
                       size="lg"
                       className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white"
                     >
-                      View All Tutorials <ArrowRight className="ml-2 h-4 w-4" />
+                      <Link href="/tutorials">
+                        View All Tutorials <ArrowRight className="ml-2 h-4 w-4" />
+                      </Link>
                     </Button>
                   </div>
                 </div>
@@ -467,17 +475,21 @@ export default function FeaturesPage() {
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button
+                asChild
                 size="lg"
                 className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white"
               >
-                Start Free Trial <ArrowRight className="ml-2 h-4 w-4" />
+                <Link href="/signup">
+                  Start Free Trial <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
               </Button>
               <Button
+                asChild
                 size="lg"
                 variant="outline"
                 className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50"
               >
-                Schedule a Demo
+                <Link href="/schedule">Schedule a Demo</Link>
               </Button>
             </div>
           </div>
