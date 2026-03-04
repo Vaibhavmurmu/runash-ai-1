@@ -25,6 +25,64 @@ Working through MCP gives several benefits out of the box:
 - **Multiclient support** – MCP is self-describing, so connectors work across ChatGPT web and mobile without custom client code.
 - **Extensible auth** – the specification includes protected resource metadata, OAuth 2.1 flows, and dynamic client registration so access can be controlled without a proprietary handshake.
 
+## Research use cases
+
+### Why start with use cases
+
+Every successful Apps SDK app starts with a crisp understanding of what users are trying to accomplish. Discovery in ChatGPT is model-driven: the assistant chooses your app when tool metadata, descriptions, and past usage align with prompts and memories. That only works when the team has already mapped the tasks the model should recognize and the outcomes the app can deliver.
+
+Use this section to capture hypotheses, pressure-test them with prompts, and align scope before defining tools or building components.
+
+### Gather inputs
+
+Begin with qualitative and quantitative research:
+
+- **User interviews and support requests** – capture jobs-to-be-done, terminology, and data sources users rely on.
+- **Prompt sampling** – list direct asks (for example, “show my Jira board”) and indirect intents (for example, “what am I blocked on for the launch?”) that should route to your app.
+- **System constraints** – note compliance requirements, offline data dependencies, and rate limits that may influence tool design.
+
+Document the persona, the context in which they reach for ChatGPT, and what success looks like in a single sentence per scenario.
+
+### Define evaluation prompts
+
+Decision-boundary tuning is easier with a golden prompt set. For each use case:
+
+1. Author at least five direct prompts that explicitly reference your product, data, or expected verbs.
+2. Draft five indirect prompts where users state a goal but not the tool (for example, “I need to keep our launch tasks organized”).
+3. Add negative prompts that should **not** trigger your app so precision can be measured.
+
+Use these prompts later in [Optimize metadata](https://developers.openai.com/apps-sdk/guides/optimize-metadata) to tune recall and precision without overfitting to one request.
+
+### Scope the minimum lovable feature
+
+For each use case decide:
+
+- **What must be visible inline** to answer the question or enable action.
+- **Which actions require write access** and whether developer-mode confirmation is required.
+- **What state should persist** between turns (for example filters, selected rows, draft content).
+
+Rank use cases by user impact and implementation effort. A common sequence is shipping one P0 scenario with a high-confidence component, then expanding to P1 scenarios after discovery data confirms engagement.
+
+### Translate use cases into tooling
+
+When a scenario is in scope, draft the tool contract:
+
+- **Inputs** – parameters the model can provide safely; keep explicit, use enums for constrained sets, and document defaults.
+- **Outputs** – structured content returned by the tool, including model-reasonable fields (IDs, timestamps, status) in addition to UI fields.
+- **Component intent** – whether the experience is a read-only viewer, editor, or multiturn workspace. This drives [component planning](https://developers.openai.com/apps-sdk/plan/components) and storage design.
+
+Review drafts with product, security, legal, and compliance stakeholders before implementation, especially for PII-sensitive integrations.
+
+### Prepare for iteration
+
+Even with strong planning, expect prompt and metadata iteration after first dogfood runs. Reserve time to:
+
+- Rotate through the golden prompt set weekly and track tool-selection accuracy.
+- Collect qualitative feedback from early testers in ChatGPT developer mode.
+- Capture analytics (tool calls, component interactions) to measure adoption.
+
+These research artifacts become foundational inputs to roadmap planning, changelogs, and success metrics once the app is live.
+
 ## Design components
 
 ### Why components matter
