@@ -1,11 +1,16 @@
 import { createHash, randomInt, randomUUID } from "crypto"
 import { logApiEvent } from "./api/logging"
 import { assertDatabaseConfigured, sql } from "./db"
-import { sendAuthEmail } from "./email"
+import { sendOtpCodeEmail } from "./email"
 
-assertDatabaseConfigured("lib/otp.ts")
+function ensureOtpDbConfigured() {
+  assertDatabaseConfigured("lib/otp.ts")
+}
 
 type OtpLogLevel = "info" | "warn" | "error"
+
+type SqlClient = (strings: TemplateStringsArray, ...values: unknown[]) => Promise<Array<Record<string, any>>>
+
 
 function hashIdentifier(identifier: string): string {
   return createHash("sha256").update(identifier).digest("hex").slice(0, 16)
@@ -69,6 +74,7 @@ export async function checkOTPRateLimit(
   windowMinutes = 15,
 ): Promise<{ allowed: boolean; attemptsLeft: number; blockedUntil?: Date }> {
   try {
+    ensureOtpDbConfigured()
     const windowStart = new Date(Date.now() - windowMinutes * 60 * 1000)
 
     // Get or create rate limit record
@@ -122,10 +128,39 @@ export async function createEmailOTP(
   ipAddress?: string,
   userAgent?: string,
 ): Promise<{ success: boolean; message: string; expiresIn?: number }> {
+  return createEmailOTPWithClient(sql, email, purpose, {
+    userId,
+    ipAddress,
+    userAgent,
+    deliverEmailOtp: sendEmailOTP,
+  })
+}
+
+export async function createEmailOTPWithClient(
+  sqlClient: SqlClient,
+  email: string,
+  purpose: string,
+  options: {
+    userId?: number
+    ipAddress?: string
+    userAgent?: string
+    deliverEmailOtp?: (email: string, code: string, purpose: string) => Promise<boolean>
+    checkRateLimit?: typeof checkOTPRateLimit
+  } = {},
+): Promise<{ success: boolean; message: string; expiresIn?: number }> {
   const requestId = randomUUID()
+  const deliverEmailOtp = options.deliverEmailOtp ?? sendEmailOTP
+  const checkRateLimit = options.checkRateLimit ?? checkOTPRateLimit
   try {
+    logOtpEvent("info", "otp.email.create.attempt", requestId, {
+      outcome: "attempted",
+      identifierHash: hashIdentifier(email),
+      purpose,
+      vendor: "email",
+    })
+
     // Check rate limiting
-    const rateLimit = await checkOTPRateLimit(email, "email")
+    const rateLimit = await checkRateLimit(email, "email")
     if (!rateLimit.allowed) {
       return {
         success: false,
@@ -136,7 +171,7 @@ export async function createEmailOTP(
     }
 
     // Deactivate existing OTP codes for this email and purpose
-    await sql`
+    await sqlClient`
       UPDATE otp_codes 
       SET is_active = false 
       WHERE email = ${email} AND purpose = ${purpose} AND is_active = true
@@ -147,17 +182,24 @@ export async function createEmailOTP(
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
 
     // Store OTP code
-    await sql`
+    await sqlClient`
       INSERT INTO otp_codes (user_id, email, code, type, purpose, expires_at, ip_address, user_agent)
-      VALUES (${userId || null}, ${email}, ${code}, 'email', ${purpose}, ${expiresAt}, ${ipAddress || null}, ${userAgent || null})
+      VALUES (${options.userId || null}, ${email}, ${code}, 'email', ${purpose}, ${expiresAt}, ${options.ipAddress || null}, ${options.userAgent || null})
     `
 
     // Send email
-    const emailSent = await sendEmailOTP(email, code, purpose)
+    const emailSent = await deliverEmailOtp(email, code, purpose)
 
     if (!emailSent) {
       return { success: false, message: "Failed to send OTP email" }
     }
+
+    logOtpEvent("info", "otp.email.create.success", requestId, {
+      outcome: "sent",
+      identifierHash: hashIdentifier(email),
+      purpose,
+      vendor: "email",
+    })
 
     return {
       success: true,
@@ -184,10 +226,39 @@ export async function createSMSOTP(
   ipAddress?: string,
   userAgent?: string,
 ): Promise<{ success: boolean; message: string; expiresIn?: number }> {
+  return createSMSOTPWithClient(sql, phoneNumber, purpose, {
+    userId,
+    ipAddress,
+    userAgent,
+    deliverSmsOtp: sendSMSOTP,
+  })
+}
+
+export async function createSMSOTPWithClient(
+  sqlClient: SqlClient,
+  phoneNumber: string,
+  purpose: string,
+  options: {
+    userId?: number
+    ipAddress?: string
+    userAgent?: string
+    deliverSmsOtp?: (phoneNumber: string, code: string, purpose: string) => Promise<boolean>
+    checkRateLimit?: typeof checkOTPRateLimit
+  } = {},
+): Promise<{ success: boolean; message: string; expiresIn?: number }> {
   const requestId = randomUUID()
+  const deliverSmsOtp = options.deliverSmsOtp ?? sendSMSOTP
+  const checkRateLimit = options.checkRateLimit ?? checkOTPRateLimit
   try {
+    logOtpEvent("info", "otp.sms.create.attempt", requestId, {
+      outcome: "attempted",
+      identifierHash: hashIdentifier(phoneNumber),
+      purpose,
+      vendor: "mock-sms",
+    })
+
     // Check rate limiting
-    const rateLimit = await checkOTPRateLimit(phoneNumber, "sms")
+    const rateLimit = await checkRateLimit(phoneNumber, "sms")
     if (!rateLimit.allowed) {
       return {
         success: false,
@@ -198,7 +269,7 @@ export async function createSMSOTP(
     }
 
     // Deactivate existing OTP codes for this phone and purpose
-    await sql`
+    await sqlClient`
       UPDATE otp_codes 
       SET is_active = false 
       WHERE phone_number = ${phoneNumber} AND purpose = ${purpose} AND is_active = true
@@ -209,17 +280,24 @@ export async function createSMSOTP(
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000) // 5 minutes (shorter for SMS)
 
     // Store OTP code
-    await sql`
+    await sqlClient`
       INSERT INTO otp_codes (user_id, phone_number, code, type, purpose, expires_at, ip_address, user_agent)
-      VALUES (${userId || null}, ${phoneNumber}, ${code}, 'sms', ${purpose}, ${expiresAt}, ${ipAddress || null}, ${userAgent || null})
+      VALUES (${options.userId || null}, ${phoneNumber}, ${code}, 'sms', ${purpose}, ${expiresAt}, ${options.ipAddress || null}, ${options.userAgent || null})
     `
 
     // Send SMS
-    const smsSent = await sendSMSOTP(phoneNumber, code, purpose)
+    const smsSent = await deliverSmsOtp(phoneNumber, code, purpose)
 
     if (!smsSent) {
       return { success: false, message: "Failed to send SMS OTP" }
     }
+
+    logOtpEvent("info", "otp.sms.create.success", requestId, {
+      outcome: "sent",
+      identifierHash: hashIdentifier(phoneNumber),
+      purpose,
+      vendor: "mock-sms",
+    })
 
     return {
       success: true,
@@ -249,7 +327,7 @@ export async function verifyOTP(
 }
 
 export async function verifyOTPWithClient(
-  sqlClient: ReturnType<typeof neon>,
+  sqlClient: SqlClient,
   code: string,
   identifier: string, // email or phone number
   purpose: string,
@@ -257,6 +335,7 @@ export async function verifyOTPWithClient(
 ): Promise<{ success: boolean; message: string; userId?: number }> {
   const requestId = randomUUID()
   try {
+    ensureOtpDbConfigured()
     const otpResult = await (type === "email"
       ? sqlClient`
           SELECT * FROM otp_codes 
@@ -363,52 +442,11 @@ export async function verifyOTPWithClient(
 // Send email OTP
 async function sendEmailOTP(email: string, code: string, purpose: string): Promise<boolean> {
   const requestId = randomUUID()
-  const subject = getEmailSubject(purpose)
-  const emailHtml = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Your Verification Code</title>
-    </head>
-    <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%); min-height: 100vh;">
-      <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-        <div style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px); border-radius: 20px; padding: 40px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);">
-          <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #1a1a1a; font-size: 28px; font-weight: 700; margin: 0 0 10px 0;">Verification Code</h1>
-            <p style="color: #666; font-size: 16px; margin: 0;">Enter this code to complete your ${purpose}</p>
-          </div>
-          
-          <div style="text-align: center; margin: 40px 0;">
-            <div style="display: inline-block; background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%); color: white; font-size: 32px; font-weight: 700; padding: 20px 40px; border-radius: 12px; letter-spacing: 8px; font-family: 'Courier New', monospace; box-shadow: 0 4px 15px rgba(255, 107, 53, 0.3);">
-              ${code}
-            </div>
-          </div>
-          
-          <div style="background: #f8f9fa; border-radius: 12px; padding: 20px; margin: 30px 0;">
-            <p style="color: #666; font-size: 14px; margin: 0 0 10px 0; font-weight: 600;">Security Notice:</p>
-            <ul style="color: #666; font-size: 14px; margin: 0; padding-left: 20px;">
-              <li>This code expires in 10 minutes</li>
-              <li>Don't share this code with anyone</li>
-              <li>If you didn't request this, please ignore this email</li>
-            </ul>
-          </div>
-          
-          <p style="color: #999; font-size: 12px; text-align: center; margin-top: 30px;">
-            This verification code was sent to ${email}
-          </p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `
-
   try {
-    await sendAuthEmail({
+    await sendOtpCodeEmail({
       to: email,
-      subject,
-      html: emailHtml,
+      code,
+      purpose,
     })
     return true
   } catch (error) {
@@ -457,87 +495,6 @@ async function sendSMSOTP(phoneNumber: string, code: string, purpose: string): P
       "otp.sms.mock_sms.send_failed",
       requestId,
       { vendor: provider, outcome: "error", purpose, identifierHash: hashIdentifier(phoneNumber) },
-      error,
-    )
-    return false
-  }
-}
-
-function getEmailSubject(purpose: string): string {
-  switch (purpose) {
-    case "login":
-      return "Your Login Verification Code"
-    case "registration":
-      return "Complete Your Registration"
-    case "password_reset":
-      return "Password Reset Verification"
-    case "2fa_setup":
-      return "Two-Factor Authentication Setup"
-    case "2fa_login":
-      return "Two-Factor Authentication Code"
-    default:
-      return "Your Verification Code"
-  }
-}
-
-// Clean up expired OTP codes
-export async function cleanupExpiredOTPs(): Promise<void> {
-  try {
-    await sql`
-      DELETE FROM otp_codes WHERE expires_at < NOW()
-    `
-    await sql`
-      DELETE FROM otp_rate_limits 
-      WHERE blocked_until IS NOT NULL AND blocked_until < NOW()
-    `
-  } catch (error) {
-    logOtpEvent("error", "otp.cleanup.failed", randomUUID(), { outcome: "error" }, error)
-  }
-}
-
-// Add or update mobile verification
-export async function addMobileVerification(
-  userId: number,
-  phoneNumber: string,
-  countryCode: string,
-): Promise<boolean> {
-  try {
-    await sql`
-      INSERT INTO mobile_verifications (user_id, phone_number, country_code)
-      VALUES (${userId}, ${phoneNumber}, ${countryCode})
-      ON CONFLICT (user_id, phone_number) 
-      DO UPDATE SET 
-        country_code = ${countryCode},
-        updated_at = NOW()
-    `
-    return true
-  } catch (error) {
-    logOtpEvent(
-      "error",
-      "otp.mobile_verification.add_failed",
-      randomUUID(),
-      { outcome: "error", identifierHash: hashIdentifier(phoneNumber) },
-      error,
-    )
-    return false
-  }
-}
-
-// Verify mobile number
-export async function verifyMobileNumber(userId: number, phoneNumber: string): Promise<boolean> {
-  try {
-    const result = await sql`
-      UPDATE mobile_verifications 
-      SET is_verified = true, verified_at = NOW(), updated_at = NOW()
-      WHERE user_id = ${userId} AND phone_number = ${phoneNumber}
-    `
-    return result.length > 0
-  } catch (error) {
-    logOtpEvent(
-      "error",
-      "otp.mobile_verification.verify_failed",
-      randomUUID(),
-      { outcome: "error", identifierHash: hashIdentifier(phoneNumber) },
       error,
     )
     return false

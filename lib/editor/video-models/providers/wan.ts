@@ -7,10 +7,23 @@ export const wanVideoModelProviderAdapter: VideoModelProviderAdapter = {
   supportsModel(modelId) {
     return wanModelMatcher.test(modelId.trim())
   },
-  normalizeRequest(request: VideoGenerationRequest): VideoGenerationRequest {
+  async execute(request: VideoGenerationRequest) {
     return {
-      ...request,
-      modelId: request.modelId.trim(),
+      providerRequest: {
+        ...request,
+        modelId: request.modelId.trim(),
+      },
+      progress: {
+        jobId: "pending",
+        provider: "wan",
+        status: "queued",
+        progressPercent: 0,
+      },
+      result: {
+        jobId: "pending",
+        provider: "wan",
+        modelId: request.modelId.trim(),
+      },
     }
   },
 }

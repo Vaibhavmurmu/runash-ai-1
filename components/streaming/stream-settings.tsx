@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Settings, Globe, Lock, Eye, Save } from "lucide-react"
-import type { LiveControlState, StreamVisibility } from "@/lib/types/stream-live-control"
+import type { LiveControlState, StreamDataSaverPreset, StreamVisibility } from "@/lib/types/stream-live-control"
 
 interface StreamSettingsProps {
   streamId?: string | null
@@ -24,6 +24,12 @@ const defaultState: LiveControlState = {
   scheduledMetadata: { trailerAssetId: null, scheduledAt: null, trailerTitle: "" },
   dualStream: { mode: "single", primaryOrientation: "horizontal", linkedStreamId: null, sharedChatEnabled: false },
   membersOnly: { enabled: false, transitionedAt: null, reason: "" },
+  network: {
+    lowLatencyMode: false,
+    autoQualityFallbackOnWeakNetwork: true,
+    dataSaverPreset: "balanced",
+    manualFallbackOverride: "auto",
+  },
   moderation: {
     pinnedMessageId: null,
     qna: { status: "idle", selectedQuestionId: null, startedAt: null, endedAt: null },
@@ -131,7 +137,6 @@ export default function StreamSettings({
           </Select>
         </div>
 
-
         <div className="space-y-2">
           <Label htmlFor="creator-age">Creator Age</Label>
           <Input
@@ -181,6 +186,56 @@ export default function StreamSettings({
           />
         </div>
 
+        <div className="space-y-2 rounded-md border border-orange-100 p-3 dark:border-orange-900/50">
+          <p className="text-sm font-medium">Network resilience</p>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="low-latency" className="cursor-pointer">Low-Latency Mode</Label>
+            <Switch
+              id="low-latency"
+              checked={state.network.lowLatencyMode}
+              onCheckedChange={(checked) => void persist({ network: { ...state.network, lowLatencyMode: checked } })}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <Label htmlFor="auto-fallback" className="cursor-pointer">Auto quality fallback on weak network</Label>
+            <Switch
+              id="auto-fallback"
+              checked={state.network.autoQualityFallbackOnWeakNetwork}
+              onCheckedChange={(checked) =>
+                void persist({
+                  network: {
+                    ...state.network,
+                    autoQualityFallbackOnWeakNetwork: checked,
+                    manualFallbackOverride: checked ? "auto" : state.network.manualFallbackOverride,
+                  },
+                })
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="data-saver-preset">Data saver preset</Label>
+            <Select
+              value={state.network.dataSaverPreset}
+              onValueChange={(value) =>
+                void persist({
+                  network: { ...state.network, dataSaverPreset: value as StreamDataSaverPreset },
+                })
+              }
+            >
+              <SelectTrigger id="data-saver-preset">
+                <SelectValue placeholder="Select preset" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="off">Off</SelectItem>
+                <SelectItem value="balanced">Balanced (mobile-safe default)</SelectItem>
+                <SelectItem value="aggressive">Aggressive saver</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
         <div className="flex items-center justify-between">
           <Label htmlFor="dual-stream" className="cursor-pointer">Enable dual stream + shared chat</Label>
           <Switch
@@ -211,7 +266,7 @@ export default function StreamSettings({
 
       <Button
         className="w-full bg-gradient-to-r from-orange-600 to-yellow-500 hover:opacity-90 text-white"
-        onClick={() => void persist({ scheduledMetadata: state.scheduledMetadata })}
+        onClick={() => void persist({ scheduledMetadata: state.scheduledMetadata, network: state.network })}
       >
         <Save className="mr-2 h-4 w-4" />
         Save Settings

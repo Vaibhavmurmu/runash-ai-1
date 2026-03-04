@@ -17,10 +17,71 @@ import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-provider"
 import { WelcomeOnboardingModal } from "@/components/dashboard/onboarding/welcome-onboarding-modal"
 import { CreateProjectModal, type QuickStartMode } from "@/components/dashboard/projects/create-project-modal"
+import {
+  buildGenerationDefaults,
+  getVideoModelMetadata,
+  validateGenerationConfig,
+} from "@/lib/editor/video-models/registry"
+import { validateVideoGenerationPayload } from "@/lib/editor/video-models/validation"
+import type { VideoGenerationRequest } from "@/lib/editor/video-models/types"
 
 type OnboardingState = {
   editorWelcomeCompletedAt?: string
   editorWelcomeSkippedAt?: string
+}
+
+function mergeGenerationConfigForModel(modelId: string, savedConfig?: Record<string, unknown> | null): VideoGenerationRequest {
+  const model = getVideoModelMetadata(modelId)
+  const defaults = buildGenerationDefaults(modelId)
+  const merged = {
+    ...defaults,
+    ...(savedConfig ?? {}),
+    modelId,
+  }
+
+  const durationPreset =
+    typeof merged.durationPreset === "string" && model.durationPresetOptions.some((entry) => entry.id === merged.durationPreset)
+      ? merged.durationPreset
+      : defaults.durationPreset
+  const durationPresetMeta = model.durationPresetOptions.find((entry) => entry.id === durationPreset)
+
+  return {
+    ...merged,
+    modelId,
+    fps: typeof merged.fps === "number" ? merged.fps : defaults.fps,
+    resolution:
+      typeof merged.resolution === "string" && model.supportedResolutions.includes(merged.resolution)
+        ? merged.resolution
+        : defaults.resolution,
+    aspectRatio:
+      typeof merged.aspectRatio === "string" && model.supportedAspectRatios.includes(merged.aspectRatio)
+        ? merged.aspectRatio
+        : defaults.aspectRatio,
+    durationPreset,
+    durationSeconds: durationPresetMeta?.seconds ?? defaults.durationSeconds,
+    seed: Number.isInteger(merged.seed) && Number(merged.seed) >= 0 ? Number(merged.seed) : defaults.seed,
+    qualityMode: merged.qualityMode === "speed" || merged.qualityMode === "quality" ? merged.qualityMode : defaults.qualityMode,
+  }
+}
+
+function getGenerationValidationErrors(modelId: string, payload: VideoGenerationRequest) {
+  const modelValidation = validateGenerationConfig(modelId, payload)
+  const schemaValidation = validateVideoGenerationPayload(payload)
+  const schemaErrors: Record<string, string> = {}
+
+  if (!schemaValidation.success) {
+    const fieldErrors = schemaValidation.error.flatten().fieldErrors
+    Object.entries(fieldErrors).forEach(([key, value]) => {
+      if (value?.[0]) {
+        schemaErrors[key] = value[0]
+      }
+    })
+  }
+
+  return {
+    ...schemaErrors,
+    ...modelValidation,
+  }
 }
 
 export function EditorWorkspace() {
@@ -29,13 +90,15 @@ export function EditorWorkspace() {
   const isMobile = useIsMobile()
   const [activeTab, setActiveTab] = useState("generate")
   const [selectedModel, setSelectedModel] = useState("wan-2.1")
+  const [generationConfig, setGenerationConfig] = useState<VideoGenerationRequest>(() => buildGenerationDefaults("wan-2.1"))
+  const [generationValidationErrors, setGenerationValidationErrors] = useState<Record<string, string>>({})
   const [isRecording, setIsRecording] = useState(false)
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [isCollaborationOpen, setIsCollaborationOpen] = useState(false)
   const [project, setProject] = useState<EditorProject | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [isProjectActionBusy, setIsProjectActionBusy] = useState(false)
+  const [isProjectMutationBusy, setIsProjectMutationBusy] = useState(false)
   const [isGeneratingRender, setIsGeneratingRender] = useState(false)
   const [isDirty, setIsDirty] = useState(false)
   const [uploadInProgress, setUploadInProgress] = useState(false)
@@ -48,6 +111,9 @@ export function EditorWorkspace() {
   const [generationJob, setGenerationJob] = useState<EditorRenderJob | null>(null)
   const generationAbortRef = useRef<AbortController | null>(null)
   const generationRunIdRef = useRef(0)
+  const generationStreamRef = useRef<EventSource | null>(null)
+  const projectRef = useRef<EditorProject | null>(null)
+  const activeTimelineIdRef = useRef<string | null>(null)
   const isMountedRef = useRef(true)
   const searchParams = useSearchParams()
   const queryProjectId = searchParams.get("projectId")
@@ -111,6 +177,7 @@ export function EditorWorkspace() {
       setProject(createJson.project)
       if (payload.selectedModel) {
         setSelectedModel(payload.selectedModel)
+        setGenerationConfig(buildGenerationDefaults(payload.selectedModel))
       }
       setShowCreateProject(false)
       toast({ title: "Project created", description: "Your editor project is ready." })
@@ -149,6 +216,13 @@ export function EditorWorkspace() {
         if (typeof savedModel === "string" && savedModel.length > 0) {
           setSelectedModel(savedModel)
         }
+
+        const nextModel = typeof savedModel === "string" && savedModel.length > 0 ? savedModel : "wan-2.1"
+        const metadataConfig =
+          json.project?.metadata?.generationConfig && typeof json.project.metadata.generationConfig === "object"
+            ? (json.project.metadata.generationConfig as Record<string, unknown>)
+            : null
+        setGenerationConfig(mergeGenerationConfigForModel(nextModel, metadataConfig))
       }
     } catch {
       toast({ title: "Editor load failed", description: "Could not load project data.", variant: "destructive" })
@@ -169,9 +243,16 @@ export function EditorWorkspace() {
   useEffect(() => {
     return () => {
       isMountedRef.current = false
-      generationAbortRef.current?.abort()
+      generationStreamRef.current?.close()
     }
   }, [])
+
+  useEffect(() => () => generationAbortRef.current?.abort(), [])
+
+  useEffect(() => {
+    projectRef.current = project
+    activeTimelineIdRef.current = activeTimeline?.id ?? null
+  }, [project, activeTimeline])
 
   const saveProject = async () => {
     if (!project || !activeTimeline) return
@@ -189,7 +270,13 @@ export function EditorWorkspace() {
       const metaRes = await fetch(`/api/editor/projects/${project.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ metadata: { ...json.project?.metadata, selectedModel } }),
+        body: JSON.stringify({
+          metadata: {
+            ...json.project?.metadata,
+            selectedModel,
+            generationConfig,
+          },
+        }),
       })
 
       if (!metaRes.ok) throw new Error("Failed to save project metadata")
@@ -306,7 +393,7 @@ export function EditorWorkspace() {
 
   const handleDuplicate = async () => {
     if (!project) return
-    setIsProjectActionBusy(true)
+    setIsProjectMutationBusy(true)
     try {
       const res = await fetch(`/api/editor/projects/${project.id}/duplicate`, {
         method: "POST",
@@ -320,13 +407,13 @@ export function EditorWorkspace() {
     } catch {
       toast({ title: "Duplicate failed", variant: "destructive" })
     } finally {
-      setIsProjectActionBusy(false)
+      setIsProjectMutationBusy(false)
     }
   }
 
   const handleDelete = async () => {
     if (!project) return
-    setIsProjectActionBusy(true)
+    setIsProjectMutationBusy(true)
     const deletedId = project.id
     setProject(null)
     try {
@@ -338,13 +425,13 @@ export function EditorWorkspace() {
       toast({ title: "Delete failed", description: "Project could not be deleted.", variant: "destructive" })
       await loadProject()
     } finally {
-      setIsProjectActionBusy(false)
+      setIsProjectMutationBusy(false)
     }
   }
 
   const handleExportMetadata = async () => {
     if (!project) return
-    setIsProjectActionBusy(true)
+    setIsProjectMutationBusy(true)
     try {
       const res = await fetch(`/api/editor/projects/${project.id}/export`)
       if (!res.ok) throw new Error("Export failed")
@@ -359,7 +446,7 @@ export function EditorWorkspace() {
     } catch {
       toast({ title: "Export failed", description: "Could not export metadata.", variant: "destructive" })
     } finally {
-      setIsProjectActionBusy(false)
+      setIsProjectMutationBusy(false)
     }
   }
 
@@ -392,17 +479,188 @@ export function EditorWorkspace() {
     setPlaybackTime(next ? next.startSeconds : activeTimeline.durationSeconds)
   }
 
+  const handleGenerationConfigChange = (nextConfig: VideoGenerationRequest) => {
+    const mergedConfig = {
+      ...nextConfig,
+      modelId: selectedModel,
+    }
+    setGenerationConfig(mergedConfig)
+    setGenerationValidationErrors(getGenerationValidationErrors(selectedModel, mergedConfig))
+  }
+
   const handleGenerateVideo = async () => {
     if (!project || !activeTimeline) return
+    const sourceProjectId = project.id
+    const sourceTimelineId = activeTimeline.id
+
+    const basePayload: VideoGenerationRequest = {
+      ...generationConfig,
+      modelId: selectedModel,
+    }
+
+    const combinedErrors = getGenerationValidationErrors(selectedModel, basePayload)
+    setGenerationValidationErrors(combinedErrors)
+
+    if (Object.keys(combinedErrors).length > 0) {
+      toast({ title: "Validation required", description: "Please fix generation settings before enqueueing." })
+      return
+    }
+
+    const generationPayload: VideoGenerationRequest = {
+      modelId: selectedModel,
+      prompt: basePayload.prompt,
+      negativePrompt: basePayload.negativePrompt,
+      fps: basePayload.fps,
+      aspectRatio: basePayload.aspectRatio,
+      resolution: basePayload.resolution,
+      seed: basePayload.seed,
+      qualityMode: basePayload.qualityMode,
+      durationPreset: basePayload.durationPreset,
+      durationSeconds: basePayload.durationSeconds,
+    }
 
     generationAbortRef.current?.abort()
+    generationStreamRef.current?.close()
+
     const controller = new AbortController()
     generationAbortRef.current = controller
     generationRunIdRef.current += 1
     const currentRunId = generationRunIdRef.current
 
     const isStaleOrCancelled = () =>
-      controller.signal.aborted || generationRunIdRef.current !== currentRunId || !isMountedRef.current
+      controller.signal.aborted ||
+      generationRunIdRef.current !== currentRunId ||
+      !isMountedRef.current ||
+      projectRef.current?.id !== sourceProjectId ||
+      activeTimelineIdRef.current !== sourceTimelineId
+
+    const normalizeJob = (value: unknown): EditorRenderJob | null => {
+      if (!value || typeof value !== "object") return null
+      const row = value as Record<string, unknown>
+      const id = typeof row.id === "string" ? row.id : null
+      const status = typeof row.status === "string" ? row.status : null
+      const projectId = typeof row.projectId === "string" ? row.projectId : typeof row.project_id === "string" ? row.project_id : null
+      const ownerId = typeof row.ownerId === "string" ? row.ownerId : typeof row.owner_id === "string" ? row.owner_id : ""
+      if (!id || !status || !projectId) return null
+
+      return {
+        id,
+        status: status as EditorRenderJob["status"],
+        projectId,
+        ownerId,
+        requestedBy: typeof row.requestedBy === "string" ? row.requestedBy : typeof row.requested_by === "string" ? row.requested_by : "",
+        payload: row.payload && typeof row.payload === "object" ? (row.payload as Record<string, unknown>) : {},
+        result: row.result && typeof row.result === "object" ? (row.result as Record<string, unknown>) : {},
+        outputAssetId:
+          typeof row.outputAssetId === "string"
+            ? row.outputAssetId
+            : typeof row.output_asset_id === "string"
+              ? row.output_asset_id
+              : null,
+        createdAt: typeof row.createdAt === "string" ? row.createdAt : typeof row.created_at === "string" ? row.created_at : "",
+        updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : typeof row.updated_at === "string" ? row.updated_at : new Date().toISOString(),
+      }
+    }
+
+    const pollForCompletion = async (jobId: string) => {
+      for (let i = 0; i < 30; i += 1) {
+        if (isStaleOrCancelled()) return
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+        if (isStaleOrCancelled()) return
+
+        const pollRes = await fetch(`/api/editor/render-jobs/${jobId}`, { signal: controller.signal })
+        if (!pollRes.ok) break
+
+        const pollJson = await pollRes.json()
+        const polled = normalizeJob(pollJson.job)
+        if (!polled || isStaleOrCancelled()) return
+
+        setGenerationJob(polled)
+        if (polled.status === "completed") {
+          toast({ title: "Generation completed", description: "Your render job has completed." })
+          return
+        }
+
+        if (polled.status === "failed") {
+          throw new Error("Render job failed")
+        }
+      }
+
+      toast({ title: "Generation queued", description: "Job is still processing. Check back shortly." })
+    }
+
+    const subscribeToStream = async (jobId: string) => {
+      await new Promise<void>((resolve, reject) => {
+        const url = `/api/editor/render-jobs/stream?projectId=${encodeURIComponent(project.id)}&jobId=${encodeURIComponent(jobId)}`
+        const source = new EventSource(url)
+        generationStreamRef.current = source
+
+        let opened = false
+        const openingTimeout = window.setTimeout(() => {
+          if (!opened) {
+            source.close()
+            if (generationStreamRef.current === source) generationStreamRef.current = null
+            reject(new Error("SSE connection timeout"))
+          }
+        }, 3000)
+
+        const stopStream = () => {
+          window.clearTimeout(openingTimeout)
+          source.close()
+          if (generationStreamRef.current === source) generationStreamRef.current = null
+        }
+
+        source.onopen = () => {
+          opened = true
+          window.clearTimeout(openingTimeout)
+        }
+
+        const handlePayload = (event: MessageEvent<string>) => {
+          if (isStaleOrCancelled()) {
+            stopStream()
+            resolve()
+            return
+          }
+
+          try {
+            const parsed = JSON.parse(event.data) as { job?: unknown }
+            const nextJob = normalizeJob(parsed.job)
+            if (!nextJob) return
+
+            setGenerationJob(nextJob)
+            if (nextJob.status === "completed") {
+              toast({ title: "Generation completed", description: "Your render job has completed." })
+              stopStream()
+              resolve()
+              return
+            }
+
+            if (nextJob.status === "failed") {
+              stopStream()
+              reject(new Error("Render job failed"))
+            }
+          } catch {
+            // skip malformed frames
+          }
+        }
+
+        source.addEventListener("queued", handlePayload as EventListener)
+        source.addEventListener("processing", handlePayload as EventListener)
+        source.addEventListener("progress", handlePayload as EventListener)
+        source.addEventListener("completed", handlePayload as EventListener)
+        source.addEventListener("failed", handlePayload as EventListener)
+
+        source.onerror = () => {
+          stopStream()
+          reject(new Error("SSE unavailable"))
+        }
+
+        controller.signal.addEventListener("abort", () => {
+          stopStream()
+          resolve()
+        })
+      })
+    }
 
     setIsGeneratingRender(true)
     try {
@@ -416,7 +674,8 @@ export function EditorWorkspace() {
             timelineId: activeTimeline.id,
             timelineDurationSeconds: activeTimeline.durationSeconds,
             segmentCount: activeTimeline.segments.length,
-            modelId: selectedModel,
+            ...generationPayload,
+            generationConfig: generationPayload,
           },
         }),
       })
@@ -425,45 +684,25 @@ export function EditorWorkspace() {
       if (isStaleOrCancelled()) return
 
       const createJson = await createRes.json()
-      const job = createJson.job as EditorRenderJob
-      if (isStaleOrCancelled()) return
+      const job = normalizeJob(createJson.job)
+      if (!job || isStaleOrCancelled()) return
 
       setGenerationJob(job)
-
       toast({ title: "Generation queued", description: "Render job started for this timeline." })
 
-      for (let i = 0; i < 30; i += 1) {
-        if (isStaleOrCancelled()) return
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-        if (isStaleOrCancelled()) return
-
-        const pollRes = await fetch(`/api/editor/render-jobs/${job.id}`, { signal: controller.signal })
-        if (!pollRes.ok) break
-        if (isStaleOrCancelled()) return
-
-        const pollJson = await pollRes.json()
-        const polled = pollJson.job as EditorRenderJob
-        if (isStaleOrCancelled()) return
-
-        setGenerationJob(polled)
-
-        if (polled.status === "completed") {
-          toast({ title: "Generation completed", description: "Your render job has completed." })
-          return
-        }
-
-        if (polled.status === "failed") {
-          throw new Error("Render job failed")
-        }
+      try {
+        await subscribeToStream(job.id)
+      } catch {
+        await pollForCompletion(job.id)
       }
-
-      toast({ title: "Generation queued", description: "Job is still processing. Check back shortly." })
     } catch (error) {
       if (isStaleOrCancelled()) return
       if (error instanceof DOMException && error.name === "AbortError") return
 
       toast({ title: "Generation failed", description: "Unable to generate video right now.", variant: "destructive" })
     } finally {
+      generationStreamRef.current?.close()
+      if (generationStreamRef.current) generationStreamRef.current = null
       if (!isMountedRef.current) return
       if (generationRunIdRef.current !== currentRunId) return
       setIsGeneratingRender(false)
@@ -475,25 +714,50 @@ export function EditorWorkspace() {
   const totalFrames = Math.max(1, Math.floor((activeTimeline?.durationSeconds ?? 1) * frameRate))
 
   useEffect(() => {
+    setGenerationConfig((prev) => mergeGenerationConfigForModel(selectedModel, prev))
+  }, [selectedModel])
+
+  useEffect(() => {
+    setGenerationValidationErrors(getGenerationValidationErrors(selectedModel, generationConfig))
+  }, [generationConfig, selectedModel])
+
+  useEffect(() => {
     if (!project) return
 
-    const savedModel = project.metadata?.selectedModel
-    if (savedModel === selectedModel) return
+    const currentMetadata = (project.metadata ?? {}) as Record<string, unknown>
+    const metadataConfig = currentMetadata.generationConfig
+    const matchesModel = currentMetadata.selectedModel === selectedModel
+    const matchesConfig = JSON.stringify(metadataConfig ?? {}) === JSON.stringify(generationConfig)
+
+    if (matchesModel && matchesConfig) return
 
     setProject({
       ...project,
       metadata: {
-        ...project.metadata,
+        ...currentMetadata,
         selectedModel,
+        generationConfig,
       },
       updatedAt: new Date().toISOString(),
     })
     setIsDirty(true)
-  }, [selectedModel, project])
+  }, [generationConfig, selectedModel, project])
 
   useEffect(() => {
     setGenerationJob(null)
+    generationAbortRef.current?.abort()
+    generationStreamRef.current?.close()
+    generationStreamRef.current = null
+    setIsGeneratingRender(false)
   }, [project?.id])
+
+  const generationStatus = generationJob?.status ?? null
+  const generationProgress =
+    typeof generationJob?.result?.progress === "number" ? Math.round(generationJob.result.progress) : null
+  const generationStage =
+    typeof generationJob?.result?.stage === "string" && generationJob.result.stage.trim().length > 0
+      ? generationJob.result.stage
+      : null
 
   return (
     <>
@@ -554,8 +818,18 @@ export function EditorWorkspace() {
             onGenerateVideo={handleGenerateVideo}
             isGeneratingRender={isGeneratingRender}
             generationJob={generationJob}
+            generationStatus={generationStatus}
+            generationProgress={generationProgress}
+            generationStage={generationStage}
           />
-          <RightPanel selectedModel={selectedModel} onModelChange={setSelectedModel} activeTab={activeTab} />
+          <RightPanel
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
+            generationConfig={generationConfig}
+            validationErrors={generationValidationErrors}
+            onGenerationConfigChange={handleGenerationConfigChange}
+            activeTab={activeTab}
+          />
           {isMobile ? (
             <Sheet open={isChatOpen} onOpenChange={setIsChatOpen}>
               <SheetContent side="left" className="w-[94vw] max-w-sm p-0">
@@ -579,7 +853,7 @@ export function EditorWorkspace() {
           onDuplicate={handleDuplicate}
           onDelete={handleDelete}
           onExportMetadata={handleExportMetadata}
-          isProjectActionBusy={isProjectActionBusy || isLoading || isCreatingProject}
+          isProjectMutationBusy={isProjectMutationBusy || isLoading || isCreatingProject}
         />
         <CollaborationPanel isOpen={isCollaborationOpen} onClose={() => setIsCollaborationOpen(false)} />
       </EditorLayout>

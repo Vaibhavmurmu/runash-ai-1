@@ -24,7 +24,16 @@ This document is limited to payment/business implementation policy. Generic cont
 - Auth hardening updates (verified linking, session invalidation, throttling) are contract-compatible for payment APIs.
 - Admin auth/org tooling updates (organization lifecycle + provider mapping + tenant user assignment) are operational-only and do not modify payment field contracts or payment API signatures.
 - Auth signup flow was unified through Better Auth server registration (`auth.api.signUpEmail`) with compatibility response mapping; no payment route fields or business payment contracts changed.
+- Register API routing now invokes Better Auth server registration directly from `app/api/auth/register/route.ts` (delegating validation/compat mapping to the shared handler); response contract remains backward compatible for existing frontend consumers.
 - Incident and rollback runbook reference for auth/org config operations: `docs/AUTH_ORG_INCIDENT_RUNBOOK.md`.
+
+
+## 2026-02 editor render reliability hardening note (non-payment contract change)
+
+- Change scope: editor render job reliability and security hardening (`/api/editor/render-jobs` rate limits, cancel semantics, worker timeout/retry, and log redaction).
+- Payment/auth impact assessment: no payment contract fields, checkout/webhook schemas, or auth/payment API signatures were modified.
+- Risk + rollback: low-to-medium operational risk (queue behavior changes). Rollback by reverting editor render job API/worker patch if cancellation or queue throughput regressions appear.
+- Security posture: provider request/response operational logs are redacted to prevent sensitive token/prompt leakage in shared logs.
 
 ## Compatibility, risk, and rollback
 
@@ -307,3 +316,48 @@ Business controls preserved:
 - **Risk:** render queue may accumulate if model/storage dependencies are unavailable.
 - **Mitigation:** bounded retries with attempt tracking and non-sensitive error persistence in job result metadata.
 - **Rollback:** disable the worker invocation/scheduler and continue queue-only behavior while preserving enqueue/list APIs.
+
+## 2026-02 marketing route alias note (non-contract)
+
+- Public navigation aliases now map `/payment/business` -> `/enterprises` and `/payment/startup` -> `/partner` to align top-level marketing information architecture.
+- This is a presentation-layer route alias only; startup/business payment API signatures, payment field names, checkout contracts, and webhook contracts remain unchanged.
+- Rollback: remove redirect aliases in `next.config.mjs` to restore legacy public URL paths without touching payment execution logic.
+
+## 2026-02-27 Editor render API hardening note (non-payment)
+
+- Hardened editor render-job APIs with per-user/project throttling plus active-queue quotas to protect shared infrastructure.
+- Added enqueue policy gates for max duration, max resolution, and model-tier allowlist checks before jobs enter queue processing.
+- Added explicit cancellation propagation in worker stages to prevent expensive post-cancel processing and stale result writeback.
+- **Payment/auth impact:** none. Checkout contracts, payment fields, and auth session handling are unchanged.
+
+### Risk / rollback
+- **Risk:** stricter quotas can reject bursts for high-volume creator workflows.
+- **Mitigation:** all limits are environment-configurable and surfaced with stable API error codes.
+- **Rollback:** relax or disable quota/policy env limits while preserving API shape and worker behavior.
+
+## 2026-02 Seller marketing workflow automation note (non-payment)
+
+- Added seller marketing workflow orchestration for trigger-based campaigns (`stream_ended`, `cart_abandoned`, `high_intent_viewer`, `repeat_buyer`) with multi-channel delivery routing.
+- Added campaign persistence tables for templates, rules, and run history to support auditability and replay.
+- **Payment/auth impact:** none. Checkout contracts, payment field names, and auth/session interfaces remain unchanged.
+
+### Risk / rollback
+- **Risk:** high-volume trigger traffic could generate excessive outbound notifications.
+- **Mitigation:** rule activation controls, trigger condition gates, and run history observability are included for controlled rollout.
+- **Rollback:** deactivate affected marketing workflows via activation API or remove the new seller marketing tab while preserving existing seller operations.
+
+
+## 2026-03 auth/session tenant consistency linkage
+
+### Impacted payment/auth flows
+- Authenticated merchant/operator session resolution for payment-adjacent routes now benefits from tenant-indexed auth session lookups (`auth_session_registry.organization_id`).
+- Trusted-device/session-security controls used by payment-sensitive actions continue using unchanged API contracts; persistence is hardened with tenant backfill/indexing.
+
+### Compatibility + risk
+- Payment API contracts, field names, webhook payloads, and checkout route signatures are unchanged.
+- Migration is additive; risk is limited to migration runtime/index creation overhead on large auth-session tables.
+
+### Rollback strategy
+1. Application rollback is preferred; no payment contract rollback is required.
+2. If DB rollback is required, remove only newly added indexes first, then `organization_id` columns after controlled maintenance window.
+3. Re-run payment authorization smoke checks after rollback before re-enabling rollout flags.

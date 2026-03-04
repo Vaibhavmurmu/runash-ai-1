@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { auth, emailVerificationCallbackURL } from "@/lib/auth"
 import { registerSchema } from "@/lib/validations/auth"
 import { rateLimit } from "@/lib/rate-limit"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
@@ -11,15 +11,11 @@ import { applyAuthCaptchaMiddleware } from "@/lib/auth/captcha-middleware"
 
 type RegisterInput = {
   email: string
-  password: string
   name: string
   username: string
 }
 
-const emailVerificationCallbackURL = process.env.BETTER_AUTH_EMAIL_VERIFICATION_CALLBACK_URL ?? "/login?emailVerified=1"
-
 type SignUpResponse = {
-  token?: string | null
   user?: {
     id?: string
     email?: string
@@ -33,14 +29,14 @@ type SignUpResponse = {
   }
 }
 
-type RegisterHandlerDependencies = {
+export type RegisterHandlerDependencies = {
   enforceRateLimit: typeof rateLimit
   applyCaptcha: typeof applyAuthCaptchaMiddleware
   signUpEmail: (args: { headers: Headers; body: Record<string, unknown> }) => Promise<SignUpResponse>
   findExistingUsername: (username: string) => Promise<{ id: string | number; email?: string | null; username?: string | null } | null>
 }
 
-const defaultDependencies: RegisterHandlerDependencies = {
+export const defaultRegisterHandlerDependencies: RegisterHandlerDependencies = {
   enforceRateLimit: rateLimit,
   applyCaptcha: applyAuthCaptchaMiddleware,
   signUpEmail: (args) => auth.api.signUpEmail(args) as Promise<SignUpResponse>,
@@ -77,13 +73,13 @@ function mapSignUpPayload(signUpResult: SignUpResponse, input: RegisterInput) {
     email: user?.email ?? input.email,
     name: user?.name ?? input.name,
     username: input.username,
-    emailVerified: Boolean(user?.emailVerified),
+    emailVerified: user?.emailVerified === true,
   }
 }
 
 export async function handleRegister(
   request: NextRequest,
-  dependencies: RegisterHandlerDependencies = defaultDependencies,
+  dependencies: RegisterHandlerDependencies = defaultRegisterHandlerDependencies,
 ): Promise<Response> {
   try {
     const rateLimitResult = await dependencies.enforceRateLimit(
@@ -186,8 +182,8 @@ export async function handleRegister(
       )
     }
 
-    const createdUser = mapSignUpPayload(signUpResult, { email, password, name, username })
-    const verificationRequired = signUpResult.token == null || !createdUser.emailVerified
+    const createdUser = mapSignUpPayload(signUpResult, { email, name, username })
+    const verificationRequired = createdUser.emailVerified !== true
     const message = verificationRequired
       ? "User created successfully. Please check your email to verify your account."
       : "User created successfully."

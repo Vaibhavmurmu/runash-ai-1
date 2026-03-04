@@ -1,5 +1,5 @@
 export type EditorProjectStatus = "draft" | "ready" | "archived"
-export type EditorRenderStatus = "queued" | "processing" | "completed" | "failed"
+export type EditorRenderStatus = "queued" | "processing" | "completed" | "failed" | "canceled"
 
 export interface EditorAsset {
   id: string

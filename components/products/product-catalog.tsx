@@ -15,6 +15,8 @@ import { CreateProductDialog } from "./create-product-dialog"
 import { ProductFilters } from "./product-filters"
 import { ProductCategories } from "./product-categories"
 import { ProductAnalytics } from "./product-analytics"
+import { ProductDetailDialog } from "./product-detail-dialog"
+import type { Product } from "@/lib/repositories/products"
 
 export function ProductsCatalog() {
   const { user } = useAuthContext()
@@ -24,6 +26,7 @@ export function ProductsCatalog() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
 
   const filteredProducts = products.filter((product) => {
     const matchesSearch =
@@ -127,12 +130,14 @@ export function ProductsCatalog() {
               products={filteredProducts}
               onEdit={(product) => console.log("Edit", product)}
               onDelete={(id) => deleteProduct(id)}
+              onView={setSelectedProduct}
             />
           ) : (
             <ProductList
               products={filteredProducts}
               onEdit={(product) => console.log("Edit", product)}
               onDelete={(id) => deleteProduct(id)}
+              onView={setSelectedProduct}
             />
           )}
         </TabsContent>
@@ -153,6 +158,8 @@ export function ProductsCatalog() {
         onCreateProduct={createProduct}
         userId={user?.id}
       />
+
+      <ProductDetailDialog product={selectedProduct} open={Boolean(selectedProduct)} onOpenChange={(open) => !open && setSelectedProduct(null)} />
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { usePathname } from "next/navigation"
 import { ModelDialogCard } from "@/components/dashboard/model-dialog-card"
 import { useModelDialog } from "@/lib/hooks/use-model-dialog"
+import { listModelCatalog } from "@/lib/ai/provider-registry"
 import type {
   ModelDialogContract,
   ModelDialogErrorCode,
@@ -130,6 +131,14 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
   const [elapsedMs, setElapsedMs] = useState(0)
   const [requestId, setRequestId] = useState<string | null>(null)
   const [recentRuns, setRecentRuns] = useState<ModelDialogRunHistoryItem[]>([])
+  const [selectedModelId, setSelectedModelId] = useState<string>("gpt-4o-mini")
+
+  const modelCatalog = useMemo(() => listModelCatalog(), [])
+  const selectedCatalogEntry = useMemo(
+    () => modelCatalog.find((entry) => entry.id === selectedModelId) ?? null,
+    [modelCatalog, selectedModelId],
+  )
+
   const eventSourceRef = useRef<EventSource | null>(null)
   const tickTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startedAtRef = useRef<number>(0)
@@ -168,6 +177,8 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
       setModeContexts(EMPTY_MODE_CONTEXTS)
       return
     }
+
+    setSelectedModelId(activeModelDialog.model.modelId)
 
     const payload = activeModelDialog.payload
     setExecutionMode(resolveExecutionMode(payload))
@@ -280,7 +291,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
     }, 250)
 
     const params = new URLSearchParams({
-      modelId: activeModelDialog.model.modelId,
+      modelId: selectedModelId || activeModelDialog.model.modelId,
       input:
         activeModelDialog.payload?.prompt ||
         "Tune generation controls, review context, and execute with the selected model policy.",
@@ -336,7 +347,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
       setErrorMessage("Streaming connection dropped before completion.")
       stopExecutionTracking()
     }
-  }, [activeModelDialog, assetId, executionMode, handleExecutionEvent, mode, modeContexts, qualityPreset, recordingId, sourceModule, stopExecutionTracking, streamId, temperature])
+  }, [activeModelDialog, assetId, executionMode, handleExecutionEvent, mode, modeContexts, qualityPreset, recordingId, selectedModelId, sourceModule, stopExecutionTracking, streamId, temperature])
 
   const value = useMemo(
     () => ({
@@ -349,6 +360,11 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
   const promptPreview =
     activeModelDialog?.payload?.prompt ??
     "Tune generation controls, review context, and execute with the selected model policy."
+  const dialogModelIdentity = {
+    ...BASE_MODEL,
+    name: selectedCatalogEntry?.label ?? activeModelDialog?.model.displayName ?? BASE_MODEL.name,
+    provider: selectedCatalogEntry?.provider ?? activeModelDialog?.model.provider ?? BASE_MODEL.provider,
+  }
 
   return (
     <DashboardModelDialogContext.Provider value={value}>
@@ -361,11 +377,25 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
             resetExecutionState()
           }
         }}
+
+        model={dialogModelIdentity}
+        modelOptions={modelCatalog.map((entry) => ({ id: entry.id, provider: entry.provider, label: entry.label }))}
+
         model={{
           ...BASE_MODEL,
-          name: activeModelDialog?.model.displayName ?? BASE_MODEL.name,
-          provider: activeModelDialog?.model.provider ?? BASE_MODEL.provider,
+          name:
+            listModelCatalog().find((entry) => entry.id === selectedModelId)?.label ??
+            activeModelDialog?.model.displayName ??
+            BASE_MODEL.name,
+          provider:
+            listModelCatalog().find((entry) => entry.id === selectedModelId)?.provider ??
+            activeModelDialog?.model.provider ??
+            BASE_MODEL.provider,
         }}
+        modelOptions={listModelCatalog().map((entry) => ({ id: entry.id, provider: entry.provider, label: entry.label }))}
+
+        selectedModelId={selectedModelId}
+        onSelectedModelIdChange={setSelectedModelId}
         triggerSource={activeModelDialog?.triggerSource}
         dialogMode={activeModelDialog?.mode}
         executionMode={executionMode}

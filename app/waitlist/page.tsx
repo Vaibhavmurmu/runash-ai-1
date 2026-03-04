@@ -12,7 +12,6 @@ import { waitlistJoinSchema } from "@/lib/validations/waitlist"
 type WaitlistFormState = {
   email: string
   name: string
-  company: string
   useCase: string
 }
 
@@ -23,7 +22,6 @@ type WaitlistFieldErrors = Partial<Record<WaitlistFormField, string>>
 const initialState: WaitlistFormState = {
   email: "",
   name: "",
-  company: "",
   useCase: "",
 }
 
@@ -46,7 +44,6 @@ export default function WaitlistPage() {
     const nextErrors: WaitlistFieldErrors = {
       email: flattenedErrors.email?.[0],
       name: flattenedErrors.name?.[0],
-      company: flattenedErrors.company?.[0],
       useCase: flattenedErrors.useCase?.[0],
     }
 
@@ -56,6 +53,11 @@ export default function WaitlistPage() {
 
   function handleFieldChange(field: WaitlistFormField, value: string) {
     setForm((current) => ({ ...current, [field]: value }))
+    setErrorMessage(null)
+
+    if (fieldErrors[field]) {
+      setFieldErrors((current) => ({ ...current, [field]: undefined }))
+    }
 
     if (fieldErrors[field]) {
       validateForm({ ...form, [field]: value })
@@ -93,7 +95,6 @@ export default function WaitlistPage() {
           ...current,
           email: apiFieldErrors?.email?.[0] ?? current.email,
           name: apiFieldErrors?.name?.[0] ?? current.name,
-          company: apiFieldErrors?.company?.[0] ?? current.company,
           useCase: apiFieldErrors?.useCase?.[0] ?? current.useCase,
         }))
         setErrorMessage(message)
@@ -117,7 +118,7 @@ export default function WaitlistPage() {
           <CardHeader>
             <CardTitle className="text-3xl">Join the RunAsh Waitlist</CardTitle>
             <CardDescription>
-              Get early access updates for upcoming RunAsh features. We only need your email.
+              Get early access updates for upcoming RunAsh features. Add your email and optional context so we can prioritize invites.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -149,18 +150,6 @@ export default function WaitlistPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="company">Company (optional)</Label>
-                <Input
-                  id="company"
-                  value={form.company}
-                  onChange={(event) => handleFieldChange("company", event.target.value)}
-                  aria-invalid={Boolean(fieldErrors.company)}
-                  placeholder="Company or team"
-                />
-                {fieldErrors.company ? <p className="text-sm text-red-600">{fieldErrors.company}</p> : null}
-              </div>
-
-              <div className="space-y-2">
                 <Label htmlFor="useCase">Use case (optional)</Label>
                 <Textarea
                   id="useCase"
@@ -174,11 +163,15 @@ export default function WaitlistPage() {
               </div>
 
               {successMessage ? (
-                <p className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{successMessage}</p>
+                <p role="status" className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                  {successMessage}
+                </p>
               ) : null}
 
               {errorMessage ? (
-                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{errorMessage}</p>
+                <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {errorMessage}
+                </p>
               ) : null}
 
               <Button type="submit" disabled={isSubmitting} className="w-full bg-gradient-to-r from-orange-600 to-yellow-500 text-white">

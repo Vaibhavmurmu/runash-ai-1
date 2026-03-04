@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast"
 import { signIn } from "next-auth/react"
 import { PhoneOtpVerification } from "@/components/auth/phone-otp-verification"
 import { PasswordStrengthMeter } from "@/components/auth/password-strength-meter"
+import { registerWithUnifiedRoute } from "@/lib/auth/register-client"
 
 export function RegisterForm() {
   const [isLoading, setIsLoading] = useState(false)
@@ -45,31 +46,22 @@ export function RegisterForm() {
     }
 
     try {
-      const response = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: formData.name,
-          username: formData.username,
-          email: formData.email,
-          password: formData.password,
-          phone: phoneVerification.verified ? phoneVerification.phoneNumber : undefined,
-        }),
+      const registration = await registerWithUnifiedRoute({
+        name: formData.name,
+        username: formData.username,
+        email: formData.email,
+        password: formData.password,
       })
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        setError(data.message || "Registration failed")
+      if (!registration.ok) {
+        setError(registration.message || "Registration failed")
         return
       }
 
       setSuccess(true)
       toast({
         title: "Account created!",
-        description: "Please check your email to verify your account.",
+        description: registration.message || "Please verify your email before signing in.",
       })
 
       // Redirect to login after 3 seconds
@@ -109,7 +101,8 @@ export function RegisterForm() {
                 <h3 className="text-xl font-semibold">Account Created!</h3>
                 <p className="text-muted-foreground mt-2">
                   We've sent a verification email to <strong>{formData.email}</strong>. Please check your inbox and
-                  click the verification link to activate your account.
+                  click the verification link to activate your account. You need to verify your email before full
+                  access is enabled.
                 </p>
               </div>
               <Button asChild className="w-full">

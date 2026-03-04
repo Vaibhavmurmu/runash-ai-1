@@ -1,14 +1,42 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { type ChangeEvent, type DragEvent, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Send, Sparkles, Search, OctagonX, RotateCcw } from "lucide-react"
+import { ChevronDown, Send, Sparkles, Search, OctagonX, RotateCcw, Image as ImageIcon, RefreshCcw, X } from "lucide-react"
 
 type StreamControllerState = "idle" | "sending" | "streaming" | "stopping" | "failed"
 type ComposerHealthState = "ready" | "usage-limit" | "provider-error" | "network-timeout"
 type ResponseTone = "balanced" | "friendly" | "professional"
 type ResponseDetailLevel = "concise" | "normal" | "detailed"
+
+type ModelCatalogOption = {
+  id: string
+  provider: string
+  label: string
+}
+
+type ProjectCatalogOption = {
+  id: string
+  label: string
+}
+
+export type ComposerAttachmentMetadata = {
+  name: string
+  size: number
+  type: string
+  width?: number
+  height?: number
+}
+
+export type ComposerAttachmentUploadState = "idle" | "uploading" | "failed" | "uploaded"
+
+export type ComposerAttachmentPreview = {
+  metadata: ComposerAttachmentMetadata
+  previewUrl: string
+  uploadState: ComposerAttachmentUploadState
+  error?: string
+}
 
 type RunAshChatComposerProps = {
   value: string
@@ -24,7 +52,22 @@ type RunAshChatComposerProps = {
   onToneChange?: (tone: ResponseTone) => void
   detailLevel?: ResponseDetailLevel
   onDetailLevelChange?: (level: ResponseDetailLevel) => void
+  modelOptions?: ModelCatalogOption[]
+  selectedModel?: string
+  onSelectedModelChange?: (model: string) => void
+  projectOptions?: ProjectCatalogOption[]
+  selectedProject?: string
+  onSelectedProjectChange?: (projectId: string) => void
+  onAttachFile?: (file: File) => Promise<void> | void
+  attachmentPreview?: ComposerAttachmentPreview | null
+  attachmentError?: string | null
+  onRetryAttachment?: () => void
+  onRemoveAttachment?: () => void
+  showUpgradePrompt?: boolean
+  onUpgradeClick?: (location: "composer_inline") => void
 }
+
+const UPGRADE_PROMPT_DISMISSED_KEY = "runash_upgrade_prompt_dismissed_v1"
 
 type SlashCommand = {
   command: string
@@ -75,11 +118,44 @@ export function RunAshChatComposer({
   onToneChange,
   detailLevel = "normal",
   onDetailLevelChange,
+  modelOptions = [],
+  selectedModel,
+  onSelectedModelChange,
+  projectOptions = [],
+  selectedProject,
+  onSelectedProjectChange,
+  onAttachFile,
+  attachmentPreview,
+  attachmentError,
+  onRetryAttachment,
+  onRemoveAttachment,
+  showUpgradePrompt = false,
+  onUpgradeClick,
 }: RunAshChatComposerProps) {
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [composerError, setComposerError] = useState<string | null>(null)
   const [isEnhancing, setIsEnhancing] = useState(false)
+  const [showSecondaryControls, setShowSecondaryControls] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+
+  const [isTouchDevice, setIsTouchDevice] = useState(false)
+
+  const [upgradePromptDismissed, setUpgradePromptDismissed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false
+    return window.localStorage.getItem(UPGRADE_PROMPT_DISMISSED_KEY) === "1"
+  })
+
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return
+    const mediaQuery = window.matchMedia("(pointer: coarse)")
+    const updateInputMode = () => setIsTouchDevice(mediaQuery.matches)
+    updateInputMode()
+    mediaQuery.addEventListener("change", updateInputMode)
+    return () => mediaQuery.removeEventListener("change", updateInputMode)
+  }, [])
 
   const estimatedTokens = useMemo(() => Math.ceil(value.length / 4), [value])
   const isNearCharLimit = value.length >= SOFT_CHARACTER_LIMIT
@@ -163,6 +239,16 @@ export function RunAshChatComposer({
       return
     }
 
+    if (attachmentPreview?.uploadState === "failed") {
+      setComposerError("Fix the image upload issue before sending.")
+      return
+    }
+
+    if (attachmentPreview?.uploadState === "uploading") {
+      setComposerError("Please wait for the image upload to finish.")
+      return
+    }
+
     if (content.startsWith("/") && !SLASH_COMMANDS.some((command) => command.command === content.split(" ")[0])) {
       setComposerError("Unknown slash command. Use /campaign, /inventory, /voice, or /enhance.")
       return
@@ -179,9 +265,50 @@ export function RunAshChatComposer({
     onSend(content)
   }
 
+  function handleAttachmentSelect(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    void onAttachFile?.(file)
+    event.target.value = ""
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    setIsDragging(false)
+
+    const file = event.dataTransfer.files?.[0]
+    if (!file || !onAttachFile || isTouchDevice) return
+    void onAttachFile(file)
+  }
+
+  const attachmentStatusMessage =
+    attachmentPreview?.uploadState === "uploading"
+      ? "Uploading image metadata..."
+      : attachmentPreview?.uploadState === "failed"
+        ? attachmentPreview.error || "Upload failed. Please retry."
+        : attachmentPreview?.uploadState === "uploaded"
+          ? "Image ready to send."
+          : null
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    window.localStorage.setItem(UPGRADE_PROMPT_DISMISSED_KEY, upgradePromptDismissed ? "1" : "0")
+  }, [upgradePromptDismissed])
+
+  const shouldShowUpgradePrompt = showUpgradePrompt && !upgradePromptDismissed
+
   return (
     <div className="space-y-2">
-      <div className="rounded-md border border-zinc-700 bg-zinc-900 p-2">
+      <div
+        className={`rounded-md border bg-zinc-900 p-2 transition-colors ${isDragging ? "border-orange-400" : "border-zinc-700"}`}
+        onDragOver={(event) => {
+          event.preventDefault()
+          if (!onAttachFile || isTouchDevice) return
+          setIsDragging(true)
+        }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={handleDrop}
+      >
         <Textarea
           value={value}
           onChange={(event) => {
@@ -215,13 +342,37 @@ export function RunAshChatComposer({
               type="button"
               size="sm"
               variant="outline"
-              onClick={() => void enhancePrompt()}
-              disabled={disabled || isEnhancing}
-              className="border-zinc-600 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+              onClick={() => setShowSecondaryControls((previous) => !previous)}
+              aria-expanded={showSecondaryControls}
+              aria-controls="composer-secondary-controls"
+              className="border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
             >
-              <Sparkles className="mr-1 h-3.5 w-3.5" />
-              {isEnhancing ? "Enhancing..." : "Enhance Prompt"}
+              Advanced options
+              <ChevronDown className={`ml-1 h-3.5 w-3.5 transition-transform ${showSecondaryControls ? "rotate-180" : ""}`} />
             </Button>
+            {onAttachFile ? (
+              <>
+                <input
+                  ref={attachmentInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  className="hidden"
+                  onChange={handleAttachmentSelect}
+                  aria-label="Attach image"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => attachmentInputRef.current?.click()}
+                  className="h-8 border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+                  aria-label="Attach image"
+                >
+                  <ImageIcon className="mr-1 h-3.5 w-3.5" />
+                  Attach
+                </Button>
+              </>
+            ) : null}
             <span className="text-zinc-500">Type / for RunAsh templates • Ctrl/Cmd+Shift+P to polish</span>
           </div>
 
@@ -230,6 +381,90 @@ export function RunAshChatComposer({
             <span className={isNearTokenLimit ? "text-amber-400" : ""}>{estimatedTokens}/{HARD_TOKEN_LIMIT} tokens</span>
           </div>
         </div>
+
+        {showSecondaryControls ? (
+          <div id="composer-secondary-controls" className="mt-2 flex flex-wrap items-center gap-2 border-t border-zinc-800 pt-2 text-xs text-zinc-400">
+            {modelOptions.length > 0 && onSelectedModelChange ? (
+              <label className="flex items-center gap-1">
+                Model
+                <select
+                  value={selectedModel}
+                  onChange={(event) => onSelectedModelChange(event.target.value)}
+                  className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100"
+                  aria-label="Select chat model"
+                >
+                  {modelOptions.map((option) => (
+                    <option key={`${option.provider}:${option.id}`} value={option.id}>
+                      {option.label} ({option.provider})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
+            {projectOptions.length > 0 && onSelectedProjectChange ? (
+              <label className="flex items-center gap-1">
+                Project
+                <select
+                  value={selectedProject}
+                  onChange={(event) => onSelectedProjectChange(event.target.value)}
+                  className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100"
+                  aria-label="Select chat project"
+                >
+                  {projectOptions.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => void enhancePrompt()}
+              disabled={disabled || isEnhancing}
+              className="border-zinc-600 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+              aria-label="Enhance prompt"
+            >
+              <Sparkles className="mr-1 h-3.5 w-3.5" />
+              {isEnhancing ? "Enhancing..." : "Enhance Prompt"}
+            </Button>
+          </div>
+        ) : null}
+
+        {attachmentPreview ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-zinc-700 bg-zinc-950/70 p-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900/70 px-2 py-1 text-xs text-zinc-300">
+              <img src={attachmentPreview.previewUrl} alt={attachmentPreview.metadata.name} className="h-8 w-8 rounded object-cover" />
+              <div className="min-w-0">
+                <p className="truncate font-medium text-zinc-100">{attachmentPreview.metadata.name}</p>
+                <p className={attachmentPreview.uploadState === "failed" ? "text-red-300" : "text-zinc-400"}>
+                  {Math.max(1, Math.round(attachmentPreview.metadata.size / 1024))} KB
+                  {attachmentStatusMessage ? ` • ${attachmentStatusMessage}` : ""}
+                </p>
+              </div>
+            </div>
+
+            {attachmentPreview.uploadState === "failed" && onRetryAttachment ? (
+              <Button type="button" variant="outline" size="sm" className="h-7 border-zinc-600 bg-zinc-900 text-zinc-200" onClick={onRetryAttachment}>
+                <RefreshCcw className="mr-1 h-3.5 w-3.5" /> Retry
+              </Button>
+            ) : null}
+            {onAttachFile ? (
+              <Button type="button" variant="outline" size="sm" className="h-7 border-zinc-600 bg-zinc-900 text-zinc-200" onClick={() => attachmentInputRef.current?.click()}>
+                Replace
+              </Button>
+            ) : null}
+            {onRemoveAttachment ? (
+              <Button type="button" variant="outline" size="sm" className="h-7 border-zinc-600 bg-zinc-900 text-zinc-200" onClick={onRemoveAttachment}>
+                <X className="mr-1 h-3.5 w-3.5" /> Remove
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
 
@@ -292,36 +527,46 @@ export function RunAshChatComposer({
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-2 rounded-md border border-zinc-700 bg-zinc-900/60 p-2 text-xs sm:flex-row sm:items-center sm:justify-between">
-        <label className="flex items-center gap-2 text-zinc-400">
-          Tone
-          <select
-            value={tone}
-            onChange={(event) => onToneChange?.(event.target.value as ResponseTone)}
-            className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100"
-          >
-            <option value="balanced">Balanced</option>
-            <option value="friendly">Friendly</option>
-            <option value="professional">Professional</option>
-          </select>
-        </label>
+      {attachmentError ? (
+        <div className="rounded-md border border-red-700/60 bg-red-950/30 px-3 py-2 text-xs text-red-200">{attachmentError}</div>
+      ) : null}
 
-        <div className="flex items-center gap-1" role="group" aria-label="Output detail level">
-          {(["concise", "normal", "detailed"] as ResponseDetailLevel[]).map((level) => (
-            <Button
-              key={level}
-              type="button"
-              size="sm"
-              variant={detailLevel === level ? "secondary" : "outline"}
-              className="h-7 px-2 text-[11px] capitalize"
-              onClick={() => onDetailLevelChange?.(level)}
-              aria-pressed={detailLevel === level}
-            >
-              {level}
-            </Button>
-          ))}
+      {showSecondaryControls ? (
+        <div className="rounded-md border border-zinc-700 bg-zinc-900/60 p-2 text-xs">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <label className="flex items-center gap-2 text-zinc-400">
+              Tone
+              <select
+                value={tone}
+                onChange={(event) => onToneChange?.(event.target.value as ResponseTone)}
+                className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100"
+                aria-label="Select response tone"
+              >
+                <option value="balanced">Balanced</option>
+                <option value="friendly">Friendly</option>
+                <option value="professional">Professional</option>
+              </select>
+            </label>
+
+            <div className="flex items-center gap-1" role="group" aria-label="Output detail level">
+              {(["concise", "normal", "detailed"] as ResponseDetailLevel[]).map((level) => (
+                <Button
+                  key={level}
+                  type="button"
+                  size="sm"
+                  variant={detailLevel === level ? "secondary" : "outline"}
+                  className="h-7 px-2 text-[11px] capitalize"
+                  onClick={() => onDetailLevelChange?.(level)}
+                  aria-pressed={detailLevel === level}
+                  aria-label={`Set output detail to ${level}`}
+                >
+                  {level}
+                </Button>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
         <span>Enter to send • Shift+Enter newline • Controls are keyboard accessible.</span>
@@ -333,12 +578,48 @@ export function RunAshChatComposer({
           ) : null}
           <Button
             onClick={() => handleSubmit()}
-            disabled={disabled || !value.trim() || isHardLimitExceeded}
-            className="bg-gradient-to-r from-orange-600 to-yellow-500 text-white hover:from-orange-700 hover:to-yellow-600"
+            disabled={disabled || !value.trim() || isHardLimitExceeded || attachmentPreview?.uploadState === "uploading"}
+            className="bg-orange-500 px-4 font-semibold text-zinc-950 hover:bg-orange-400"
+            aria-label="Send prompt"
           >
-            <Send className="h-4 w-4" />
+            <Send className="mr-1 h-4 w-4" />
+            Send
           </Button>
         </div>
+      </div>
+
+      <div className="rounded-md border border-zinc-800/80 bg-zinc-950/60 px-3 py-2 text-[11px] text-zinc-400">
+
+        <span>Need higher usage limits? <a href="/upgrade" className="text-amber-300 underline underline-offset-2">Upgrade your plan</a>.</span>
+        {onAttachFile ? <span className="ml-1">{isTouchDevice ? "Tap Attach to pick an image." : "Drag and drop an image, or click Attach."}</span> : null}
+
+        {shouldShowUpgradePrompt ? (
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              Need higher usage limits?{" "}
+              <a
+                href="/upgrade"
+                className="text-amber-300 underline underline-offset-2"
+                onClick={() => onUpgradeClick?.("composer_inline")}
+              >
+                Upgrade your plan
+              </a>
+              .
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[11px] text-zinc-500 hover:text-zinc-200"
+              onClick={() => setUpgradePromptDismissed(true)}
+              aria-label="Dismiss upgrade prompt"
+            >
+              Dismiss
+            </Button>
+          </div>
+        ) : null}
+        {onAttachFile ? <span className={shouldShowUpgradePrompt ? "mt-1 block" : ""}>Drag and drop an image on desktop, or tap the image button on mobile.</span> : null}
+
       </div>
     </div>
   )

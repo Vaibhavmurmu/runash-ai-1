@@ -138,6 +138,7 @@ export interface StreamMetrics {
   fps: number
   droppedFrames: number
   bandwidth: number
+  latency: number
 }
 
 export class StreamingService {
@@ -302,6 +303,7 @@ export class StreamingService {
     const fps = 30 + Math.floor(Math.random() * 5) // 30-35 fps
     const droppedFrames = Math.floor(Math.random() * 5) // 0-5 dropped frames
     const bandwidth = bitrate * 1.2 // Slightly higher than bitrate
+    const latency = 60 + Math.floor(Math.random() * 90) // 60-150ms
 
     // Determine stream health based on metrics
     let streamHealth: StreamMetrics["streamHealth"] = "Excellent"
@@ -320,6 +322,7 @@ export class StreamingService {
       fps,
       droppedFrames,
       bandwidth,
+      latency,
     }
   }
 
