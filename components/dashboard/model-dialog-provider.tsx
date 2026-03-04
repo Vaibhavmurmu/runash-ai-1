@@ -133,11 +133,17 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
   const [recentRuns, setRecentRuns] = useState<ModelDialogRunHistoryItem[]>([])
   const [selectedModelId, setSelectedModelId] = useState<string>("gpt-4o-mini")
 
+
+
+
   const modelCatalog = useMemo(() => listModelCatalog(), [])
   const selectedCatalogEntry = useMemo(
     () => modelCatalog.find((entry) => entry.id === selectedModelId) ?? null,
     [modelCatalog, selectedModelId],
   )
+
+
+
 
   const eventSourceRef = useRef<EventSource | null>(null)
   const tickTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -381,6 +387,10 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
         model={dialogModelIdentity}
         modelOptions={modelCatalog.map((entry) => ({ id: entry.id, provider: entry.provider, label: entry.label }))}
 
+
+        model={dialogModelIdentity}
+        modelOptions={modelCatalog.map((entry) => ({ id: entry.id, provider: entry.provider, label: entry.label }))}
+
         model={{
           ...BASE_MODEL,
           name:
@@ -393,6 +403,7 @@ export function DashboardModelDialogProvider({ children }: { children: ReactNode
             BASE_MODEL.provider,
         }}
         modelOptions={listModelCatalog().map((entry) => ({ id: entry.id, provider: entry.provider, label: entry.label }))}
+
 
         selectedModelId={selectedModelId}
         onSelectedModelIdChange={setSelectedModelId}

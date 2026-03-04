@@ -50,6 +50,7 @@ const AUTH_SESSION_MIGRATIONS = [
     scope TEXT NOT NULL DEFAULT 'default',
     status TEXT NOT NULL DEFAULT 'active',
     linked_from_session_id TEXT,
+    organization_id BIGINT,
     token_hash TEXT,
     device_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -86,6 +87,7 @@ const AUTH_SESSION_MIGRATIONS = [
     user_id TEXT NOT NULL,
     device_id TEXT NOT NULL,
     device_name TEXT,
+    organization_id BIGINT,
     trusted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (user_id, device_id)
@@ -93,6 +95,22 @@ const AUTH_SESSION_MIGRATIONS = [
   `,
   `
   CREATE INDEX IF NOT EXISTS idx_auth_trusted_devices_user_last_seen ON auth_trusted_devices(user_id, last_seen_at DESC);
+  `,
+  `
+  ALTER TABLE auth_session_registry ADD COLUMN IF NOT EXISTS organization_id BIGINT;
+  `,
+  `
+  ALTER TABLE auth_trusted_devices ADD COLUMN IF NOT EXISTS organization_id BIGINT;
+  `,
+  `
+  CREATE INDEX IF NOT EXISTS idx_auth_session_registry_org_user_last_seen
+    ON auth_session_registry(organization_id, user_id, last_seen_at DESC)
+    WHERE organization_id IS NOT NULL;
+  `,
+  `
+  CREATE INDEX IF NOT EXISTS idx_auth_trusted_devices_org_user_last_seen
+    ON auth_trusted_devices(organization_id, user_id, last_seen_at DESC)
+    WHERE organization_id IS NOT NULL;
   `,
 ] as const
 
@@ -148,9 +166,9 @@ export async function createAuthSession(input: {
 
   await queryMany(
     `INSERT INTO auth_session_registry
-      (id, user_id, mode, scope, linked_from_session_id, token_hash, device_metadata, expires_at, rotation_due_at)
+      (id, user_id, mode, scope, linked_from_session_id, organization_id, token_hash, device_metadata, expires_at, rotation_due_at)
      VALUES
-      ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)`,
+      ($1, $2, $3, $4, $5, (SELECT sso_organization_id FROM users WHERE id = $2), $6, $7::jsonb, $8, $9)`,
     [
       sessionId,
       input.userId,
@@ -173,10 +191,13 @@ export async function createAuthSession(input: {
 
   if (input.device?.deviceId) {
     await queryMany(
-      `INSERT INTO auth_trusted_devices (user_id, device_id, device_name, last_seen_at)
-       VALUES ($1, $2, $3, NOW())
+      `INSERT INTO auth_trusted_devices (user_id, device_id, device_name, organization_id, last_seen_at)
+       VALUES ($1, $2, $3, (SELECT sso_organization_id FROM users WHERE id = $1), NOW())
        ON CONFLICT (user_id, device_id)
-       DO UPDATE SET device_name = EXCLUDED.device_name, last_seen_at = NOW()`,
+       DO UPDATE SET
+         device_name = EXCLUDED.device_name,
+         organization_id = COALESCE(EXCLUDED.organization_id, auth_trusted_devices.organization_id),
+         last_seen_at = NOW()`,
       [input.userId, input.device.deviceId, input.device.deviceName ?? null],
     )
   }
@@ -220,10 +241,14 @@ export async function trustUserDevice(input: { userId: string; deviceId: string;
   await ensureAuthSessionModeTables()
 
   return queryOne<TrustedDeviceRecord>(
-    `INSERT INTO auth_trusted_devices (user_id, device_id, device_name, trusted_at, last_seen_at)
-     VALUES ($1, $2, $3, NOW(), NOW())
+    `INSERT INTO auth_trusted_devices (user_id, device_id, device_name, organization_id, trusted_at, last_seen_at)
+     VALUES ($1, $2, $3, (SELECT sso_organization_id FROM users WHERE id = $1), NOW(), NOW())
      ON CONFLICT (user_id, device_id)
-     DO UPDATE SET device_name = COALESCE(EXCLUDED.device_name, auth_trusted_devices.device_name), trusted_at = NOW(), last_seen_at = NOW()
+     DO UPDATE SET
+       device_name = COALESCE(EXCLUDED.device_name, auth_trusted_devices.device_name),
+       organization_id = COALESCE(EXCLUDED.organization_id, auth_trusted_devices.organization_id),
+       trusted_at = NOW(),
+       last_seen_at = NOW()
      RETURNING device_id AS "deviceId", device_name AS "deviceName", last_seen_at AS "lastSeenAt", trusted_at AS "trustedAt"`,
     [input.userId, input.deviceId, input.deviceName ?? null],
   )

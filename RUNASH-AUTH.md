@@ -103,6 +103,14 @@ This document tracks the **currently implemented** auth runtime, files, and rout
 
 Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 
+
+## Auth email safety + webhook diagnostics update (2026-03)
+
+- Magic link and email OTP delivery now render through centralized auth-email helpers in `lib/email.ts`, ensuring verification, password reset, magic link, and OTP mail all inherit the same safety policy (safe-mode allowlist/sink + dry-run) and delivery tracking behavior.
+- Email provider diagnostics now expose primary/fallback runtime configuration and failover readiness, with admin visibility at `GET /api/admin/email-provider/health`.
+- Webhook signature verification now supports strict empty-payload checks and timestamp freshness validation (configurable via `EMAIL_WEBHOOK_MAX_SIGNATURE_AGE_SECONDS`) to reduce replay risk.
+- Webhook ingestion diagnostics now include reconciliation counters and actionable status summaries in admin webhook APIs for faster incident triage.
+
 ## Auth email provider unification update (2026-02)
 
 - Introduced one canonical provider module at `lib/email-provider.ts` used by both transactional auth mail (`lib/email.ts`) and report mail (`lib/emails.ts`).
@@ -760,3 +768,30 @@ Use this destructive path only when the application rollback cannot restore serv
 3. If incidents are detected, rollback application artifacts first and temporarily gate new settings mutations.
 4. Keep additive schema in place during incident response; avoid destructive rollback.
 
+
+## 2026-03 OTP verification/session hardening update
+
+- `verifyOTP()` now uses explicit identifier predicates for both variants (`email` and `phone_number`) instead of dynamic identifier-column construction, preserving query contract compatibility while reducing injection-risk surface.
+- OTP observability was tightened to structured/redacted events only; auth logs continue to carry identifier hashes rather than raw email/phone/OTP values.
+- Email OTP `PUT /api/auth/otp/email` login verification continues to issue a persisted auth session token and response cookies after successful OTP verification; non-login OTP purposes remain verification-only with no session issuance.
+- Added OTP regression coverage for send/verify flow behavior, invalid and replayed OTP handling, and login-session cookie issuance boundaries.
+
+### Risks + rollback
+
+- **Risk:** low; changes are scoped to OTP verification and testability seams, with no public request/response schema changes.
+- **Rollback:** revert the OTP hardening commit to restore previous OTP query/logging behavior and test structure; no migration is required.
+
+
+## 2026-03 auth/session tenant consistency migration
+
+- Added SQL migration `scripts/sql/2026-03-03_auth_session_tenant_consistency.sql` to harden tenant-aware auth session storage while preserving compatibility for existing rows.
+- `auth_session_registry` and `auth_trusted_devices` now include nullable `organization_id` columns with backfill from `users.sso_organization_id` for existing records.
+- Added idempotent foreign-key hardening for `auth_session_identities` and `auth_session_registry` to align script-driven environments with baseline migration guarantees.
+- Added missing operational indexes for tenant-scoped session/device queries and transfer-token expiry/session lookups.
+
+### Migration guidance
+
+1. Apply: `scripts/sql/2026-03-03_auth_session_tenant_consistency.sql` after the Better Auth baseline migration.
+2. Validate backfill: compare non-null `organization_id` counts in `auth_session_registry` and `auth_trusted_devices` against users with non-null `sso_organization_id`.
+3. Validate contract compatibility: run `GET /api/auth/sessions`, `DELETE /api/auth/sessions`, and settings security device/session endpoints.
+4. Rollback: this migration is additive; rollback should be application-level first. For emergency DB rollback, drop only the new indexes/columns after traffic pause.

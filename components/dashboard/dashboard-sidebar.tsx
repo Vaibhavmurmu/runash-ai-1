@@ -77,6 +77,14 @@ const sidebarRouteGuards = {
     featureFlag: "sidebar_store",
     unavailableBehavior: "hide" as const,
   },
+  "/dashboard/api": {
+    featureFlag: "sidebar_api_platform",
+    unavailableBehavior: "disable" as const,
+  },
+  "/dashboard/documentation": {
+    featureFlag: "sidebar_api_docs",
+    unavailableBehavior: "disable" as const,
+  },
 };
 
 const SIDEBAR_STORAGE_KEY = "runash.dashboard.sidebar.v1";
@@ -409,6 +417,10 @@ function SidebarContents({
       sidebar_ai_agents:
         process.env.NEXT_PUBLIC_FEATURE_SIDEBAR_AI_AGENTS !== "false",
       sidebar_store: process.env.NEXT_PUBLIC_FEATURE_SIDEBAR_STORE !== "false",
+      sidebar_api_platform:
+        process.env.NEXT_PUBLIC_FEATURE_SIDEBAR_API_PLATFORM !== "false",
+      sidebar_api_docs:
+        process.env.NEXT_PUBLIC_FEATURE_SIDEBAR_API_DOCS !== "false",
     },
     routeGuards: sidebarRouteGuards,
   });

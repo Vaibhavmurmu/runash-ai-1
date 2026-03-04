@@ -1,7 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
 
 import type { ServerAuthSession } from "@/lib/auth/session"
-import { buildTenantScopePredicate, evaluateTenantBoundaryAccess, resolveSessionOrganizationId } from "@/lib/api/route-auth"
+import {
+  buildTenantScopePredicate,
+  enforceTenantBoundaryForUser,
+  resolveSessionOrganizationId,
+} from "@/lib/api/route-auth"
 
 type ProfileRouteDependencies = {
   getSession: () => Promise<ServerAuthSession | null>
@@ -76,19 +80,23 @@ export async function handlePatchUserProfile(
       return NextResponse.json({ error: "No valid fields to update" }, { status: 400 })
     }
 
-    const existing = await deps.query(`SELECT id, sso_organization_id FROM users WHERE id = $1`, [userId])
-    const targetProfile = existing[0] as { id: string; sso_organization_id: number | null } | undefined
-
-    if (!targetProfile) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 })
-    }
-
-    const tenantCheck = evaluateTenantBoundaryAccess(sessionOrganizationId, targetProfile.sso_organization_id, {
-      allowLegacyNullOrganization: true,
+    const tenantCheck = await enforceTenantBoundaryForUser(userId, sessionOrganizationId, async (id) => {
+      const existing = await deps.query(`SELECT sso_organization_id FROM users WHERE id = $1`, [id])
+      const targetProfile = existing[0] as { sso_organization_id: number | null } | undefined
+      return targetProfile?.sso_organization_id
     })
-    if (!tenantCheck.allowed) {
+
+    if (!tenantCheck.ok) {
+      if (tenantCheck.status === 404) {
+        return NextResponse.json({ error: "User not found" }, { status: 404 })
+      }
+
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
+
+    const updateTenantScope = buildTenantScopePredicate("sso_organization_id", sessionOrganizationId, 2, {
+      allowLegacyNullOrganization: true,
+    })
 
     const setClause = updateFields.map((field, index) => `${field} = $${index + 2}`).join(", ")
     const values = [userId, ...updateFields.map((field) => updates[field])]
@@ -101,8 +109,8 @@ export async function handlePatchUserProfile(
       tenantCheck.shouldMigrateLegacyOrganization && sessionOrganizationId ? [sessionOrganizationId] : []
 
     const result = await deps.query(
-      `UPDATE users SET ${setClause}${migrationClause}, updated_at = NOW() WHERE id = $1 RETURNING *`,
-      [...values, ...migrationValues],
+      `UPDATE users SET ${setClause}${migrationClause}, updated_at = NOW() WHERE id = $1 AND ${updateTenantScope.predicate} RETURNING *`,
+      [...values, ...migrationValues, ...updateTenantScope.values],
     )
 
     if (!result[0]) {

@@ -335,82 +335,29 @@ Business controls preserved:
 - **Mitigation:** all limits are environment-configurable and surfaced with stable API error codes.
 - **Rollback:** relax or disable quota/policy env limits while preserving API shape and worker behavior.
 
+## 2026-02 Seller marketing workflow automation note (non-payment)
 
-## 2026-02-28 lifecycle-event implementation update (business reliability)
+- Added seller marketing workflow orchestration for trigger-based campaigns (`stream_ended`, `cart_abandoned`, `high_intent_viewer`, `repeat_buyer`) with multi-channel delivery routing.
+- Added campaign persistence tables for templates, rules, and run history to support auditability and replay.
+- **Payment/auth impact:** none. Checkout contracts, payment field names, and auth/session interfaces remain unchanged.
 
-### Lifecycle mapping coverage
-
-- Billing/subscription lifecycle events are now explicitly mapped from API and webhook sources into typed `payment_lifecycle_events` records.
-- Event-template pairing is deterministic through a centralized map, enabling consistent downstream notification/workflow handling.
-
-### Operational risk and rollback
-
-- **Risk:** additive event emission may increase notification volume if downstream consumers subscribe immediately without filtering.
-- **Mitigation:** event payloads include typed `event_type`, `template_key`, and normalized metadata fields for predictable routing.
-- **Rollback:** disable emit callsites while preserving the additive table; no customer-facing payment contract rollback or schema migration is required.
-
-### Validation capture
-
-- Validation floor executed for payment/auth scope:
-  - `npm run lint`
-  - `npm run build`
+### Risk / rollback
+- **Risk:** high-volume trigger traffic could generate excessive outbound notifications.
+- **Mitigation:** rule activation controls, trigger condition gates, and run history observability are included for controlled rollout.
+- **Rollback:** deactivate affected marketing workflows via activation API or remove the new seller marketing tab while preserving existing seller operations.
 
 
-## Reliability note: feedback/referral operational flows
-- Added guidance that referral invites/conversions and feedback intake are non-payment business flows with independent throttling and email notifications.
-- No payment API contract changes were introduced; rollback path is to disable `/api/referrals*` and `/api/feedback` routes plus revert migration `0006_feedback_and_referrals.sql`.
+## 2026-03 auth/session tenant consistency linkage
 
-## 2026-02 Settings billing contract governance update (billing/invoice/credits/referrals)
+### Impacted payment/auth flows
+- Authenticated merchant/operator session resolution for payment-adjacent routes now benefits from tenant-indexed auth session lookups (`auth_session_registry.organization_id`).
+- Trusted-device/session-security controls used by payment-sensitive actions continue using unchanged API contracts; persistence is hardened with tenant backfill/indexing.
 
-- Added a unified settings architecture/API contract source at `docs/SETTINGS_ARCHITECTURE_API_CONTRACT.md` to standardize business and engineering interpretation of settings billing surfaces.
-- Business-level contract guarantees now explicitly include:
-  - stable billing summary keys,
-  - invoice list totals + link fields,
-  - credit application idempotency,
-  - referral metric consistency (`pendingCredits`, `earnedCredits`, `lifetimeCredits`).
-- No version bump is required; all behavior changes are additive and backward compatible for current startup/business clients.
+### Compatibility + risk
+- Payment API contracts, field names, webhook payloads, and checkout route signatures are unchanged.
+- Migration is additive; risk is limited to migration runtime/index creation overhead on large auth-session tables.
 
-### Risk + rollback
-
-- **Risk:** projection lag between billing ledger and settings read-model may produce short-lived summary mismatch.
-- **Mitigation:** reconciliation-first update order and strict parity checks before enabling expanded rollout percentages.
-- **Rollback:** application rollback and feature-flag gating for affected settings billing writes while retaining additive schema/data artifacts for safe forward recovery.
-
-### Storage model + migration procedure
-
-1. Keep billing/invoice/credits/referral storage changes additive and replay-safe.
-2. Execute idempotent backfill/rebuild jobs for settings projections.
-3. Validate invoice total parity and credits/referral counters against reconciliation outputs.
-4. If rollback is required, retain new tables/columns and revert read paths first to avoid destructive data loss.
-
-
-## 2026-02 settings/billing phased rollout directive
-
-### Milestones and gated release path
-
-1. **Phase 1 (read-only):** information architecture shell, settings route scaffolding, and read-only billing/usage/session/device surfaces.
-2. **Phase 2 (controlled writes):** settings mutations, mandatory confirm dialogs for sensitive operations, and attachment upload support.
-3. **Phase 3 (durability + advanced commerce):** dedicated settings storage migration, audit logging, and advanced billing/referral operations.
-
-All phases must remain feature-flag gated and observable before progressing.
-
-### Required telemetry (failure/retry)
-
-- Capture per-phase failure and retry rates for billing usage reads/writes, session/device operations, and referral-related workflows.
-- Track upload retry/failure telemetry in Phase 2 and migration/audit-write retry/failure telemetry in Phase 3.
-- Block phase promotion when failure/retry rates exceed release SLO thresholds.
-
-### Risk + rollback (phase contract)
-
-For every phase, use this rollback sequence:
-
-1. Disable the associated phase feature flags.
-2. Revert API route bindings to the last stable billing/settings handlers.
-3. Restore legacy read path as default for customer-visible billing/usage/session/device data.
-4. Reconcile partial writes/events before retrying rollout.
-
-Backward compatibility remains mandatory: existing billing/payment field names and API signatures are preserved throughout all phases unless versioned migration notes are explicitly approved.
-
-
-
-
+### Rollback strategy
+1. Application rollback is preferred; no payment contract rollback is required.
+2. If DB rollback is required, remove only newly added indexes first, then `organization_id` columns after controlled maintenance window.
+3. Re-run payment authorization smoke checks after rollback before re-enabling rollout flags.

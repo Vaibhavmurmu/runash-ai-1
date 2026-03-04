@@ -12,17 +12,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import type { Database } from "@/lib/supabase/types"
-
-type Product = Database["public"]["Tables"]["products"]["Row"]
+import type { Product } from "@/lib/repositories/products"
 
 interface ProductListProps {
   products: Product[]
   onEdit: (product: Product) => void
   onDelete: (id: string) => void
+  onView: (product: Product) => void
 }
 
-export function ProductList({ products, onEdit, onDelete }: ProductListProps) {
+export function ProductList({ products, onEdit, onDelete, onView }: ProductListProps) {
   return (
     <Card>
       <CardHeader>
@@ -91,7 +90,7 @@ export function ProductList({ products, onEdit, onDelete }: ProductListProps) {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => console.log("View", product.id)}>
+                      <DropdownMenuItem onClick={() => onView(product)}>
                         <Eye className="h-4 w-4 mr-2" />
                         View Details
                       </DropdownMenuItem>

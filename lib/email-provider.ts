@@ -31,8 +31,11 @@ export type EmailProviderType = "smtp" | "resend"
 
 export interface EmailProviderDiagnostics {
   provider: EmailProviderType
+  primaryProvider: EmailProviderType
+  fallbackProvider?: EmailProviderType
   configuredProvider?: string
   fallbackActive: boolean
+  failoverConfigured: boolean
   smtpConfigured: boolean
   resendConfigured: boolean
 }
@@ -237,16 +240,27 @@ function resolveProviderType(): EmailProviderType {
   throw new Error("No email provider configured. Set SMTP_* (with SMTP_PASSWORD) or RESEND_API_KEY + EMAIL_FROM.")
 }
 
+function resolveFallbackProvider(provider: EmailProviderType): EmailProviderType | undefined {
+  const fallback = provider === "smtp" ? "resend" : "smtp"
+  if (fallback === "smtp" && hasSmtpConfig()) return fallback
+  if (fallback === "resend" && hasResendConfig()) return fallback
+  return undefined
+}
+
 export function getEmailProviderDiagnostics(): EmailProviderDiagnostics {
   const configuredProvider = process.env.EMAIL_PROVIDER?.toLowerCase()
   const smtpConfigured = hasSmtpConfig()
   const resendConfigured = hasResendConfig()
   const provider = resolveProviderType()
+  const fallbackProvider = resolveFallbackProvider(provider)
 
   return {
     provider,
+    primaryProvider: provider,
+    fallbackProvider,
     configuredProvider,
     fallbackActive: Boolean(configuredProvider && configuredProvider !== provider),
+    failoverConfigured: Boolean(fallbackProvider),
     smtpConfigured,
     resendConfigured,
   }
@@ -322,6 +336,7 @@ export async function runEmailProviderHealthCheck(): Promise<EmailProviderHealth
 }
 
 let cachedProvider: EmailProvider | undefined
+let cachedFallbackProvider: EmailProvider | undefined
 
 function getEmailProvider() {
   if (!cachedProvider) {
@@ -332,6 +347,42 @@ function getEmailProvider() {
   return cachedProvider
 }
 
+function createEmailProvider(providerType: EmailProviderType): EmailProvider {
+  return providerType === "smtp" ? new SmtpEmailProvider() : new ResendEmailProvider()
+}
+
+function getFallbackProvider() {
+  const providerType = resolveProviderType()
+  const fallbackType = resolveFallbackProvider(providerType)
+  if (!fallbackType) {
+    return undefined
+  }
+
+  if (!cachedFallbackProvider) {
+    cachedFallbackProvider = createEmailProvider(fallbackType)
+  }
+
+  return cachedFallbackProvider
+}
+
 export async function sendWithEmailProvider(input: SendEmailInput) {
-  return getEmailProvider().send(input)
+  const primaryProvider = getEmailProvider()
+  try {
+    return await primaryProvider.send(input)
+  } catch (primaryError) {
+    const fallbackProvider = getFallbackProvider()
+    if (!fallbackProvider) {
+      throw primaryError
+    }
+
+    try {
+      return await fallbackProvider.send(input)
+    } catch (fallbackError) {
+      throw new Error(
+        `Email delivery failed for primary and fallback providers: ${
+          primaryError instanceof Error ? primaryError.message : "primary_failed"
+        }; ${fallbackError instanceof Error ? fallbackError.message : "fallback_failed"}`,
+      )
+    }
+  }
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -108,6 +108,13 @@ export function StreamsDashboard() {
   const [datasetName, setDatasetName] = useState("")
   const [datasets, setDatasets] = useState<AnalyticsDataset[]>([])
   const [streamSessionId, setStreamSessionId] = useState<string | null>(null)
+  const [automationTimeline, setAutomationTimeline] = useState<Array<{
+    id: string
+    eventType: string
+    stage: "intermediate" | "final"
+    createdAt: string
+    eventPayload: Record<string, unknown>
+  }>>([])
   const [savingConsent, setSavingConsent] = useState(false)
   const [consent, setConsent] = useState({
     allowMic: true,
@@ -147,6 +154,45 @@ export function StreamsDashboard() {
     void hydrateDatasets()
   }, [])
 
+
+  useEffect(() => {
+    if (!streamSessionId) return
+
+    let cancelled = false
+    const loadTimeline = async () => {
+      try {
+        const response = await fetch(`/api/streams/sessions/${streamSessionId}/automation`, { cache: "no-store" })
+        if (!response.ok) return
+        const payload = (await response.json()) as {
+          events?: Array<{
+            id: string
+            eventType: string
+            stage: "intermediate" | "final"
+            createdAt: string
+            eventPayload: Record<string, unknown>
+          }>
+        }
+        if (!cancelled) {
+          setAutomationTimeline(
+            (payload.events ?? []).filter((event) =>
+              event.eventType.startsWith("stream_automation.network_quality") || event.eventType === "stream_automation.state_snapshot",
+            ),
+          )
+        }
+      } catch {
+        if (!cancelled) setAutomationTimeline([])
+      }
+    }
+
+    void loadTimeline()
+    const timer = setInterval(() => void loadTimeline(), 10_000)
+
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [streamSessionId])
+
   const streamIds = useMemo(() => liveStreams.map((stream) => stream.id), [])
   const { connected, streams, alerts } = useStreamingStudioRealtime({ initialStreamIds: streamIds })
 
@@ -168,6 +214,28 @@ export function StreamsDashboard() {
   }, 0)
 
   const latestAlert = alerts[0]
+
+
+  const triggerNetworkAutomation = async (trigger: "network_quality_degraded" | "network_quality_recovered") => {
+    if (!streamSessionId) {
+      toast.error("Start live session first")
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/streams/sessions/${streamSessionId}/automation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: trigger,
+        }),
+      })
+      if (!response.ok) throw new Error("request_failed")
+      toast.success(trigger === "network_quality_degraded" ? "Connection optimization triggered" : "Gradual profile restore triggered")
+    } catch {
+      toast.error("Failed to trigger network automation")
+    }
+  }
 
   const handleGoLiveWithConsent = async () => {
     try {
@@ -297,8 +365,30 @@ export function StreamsDashboard() {
         </Card>
       ) : null}
 
+
+      {streamSessionId ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Automation Timeline</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {automationTimeline.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No network automation events yet for this session.</p>
+            ) : (
+              automationTimeline.slice(-8).map((event) => (
+                <div key={event.id} className="rounded-md border p-3 text-sm">
+                  <div className="font-medium">{event.eventType}</div>
+                  <div className="text-xs text-muted-foreground">{new Date(event.createdAt).toLocaleString()}</div>
+                  {event.eventPayload.message ? <div className="mt-1">{String(event.eventPayload.message)}</div> : null}
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
       {/* Quick Actions */}
-      <div className="flex gap-4">
+      <div className="flex flex-wrap gap-4">
         <Button size="lg" className="gap-2">
           <Video className="h-4 w-4" />
           Start New Stream
@@ -312,6 +402,16 @@ export function StreamsDashboard() {
           Stream Settings
         </Button>
       </div>
+        {streamSessionId ? (
+          <>
+            <Button variant="secondary" size="lg" onClick={() => void triggerNetworkAutomation("network_quality_degraded")}>
+              Simulate degraded network
+            </Button>
+            <Button variant="outline" size="lg" onClick={() => void triggerNetworkAutomation("network_quality_recovered")}>
+              Simulate network recovery
+            </Button>
+          </>
+        ) : null}
 
       <Tabs defaultValue="active" className="space-y-4">
         <TabsList>

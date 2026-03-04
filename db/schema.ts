@@ -62,6 +62,7 @@ export const authSchemaTables = {
       "scope",
       "status",
       "linked_from_session_id",
+      "organization_id",
       "token_hash",
       "device_metadata",
       "created_at",
@@ -82,6 +83,12 @@ export const authSchemaTables = {
     fields: ["id", "session_id", "token_hash", "source_domain", "target_domain", "consumed_at", "expires_at", "created_at"],
     indexes: ["idx_auth_transfer_tokens_hash", "idx_auth_transfer_tokens_session_id", "idx_auth_transfer_tokens_expires_at"],
     uniqueConstraints: ["token_hash"],
+  },
+  authTrustedDevices: {
+    table: "auth_trusted_devices",
+    fields: ["user_id", "device_id", "device_name", "organization_id", "trusted_at", "last_seen_at"],
+    indexes: ["idx_auth_trusted_devices_user_last_seen", "idx_auth_trusted_devices_org_user_last_seen"],
+    uniqueConstraints: ["user_id,device_id"],
   },
 } as const
 
@@ -178,68 +185,28 @@ export const appSchemaTables = {
       "created_at",
     ],
   },
-
-  mobileChatMessages: {
-    table: "mobile_chat_messages",
-    fields: ["id", "cursor_seq", "platform", "username", "message", "client_request_id", "created_at"],
-    indexes: ["idx_mobile_chat_cursor_seq", "idx_mobile_chat_client_request_id"],
+  marketingWorkflowTemplates: {
+    table: "marketing_workflow_templates",
+    fields: ["id", "seller_user_id", "name", "description", "preset_key", "channels", "content", "is_system", "created_at", "updated_at"],
   },
-  mobileChatMessageAttachments: {
-    table: "mobile_chat_message_attachments",
+  marketingWorkflowRules: {
+    table: "marketing_workflow_rules",
+    fields: ["id", "seller_user_id", "name", "trigger_type", "template_id", "conditions", "channels", "is_active", "created_at", "updated_at"],
+  },
+  marketingWorkflowRuns: {
+    table: "marketing_workflow_runs",
     fields: [
       "id",
-      "message_id",
-      "attachment_name",
-      "attachment_type",
-      "attachment_size",
-      "attachment_url",
-      "attachment_checksum",
-      "created_at",
-    ],
-  },
-  streamChatMessages: {
-    table: "stream_chat_messages",
-    fields: ["id", "stream_id", "user_id", "username", "text_content", "dedupe_key", "created_at"],
-    indexes: ["idx_stream_chat_messages_dedupe"],
-  },
-  streamChatMessageAttachments: {
-    table: "stream_chat_message_attachments",
-    fields: [
-      "id",
-      "message_id",
-      "attachment_name",
-      "attachment_type",
-      "attachment_size",
-      "attachment_url",
-      "attachment_checksum",
-      "created_at",
-    ],
-
-  feedbackEntries: {
-    table: "feedback_entries",
-    fields: ["id", "user_id", "score", "message", "source", "status", "triage_notes", "created_at", "updated_at"],
-    indexes: ["idx_feedback_entries_user_created_at", "idx_feedback_entries_status_created_at"],
-  },
-  referralInvites: {
-    table: "referral_invites",
-    fields: [
-      "id",
-      "inviter_user_id",
-      "inviter_email",
-      "invitee_email",
-      "invite_code",
+      "rule_id",
+      "seller_user_id",
+      "trigger_type",
       "status",
-      "sent_at",
-      "converted_at",
-      "last_sent_ip",
+      "trigger_payload",
+      "channel_results",
+      "error_message",
+      "started_at",
+      "completed_at",
     ],
-    indexes: ["idx_referral_invites_inviter_invitee_unique", "idx_referral_invites_inviter_status"],
-  },
-  referralConversions: {
-    table: "referral_conversions",
-    fields: ["id", "invite_id", "inviter_user_id", "converted_user_id", "conversion_source", "created_at"],
-    indexes: ["idx_referral_conversions_inviter_created_at"],
-
   },
 } as const
 
