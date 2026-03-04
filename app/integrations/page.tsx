@@ -9,12 +9,14 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
+type IntegrationStatus = "connected" | "available" | "coming-soon"
+
 type Integration = {
   name: string
   description: string
   icon: string
   category: string
-  status: "connected" | "available" | "coming-soon"
+  status: IntegrationStatus
   featured?: boolean
 }
 
@@ -33,7 +35,7 @@ const IntegrationCard = ({
   description: string
   icon: string
   category: string
-  status: "connected" | "available" | "coming-soon"
+  status: IntegrationStatus
   featured?: boolean
   comingSoon?: boolean
   href?: string
@@ -113,7 +115,7 @@ const IntegrationCard = ({
 export default function IntegrationsPage() {
   const [searchQuery, setSearchQuery] = useState("")
 
-  const featuredIntegrations: Integration[] = [
+  const allIntegrations: Integration[] = [
     {
       name: "Twitch",
       description: "Stream directly to Twitch with enhanced video quality and smart chat moderation.",
@@ -138,9 +140,6 @@ export default function IntegrationsPage() {
       status: "available",
       featured: true,
     },
-  ]
-
-  const allIntegrations: Integration[] = [
     {
       name: "Discord",
       description: "Connect your Discord community with stream notifications and interactive features.",
@@ -204,59 +203,6 @@ export default function IntegrationsPage() {
       category: "Communication",
       status: "coming-soon",
     },
-  ]
-
-  const streamingIntegrations: Integration[] = [
-    featuredIntegrations[0],
-    {
-      name: "YouTube",
-      description: "Reach your YouTube audience with AI-enhanced streams and automatic highlight clips.",
-      icon: "/placeholder.svg?height=32&width=32",
-      category: "Streaming Platform",
-      status: "available",
-    },
-    {
-      name: "TikTok Live",
-      description: "Stream to TikTok Live with vertical video optimization and engagement tools.",
-      icon: "/placeholder.svg?height=32&width=32",
-      category: "Streaming Platform",
-      status: "available",
-    },
-    {
-      name: "Facebook Live",
-      description: "Broadcast to Facebook with AI-powered audience engagement features.",
-      icon: "/placeholder.svg?height=32&width=32",
-      category: "Streaming Platform",
-      status: "available",
-    },
-    {
-      name: "Instagram Live",
-      description: "Go live on Instagram with professional quality and AI enhancements.",
-      icon: "/placeholder.svg?height=32&width=32",
-      category: "Streaming Platform",
-      status: "available",
-    },
-  ]
-
-  const creatorToolIntegrations: Integration[] = [
-    featuredIntegrations[2],
-    {
-      name: "Streamlabs",
-      description: "Integrate with Streamlabs for enhanced alerts and donation features.",
-      icon: "/placeholder.svg?height=32&width=32",
-      category: "Creator Tool",
-      status: "available",
-    },
-  ]
-
-  const socialIntegrations: Integration[] = [
-    {
-      name: "Discord",
-      description: "Connect your Discord community with stream notifications and interactive features.",
-      icon: "/placeholder.svg?height=32&width=32",
-      category: "Social Media",
-      status: "available",
-    },
     {
       name: "Twitter",
       description: "Auto-tweet when you go live and share highlights with your followers.",
@@ -266,50 +212,56 @@ export default function IntegrationsPage() {
     },
   ]
 
-  const analyticsIntegrations: Integration[] = [
-    {
-      name: "Google Analytics",
-      description: "Track your streaming performance with detailed analytics and insights.",
-      icon: "/placeholder.svg?height=32&width=32",
-      category: "Analytics",
-      status: "available",
-    },
-  ]
-
-  const normalizedQuery = searchQuery.trim().toLowerCase()
+  const featuredIntegrations = allIntegrations.filter((integration) => integration.featured)
+  const streamingIntegrations = allIntegrations.filter((integration) => integration.category === "Streaming Platform")
+  const toolsIntegrations = allIntegrations.filter((integration) => integration.category === "Creator Tool")
+  const socialIntegrations = allIntegrations.filter((integration) => integration.category === "Social Media")
+  const analyticsIntegrations = allIntegrations.filter((integration) => integration.category === "Analytics")
 
   const filterIntegrations = (integrations: Integration[]) => {
+    const normalizedQuery = searchQuery.trim().toLowerCase()
+
     if (!normalizedQuery) {
       return integrations
     }
 
     return integrations.filter(({ name, category, description }) =>
-      [name, category, description].some((value) => value.toLowerCase().includes(normalizedQuery)),
+      [name, category, description].some((field) => field.toLowerCase().includes(normalizedQuery)),
+    )
+  }
+
+  const renderIntegrationGrid = (integrations: Integration[], emptyStateLabel: string) => {
+    if (!integrations.length) {
+      return (
+        <div className="rounded-lg border border-dashed border-orange-300/70 dark:border-orange-800/70 p-8 text-center text-gray-600 dark:text-gray-300">
+          No integrations match “{searchQuery}” in {emptyStateLabel}.
+        </div>
+      )
+    }
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {integrations.map((integration) => (
+          <IntegrationCard
+            key={integration.name}
+            name={integration.name}
+            description={integration.description}
+            icon={integration.icon}
+            category={integration.category}
+            status={integration.status}
+            featured={integration.featured}
+          />
+        ))}
+      </div>
     )
   }
 
   const filteredFeaturedIntegrations = filterIntegrations(featuredIntegrations)
   const filteredAllIntegrations = filterIntegrations(allIntegrations)
   const filteredStreamingIntegrations = filterIntegrations(streamingIntegrations)
-  const filteredCreatorToolIntegrations = filterIntegrations(creatorToolIntegrations)
+  const filteredToolsIntegrations = filterIntegrations(toolsIntegrations)
   const filteredSocialIntegrations = filterIntegrations(socialIntegrations)
   const filteredAnalyticsIntegrations = filterIntegrations(analyticsIntegrations)
-
-  const renderIntegrationGrid = (integrations: Integration[]) => {
-    if (!integrations.length) {
-      return null
-    }
-
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {integrations.map((integration) => (
-          <IntegrationCard key={integration.name} {...integration} comingSoon={integration.status === "coming-soon"} />
-        ))}
-      </div>
-    )
-  }
-
-  const showNoResults = normalizedQuery.length > 0
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-white">
@@ -360,16 +312,12 @@ export default function IntegrationsPage() {
                 <TabsTrigger value="analytics">Analytics</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="all" className="mt-8">
-                {/* Featured Integrations */}
-                {filteredFeaturedIntegrations.length > 0 && (
-                  <div className="mb-12">
-                    <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">Featured Integrations</h2>
-                    {renderIntegrationGrid(filteredFeaturedIntegrations)}
-                  </div>
-                )}
+              <TabsContent value="all" className="mt-8 space-y-12">
+                <div>
+                  <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">Featured Integrations</h2>
+                  {renderIntegrationGrid(filteredFeaturedIntegrations, "Featured Integrations")}
+                </div>
 
-                {/* All Integrations */}
                 <div>
                   <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">All Integrations</h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -473,10 +421,7 @@ export default function IntegrationsPage() {
               </TabsContent>
 
               <TabsContent value="streaming" className="mt-8">
-                {renderIntegrationGrid(filteredStreamingIntegrations)}
-                {showNoResults && filteredStreamingIntegrations.length === 0 && (
-                  <p className="text-gray-600 dark:text-gray-400">No integrations match your search query.</p>
-                )}
+                {renderIntegrationGrid(filteredStreamingIntegrations, "Streaming Platforms")}
               </TabsContent>
 
               <TabsContent value="tools" className="mt-8">
@@ -527,17 +472,11 @@ export default function IntegrationsPage() {
               </TabsContent>
 
               <TabsContent value="social" className="mt-8">
-                {renderIntegrationGrid(filteredSocialIntegrations)}
-                {showNoResults && filteredSocialIntegrations.length === 0 && (
-                  <p className="text-gray-600 dark:text-gray-400">No integrations match your search query.</p>
-                )}
+                {renderIntegrationGrid(filteredSocialIntegrations, "Social Media")}
               </TabsContent>
 
               <TabsContent value="analytics" className="mt-8">
-                {renderIntegrationGrid(filteredAnalyticsIntegrations)}
-                {showNoResults && filteredAnalyticsIntegrations.length === 0 && (
-                  <p className="text-gray-600 dark:text-gray-400">No integrations match your search query.</p>
-                )}
+                {renderIntegrationGrid(filteredAnalyticsIntegrations, "Analytics")}
               </TabsContent>
             </Tabs>
 
