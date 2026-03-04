@@ -1,54 +1,68 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
-import { AlertTriangle, CheckCircle, Activity, Wifi, Server, Clock } from "lucide-react"
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
+import { AlertTriangle, CheckCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+
+import { getStreamLiveMetrics, type StreamHealthStatus, type StreamNetworkSample } from "@/lib/stream-session-contract"
 
 interface StreamHealthProps {
   streamId?: string
 }
 
+const stateOrder: Record<StreamHealthStatus, number> = { excellent: 4, good: 3, fair: 2, poor: 1 }
+
 export function StreamHealth({ streamId }: StreamHealthProps) {
   const [activeTab, setActiveTab] = useState("overview")
+  const [samples, setSamples] = useState<StreamNetworkSample[]>([])
 
-  // Mock data - in a real implementation, this would come from an API
-  const healthScore = 92
-  const status = "Excellent"
-  const issues = []
-  const warnings = ["Minor frame drops detected in the last 5 minutes"]
+  useEffect(() => {
+    if (!streamId) return
+    let alive = true
+    const load = async () => {
+      try {
+        const { network } = await getStreamLiveMetrics(streamId)
+        if (alive) setSamples(network.series)
+      } catch {
+        if (alive) setSamples([])
+      }
+    }
 
-  // Mock data for the charts
-  const bitrateData = Array.from({ length: 30 }, (_, i) => ({
-    time: `${i}m`,
-    bitrate: 5000 + Math.random() * 1000 - 500,
+    void load()
+    const interval = setInterval(load, 5000)
+    return () => {
+      alive = false
+      clearInterval(interval)
+    }
+  }, [streamId])
+
+  const latest = samples.at(-1)
+  const healthScore = latest?.healthScore ?? 0
+  const status = latest?.health ?? "poor"
+
+  const warning = useMemo(() => {
+    if (!latest) return "No network telemetry reported yet."
+    if (latest.packetLossPct > 2.5) return "Packet loss is elevated and may impact playback smoothness."
+    if (latest.rttMs > 220) return "High RTT detected; consider switching to a lower-latency network path."
+    if (latest.reconnects > 0) return "Reconnect event detected; review connectivity stability."
+    return "Network telemetry is stable for this stream window."
+  }, [latest])
+
+  const chartData = samples.map((sample, index) => ({
+    time: `${index + 1}`,
+    bitrateKbps: sample.bitrateKbps,
+    rttMs: sample.rttMs,
+    packetLossPct: sample.packetLossPct,
+    droppedFrames: sample.droppedFrames,
+    reconnects: sample.reconnects,
+    healthScore: sample.healthScore,
   }))
 
-  const frameData = Array.from({ length: 30 }, (_, i) => ({
-    time: `${i}m`,
-    fps: 60 + Math.random() * 2 - 1,
-    dropped: Math.floor(Math.random() * 5),
-  }))
-
-  const latencyData = Array.from({ length: 30 }, (_, i) => ({
-    time: `${i}m`,
-    latency: 200 + Math.random() * 100 - 50,
-  }))
-
-  const getStatusColor = (score: number) => {
-    if (score >= 90) return "text-green-500"
-    if (score >= 70) return "text-yellow-500"
-    return "text-red-500"
-  }
-
-  const getStatusIcon = (score: number) => {
-    if (score >= 90) return <CheckCircle className="h-5 w-5 text-green-500" />
-    if (score >= 70) return <AlertTriangle className="h-5 w-5 text-yellow-500" />
-    return <AlertTriangle className="h-5 w-5 text-red-500" />
-  }
+  const issues = latest && stateOrder[latest.health] <= stateOrder.fair
 
   return (
     <Card className="w-full">
@@ -56,169 +70,79 @@ export function StreamHealth({ streamId }: StreamHealthProps) {
         <div className="flex items-center justify-between">
           <div>
             <CardTitle>Stream Health</CardTitle>
-            <CardDescription>Real-time performance metrics for your stream</CardDescription>
+            <CardDescription>Network telemetry and derived quality state over time</CardDescription>
           </div>
-          <div className="flex items-center space-x-2">
-            {getStatusIcon(healthScore)}
-            <span className={`font-medium ${getStatusColor(healthScore)}`}>{status}</span>
-          </div>
+          <Badge variant={issues ? "destructive" : "secondary"}>{status.toUpperCase()}</Badge>
         </div>
       </CardHeader>
       <CardContent>
+        {!streamId ? <p className="text-sm text-muted-foreground">Select a stream to review telemetry history.</p> : null}
+
         <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="bitrate">Bitrate</TabsTrigger>
-            <TabsTrigger value="frames">Frames</TabsTrigger>
-            <TabsTrigger value="latency">Latency</TabsTrigger>
+            <TabsTrigger value="rtt">RTT</TabsTrigger>
+            <TabsTrigger value="loss">Packet Loss</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="space-y-4">
-            <div className="mt-4 space-y-4">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium">Health Score</span>
-                  <span className={`text-sm font-medium ${getStatusColor(healthScore)}`}>{healthScore}%</span>
-                </div>
-                <Progress value={healthScore} className="h-2" />
+          <TabsContent value="overview" className="space-y-4 mt-4">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">Health Score</span>
+                <span className="text-sm font-medium">{healthScore}%</span>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="flex items-center p-3 border rounded-md">
-                  <Wifi className="h-5 w-5 mr-2 text-muted-foreground" />
-                  <div>
-                    <div className="text-sm font-medium">Bitrate</div>
-                    <div className="text-2xl font-bold">5.2 Mbps</div>
-                  </div>
-                </div>
-
-                <div className="flex items-center p-3 border rounded-md">
-                  <Activity className="h-5 w-5 mr-2 text-muted-foreground" />
-                  <div>
-                    <div className="text-sm font-medium">Frame Rate</div>
-                    <div className="text-2xl font-bold">60 fps</div>
-                  </div>
-                </div>
-
-                <div className="flex items-center p-3 border rounded-md">
-                  <Clock className="h-5 w-5 mr-2 text-muted-foreground" />
-                  <div>
-                    <div className="text-sm font-medium">Latency</div>
-                    <div className="text-2xl font-bold">215 ms</div>
-                  </div>
-                </div>
-              </div>
-
-              {(issues.length > 0 || warnings.length > 0) && (
-                <div className="space-y-2">
-                  <h4 className="text-sm font-medium">Issues & Warnings</h4>
-                  {issues.map((issue, i) => (
-                    <div key={i} className="flex items-start space-x-2 text-red-500 text-sm">
-                      <AlertTriangle className="h-4 w-4 mt-0.5" />
-                      <span>{issue}</span>
-                    </div>
-                  ))}
-                  {warnings.map((warning, i) => (
-                    <div key={i} className="flex items-start space-x-2 text-yellow-500 text-sm">
-                      <AlertTriangle className="h-4 w-4 mt-0.5" />
-                      <span>{warning}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {issues.length === 0 && warnings.length === 0 && (
-                <div className="flex items-center space-x-2 text-green-500 text-sm">
-                  <CheckCircle className="h-4 w-4" />
-                  <span>No issues detected with your stream</span>
-                </div>
-              )}
+              <Progress value={healthScore} className="h-2" />
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+              <div>Bitrate: <span className="font-semibold">{latest?.bitrateKbps?.toLocaleString() ?? "—"} kbps</span></div>
+              <div>RTT: <span className="font-semibold">{latest?.rttMs?.toFixed(0) ?? "—"} ms</span></div>
+              <div>Packet loss: <span className="font-semibold">{latest?.packetLossPct?.toFixed(2) ?? "—"}%</span></div>
+              <div>Dropped frames: <span className="font-semibold">{latest?.droppedFrames ?? "—"}</span></div>
+              <div>Reconnects: <span className="font-semibold">{latest?.reconnects ?? "—"}</span></div>
+            </div>
+            <div className={`flex items-start gap-2 text-sm ${issues ? "text-yellow-600" : "text-green-600"}`}>
+              {issues ? <AlertTriangle className="h-4 w-4 mt-0.5" /> : <CheckCircle className="h-4 w-4 mt-0.5" />}
+              <span>{warning}</span>
             </div>
           </TabsContent>
 
-          <TabsContent value="bitrate">
-            <div className="h-[300px] mt-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={bitrateData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time" />
-                  <YAxis domain={[4000, 6000]} />
-                  <Tooltip formatter={(value) => [`${value} Kbps`, "Bitrate"]} />
-                  <Line type="monotone" dataKey="bitrate" stroke="#f97316" strokeWidth={2} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="mt-4 text-sm text-muted-foreground">
-              <p>Target bitrate: 5000 Kbps</p>
-              <p>Recommended range: 4500-5500 Kbps for 1080p60</p>
-            </div>
+          <TabsContent value="bitrate" className="h-[280px] mt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="time" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="bitrateKbps" stroke="#3b82f6" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
           </TabsContent>
 
-          <TabsContent value="frames">
-            <div className="h-[300px] mt-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={frameData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time" />
-                  <YAxis yAxisId="left" domain={[55, 65]} />
-                  <YAxis yAxisId="right" orientation="right" domain={[0, 10]} />
-                  <Tooltip />
-                  <Legend />
-                  <Line
-                    yAxisId="left"
-                    type="monotone"
-                    dataKey="fps"
-                    name="FPS"
-                    stroke="#f97316"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                  <Line
-                    yAxisId="right"
-                    type="monotone"
-                    dataKey="dropped"
-                    name="Dropped Frames"
-                    stroke="#ef4444"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="mt-4 text-sm text-muted-foreground">
-              <p>Target frame rate: 60 FPS</p>
-              <p>Dropped frames: 0.2% (12 frames in the last 10 minutes)</p>
-            </div>
+          <TabsContent value="rtt" className="h-[280px] mt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="time" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="rttMs" stroke="#f97316" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
           </TabsContent>
 
-          <TabsContent value="latency">
-            <div className="h-[300px] mt-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={latencyData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time" />
-                  <YAxis domain={[100, 300]} />
-                  <Tooltip formatter={(value) => [`${value} ms`, "Latency"]} />
-                  <Line type="monotone" dataKey="latency" stroke="#f97316" strokeWidth={2} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="mt-4 text-sm text-muted-foreground">
-              <p>Average latency: 215 ms</p>
-              <p>Recommended: Below 250 ms for interactive streams</p>
-            </div>
+          <TabsContent value="loss" className="h-[280px] mt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="time" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="packetLossPct" stroke="#dc2626" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
           </TabsContent>
         </Tabs>
-
-        <div className="mt-6 flex justify-between">
-          <div className="text-sm text-muted-foreground">Last updated: Just now</div>
-          <div>
-            <Badge variant="outline" className="ml-2">
-              <Server className="h-3 w-3 mr-1" />
-              <span>Server: US East</span>
-            </Badge>
-          </div>
-        </div>
       </CardContent>
     </Card>
   )
