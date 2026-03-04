@@ -83,6 +83,66 @@ Even with strong planning, expect prompt and metadata iteration after first dogf
 
 These research artifacts become foundational inputs to roadmap planning, changelogs, and success metrics once the app is live.
 
+## Define tools
+
+### Tool-first thinking
+
+In Apps SDK, tools are the contract between your MCP server and the model. They describe what the connector can do, how to call it, and what data comes back. Good tool design makes discovery accurate, invocation reliable, and downstream UX predictable.
+
+Use this checklist to turn use cases into well-scoped tools before implementing with an SDK.
+
+### Draft the tool surface area
+
+Start from the user journey defined in [use case research](https://developers.openai.com/apps-sdk/plan/use-case):
+
+- **One job per tool** – keep each tool focused on one read or write action (for example, `fetch_board`, `create_ticket`) rather than a kitchen-sink endpoint.
+- **Explicit inputs** – define `inputSchema` shape early, including parameter names, data types, enums, defaults, and nullable fields.
+- **Predictable outputs** – enumerate structured fields returned by each tool, including machine-readable identifiers reusable in follow-up calls.
+
+If read and write behaviors are both required, split them into separate tools so confirmation flows can be applied to write actions.
+
+### Capture metadata for discovery
+
+Discovery is driven primarily by metadata. For each tool, draft:
+
+- **Name** – action-oriented and unique in your connector (for example, `kanban.move_task`).
+- **Description** – one or two sentences that begin with “Use this when…” to clarify invocation conditions.
+- **Parameter annotations** – describe each argument and call out valid ranges/enums to reduce malformed calls.
+- **Global metadata** – define app-level name, icon, and descriptions for launcher/directory surfaces.
+
+Then wire these into your MCP server and iterate with [Optimize metadata](https://developers.openai.com/apps-sdk/guides/optimize-metadata).
+
+### Model-side guardrails
+
+Define expected model behavior once tools are linked:
+
+- **Prelinked vs. link-required** – if anonymous usage is supported, expose tools without auth; otherwise enforce account linking through the [Authentication](https://developers.openai.com/apps-sdk/build/auth) flow.
+- **Read-only hints** – use [`readOnlyHint` annotations](https://modelcontextprotocol.io/specification/2025-11-25/schema#toolannotations) for tools that never mutate state.
+- **Destructive hints** – use [`destructiveHint` annotations](https://modelcontextprotocol.io/specification/2025-11-25/schema#toolannotations) for delete/overwrite actions.
+- **Open-world hints** – use [`openWorldHint` annotations](https://modelcontextprotocol.io/specification/2025-11-25/schema#toolannotations) for tools that publish content or interact beyond the user account.
+- **Result components** – decide per tool whether to return JSON only, a rendered component, or both. Set `_meta.ui.resourceUri` on tool descriptors; for compatibility, ChatGPT also honors `_meta["openai/outputTemplate"]`.
+
+### Golden prompt rehearsal
+
+Before implementation, validate planned tools against your prompt set:
+
+1. For each direct prompt, confirm exactly one clearly matching tool exists.
+2. For indirect prompts, ensure descriptions provide enough context to route to your connector over built-in alternatives.
+3. For negative prompts, verify metadata keeps tools hidden unless users explicitly opt in (for example by naming your product).
+
+Capture ambiguities and adjust metadata now; this is cheaper than post-launch refactoring.
+
+### Handoff to implementation
+
+Before coding, compile a handoff with:
+
+- Tool name, description, input schema, and output schema.
+- Whether each tool returns a component, and which component should render.
+- Auth requirements, rate limits, and error-handling expectations.
+- Prompt cases expected to succeed and expected to fail.
+
+Then move into [Set up your server](https://developers.openai.com/apps-sdk/build/mcp-server) to implement with your chosen MCP SDK.
+
 ## Design components
 
 ### Why components matter
