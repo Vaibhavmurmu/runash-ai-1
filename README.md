@@ -144,6 +144,7 @@ Open `http://localhost:3000`.
 - [SECURITY.md](SECURITY.md)
 - [LLMs.txt](LLMs.txt)
 - [MCP.md](MCP.md)
+- [docs/RUNASHCHAT_UX_PRINCIPLES.md](docs/RUNASHCHAT_UX_PRINCIPLES.md)
 
 ## Deployment checklist
 
