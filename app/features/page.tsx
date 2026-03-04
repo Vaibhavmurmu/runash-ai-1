@@ -246,24 +246,30 @@ export default function FeaturesPage() {
                       description="Watch how our AI instantly improves video quality in challenging lighting conditions."
                       videoThumbnail="/placeholder.svg?height=400&width=600"
                       duration="2:45"
+                      videoUrl="https://www.youtube.com/watch?v=jfKfPfyJRdk"
+                      embedUrl="https://www.youtube.com/embed/jfKfPfyJRdk"
                     />
                     <FeatureVideo
                       title="Virtual Backgrounds"
                       description="See how our AI creates professional virtual backgrounds without a green screen."
                       videoThumbnail="/placeholder.svg?height=400&width=600"
                       duration="3:12"
+                      videoUrl="https://vimeo.com/76979871"
                     />
                     <FeatureVideo
                       title="Multi-platform Streaming"
                       description="Learn how to stream to multiple platforms simultaneously with optimized settings."
                       videoThumbnail="/placeholder.svg?height=400&width=600"
                       duration="4:30"
+                      videoUrl="https://www.youtube.com/watch?v=ysz5S6PUM-U"
+                      embedUrl="https://www.youtube.com/embed/ysz5S6PUM-U"
                     />
                     <FeatureVideo
                       title="Live Translation"
                       description="Watch our real-time caption translation in action, reaching global audiences."
                       videoThumbnail="/placeholder.svg?height=400&width=600"
                       duration="2:18"
+                      videoUrl="https://www.youtube.com/watch?v=aqz-KE-bpKQ"
                     />
                   </div>
 
