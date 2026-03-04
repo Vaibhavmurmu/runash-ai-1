@@ -1,25 +1,24 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { AdminSettings } from "@/lib/admin-settings"
-import { requirePermission } from "@/lib/auth-middleware"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
+import { respondInternalServerError } from "@/lib/api/admin-route-utils"
 
 export async function GET(request: NextRequest, { params }: { params: { category: string } }) {
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:settings"],
+    auditEvent: "admin.settings.category.read",
+  })
+  if (!auth.success) return auth.response
+
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const hasPermission = await requirePermission(session.user.id, "admin.settings.view")
-    if (!hasPermission) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
-    }
-
     const settings = await AdminSettings.getByCategory(params.category)
     return NextResponse.json({ success: true, data: settings })
   } catch (error) {
-    console.error("Category settings fetch error:", error)
-    return NextResponse.json({ error: "Failed to fetch category settings" }, { status: 500 })
+    return respondInternalServerError(request, error, {
+      event: "admin.settings.category.read.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_SETTINGS_CATEGORY_READ_FAILED",
+    })
   }
 }

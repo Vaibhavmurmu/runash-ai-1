@@ -71,3 +71,48 @@ export async function getMessageBySession(
     limit 1
   `)
 }
+
+export async function updateChatSessionMessage(
+  sessionId: string,
+  messageId: string | number,
+  content: string,
+): Promise<ChatSessionMessage | null> {
+  const rows = await sql<ChatSessionMessage[]>`
+    update runash_chat_session_messages
+    set content=${content}
+    where session_id=${sessionId} and id=${messageId}
+    returning id, session_id, role, content, created_at, message_type
+  `
+
+  if (rows.length === 0) {
+    return null
+  }
+
+  await sql`
+    update runash_chat_sessions
+    set updated_at=now()
+    where id=${sessionId}
+  `
+
+  return rows[0]
+}
+
+export async function deleteChatSessionMessage(sessionId: string, messageId: string | number): Promise<boolean> {
+  const rows = await sql<{ id: string | number }[]>`
+    delete from runash_chat_session_messages
+    where session_id=${sessionId} and id=${messageId}
+    returning id
+  `
+
+  if (rows.length === 0) {
+    return false
+  }
+
+  await sql`
+    update runash_chat_sessions
+    set updated_at=now()
+    where id=${sessionId}
+  `
+
+  return true
+}

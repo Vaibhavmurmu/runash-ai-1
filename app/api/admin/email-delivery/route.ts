@@ -1,24 +1,35 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { EmailDeliveryTracker } from "@/lib/email-delivery"
-import { requirePermission } from "@/lib/auth-middleware"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
+import {
+  FilterValidationError,
+  normalizePagination,
+  parseOptionalDate,
+  parseOptionalInteger,
+  validateDateRange,
+} from "@/lib/email-filter-utils"
 
 export async function GET(request: NextRequest) {
-  try {
-    // Check admin permissions
-    const authResult = await requirePermission(request, "view_email_analytics")
-    if (!authResult.success) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
-    }
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:analytics"],
+    auditEvent: "admin.email.delivery.read",
+  })
+  if (!auth.success) return auth.response
 
+  try {
     const { searchParams } = new URL(request.url)
-    const campaign_id = searchParams.get("campaign_id") ? Number.parseInt(searchParams.get("campaign_id")!) : undefined
-    const template_id = searchParams.get("template_id") ? Number.parseInt(searchParams.get("template_id")!) : undefined
+    const campaign_id = parseOptionalInteger(searchParams.get("campaign_id"), "campaign_id", { min: 1 })
+    const template_id = parseOptionalInteger(searchParams.get("template_id"), "template_id", { min: 1 })
     const status = searchParams.get("status") || undefined
     const recipient_email = searchParams.get("recipient_email") || undefined
-    const date_from = searchParams.get("date_from") ? new Date(searchParams.get("date_from")!) : undefined
-    const date_to = searchParams.get("date_to") ? new Date(searchParams.get("date_to")!) : undefined
-    const limit = searchParams.get("limit") ? Number.parseInt(searchParams.get("limit")!) : 50
-    const offset = searchParams.get("offset") ? Number.parseInt(searchParams.get("offset")!) : 0
+    const date_from = parseOptionalDate(searchParams.get("date_from"), "date_from")
+    const date_to = parseOptionalDate(searchParams.get("date_to"), "date_to")
+    validateDateRange(date_from, date_to)
+    const { limit, offset } = normalizePagination(
+      parseOptionalInteger(searchParams.get("limit"), "limit"),
+      parseOptionalInteger(searchParams.get("offset"), "offset"),
+      { defaultLimit: 50, maxLimit: 200 },
+    )
 
     const result = await EmailDeliveryTracker.getDeliveries({
       campaign_id,
@@ -35,13 +46,13 @@ export async function GET(request: NextRequest) {
       success: true,
       data: result.deliveries,
       total: result.total,
-      pagination: {
-        limit,
-        offset,
-        hasMore: offset + limit < result.total,
-      },
+      pagination: { limit, offset, hasMore: offset + limit < result.total },
     })
   } catch (error) {
+    if (error instanceof FilterValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
     console.error("Error fetching email deliveries:", error)
     return NextResponse.json({ error: "Failed to fetch email deliveries" }, { status: 500 })
   }

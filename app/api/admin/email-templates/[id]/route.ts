@@ -1,15 +1,15 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { EmailTemplateManager } from "@/lib/email-templates"
-import { requirePermission } from "@/lib/auth-middleware"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    // Check admin permissions
-    const authResult = await requirePermission(request, "manage_email_templates")
-    if (!authResult.success) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
-    }
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:analytics"],
+    auditEvent: "admin.email.templates.item.read",
+  })
+  if (!auth.success) return auth.response
 
+  try {
     const templateId = Number.parseInt(params.id)
     if (isNaN(templateId)) {
       return NextResponse.json({ error: "Invalid template ID" }, { status: 400 })
@@ -20,10 +20,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Template not found" }, { status: 404 })
     }
 
-    return NextResponse.json({
-      success: true,
-      data: template,
-    })
+    return NextResponse.json({ success: true, data: template })
   } catch (error) {
     console.error("Error fetching email template:", error)
     return NextResponse.json({ error: "Failed to fetch email template" }, { status: 500 })
@@ -31,13 +28,13 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    // Check admin permissions
-    const authResult = await requirePermission(request, "manage_email_templates")
-    if (!authResult.success) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
-    }
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:settings"],
+    auditEvent: "admin.email.templates.item.update",
+  })
+  if (!auth.success) return auth.response
 
+  try {
     const templateId = Number.parseInt(params.id)
     if (isNaN(templateId)) {
       return NextResponse.json({ error: "Invalid template ID" }, { status: 400 })
@@ -46,29 +43,24 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const body = await request.json()
     const { change_notes, ...updateData } = body
 
-    // Validate template if HTML content is being updated
     if (updateData.html_content) {
       const validation = EmailTemplateManager.validateTemplate(updateData.html_content, updateData.text_content)
       if (!validation.isValid) {
         return NextResponse.json({ error: "Template validation failed", details: validation.errors }, { status: 400 })
       }
 
-      // Auto-update variables if not provided
       if (!updateData.variables) {
         updateData.variables = validation.variables.map((v) => ({ name: v, description: "" }))
       }
     }
 
-    const template = await EmailTemplateManager.updateTemplate(templateId, updateData, authResult.user.id, change_notes)
+    const template = await EmailTemplateManager.updateTemplate(templateId, updateData, auth.session.user.id, change_notes)
 
     if (!template) {
       return NextResponse.json({ error: "Template not found" }, { status: 404 })
     }
 
-    return NextResponse.json({
-      success: true,
-      data: template,
-    })
+    return NextResponse.json({ success: true, data: template })
   } catch (error) {
     console.error("Error updating email template:", error)
     return NextResponse.json({ error: "Failed to update email template" }, { status: 500 })
@@ -76,13 +68,13 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    // Check admin permissions
-    const authResult = await requirePermission(request, "manage_email_templates")
-    if (!authResult.success) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
-    }
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:settings"],
+    auditEvent: "admin.email.templates.item.delete",
+  })
+  if (!auth.success) return auth.response
 
+  try {
     const templateId = Number.parseInt(params.id)
     if (isNaN(templateId)) {
       return NextResponse.json({ error: "Invalid template ID" }, { status: 400 })
@@ -93,10 +85,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       return NextResponse.json({ error: "Template not found or cannot be deleted" }, { status: 404 })
     }
 
-    return NextResponse.json({
-      success: true,
-      message: "Template deleted successfully",
-    })
+    return NextResponse.json({ success: true, message: "Template deleted successfully" })
   } catch (error) {
     console.error("Error deleting email template:", error)
     return NextResponse.json({ error: "Failed to delete email template" }, { status: 500 })

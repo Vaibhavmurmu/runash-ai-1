@@ -11,10 +11,17 @@ export type AIAgent = {
   tasks_completed: number
   current_task: string | null
   enabled: boolean
-  settings: Record<string, any>
+  settings: Record<string, unknown>
   created_at?: string
   updated_at?: string
 }
+
+export type CreateAIAgentInput = Pick<
+  AIAgent,
+  "name" | "type" | "status" | "performance_score" | "tasks_completed" | "current_task" | "enabled" | "settings"
+>
+
+export type UpdateAIAgentInput = Partial<CreateAIAgentInput>
 
 export async function listAIAgents(userId: UUID): Promise<AIAgent[]> {
   try {
@@ -28,7 +35,7 @@ export async function getAIAgent(id: UUID, userId: UUID): Promise<AIAgent | null
   return one<AIAgent>(sql<AIAgent[]>`select * from ai_agents where id=${id} and user_id=${userId} limit 1`)
 }
 
-export async function createAIAgent(userId: UUID, input: Partial<AIAgent>): Promise<AIAgent> {
+export async function createAIAgent(userId: UUID, input: CreateAIAgentInput): Promise<AIAgent> {
   const rows = await sql<AIAgent[]>`
     insert into ai_agents (
       user_id, name, type, status, performance_score, tasks_completed,
@@ -50,7 +57,7 @@ export async function createAIAgent(userId: UUID, input: Partial<AIAgent>): Prom
   return rows[0]
 }
 
-export async function updateAIAgent(id: UUID, userId: UUID, input: Partial<AIAgent>): Promise<AIAgent | null> {
+export async function updateAIAgent(id: UUID, userId: UUID, input: UpdateAIAgentInput): Promise<AIAgent | null> {
   const current = await getAIAgent(id, userId)
   if (!current) return null
   const rows = await sql<AIAgent[]>`

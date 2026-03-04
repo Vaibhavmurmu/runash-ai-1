@@ -1,31 +1,130 @@
-import nodemailer from "nodemailer"
+import { randomUUID } from "crypto"
+import { logApiEvent } from "./api/logging"
 import { EmailDeliveryTracker } from "./email-delivery"
 import { EmailBounceHandler } from "./email-bounce-handler"
 import { triggerDeliveryStatusEvent } from "./email-realtime"
+import { type EmailAttachment } from "./email-provider"
+import { sendEmailEvent } from "@/services/email"
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number.parseInt(process.env.SMTP_PORT || "587"),
-  secure: process.env.SMTP_SECURE === "true",
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASSWORD,
-  },
-})
+export const AUTH_EMAIL_VERIFICATION_PATH = "/api/auth/verify-email"
+
+export interface EmailSafetyPolicyPayload {
+  error: "EMAIL_SAFETY_BLOCKED"
+  message: string
+  policy: {
+    safeMode: boolean
+    dryRun: boolean
+    recipient: string
+    allowlistedRecipients: string[]
+    sinkRecipient?: string
+  }
+}
+
+export class EmailSafetyPolicyError extends Error {
+  readonly statusCode = 403
+  readonly payload: EmailSafetyPolicyPayload
+
+  constructor(payload: EmailSafetyPolicyPayload) {
+    super(payload.message)
+    this.name = "EmailSafetyPolicyError"
+    this.payload = payload
+  }
+}
+
+function parseBooleanEnv(value: string | undefined, fallback = false): boolean {
+  if (value === undefined) return fallback
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase())
+}
+
+function parseRecipientList(value: string | undefined): string[] {
+  if (!value) return []
+  return value
+    .split(",")
+    .map((recipient) => recipient.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+export function getEmailSafetyConfig() {
+  const safeMode = parseBooleanEnv(process.env.EMAIL_SAFE_MODE, false)
+  const dryRun = parseBooleanEnv(process.env.EMAIL_DRY_RUN, false)
+  const allowlistedRecipients = parseRecipientList(process.env.EMAIL_TEST_RECIPIENTS)
+  const sinkRecipient = process.env.EMAIL_SAFE_SINK_RECIPIENT?.trim().toLowerCase() || undefined
+
+  return {
+    safeMode,
+    dryRun,
+    allowlistedRecipients,
+    sinkRecipient,
+  }
+}
+
+export function applyEmailSafetyPolicy(recipientInput: string | string[]) {
+  const config = getEmailSafetyConfig()
+  const recipients = (Array.isArray(recipientInput) ? recipientInput : [recipientInput]).map((recipient) => recipient.trim())
+
+  if (!config.safeMode) {
+    return {
+      recipients,
+      rewritten: false,
+      config,
+    }
+  }
+
+  const unauthorizedRecipients = recipients.filter(
+    (recipient) => !config.allowlistedRecipients.includes(recipient.toLowerCase()),
+  )
+
+  if (unauthorizedRecipients.length > 0) {
+    if (config.sinkRecipient) {
+      return {
+        recipients: [config.sinkRecipient],
+        rewritten: true,
+        config,
+      }
+    }
+
+    throw new EmailSafetyPolicyError({
+      error: "EMAIL_SAFETY_BLOCKED",
+      message: "Email blocked by delivery safety policy",
+      policy: {
+        safeMode: config.safeMode,
+        dryRun: config.dryRun,
+        recipient: unauthorizedRecipients.join(", "),
+        allowlistedRecipients: config.allowlistedRecipients,
+        sinkRecipient: config.sinkRecipient,
+      },
+    })
+  }
+
+  return {
+    recipients,
+    rewritten: false,
+    config,
+  }
+}
 
 export async function sendEmail(options: {
   to: string
   subject: string
   html: string
+  text?: string
   from?: string
+  headers?: Record<string, string>
+  attachments?: EmailAttachment[]
+  replyTo?: string | string[]
+  scheduledAt?: string
+  tags?: Array<{ name: string; value: string }>
+  idempotencyKey?: string
   template_id?: number
   campaign_id?: number
   user_id?: number
   recipient_name?: string
   track_delivery?: boolean
 }) {
-  // Check if email is suppressed before sending
-  const validation = await EmailBounceHandler.validateEmailForSending(options.to)
+  const safeDelivery = applyEmailSafetyPolicy(options.to)
+  const targetRecipient = safeDelivery.recipients[0] ?? options.to
+
+  const validation = await EmailBounceHandler.validateEmailForSending(targetRecipient)
   if (!validation.canSend) {
     throw new Error(`Cannot send email: ${validation.reason} (${validation.suppressionType})`)
   }
@@ -33,11 +132,10 @@ export async function sendEmail(options: {
   let message_id: string | undefined
   let delivery_id: number | undefined
 
-  // Create delivery tracking record if enabled
   if (options.track_delivery !== false) {
     try {
       const tracking = await EmailDeliveryTracker.createDelivery({
-        recipient_email: options.to,
+        recipient_email: targetRecipient,
         recipient_name: options.recipient_name,
         user_id: options.user_id,
         subject: options.subject,
@@ -48,17 +146,21 @@ export async function sendEmail(options: {
       delivery_id = tracking.delivery_id
       message_id = tracking.message_id
     } catch (error) {
-      console.error("Error creating delivery tracking:", error)
+      logApiEvent("error", "email.delivery_tracking.create_failed", {
+        requestId: randomUUID(),
+        route: "internal/email",
+        method: "INTERNAL",
+        details: { event: "delivery_tracking.create", outcome: "error", vendor: "email" },
+        error,
+      })
     }
   }
 
-  // Add tracking to HTML if message_id exists
   let html = options.html
   if (message_id && options.track_delivery !== false) {
     html = EmailDeliveryTracker.addTrackingToEmail(html, message_id)
 
-    // Add unsubscribe link
-    const unsubscribeUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/email/unsubscribe?email=${encodeURIComponent(options.to)}`
+    const unsubscribeUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/email/unsubscribe?email=${encodeURIComponent(targetRecipient)}`
     const unsubscribeFooter = `
       <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #666; font-size: 12px;">
         <p>
@@ -68,7 +170,6 @@ export async function sendEmail(options: {
       </div>
     `
 
-    // Add unsubscribe footer before closing body tag or at the end
     if (html.includes("</body>")) {
       html = html.replace("</body>", `${unsubscribeFooter}</body>`)
     } else {
@@ -76,44 +177,103 @@ export async function sendEmail(options: {
     }
   }
 
-  const mailOptions = {
-    from: options.from || process.env.SMTP_FROM || "noreply@runash.in",
-    to: options.to,
-    subject: options.subject,
-    html,
-    headers: message_id
+  const headers = {
+    ...(options.headers ?? {}),
+    ...(message_id
       ? {
           "X-Message-ID": message_id,
-          "List-Unsubscribe": `<${process.env.NEXT_PUBLIC_APP_URL}/api/email/unsubscribe?email=${encodeURIComponent(options.to)}>`,
+          "List-Unsubscribe": `<${process.env.NEXT_PUBLIC_APP_URL}/api/email/unsubscribe?email=${encodeURIComponent(targetRecipient)}>`,
         }
-      : undefined,
+      : {}),
   }
 
   try {
-    const result = await transporter.sendMail(mailOptions)
+    if (safeDelivery.config.dryRun) {
+      if (message_id) {
+        await EmailDeliveryTracker.updateDeliveryStatus(message_id, "pending", {
+          tracking_data: {
+            dry_run: true,
+            simulated: true,
+            safe_mode: safeDelivery.config.safeMode,
+            rewritten_recipient: safeDelivery.rewritten ? targetRecipient : undefined,
+            original_recipient: options.to,
+          },
+        })
 
-    // Update delivery status to sent
+        triggerDeliveryStatusEvent(message_id, targetRecipient, "pending", {
+          simulated: true,
+          dry_run: true,
+        })
+      }
+
+      return {
+        success: true,
+        simulated: true,
+        message_id,
+        delivery_id,
+      }
+    }
+
+    const providerResult = await sendEmailEvent({
+      type: "GENERIC_EMAIL",
+      to: targetRecipient,
+
+      subject: options.subject,
+      html,
+      text: options.text,
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
+      attachments: options.attachments,
+      replyTo: options.replyTo,
+      scheduledAt: options.scheduledAt,
+      tags: options.tags,
+      idempotencyKey: options.idempotencyKey,
+
+      source: "lib/email.sendEmail",
+      metadata: {
+        category: headers["X-Email-Category"],
+        headers: Object.keys(headers).length > 0 ? headers : undefined,
+      },
+      payload: {
+        from: options.from,
+        subject: options.subject,
+        html,
+        text: options.text,
+        attachments: options.attachments,
+        track_delivery: options.track_delivery,
+        template_id: options.template_id,
+        campaign_id: options.campaign_id,
+        user_id: options.user_id,
+        recipient_name: options.recipient_name,
+      },
+
+    })
+
     if (message_id) {
       await EmailDeliveryTracker.updateDeliveryStatus(message_id, "sent", {
-        tracking_data: { smtp_response: result.response },
+        tracking_data: { provider_response: providerResult },
       })
 
-      triggerDeliveryStatusEvent(message_id, options.to, "sent", {
-        smtp_response: result.response,
+      triggerDeliveryStatusEvent(message_id, targetRecipient, "sent", {
+        provider_response: providerResult,
       })
     }
 
     return { success: true, message_id, delivery_id }
   } catch (error) {
-    console.error("Error sending email:", error)
+    logApiEvent("error", "email.send.failed", {
+      requestId: randomUUID(),
+      route: "internal/email",
+      method: "INTERNAL",
+      details: { event: "email.send", outcome: "error", vendor: "email" },
+      error,
+    })
 
-    // Update delivery status to failed
     if (message_id) {
       await EmailDeliveryTracker.updateDeliveryStatus(message_id, "failed", {
         error_message: error instanceof Error ? error.message : "Unknown error",
       })
 
-      triggerDeliveryStatusEvent(message_id, options.to, "failed", {
+      triggerDeliveryStatusEvent(message_id, targetRecipient, "failed", {
         error_message: error instanceof Error ? error.message : "Unknown error",
       })
     }
@@ -122,8 +282,182 @@ export async function sendEmail(options: {
   }
 }
 
-export async function sendVerificationEmail(email: string, name: string, token: string) {
-  const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email?token=${token}`
+export async function sendAuthEmail(options: {
+  to: string
+  subject: string
+  html: string
+  text?: string
+  headers?: Record<string, string>
+}) {
+  return sendEmail({
+    ...options,
+    track_delivery: true,
+    headers: {
+      ...options.headers,
+      "X-Email-Category": "auth",
+    },
+  })
+}
+
+export async function sendMagicLinkEmail(options: {
+  to: string
+  magicLinkUrl: string
+  userName?: string
+}) {
+  const greeting = options.userName ? `<p style="color: #333; font-size: 16px; margin-bottom: 20px;">Hi ${options.userName},</p>` : ""
+
+  return sendAuthEmail({
+    to: options.to,
+    subject: "Your Magic Link - Sign in instantly",
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Magic Link Login</title>
+      </head>
+      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%); min-height: 100vh;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+          <div style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px); border-radius: 20px; padding: 40px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);">
+            <div style="text-align: center; margin-bottom: 30px;">
+              <h1 style="color: #1a1a1a; font-size: 28px; font-weight: 700; margin: 0 0 10px 0;">Magic Link Login</h1>
+              <p style="color: #666; font-size: 16px; margin: 0;">Click the button below to sign in instantly</p>
+            </div>
+
+            ${greeting}
+
+            <p style="color: #333; font-size: 16px; line-height: 1.6; margin-bottom: 30px;">
+              You requested a magic link to sign in to your account. Click the button below to sign in instantly - no password required!
+            </p>
+
+            <div style="text-align: center; margin: 40px 0;">
+              <a href="${options.magicLinkUrl}" style="display: inline-block; background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%); color: white; text-decoration: none; padding: 16px 32px; border-radius: 12px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 15px rgba(255, 107, 53, 0.3); transition: all 0.3s ease;">
+                Sign In with Magic Link
+              </a>
+            </div>
+
+            <div style="background: #f8f9fa; border-radius: 12px; padding: 20px; margin: 30px 0;">
+              <p style="color: #666; font-size: 14px; margin: 0 0 10px 0; font-weight: 600;">Security Notice:</p>
+              <ul style="color: #666; font-size: 14px; margin: 0; padding-left: 20px;">
+                <li>This link expires in 15 minutes</li>
+                <li>It can only be used once</li>
+                <li>If you didn't request this, you can safely ignore this email</li>
+              </ul>
+            </div>
+
+            <p style="color: #999; font-size: 12px; text-align: center; margin-top: 30px;">
+              If the button doesn't work, copy and paste this link into your browser:<br>
+              <span style="word-break: break-all;">${options.magicLinkUrl}</span>
+            </p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+  })
+}
+
+export async function sendOtpCodeEmail(options: {
+  to: string
+  code: string
+  purpose: string
+}) {
+  return sendAuthEmail({
+    to: options.to,
+    subject: getOtpEmailSubject(options.purpose),
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Your Verification Code</title>
+      </head>
+      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%); min-height: 100vh;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+          <div style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px); border-radius: 20px; padding: 40px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);">
+            <div style="text-align: center; margin-bottom: 30px;">
+              <h1 style="color: #1a1a1a; font-size: 28px; font-weight: 700; margin: 0 0 10px 0;">Verification Code</h1>
+              <p style="color: #666; font-size: 16px; margin: 0;">Enter this code to complete your ${options.purpose}</p>
+            </div>
+
+            <div style="text-align: center; margin: 40px 0;">
+              <div style="display: inline-block; background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%); color: white; font-size: 32px; font-weight: 700; padding: 20px 40px; border-radius: 12px; letter-spacing: 8px; font-family: 'Courier New', monospace; box-shadow: 0 4px 15px rgba(255, 107, 53, 0.3);">
+                ${options.code}
+              </div>
+            </div>
+
+            <div style="background: #f8f9fa; border-radius: 12px; padding: 20px; margin: 30px 0;">
+              <p style="color: #666; font-size: 14px; margin: 0 0 10px 0; font-weight: 600;">Security Notice:</p>
+              <ul style="color: #666; font-size: 14px; margin: 0; padding-left: 20px;">
+                <li>This code expires in 10 minutes</li>
+                <li>Don't share this code with anyone</li>
+                <li>If you didn't request this, please ignore this email</li>
+              </ul>
+            </div>
+
+            <p style="color: #999; font-size: 12px; text-align: center; margin-top: 30px;">
+              This verification code was sent to ${options.to}
+            </p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+  })
+}
+
+function getOtpEmailSubject(purpose: string): string {
+  const purposeMap: Record<string, string> = {
+    login: "Your Login Verification Code",
+    signup: "Complete Your Registration",
+    "password-reset": "Password Reset Verification Code",
+    verification: "Email Verification Code",
+  }
+
+  return purposeMap[purpose] || "Your Verification Code"
+}
+
+export function buildCanonicalVerificationUrl(input: { url?: string; token?: string; callbackURL?: string }) {
+  const baseUrl = process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
+  const verificationUrl = new URL(input.url ?? AUTH_EMAIL_VERIFICATION_PATH, baseUrl)
+
+  verificationUrl.pathname = AUTH_EMAIL_VERIFICATION_PATH
+
+  if (input.token) {
+    verificationUrl.searchParams.set("token", input.token)
+  }
+
+  const resolvedCallbackUrl = resolveAuthCallbackUrl(input.callbackURL)
+
+  if (resolvedCallbackUrl && !verificationUrl.searchParams.get("callbackURL")) {
+    verificationUrl.searchParams.set("callbackURL", resolvedCallbackUrl)
+  }
+
+  return verificationUrl.toString()
+}
+
+export function resolveAuthCallbackUrl(callbackURL?: string) {
+  if (!callbackURL) {
+    return undefined
+  }
+
+  const baseUrl = process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
+
+  return new URL(callbackURL, baseUrl).toString()
+}
+
+export async function sendVerificationEmail(
+  email: string,
+  name: string,
+  verificationTokenOrUrl: string,
+  callbackURL?: string,
+) {
+  const isUrlInput = verificationTokenOrUrl.startsWith("http://") || verificationTokenOrUrl.startsWith("https://") || verificationTokenOrUrl.startsWith("/")
+  const verificationUrl = isUrlInput
+    ? buildCanonicalVerificationUrl({ url: verificationTokenOrUrl, callbackURL })
+    : buildCanonicalVerificationUrl({ token: verificationTokenOrUrl, callbackURL })
 
   const mailOptions = {
     to: email,
@@ -155,7 +489,7 @@ export async function sendVerificationEmail(email: string, name: string, token: 
     `,
   }
 
-  await sendEmail(mailOptions)
+  await sendAuthEmail(mailOptions)
 }
 
 export async function sendPasswordResetEmail(email: string, name: string, token: string) {
@@ -191,5 +525,132 @@ export async function sendPasswordResetEmail(email: string, name: string, token:
     `,
   }
 
-  await sendEmail(mailOptions)
+  await sendAuthEmail(mailOptions)
+}
+
+export async function sendWaitlistConfirmationEmail(options: { to: string; name?: string }) {
+  const greetingName = options.name?.trim() || "there"
+
+  await sendEmail({
+    to: options.to,
+    subject: "You’re on the RunAsh waitlist",
+    html: `
+      <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
+        <h2 style="color: #333; text-align: center;">Thanks for joining the RunAsh waitlist</h2>
+        <p>Hi ${greetingName},</p>
+        <p>We received your request and added you to our early access waitlist.</p>
+        <p>We’ll reach out with updates as soon as we open new spots.</p>
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #666; font-size: 12px;">
+          If you didn’t request this, you can ignore this message.
+        </p>
+      </div>
+    `,
+    text: `Hi ${greetingName},\n\nThanks for joining the RunAsh waitlist. We received your request and will contact you when new spots are available.`,
+    headers: {
+      "X-Email-Category": "waitlist",
+    },
+    track_delivery: true,
+  })
+}
+
+
+export async function sendFeedbackConfirmationEmail(options: { to: string; name?: string }) {
+  const greetingName = options.name?.trim() || "there"
+
+  await sendEmail({
+    to: options.to,
+    subject: "We received your feedback",
+    html: `
+      <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
+        <h2 style="color: #333; text-align: center;">Thanks for your feedback</h2>
+        <p>Hi ${greetingName},</p>
+        <p>We’ve logged your feedback and shared it with our product triage team.</p>
+        <p>Thanks for helping us improve RunAsh.</p>
+      </div>
+    `,
+    headers: {
+      "X-Email-Category": "feedback-confirmation",
+    },
+    track_delivery: true,
+  })
+}
+
+export async function sendFeedbackTriageEmail(options: {
+  to: string
+  userId: string
+  score: number
+  message: string
+  source: string
+}) {
+  await sendEmail({
+    to: options.to,
+    subject: `New feedback triage item from ${options.source}`,
+    html: `
+      <div style="max-width: 650px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
+        <h2 style="color: #333;">New feedback submitted</h2>
+        <p><strong>User ID:</strong> ${options.userId}</p>
+        <p><strong>Score:</strong> ${options.score}</p>
+        <p><strong>Source:</strong> ${options.source}</p>
+        <p><strong>Message:</strong></p>
+        <p style="white-space: pre-wrap; border-left: 3px solid #f7931e; padding-left: 12px;">${options.message}</p>
+      </div>
+    `,
+    headers: {
+      "X-Email-Category": "feedback-triage",
+    },
+    track_delivery: true,
+  })
+}
+
+export async function sendReferralInviteEmail(options: {
+  to: string
+  inviteCode: string
+  inviterName?: string | null
+}) {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+  const inviteUrl = `${appUrl}/signup?ref=${encodeURIComponent(options.inviteCode)}`
+  const inviterLabel = options.inviterName?.trim() || "A RunAsh user"
+
+  await sendEmail({
+    to: options.to,
+    subject: `${inviterLabel} invited you to RunAsh`,
+    html: `
+      <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
+        <h2 style="color: #333; text-align: center;">You’ve been invited to RunAsh</h2>
+        <p>${inviterLabel} sent you a referral invite.</p>
+        <p>Use the link below to get started:</p>
+        <p><a href="${inviteUrl}">${inviteUrl}</a></p>
+      </div>
+    `,
+    headers: {
+      "X-Email-Category": "referral-invite",
+    },
+    track_delivery: true,
+  })
+}
+
+export async function sendReferralMilestoneEmail(options: {
+  to: string
+  name?: string | null
+  totalConversions: number
+}) {
+  const greetingName = options.name?.trim() || "there"
+
+  await sendEmail({
+    to: options.to,
+    subject: `Referral milestone unlocked: ${options.totalConversions} conversions`,
+    html: `
+      <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
+        <h2 style="color: #333; text-align: center;">Referral milestone reached 🎉</h2>
+        <p>Hi ${greetingName},</p>
+        <p>You now have <strong>${options.totalConversions} referral conversions</strong>.</p>
+        <p>Thanks for growing the RunAsh community.</p>
+      </div>
+    `,
+    headers: {
+      "X-Email-Category": "referral-milestone",
+    },
+    track_delivery: true,
+  })
 }

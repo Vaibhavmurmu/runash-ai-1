@@ -1,16 +1,19 @@
-import { NextResponse } from "next/server"
 import { v4 as uuidv4 } from "uuid"
-import { getCanonicalStreamUrl, readData, writeData } from "../utils"
+import { respondError, respondSuccess } from "@/lib/api/envelope"
+import { createDashboardLiveStream } from "@/lib/repositories/streams"
+import { getCanonicalStreamUrl, requireStreamDashboardUserId } from "../utils"
 import type { DashboardRecentStream, StartStreamRequest, StartStreamResponse } from "@/lib/types/dashboard-streams"
 
 export async function POST(request: Request) {
+  const scopedUserId = await requireStreamDashboardUserId(request)
+  if (scopedUserId instanceof Response) return scopedUserId
+
   const body = (await request.json().catch(() => null)) as StartStreamRequest | null
 
   if (!body?.title?.trim()) {
-    return NextResponse.json({ error: "Missing title" }, { status: 400 })
+    return respondError(request, { code: "INVALID_STREAM_START_REQUEST", message: "Missing title" }, { status: 400, legacy: { error: "Missing title" } })
   }
 
-  const data = await readData()
   const id = uuidv4()
   const startedAt = new Date().toISOString()
   const url = getCanonicalStreamUrl(id)
@@ -26,8 +29,7 @@ export async function POST(request: Request) {
     status: "live",
   }
 
-  data.recent = [newStream, ...data.recent].slice(0, 20)
-  await writeData(data)
+  await createDashboardLiveStream(scopedUserId, newStream)
 
   const payload: StartStreamResponse = {
     id,
@@ -38,5 +40,5 @@ export async function POST(request: Request) {
     startedAt,
   }
 
-  return NextResponse.json(payload, { status: 201 })
+  return respondSuccess(request, payload, { status: 201, legacy: payload })
 }

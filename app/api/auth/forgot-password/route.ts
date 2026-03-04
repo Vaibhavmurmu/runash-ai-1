@@ -2,10 +2,11 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createPasswordResetToken } from "@/lib/auth-utils"
 import { sendPasswordResetEmail } from "@/lib/email"
 import { rateLimit } from "@/lib/rate-limit"
-import { neon } from "@neondatabase/serverless"
 import { z } from "zod"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { logApiRouteError } from "@/lib/api/logging"
+import { AUTH_ENDPOINT_RATE_LIMITS } from "@/lib/auth-security-config"
+import { recordAuthMetric } from "@/lib/auth-observability"
+import { sql } from "@/lib/db"
 
 const forgotPasswordSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -13,8 +14,14 @@ const forgotPasswordSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const rateLimitResult = await rateLimit(request, "forgot-password", 3, 900) // 3 attempts per 15 minutes
+    const rateLimitResult = await rateLimit(
+      request,
+      "forgot-password",
+      AUTH_ENDPOINT_RATE_LIMITS["forgot-password"].limit,
+      AUTH_ENDPOINT_RATE_LIMITS["forgot-password"].windowMs,
+    )
     if (!rateLimitResult.success) {
+      recordAuthMetric("auth.rate_limited", { endpoint: "forgot-password" })
       return NextResponse.json(
         { message: "Too many password reset attempts. Please try again later." },
         { status: 429 },
@@ -28,7 +35,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Invalid email address" }, { status: 400 })
     }
 
-    const { email } = validationResult.data
+    const email = validationResult.data.email.trim().toLowerCase()
 
     const [user] = await sql`
       SELECT id, email, name FROM users WHERE email = ${email}
@@ -51,7 +58,8 @@ export async function POST(request: NextRequest) {
       }),
     })
   } catch (error) {
-    console.error("Forgot password error:", error)
+    recordAuthMetric("auth.suspicious_activity", { endpoint: "forgot-password", reason: "error" })
+    logApiRouteError(request, "auth.forgot_password.failed", error, { errorCode: "AUTH_FORGOT_PASSWORD_FAILED" })
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }

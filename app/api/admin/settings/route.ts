@@ -1,21 +1,16 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { AdminSettings } from "@/lib/admin-settings"
-import { requirePermission, logAdminActivity } from "@/lib/auth-middleware"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
+import { recordAdminAuditLog, respondInternalServerError } from "@/lib/api/admin-route-utils"
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:settings"],
+    auditEvent: "admin.settings.read",
+  })
+  if (!auth.success) return auth.response
+
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const hasPermission = await requirePermission(session.user.id, "admin.settings.view")
-    if (!hasPermission) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
-    }
-
     const { searchParams } = new URL(request.url)
     const category = searchParams.get("category")
 
@@ -27,37 +22,47 @@ export async function GET(request: NextRequest) {
     const categories = await AdminSettings.getAllCategories()
     return NextResponse.json({ success: true, data: categories })
   } catch (error) {
-    console.error("Settings fetch error:", error)
-    return NextResponse.json({ error: "Failed to fetch settings" }, { status: 500 })
+    return respondInternalServerError(request, error, {
+      event: "admin.settings.read.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_SETTINGS_READ_FAILED",
+    })
   }
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:settings"],
+    auditEvent: "admin.settings.update",
+  })
+  if (!auth.success) return auth.response
+
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const hasPermission = await requirePermission(session.user.id, "admin.settings.manage")
-    if (!hasPermission) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
-    }
-
     const { category, key, value, type, description } = await request.json()
 
-    await AdminSettings.set(category, key, value, type, session.user.id, description)
+    await AdminSettings.set(category, key, value, type, auth.session.user.id, description)
 
-    await logAdminActivity(
-      session.user.id,
-      "settings_update",
-      { category, key, value, type },
-      request.headers.get("x-forwarded-for") || "unknown",
-    )
+    await recordAdminAuditLog({
+      actorUserId: auth.userId,
+      action: "admin.settings.updated",
+      entityType: "admin_setting",
+      entityId: `${category}:${key}`,
+      metadata: {
+        category,
+        key,
+        type,
+        hasDescription: Boolean(description),
+      },
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("Settings update error:", error)
-    return NextResponse.json({ error: "Failed to update settings" }, { status: 500 })
+    return respondInternalServerError(request, error, {
+      event: "admin.settings.update.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_SETTINGS_UPDATE_FAILED",
+    })
   }
 }

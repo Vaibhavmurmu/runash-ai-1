@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Fingerprint, Plus, Trash2, Edit3, Shield, AlertCircle, CheckCircle } from "lucide-react"
 import { startRegistration } from "@simplewebauthn/browser"
-import { useSession } from "next-auth/react"
+import { useAuthSession } from "@/lib/auth/access-client"
 
 interface PasskeyCredential {
   id: number
@@ -18,7 +18,7 @@ interface PasskeyCredential {
 }
 
 export function PasskeySetup() {
-  const { data: session } = useSession()
+  const { data: session } = useAuthSession()
   const [passkeys, setPasskeys] = useState<PasskeyCredential[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")

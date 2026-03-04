@@ -3,8 +3,11 @@
 import React, { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Upload, Mic, Send, Search, FileText } from "lucide-react"
+import { Upload, Mic, Send, Search, FileText, OctagonX, RotateCcw } from "lucide-react"
 import debounce from "lodash.debounce"
+
+type StreamControllerState = "idle" | "sending" | "streaming" | "stopping" | "failed"
+type ComposerHealthState = "ready" | "usage-limit" | "provider-error" | "network-timeout"
 
 type Props = {
   initial?: string
@@ -12,15 +15,22 @@ type Props = {
   onUpload?: (fileMeta: { id: number; filename: string }) => void
   model?: string
   onModelChange?: (model: string) => void
+  streamState?: StreamControllerState
+  composerHealth?: ComposerHealthState
+  onStop?: () => void
+  onRetry?: () => void
 }
 
-export default function ChatInput({ initial = "", onSend, onUpload, model = "gpt-4o-mini", onModelChange }: Props) {
+export default function ChatInput({ initial = "", onSend, onUpload, model = "gpt-4o-mini", onModelChange, streamState = "idle", composerHealth = "ready", onStop, onRetry }: Props) {
   const [value, setValue] = useState(initial)
   const [isRecording, setIsRecording] = useState(false)
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [selectedModel, setSelectedModel] = useState(model)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  const [tone, setTone] = useState<"balanced" | "friendly" | "professional">("balanced")
+  const [detail, setDetail] = useState<"concise" | "normal" | "detailed">("normal")
 
   useEffect(() => {
     setValue(initial)
@@ -54,13 +64,19 @@ export default function ChatInput({ initial = "", onSend, onUpload, model = "gpt
 
   async function handleSend() {
     if (!value.trim()) return
-    onSend(value.trim())
+    onSend(`${value.trim()}\n\n[Style] tone:${tone}; detail:${detail}`)
     setValue("")
     setSuggestions([])
     setShowSuggestions(false)
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "p") {
+      e.preventDefault()
+      void enhancePrompt()
+      return
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -142,6 +158,19 @@ export default function ChatInput({ initial = "", onSend, onUpload, model = "gpt
   return (
     <div className="p-4 border-t">
       <div className="flex items-center gap-2">
+        {composerHealth !== "ready" ? (
+          <div className="mb-2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900" role="status" aria-live="polite">
+            {composerHealth === "usage-limit" ? "Usage limit reached." : null}
+            {composerHealth === "provider-error" ? "Provider temporarily unavailable." : null}
+            {composerHealth === "network-timeout" ? "Network timeout." : null}
+            {onRetry ? (
+              <button type="button" className="ml-2 inline-flex items-center underline" onClick={onRetry}>
+                <RotateCcw className="mr-1 h-3 w-3" /> Retry
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="flex items-center gap-2">
           <select
             value={selectedModel}
@@ -152,6 +181,11 @@ export default function ChatInput({ initial = "", onSend, onUpload, model = "gpt
             <option value="gpt-4o-mini">gpt-4o-mini</option>
             <option value="gpt-4o">gpt-4o</option>
             <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+          </select>
+          <select value={tone} onChange={(e) => setTone(e.target.value as typeof tone)} className="border rounded px-2 py-1 text-sm" title="Tone">
+            <option value="balanced">Balanced</option>
+            <option value="friendly">Friendly</option>
+            <option value="professional">Professional</option>
           </select>
         </div>
 
@@ -183,6 +217,19 @@ export default function ChatInput({ initial = "", onSend, onUpload, model = "gpt
         </div>
 
         <div className="flex items-center gap-2">
+          <div className="hidden sm:flex items-center gap-1" role="group" aria-label="Output detail level">
+            {(["concise", "normal", "detailed"] as const).map((level) => (
+              <button
+                key={level}
+                type="button"
+                className={`rounded border px-2 py-1 text-xs ${detail === level ? "bg-slate-900 text-white" : "bg-white"}`}
+                onClick={() => setDetail(level)}
+                aria-pressed={detail === level}
+              >
+                {level}
+              </button>
+            ))}
+          </div>
           <input ref={fileInputRef} type="file" className="hidden" onChange={handleFile} />
           <Button variant="ghost" onClick={triggerFile} title="Upload file">
             <Upload className="h-4 w-4" />
@@ -193,6 +240,11 @@ export default function ChatInput({ initial = "", onSend, onUpload, model = "gpt
           <Button variant="ghost" onClick={enhancePrompt} title="Enhance prompt">
             <FileText className="h-4 w-4" />
           </Button>
+          {(streamState === "sending" || streamState === "streaming") && onStop ? (
+            <Button variant="outline" onClick={onStop} title="Stop generation">
+              <OctagonX className="h-4 w-4" />
+            </Button>
+          ) : null}
           <Button onClick={handleSend} className="bg-gradient-to-r from-orange-600 to-yellow-500 text-white">
             <Send className="h-4 w-4" />
           </Button>

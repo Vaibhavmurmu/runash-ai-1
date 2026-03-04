@@ -2,8 +2,8 @@
 
 import type React from "react"
 
-import { SessionProvider } from "next-auth/react"
 import { CartProvider } from "@/contexts/cart-context"
+import { AuthUIProvider } from "@/components/auth"
 
 interface ProvidersProps {
   children: React.ReactNode
@@ -11,8 +11,8 @@ interface ProvidersProps {
 
 export function Providers({ children }: ProvidersProps) {
   return (
-    <SessionProvider>
+    <AuthUIProvider>
       <CartProvider>{children}</CartProvider>
-    </SessionProvider>
+    </AuthUIProvider>
   )
 }

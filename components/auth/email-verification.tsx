@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2, CheckCircle, XCircle, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { CardAlert } from "@/components/ui/card-alert"
 import Link from "next/link"
 
 export function EmailVerification() {
@@ -126,19 +126,15 @@ export function EmailVerification() {
               )}
             </div>
 
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
+            {error ? <CardAlert severity="danger" title="Verification failed" description={error} /> : null}
 
-            {success && (
-              <Alert className="border-green-200 bg-green-50 dark:bg-green-950">
-                <AlertDescription className="text-center text-green-800 dark:text-green-200">
-                  Your account is now active! You can sign in and start using all features.
-                </AlertDescription>
-              </Alert>
-            )}
+            {success ? (
+              <CardAlert
+                severity="success"
+                title="Account activated"
+                description="Your account is now active! You can sign in and start using all features."
+              />
+            ) : null}
 
             <div className="space-y-3">
               {success ? (

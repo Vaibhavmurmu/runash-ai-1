@@ -1,6 +1,5 @@
-import { getServerSession } from "next-auth"
 import { NextResponse } from "next/server"
-import { authOptions } from "@/lib/auth"
+import { getServerAuthSession } from "@/lib/auth/session"
 
 const PERIOD_VALUES = ["24h", "7d", "30d", "90d", "1y"] as const
 
@@ -28,7 +27,7 @@ export function jsonError(status: number, code: ErrorCode, message: string, deta
 }
 
 export async function requireAnalyticsSession() {
-  const session = await getServerSession(authOptions)
+  const session = await getServerAuthSession()
 
   if (!session?.user?.id) {
     return { error: jsonError(401, "UNAUTHORIZED", "Authentication required for analytics endpoints.") }

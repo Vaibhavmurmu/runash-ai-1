@@ -20,7 +20,7 @@ import {
   Key,
   RefreshCw,
 } from "lucide-react"
-import { useSession } from "next-auth/react"
+import { useAuthSession } from "@/lib/auth/access-client"
 import Image from "next/image"
 
 interface BackupCodesStatus {
@@ -31,7 +31,7 @@ interface BackupCodesStatus {
 }
 
 export function TwoFactorSetup() {
-  const { data: session } = useSession()
+  const { data: session } = useAuthSession()
   const [activeTab, setActiveTab] = useState("totp")
   const [step, setStep] = useState<"setup" | "verify" | "complete">("setup")
 

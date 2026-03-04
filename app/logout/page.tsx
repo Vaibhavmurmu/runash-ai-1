@@ -1,14 +1,14 @@
 "use client"
 
 import { useEffect } from "react"
-import { signOut } from "next-auth/react"
+import { signOutWithRedirect } from "@/lib/auth/access-client"
 import { Loader2 } from "lucide-react"
 
 export default function LogoutPage() {
   useEffect(() => {
     // Soft delay for UX, then sign out
     const t = setTimeout(() => {
-      signOut({ callbackUrl: "/" })
+      signOutWithRedirect("/")
     }, 400)
     return () => clearTimeout(t)
   }, [])

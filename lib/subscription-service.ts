@@ -86,6 +86,21 @@ export interface BillingPortalSession {
   return_url: string
 }
 
+type ApiEnvelope<T> = {
+  success?: boolean
+  data?: T
+}
+
+function unwrapEnvelope<T>(payload: unknown): T | null {
+  if (!payload || typeof payload !== "object") return null
+  const envelope = payload as ApiEnvelope<T>
+  if ("data" in envelope) {
+    return (envelope.data ?? null) as T | null
+  }
+
+  return payload as T
+}
+
 export class SubscriptionService {
   private static instance: SubscriptionService
 
@@ -103,8 +118,10 @@ export class SubscriptionService {
     try {
       const response = await fetch("/api/billing/plans")
       if (!response.ok) throw new Error("Failed to fetch plans")
-      const { plans } = await response.json()
-      return plans
+      const payload = await response.json()
+      const parsed = unwrapEnvelope<{ plans?: SubscriptionPlan[] } | SubscriptionPlan[]>(payload)
+      if (Array.isArray(parsed)) return parsed
+      return parsed?.plans || []
     } catch (error) {
       console.error("Failed to fetch plans:", error)
       return []
@@ -115,7 +132,10 @@ export class SubscriptionService {
     try {
       const response = await fetch(`/api/billing/plans/${planId}`)
       if (!response.ok) return null
-      return await response.json()
+      const payload = await response.json()
+      const parsed = unwrapEnvelope<{ plan?: SubscriptionPlan } | SubscriptionPlan>(payload)
+      if (!parsed) return null
+      return (parsed as { plan?: SubscriptionPlan })?.plan || (parsed as SubscriptionPlan)
     } catch (error) {
       console.error("Failed to fetch plan:", error)
       return null
@@ -127,7 +147,10 @@ export class SubscriptionService {
     try {
       const response = await fetch("/api/billing/subscription")
       if (!response.ok) return null
-      return await response.json()
+      const payload = await response.json()
+      const parsed = unwrapEnvelope<{ subscription?: UserSubscription } | UserSubscription>(payload)
+      if (!parsed) return null
+      return (parsed as { subscription?: UserSubscription })?.subscription ?? (parsed as UserSubscription)
     } catch (error) {
       console.error("Failed to fetch subscription:", error)
       return null
@@ -149,7 +172,10 @@ export class SubscriptionService {
         body: JSON.stringify({ plan_id: planId, payment_method_id: paymentMethodId }),
       })
       if (!response.ok) throw new Error("Failed to create subscription")
-      return await response.json()
+      const payload = await response.json()
+      const parsed = unwrapEnvelope<{ subscription: UserSubscription; client_secret?: string; requires_action?: boolean }>(payload)
+      if (!parsed?.subscription) throw new Error("Invalid create subscription response")
+      return parsed
     } catch (error) {
       console.error("Failed to create subscription:", error)
       throw error
@@ -161,10 +187,12 @@ export class SubscriptionService {
       const response = await fetch("/api/billing/subscription", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan_id: planId, prorate }),
+        body: JSON.stringify({ plan_id: planId, prorate, confirm: true }),
       })
       if (!response.ok) throw new Error("Failed to update subscription")
-      return await response.json()
+      const payload = await response.json()
+      const parsed = unwrapEnvelope<{ subscription?: UserSubscription } | UserSubscription>(payload)
+      return ((parsed as { subscription?: UserSubscription })?.subscription || parsed) as UserSubscription
     } catch (error) {
       console.error("Failed to update subscription:", error)
       throw error
@@ -176,10 +204,12 @@ export class SubscriptionService {
       const response = await fetch("/api/billing/subscription/cancel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ immediately }),
+        body: JSON.stringify({ immediately, confirm: true }),
       })
       if (!response.ok) throw new Error("Failed to cancel subscription")
-      return await response.json()
+      const payload = await response.json()
+      const parsed = unwrapEnvelope<{ subscription?: UserSubscription } | UserSubscription>(payload)
+      return ((parsed as { subscription?: UserSubscription })?.subscription || parsed) as UserSubscription
     } catch (error) {
       console.error("Failed to cancel subscription:", error)
       throw error
@@ -192,7 +222,9 @@ export class SubscriptionService {
         method: "POST",
       })
       if (!response.ok) throw new Error("Failed to reactivate subscription")
-      return await response.json()
+      const payload = await response.json()
+      const parsed = unwrapEnvelope<{ subscription?: UserSubscription } | UserSubscription>(payload)
+      return ((parsed as { subscription?: UserSubscription })?.subscription || parsed) as UserSubscription
     } catch (error) {
       console.error("Failed to reactivate subscription:", error)
       throw error
@@ -204,7 +236,12 @@ export class SubscriptionService {
     try {
       const response = await fetch(`/api/billing/invoices?limit=${limit}&offset=${offset}`)
       if (!response.ok) throw new Error("Failed to fetch invoices")
-      return await response.json()
+      const payload = await response.json()
+      const parsed = unwrapEnvelope<{ invoices?: Invoice[]; total?: number } | Invoice[]>(payload)
+      if (Array.isArray(parsed)) {
+        return { invoices: parsed, total: parsed.length }
+      }
+      return { invoices: parsed?.invoices || [], total: parsed?.total || 0 }
     } catch (error) {
       console.error("Failed to fetch invoices:", error)
       return { invoices: [], total: 0 }
@@ -215,7 +252,10 @@ export class SubscriptionService {
     try {
       const response = await fetch(`/api/billing/invoices/${invoiceId}`)
       if (!response.ok) return null
-      return await response.json()
+      const payload = await response.json()
+      const parsed = unwrapEnvelope<{ invoice?: Invoice } | Invoice>(payload)
+      if (!parsed) return null
+      return (parsed as { invoice?: Invoice })?.invoice || (parsed as Invoice)
     } catch (error) {
       console.error("Failed to fetch invoice:", error)
       return null
@@ -319,7 +359,10 @@ export class SubscriptionService {
         body: JSON.stringify({ return_url: returnUrl }),
       })
       if (!response.ok) throw new Error("Failed to create billing portal session")
-      return await response.json()
+      const payload = await response.json()
+      const parsed = unwrapEnvelope<BillingPortalSession>(payload)
+      if (!parsed) throw new Error("Invalid billing portal response")
+      return parsed
     } catch (error) {
       console.error("Failed to create billing portal session:", error)
       throw error

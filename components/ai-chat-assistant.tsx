@@ -11,7 +11,8 @@ import { Card, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Bot, Send, X, Sparkles, Search, ShoppingCart, Loader2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { getProducts } from "@/lib/products"
-import { useCart } from "@/hooks/use-cart"
+import { useCart } from "@/contexts/cart-context"
+import type { Product as CartProduct } from "@/types/cart"
 import { useToast } from "@/hooks/use-toast"
 
 interface Message {
@@ -35,7 +36,7 @@ export default function AIChatAssistant() {
     },
   ])
   const [isTyping, setIsTyping] = useState(false)
-  const { addItem } = useCart()
+  const { addToCart } = useCart()
   const { toast } = useToast()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -171,14 +172,24 @@ export default function AIChatAssistant() {
     }
   }
 
+  const toCartProduct = (product: any): CartProduct => ({
+    id: product.id,
+    name: product.name,
+    description: product.description,
+    price: product.price,
+    category: {
+      id: String(product.category).toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      name: String(product.category),
+    },
+    isOrganic: Boolean(product.isOrganic),
+    sustainabilityScore: 0,
+    image: product.images?.[0] || "/placeholder.svg",
+    inStock: product.stock > 0,
+    certifications: product.certifications || [],
+  })
+
   const handleAddToCart = (product: any) => {
-    addItem({
-      id: product.id,
-      name: product.name,
-      price: product.price,
-      quantity: 1,
-      image: product.images[0],
-    })
+    addToCart(toCartProduct(product), 1)
 
     toast({
       title: "Added to cart",

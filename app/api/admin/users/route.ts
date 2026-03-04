@@ -1,18 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { UserManager } from "@/lib/user-management"
 import { z } from "zod"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
+import { ASSIGNABLE_ADMIN_ROLES, normalizeRoleForStorage } from "@/lib/rbac"
+import { recordAdminAuditLog, respondInternalServerError } from "@/lib/api/admin-route-utils"
 
 const getUsersSchema = z.object({
-  page: z
-    .string()
-    .optional()
-    .transform((val) => (val ? Number.parseInt(val) : 1)),
-  limit: z
-    .string()
-    .optional()
-    .transform((val) => (val ? Number.parseInt(val) : 20)),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(200).default(20),
   search: z.string().optional(),
   role: z.string().optional(),
   email_verified: z
@@ -29,26 +24,28 @@ const getUsersSchema = z.object({
 })
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["users:read"],
+    auditEvent: "admin.users.list",
+  })
+  if (!auth.success) return auth.response
+
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    // Check admin permissions
-    // This would typically check if user has admin role/permissions
-
     const { searchParams } = new URL(request.url)
     const params = Object.fromEntries(searchParams.entries())
     const validatedParams = getUsersSchema.parse(params)
 
     const { page, limit, ...filters } = validatedParams
-    const result = await UserManager.getUsers(filters, { page, limit })
+    const result = await UserManager.getUsers(filters, { page, limit }, { sessionOrganizationId: auth.session.user.ssoOrganization })
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error("Error fetching users:", error)
-    return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 })
+    return respondInternalServerError(request, error, {
+      event: "admin.users.list.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_USERS_LIST_FAILED",
+    })
   }
 }
 
@@ -56,26 +53,53 @@ const createUserSchema = z.object({
   name: z.string().min(1),
   username: z.string().min(1).optional(),
   email: z.string().email(),
-  role: z.string().default("user"),
+  role: z.enum(ASSIGNABLE_ADMIN_ROLES).default("user"),
   password: z.string().min(8).optional(),
 })
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["users:write"],
+    auditEvent: "admin.users.create",
+  })
+  if (!auth.success) return auth.response
+
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
     const body = await request.json()
-    const validatedData = createUserSchema.parse(body)
+    const validatedBody = createUserSchema.parse(body)
 
-    // Create user logic would go here
-    // This is a simplified version - you'd want to hash passwords, etc.
+    const storedRole = normalizeRoleForStorage(validatedBody.role)
+    const createdUser = await UserManager.createUser(
+      {
+        name: validatedBody.name,
+        username: validatedBody.username,
+        email: validatedBody.email,
+        role: storedRole,
+        organizationId: auth.session.user.ssoOrganization ?? null,
+      },
+      auth.userId,
+    )
 
-    return NextResponse.json({ message: "User created successfully" })
+    await recordAdminAuditLog({
+      actorUserId: auth.userId,
+      action: "user.created",
+      entityType: "user",
+      entityId: createdUser.id,
+      metadata: { requestedRole: validatedBody.role, storedRole },
+    })
+
+    return NextResponse.json({
+      message: "User created successfully",
+      user: createdUser,
+      requestedRole: validatedBody.role,
+      storedRole,
+    })
   } catch (error) {
-    console.error("Error creating user:", error)
-    return NextResponse.json({ error: "Failed to create user" }, { status: 500 })
+    return respondInternalServerError(request, error, {
+      event: "admin.users.create.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_USER_CREATE_FAILED",
+    })
   }
 }

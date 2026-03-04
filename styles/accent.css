@@ -15,7 +15,7 @@
   --accent-900: #7c2d12;
 }
 
-:root[data-accent='orange'] {
+:root[data-accent="orange"] {
   --accent-50: #fff7ed;
   --accent-100: #ffedd5;
   --accent-200: #fed7aa;
@@ -28,7 +28,7 @@
   --accent-900: #7c2d12;
 }
 
-:root[data-accent='teal'] {
+:root[data-accent="teal"] {
   --accent-50: #ecfeff;
   --accent-100: #cffafe;
   --accent-200: #a5f3fc;
@@ -41,7 +41,7 @@
   --accent-900: #164e63;
 }
 
-:root[data-accent='violet'] {
+:root[data-accent="violet"] {
   --accent-50: #faf5ff;
   --accent-100: #f3e8ff;
   --accent-200: #e9d5ff;
@@ -54,7 +54,7 @@
   --accent-900: #4c1d95;
 }
 
-:root[data-accent='red'] {
+:root[data-accent="red"] {
   --accent-50: #fff1f2;
   --accent-100: #ffe4e6;
   --accent-200: #fecaca;
@@ -67,7 +67,7 @@
   --accent-900: #7f1d1d;
 }
 
-:root[data-accent='green'] {
+:root[data-accent="green"] {
   --accent-50: #ecfdf5;
   --accent-100: #d1fae5;
   --accent-200: #a7f3d0;
@@ -84,7 +84,50 @@
    Example: bg-[var(--accent-500)] cannot be done directly in Tailwind without plugin.
    You can use inline style: style={{ background: 'var(--accent-500)' }}
 */
-.accent-text { color: var(--accent-500); }
-.accent-bg { background-color: var(--accent-500); color: white; }
-.accent-ring { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-500) 20%, transparent); }
+.accent-text {
+  color: var(--accent-500);
+}
+.accent-bg {
+  background-color: var(--accent-500);
+  color: white;
+}
+.accent-ring {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-500) 20%, transparent);
+}
 
+:root {
+  --brand-gradient: linear-gradient(
+    120deg,
+    hsl(var(--brand-start)),
+    hsl(var(--brand-middle)),
+    hsl(var(--brand-end))
+  );
+  --brand-gradient-soft: linear-gradient(
+    135deg,
+    hsl(var(--brand-start) / 0.22),
+    hsl(var(--brand-middle) / 0.16),
+    hsl(var(--brand-end) / 0.1)
+  );
+}
+
+.brand-gradient-bg {
+  background-image: var(--brand-gradient);
+}
+.brand-gradient-text {
+  background-image: var(--brand-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.semantic-success {
+  color: hsl(var(--success));
+}
+.semantic-warning {
+  color: hsl(var(--warning));
+}
+.semantic-error {
+  color: hsl(var(--error));
+}
+.semantic-info {
+  color: hsl(var(--info));
+}

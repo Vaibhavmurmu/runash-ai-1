@@ -2,6 +2,9 @@ import { type NextRequest, NextResponse } from "next/server"
 import { generatePasskeyAuthenticationOptions, verifyPasskeyAuthentication } from "@/lib/passkey"
 import { SignJWT } from "jose"
 import { z } from "zod"
+import { logApiRouteError } from "@/lib/api/logging"
+import { setSessionCookies } from "@/lib/auth/cookies"
+import { getAuthSecret } from "@/lib/auth"
 
 const authenticationSchema = z.object({
   response: z.object({
@@ -27,7 +30,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(options)
   } catch (error) {
-    console.error("Passkey authentication options error:", error)
+    logApiRouteError(request, "auth.passkey.authenticate.options_failed", error, { errorCode: "AUTH_PASSKEY_AUTH_OPTIONS_FAILED" })
     return NextResponse.json({ error: "Failed to generate authentication options" }, { status: 500 })
   }
 }
@@ -41,7 +44,7 @@ export async function POST(request: NextRequest) {
 
     if (result.verified && result.user) {
       // Create JWT session token
-      const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET!)
+      const secret = new TextEncoder().encode(getAuthSecret())
       const sessionToken = await new SignJWT({
         sub: result.user.id.toString(),
         email: result.user.email,
@@ -59,20 +62,14 @@ export async function POST(request: NextRequest) {
         user: result.user,
       })
 
-      response.cookies.set("next-auth.session-token", sessionToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60, // 30 days
-        path: "/",
-      })
+      setSessionCookies(response, sessionToken)
 
       return response
     }
 
     return NextResponse.json({ error: "Failed to verify passkey authentication" }, { status: 400 })
   } catch (error) {
-    console.error("Passkey authentication verification error:", error)
+    logApiRouteError(request, "auth.passkey.authenticate.verify_failed", error, { errorCode: "AUTH_PASSKEY_AUTH_VERIFY_FAILED" })
 
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "Invalid request data" }, { status: 400 })

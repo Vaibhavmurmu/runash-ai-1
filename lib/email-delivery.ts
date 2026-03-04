@@ -1,5 +1,6 @@
 import { neon } from "@neondatabase/serverless"
 import { randomBytes } from "crypto"
+import { normalizePagination, SafeWhereBuilder, validateDateRange } from "@/lib/email-filter-utils"
 
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -192,44 +193,30 @@ export class EmailDeliveryTracker {
     offset?: number
   }): Promise<{ deliveries: EmailDelivery[]; total: number }> {
     try {
-      let whereClause = "WHERE 1=1"
-      const params: any[] = []
+      validateDateRange(filters.date_from, filters.date_to)
+      const { limit, offset } = normalizePagination(filters.limit, filters.offset, {
+        defaultLimit: 50,
+        maxLimit: 200,
+      })
 
-      if (filters.campaign_id) {
-        whereClause += ` AND campaign_id = ${filters.campaign_id}`
-      }
-      if (filters.template_id) {
-        whereClause += ` AND template_id = ${filters.template_id}`
-      }
-      if (filters.status) {
-        whereClause += ` AND status = '${filters.status}'`
-      }
-      if (filters.recipient_email) {
-        whereClause += ` AND recipient_email ILIKE '%${filters.recipient_email}%'`
-      }
-      if (filters.date_from) {
-        whereClause += ` AND created_at >= '${filters.date_from.toISOString()}'`
-      }
-      if (filters.date_to) {
-        whereClause += ` AND created_at <= '${filters.date_to.toISOString()}'`
-      }
+      const { whereClause, params } = new SafeWhereBuilder()
+        .addEquals("campaign_id", filters.campaign_id)
+        .addEquals("template_id", filters.template_id)
+        .addEquals("status", filters.status)
+        .addIlikeContains("recipient_email", filters.recipient_email)
+        .addGte("created_at", filters.date_from)
+        .addLte("created_at", filters.date_to)
+        .build()
 
       // Get total count
-      const countResult = await sql`
-        SELECT COUNT(*) as total FROM email_deliveries ${sql.unsafe(whereClause)}
-      `
+      const countResult = await sql.query(`SELECT COUNT(*) as total FROM email_deliveries ${whereClause}`, params)
       const total = Number.parseInt(countResult[0].total)
 
       // Get deliveries with pagination
-      const limit = filters.limit || 50
-      const offset = filters.offset || 0
-
-      const deliveries = await sql`
-        SELECT * FROM email_deliveries 
-        ${sql.unsafe(whereClause)}
-        ORDER BY created_at DESC 
-        LIMIT ${limit} OFFSET ${offset}
-      `
+      const deliveries = await sql.query(
+        `SELECT * FROM email_deliveries ${whereClause} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset],
+      )
 
       return { deliveries: deliveries as EmailDelivery[], total }
     } catch (error) {
@@ -246,22 +233,16 @@ export class EmailDeliveryTracker {
     date_to?: Date
   }): Promise<DeliveryStats> {
     try {
-      let whereClause = "WHERE 1=1"
+      validateDateRange(filters.date_from, filters.date_to)
+      const { whereClause, params } = new SafeWhereBuilder()
+        .addEquals("campaign_id", filters.campaign_id)
+        .addEquals("template_id", filters.template_id)
+        .addGte("created_at", filters.date_from)
+        .addLte("created_at", filters.date_to)
+        .build()
 
-      if (filters.campaign_id) {
-        whereClause += ` AND campaign_id = ${filters.campaign_id}`
-      }
-      if (filters.template_id) {
-        whereClause += ` AND template_id = ${filters.template_id}`
-      }
-      if (filters.date_from) {
-        whereClause += ` AND created_at >= '${filters.date_from.toISOString()}'`
-      }
-      if (filters.date_to) {
-        whereClause += ` AND created_at <= '${filters.date_to.toISOString()}'`
-      }
-
-      const result = await sql`
+      const result = await sql.query(
+        `
         SELECT 
           COUNT(*) as total_sent,
           COUNT(CASE WHEN status = 'delivered' OR status = 'opened' OR status = 'clicked' THEN 1 END) as delivered,
@@ -270,8 +251,10 @@ export class EmailDeliveryTracker {
           COUNT(CASE WHEN status = 'clicked' THEN 1 END) as clicked,
           COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed
         FROM email_deliveries 
-        ${sql.unsafe(whereClause)}
-      `
+        ${whereClause}
+      `,
+        params,
+      )
 
       const stats = result[0]
       const total_sent = Number.parseInt(stats.total_sent)

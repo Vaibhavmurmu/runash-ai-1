@@ -1,1064 +1,363 @@
-# RunAsh Pay - Business & Startup Implementation Plan
+# RunAsh Pay — Business & Startup Implementation
 
-## Executive Summary
+_Last verified: 2026-02-24 (UTC)_
 
-This comprehensive guide outlines the strategy for deploying RunAsh Pay across Business and Startup segments. The implementation focuses on secure payment processing, seamless integrations, enterprise scalability, and compliance requirements specific to each user segment.
+This document is limited to payment/business implementation policy. Generic contributor/process policy is canonicalized in `docs/CONTRIBUTOR_POLICY_INDEX.md` and `TEAM_GUIDE.md`.
 
----
+## Segment implementation scope
 
-## Table of Contents
+### Startup segment
+- Prioritize fast integration, clear billing UX, and predictable transaction operations.
+- Baseline capabilities: checkout links, basic settlement visibility, refund support, and webhook integrations.
 
-1. [Vision & Market Positioning](#vision--market-positioning)
-2. [Segment-Specific Requirements](#segment-specific-requirements)
-3. [Feature Matrix](#feature-matrix)
-4. [Technical Architecture](#technical-architecture)
-5. [Implementation Roadmap](#implementation-roadmap)
-6. [Compliance & Security Framework](#compliance--security-framework)
-7. [Infrastructure & Scalability](#infrastructure--scalability)
-8. [Deployment Strategy](#deployment-strategy)
+### Business segment
+- Prioritize high-volume processing, reconciliation, policy controls, and auditability.
+- Extended capabilities: advanced reporting, role-scoped finance operations, and enterprise reconciliation workflows.
 
----
+## 2026-02 implementation notes
 
-## Vision & Market Positioning
+- Canonical gateway module path is `lib/payment-gateways/pay.ts`; legacy `lib/payment-getways/pay.ts` remains temporary compatibility alias.
+- Migration status (2026-02-24): repository import sweep shows zero remaining runtime imports of `payment-getways/pay`; shim retained temporarily for backward compatibility.
+- CI guard added: `npm run lint:payment-getways-imports` fails on any new `payment-getways/pay` import outside the shim allowlist.
+- Payment and business APIs retain existing field names and API signatures during auth runtime migration.
+- Better Auth rollout remains staged behind `FEATURE_FLAG_USE_BETTER_AUTH_PERCENT` with explicit rollback guardrails.
+- Auth hardening updates (verified linking, session invalidation, throttling) are contract-compatible for payment APIs.
+- Admin auth/org tooling updates (organization lifecycle + provider mapping + tenant user assignment) are operational-only and do not modify payment field contracts or payment API signatures.
+- Auth signup flow was unified through Better Auth server registration (`auth.api.signUpEmail`) with compatibility response mapping; no payment route fields or business payment contracts changed.
+- Register API routing now invokes Better Auth server registration directly from `app/api/auth/register/route.ts` (delegating validation/compat mapping to the shared handler); response contract remains backward compatible for existing frontend consumers.
+- Incident and rollback runbook reference for auth/org config operations: `docs/AUTH_ORG_INCIDENT_RUNBOOK.md`.
 
-### RunAsh Pay Mission
-Enable businesses and startups to accept, process, and manage payments seamlessly through a secure, scalable, and user-friendly UPI-first platform.
 
-### Market Positioning
-- **For Startups**: Cost-effective, quick-to-integrate payment solution with minimal overhead
-- **For Businesses**: Enterprise-grade payment infrastructure with advanced analytics and compliance tools
-- **For All**: AI-powered insights, multi-currency support, and industry-leading security
+## 2026-02 editor render reliability hardening note (non-payment contract change)
 
-### Success Metrics
-- 99.9% uptime and transaction success rate
-- <2 second payment processing time
-- <1% transaction failure rate
-- <100ms API response time
-- 100% PCI-DSS compliance
+- Change scope: editor render job reliability and security hardening (`/api/editor/render-jobs` rate limits, cancel semantics, worker timeout/retry, and log redaction).
+- Payment/auth impact assessment: no payment contract fields, checkout/webhook schemas, or auth/payment API signatures were modified.
+- Risk + rollback: low-to-medium operational risk (queue behavior changes). Rollback by reverting editor render job API/worker patch if cancellation or queue throughput regressions appear.
+- Security posture: provider request/response operational logs are redacted to prevent sensitive token/prompt leakage in shared logs.
 
----
+## Compatibility, risk, and rollback
 
-## Segment-Specific Requirements
+- Backward compatibility is mandatory for payment routes unless a versioned migration is explicitly introduced.
+- Rollback trigger examples:
+  - sustained payment auth failures,
+  - checkout authorization anomalies,
+  - webhook processing regressions.
+- Rollback action: disable new rollout flags and restore last known-good auth/payment path before resuming rollout.
 
-### STARTUP REQUIREMENTS
+## Related canonical docs
 
-#### User Profile
-- Small teams (1-50 employees)
-- Limited technical resources
-- Cost-conscious
-- Fast time-to-market
+- Payment system detail: `RunAsh_AI_Pay.md`
+- Auth policy and migration details: `RUNASH-AUTH.md`
+- Security requirements: `SECURITY.md`
 
-#### Key Needs
-1. **Easy Setup**: Plug-and-play integration
-2. **Cost Efficiency**: Low transaction fees (< 1%)
-3. **Growth Scaling**: Auto-scaling infrastructure
-4. **Basic Analytics**: Transaction summaries, daily reports
-5. **Multi-Payment Options**: UPI, Cards, Wallets
-6. **Simple Dashboard**: Essential metrics only
-7. **Support**: Chat-based, community forum
-8. **Payment Links**: No code payment solution
+## 2026-02 auth tenant-boundary compatibility note
 
-#### Feature Priorities
-- Payment links and QR codes
-- Basic transaction reports
-- Webhook integrations
-- Email receipts
-- Mobile-first design
+- No payment contract field names or API signatures were changed in this update.
+- Tenant-boundary enforcement for shared auth/admin user routes was hardened to prevent cross-tenant profile and admin-user access.
+- Legacy user rows without `sso_organization_id` remain temporarily readable in-tenant and are migrated on first successful tenant-scoped mutation.
 
-#### Technical Requirements
-- REST API (simplified)
-- Webhook support
-- SDK in JavaScript/Python
-- Rate limiting: 1000 req/min
-- Max payload: 5MB
-- Response timeout: 30 seconds
+## Redirect orchestration rollout (2026-02)
 
----
+- Checkout orchestration now standardizes provider redirect + return URLs across API and profile surfaces for startup and v1 billing routes.
+- Rollback path: disable callback-based resume and fall back to provider-hosted success/cancel URL handling if signed-state verification fails unexpectedly.
+- Monitoring focus: callback signature failures, reference mismatch rates, and pending->completed transition latency from webhook updates.
 
-### BUSINESS REQUIREMENTS
+## 2026-02 invoice reliability additions
 
-#### User Profile
-- Large teams (50+ employees)
-- Dedicated technical team
-- Revenue optimization focus
-- Compliance-heavy
+- Invoice creation now uses canonical billing invoice APIs with server-side validation for customer fields, line items, tax, due date, and currency.
+- Payment-attempt linkage for invoices is persisted for reconciliation (`invoice_payment_attempts`), and webhook/payment confirmation paths now synchronize invoice lifecycle state.
+- No payment route field names were removed; invoice API compatibility is preserved while adding POST create support.
 
-#### Key Needs
-1. **Enterprise Security**: Multi-factor authentication, encryption
-2. **Advanced Analytics**: Real-time dashboards, predictive insights
-3. **Compliance Tools**: Audit logs, regulatory reporting, KYC/AML
-4. **High Volume**: 10,000+ transactions/day
-5. **Custom Integration**: API-first approach
-6. **Settlement Options**: Next-day, same-day, real-time settlement
-7. **Dedicated Support**: 24/7 account management
-8. **White-label Options**: Custom branding
+## Payment Reliability Addendum (State Reconciliation)
 
-#### Feature Priorities
-- Advanced reconciliation tools
-- Batch processing
-- Custom workflows
-- API rate limits: 100,000 req/min
-- Real-time settlements
-- Advanced fraud detection
-- Detailed audit trails
-- Custom reporting
+- Add automated operational reconciliation via `POST /api/v1/payment/usage/reconcile` for payment intents and checkout sessions.
+- Reconciliation should be run by a privileged billing admin actor and monitored for:
+  - `paymentIntents.updated` spikes,
+  - recurring `checkoutSessions.expired` counts.
+- Transition auditing is now first-class via persisted timestamps to support incident forensics and rollback reviews.
 
-#### Technical Requirements
-- GraphQL API (in addition to REST)
-- WebSocket support for real-time updates
-- Enterprise SDK in multiple languages
-- Max payload: 50MB
-- Response timeout: 60 seconds
-- Database replication: Multi-region
-- Load balancing: Geographic
+## 2026-02 payment reliability campaign: test and rollback notes
 
----
+- Impacted flows validated in this update:
+  - checkout redirect roundtrip status resolution,
+  - payment status page route mapping,
+  - invoice create amount lifecycle calculations,
+  - webhook duplicate idempotency handling,
+  - failed/incomplete retry lifecycle outcomes.
+- Backward compatibility confirmation: startup/business payment APIs and field names remain unchanged; no version bump needed.
+- Migration/rollout: no data migration required; helper extraction only.
+- Risks and mitigations:
+  - **Risk:** helper extraction could desynchronize from route behavior. **Mitigation:** targeted payment tests added and required in validation commands.
+  - **Risk:** environment gaps (missing `eslint`, missing DB/auth env for full build) can limit local confidence. **Mitigation:** run targeted tests plus CI in fully provisioned environment before release.
+- Rollback plan:
+  1. Revert helper extraction commit.
+  2. Restore prior inline route/service logic.
+  3. Re-run lint/build/tests in release environment and redeploy previous stable artifact if issues persist.
 
-## Feature Matrix
 
-### Core Payment Features
+## 2026-02 payment safety validator enforcement update
 
-| Feature | Startup | Business | Notes |
-|---------|---------|----------|-------|
-| UPI Payments | ✅ | ✅ | Native support |
-| QR Code Generation | ✅ | ✅ | Dynamic QR codes |
-| Payment Links | ✅ | ✅ | Customizable links |
-| Invoice Generation | ✅ | ✅ | PDF export |
-| Recurring Payments | ❌ | ✅ | Subscription support |
-| Payment Plans | ❌ | ✅ | Flexible payment terms |
-| Refunds | ✅ | ✅ | Instant or scheduled |
-| Partial Refunds | ❌ | ✅ | Pro-rata refunds |
-| International Transfers | ❌ | ✅ | Multi-currency |
-| Card Payments | Basic | Advanced | Tokenization, 3DS |
-| Wallet Integration | ✅ | ✅ | All major wallets |
-| BNPL Options | ❌ | ✅ | Partner integrations |
+- Impacted flows validated: validator middleware enforcement for create-intent and confirm execution path, including HITL/MFA thresholds normalized across INR/USD.
+- Backward compatibility confirmation: no payment field names removed; response payload includes additive validator-decision metadata only.
+- Rollback: revert validator middleware enforcement in API routes/service and restore prior confirmation behavior if incident metrics indicate false-positive blocking.
 
-### Analytics & Reporting
 
-| Feature | Startup | Business | Notes |
-|---------|---------|----------|-------|
-| Transaction Reports | ✅ | ✅ | Basic daily/monthly |
-| Real-time Dashboard | Basic | Advanced | Live updates |
-| Custom Reports | ❌ | ✅ | Dynamic queries |
-| Fraud Detection | Basic | Advanced | ML-powered |
-| Settlement Reports | ✅ | ✅ | Detailed breakdowns |
-| Tax Reports | ❌ | ✅ | GST, TDS compliance |
-| Export Formats | CSV | CSV/Excel/PDF/API | Multiple formats |
-| Data Retention | 6 months | Unlimited | Legal requirement |
+## 2026-02 residency-aware routing operations addendum
 
-### User Management
+- Startup/business payment flows now evaluate merchant/customer geography for India vs US processing path selection through the shared routing policy module.
+- Compliance-safe metadata contract for outbound gateway calls is now: `region`, `residency_policy_version`, and `request_id` (+ minimal business identifiers).
+- Audit trail requirements: capture `routeDecision`, `requestId`, and sanitized non-sensitive metadata for `billing.checkout`, `billing.subscription`, `payment.create_intent`, and RunAshChat instant checkout relay flows.
+- Risk + rollback: if provider rejects additive metadata keys, remove metadata enrichment from provider calls first (safe rollback) without changing payment API field names/signatures.
 
-| Feature | Startup | Business | Notes |
-|---------|---------|----------|-------|
-| Basic User Accounts | ✅ | ✅ | Email verification |
-| Multi-user Accounts | ❌ | ✅ | Team collaboration |
-| Role-based Access | ❌ | ✅ | Granular permissions |
-| Activity Logging | ✅ | ✅ | All user actions |
-| Two-factor Authentication | ✅ | ✅ | TOTP, SMS, Email |
-| Single Sign-On | ❌ | ✅ | SAML, OAuth |
-| API Keys | ✅ | ✅ | Secure authentication |
-| Audit Trails | Basic | Advanced | Immutable logs |
+## 2026-02 RunAsh AI Link data reliability update
 
-### Integration Options
+- Impacted flows: Link card save, Link session creation/OTP verification, wallet activity timeline, subscription snapshot management.
+- Startup/business compatibility: no field-name or signature changes in existing wallet APIs; persistence moved from process memory to DB-backed repository for operational reliability.
+- Audit + compliance controls:
+  - tokenized payment references only for cards;
+  - masked card metadata only (`last4`, `brand`, `exp`);
+  - hashed verification codes and OTP attempt logging;
+  - encrypted billing and verification-profile metadata at rest.
+- Migration + rollout:
+  1. apply `db/migrations/0002_wallet_link_persistence.sql`;
+  2. run `scripts/sql/2026-02-26_backfill_wallet_demo_data.sql` for seeded demo continuity;
+  3. validate wallet API read/write paths.
+- Rollback:
+  - revert wallet repository + migration commit and redeploy prior in-memory wallet fallback,
+  - keep API contracts unchanged during rollback window.
 
-| Feature | Startup | Business | Notes |
-|---------|---------|----------|-------|
-| REST API | ✅ | ✅ | Standard endpoints |
-| Webhooks | ✅ | ✅ | Event-driven |
-| Plugins | Limited | Extensive | E-commerce platforms |
-| SDK (JS/Python) | ✅ | ✅ | Native libraries |
-| GraphQL API | ❌ | ✅ | Query flexibility |
-| Zapier Integration | ✅ | ✅ | No-code automation |
-| Custom Integrations | Basic Support | Dedicated Support | API consulting |
+## 2026-02 Reliability increment: domain webhooks + dead-letter operations
 
-### Compliance & Security
+- Introduced domain-specific webhook ingress paths with Stripe signature verification to reduce blast radius and improve operational ownership across checkout/session/payment/subscription pipelines.
+- Established replay-safe event lifecycle using `webhook_events` and `webhook_dead_letters` with:
+  - idempotent provider event keys,
+  - in-flight claim checks,
+  - exponential retry backoff,
+  - dead-letter escalation and controlled replay.
+- Reconciliation now propagates asynchronous payment/subscription outcomes into wallet activity/timeline to keep customer-visible state aligned with backend settlement progression.
+- Added webhook reconciliation health visibility for operations workflows (retry due, backlog, dead-letter depth, recent failures).
 
-| Feature | Startup | Business | Notes |
-|---------|---------|----------|-------|
-| PCI-DSS Compliance | ✅ | ✅ | Level 1 certified |
-| Data Encryption | ✅ | ✅ | AES-256 |
-| KYC/AML Tools | ❌ | ✅ | Regulatory compliance |
-| Fraud Prevention | Basic | Advanced | Real-time detection |
-| DDoS Protection | ✅ | ✅ | Always-on |
-| SSL/TLS | ✅ | ✅ | TLS 1.2+ |
-| Regular Audits | ✅ | ✅ | SOC 2 Type II |
-| Data Localization | ❌ | ✅ | Regional storage options |
+## 2026-02 RunAsh AI Link adoption plan (Startup + Business)
 
----
+### Link adoption objectives
 
-## Technical Architecture
+- Enable RunAshChat "Instant Checkout" for natural-language purchase intents through Relay Agent.
+- Preserve startup velocity (minimal integration friction) while adding business-grade controls (auditability, reconciliation, role-scoped operations).
+- Keep existing payment API signatures stable while progressively enabling provider-backed Link flows.
 
-### System Architecture Overview
+### Compliance operating model (US + India)
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        API Gateway                           │
-│  (Rate Limiting, Authentication, Load Balancing)            │
-└────────────────────┬────────────────────────────────────────┘
-                     │
-        ┌────────────┼────────────┐
-        │            │            │
-    ┌───▼──┐    ┌────▼─┐    ┌───▼──┐
-    │REST  │    │Graph │    │WebSocket
-    │API   │    │QL    │    │Server
-    └───┬──┘    └────┬─┘    └───┬──┘
-        │            │            │
-        └────────────┼────────────┘
-                     │
-        ┌────────────▼────────────┐
-        │   Business Logic Layer  │
-        │ - Payment Processing    │
-        │ - User Management       │
-        │ - Reporting Engine      │
-        └────────────┬────────────┘
-                     │
-        ┌────────────▼─────────────┐
-        │    Data Layer (Neon)     │
-        │ - Primary Database       │
-        │ - Read Replicas          │
-        │ - Cache Layer (Redis)    │
-        └──────────────────────────┘
-        
-        ┌────────────────────────┐
-        │  External Services     │
-        │ - UPI Gateway          │
-        │ - SMS Provider         │
-        │ - Email Service        │
-        │ - Fraud Detection      │
-        │ - KYC Provider         │
-        └────────────────────────┘
-```
+- **US path:** standard Stripe-hosted Link/checkout execution with webhook-backed settlement state.
+- **India path:** residency-aware routing policy applies region controls and compliance-safe metadata (`region`, `residency_policy_version`, `request_id`) on outbound gateway calls.
+- **Shared controls:**
+  - no sensitive payment/auth material in logs,
+  - OTP + verification artifacts hashed,
+  - card metadata restricted to masked/tokenized representations,
+  - auditable route decisions and reconciliation trails.
+- **Contract safety:** regional routing/compliance controls are additive and do not change external API field names.
 
-### Database Schema (Multi-Tenant)
+### Feature flags for staged rollout (internal -> beta -> GA)
 
-```sql
--- Core Tables
+- `FEATURE_FLAG_RUNASH_LINK_INTERNAL` — enables Link checkout for internal tenant allowlist only.
+- `FEATURE_FLAG_RUNASH_LINK_BETA_MERCHANTS` — enables Link for selected beta merchant IDs/tenants.
+- `FEATURE_FLAG_RUNASH_LINK_GA_PERCENT` — percentage rollout for general availability.
+- `FEATURE_FLAG_USE_BETTER_AUTH_PERCENT` — retained auth rollout dependency guard for payment-adjacent session posture.
 
--- Organizations (Tenants)
-CREATE TABLE organizations (
-  id UUID PRIMARY KEY,
-  name VARCHAR(255) NOT NULL,
-  type ENUM('startup', 'business') NOT NULL,
-  tier ENUM('free', 'pro', 'enterprise') NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW(),
-  metadata JSONB,
-  KEY (type, tier)
-);
+**Stage gates**
+1. **Internal:** 0 external merchants; validate webhook health, callback integrity, and reconciliation latency.
+2. **Beta merchants:** curated merchant cohort, monitored funnel/error metrics with daily rollback readiness.
+3. **GA:** progressive percentage expansion after incident-free stability window and reconciliation SLO adherence.
 
--- Users
-CREATE TABLE users (
-  id UUID PRIMARY KEY,
-  org_id UUID REFERENCES organizations(id),
-  email VARCHAR(255) UNIQUE NOT NULL,
-  password_hash VARCHAR(255),
-  full_name VARCHAR(255),
-  phone VARCHAR(20),
-  role ENUM('admin', 'manager', 'operator', 'viewer') DEFAULT 'operator',
-  mfa_enabled BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMP DEFAULT NOW(),
-  last_login TIMESTAMP,
-  status ENUM('active', 'inactive', 'suspended') DEFAULT 'active',
-  KEY (org_id, status),
-  KEY (email)
-);
+### Rollback strategy
 
--- Transactions
-CREATE TABLE transactions (
-  id UUID PRIMARY KEY,
-  org_id UUID REFERENCES organizations(id),
-  user_id UUID REFERENCES users(id),
-  type ENUM('payment', 'refund', 'payout', 'adjustment') NOT NULL,
-  amount DECIMAL(15,2) NOT NULL,
-  currency VARCHAR(3) DEFAULT 'INR',
-  status ENUM('pending', 'success', 'failed', 'cancelled') DEFAULT 'pending',
-  payment_method ENUM('upi', 'card', 'wallet', 'bank_transfer') NOT NULL,
-  reference_id VARCHAR(100),
-  description TEXT,
-  metadata JSONB,
-  created_at TIMESTAMP DEFAULT NOW(),
-  completed_at TIMESTAMP,
-  KEY (org_id, created_at),
-  KEY (org_id, status),
-  KEY (reference_id)
-);
+- Immediate rollback triggers:
+  - Link verification failure spikes,
+  - provider outage/degraded webhook delivery,
+  - reconciliation backlog growth beyond runbook thresholds.
+- Rollback actions (in order):
+  1. set `FEATURE_FLAG_RUNASH_LINK_GA_PERCENT=0` and disable beta/internal flags as needed;
+  2. route affected traffic back to stable non-Link checkout fallback;
+  3. preserve webhook ingest and reconciliation for already-created attempts to avoid state drift;
+  4. revert latest Link orchestration changes only if flag rollback is insufficient.
+- Recovery exit criteria: error-rate normalization, webhook backlog burn-down, and successful replay/reconciliation parity checks.
 
--- Payments (Detailed)
-CREATE TABLE payments (
-  id UUID PRIMARY KEY,
-  transaction_id UUID REFERENCES transactions(id),
-  org_id UUID REFERENCES organizations(id),
-  payer_upi VARCHAR(255),
-  payee_upi VARCHAR(255),
-  upi_transaction_id VARCHAR(100) UNIQUE,
-  gateway_response JSONB,
-  retry_count INT DEFAULT 0,
-  failure_reason TEXT,
-  created_at TIMESTAMP DEFAULT NOW(),
-  KEY (org_id, created_at),
-  KEY (upi_transaction_id)
-);
+## Incident handling runbook (payments/link)
 
--- Settlements
-CREATE TABLE settlements (
-  id UUID PRIMARY KEY,
-  org_id UUID REFERENCES organizations(id),
-  period_start TIMESTAMP NOT NULL,
-  period_end TIMESTAMP NOT NULL,
-  total_amount DECIMAL(15,2) NOT NULL,
-  transaction_count INT,
-  fees DECIMAL(15,2),
-  status ENUM('pending', 'processing', 'completed', 'failed'),
-  bank_reference VARCHAR(100),
-  created_at TIMESTAMP DEFAULT NOW(),
-  completed_at TIMESTAMP,
-  KEY (org_id, status, period_end)
-);
+### 1) Verification failures (OTP/session verification)
 
--- API Keys
-CREATE TABLE api_keys (
-  id UUID PRIMARY KEY,
-  org_id UUID REFERENCES organizations(id),
-  name VARCHAR(255),
-  key_hash VARCHAR(255) UNIQUE NOT NULL,
-  secret_hash VARCHAR(255) NOT NULL,
-  permissions JSONB,
-  last_used TIMESTAMP,
-  expires_at TIMESTAMP,
-  is_active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMP DEFAULT NOW(),
-  KEY (org_id, is_active)
-);
+- **Detect:** elevated `session_verified` drop-off or verification error-rate alert in operations monitoring.
+- **Triage:**
+  - inspect wallet/link verify endpoint validation errors,
+  - confirm provider OTP callback signatures,
+  - check auth session validity (`/api/auth/get-session`) for affected tenant/user cohort.
+- **Containment:** reduce rollout to internal-only, then disable beta/GA flags if customer impact persists.
+- **Recovery:** replay dead-lettered verification-related events, confirm funnel recovery, then re-open rollout stage.
 
--- Webhooks
-CREATE TABLE webhooks (
-  id UUID PRIMARY KEY,
-  org_id UUID REFERENCES organizations(id),
-  url TEXT NOT NULL,
-  events JSONB,
-  is_active BOOLEAN DEFAULT TRUE,
-  retry_policy JSONB,
-  created_at TIMESTAMP DEFAULT NOW(),
-  KEY (org_id, is_active)
-);
+### 2) Provider outage / degraded provider dependencies
 
--- Audit Logs
-CREATE TABLE audit_logs (
-  id UUID PRIMARY KEY,
-  org_id UUID REFERENCES organizations(id),
-  user_id UUID REFERENCES users(id),
-  action VARCHAR(255),
-  resource_type VARCHAR(100),
-  resource_id VARCHAR(255),
-  changes JSONB,
-  ip_address VARCHAR(45),
-  user_agent TEXT,
-  created_at TIMESTAMP DEFAULT NOW(),
-  KEY (org_id, created_at),
-  KEY (user_id, created_at)
-);
+- **Detect:** webhook delivery failures, elevated pending checkout duration, provider API timeout/error spikes.
+- **Triage:** verify provider status + local ingress health; compare catch-all webhook path vs domain endpoints.
+- **Containment:** switch traffic to stable fallback checkout path; keep idempotent event capture enabled.
+- **Recovery:** replay backlog from dead-letter queue, run reconciliation, and validate paid/pending parity before re-enabling rollout.
 
--- Create Indexes for Performance
-CREATE INDEX idx_transactions_org_date ON transactions(org_id, created_at DESC);
-CREATE INDEX idx_payments_org_date ON payments(org_id, created_at DESC);
-CREATE INDEX idx_settlements_org_status ON settlements(org_id, status);
-CREATE INDEX idx_audit_logs_org_date ON audit_logs(org_id, created_at DESC);
+### 3) Reconciliation backlog growth
+
+- **Detect:** backlog/health endpoints report retry due + dead-letter depth over threshold.
+- **Triage:** identify dominant event family (`checkout`, `payment`, `invoice`, `subscription`) and root-cause pattern.
+- **Containment:** pause rollout expansion and prioritize replay/reconcile workers.
+- **Recovery:**
+  1. execute targeted dead-letter replay batches,
+  2. run `POST /api/v1/payment/usage/reconcile`,
+  3. verify wallet timeline/subscription snapshot parity,
+  4. close incident after backlog and parity return within SLO.
+
+### Backward compatibility notes for existing API consumers (explicit)
+
+- Existing consumers of startup/business payment APIs require no request/response schema changes for Link adoption.
+- Existing integration points continue to receive stable fields; any new fields/metadata are additive and optional.
+- Existing webhook consumers keep current contract semantics; no version bump required for this rollout.
+- Existing fallback checkout remains operational for rollback and phased adoption safety.
+
+## 2026-02-26 Relay-to-RunAshBook automation flow update
+
+### 1) Relay -> RunAshBook automation flow and event lifecycle
+
+- **Intent capture:** RunAshChat natural-language intents (for example, "buy this") are normalized by Relay into a tenant-scoped checkout command with deterministic correlation IDs.
+- **Checkout start:** Relay creates the RunAsh AI Link checkout attempt and emits `relay.checkout.initiated` for downstream observability.
+- **Gateway lifecycle:** payment events are consumed through idempotent webhook processing (`created`, `requires_action`, `succeeded`, `failed`) and mapped to the checkout attempt timeline.
+- **Accounting handoff:** successful terminal checkout emits `runashbook.accounting.post.requested` to automate journal posting in RunAshBook.
+- **Closure lifecycle:** RunAshBook responds with `runashbook.accounting.posted` or `runashbook.accounting.deferred`; checkout UX remains source-of-truth on payment state while accounting state is tracked as downstream automation.
+
+### 2) Backward compatibility statement
+
+- Existing startup/business payment API signatures and field names are preserved.
+- Any Relay-to-RunAshBook data extensions are additive and optional.
+- No migration or API version bump is required for current integrations.
+
+### 3) Risk and rollback plan
+
+- **Risk focus:** RunAshBook accounting posting failures can create finance-operation lag without affecting payment authorization.
+- **Rollback procedure:** set `FEATURE_FLAG_RUNASHBOOK_ACCOUNTING_POSTING=0` to stop accounting posting while preserving checkout, payment capture, and webhook reconciliation.
+- **Operational safeguard:** keep existing checkout fallback active and replay accounting events after remediation.
+
+### 4) Security note (logs and accounting payloads)
+
+- Sensitive payment/auth content is not logged (no full card data, secrets, OTP payloads, auth credentials, or raw tokens).
+- RunAshBook payloads include only minimum accounting-safe fields (masked references, IDs, amounts, currencies, timestamps, reconciliation keys).
+- Redaction rules remain mandatory for all payment and auth telemetry.
+
+### 5) Validation checklist/results format
+
+Capture release validation in this structure:
+
+```md
+Validation checklist (Relay -> RunAshBook)
+- [ ] npm run lint
+- [ ] npm run build
+- [ ] Integration: Relay intent -> Link checkout -> payment success
+- [ ] Integration: payment success -> RunAshBook posting event emitted
+- [ ] Integration: FEATURE_FLAG_RUNASHBOOK_ACCOUNTING_POSTING=0 keeps checkout healthy
+- [ ] Integration: accounting failure path does not alter payment final state
+
+Results
+- lint: <pass|fail> (notes)
+- build: <pass|fail> (notes)
+- integration-relay-checkout-success: <pass|fail> (notes)
+- integration-runashbook-posting: <pass|fail> (notes)
+- integration-flag-off-checkout-continuity: <pass|fail> (notes)
+- integration-accounting-failure-isolation: <pass|fail> (notes)
 ```
 
-### API Endpoint Specifications
+## 2026-02-26 Relay commerce adapter hardening (catalog/inventory/preview)
 
-#### Authentication Endpoints
+- Replaced hardcoded Relay tool implementations for `catalog_lookup`, `inventory_health`, and `checkout_preview` with provider-backed service adapters.
+- Tool routing now goes through `relayAgentSkillModules` for these operations, ensuring deterministic orchestration and consistent typed payloads.
+- Checkout preview responses now include source-of-truth identifiers (`quote_id`/`preview_id`), while catalog + inventory include auditable identifiers (`sku`, `inventory_location_id`, `inventory_snapshot_id`) for downstream checkout and accounting traces.
+- Timeout/retry/throttle behavior in the orchestration layer remains unchanged; only tool execution backend wiring changed.
 
-```
-POST /api/v1/auth/register
-  - Create new organization account
-  - Startup/Business selection
-  
-POST /api/v1/auth/login
-  - Email/password authentication
-  - 2FA verification
-  
-POST /api/v1/auth/mfa/verify
-  - TOTP verification
-  - Backup code validation
+### Risks and rollback
 
-POST /api/v1/auth/refresh
-  - Token refresh
-  - Session extension
-```
+- **Primary risk:** repository-backed product catalog may be unavailable in local/dev environments without database connectivity.
+- **Mitigation:** adapters retain safe fallback to local in-memory product seed data to preserve non-prod behavior.
+- **Rollback:** revert adapter wiring in `lib/skills/relay-tool-registry.ts` and orchestration map in `services/agent-orchestration-service.ts` to prior implementation if regression is detected.
 
-#### Payment Processing
+## Negotiation Reliability Addendum (2026-02)
 
-```
-POST /api/v1/payments/create
-  - Initiate UPI payment
-  - Returns: payment ID, QR code, status
-  
-POST /api/v1/payments/:id/confirm
-  - Confirm payment after user authorization
-  
-GET /api/v1/payments/:id
-  - Fetch payment details
-  
-POST /api/v1/payments/:id/refund
-  - Process refund (full or partial)
+This release introduces policy-driven deal negotiation before payment handoff:
 
-POST /api/v1/payment-links
-  - Create shareable payment link
-  
-GET /api/v1/payment-links/:id
-  - Fetch link details and analytics
-```
+1. **Initial quote** creates deterministic `deal_id` values from stable negotiation context.
+2. **Counter-offers** support expiration and automatic accept/reject thresholds from `discount_policies`.
+3. **Broker settlements** finalize outlier negotiations within policy floor/ceiling controls.
+4. **Payment handoff** to AI Link consumes accepted deal snapshots before checkout initiation.
 
-#### Settlement & Reporting
+### Risk / Rollback
+- **Risk:** misconfigured discount policy thresholds could over-accept or over-reject offers.
+- **Mitigation:** policies are tenant+SKU scoped and auditable through `deal_events` and `offers`.
+- **Rollback:** disable negotiation tool invocation and continue direct checkout path (`initiate_link_checkout` without `deal_id`).
 
-```
-GET /api/v1/settlements
-  - List settlements with filters
-  
-GET /api/v1/reports/transactions
-  - Fetch transaction reports
-  - Supports: CSV, PDF, JSON exports
-  
-GET /api/v1/reports/analytics
-  - Real-time analytics dashboard data
-  
-GET /api/v1/reconciliation
-  - Auto-reconciliation status
-```
+## 2026-02-26 Voice commerce orchestration release note
 
-#### User & Organization Management
+- Voice commerce orchestration now supports end-to-end conversion from spoken buyer intent to Link checkout handoff inside RunAshChat.
+- Intermediate automation events are persisted per stream session for compliance replay and operational forensics.
+- Seller-side AI automation controls now include promotion triggers (bundle + limited-time discount) and approved-deal launch workflows with broker mediation.
 
-```
-GET /api/v1/organization/profile
-  - Fetch org details
-  
-PATCH /api/v1/organization/profile
-  - Update org settings
-  
-POST /api/v1/organization/users
-  - Add team member
-  
-PATCH /api/v1/organization/users/:id/role
-  - Update user permissions
-  
-GET /api/v1/organization/audit-logs
-  - Fetch audit trail
-```
+Business controls preserved:
+- Existing payment contracts remain additive and backward compatible.
+- Sensitive payment/auth data is not introduced into logs/event payloads.
+- Checkout finalization still requires explicit confirmation pathing in checkout skill gates.
 
-#### Webhook Management
+## 2026-02-27 Editor render worker reliability note (non-payment)
 
-```
-POST /api/v1/webhooks
-  - Register webhook endpoint
-  
-GET /api/v1/webhooks
-  - List registered webhooks
-  
-DELETE /api/v1/webhooks/:id
-  - Unregister webhook
-  
-POST /api/v1/webhooks/:id/test
-  - Send test event
-```
+- Added dedicated editor render queue worker orchestration (`editor_render_jobs`) in service-layer code.
+- **Payment/auth impact:** none. Payment API contracts, checkout state machine, and auth/session semantics are unchanged.
+- **Security posture:** worker error persistence remains sanitized and excludes secrets/tokens.
 
-### Rate Limiting Strategy
+### Risk / rollback
+- **Risk:** render queue may accumulate if model/storage dependencies are unavailable.
+- **Mitigation:** bounded retries with attempt tracking and non-sensitive error persistence in job result metadata.
+- **Rollback:** disable the worker invocation/scheduler and continue queue-only behavior while preserving enqueue/list APIs.
 
-**Startup Tier**
-- 1,000 requests/minute
-- 100,000 requests/day
-- Burst capacity: 5,000/minute
+## 2026-02 marketing route alias note (non-contract)
 
-**Business Tier**
-- 100,000 requests/minute
-- 10,000,000 requests/day
-- Burst capacity: 500,000/minute
+- Public navigation aliases now map `/payment/business` -> `/enterprises` and `/payment/startup` -> `/partner` to align top-level marketing information architecture.
+- This is a presentation-layer route alias only; startup/business payment API signatures, payment field names, checkout contracts, and webhook contracts remain unchanged.
+- Rollback: remove redirect aliases in `next.config.mjs` to restore legacy public URL paths without touching payment execution logic.
 
-**Rate Limit Headers**
-```
-X-RateLimit-Limit: 1000
-X-RateLimit-Remaining: 950
-X-RateLimit-Reset: 1640000000
-```
+## 2026-02-27 Editor render API hardening note (non-payment)
 
----
+- Hardened editor render-job APIs with per-user/project throttling plus active-queue quotas to protect shared infrastructure.
+- Added enqueue policy gates for max duration, max resolution, and model-tier allowlist checks before jobs enter queue processing.
+- Added explicit cancellation propagation in worker stages to prevent expensive post-cancel processing and stale result writeback.
+- **Payment/auth impact:** none. Checkout contracts, payment fields, and auth session handling are unchanged.
 
-## Implementation Roadmap
+### Risk / rollback
+- **Risk:** stricter quotas can reject bursts for high-volume creator workflows.
+- **Mitigation:** all limits are environment-configurable and surfaced with stable API error codes.
+- **Rollback:** relax or disable quota/policy env limits while preserving API shape and worker behavior.
 
-### Phase 1: Foundation (Weeks 1-4)
+## 2026-02 Seller marketing workflow automation note (non-payment)
 
-**Objectives**
-- Multi-tenant database setup
-- Core API infrastructure
-- Basic authentication
+- Added seller marketing workflow orchestration for trigger-based campaigns (`stream_ended`, `cart_abandoned`, `high_intent_viewer`, `repeat_buyer`) with multi-channel delivery routing.
+- Added campaign persistence tables for templates, rules, and run history to support auditability and replay.
+- **Payment/auth impact:** none. Checkout contracts, payment field names, and auth/session interfaces remain unchanged.
 
-**Deliverables**
-- Neon database with multi-tenant schema
-- API Gateway with rate limiting
-- User registration and login
-- API key management
-- Basic transaction logging
+### Risk / rollback
+- **Risk:** high-volume trigger traffic could generate excessive outbound notifications.
+- **Mitigation:** rule activation controls, trigger condition gates, and run history observability are included for controlled rollout.
+- **Rollback:** deactivate affected marketing workflows via activation API or remove the new seller marketing tab while preserving existing seller operations.
 
-**Resources**
-- Backend: 2 engineers
-- DevOps: 1 engineer
-- QA: 1 engineer
 
-### Phase 2: Core Features (Weeks 5-8)
+## 2026-03 auth/session tenant consistency linkage
 
-**Objectives**
-- Payment processing
-- Settlement management
-- Basic reporting
+### Impacted payment/auth flows
+- Authenticated merchant/operator session resolution for payment-adjacent routes now benefits from tenant-indexed auth session lookups (`auth_session_registry.organization_id`).
+- Trusted-device/session-security controls used by payment-sensitive actions continue using unchanged API contracts; persistence is hardened with tenant backfill/indexing.
 
-**Deliverables**
-- UPI payment integration
-- Payment link creation
-- QR code generation
-- Settlement processing
-- Transaction reports
-- Webhook support
+### Compatibility + risk
+- Payment API contracts, field names, webhook payloads, and checkout route signatures are unchanged.
+- Migration is additive; risk is limited to migration runtime/index creation overhead on large auth-session tables.
 
-**Resources**
-- Backend: 3 engineers
-- Frontend: 1 engineer
-- QA: 1 engineer
-
-### Phase 3: Advanced Features (Weeks 9-12)
-
-**Objectives**
-- Analytics and insights
-- Compliance tools
-- White-label support
-
-**Deliverables**
-- Real-time analytics dashboard
-- Fraud detection ML model
-- KYC/AML integration
-- Custom reporting engine
-- Audit trail system
-- White-label UI customization
-
-**Resources**
-- Backend: 3 engineers
-- Frontend: 2 engineers
-- ML Engineer: 1
-- QA: 2 engineers
-
-### Phase 4: Enterprise Features (Weeks 13-16)
-
-**Objectives**
-- High-volume handling
-- Enterprise security
-- Multi-region support
-
-**Deliverables**
-- Batch processing engine
-- Advanced reconciliation
-- GraphQL API
-- SSO integration (SAML/OAuth)
-- Data replication (multi-region)
-- Enterprise audit logging
-
-**Resources**
-- Backend: 4 engineers
-- DevOps: 2 engineers
-- Security: 1 engineer
-- QA: 2 engineers
-
-### Phase 5: Testing & Optimization (Weeks 17-20)
-
-**Objectives**
-- Performance optimization
-- Security hardening
-- Load testing
-
-**Deliverables**
-- Performance tuning (< 2s latency)
-- Security audit completion
-- Load testing at 100K TPS
-- Compliance certification
-- Documentation
-
-**Resources**
-- QA: 3 engineers
-- DevOps: 2 engineers
-- Security: 1 engineer
-
-### Phase 6: Launch (Week 21)
-
-**Objectives**
-- Production deployment
-- Customer onboarding
-- Support setup
-
-**Deliverables**
-- Production environment
-- Customer onboarding portal
-- Support ticketing system
-- Documentation
-- Training materials
-
----
-
-## Compliance & Security Framework
-
-### Regulatory Compliance
-
-#### India-Specific (Primary Market)
-
-1. **RBI Guidelines**
-   - NPCI regulations for UPI payments
-   - Payment system regulations
-   - KYC/AML requirements (PML Rules 2020)
-
-2. **Data Protection**
-   - Personal Data Protection Bill (DPDP)
-   - Right to privacy
-   - Data residency in India
-
-3. **Financial Compliance**
-   - GST compliance for fintech services
-   - TDS applicability on payments
-   - Statutory reporting requirements
-
-#### International Compliance (For Expansion)
-
-1. **GDPR** (EU expansion)
-   - Data processing agreements
-   - Privacy by design
-   - Data subject rights
-
-2. **KYC/AML**
-   - FinCEN requirements (US)
-   - Transaction monitoring
-   - Suspicious activity reporting
-
-### Security Standards
-
-#### Data Security
-
-```
-Encryption Requirements:
-- Data at rest: AES-256
-- Data in transit: TLS 1.2+
-- Database encryption: Transparent Data Encryption (TDE)
-- Field-level encryption for PII
-
-Authentication:
-- Passwords: PBKDF2 with 100k iterations
-- API Keys: HMAC-SHA256
-- Tokens: JWT with RS256 signing
-- 2FA: TOTP (HMAC-SHA1) or SMS-based
-
-Key Management:
-- Secrets stored in Vercel KV
-- Key rotation every 90 days
-- Separate keys for each environment
-- Hardware security module (HSM) for production
-```
-
-#### PCI-DSS Compliance (Level 1)
-
-**Required Measures**
-- Network segmentation with firewall
-- Intrusion detection system (IDS)
-- Regular security testing & penetration tests
-- Annual PCI-DSS audit
-- Secure data deletion procedures
-- Incident response plan
-
-**Payment Card Data Handling**
-- Never store full card numbers
-- Tokenization for card payments
-- PCI-certified payment gateway
-- Secure SSL/TLS for all transactions
-
-#### DDoS & Infrastructure Security
-
-```
-Protection Layers:
-1. Cloudflare Enterprise (DDoS protection)
-2. WAF (Web Application Firewall)
-   - SQL injection prevention
-   - XSS protection
-   - CSRF tokens
-   - Rate limiting per IP
-3. Bot detection and mitigation
-4. Geographic IP filtering
-5. Behavioral analysis
-```
-
-### Compliance Checklist
-
-**For All Organizations**
-
-- [ ] User consent management (DPDP Act)
-- [ ] Data breach notification procedure
-- [ ] Privacy policy and terms of service
-- [ ] Regular security audits (quarterly)
-- [ ] Incident response playbook
-- [ ] Employee training on data security
-- [ ] Data retention policies
-- [ ] Secure password policy
-- [ ] MFA enforcement
-- [ ] Activity logging and monitoring
-
-**Additional for Business Tier**
-
-- [ ] KYC verification (Government ID)
-- [ ] Business registration verification
-- [ ] Director identification
-- [ ] Beneficial ownership disclosure
-- [ ] Ongoing transaction monitoring
-- [ ] Suspicious activity reporting
-- [ ] Sanctions list screening
-- [ ] PEP (Politically Exposed Persons) screening
-- [ ] Transaction velocity checks
-- [ ] Behavior analysis and anomaly detection
-
----
-
-## Infrastructure & Scalability
-
-### Infrastructure Architecture
-
-#### Deployment Topology
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    CDN (Cloudflare)                     │
-│  Distributes static assets globally, DDoS protection    │
-└────────────────────┬────────────────────────────────────┘
-                     │
-    ┌────────────────┼────────────────┐
-    │                │                │
-┌───▼──────┐   ┌────▼──────┐   ┌────▼──────┐
-│  Edge    │   │  Edge     │   │  Edge     │
-│ Server   │   │  Server   │   │  Server   │
-│ (US)     │   │  (EU)     │   │  (Asia)   │
-└───┬──────┘   └────┬──────┘   └────┬──────┘
-    │                │                │
-    └────────────────┼────────────────┘
-                     │
-         ┌───────────▼──────────┐
-         │  API Gateway         │
-         │  (Load Balancer)     │
-         └───────────┬──────────┘
-                     │
-        ┌────────────┼────────────┐
-        │            │            │
-    ┌───▼──┐    ┌────▼─┐    ┌───▼──┐
-    │App   │    │App   │    │App   │
-    │Pod 1 │    │Pod 2 │    │Pod N │
-    │      │    │      │    │      │
-    └───┬──┘    └────┬─┘    └───┬──┘
-        │            │            │
-        └────────────┼────────────┘
-                     │
-         ┌───────────▼──────────┐
-         │ Neon Database        │
-         │ (Multi-region)       │
-         │ Primary + Replicas   │
-         └──────────────────────┘
-```
-
-#### Database Replication
-
-```
-Primary Database (India - Mumbai)
-    ↓ Logical Replication
-Read Replica 1 (India - Delhi)
-Read Replica 2 (US - Virginia)
-Read Replica 3 (EU - Frankfurt)
-
-Backup Strategy:
-- Continuous WAL archiving
-- Daily full backups
-- Weekly incremental backups
-- RPO: 1 hour
-- RTO: 15 minutes
-```
-
-### Scalability Configuration
-
-#### Neon Database Autoscaling
-
-```
-Compute Configuration:
-Startup Tier:
-- Min: 0.5 vCPU
-- Max: 2 vCPU
-- Auto-pause: After 5 minutes of inactivity
-- Connection pool: 100 concurrent
-
-Business Tier:
-- Min: 2 vCPU
-- Max: 32 vCPU
-- No auto-pause
-- Connection pool: 1000 concurrent
-
-Storage:
-- Auto-grow: Up to 1TB
-- Retention: 7 days (Startup), 30 days (Business)
-```
-
-#### Vercel Deployment
-
-```
-Edge Functions:
-- Automatic scaling to handle traffic spikes
-- Global distribution (150+ edge locations)
-- Cold start: <100ms
-
-Serverless Functions (API Routes):
-- Auto-scale from 0 to 1000+ concurrent requests
-- Region: India (Primary), US (Fallback)
-- Memory: 3GB per function
-- Timeout: 30s (Startup), 60s (Business)
-```
-
-### Monitoring & Observability
-
-#### Metrics Collection
-
-```
-Application Metrics:
-- Request latency (p50, p95, p99)
-- Error rate and error types
-- Throughput (requests/sec)
-- Transaction success rate
-- Database query performance
-- API endpoint performance
-
-Business Metrics:
-- Transaction volume
-- Revenue processed
-- Settlement cycles
-- Customer retention
-- Churn rate
-
-Infrastructure Metrics:
-- CPU utilization
-- Memory usage
-- Disk I/O
-- Network bandwidth
-- Connection pool utilization
-```
-
-#### Alerting Strategy
-
-```
-Critical Alerts (Immediate):
-- Error rate > 1%
-- API latency p99 > 5s
-- Database connection exhaustion
-- Payment processing failure
-- Security breach detection
-- Data loss event
-
-Warning Alerts (Urgent):
-- Error rate > 0.1%
-- API latency p99 > 2s
-- Transaction success rate < 99%
-- Settlement delay > 1 hour
-- Suspicious activity detected
-```
-
----
-
-## Deployment Strategy
-
-### Pre-Launch Checklist
-
-**Technical**
-- [ ] All APIs tested with >1M requests
-- [ ] Database replication verified across regions
-- [ ] Backup and recovery tested
-- [ ] Load testing completed (100K+ TPS)
-- [ ] Security penetration testing done
-- [ ] PCI-DSS compliance verified
-- [ ] Disaster recovery drills completed
-
-**Business**
-- [ ] Pricing tiers finalized
-- [ ] Terms of Service and Privacy Policy reviewed
-- [ ] SLA defined and documented
-- [ ] Support team trained
-- [ ] Customer onboarding process ready
-- [ ] Beta users identified
-- [ ] Marketing materials prepared
-
-**Compliance**
-- [ ] Legal review completed
-- [ ] KYC/AML procedures implemented
-- [ ] Data processing agreements signed
-- [ ] Regulatory approvals obtained
-- [ ] Audit logging configured
-- [ ] Incident response plan tested
-
-### Launch Phases
-
-#### Phase 1: Closed Beta (Week 1-2)
-- 50-100 hand-picked startups
-- Real transactions with monitoring
-- Daily feedback calls
-- Bug fixes and optimization
-- Load testing at 100 TPS
-
-#### Phase 2: Open Beta (Week 3-4)
-- 1,000 early-access users
-- Public API documentation
-- Community forum launch
-- Tier-based pricing trials
-- Load testing at 1,000 TPS
-
-#### Phase 3: General Availability (Week 5)
-- Full public launch
-- All features enabled
-- Premium support available
-- Compliance certifications published
-- Load testing at 10,000+ TPS
-
-#### Phase 4: Post-Launch (Week 6+)
-- Continuous monitoring
-- Feature releases every 2 weeks
-- Customer feedback integration
-- Performance optimization
-- Market expansion planning
-
-### Rollout Strategy
-
-```
-Day 1 (Monday):
-- Deploy to production
-- Startup tier: 100% traffic
-- Business tier: 50% traffic
-- Dedicated monitoring team on call
-
-Day 2-3:
-- Business tier: 100% traffic
-- Performance analysis
-- Bug fixes for critical issues
-- Customer support ramping
-
-Day 4-7:
-- Full production traffic
-- Market expansion to other regions
-- Feature announcement
-- Sales team enablement
-
-Week 2+:
-- Optimize based on metrics
-- Plan next feature release
-- Expand to international markets
-- Enterprise sales outreach
-```
-
-### Monitoring During Launch
-
-```
-Critical Metrics to Watch:
-1. API Response Time
-   - Target: <2 seconds (p95)
-   - Alert: >3 seconds
-
-2. Error Rate
-   - Target: <0.1%
-   - Alert: >0.5%
-
-3. Transaction Success Rate
-   - Target: >99%
-   - Alert: <98%
-
-4. Database Performance
-   - Query latency p99: <500ms
-   - Connection pool utilization: <80%
-
-5. Customer Experience
-   - Payment completion rate
-   - Customer support response time
-   - Bug report frequency
-
-Incident Response:
-- On-call team: 24/7
-- Response time: <5 minutes
-- Communication: Every 5 minutes
-- Escalation path: Engineering → Director → CTO
-```
-
----
-
-## Success Metrics & KPIs
-
-### Technical KPIs
-
-| Metric | Target | Startup | Business |
-|--------|--------|---------|----------|
-| API Uptime | 99.9% | 99.9% | 99.99% |
-| P50 Latency | <500ms | <300ms | <200ms |
-| P95 Latency | <2s | <1s | <500ms |
-| Error Rate | <0.1% | <0.05% | <0.01% |
-| Success Rate | >99% | >99.5% | >99.9% |
-| Database Availability | 99.99% | 99.99% | 99.99% |
-
-### Business KPIs (Year 1)
-
-| Metric | Target |
-|--------|--------|
-| User Signups | 50,000 |
-| Transaction Volume | 10M transactions |
-| GMV (Gross Merchandise Value) | $50M |
-| Revenue | $500K |
-| Customer Retention | 80% |
-| NPS Score | >50 |
-| Market Expansion | 3 new countries |
-
----
-
-## Conclusion
-
-This comprehensive plan provides RunAsh Pay with a roadmap to establish itself as a leading payment platform for startups and businesses in India and beyond. Success requires meticulous execution across all dimensions: technology, compliance, security, and customer experience.
-
-**Next Steps:**
-1. Approve the implementation plan
-2. Allocate resources per phase
-3. Set up project management system
-4. Begin Phase 1 development
-5. Establish vendor partnerships for payments, SMS, email
-
-**Timeline to Market:** 5 months (20 weeks)
-
-**Estimated Development Cost:** $200K - $400K
-- Engineering: $120K - $200K
-- Infrastructure: $30K - $50K
-- Compliance/Legal: $20K - $50K
-- Testing/QA: $20K - $40K
-- Security/Audits: $10K - $60K
-
-## Compatibility & Migration Notes (Envelope Standard)
-
-To improve payment auditability and reduce per-endpoint variance, payment-facing API responses are converging on a common envelope contract:
-
-- `success`
-- `data`
-- `error`
-- `requestId`
-- optional `meta`
-
-### Current policy
-- `/api/v1/*` is the preferred stabilized namespace for external clients.
-- Existing non-versioned endpoints remain active for backward compatibility.
-- Legacy response fields may be emitted in parallel during transition to reduce integration risk.
-
-### Risk and rollback
-- **Risk:** consumers tightly coupled to old root-level response keys may fail if they assume exclusive shape.
-- **Mitigation:** dual-field compatibility during migration + phased client rollout.
-- **Rollback:** route callers back to non-versioned endpoints and keep legacy parsing paths enabled until parity checks pass.
-
-## Agentic payment-flow guardrails
-
-For agent-assisted workflows:
-- Payment-impacting actions are not auto-executed.
-- Actions enter an auditable approval path in `/api/agents/actions`.
-- Rollback path: disable `RUNASH_AGENT_CHAT_ENABLED` to immediately stop new agent actions while preserving existing payment APIs.
+### Rollback strategy
+1. Application rollback is preferred; no payment contract rollback is required.
+2. If DB rollback is required, remove only newly added indexes first, then `organization_id` columns after controlled maintenance window.
+3. Re-run payment authorization smoke checks after rollback before re-enabling rollout flags.

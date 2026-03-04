@@ -59,8 +59,21 @@ export type AgentMessageRecord = {
   role: "assistant" | "user"
   content: string
   status: AgentMessageStatus
+  client_request_id?: string
   created_at: string
   updated_at: string
+}
+
+export type AgentAttachmentRecord = {
+  id: string
+  session_id: string
+  message_id: string
+  name: string
+  type: string
+  size: number
+  url?: string
+  checksum?: string
+  created_at: string
 }
 
 const DATA_DIR = path.join(process.cwd(), "data")
@@ -74,6 +87,7 @@ type AgentStore = {
   tool_results: AgentToolResult[]
   actions: AgentActionAudit[]
   feedback: AgentFeedback[]
+  attachments: AgentAttachmentRecord[]
 }
 
 const EMPTY_STORE: AgentStore = {
@@ -83,6 +97,7 @@ const EMPTY_STORE: AgentStore = {
   tool_results: [],
   actions: [],
   feedback: [],
+  attachments: [],
 }
 
 function ensureStoreFile() {
@@ -105,6 +120,7 @@ function readStore(): AgentStore {
       tool_results: parsed.tool_results ?? [],
       actions: parsed.actions ?? [],
       feedback: parsed.feedback ?? [],
+      attachments: (parsed as any).attachments ?? [],
     }
   } catch {
     return { ...EMPTY_STORE }
@@ -155,6 +171,7 @@ export async function pruneExpiredAgentRecords() {
   store.tool_results = store.tool_results.filter((item) => new Date(item.created_at).getTime() >= cutoffMs)
   store.actions = store.actions.filter((item) => new Date(item.created_at).getTime() >= cutoffMs)
   store.feedback = store.feedback.filter((item) => new Date(item.created_at).getTime() >= cutoffMs)
+  store.attachments = store.attachments.filter((item) => new Date(item.created_at).getTime() >= cutoffMs)
 
   writeStore(store)
 }
@@ -188,6 +205,7 @@ export async function createAgentMessage(
   role: AgentMessageRecord["role"],
   content: string,
   status: AgentMessageStatus,
+  options?: { clientRequestId?: string },
 ) {
   const store = readStore()
   const message: AgentMessageRecord = {
@@ -196,6 +214,7 @@ export async function createAgentMessage(
     role,
     content: redactSensitiveText(content),
     status,
+    client_request_id: options?.clientRequestId,
     created_at: nowIso(),
     updated_at: nowIso(),
   }
@@ -216,6 +235,40 @@ export async function updateAgentMessage(messageId: string, updates: Partial<Pic
 
   writeStore(store)
   return message
+}
+
+
+export async function findAgentMessagesByClientRequestId(sessionId: string, clientRequestId: string) {
+  const store = readStore()
+  return store.messages.filter((entry) => entry.session_id === sessionId && entry.client_request_id === clientRequestId)
+}
+
+export async function createAgentMessageAttachments(input: {
+  sessionId: string
+  messageId: string
+  attachments: Array<{ name: string; type: string; size: number; url?: string; checksum?: string }>
+}) {
+  const store = readStore()
+  const created: AgentAttachmentRecord[] = []
+
+  for (const attachment of input.attachments) {
+    const record: AgentAttachmentRecord = {
+      id: makeId("aaft"),
+      session_id: input.sessionId,
+      message_id: input.messageId,
+      name: attachment.name,
+      type: attachment.type,
+      size: attachment.size,
+      url: attachment.url,
+      checksum: attachment.checksum,
+      created_at: nowIso(),
+    }
+    store.attachments.push(record)
+    created.push(record)
+  }
+
+  writeStore(store)
+  return created
 }
 
 export async function createToolCallLineage(input: Omit<AgentToolCall, "id" | "created_at">) {

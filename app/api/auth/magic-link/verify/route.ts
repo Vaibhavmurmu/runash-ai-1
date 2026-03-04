@@ -1,68 +1,41 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { verifyMagicLinkToken } from "@/lib/magic-link"
 import { z } from "zod"
-import { SignJWT } from "jose"
-
-const verifySchema = z.object({
-  token: z.string().min(1, "Token is required"),
-})
+import { logApiRouteError } from "@/lib/api/logging"
+import { setSessionCookies } from "@/lib/auth/cookies"
+import { getAuthSecret } from "@/lib/auth"
+import { verifyMagicLinkToken } from "@/lib/magic-link"
+import { createUserSession } from "@/lib/auth-utils"
+import { rateLimit } from "@/lib/rate-limit"
+import { AUTH_ENDPOINT_RATE_LIMITS } from "@/lib/auth-security-config"
+import { recordAuthMetric } from "@/lib/auth-observability"
+import { handleVerifyMagicLink } from "./verify-magic-link-handler"
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { token } = verifySchema.parse(body)
-
-    // Verify magic link token
-    const { user, success } = await verifyMagicLinkToken(token)
-
-    if (!success || !user) {
-      return NextResponse.json({ error: "Invalid or expired magic link" }, { status: 400 })
+    const rateLimitResult = await rateLimit(
+      request,
+      "magic-link/verify",
+      AUTH_ENDPOINT_RATE_LIMITS["magic-link/verify"].limit,
+      AUTH_ENDPOINT_RATE_LIMITS["magic-link/verify"].windowMs,
+    )
+    if (!rateLimitResult.success) {
+      recordAuthMetric("auth.rate_limited", { endpoint: "magic-link/verify" })
+      return NextResponse.json({ success: false, message: "Too many magic link attempts. Please try again later." }, { status: 429 })
     }
 
-    // Create JWT session token
-    const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET!)
-    const sessionToken = await new SignJWT({
-      sub: user.id.toString(),
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // 30 days
+    return await handleVerifyMagicLink(request, {
+      verifyMagicLinkToken,
+      getAuthSecret,
+      createUserSession,
+      setSessionCookies,
     })
-      .setProtectedHeader({ alg: "HS256" })
-      .sign(secret)
-
-    // Set session cookie
-    const response = NextResponse.json(
-      {
-        message: "Successfully signed in with magic link",
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          avatar_url: user.avatar_url,
-          role: user.role,
-        },
-      },
-      { status: 200 },
-    )
-
-    response.cookies.set("next-auth.session-token", sessionToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 30 * 24 * 60 * 60, // 30 days
-      path: "/",
-    })
-
-    return response
   } catch (error) {
-    console.error("Magic link verification error:", error)
+    logApiRouteError(request, "auth.magic_link.verify_failed", error, { errorCode: "AUTH_MAGIC_LINK_VERIFY_FAILED" })
 
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: "Invalid token format" }, { status: 400 })
+      return NextResponse.json({ success: false, message: "Invalid token format" }, { status: 400 })
     }
 
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return NextResponse.json({ success: false, message: "Internal server error" }, { status: 500 })
   }
 }

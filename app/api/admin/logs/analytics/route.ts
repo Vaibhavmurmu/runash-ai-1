@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { AuthLogger } from "@/lib/auth-logger"
 import { z } from "zod"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
+import { respondInternalServerError } from "@/lib/api/admin-route-utils"
 
 const analyticsSchema = z.object({
   start: z
@@ -22,12 +22,13 @@ const analyticsSchema = z.object({
 })
 
 export async function GET(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["system:logs", "admin:analytics"],
+    auditEvent: "admin.logs.analytics.read",
+  })
+  if (!auth.success) return auth.response
 
+  try {
     const { searchParams } = new URL(request.url)
     const params = Object.fromEntries(searchParams.entries())
     const { start, end } = analyticsSchema.parse(params)
@@ -36,7 +37,11 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(analytics)
   } catch (error) {
-    console.error("Error fetching log analytics:", error)
-    return NextResponse.json({ error: "Failed to fetch analytics" }, { status: 500 })
+    return respondInternalServerError(request, error, {
+      event: "admin.logs.analytics.read.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_LOGS_ANALYTICS_READ_FAILED",
+    })
   }
 }

@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, useRef } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -11,106 +11,94 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Send, Filter, MoreVertical, ThumbsUp, Ban, Flag } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import MobileLayout from "@/components/mobile/layout"
-import type { ChatMessage } from "@/types/mobile-app"
+import type { ChatMessage, MobileChatListResponse, MobileSendChatMessageResponse } from "@/types/mobile-app"
 
 export default function MobileChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [messageInput, setMessageInput] = useState("")
   const [activeTab, setActiveTab] = useState("all")
+  const [cursor, setCursor] = useState<string>(new Date(0).toISOString())
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    // Simulate loading data
-    const loadData = async () => {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+    const load = async () => {
+      try {
+        const response = await fetch("/api/mobile/chat")
+        const body = (await response.json()) as { data?: MobileChatListResponse }
+        if (!response.ok || !body.data) return
 
-      // Mock data
-      const mockMessages: ChatMessage[] = [
-        {
-          id: "msg-1",
-          platform: "twitch",
-          username: "StreamFan123",
-          message: "Hey everyone! Just joined the stream.",
-          timestamp: new Date(Date.now() - 300000).toISOString(),
-          isSubscriber: true,
-        },
-        {
-          id: "msg-2",
-          platform: "youtube",
-          username: "GamingPro",
-          message: "What game are you playing today?",
-          timestamp: new Date(Date.now() - 240000).toISOString(),
-        },
-        {
-          id: "msg-3",
-          platform: "twitch",
-          username: "ModeratorUser",
-          message: "Welcome to the stream everyone!",
-          timestamp: new Date(Date.now() - 180000).toISOString(),
-          isModerator: true,
-        },
-        {
-          id: "msg-4",
-          platform: "youtube",
-          username: "NewViewer",
-          message: "First time watching, this is awesome!",
-          timestamp: new Date(Date.now() - 120000).toISOString(),
-        },
-        {
-          id: "msg-5",
-          platform: "twitch",
-          username: "RegularFan",
-          message: "Can't wait to see what happens next!",
-          timestamp: new Date(Date.now() - 60000).toISOString(),
-          isSubscriber: true,
-        },
-      ]
-
-      setMessages(mockMessages)
-      setIsLoading(false)
+        setMessages(body.data.messages)
+        setCursor(body.data.cursor)
+      } finally {
+        setIsLoading(false)
+      }
     }
 
-    loadData()
+    void load()
+  }, [])
 
-    // Simulate receiving new messages
-    const interval = setInterval(() => {
-      if (!isLoading) {
-        const platforms = ["twitch", "youtube"]
-        const platform = platforms[Math.floor(Math.random() * platforms.length)]
-        const newMessage: ChatMessage = {
-          id: `msg-${Date.now()}`,
-          platform,
-          username: `User${Math.floor(Math.random() * 1000)}`,
-          message: `This is a simulated message ${Math.floor(Math.random() * 100)}`,
-          timestamp: new Date().toISOString(),
-          isSubscriber: Math.random() > 0.7,
-        }
-        setMessages((prev) => [...prev, newMessage])
-      }
-    }, 5000)
+  useEffect(() => {
+    if (isLoading) return
 
-    return () => clearInterval(interval)
-  }, [isLoading])
+    const source = new EventSource(`/api/mobile/chat/stream?cursor=${encodeURIComponent(cursor)}`)
+    source.onmessage = (event) => {
+      const payload = JSON.parse(event.data) as MobileChatListResponse
+      if (!payload.messages?.length) return
 
-  // Scroll to bottom when new messages arrive
+      setMessages((previous) => {
+        const known = new Set(previous.map((item) => item.id))
+        const incoming = payload.messages.filter((item) => !known.has(item.id))
+        return incoming.length > 0 ? [...previous, ...incoming] : previous
+      })
+      setCursor(payload.cursor)
+    }
+
+    return () => source.close()
+  }, [cursor, isLoading])
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (messageInput.trim()) {
-      const newMessage: ChatMessage = {
-        id: `msg-${Date.now()}`,
-        platform: "twitch", // Default to twitch for sent messages
-        username: "You (Streamer)",
-        message: messageInput,
-        timestamp: new Date().toISOString(),
-        isModerator: true,
+    if (!messageInput.trim()) return
+
+    const optimisticMessage: ChatMessage = {
+      id: `optimistic-${Date.now()}`,
+      platform: "twitch",
+      username: "You (Streamer)",
+      message: messageInput,
+      timestamp: new Date().toISOString(),
+      isModerator: true,
+    }
+
+    setMessages((previous) => [...previous, optimisticMessage])
+    setMessageInput("")
+
+    try {
+      const response = await fetch("/api/mobile/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform: optimisticMessage.platform,
+          username: optimisticMessage.username,
+          message: optimisticMessage.message,
+          isModerator: true,
+        }),
+      })
+
+      const body = (await response.json()) as { data?: MobileSendChatMessageResponse }
+      if (!response.ok || !body.data?.message) {
+        throw new Error("send_failed")
       }
-      setMessages((prev) => [...prev, newMessage])
-      setMessageInput("")
+
+      setMessages((previous) => previous.map((item) => (item.id === optimisticMessage.id ? body.data!.message : item)))
+      setCursor(body.data.message.timestamp)
+    } catch {
+      setMessages((previous) => previous.filter((item) => item.id !== optimisticMessage.id))
+      setMessageInput(optimisticMessage.message)
     }
   }
 
@@ -122,7 +110,10 @@ export default function MobileChatPage() {
     setMessages((prev) => prev.filter((msg) => msg.id !== id))
   }
 
-  const filteredMessages = activeTab === "all" ? messages : messages.filter((msg) => msg.platform === activeTab)
+  const filteredMessages = useMemo(
+    () => (activeTab === "all" ? messages : messages.filter((msg) => msg.platform === activeTab)),
+    [activeTab, messages],
+  )
 
   if (isLoading) {
     return (
@@ -138,7 +129,6 @@ export default function MobileChatPage() {
   return (
     <MobileLayout>
       <div className="flex flex-col h-full">
-        {/* Chat Header */}
         <div className="p-4 border-b">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <div className="flex items-center justify-between mb-4">
@@ -155,7 +145,6 @@ export default function MobileChatPage() {
           </Tabs>
         </div>
 
-        {/* Chat Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {filteredMessages.map((message) => (
             <Card
@@ -166,76 +155,70 @@ export default function MobileChatPage() {
                   : "border-gray-200 dark:border-gray-700"
               }`}
             >
-              <CardContent className="p-3">
-                <div className="flex items-start">
-                  <div className="h-8 w-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center mr-3">
-                    <span className="text-xs font-medium">{message.username.charAt(0).toUpperCase()}</span>
+              <CardContent className="p-2.5 sm:p-3">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 mb-1">
+                  <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 min-w-0">
+                    <span
+                      className="font-medium text-[13px] leading-5 truncate max-w-[10rem] sm:max-w-[12rem]"
+                      title={message.username}
+                    >
+                      {message.username}
+                    </span>
+                    <Badge variant="secondary" className="text-[10px] font-medium uppercase tracking-wide">
+                      {message.platform}
+                    </Badge>
+                    {message.isModerator && (
+                      <Badge variant="outline" className="text-[10px] font-medium border-blue-300 text-blue-700 dark:text-blue-300">
+                        Mod
+                      </Badge>
+                    )}
+                    {message.isSubscriber && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] font-medium border-purple-300 text-purple-700 dark:text-purple-300"
+                      >
+                        Sub
+                      </Badge>
+                    )}
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center flex-wrap gap-1">
-                        <span className="font-medium text-sm">{message.username}</span>
-                        <Badge variant="outline" className="text-xs">
-                          {message.platform}
-                        </Badge>
-                        {message.isModerator && (
-                          <Badge variant="secondary" className="text-xs">
-                            Mod
-                          </Badge>
-                        )}
-                        {message.isSubscriber && <Badge className="bg-purple-500 text-xs">Sub</Badge>}
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-6 w-6">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleHighlightMessage(message.id)}>
-                            <ThumbsUp className="h-4 w-4 mr-2" />
-                            {message.isHighlighted ? "Unhighlight" : "Highlight"}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Flag className="h-4 w-4 mr-2" />
-                            Report
-                          </DropdownMenuItem>
-                          <DropdownMenuItem className="text-red-600" onClick={() => handleDeleteMessage(message.id)}>
-                            <Ban className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                    <p className="text-sm mt-1">{message.message}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {new Date(message.timestamp).toLocaleTimeString(undefined, {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </p>
+                  <div className="w-8 flex justify-end shrink-0">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleHighlightMessage(message.id)}>
+                          <ThumbsUp className="h-4 w-4 mr-2" /> Highlight
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>
+                          <Ban className="h-4 w-4 mr-2" /> Timeout User
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>
+                          <Flag className="h-4 w-4 mr-2" /> Report
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDeleteMessage(message.id)} className="text-red-500">
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
+                <p className="text-[13px] leading-5">{message.message}</p>
+                <p className="text-[11px] text-gray-500 mt-1">{new Date(message.timestamp).toLocaleTimeString()}</p>
               </CardContent>
             </Card>
           ))}
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Chat Input */}
-        <div className="p-4 border-t">
-          <form onSubmit={handleSendMessage} className="flex items-center space-x-2">
-            <Input
-              value={messageInput}
-              onChange={(e) => setMessageInput(e.target.value)}
-              placeholder="Type a message..."
-              className="flex-1"
-            />
-            <Button type="submit" disabled={!messageInput.trim()}>
-              <Send className="h-4 w-4" />
-            </Button>
-          </form>
-        </div>
+        <form onSubmit={handleSendMessage} className="p-4 border-t flex gap-2">
+          <Input value={messageInput} onChange={(event) => setMessageInput(event.target.value)} placeholder="Send a message..." />
+          <Button type="submit" className="bg-gradient-to-r from-orange-600 to-yellow-500 hover:opacity-90">
+            <Send className="h-4 w-4" />
+          </Button>
+        </form>
       </div>
     </MobileLayout>
   )

@@ -1,6 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createSMSOTP, verifyOTP } from "@/lib/otp"
 import { z } from "zod"
+import { logApiRouteError } from "@/lib/api/logging"
+import { applyAuthCaptchaMiddleware } from "@/lib/auth/captcha-middleware"
 
 const phoneRegex = /^\+[1-9]\d{1,14}$/
 
@@ -20,6 +22,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { phoneNumber, purpose } = sendSMSOTPSchema.parse(body)
 
+    const captchaFailure = await applyAuthCaptchaMiddleware(request, {
+      endpoint: "otp/sms",
+      action: "otp-send",
+      body,
+      identifier: phoneNumber,
+    })
+    if (captchaFailure) {
+      return captchaFailure
+    }
+
     const clientIP = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown"
     const userAgent = request.headers.get("user-agent") || "unknown"
 
@@ -27,7 +39,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result, { status: result.success ? 200 : 400 })
   } catch (error) {
-    console.error("SMS OTP send error:", error)
+    logApiRouteError(request, "auth.otp.sms.send_failed", error, { errorCode: "AUTH_OTP_SMS_SEND_FAILED" })
 
     if (error instanceof z.ZodError) {
       return NextResponse.json({ success: false, message: "Invalid request data" }, { status: 400 })
@@ -46,7 +58,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json(result, { status: result.success ? 200 : 400 })
   } catch (error) {
-    console.error("SMS OTP verify error:", error)
+    logApiRouteError(request, "auth.otp.sms.verify_failed", error, { errorCode: "AUTH_OTP_SMS_VERIFY_FAILED" })
 
     if (error instanceof z.ZodError) {
       return NextResponse.json({ success: false, message: "Invalid request data" }, { status: 400 })

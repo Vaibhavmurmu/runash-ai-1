@@ -1,17 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 
-const sql = neon(process.env.DATABASE_URL!)
+async function getSession() {
+  const { getServerAuthSession } = await import("@/lib/auth/session")
+  return getServerAuthSession()
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getSession()
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    const sql = getSql()
     const syncData = await request.json()
     const { type, data, action, timestamp } = syncData
 
@@ -20,7 +22,7 @@ export async function POST(request: NextRequest) {
     let serverData = null
 
     if (action === "update") {
-      const existing = await getExistingRecord(type, data.id)
+      const existing = await getExistingRecord(sql, type, data.id)
       if (existing && existing.updated_at > new Date(timestamp)) {
         conflict = true
         serverData = existing
@@ -29,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     if (!conflict) {
       // Apply the sync operation
-      await applySyncOperation(type, action, data, session.user.id)
+      await applySyncOperation(sql, type, action, data, session.user.id)
     }
 
     return NextResponse.json({
@@ -44,7 +46,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function getExistingRecord(type: string, id: string) {
+async function getExistingRecord(sql: ReturnType<typeof getSql>, type: string, id: string) {
   switch (type) {
     case "stream":
       const streams = await sql`SELECT * FROM streams WHERE id = ${id}`
@@ -57,13 +59,19 @@ async function getExistingRecord(type: string, id: string) {
   }
 }
 
-async function applySyncOperation(type: string, action: string, data: any, userId: string) {
+async function applySyncOperation(
+  sql: ReturnType<typeof getSql>,
+  type: string,
+  action: string,
+  data: any,
+  userId: string,
+) {
   switch (type) {
     case "stream":
-      await syncStream(action, data, userId)
+      await syncStream(sql, action, data, userId)
       break
     case "recording":
-      await syncRecording(action, data, userId)
+      await syncRecording(sql, action, data, userId)
       break
     case "settings":
       await syncSettings(action, data, userId)
@@ -76,7 +84,7 @@ async function applySyncOperation(type: string, action: string, data: any, userI
   }
 }
 
-async function syncStream(action: string, data: any, userId: string) {
+async function syncStream(sql: ReturnType<typeof getSql>, action: string, data: any, userId: string) {
   switch (action) {
     case "create":
       await sql`
@@ -98,7 +106,7 @@ async function syncStream(action: string, data: any, userId: string) {
   }
 }
 
-async function syncRecording(action: string, data: any, userId: string) {
+async function syncRecording(sql: ReturnType<typeof getSql>, action: string, data: any, userId: string) {
   switch (action) {
     case "create":
       await sql`

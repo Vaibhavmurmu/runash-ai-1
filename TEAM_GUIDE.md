@@ -136,6 +136,7 @@ This guide defines ownership, workflow, and operational expectations for buildin
 - Observability prepared (dashboards, alerts, error budgets).
 - Release notes prepared and stakeholder communication drafted.
 - Rollback plan validated before production deploy.
+- Release confidence checklist completed: `docs/RELEASE_CONFIDENCE_CHECKLIST.md` (feature completeness, accessibility, responsive signoff, quality gates, API contract verification, rollback notes).
 
 ### Rollback guidance
 - Prefer fast rollback for customer-impacting regressions.
@@ -209,3 +210,24 @@ For medium/large structural changes include:
 
 
 
+
+
+## Chat and attachment production configuration baseline
+
+For releases touching chat APIs/streaming/attachments, verify these runtime settings before deploy:
+- `RUNASH_AGENT_CHAT_ENABLED`
+- `RUNASH_CHAT_API_TIMEOUT_MS`
+- `RUNASH_CHAT_STREAM_HEARTBEAT_MS`
+- `RUNASH_CHAT_STREAM_MAX_DURATION_MS`
+- `RUNASH_ATTACHMENT_STORAGE_PROVIDER`
+- `RUNASH_ATTACHMENT_BUCKET`
+- `RUNASH_ATTACHMENT_REGION`
+- `RUNASH_ATTACHMENT_SIGNED_URL_TTL_SECONDS`
+- `RUNASH_ATTACHMENT_MAX_BYTES`
+
+Secrets must be sourced from managed secret stores only:
+- `RUNASH_ATTACHMENT_ACCESS_KEY_ID`
+- `RUNASH_ATTACHMENT_SECRET_ACCESS_KEY`
+- `RUNASH_ATTACHMENT_KMS_KEY_ID` (if configured)
+
+Do not include secret values in logs, PR descriptions, test artifacts, or screenshots.

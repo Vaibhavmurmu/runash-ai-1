@@ -1,63 +1,59 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { EmailTemplateManager } from "@/lib/email-templates"
-import { requirePermission } from "@/lib/auth-middleware"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
+import { FilterValidationError, normalizePagination, parseOptionalBoolean, parseOptionalInteger } from "@/lib/email-filter-utils"
 
 export async function GET(request: NextRequest) {
-  try {
-    // Check admin permissions
-    const authResult = await requirePermission(request, "manage_email_templates")
-    if (!authResult.success) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
-    }
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:analytics"],
+    auditEvent: "admin.email.templates.read",
+  })
+  if (!auth.success) return auth.response
 
+  try {
     const { searchParams } = new URL(request.url)
     const category = searchParams.get("category") || undefined
-    const is_active = searchParams.get("is_active") ? searchParams.get("is_active") === "true" : undefined
+    const is_active = parseOptionalBoolean(searchParams.get("is_active"), "is_active")
     const search = searchParams.get("search") || undefined
-    const limit = searchParams.get("limit") ? Number.parseInt(searchParams.get("limit")!) : 20
-    const offset = searchParams.get("offset") ? Number.parseInt(searchParams.get("offset")!) : 0
+    const { limit, offset } = normalizePagination(
+      parseOptionalInteger(searchParams.get("limit"), "limit"),
+      parseOptionalInteger(searchParams.get("offset"), "offset"),
+      { defaultLimit: 20, maxLimit: 100 },
+    )
 
-    const result = await EmailTemplateManager.getTemplates({
-      category,
-      is_active,
-      search,
-      limit,
-      offset,
-    })
+    const result = await EmailTemplateManager.getTemplates({ category, is_active, search, limit, offset })
 
     return NextResponse.json({
       success: true,
       data: result.templates,
       total: result.total,
-      pagination: {
-        limit,
-        offset,
-        hasMore: offset + limit < result.total,
-      },
+      pagination: { limit, offset, hasMore: offset + limit < result.total },
     })
   } catch (error) {
+    if (error instanceof FilterValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
     console.error("Error fetching email templates:", error)
     return NextResponse.json({ error: "Failed to fetch email templates" }, { status: 500 })
   }
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    // Check admin permissions
-    const authResult = await requirePermission(request, "manage_email_templates")
-    if (!authResult.success) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
-    }
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:settings"],
+    auditEvent: "admin.email.templates.create",
+  })
+  if (!auth.success) return auth.response
 
+  try {
     const body = await request.json()
     const { name, subject, html_content, text_content, category, description, variables } = body
 
-    // Validate required fields
     if (!name || !subject || !html_content) {
       return NextResponse.json({ error: "Name, subject, and HTML content are required" }, { status: 400 })
     }
 
-    // Validate template
     const validation = EmailTemplateManager.validateTemplate(html_content, text_content)
     if (!validation.isValid) {
       return NextResponse.json({ error: "Template validation failed", details: validation.errors }, { status: 400 })
@@ -71,17 +67,14 @@ export async function POST(request: NextRequest) {
       category,
       description,
       variables: variables || validation.variables.map((v) => ({ name: v, description: "" })),
-      created_by: authResult.user.id,
+      created_by: auth.session.user.id,
     })
 
     if (!template) {
       return NextResponse.json({ error: "Failed to create template" }, { status: 500 })
     }
 
-    return NextResponse.json({
-      success: true,
-      data: template,
-    })
+    return NextResponse.json({ success: true, data: template })
   } catch (error) {
     console.error("Error creating email template:", error)
     return NextResponse.json({ error: "Failed to create email template" }, { status: 500 })

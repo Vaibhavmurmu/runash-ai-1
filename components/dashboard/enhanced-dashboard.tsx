@@ -1,395 +1,308 @@
 "use client"
 
-import type React from "react"
-
-import { useState, useEffect, useCallback } from "react"
-import {
-  BarChart3,
-  Users,
-  Video,
-  Eye,
-  Share2,
-  Play,
-  Pause,
-  MoreHorizontal,
-  Calendar,
-  Clock,
-  DollarSign,
-  Star,
-  Award,
-  Target,
-} from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { Activity, ArrowRight, BarChart3, MessageSquare, RefreshCw, ShieldAlert, ShoppingBag, Store, Video, WandSparkles } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Separator } from "@/components/ui/separator"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from "@/components/ui/drawer"
-import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel"
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
-import { Progress } from "@/components/ui/progress"
 import { toast } from "@/components/ui/use-toast"
-import type {
-  DashboardRecentStream,
-  DashboardRecentStreamsResponse,
-  InviteCollaboratorResponse,
-  StartStreamResponse,
-} from "@/lib/types/dashboard-streams"
+import {
+  dashboardRoleViewConfig,
+  resolveDashboardRole,
+  type DashboardRolePreset,
+} from "@/components/dashboard/dashboard-view-config"
+import { useDashboardRealtime } from "@/lib/hooks/use-dashboard-realtime"
+import { dashboardStreamingService } from "@/lib/streaming-service"
+import { fetchApiData } from "@/lib/api/client"
 
-interface StatCardProps {
+type DashboardStats = Record<string, string | number | null | undefined>
+type DashboardActivity = {
+  id?: string
+  type?: string
+  action?: string
+  target?: string
+  time?: string
+  user?: { name?: string }
+}
+
+type SellerSummary = {
+  pendingOrders?: number
+  outOfStock?: number
+  recentStreams?: Array<{ id: string; title: string; date?: string; url?: string }>
+}
+
+type EditorProjectSummary = {
+  id: string
+  name?: string
+  updated_at?: string
+}
+
+type ChatSessionSummary = {
+  id: string
+  title?: string
+  created_at?: string
+}
+
+type ModuleCardData = {
+  id: "streams" | "editor" | "chat" | "store" | "seller"
   title: string
-  value: string | number
-  icon: React.ReactNode
-  description?: string
-  trend?: {
-    value: number
-    isPositive: boolean
+  description: string
+  primaryLabel: string
+  primaryHref: string
+  continuityLabel: string
+  continuityHref: string
+  continuityDisabled?: boolean
+  lastUpdatedLabel: string
+  icon: ComponentType<{ className?: string }>
+}
+
+function formatLastUpdated(value?: string | null) {
+  if (!value) return "No recent updates"
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+
+  return `Updated ${parsed.toLocaleString()}`
+}
+
+function formatStatValue(value: string | number | null | undefined) {
+  if (value == null || value === "") {
+    return "—"
   }
-  className?: string
+
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(1)
+  }
+
+  return value
 }
 
-function StatCard({ title, value, icon, description, trend, className }: StatCardProps) {
+function SummaryCard({ label, value, icon: Icon }: { label: string; value: string; icon: ComponentType<{ className?: string }> }) {
   return (
-    <Card className={`overflow-hidden border-border/40 bg-card/50 backdrop-blur ${className}`}>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        <div className="h-4 w-4 text-muted-foreground">{icon}</div>
+    <Card className="border-border/60 bg-card/80 shadow-sm backdrop-blur-sm dark:bg-card/70">
+      <CardContent className="flex items-center justify-between gap-4 p-5">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+          <p className="mt-1 text-2xl font-semibold tracking-tight">{value}</p>
+        </div>
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground"><Icon className="h-4 w-4" /></span>
+      </CardContent>
+    </Card>
+  )
+}
+
+function ActivityPanel({ items }: { items: DashboardActivity[] }) {
+  return (
+    <Card className="h-full border-border/60 bg-card/80 shadow-sm backdrop-blur-sm dark:bg-card/70">
+      <CardHeader className="space-y-2 pb-4">
+        <CardTitle className="text-base">Recent activity</CardTitle>
+        <CardDescription>Latest customer and stream events relevant to your role.</CardDescription>
       </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold bg-gradient-to-r from-orange-500 to-amber-400 bg-clip-text text-transparent">
-          {value}
-        </div>
-        {trend && (
-          <p className="mt-1 text-xs flex items-center gap-1">
-            <span className={`inline-flex items-center ${trend.isPositive ? "text-emerald-500" : "text-rose-500"}`}>
-              {trend.isPositive ? "↗" : "↘"} {Math.abs(trend.value).toFixed(1)}%
-            </span>
-            <span className="text-muted-foreground">{description}</span>
-          </p>
-        )}
-        {!trend && description && <p className="mt-1 text-xs text-muted-foreground">{description}</p>}
-      </CardContent>
-    </Card>
-  )
-}
-
-type StreamCardData = DashboardRecentStream & { thumbnail_url?: string }
-
-function StreamCard({ stream }: { stream: StreamCardData }) {
-  const [isPlaying, setIsPlaying] = useState(false)
-
-  return (
-    <Card className="overflow-hidden border-border/40 bg-card/50 backdrop-blur hover:shadow-lg transition-all duration-200">
-      <div className="relative aspect-video bg-gradient-to-br from-orange-500/20 to-amber-400/20">
-        {stream.thumbnail_url ? (
-          <img
-            src={stream.thumbnail_url || "/placeholder.svg"}
-            alt={stream.title}
-            className="w-full h-full object-cover"
-          />
+      <CardContent className="space-y-2.5">
+        {items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No new activity yet.</p>
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-12 w-12 rounded-full bg-black/20 backdrop-blur hover:bg-black/40"
-              onClick={() => setIsPlaying(!isPlaying)}
-            >
-              {isPlaying ? <Pause className="h-6 w-6 text-white" /> : <Play className="h-6 w-6 text-white" />}
-            </Button>
-          </div>
-        )}
-        {stream.status === "live" && (
-          <Badge className="absolute top-2 left-2 bg-red-500 hover:bg-red-600 text-white">
-            <div className="w-2 h-2 bg-white rounded-full mr-1 animate-pulse" />
-            LIVE
-          </Badge>
-        )}
-        <div className="absolute top-2 right-2">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8 bg-black/20 backdrop-blur hover:bg-black/40">
-                <MoreHorizontal className="h-4 w-4 text-white" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-48">
-              <div className="space-y-2">
-                <Button variant="ghost" className="w-full justify-start" size="sm">
-                  <Eye className="mr-2 h-4 w-4" />
-                  View Details
-                </Button>
-                <Button variant="ghost" className="w-full justify-start" size="sm">
-                  <Share2 className="mr-2 h-4 w-4" />
-                  Share
-                </Button>
-                <Separator />
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="ghost" className="w-full justify-start text-red-600" size="sm">
-                      Delete
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Delete Stream</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Are you sure you want to delete this stream? This action cannot be undone.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction className="bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+          items.slice(0, 6).map((activity, index) => (
+            <div key={activity.id ?? `${activity.action}-${index}`} className="rounded-xl border border-border/50 bg-background/30 p-3.5 transition-colors hover:border-border hover:bg-background/60">
+              <p className="text-sm">
+                <span className="font-medium">{activity.user?.name ?? "System"}</span>{" "}
+                <span className="text-muted-foreground">{activity.action ?? "updated"}</span>{" "}
+                {activity.target ? <span className="font-medium">{activity.target}</span> : null}
+              </p>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">{activity.time ?? "Just now"}</span>
+                <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                  {activity.type ?? "event"}
+                </Badge>
               </div>
-            </PopoverContent>
-          </Popover>
+            </div>
+          ))
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function PrimaryWorkflowPanel({
+  role,
+  stats,
+  streamError,
+  onRefresh,
+}: {
+  role: DashboardRolePreset
+  stats: DashboardStats
+  streamError: string | null
+  onRefresh: () => void
+}) {
+  const roleConfig = dashboardRoleViewConfig[role]
+
+  const blocks = {
+    creator: {
+      title: "Creator workflow",
+      description: "Start a live stream, publish drafts, and review post-stream quality in one flow.",
+      ctaLabel: "Open streaming studio",
+      ctaHref: "/dashboard/streaming-studio",
+      helperHref: "/recordings",
+      helperLabel: "Review recordings",
+      statLabel: "Queued drafts",
+      statValue: formatStatValue(stats.queuedDrafts),
+      icon: Video,
+    },
+    seller: {
+      title: "Seller workflow",
+      description: "Monitor storefront health, launch offers, and keep checkout conversion stable.",
+      ctaLabel: "Open seller studio",
+      ctaHref: "/dashboard/seller-studio",
+      helperHref: "/dashboard/store",
+      helperLabel: "Manage store catalog",
+      statLabel: "Abandoned checkouts",
+      statValue: formatStatValue(stats.abandonedCarts),
+      icon: ShoppingBag,
+    },
+    operator: {
+      title: "Operations workflow",
+      description: "Triaging alerts and service incidents is prioritized in this primary panel.",
+      ctaLabel: "Open alerts queue",
+      ctaHref: "/dashboard/alerts",
+      helperHref: "/automation",
+      helperLabel: "Inspect automation runbooks",
+      statLabel: "Critical incidents",
+      statValue: formatStatValue(stats.criticalIncidents),
+      icon: ShieldAlert,
+    },
+  } as const
+
+  const block = blocks[role]
+  const Icon = block.icon
+
+  return (
+    <Card className="border-border/60 bg-card/80 shadow-sm backdrop-blur-sm dark:bg-card/70">
+      <CardHeader className="flex flex-row items-start justify-between gap-4 pb-4">
+        <div>
+          <CardTitle className="text-lg">{block.title}</CardTitle>
+          <CardDescription>{block.description}</CardDescription>
         </div>
-      </div>
-      <CardContent className="p-4">
-        <div className="space-y-2">
-          <h3 className="font-semibold line-clamp-2">{stream.title}</h3>
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <div className="flex items-center gap-1">
-              <Eye className="h-4 w-4" />
-              {stream.viewers?.toLocaleString?.() ?? stream.viewers}
-            </div>
-            <div className="flex items-center gap-1">
-              <Clock className="h-4 w-4" />
-              {stream.duration}
-            </div>
+        <Button variant="ghost" size="sm" className="h-8 px-3 text-xs font-medium hover:bg-muted/70" onClick={onRefresh}>
+          <RefreshCw className="mr-2 h-3.5 w-3.5" />
+          Refresh
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-xl border border-border/50 bg-muted/30 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">{block.statLabel}</p>
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground"><Icon className="h-4 w-4" /></span>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">{stream.date}</span>
-            <Badge variant={stream.status === "live" ? "destructive" : "secondary"} className="text-xs">
-              {stream.status?.toUpperCase?.() ?? stream.status}
-            </Badge>
-          </div>
+          <p className="mt-2 text-2xl font-semibold">{block.statValue}</p>
+          {streamError ? (
+            <p className="mt-2 text-xs text-destructive">{streamError}</p>
+          ) : (
+            <p className="mt-2 text-xs text-muted-foreground">{roleConfig.subtitle}</p>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Button asChild className="bg-brand-gradient shadow-sm transition-opacity hover:opacity-95 focus-visible:ring-brand-ring">
+            <Link href={block.ctaHref}>
+              {block.ctaLabel}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
+          <Button asChild variant="outline" className="hover:bg-muted/80">
+            <Link href={block.helperHref}>{block.helperLabel}</Link>
+          </Button>
         </div>
       </CardContent>
     </Card>
   )
 }
 
-function ActivityItem({ activity }: { activity: any }) {
+function ModuleTemplateCard({ module }: { module: ModuleCardData }) {
+  const Icon = module.icon
+
   return (
-    <div className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors">
-      <HoverCard>
-        <HoverCardTrigger asChild>
-          <Avatar className="h-8 w-8 cursor-pointer">
-            <AvatarImage src={activity.user.avatar || "/placeholder.svg"} alt={activity.user.name} />
-            <AvatarFallback className="bg-gradient-to-br from-orange-500 to-amber-400 text-white text-xs">
-              {activity.user.name.substring(0, 2).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-        </HoverCardTrigger>
-        <HoverCardContent className="w-80">
-          <div className="flex justify-between space-x-4">
-            <Avatar>
-              <AvatarImage src={activity.user.avatar || "/placeholder.svg"} />
-              <AvatarFallback>{activity.user.name.substring(0, 2).toUpperCase()}</AvatarFallback>
-            </Avatar>
-            <div className="space-y-1">
-              <h4 className="text-sm font-semibold">{activity.user.name}</h4>
-              <p className="text-sm text-muted-foreground">Active viewer</p>
-              <div className="flex items-center pt-2">
-                <Calendar className="mr-2 h-4 w-4 opacity-70" />
-                <span className="text-xs text-muted-foreground">Recent activity</span>
-              </div>
-            </div>
-          </div>
-        </HoverCardContent>
-      </HoverCard>
-      <div className="flex-1 space-y-1">
-        <p className="text-sm">
-          <span className="font-medium">{activity.user.name}</span>{" "}
-          <span className="text-muted-foreground">{activity.action}</span>{" "}
-          {activity.target && <span className="font-medium">{activity.target}</span>}
-        </p>
-        <p className="text-xs text-muted-foreground">{activity.time}</p>
-      </div>
-      <Badge
-        variant="outline"
-        className={`text-xs ${activity.type === "comment" && "border-blue-200 text-blue-700"} ${
-          activity.type === "follow" && "border-green-200 text-green-700"
-        } ${activity.type === "subscription" && "border-purple-200 text-purple-700"} ${
-          activity.type === "donation" && "border-amber-200 text-amber-700"
-        }`}
-      >
-        {activity.type}
-      </Badge>
-    </div>
+    <Card className="border-border/60 bg-card/80 shadow-sm backdrop-blur-sm dark:bg-card/70">
+      <CardHeader className="space-y-2 pb-3">
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="text-base">{module.title}</CardTitle>
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground"><Icon className="h-4 w-4" /></span>
+        </div>
+        <CardDescription>{module.description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2.5">
+        <Button asChild className="w-full bg-brand-gradient shadow-sm transition-opacity hover:opacity-95 focus-visible:ring-brand-ring">
+          <Link href={module.primaryHref}>{module.primaryLabel}</Link>
+        </Button>
+        {module.continuityDisabled ? (
+          <Button variant="outline" className="w-full" disabled>
+            {module.continuityLabel}
+          </Button>
+        ) : (
+          <Button asChild variant="outline" className="w-full hover:bg-muted/80">
+            <Link href={module.continuityHref}>{module.continuityLabel}</Link>
+          </Button>
+        )}
+        <div className="rounded-md border border-border/40 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">{module.lastUpdatedLabel}</div>
+      </CardContent>
+    </Card>
   )
 }
 
 export function EnhancedDashboard() {
+  const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
-  const [stats, setStats] = useState<any | null>(null)
-  const [recentStreams, setRecentStreams] = useState<any[]>([])
-  const [activities, setActivities] = useState<any[]>([])
-  const [achievements, setAchievements] = useState<any[]>([])
-  const [monthlyGoals, setMonthlyGoals] = useState<any[]>([])
-  const [user, setUser] = useState<any | null>(null)
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null)
+  const [stats, setStats] = useState<DashboardStats>({})
+  const [activities, setActivities] = useState<DashboardActivity[]>([])
+  const [streamWidgetError, setStreamWidgetError] = useState<string | null>(null)
+  const [role, setRole] = useState<DashboardRolePreset>("creator")
+  const [recentStream, setRecentStream] = useState<{ id: string; title?: string; date?: string; url?: string } | null>(null)
+  const [latestEditorProject, setLatestEditorProject] = useState<EditorProjectSummary | null>(null)
+  const [recentChatSession, setRecentChatSession] = useState<ChatSessionSummary | null>(null)
+  const [sellerSummary, setSellerSummary] = useState<SellerSummary | null>(null)
 
-  // Dialog state for actions
-  const [startDialogOpen, setStartDialogOpen] = useState(false)
-  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
-  const [inviteDialogOpen, setInviteDialogOpen] = useState(false)
-
-  // Forms
-  const [startTitle, setStartTitle] = useState("")
-  const [startCategory, setStartCategory] = useState("Gaming")
-
-  const [scheduleTitle, setScheduleTitle] = useState("")
-  const [scheduleCategory, setScheduleCategory] = useState("Gaming")
-  const [scheduleDate, setScheduleDate] = useState("")
-
-  const [inviteEmails, setInviteEmails] = useState("")
-
-  const getGreeting = useCallback(() => {
-    const hour = new Date().getHours()
-    if (hour < 12) return "Good morning"
-    if (hour < 18) return "Good afternoon"
-    return "Good evening"
-  }, [])
-
-  useEffect(() => {
-    loadDashboardData()
-
-    // Poll for updates every 30s for "real-time" status
-    const id = setInterval(() => {
-      loadDashboardData()
-    }, 30000)
-
-    return () => clearInterval(id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
     try {
       setIsLoading(true)
+      setStreamWidgetError(null)
 
-      // 1) fetch current user (real)
-      const meRes = await fetch("/api/me")
- 
-      let resolvedUserId: string | number | undefined
+      const me = await fetchApiData<{ role?: string } | null>("/api/me", {
+        fallbackMessage: "Failed to load current user",
+      }).catch(() => null)
+      setRole(resolveDashboardRole(me?.role))
 
-      let me: any | null = null
-
-      if (meRes.ok) {
-        me = await meRes.json()
-        setUser(me)
-        resolvedUserId = me?.id
-      } else {
-        setUser(null)
-      }
-
- 
-      const effectiveUserId = resolvedUserId || user?.id || undefined
-
-      const userId = me?.id || user?.id || undefined
-
-
-      // 2) fetch dashboard data using real user id when available
-      const headers: Record<string, string> = {}
-      if (effectiveUserId) headers["x-user-id"] = String(effectiveUserId)
-
-      const [statsRes, streamsRes, activityRes, achievementsRes, goalsRes] = await Promise.all([
-        fetch("/api/dashboard/stats", { headers }),
-        fetch("/api/dashboard/streams/recent?limit=12", { headers }),
-        fetch("/api/dashboard/activity?limit=10", { headers }),
-        fetch("/api/dashboard/achievements", { headers }),
-        fetch("/api/dashboard/goals", { headers }),
+      const [statsData, activityData, streamData, projectData, chatData, sellerData] = await Promise.all([
+        fetchApiData<DashboardStats>("/api/dashboard/stats", {
+          fallbackMessage: "Failed to load dashboard stats",
+        }),
+        fetchApiData<DashboardActivity[]>("/api/dashboard/activity?limit=8", {
+          fallbackMessage: "Failed to load dashboard activity",
+        }),
+        fetchApiData<{ streams?: Array<{ id: string; title?: string; date?: string; url?: string }> }>("/api/dashboard/streams?limit=1", {
+          fallbackMessage: "Failed to load dashboard streams",
+        }).catch(() => null),
+        fetchApiData<{ projects?: EditorProjectSummary[] }>("/api/editor/projects", {
+          fallbackMessage: "Failed to load editor projects",
+        }).catch(() => null),
+        fetchApiData<ChatSessionSummary>("/api/sessions/recent", {
+          fallbackMessage: "Failed to load recent chat session",
+        }).catch(() => null),
+        fetchApiData<SellerSummary>("/api/seller/dashboard/summary", {
+          fallbackMessage: "Failed to load seller summary",
+        }).catch(() => null),
       ])
 
-      if (statsRes.ok) {
-        const statsData = await statsRes.json()
-        setStats(statsData)
-      } else {
-        setStats(null)
-      }
+      setStats(statsData ?? {})
+      setActivities(Array.isArray(activityData) ? activityData : [])
+      setRecentStream(streamData?.streams?.[0] ?? null)
+      setLatestEditorProject(projectData?.projects?.[0] ?? null)
+      setRecentChatSession(chatData)
+      setSellerSummary(sellerData)
 
-      if (streamsRes.ok) {
-        const streamsData = (await streamsRes.json()) as DashboardRecentStreamsResponse
-        setRecentStreams(Array.isArray(streamsData.streams) ? streamsData.streams : [])
-      } else {
-        setRecentStreams([])
-      }
-
-      if (activityRes.ok) {
-        const activityData = await activityRes.json()
-        setActivities(activityData)
-      } else {
-        setActivities([])
-      }
-
-      if (achievementsRes.ok) {
-        const ach = await achievementsRes.json()
-        setAchievements(ach)
-      } else {
-        // fallback sample achievements computed from stats
-        setAchievements([
-          { title: "First Stream", description: "Completed your first live stream", unlocked: true },
-          {
-            title: "100 Followers",
-            description: "Reached 100 followers",
-            unlocked: stats?.followers ? stats.followers >= 100 : false,
-          },
-          {
-            title: "Viral Content",
-            description: "Stream reached 10K views",
-            unlocked: stats?.totalViews ? stats.totalViews >= 10000 : false,
-          },
-        ])
-      }
-
-      if (goalsRes.ok) {
-        const goals = await goalsRes.json()
-        setMonthlyGoals(goals)
-      } else {
-        setMonthlyGoals([
-          { name: "Streaming Hours", current: 45, target: 60, unit: "hours" },
-          { name: "New Followers", current: stats?.followers || 0, target: 300, unit: "followers" },
-          { name: "Revenue Goal", current: stats?.revenue || 0, target: 2000, unit: "$" },
-        ])
-      }
-
-      setLastUpdatedAt(Date.now())
+      await dashboardStreamingService.fetchLatestCompletedStreamSummary().catch(() => null)
     } catch (error) {
-      console.error("Error loading dashboard data:", error)
+      setStreamWidgetError(error instanceof Error ? error.message : "Failed to load dashboard")
       toast({
         title: "Error",
         description: "Failed to load dashboard data. Please try again.",
@@ -398,547 +311,176 @@ export function EnhancedDashboard() {
     } finally {
       setIsLoading(false)
     }
+  }, [])
+
+  useEffect(() => {
+    void loadDashboardData()
+  }, [loadDashboardData])
+
+  useDashboardRealtime({
+    onInvalidate: () => {
+      void loadDashboardData()
+    },
+  })
+
+  const roleConfig = dashboardRoleViewConfig[role]
+
+  const summaryCards = useMemo(
+    () =>
+      roleConfig.summaryMetrics.map((metric) => ({
+        ...metric,
+        value: formatStatValue(stats[metric.statKey]),
+      })),
+    [roleConfig.summaryMetrics, stats],
+  )
+
+  const moduleCards = useMemo<ModuleCardData[]>(() => {
+    const sellerRecentStream = sellerSummary?.recentStreams?.[0]
+
+    return [
+      {
+        id: "streams",
+        title: "Streams",
+        description: "Go live quickly and jump back into your most recent stream setup.",
+        primaryLabel: "Go Live",
+        primaryHref: "/dashboard/streaming-studio",
+        continuityLabel: recentStream?.id ? `Resume previous live: ${recentStream.title ?? "Untitled"}` : "Resume previous live",
+        continuityHref: recentStream?.id ? `/stream?resumeStreamId=${encodeURIComponent(recentStream.id)}` : "/schedule",
+        continuityDisabled: !recentStream?.id,
+        lastUpdatedLabel: formatLastUpdated(recentStream?.date),
+        icon: Video,
+      },
+      {
+        id: "editor",
+        title: "Editor",
+        description: "Start a fresh edit or continue your latest project timeline.",
+        primaryLabel: "New Project",
+        primaryHref: "/dashboard/editor",
+        continuityLabel: latestEditorProject?.id
+          ? `Continue: ${latestEditorProject.name ?? "Untitled Project"}`
+          : "Continue last project",
+        continuityHref: latestEditorProject?.id
+          ? `/dashboard/editor?projectId=${encodeURIComponent(latestEditorProject.id)}`
+          : "/dashboard/editor",
+        continuityDisabled: !latestEditorProject?.id,
+        lastUpdatedLabel: formatLastUpdated(latestEditorProject?.updated_at),
+        icon: WandSparkles,
+      },
+      {
+        id: "chat",
+        title: "Chat",
+        description: "Start a new assistant conversation or continue your recent session context.",
+        primaryLabel: "New Chat",
+        primaryHref: "/dashboard/chat",
+        continuityLabel: recentChatSession?.id
+          ? `Continue: ${recentChatSession.title ?? "Recent session"}`
+          : "Continue recent session",
+        continuityHref: recentChatSession?.id
+          ? `/dashboard/chat?sessionId=${encodeURIComponent(recentChatSession.id)}`
+          : "/dashboard/chat",
+        continuityDisabled: !recentChatSession?.id,
+        lastUpdatedLabel: formatLastUpdated(recentChatSession?.created_at),
+        icon: MessageSquare,
+      },
+      {
+        id: "store",
+        title: "Store",
+        description: "Manage catalog state and pick up order/inventory operations quickly.",
+        primaryLabel: "Open Store",
+        primaryHref: "/dashboard/store",
+        continuityLabel:
+          (sellerSummary?.outOfStock ?? 0) > 0
+            ? `Restock ${sellerSummary?.outOfStock ?? 0} low-stock item(s)`
+            : "Continue order operations",
+        continuityHref: (sellerSummary?.outOfStock ?? 0) > 0 ? "/dashboard/store?filter=low-stock" : "/dashboard/store?tab=orders",
+        continuityDisabled: !sellerSummary,
+        lastUpdatedLabel: formatLastUpdated(activities[0]?.time),
+        icon: Store,
+      },
+      {
+        id: "seller",
+        title: "Seller",
+        description: "Access seller controls and continue your most recent stream-linked workflow.",
+        primaryLabel: "Open Seller Studio",
+        primaryHref: "/dashboard/seller-studio",
+        continuityLabel: sellerRecentStream?.id
+          ? `Continue seller flow: ${sellerRecentStream.title ?? "Recent stream"}`
+          : "Continue seller flow",
+        continuityHref: sellerRecentStream?.id
+          ? `/dashboard/seller-studio?streamId=${encodeURIComponent(sellerRecentStream.id)}`
+          : "/dashboard/seller-studio",
+        continuityDisabled: !sellerRecentStream?.id,
+        lastUpdatedLabel: formatLastUpdated(sellerRecentStream?.date),
+        icon: ShoppingBag,
+      },
+    ]
+  }, [activities, latestEditorProject, recentChatSession, recentStream, sellerSummary])
+
+  if (isLoading) {
+    return (
+      <div className="space-y-5">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} className="h-24 w-full" />
+          ))}
+        </div>
+        <Skeleton className="h-56 w-full" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    )
   }
-
-  // Actions
-  const handleStartStreaming = async () => {
-    try {
-      setIsLoading(true)
-      const payload = { title: startTitle || "Untitled Stream", category: startCategory }
-      const res = await fetch("/api/dashboard/streams/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(user?.id ? { "x-user-id": String(user.id) } : {}) },
-        body: JSON.stringify(payload),
-      })
-      if (res.ok) {
-        const started = (await res.json()) as StartStreamResponse
-        toast({ title: "Stream started", description: `${started.title} is now ${started.status}.` })
-        setStartDialogOpen(false)
-        // optimistic refresh
-        await loadDashboardData()
-      } else {
-        const err = await res.text()
-        toast({ title: "Failed to start", description: err || "Unknown error", variant: "destructive" })
-      }
-    } catch (e) {
-      toast({ title: "Error", description: "Unable to start stream", variant: "destructive" })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleScheduleStream = async () => {
-    try {
-      setIsLoading(true)
-      const payload = { title: scheduleTitle || "Scheduled Stream", category: scheduleCategory, startsAt: scheduleDate }
-      const res = await fetch("/api/dashboard/streams/schedule", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(user?.id ? { "x-user-id": String(user.id) } : {}) },
-        body: JSON.stringify(payload),
-      })
-      if (res.ok) {
-        toast({ title: "Scheduled", description: "Stream scheduled successfully." })
-        setScheduleDialogOpen(false)
-        await loadDashboardData()
-      } else {
-        const err = await res.text()
-        toast({ title: "Failed to schedule", description: err || "Unknown error", variant: "destructive" })
-      }
-    } catch (e) {
-      toast({ title: "Error", description: "Unable to schedule stream", variant: "destructive" })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleInviteCollaborators = async () => {
-    try {
-      setIsLoading(true)
-      const emails = inviteEmails.split(",").map((e) => e.trim()).filter(Boolean)
-      const targetStreamId = recentStreams[0]?.id
-
-      if (!targetStreamId) {
-        toast({ title: "Invite failed", description: "No stream available to invite collaborators to.", variant: "destructive" })
-        return
-      }
-
-      const inviteResults = await Promise.all(
-        emails.map(async (email) => {
-          const response = await fetch("/api/dashboard/streams/invite", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...(user?.id ? { "x-user-id": String(user.id) } : {}) },
-            body: JSON.stringify({ streamId: targetStreamId, email }),
-          })
-
-          if (!response.ok) {
-            const errorText = await response.text()
-            throw new Error(errorText || `Failed to invite ${email}`)
-          }
-
-          return (await response.json()) as InviteCollaboratorResponse
-        }),
-      )
-
-      if (inviteResults.length > 0) {
-        toast({ title: "Invites sent", description: `${inviteResults.length} collaborator(s) invited.` })
-        setInviteDialogOpen(false)
-        setInviteEmails("")
-      } else {
-        toast({ title: "Invite failed", description: "No collaborator invites were sent.", variant: "destructive" })
-      }
-    } catch (e) {
-      toast({ title: "Error", description: "Unable to send invites", variant: "destructive" })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const statsCards = stats
-    ? [
-        {
-          title: "Total Views",
-          value: stats.totalViews?.toLocaleString?.() ?? stats.totalViews ?? 0,
-          icon: <Eye />,
-          description: "from last month",
-          trend: { value: stats.trends?.views ?? 0, isPositive: (stats.trends?.views ?? 0) >= 0 },
-        },
-        {
-          title: "Followers",
-          value: stats.followers?.toLocaleString?.() ?? stats.followers ?? 0,
-          icon: <Users />,
-          description: "from last month",
-          trend: { value: stats.trends?.followers ?? 0, isPositive: (stats.trends?.followers ?? 0) >= 0 },
-        },
-        {
-          title: "Live Streams",
-          value: stats.liveStreams?.toString?.() ?? stats.liveStreams ?? 0,
-          icon: <Video />,
-          description: "this month",
-          trend: { value: stats.trends?.streams ?? 0, isPositive: (stats.trends?.streams ?? 0) >= 0 },
-        },
-        {
-          title: "Revenue",
-          value: `$${(stats.revenue ?? 0).toLocaleString?.() ?? stats.revenue ?? 0}`,
-          icon: <DollarSign />,
-          description: "this month",
-          trend: { value: stats.trends?.revenue ?? 0, isPositive: (stats.trends?.revenue ?? 0) >= 0 },
-        },
-      ]
-    : []
-
-  const anyLive = recentStreams.some((s) => s.status === "live")
-  const liveStream = recentStreams.find((s) => s.status === "live")
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-7">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-orange-500 to-amber-400 bg-clip-text text-transparent">
-              {getGreeting()}{user ? `, ${user.name.split(" ")[0]}` : ""}
-            </h1>
-            {user && (
-              <Avatar className="h-10 w-10">
-                <AvatarImage src={user.avatar || "/placeholder.svg"} alt={user.name} />
-                <AvatarFallback>{user.name?.substring(0, 2).toUpperCase()}</AvatarFallback>
-              </Avatar>
-            )}
-          </div>
-          <p className="text-muted-foreground">
-            {anyLive
-              ? `You are live now: "${liveStream?.title}" — ${liveStream?.viewers?.toLocaleString?.() ?? liveStream?.viewers} viewers`
-              : "Welcome back! Here's what's happening with your streams."}
-            {lastUpdatedAt && !isLoading && (
-              <span className="ml-2 text-xs text-muted-foreground">· updated {new Date(lastUpdatedAt).toLocaleTimeString()}</span>
-            )}
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{roleConfig.title}</h1>
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">Compact dashboard focused on your current workflow.</p>
         </div>
-        <div className="flex items-center gap-2">
-           <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Target className="mr-2 h-4 w-4" />
-                Quick Actions
-              </Button>
-            </SheetTrigger>
-            <SheetContent>
-              <SheetHeader>
-                <SheetTitle>Quick Actions</SheetTitle>
-                <SheetDescription>Quickly access common streaming actions and tools.</SheetDescription>
-              </SheetHeader>
-              <div className="grid gap-4 py-4">
-                <Dialog open={startDialogOpen} onOpenChange={setStartDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button className="w-full bg-gradient-to-r from-orange-500 to-amber-400 hover:from-orange-600 hover:to-amber-500">
-                      <Video className="mr-2 h-4 w-4" />
-                      Start New Stream
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Start Live Stream</DialogTitle>
-                      <DialogDescription>Configure your stream settings and go live in seconds.</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Stream Title</label>
-                        <input
-                          value={startTitle}
-                          onChange={(e) => setStartTitle(e.target.value)}
-                          className="w-full px-3 py-2 border rounded-md"
-                          placeholder="Enter your stream title..."
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Category</label>
-                        <select
-                          value={startCategory}
-                          onChange={(e) => setStartCategory(e.target.value)}
-                          className="w-full px-3 py-2 border rounded-md"
-                        >
-                          <option>Gaming</option>
-                          <option>Education</option>
-                          <option>Technology</option>
-                          <option>Entertainment</option>
-                        </select>
-                      </div>
-                      <Button
-                        className="w-full bg-gradient-to-r from-orange-500 to-amber-400 hover:from-orange-600 hover:to-amber-500"
-                        onClick={handleStartStreaming}
-                      >
-                        Start Streaming
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-
-                <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" className="w-full bg-transparent">
-                      <Calendar className="mr-2 h-4 w-4" />
-                      Schedule Stream
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Schedule Stream</DialogTitle>
-                      <DialogDescription>Pick a date and time to schedule your stream.</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Stream Title</label>
-                        <input
-                          value={scheduleTitle}
-                          onChange={(e) => setScheduleTitle(e.target.value)}
-                          className="w-full px-3 py-2 border rounded-md"
-                          placeholder="Enter your stream title..."
-                        />
-                      </div>
-                         <div className="space-y-2">
-                        <label className="text-sm font-medium">Category</label>
-                        <select
-                          value={scheduleCategory}
-                          onChange={(e) => setScheduleCategory(e.target.value)}
-                          className="w-full px-3 py-2 border rounded-md"
-                        >
-                          <option>Gaming</option>
-                          <option>Education</option>
-                          <option>Technology</option>
-                          <option>Entertainment</option>
-                        </select>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Date & Time</label>
-                        <input
-                          value={scheduleDate}
-                          onChange={(e) => setScheduleDate(e.target.value)}
-                          type="datetime-local"
-                          className="w-full px-3 py-2 border rounded-md"
-                        />
-                      </div>
-                      <Button className="w-full" onClick={handleScheduleStream}>
-                        Schedule Stream
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-
-                <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" className="w-full bg-transparent">
-                      <Users className="mr-2 h-4 w-4" />
-                      Invite Collaborators
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Invite Collaborators</DialogTitle>
-                      <DialogDescription>Invite by email (comma separated)</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Emails</label>
-                        <input
-                          value={inviteEmails}
-                          onChange={(e) => setInviteEmails(e.target.value)}
-                          className="w-full px-3 py-2 border rounded-md"
-                          placeholder="alice@example.com, bob@example.com"
-                        />
-                      </div>
-                      <Button className="w-full" onClick={handleInviteCollaborators}>
-                        Send Invites
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-
-                <Button variant="outline" className="w-full bg-transparent" onClick={() => loadDashboardData()}>
-                  <BarChart3 className="mr-2 h-4 w-4" />
-                  Refresh Data
-                </Button>
-              </div>
-            </SheetContent>
-          </Sheet>
-
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button className="bg-gradient-to-r from-orange-500 to-amber-400 hover:from-orange-600 hover:to-amber-500">
-                <Video className="mr-2 h-4 w-4" />
-                Quick Go Live
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>Quick Start</DialogTitle>
-                <DialogDescription>Start streaming with a title and category in one click.</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Stream Title</label>
-                  <input
-                    value={startTitle}
-                    onChange={(e) => setStartTitle(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-md"
-                    placeholder="Enter your stream title..."
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Category</label>
-                  <select
-                    value={startCategory}
-                    onChange={(e) => setStartCategory(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-md"
-                  >
-                    <option>Gaming</option>
-                    <option>Education</option>
-                    <option>Technology</option>
-                    <option>Entertainment</option>
-                  </select>
-                </div>
-                <Button
-                  className="w-full bg-gradient-to-r from-orange-500 to-amber-400 hover:from-orange-600 hover:to-amber-500"
-                  onClick={handleStartStreaming}
-                >
-                  Start Streaming
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
+        <Badge variant="secondary" className="capitalize">
+          {role}
+        </Badge>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {isLoading
-          ? Array.from({ length: 4 }).map((_, i) => (
-              <Card key={i} className="border-border/40">
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="h-4 w-4" />
-                </CardHeader>
-                <CardContent>
-                  <Skeleton className="h-8 w-16 mb-2" />
-                  <Skeleton className="h-3 w-24" />
-                </CardContent>
-              </Card>
-            ))
-          : statsCards.map((stat) => (
-              <StatCard
-                key={stat.title}
-                title={stat.title}
-                value={stat.value}
-                icon={stat.icon}
-                description={stat.description}
-                trend={stat.trend}
-              />
-                ))}
-      </div>
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {summaryCards.map((item) => (
+          <SummaryCard key={item.id} label={item.label} value={item.value} icon={item.icon} />
+        ))}
+      </section>
 
-      {/* Main Content */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Recent Streams */}
-        <div className="lg:col-span-2">
-          <Card className="border-border/40 bg-card/50 backdrop-blur">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <Video className="h-5 w-5" />
-                  Recent Streams
-                </CardTitle>
-                <Drawer>
-                  <DrawerTrigger asChild>
-                    <Button variant="outline" size="sm">
-                      View All
-                    </Button>
-                  </DrawerTrigger>
-                  <DrawerContent>
-                    <DrawerHeader>
-                      <DrawerTitle>All Streams</DrawerTitle>
-                      <DrawerDescription>View and manage all your streams in one place.</DrawerDescription>
-                    </DrawerHeader>
-                    <div className="px-4 pb-4">
-                      <Carousel className="w-full">
-                        <CarouselContent>
-                          {recentStreams.map((stream) => (
-                            <CarouselItem key={stream.id} className="md:basis-1/2 lg:basis-1/3">
-                              <StreamCard stream={stream} />
-                            </CarouselItem>
-                          ))}
-                        </CarouselContent>
-                        <CarouselPrevious />
-                        <CarouselNext />
-                      </Carousel>
-                    </div>
-                    <DrawerFooter>
-                      <DrawerClose asChild>
-                        <Button variant="outline">Close</Button>
-                      </DrawerClose>
-                    </DrawerFooter>
-                  </DrawerContent>
-                </Drawer>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="grid gap-4 md:grid-cols-2">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <Card key={i} className="border-border/40">
-                      <div className="aspect-video bg-gray-200 animate-pulse" />
-                      <CardContent className="p-4">
-                        <Skeleton className="h-4 w-3/4 mb-2" />
-                        <Skeleton className="h-3 w-1/2" />
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <div className="grid gap-4 md:grid-cols-2">
-                  {recentStreams.slice(0, 4).map((stream) => (
-                    <StreamCard key={stream.id} stream={stream} />
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+      <section className="grid gap-4 xl:grid-cols-5">
+        <div className="xl:col-span-3">
+          <PrimaryWorkflowPanel
+            role={role}
+            stats={stats}
+            streamError={streamWidgetError}
+            onRefresh={() => void loadDashboardData()}
+          />
         </div>
-
-        {/* Activity Feed */}
-        <div>
-          <Card className="border-border/40 bg-card/50 backdrop-blur">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Target className="h-5 w-5" />
-                Recent Activity
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="max-h-96 overflow-y-auto">
-                {isLoading ? (
-                  <div className="space-y-4 p-4">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <div key={i} className="flex items-center gap-3">
-                        <Skeleton className="h-8 w-8 rounded-full" />
-                        <div className="flex-1">
-                          <Skeleton className="h-3 w-3/4 mb-1" />
-                          <Skeleton className="h-2 w-1/2" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  activities.map((activity) => <ActivityItem key={activity.id} activity={activity} />)
-                )}
-              </div>
-            </CardContent>
-          </Card>
+        <div className="xl:col-span-2">
+          <ActivityPanel items={activities} />
         </div>
-      </div>
+      </section>
 
-      {/* Achievements & Goals */}
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card className="border-border/40 bg-card/50 backdrop-blur">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Award className="h-5 w-5" />
-              Achievements
-            </CardTitle>
-            <CardDescription>Your streaming milestones and accomplishments</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {achievements.map((achievement, index) => (
-                <div key={index} className="flex items-center gap-3">
-                  <div
-                    className={`p-2 rounded-lg ${achievement.unlocked ? "bg-gradient-to-r from-orange-500 to-amber-400 text-white" : "bg-muted text-muted-foreground"}`}
-                  >
-                    <Award className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1">
-                    <h4 className={`font-medium ${achievement.unlocked ? "text-foreground" : "text-muted-foreground"}`}>
-                      {achievement.title}
-                    </h4>
-                    <p className="text-sm text-muted-foreground">{achievement.description}</p>
-                  </div>
-                  {achievement.unlocked && (
-                    <Badge className="bg-gradient-to-r from-orange-500 to-amber-400 text-white">
-                      <Star className="mr-1 h-3 w-3" />
-                      Unlocked
-                    </Badge>
-                  )}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {moduleCards.map((module) => (
+          <ModuleTemplateCard key={module.id} module={module} />
+        ))}
+      </section>
 
-          <Card className="border-border/40 bg-card/50 backdrop-blur">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Target className="h-5 w-5" />
-              Monthly Goals
-            </CardTitle>
-            <CardDescription>Track your progress towards monthly targets</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              {monthlyGoals.map((goal, index) => (
-                <div key={index} className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span>{goal.name}</span>
-                    <span className="text-muted-foreground">
-                      {goal.unit === "$"
-                        ? `$${goal.current}/$${goal.target}`
-                        : `${goal.current}/${goal.target} ${goal.unit}`}
-                    </span>
-                  </div>
-                  <Progress value={Math.min(100, ((goal.current ?? 0) / (goal.target || 1)) * 100)} className="h-2" />
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <details className="rounded-xl border border-border/60 bg-card/70 p-4 shadow-sm dark:bg-card/60">
+        <summary className="cursor-pointer text-sm font-medium hover:text-foreground/90">More modules and routes</summary>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {roleConfig.expandedRouteLinks.map((item) => (
+            <Button key={item.href} asChild variant="outline" className="justify-between hover:bg-muted/80">
+              <Link href={item.href} onClick={() => router.prefetch(item.href)}>
+                {item.label}
+                <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
+              </Link>
+            </Button>
+          ))}
+        </div>
+      </details>
     </div>
   )
 }

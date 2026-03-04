@@ -1,12 +1,11 @@
-"use client"
+import type { Metadata } from "next"
+import { TopLevelModulePage } from "@/components/dashboard/top-level-module-page"
+import { ReferralFeedbackWidgets } from "@/components/dashboard/referral-feedback-widgets"
 
-import { AppSidebar } from "@/components/app-sidebar"
-import { SidebarInset } from "@/components/ui/sidebar"
-import { Header } from "@/components/header"
-import { DashboardContent } from "@/components/dashboard-content"
-import { useAuthContext, AuthProvider } from "@/components/auth/auth-provider"
-import { LoginForm } from "@/components/auth/login-form"
-import { CartProvider } from "@/components/cart/cart-provider"
+export const metadata: Metadata = {
+  title: "Dashboard Module | RunAsh AI",
+  description: "Top-level dashboard module with streamlined summary, CTA, and recent activity.",
+}
 
 function DashboardGate() {
   const { user, loading } = useAuthContext()
@@ -29,10 +28,20 @@ function DashboardGate() {
 
 export default function Page() {
   return (
-    <AuthProvider>
-      <CartProvider>
-        <DashboardGate />
-      </CartProvider>
-    </AuthProvider>
+    <div className="container mx-auto space-y-6 p-4 md:p-6 lg:p-8">
+      <TopLevelModulePage
+        title="Dashboard"
+        summary="Monitor workspace health and quickly launch your core dashboard journey."
+        ctaLabel="Open streaming studio"
+        ctaHref="/dashboard/streaming-studio"
+        secondaryLinks={[
+          { label: "Analytics", href: "/dashboard/analytics" },
+          { label: "API keys", href: "/dashboard/api" },
+          { label: "Developer docs", href: "/dashboard/documentation" },
+          { label: "Settings", href: "/dashboard/settings" },
+        ]}
+      />
+      <ReferralFeedbackWidgets />
+    </div>
   )
 }
