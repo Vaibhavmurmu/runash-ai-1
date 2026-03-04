@@ -66,9 +66,9 @@ export default function PressPage() {
                 size="lg"
                 variant="outline"
                 className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50"
-              onClick={() => router.push("/media")}
+              onClick={() => router.push("/brand")}
               >
-                Media Kit <Download className="ml-2 h-4 w-4" />
+                Brand Assets <Download className="ml-2 h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -83,7 +83,7 @@ export default function PressPage() {
               <TabsList className="bg-orange-100/50 dark:bg-orange-900/20">
                 <TabsTrigger value="press-releases">Press Releases</TabsTrigger>
                 <TabsTrigger value="news">News Coverage</TabsTrigger>
-                <TabsTrigger value="media-kit">Media Kit</TabsTrigger>
+                <TabsTrigger value="media-kit">Brand Assets</TabsTrigger>
                 <TabsTrigger value="contact">Press Contact</TabsTrigger>
               </TabsList>
 
@@ -157,7 +157,7 @@ export default function PressPage() {
 
               <TabsContent value="media-kit" className="mt-6">
                 <div className="bg-white dark:bg-gray-900 rounded-xl p-8 border border-orange-200/50 dark:border-orange-900/30">
-                  <h2 className="text-2xl font-bold mb-6">Media Kit Resources</h2>
+                  <h2 className="text-2xl font-bold mb-6">Brand Assets</h2>
                   <p className="text-gray-700 dark:text-gray-300 mb-8">
                     Download official RunAsh AI logos, product screenshots, founder photos, and brand guidelines for
                     media use.
@@ -188,7 +188,7 @@ export default function PressPage() {
 
                   <div className="mt-8 text-center">
                     <Button className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white">
-                      Download Complete Media Kit <Download className="ml-2 h-4 w-4" />
+                      Download Complete Brand Assets <Download className="ml-2 h-4 w-4" />
                     </Button>
                   </div>
                 </div>
@@ -429,6 +429,14 @@ export default function PressPage() {
                     className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
                   >
                     Blog
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/brand"
+                    className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
+                  >
+                    Brand Assets
                   </a>
                 </li>
               </ul>
