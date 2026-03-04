@@ -4,6 +4,8 @@ import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { BookOpenText, CircleHelp, Gavel, Lock, Server } from "lucide-react"
 
+import { FooterBrand } from "@/components/branding/footer-brand"
+
 const FOOTER_LINKS = [
   { label: "Status", href: "/status", icon: Server },
   { label: "Help", href: "/support", icon: CircleHelp },
@@ -67,7 +69,10 @@ export function DashboardFooter() {
         </nav>
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3 text-[11px]">
-          <p>© {year} RunAsh.AI</p>
+          <div className="flex items-center gap-3">
+            <FooterBrand />
+            <p>© {year} RunAsh.AI</p>
+          </div>
           <p>{APP_VERSION}</p>
         </div>
       </div>
