@@ -236,6 +236,97 @@ Inline experiences are difficult to debug without instrumentation. Plan in advan
 
 Once these plans are in place, move on to [Build a ChatGPT UI](https://developers.openai.com/apps-sdk/build/chatgpt-ui) for implementation.
 
+## MCP Apps compatibility in RunAshChat (ChatGPT-style)
+
+### Overview
+
+ChatGPT supports the [**MCP Apps**](https://modelcontextprotocol.io/docs/extensions/apps) open standard for embedded app UIs.
+
+MCP Apps UIs run inside an iframe and communicate with the host over a standard bridge (`ui/*` JSON-RPC over `postMessage`). ChatGPT implements this same iframe-and-bridge model, so you can build your UI once and run it in ChatGPT and other MCP Apps-compatible hosts.
+
+Existing Apps SDK APIs remain supported, and new experimental capabilities typically ship first in the Apps SDK. OpenAI helped shape the MCP Apps standard from ChatGPT Apps, and capabilities can move into the MCP spec after validation of shape and behavior.
+
+Build with MCP Apps standard keys and bridge methods by default. Use `window.openai` when you need ChatGPT-specific capabilities.
+
+### Recommended approach
+
+For new apps (and new UI surfaces inside existing apps), start with the MCP Apps standard:
+
+1. **Declare your UI** using `_meta.ui.resourceUri`.
+2. **Use the standard host bridge** (`ui/*` JSON-RPC over `postMessage`) for initialization, notifications, and host interaction.
+
+Optional:
+
+3. **Layer on ChatGPT extensions** via `window.openai` only when needed for capabilities not yet covered by the shared spec.
+
+#### MCP Apps host bridge (`ui/*`)
+
+MCP Apps defines a standard iframe bridge:
+
+- **Transport:** JSON-RPC 2.0 messages over `window.postMessage`
+- **Namespace:** `ui/*` methods and notifications for UI ↔ host interaction
+- **Tool calls:** use MCP tool surface methods (for example, `tools/call`) rather than host-specific UI globals
+
+### How this relates to the Apps SDK
+
+The Apps SDK is a supported way to build and distribute ChatGPT Apps. ChatGPT also implements the MCP Apps UI standard, so your UI can run across MCP Apps-compatible hosts.
+
+In practice:
+
+- Use MCP Apps standard keys and bridge methods (`_meta.ui.resourceUri`, `ui/*`) when equivalent behavior exists.
+- Use OpenAI extensions only when needed for ChatGPT-specific capabilities.
+
+This is similar to the web platform: vendor-specific APIs can help ship early, but once a standard exists, docs should lead with the standard form. This improves portability without implying deprecation.
+
+### Optional ChatGPT extensions via `window.openai`
+
+Some capabilities are specific to ChatGPT. Treat them as optional extensions that add value in ChatGPT without preventing compatibility in other MCP Apps hosts.
+
+Examples include:
+
+- Instant Checkout (`window.openai.requestCheckout`)
+- File uploads (`window.openai.uploadFile`, `window.openai.getFileDownloadUrl`)
+- Host modals (`window.openai.requestModal`)
+
+### Migration and mapping guide
+
+This maps common Apps SDK patterns to MCP Apps standard equivalents.
+
+#### Tool metadata
+
+| Goal | MCP Apps standard | ChatGPT compatibility alias |
+| --- | --- | --- |
+| Link a tool to a UI resource | `_meta.ui.resourceUri` | `_meta["openai/outputTemplate"]` |
+
+#### Host bridge
+
+| Goal | MCP Apps standard | ChatGPT extension (optional) |
+| --- | --- | --- |
+| Receive tool input | `ui/initialize` + `ui/notifications/tool-input` | `window.openai.toolInput` |
+| Receive tool results | `ui/notifications/tool-result` | `window.openai.toolOutput` |
+| Call a tool from the UI | `tools/call` | `window.openai.callTool` |
+| Send a follow-up message | `ui/message` | `window.openai.sendFollowUpMessage` |
+| Update model-visible UI context | `ui/update-model-context` | `window.openai.setWidgetState` |
+
+Build around MCP Apps standards for portability, then layer ChatGPT extensions where they improve the ChatGPT UX.
+
+### Extension best practices
+
+- **Feature-detect** before calling an extension.
+- **Gracefully degrade** when an extension is unavailable.
+
+```js
+const openai = typeof window !== "undefined" ? window.openai : undefined;
+
+if (openai?.requestModal) {
+  await openai.requestModal({
+    // ...
+  });
+} else {
+  // Fallback behavior for hosts without this extension.
+}
+```
+
 ## Next steps
 
 If you're new to MCP, start with:
