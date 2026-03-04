@@ -4,18 +4,19 @@ interface IntegrationCardProps {
   name: string
   description: string
   icon: string
+  iconAlt: string
   gradient: string
   href: string
   ctaLabel?: string
 }
 
-export default function IntegrationCard({ name, description, icon, gradient, href, ctaLabel = "Learn more" }: IntegrationCardProps) {
+export default function IntegrationCard({ name, description, icon, iconAlt, gradient }: IntegrationCardProps) {
   return (
     <div className="group relative rounded-xl overflow-hidden transition-all duration-300 hover:translate-y-[-5px]">
       <div className="relative p-6 bg-white dark:bg-gray-900 rounded-xl border border-orange-200/50 dark:border-orange-800/30 transition-colors duration-300 h-full">
         <div className="flex items-center mb-4">
           <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center mr-4`}>
-            <img src={icon || "/placeholder.svg"} alt={name} className="w-6 h-6" />
+            <img src={icon || "/placeholder.svg"} alt={iconAlt || `${name} integration icon`} className="w-6 h-6" />
           </div>
           <h3 className="text-xl font-bold text-gray-900 dark:text-white">{name}</h3>
         </div>

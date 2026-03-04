@@ -546,6 +546,14 @@ export default function Home() {
                     Documentation 
                   </a>
                 </li>
+                <li>
+                  <a
+                    href="/brand"
+                    className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
+                  >
+                    Brand Assets
+                  </a>
+                </li>
               </ul>
             </div>
 
