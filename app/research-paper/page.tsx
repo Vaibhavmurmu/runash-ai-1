@@ -3,7 +3,7 @@ import { SimplePage } from "@/components/marketing/simple-page"
 
 export const metadata: Metadata = {
   title: "Research Papers | RunAsh",
-  description: "Read RunAsh research papers, briefs, and implementation notes.",
+  description: "Read RunAsh AI papers, implementation briefs, and reproducible notebook resources.",
 }
 
 export default function Page() {
@@ -11,14 +11,23 @@ export default function Page() {
     <SimplePage
       eyebrow="Publications"
       title="Research Papers"
-      intro="A lightweight library of papers and technical summaries from the RunAsh team."
+      intro="A practical library of RunAsh research papers, technical summaries, and implementation-ready notes for builders."
       sections={[
-        { title: "Applied AI", description: "Papers focused on production outcomes and measurable user impact." },
-        { title: "Safety Notes", description: "Summaries explaining safeguards, testing, and rollout practices." },
-        { title: "Implementation Briefs", description: "Practical architecture notes to help teams execute quickly." },
+        {
+          title: "Applied AI Papers",
+          description: "Peer-oriented writeups covering real-time inference, multimodal learning, and streaming AI optimizations.",
+        },
+        {
+          title: "Reproducible Notebooks",
+          description: "Companion experiments prepared for Google Colab and Kaggle to make benchmarking and review easier.",
+        },
+        {
+          title: "Model & Dataset Notes",
+          description: "Implementation details and release notes linked to Hugging Face model cards and evaluation logs.",
+        },
       ]}
-      ctaLabel="View research overview"
-      ctaHref="/research-overview"
+      ctaLabel="Open AI research lab"
+      ctaHref="/ai-research-lab"
     />
   )
 }

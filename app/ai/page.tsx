@@ -28,6 +28,7 @@ import {
   ImagePlus,
   Drama,
   BarChartIcon as ChartBar,
+  ExternalLink,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -52,31 +53,31 @@ export default function AIPage() {
       title: "Real-time AI-Powered Content Analysis for Live Streaming",
       authors: ["Ram Murmu", "Vaibhav Murmu", "P K Murmu"],
       date: "January 2025",
-      conference: "HuggingFace",
+      conference: "Hugging Face",
       abstract:
         "This paper presents a novel approach to real-time content analysis for live streaming platforms using a lightweight transformer architecture optimized for edge devices.",
-      link: "#",
+      link: "/research-paper",
       tags: ["Content Analysis", "Transformers", "Edge AI"],
     },
     {
       title: "Adaptive Bandwidth Optimization Using Predictive AI Models",
       authors: ["Ram Murmu", "Vaibhav Murmu", "P K Murmu"],
       date: "January 2025",
-      conference: "HuggingFace",
+      conference: "Hugging Face",
       abstract:
         "We introduce an adaptive bandwidth optimization system that uses predictive AI models to anticipate streaming quality requirements based on content type and viewer engagement patterns.",
-      link: "#",
+      link: "/research-paper",
       tags: ["Bandwidth Optimization", "Predictive Models", "Streaming Quality"],
     },
     {
       title: "Multi-modal Emotion Recognition for Enhanced Viewer Engagement",
       authors: ["Ram Murmu", "Vaibhav Murmu", "P K Murmu"],
       date: "January 2025",
-      conference: "HuggingFace,Kaggle",
+      conference: "Hugging Face, Kaggle",
       abstract:
         "This research explores multi-modal emotion recognition techniques combining audio, visual, and textual data to enhance viewer engagement metrics in live streaming environments.",
-      link: "#",
-      tags: ["Emotion Recognition", "Action Recognition", "Action Recognition","Multi-modal AI", "Engagement Metrics"],
+      link: "/research-paper",
+      tags: ["Emotion Recognition", "Action Recognition", "Multi-modal AI", "Engagement Metrics"],
     },
   ]
 
@@ -186,8 +187,8 @@ export default function AIPage() {
       gradient: "from-yellow-500 to-orange-500",
     },
     {
-      title: "Kaggl",
-      description: "Machine learning platform for production deployment",
+      title: "Kaggle",
+      description: "Datasets, notebooks, and competitions for model evaluation",
       icon: <Code className="h-6 w-6 text-orange-500" />,
       gradient: "from-yellow-500 to-orange-500",
     },
@@ -199,9 +200,27 @@ export default function AIPage() {
     },
     {
       title: "Colab",
-      description: "Machine learning platform for production deployment",
+      description: "Collaborative notebook runtime for rapid model prototyping",
       icon: <Code className="h-6 w-6 text-orange-500" />,
       gradient: "from-yellow-500 to-orange-500",
+    },
+  ]
+
+  const researchHubs = [
+    {
+      name: "Hugging Face",
+      description: "Model repositories, open evaluations, and deployment-ready artifacts.",
+      href: "https://huggingface.co/",
+    },
+    {
+      name: "Google Colab",
+      description: "Interactive notebooks for reproducible experiments and collaborative reviews.",
+      href: "https://colab.research.google.com/",
+    },
+    {
+      name: "Kaggle",
+      description: "Public datasets and benchmark tasks to validate performance with transparent metrics.",
+      href: "https://www.kaggle.com/",
     },
   ]
 
@@ -487,10 +506,58 @@ export default function AIPage() {
 
           <div className="flex justify-center mt-12">
             <Button
+              asChild
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              View All Papers <ArrowRight className="ml-2 h-4 w-4" />
+              <Link href="/research-paper">
+                View All Papers <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-20 bg-gradient-to-b from-white to-orange-50 dark:from-gray-900 dark:to-gray-900">
+        <div className="container px-4 mx-auto">
+          <div className="flex flex-col items-center text-center mb-16">
+            <div className="p-3 rounded-lg bg-gradient-to-br from-orange-500 to-yellow-500 mb-4">
+              <Flask className="h-6 w-6 text-white" />
+            </div>
+            <h2 className="text-4xl font-bold bg-gradient-to-r from-orange-600 via-orange-500 to-yellow-500 dark:from-orange-400 dark:via-orange-300 dark:to-yellow-300 text-transparent bg-clip-text mb-4">
+              Research Platforms & Integrations
+            </h2>
+            <p className="text-xl text-gray-700 dark:text-gray-300 max-w-3xl">
+              Explore the ecosystem we use to build, validate, and ship production-ready AI features.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10">
+            {researchHubs.map((hub) => (
+              <article
+                key={hub.name}
+                className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-lg border border-orange-100 dark:border-orange-900/20"
+              >
+                <h3 className="text-2xl font-bold mb-3 text-gray-900 dark:text-white">{hub.name}</h3>
+                <p className="text-gray-700 dark:text-gray-300 mb-6">{hub.description}</p>
+                <Link
+                  href={hub.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center text-orange-600 dark:text-orange-400 font-semibold"
+                >
+                  Open {hub.name} <ExternalLink className="ml-2 h-4 w-4" />
+                </Link>
+              </article>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap justify-center gap-4">
+            <Button asChild className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:opacity-90 text-white">
+              <Link href="/integrations">Explore Integrations</Link>
+            </Button>
+            <Button asChild variant="outline" className="border-orange-500 text-orange-600 hover:bg-orange-50">
+              <Link href="/research-overview">Read Research Overview</Link>
             </Button>
           </div>
         </div>

@@ -237,6 +237,27 @@ export default function IntegrationsPage() {
                       status="coming-soon"
                       comingSoon={true}
                     />
+                    <IntegrationCard
+                      name="Hugging Face"
+                      description="Sync model cards and inference endpoints for production-ready AI deployment workflows."
+                      icon="/placeholder.svg?height=32&width=32"
+                      category="AI Platform"
+                      status="available"
+                    />
+                    <IntegrationCard
+                      name="Google Colab"
+                      description="Run collaborative notebooks for rapid prototyping, evaluation, and reproducible demos."
+                      icon="/placeholder.svg?height=32&width=32"
+                      category="Creator Tool"
+                      status="available"
+                    />
+                    <IntegrationCard
+                      name="Kaggle"
+                      description="Connect datasets and benchmark notebooks to monitor model quality improvements over time."
+                      icon="/placeholder.svg?height=32&width=32"
+                      category="Analytics"
+                      status="available"
+                    />
                   </div>
                 </div>
               </TabsContent>
@@ -299,6 +320,13 @@ export default function IntegrationsPage() {
                     category="Creator Tool"
                     status="available"
                   />
+                  <IntegrationCard
+                    name="Google Colab"
+                    description="Run collaborative notebooks for rapid prototyping, evaluation, and reproducible demos."
+                    icon="/placeholder.svg?height=32&width=32"
+                    category="Creator Tool"
+                    status="available"
+                  />
                 </div>
               </TabsContent>
 
@@ -329,6 +357,20 @@ export default function IntegrationsPage() {
                     description="Track your streaming performance with detailed analytics and insights."
                     icon="/placeholder.svg?height=32&width=32"
                     category="Analytics"
+                    status="available"
+                  />
+                  <IntegrationCard
+                    name="Kaggle"
+                    description="Connect datasets and benchmark notebooks to monitor model quality improvements over time."
+                    icon="/placeholder.svg?height=32&width=32"
+                    category="Analytics"
+                    status="available"
+                  />
+                  <IntegrationCard
+                    name="Hugging Face"
+                    description="Sync model cards and inference endpoints for production-ready AI deployment workflows."
+                    icon="/placeholder.svg?height=32&width=32"
+                    category="AI Platform"
                     status="available"
                   />
                 </div>
