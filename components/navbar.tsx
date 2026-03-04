@@ -65,7 +65,7 @@ export default function Navbar() {
                   <div className="grid grid-cols-2 gap-4">
                     <Link href="/editor" className="group rounded-lg border border-gray-200 p-2 dark:border-gray-700">
                       <div className="relative h-24 w-full overflow-hidden rounded-md">
-                        <Image src="/runashchat.png" alt="Featured templates" fill className="object-cover" />
+                        <Image src="/RunAshChat.png" alt="Featured templates" fill className="object-cover" />
                       </div>
                       <div className="mt-2">
                         <p className="text-sm font-semibold text-gray-900 dark:text-white">Features</p>
@@ -89,12 +89,7 @@ export default function Navbar() {
             <Link href="/docs" className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors">
               Docs
             </Link>
-            <Link href="/realtime-live-vllm" className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors">
-              Real-time vLLM
-            </Link>
-            <Link href="/runash-llm" className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors">
-              RunAsh LLM
-            </Link>
+            
             <Link href="/waitlist" className="text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 transition-colors">
               Waitlist
             </Link>
@@ -129,8 +124,7 @@ export default function Navbar() {
             <Link href="/editor" className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md">Templates</Link>
             <Link href="/pricing" className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md">Pricing</Link>
             <Link href="/docs" className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md">Documentation</Link>
-            <Link href="/realtime-live-vllm" className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md">Real-time vLLM</Link>
-            <Link href="/runash-llm" className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md">RunAsh LLM</Link>
+            
             <Link href="/waitlist" className="block px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md">Waitlist</Link>
           </div>
           <div className="px-5 py-4 border-t border-orange-100 dark:border-gray-800 flex flex-col space-y-3">
