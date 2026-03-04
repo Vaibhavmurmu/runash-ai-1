@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useAuth } from "@/lib/auth/auth-context"
+import { useOptionalAuth } from "@/lib/auth/auth-context"
 
 type FlowStep = "details" | "confirm" | "processing" | "success" | "failed"
 type PaymentMethod = "upi" | "mobile" | "account"
@@ -41,7 +41,7 @@ function buildIdempotencyKey() {
 }
 
 export default function SendMoneyPage() {
-  const { user } = useAuth()
+  const { user } = useOptionalAuth()
   const [step, setStep] = useState<FlowStep>("details")
   const [amount, setAmount] = useState("")
   const [recipient, setRecipient] = useState("")

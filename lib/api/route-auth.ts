@@ -17,7 +17,18 @@ type RouteSession = {
   organizationId?: number | null
 }
 
+type TenantBoundaryGuardResult =
+  | { ok: true; shouldMigrateLegacyOrganization: boolean }
+  | { ok: false; status: 403 | 404 }
+
 const ADMIN_ROLES = new Set(["admin", "super_admin"])
+
+export function buildAuthzErrorResponse(request: NextRequest, status: 401 | 403): Response {
+  const code = status === 401 ? "UNAUTHORIZED" : "FORBIDDEN"
+  const message = status === 401 ? "Unauthorized" : "Forbidden"
+
+  return respondError(request, { code, message }, { status, legacy: { error: message } })
+}
 
 function parseRbacUserId(userId: string): number | null {
   const parsed = Number.parseInt(userId, 10)
@@ -50,7 +61,7 @@ export async function authorizeRoute(
   if (!sessionUser?.id) {
     return {
       ok: false,
-      response: respondError(request, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401, legacy: { error: "Unauthorized" } }),
+      response: buildAuthzErrorResponse(request, 401),
     }
   }
 
@@ -63,7 +74,7 @@ export async function authorizeRoute(
   if (!hasPermission) {
     return {
       ok: false,
-      response: respondError(request, { code: "AUTH_FORBIDDEN", message: "Forbidden" }, { status: 403, legacy: { error: "Forbidden" } }),
+      response: buildAuthzErrorResponse(request, 403),
     }
   }
 
@@ -79,6 +90,28 @@ export async function authorizeRoute(
 
 export function resolveSessionOrganizationId(session: ServerAuthSession | null | undefined): number | null {
   return session?.user?.ssoOrganization ?? null
+}
+
+export async function enforceTenantBoundaryForUser(
+  userId: string | number,
+  sessionOrganizationId: number | null | undefined,
+  getUserOrganizationId: (userId: string | number) => Promise<number | null | undefined>,
+): Promise<TenantBoundaryGuardResult> {
+  const targetOrganizationId = await getUserOrganizationId(userId)
+
+  if (typeof targetOrganizationId === "undefined") {
+    return { ok: false, status: 404 }
+  }
+
+  const tenantCheck = evaluateTenantBoundaryAccess(sessionOrganizationId, targetOrganizationId, {
+    allowLegacyNullOrganization: true,
+  })
+
+  if (!tenantCheck.allowed) {
+    return { ok: false, status: 403 }
+  }
+
+  return { ok: true, shouldMigrateLegacyOrganization: tenantCheck.shouldMigrateLegacyOrganization }
 }
 
 export { buildTenantScopePredicate, evaluateTenantBoundaryAccess }

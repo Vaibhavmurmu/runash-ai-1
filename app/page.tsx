@@ -16,6 +16,7 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { NewsletterSignup } from "@/components/newsletter-signup"
 import { LanguageSelector } from "@/components/language-selector"
 import { CountrySelector } from "@/components/country-selector"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 
@@ -40,7 +41,7 @@ export default function Home() {
               <Bell className="w-4 h-4" />
               <span className="text-orange-600 dark:text-orange-400 font-medium text-sm">
                🎉 New Live AI Video Generation Model Pre Released!{" "}
-               <a href="/blog/new-model" className="underline font-semibold hover:text-orange-200">
+               <a href="/realtime-live-vllm" className="underline font-semibold hover:text-orange-200">
                 Learn more
               </a>
             </span>
@@ -74,13 +75,10 @@ export default function Home() {
             >
               Start Streaming <Play className="ml-2 h-4 w-4" />
             </Button>
-            <Button
-              size="lg"
-              variant="secondary"
-              className="bg-white/90 text-orange-700 hover:bg-white"
-              onClick={() => router.push("/waitlist")}
-            >
-              Join Waitlist <Users className="ml-2 h-4 w-4" />
+            <Button asChild size="lg" variant="secondary" className="bg-white/90 text-orange-700 hover:bg-white" aria-label="Join the RunAsh waitlist">
+              <Link href="/waitlist">
+                Join Waitlist <Users className="ml-2 h-4 w-4" />
+              </Link>
             </Button>
             <Button
               size="lg"
@@ -1045,10 +1043,10 @@ export default function Home() {
               <ThemeToggle />
               <div className="flex space-x-6">
                 <a
-                  href="/chat"
+                  href="/dashboard/chat"
                   className="text-gray-600  dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors text-sm"
                 >
-                  Agent 
+                  RunAsh Chat 
                 <Badge varient="secondary" className="bg-green-600 text-white gap-2 space-x-1 dark:bg-green-500 animate-pulse text-xs">New</Badge>
                 </a>
                 <a

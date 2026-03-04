@@ -1,87 +1,34 @@
 import Link from "next/link"
+import { SearchX } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Home, ArrowLeft, Search, HelpCircle } from "lucide-react"
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-orange-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl text-center space-y-8">
-        {/* 404 Illustration */}
-        <div className="relative">
-          <div className="text-9xl font-bold text-orange-200 select-none">404</div>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-24 h-24 bg-orange-100 rounded-full flex items-center justify-center">
-              <Search className="w-12 h-12 text-orange-600" />
-            </div>
+    <main className="min-h-screen bg-gradient-to-b from-white to-orange-50 dark:from-gray-950 dark:to-gray-900 flex items-center justify-center px-4">
+      <Card className="w-full max-w-xl border-orange-100 bg-white/90 dark:border-white/10 dark:bg-white/[0.03]">
+        <CardContent className="py-10 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-900/40">
+            <SearchX className="h-7 w-7 text-orange-600 dark:text-orange-300" />
           </div>
-        </div>
-
-        {/* Content */}
-        <div className="space-y-4">
-          <h1 className="text-4xl font-bold text-gray-900">Page Not Found</h1>
-          <p className="text-xl text-gray-600 max-w-md mx-auto">
-            Sorry, we couldn't find the page you're looking for. It might have been moved, deleted, or you entered the
-            wrong URL.
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Page not found</h1>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+            The page may have moved or the link may be incorrect. Explore core RunAsh AI sections below.
           </p>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Button
-            asChild
-            size="lg"
-            className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700"
-          >
-            <Link href="/">
-              <Home className="w-4 h-4 mr-2" />
-              Go Home
-            </Link>
-          </Button>
-          <Button variant="outline" size="lg" asChild>
-            <Link href="javascript:history.back()">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Go Back
-            </Link>
-          </Button>
-        </div>
-
-        {/* Helpful Links */}
-        <Card className="backdrop-blur-sm bg-white/80 border-white/20 shadow-xl">
-          <CardContent className="p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center justify-center">
-              <HelpCircle className="w-5 h-5 mr-2 text-orange-600" />
-              Maybe you're looking for:
-            </h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <Link href="/dashboard" className="text-orange-600 hover:text-orange-700 hover:underline">
-                Dashboard
-              </Link>
-              <Link href="/stream" className="text-orange-600 hover:text-orange-700 hover:underline">
-                Start Streaming
-              </Link>
-              <Link href="/analytics" className="text-orange-600 hover:text-orange-700 hover:underline">
-                Analytics
-              </Link>
-              <Link href="/recordings" className="text-orange-600 hover:text-orange-700 hover:underline">
-                Recordings
-              </Link>
-              <Link href="/features" className="text-orange-600 hover:text-orange-700 hover:underline">
-                Features
-              </Link>
-              <Link href="/pricing" className="text-orange-600 hover:text-orange-700 hover:underline">
-                Pricing
-              </Link>
-              <Link href="/support" className="text-orange-600 hover:text-orange-700 hover:underline">
-                Support
-              </Link>
-              <Link href="/contact" className="text-orange-600 hover:text-orange-700 hover:underline">
-                Contact
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <Button asChild className="bg-gradient-to-r from-orange-600 to-yellow-500 hover:from-orange-700 hover:to-yellow-600 text-white">
+              <Link href="/">Go to Home</Link>
+            </Button>
+            <Button asChild variant="outline" className="border-orange-500 text-orange-700 hover:bg-orange-50 dark:text-orange-300 dark:hover:bg-orange-950">
+              <Link href="/features">View Features</Link>
+            </Button>
+            <Button asChild variant="outline" className="border-orange-500 text-orange-700 hover:bg-orange-50 dark:text-orange-300 dark:hover:bg-orange-950">
+              <Link href="/contact">Contact Us</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </main>
   )
 }

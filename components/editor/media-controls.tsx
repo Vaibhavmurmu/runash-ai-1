@@ -16,6 +16,8 @@ interface MediaControlsProps {
   currentTime: number
   duration: number
   onSeek: (time: number) => void
+  onSkipPrevious?: () => void
+  onSkipNext?: () => void
   onFullscreen?: () => void
   onSettings?: () => void
   compact?: boolean
@@ -29,11 +31,17 @@ export default function MediaControls({
   currentTime,
   duration,
   onSeek,
+  onSkipPrevious,
+  onSkipNext,
   onFullscreen,
   onSettings,
   compact = false,
 }: MediaControlsProps) {
   const [hoverTime, setHoverTime] = useState<number | null>(null)
+  const [hoverPercent, setHoverPercent] = useState<number | null>(null)
+
+  const clampPercent = (value: number): number => Math.min(1, Math.max(0, value))
+  const clampTooltipPercent = (value: number): number => Math.min(0.97, Math.max(0.03, value))
 
   const formatTime = (seconds: number): string => {
     if (!isFinite(seconds)) return "0:00"
@@ -44,14 +52,15 @@ export default function MediaControls({
 
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
-    const percent = (e.clientX - rect.left) / rect.width
+    const percent = clampPercent((e.clientX - rect.left) / rect.width)
     onSeek(percent * duration)
   }
 
   const handleProgressHover = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
-    const percent = (e.clientX - rect.left) / rect.width
+    const percent = clampPercent((e.clientX - rect.left) / rect.width)
     setHoverTime(percent * duration)
+    setHoverPercent(percent)
   }
 
   if (compact) {
@@ -104,7 +113,7 @@ export default function MediaControls({
           <div className="flex items-center gap-2">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button size="sm" variant="ghost" className="gap-2">
+                <Button size="sm" variant="ghost" className="gap-2" onClick={onSkipPrevious}>
                   <SkipBack className="w-4 h-4" />
                 </Button>
               </TooltipTrigger>
@@ -126,7 +135,7 @@ export default function MediaControls({
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button size="sm" variant="ghost" className="gap-2">
+                <Button size="sm" variant="ghost" className="gap-2" onClick={onSkipNext}>
                   <SkipForward className="w-4 h-4" />
                 </Button>
               </TooltipTrigger>
@@ -174,17 +183,23 @@ export default function MediaControls({
 
         {/* Progress bar */}
         <div
-          className="w-full h-2 bg-muted rounded-full cursor-pointer group"
+          className="w-full h-2 bg-muted rounded-full cursor-pointer group relative"
           onClick={handleProgressClick}
           onMouseMove={handleProgressHover}
-          onMouseLeave={() => setHoverTime(null)}
+          onMouseLeave={() => {
+            setHoverTime(null)
+            setHoverPercent(null)
+          }}
         >
           <div
             className="h-full bg-gradient-to-r from-primary to-accent rounded-full transition-all group-hover:shadow-lg"
             style={{ width: `${(currentTime / duration) * 100}%` }}
           />
-          {hoverTime !== null && (
-            <div className="absolute -translate-x-1/2 -translate-y-1/2 bg-foreground text-background text-xs px-2 py-1 rounded pointer-events-none">
+          {hoverTime !== null && hoverPercent !== null && (
+            <div
+              className="absolute -translate-x-1/2 -translate-y-full -top-2 bg-foreground text-background text-xs px-2 py-1 rounded pointer-events-none"
+              style={{ left: `${clampTooltipPercent(hoverPercent) * 100}%` }}
+            >
               {formatTime(hoverTime)}
             </div>
           )}

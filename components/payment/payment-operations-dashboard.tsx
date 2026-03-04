@@ -1,6 +1,16 @@
 "use client"
 
-import { AlertTriangle, BadgeIndianRupee, BellRing, CheckCircle2, Clock3, RefreshCcw, ShieldAlert, Wallet } from "lucide-react"
+import {
+  ActivitySquare,
+  AlertTriangle,
+  BadgeIndianRupee,
+  BellRing,
+  CheckCircle2,
+  Clock3,
+  RefreshCcw,
+  ShieldAlert,
+  Wallet,
+} from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -83,6 +93,43 @@ const reconciliation = {
   staleSettlements: 6,
   healthScore: 92,
 }
+
+const linkFunnelHealth = {
+  sessionsCreated: 182,
+  sessionsVerified: 164,
+  autofillSuccess: 151,
+  checkoutCompletion: 142,
+  fallbackUsage: 19,
+  errorRatePercent: 7.6,
+}
+
+const runAshBookIntegration = {
+  status: "Connected" as const,
+  lastSyncAt: "2026-02-26 10:14 UTC",
+  jurisdictionMode: "Both" as const,
+}
+
+const runAshBookCompliance = {
+  india: {
+    gstFilingReadiness: 94,
+    pendingGstTaggedTransactions: 11,
+  },
+  us: {
+    salesTaxClassificationCompleteness: 89,
+    uncategorizedRevenueEvents: 7,
+  },
+}
+
+const runAshBookAutomation = {
+  relayTriggeredAccountingPosts: 318,
+  syncResult: {
+    success: 302,
+    fail: 9,
+    retry: 7,
+  },
+  unsyncedQueueSize: 13,
+}
+
 
 const severityVariant = {
   low: "secondary",
@@ -271,6 +318,43 @@ export function PaymentOperationsDashboard() {
             </CardContent>
           </Card>
 
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg"><ActivitySquare className="h-5 w-5" />Link funnel health</CardTitle>
+              <CardDescription>Session→verification→checkout conversion for Instant Checkout.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 text-sm sm:grid-cols-3">
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Sessions created</p>
+                <p className="text-xl font-semibold">{linkFunnelHealth.sessionsCreated}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Verified sessions</p>
+                <p className="text-xl font-semibold">{linkFunnelHealth.sessionsVerified}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Checkout completed</p>
+                <p className="text-xl font-semibold">{linkFunnelHealth.checkoutCompletion}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Autofill success</p>
+                <p className="text-xl font-semibold">{linkFunnelHealth.autofillSuccess}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Fallback used</p>
+                <p className="text-xl font-semibold">{linkFunnelHealth.fallbackUsage}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Error-rate alert</p>
+                <p className="text-xl font-semibold">{linkFunnelHealth.errorRatePercent}%</p>
+                <Badge variant={linkFunnelHealth.errorRatePercent >= 10 ? "destructive" : "secondary"} className="mt-2">
+                  {linkFunnelHealth.errorRatePercent >= 20 ? "Critical" : linkFunnelHealth.errorRatePercent >= 10 ? "Warning" : "Healthy"}
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg"><CheckCircle2 className="h-5 w-5" />Reconciliation health</CardTitle>
@@ -290,6 +374,119 @@ export function PaymentOperationsDashboard() {
             </CardContent>
           </Card>
         </div>
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight">RunAshBook</h2>
+          <p className="text-sm text-muted-foreground">Accounting sync and tax-compliance telemetry for payment operations.</p>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Integration status</CardTitle>
+            <CardDescription>Connection health with jurisdiction-aware sync mode.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 text-sm md:grid-cols-3">
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">Connection</p>
+              <Badge variant={runAshBookIntegration.status === "Connected" ? "default" : "destructive"} className="mt-2">
+                {runAshBookIntegration.status}
+              </Badge>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">Last sync</p>
+              <p className="mt-2 text-base font-semibold">{runAshBookIntegration.lastSyncAt}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">Jurisdiction mode</p>
+              <p className="mt-2 text-base font-semibold">{runAshBookIntegration.jurisdictionMode}</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">India compliance</CardTitle>
+              <CardDescription>GST filing and tagging posture.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="rounded-lg border p-3">
+                <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                  <span>GST filing readiness</span>
+                  <span>{runAshBookCompliance.india.gstFilingReadiness}%</span>
+                </div>
+                <Progress value={runAshBookCompliance.india.gstFilingReadiness} />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <span>Pending GST-tagged transactions</span>
+                <strong>{runAshBookCompliance.india.pendingGstTaggedTransactions}</strong>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">US compliance</CardTitle>
+              <CardDescription>Sales-tax classification and revenue hygiene.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="rounded-lg border p-3">
+                <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Sales-tax classification completeness</span>
+                  <span>{runAshBookCompliance.us.salesTaxClassificationCompleteness}%</span>
+                </div>
+                <Progress value={runAshBookCompliance.us.salesTaxClassificationCompleteness} />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <span>Uncategorized revenue events</span>
+                <strong>{runAshBookCompliance.us.uncategorizedRevenueEvents}</strong>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Agentic automation metrics</CardTitle>
+            <CardDescription>Relay-triggered accounting posts and queue processing outcomes.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-5">
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">Relay-triggered posts</p>
+              <p className="text-xl font-semibold">{runAshBookAutomation.relayTriggeredAccountingPosts}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">Success</p>
+              <p className="text-xl font-semibold">{runAshBookAutomation.syncResult.success}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">Fail</p>
+              <p className="text-xl font-semibold">{runAshBookAutomation.syncResult.fail}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">Retry</p>
+              <p className="text-xl font-semibold">{runAshBookAutomation.syncResult.retry}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">Unsynced queue size</p>
+              <p className="text-xl font-semibold">{runAshBookAutomation.unsyncedQueueSize}</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Actions</CardTitle>
+            <CardDescription>Operational controls for accounting sync and audit workflows.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-3">
+            <Button variant="default">Sync now</Button>
+            <Button variant="outline">View journal queue</Button>
+            <Button variant="outline">Export audit trail</Button>
+          </CardContent>
+        </Card>
       </section>
     </div>
   )

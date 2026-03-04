@@ -55,7 +55,7 @@ const navSectionLabel: Record<DashboardNavSection, string> = {
   studio: "Studio",
   intelligence: "Agents & Automation",
   operations: "Workflows",
-  account: "Settings & Payments",
+  account: "Settings & Billing",
 };
 
 const knownSidebarRoutes = new Set([
@@ -65,7 +65,7 @@ const knownSidebarRoutes = new Set([
   "/stream",
   "/ecommerce/dashboard",
   "/seller/dashboard",
-  "/payments",
+  "/automation",
 ]);
 
 const sidebarRouteGuards = {

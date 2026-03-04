@@ -249,3 +249,46 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
 - `/api/streams/schedule` now rejects unauthenticated access with `401 Unauthorized` and does not trust caller-supplied identity headers.
 - Schedule records are scoped by verified `session.user.id`; legacy `x-user-id` and `demo-user` fallback behavior has been removed.
 - Optional local development fallback identity is explicitly feature-gated (`ENABLE_DEV_SCHEDULE_USER_FALLBACK=true` + `DEV_SCHEDULE_FALLBACK_USER_ID`) and only honored when `NODE_ENV=development`.
+
+## 11) 2026-02 wallet profile encryption + key rotation policy
+
+- Wallet billing address and email/phone verification profile metadata are encrypted at rest using AES-256-GCM envelope format with key ID metadata (`kid`).
+- Runtime key ring is sourced from `RUNASH_FIELD_ENCRYPTION_KEYS` (`kid:material,kid:material`) with active key set by `RUNASH_FIELD_ENCRYPTION_PRIMARY_KEY_ID`.
+- Rotation strategy:
+  1. add new key material with new `kid` to key ring;
+  2. switch primary key ID;
+  3. allow decrypt fallback for legacy key IDs;
+  4. lazily re-encrypt records on read/write using the new primary key;
+  5. remove retired key only after migration completion verification.
+- Sensitive payment/auth values (PAN/CVV/OTP raw values, verification codes) remain prohibited from logs; only hashed/tokenized representations are allowed.
+
+
+## Wallet + Link Payment Security Controls
+
+- **Validator threshold enforcement (Link checkout):** Wallet Link session creation now enforces payment validator thresholds with HITL (`human_confirmed`) and MFA (`mfa_verified`) signals before initiating provider checkout.
+- **High-risk wallet action gates:** Default payment method changes and subscription state transitions now require both HITL and MFA signals. Missing controls are blocked with explicit reason codes.
+- **Geo + risk policy decisioning:** Wallet/link routes evaluate geo mismatch (`GEO_MISMATCH_REVIEW`), risk score review/block thresholds, and explicit blocklist risk signals. Blocked actions return explicit reason codes in response metadata for deterministic handling.
+- **PII-safe logging:** Wallet/link auditing uses payment-safe sanitization and never logs PAN/CVV/OTP/secrets; user/session identifiers are fingerprinted before audit emission.
+- **Structured audit coverage:** Every payment-impacting transition emits structured audit records (`[wallet.payment.audit]`) with request correlation and normalized status (`blocked|review|success|failed`).
+
+## 2026-02 settings security contract alignment (session/device/2FA/API keys)
+
+- Added centralized settings architecture + API contract reference in `docs/SETTINGS_ARCHITECTURE_API_CONTRACT.md` to reduce auth/security drift.
+- Session and device settings contracts now formally require metadata-only responses (no bearer token values, no token hashes, no secret material).
+- 2FA and API key settings contracts now formalize one-time secret return semantics and persistent hash-only storage.
+- Security controls for settings flows now require step-up verification for 2FA disable and API key rotation/revocation actions.
+
+### Storage + migration + rollback guidance
+
+- Storage changes are additive and auditable: session registry identity tables, trusted device records, API key hash records, 2FA metadata/recovery-code hashes.
+- Rollout path: migrate schema -> backfill safely -> deploy contracts -> validate smoke checks.
+- Rollback path: application rollback first, gate new writes by feature flag, retain additive schema, and re-validate auth + settings error budgets.
+- Diagnostics and telemetry must remain redacted (never log raw keys, OTP values, auth/session tokens, or payment secrets).
+
+
+## 8) 2026-03 tenant-scoped auth session consistency controls
+
+- Session and trusted-device storage now support tenant-scoped indexing via nullable `organization_id` columns populated from `users.sso_organization_id`.
+- Auth session/user linkage foreign keys are enforced in script-driven environments to reduce orphaned identity/session rows.
+- New migration remains additive and backward compatible: legacy rows without tenant assignment remain readable while being progressively backfilled.
+- Logging posture is unchanged: no sensitive auth/payment material is introduced in migration or runtime telemetry.

@@ -164,9 +164,9 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
             <Bell className="h-4 w-4" />
           </Button>
 
-          {isDashboardRouteReady("/settings/billing") ? (
+          {isDashboardRouteReady("/dashboard/billing") ? (
             <Button asChild size="sm" className="hidden h-10 md:inline-flex">
-              <Link href="/settings/billing">Upgrade</Link>
+              <Link href="/dashboard/billing">Upgrade</Link>
             </Button>
           ) : (
             <Button size="sm" className="hidden h-10 md:inline-flex" disabled>
@@ -198,7 +198,7 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
               <DropdownMenuLabel>Account</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/settings/profile">
+                <Link href="/dashboard/profile">
                   <User className="mr-2 h-4 w-4" />
                   Profile
                 </Link>
@@ -206,7 +206,7 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
               <DropdownMenuLabel>Settings</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/settings">
+                <Link href="/dashboard/general">
                   <Settings className="mr-2 h-4 w-4" />
                   Settings
                 </Link>
@@ -280,7 +280,7 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
               <DropdownMenuLabel>Account</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/settings/profile">
+                <Link href="/dashboard/profile">
                   <User className="mr-2 h-4 w-4" />
                   Profile
                 </Link>
@@ -292,7 +292,7 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
               <DropdownMenuLabel>Settings</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/settings">
+                <Link href="/dashboard/general">
                   <Settings className="mr-2 h-4 w-4" />
                   Settings
                 </Link>

@@ -16,12 +16,28 @@ export interface StreamLiveMetrics {
   durationSeconds: number
 }
 
+export type StreamHealthStatus = "excellent" | "good" | "fair" | "poor"
+
+export interface StreamNetworkSample {
+  bitrateKbps: number
+  rttMs: number
+  packetLossPct: number
+  droppedFrames: number
+  reconnects: number
+  health: StreamHealthStatus
+  healthScore: number
+  sampledAt: string
+}
+
 export interface StreamHealthTelemetry {
-  status: "Excellent" | "Good" | "Fair" | "Poor"
-  bitrate: number
-  fps: number
-  dropped: number
-  latency: number
+  status: StreamHealthStatus
+  score: number
+  bitrateKbps: number
+  rttMs: number
+  packetLossPct: number
+  droppedFrames: number
+  reconnects: number
+  sampledAt: string | null
 }
 
 async function readJson<T>(res: Response): Promise<T> {
@@ -50,7 +66,26 @@ export async function endStreamSession(id: string) {
 
 export async function getStreamLiveMetrics(id: string) {
   const response = await fetch(`/api/streams/sessions/${id}/metrics`, { cache: "no-store" })
-  return readJson<{ metrics: StreamLiveMetrics }>(response)
+  return readJson<{ metrics: StreamLiveMetrics; network: { latest: StreamNetworkSample | null; series: StreamNetworkSample[] } }>(response)
+}
+
+export async function reportStreamNetworkMetrics(
+  id: string,
+  payload: {
+    bitrateKbps: number
+    rttMs: number
+    packetLossPct: number
+    droppedFrames: number
+    reconnects: number
+    sampledAt?: string
+  },
+) {
+  const response = await fetch(`/api/streams/sessions/${id}/metrics`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  return readJson<{ telemetry: { id: string; health: StreamHealthStatus; healthScore: number; sampledAt: string } }>(response)
 }
 
 export async function getStreamHealthTelemetry(id: string) {

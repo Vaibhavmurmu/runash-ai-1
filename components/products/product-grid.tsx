@@ -17,9 +17,10 @@ interface ProductGridProps {
   products: Product[]
   onEdit: (product: Product) => void
   onDelete: (id: string) => void
+  onView: (product: Product) => void
 }
 
-export function ProductGrid({ products, onEdit, onDelete }: ProductGridProps) {
+export function ProductGrid({ products, onEdit, onDelete, onView }: ProductGridProps) {
   return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {products.map((product) => (
@@ -51,7 +52,7 @@ export function ProductGrid({ products, onEdit, onDelete }: ProductGridProps) {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => console.log("View", product.id)}>
+                    <DropdownMenuItem onClick={() => onView(product)}>
                       <Eye className="h-4 w-4 mr-2" />
                       View Details
                     </DropdownMenuItem>

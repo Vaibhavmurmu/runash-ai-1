@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "crypto"
 
+import { trackLinkFunnelMetric } from "@/lib/payments/link-funnel-observability"
 import { recordCheckoutAttemptResult } from "@/services/payment-checkout-profile-service"
 
 const LINK_CHECKOUT_API_URL = process.env.RUNASH_LINK_CHECKOUT_API_URL ?? "https://api.runash.in/v3/pay"
@@ -293,6 +294,7 @@ export async function runLinkCheckoutWithFallback(
         headers: {
           "Content-Type": "application/json",
           "X-RunAsh-Request-Id": requestId,
+          "x-correlation-id": requestId,
           "Idempotency-Key": idempotencyKey,
         },
         body: JSON.stringify({
@@ -350,6 +352,19 @@ export async function runLinkCheckoutWithFallback(
       }
 
       if (success) {
+        trackLinkFunnelMetric("checkout_completion", {
+          requestId,
+          correlationId: requestId,
+          merchantId: payload.merchant_id,
+        })
+        if (index > 0) {
+          trackLinkFunnelMetric("fallback_usage", {
+            requestId,
+            correlationId: requestId,
+            merchantId: payload.merchant_id,
+          })
+        }
+
         return {
           status: "initiated",
           checkout_session_id: checkoutSessionId,
@@ -416,6 +431,14 @@ export async function runLinkCheckoutWithFallback(
         // Persistence failures should not block checkout execution.
       }
     }
+  }
+
+  if (attempts.some((_, index) => index > 0)) {
+    trackLinkFunnelMetric("fallback_usage", {
+      requestId,
+      correlationId: requestId,
+      merchantId: payload.merchant_id,
+    })
   }
 
   return {

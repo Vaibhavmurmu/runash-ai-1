@@ -39,7 +39,7 @@ const defaultFormData: SellerSettings = {
 }
 
 const fetcher = (url: string) =>
-  fetch(url, { headers: { "x-user-id": "1" } }).then((r) =>
+  fetch(url).then((r) =>
     r.ok ? r.json() : Promise.reject(new Error("Failed to load settings")),
   )
 
@@ -70,7 +70,7 @@ export function BusinessSettings() {
     try {
       const response = await fetch("/api/seller/settings", {
         method: "PUT",
-        headers: { "Content-Type": "application/json", "x-user-id": "1" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       })
       if (!response.ok) throw new Error("Failed to save settings")

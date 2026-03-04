@@ -52,6 +52,21 @@ test("POST /api/auth/sessions/switch returns 400 for invalid payload", async () 
   assert.equal(payload.message, "Invalid request")
 })
 
+
+test("POST /api/auth/sessions/switch returns 400 for malformed JSON", async () => {
+  const request = new Request("http://localhost/api/auth/sessions/switch", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{",
+  })
+
+  const response = await handleSwitchSessionScope(request, { id: "user_1" })
+  const payload = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.equal(payload.message, "Invalid request")
+})
+
 test("POST /api/auth/sessions/switch returns 401 without authenticated user", async () => {
   const request = new Request("http://localhost/api/auth/sessions/switch", {
     method: "POST",

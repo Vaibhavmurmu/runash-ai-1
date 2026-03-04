@@ -1,6 +1,6 @@
 import { neon } from "@neondatabase/serverless"
 import { createHash, randomBytes } from "crypto"
-import { sendAuthEmail } from "./email"
+import { sendMagicLinkEmail } from "./email"
 import { logApiEvent } from "./api/logging"
 
 const sql = neon(process.env.DATABASE_URL!)
@@ -122,58 +122,11 @@ export async function verifyMagicLinkTokenWithClient(
 export async function sendMagicLink(email: string, token: string, userName?: string): Promise<boolean> {
   const magicLinkUrl = `${process.env.NEXT_PUBLIC_APP_URL}/auth/magic-link?token=${token}`
 
-  const emailHtml = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Magic Link Login</title>
-    </head>
-    <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%); min-height: 100vh;">
-      <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-        <div style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px); border-radius: 20px; padding: 40px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);">
-          <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #1a1a1a; font-size: 28px; font-weight: 700; margin: 0 0 10px 0;">Magic Link Login</h1>
-            <p style="color: #666; font-size: 16px; margin: 0;">Click the button below to sign in instantly</p>
-          </div>
-          
-          ${userName ? `<p style="color: #333; font-size: 16px; margin-bottom: 20px;">Hi ${userName},</p>` : ""}
-          
-          <p style="color: #333; font-size: 16px; line-height: 1.6; margin-bottom: 30px;">
-            You requested a magic link to sign in to your account. Click the button below to sign in instantly - no password required!
-          </p>
-          
-          <div style="text-align: center; margin: 40px 0;">
-            <a href="${magicLinkUrl}" style="display: inline-block; background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%); color: white; text-decoration: none; padding: 16px 32px; border-radius: 12px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 15px rgba(255, 107, 53, 0.3); transition: all 0.3s ease;">
-              Sign In with Magic Link
-            </a>
-          </div>
-          
-          <div style="background: #f8f9fa; border-radius: 12px; padding: 20px; margin: 30px 0;">
-            <p style="color: #666; font-size: 14px; margin: 0 0 10px 0; font-weight: 600;">Security Notice:</p>
-            <ul style="color: #666; font-size: 14px; margin: 0; padding-left: 20px;">
-              <li>This link expires in 15 minutes</li>
-              <li>It can only be used once</li>
-              <li>If you didn't request this, you can safely ignore this email</li>
-            </ul>
-          </div>
-          
-          <p style="color: #999; font-size: 12px; text-align: center; margin-top: 30px;">
-            If the button doesn't work, copy and paste this link into your browser:<br>
-            <span style="word-break: break-all;">${magicLinkUrl}</span>
-          </p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `
-
   try {
-    await sendAuthEmail({
+    await sendMagicLinkEmail({
       to: email,
-      subject: "Your Magic Link - Sign in instantly",
-      html: emailHtml,
+      magicLinkUrl,
+      userName,
     })
     return true
   } catch (error) {

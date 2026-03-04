@@ -17,6 +17,7 @@ test("GET /api/auth/sessions lists concurrent active sessions", async () => {
           lastSeenAt: new Date().toISOString(),
           expiresAt: new Date(Date.now() + 60000).toISOString(),
           linkedFromSessionId: null,
+          deviceId: "dev_mac",
           deviceName: "Mac",
           userAgent: "test",
         },
@@ -29,6 +30,7 @@ test("GET /api/auth/sessions lists concurrent active sessions", async () => {
           lastSeenAt: new Date().toISOString(),
           expiresAt: new Date(Date.now() + 60000).toISOString(),
           linkedFromSessionId: null,
+          deviceId: "dev_phone",
           deviceName: "iPhone",
           userAgent: "test",
         },
@@ -89,6 +91,21 @@ test("DELETE /api/auth/sessions returns 400 for invalid payload", async () => {
     method: "DELETE",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({}),
+  })
+
+  const response = await handleRevokeSessions(input, { id: "user_1" })
+  const payload = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.equal(payload.message, "Invalid request")
+})
+
+
+test("DELETE /api/auth/sessions returns 400 for malformed JSON", async () => {
+  const input = new Request("http://localhost/api/auth/sessions", {
+    method: "DELETE",
+    headers: { "content-type": "application/json" },
+    body: "{",
   })
 
   const response = await handleRevokeSessions(input, { id: "user_1" })

@@ -45,6 +45,18 @@ function hydrate(streamId: string, settings: Record<string, any>, updatedAt?: st
   const creatorAge = typeof settings.visibility?.creatorAge === "number" ? settings.visibility.creatorAge : undefined
   const explicitVisibility = settings.visibility?.explicitVisibility as StreamVisibility | undefined
   const defaultVisibility = resolveVisibilityDefault(creatorAge)
+  const dataSaverPreset =
+    settings.network?.dataSaverPreset === "off" ||
+    settings.network?.dataSaverPreset === "balanced" ||
+    settings.network?.dataSaverPreset === "aggressive"
+      ? settings.network.dataSaverPreset
+      : "balanced"
+  const manualFallbackOverride =
+    settings.network?.manualFallbackOverride === "auto" ||
+    settings.network?.manualFallbackOverride === "force_standard" ||
+    settings.network?.manualFallbackOverride === "force_fallback"
+      ? settings.network.manualFallbackOverride
+      : "auto"
 
   return {
     ...base,
@@ -70,6 +82,15 @@ function hydrate(streamId: string, settings: Record<string, any>, updatedAt?: st
       enabled: Boolean(settings.membersOnly?.enabled),
       transitionedAt: settings.membersOnly?.transitionedAt ?? null,
       reason: settings.membersOnly?.reason ?? "",
+    },
+    network: {
+      lowLatencyMode: Boolean(settings.network?.lowLatencyMode),
+      autoQualityFallbackOnWeakNetwork:
+        typeof settings.network?.autoQualityFallbackOnWeakNetwork === "boolean"
+          ? settings.network.autoQualityFallbackOnWeakNetwork
+          : true,
+      dataSaverPreset,
+      manualFallbackOverride,
     },
     moderation: {
       pinnedMessageId: settings.moderation?.pinnedMessageId ?? null,
@@ -153,6 +174,13 @@ export async function upsertLiveControlState(
       enabled: input.membersOnly?.enabled ?? current.membersOnly.enabled,
       transitionedAt: input.membersOnly?.transitionedAt ?? current.membersOnly.transitionedAt,
       reason: input.membersOnly?.reason ?? current.membersOnly.reason,
+    },
+    network: {
+      lowLatencyMode: input.network?.lowLatencyMode ?? current.network.lowLatencyMode,
+      autoQualityFallbackOnWeakNetwork:
+        input.network?.autoQualityFallbackOnWeakNetwork ?? current.network.autoQualityFallbackOnWeakNetwork,
+      dataSaverPreset: input.network?.dataSaverPreset ?? current.network.dataSaverPreset,
+      manualFallbackOverride: input.network?.manualFallbackOverride ?? current.network.manualFallbackOverride,
     },
     moderation: {
       ...current.moderation,

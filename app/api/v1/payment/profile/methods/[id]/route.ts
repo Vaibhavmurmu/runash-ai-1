@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server"
 import { z } from "zod"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { ensureCustomerScopedAccess, requireBillingActionAccess } from "@/lib/billing-auth"
+import { emitPaymentLifecycleEvent } from "@/lib/services/payment-lifecycle-events"
 import {
   getCustomerPaymentMethodReference,
   removeCustomerPaymentMethodReference,
@@ -99,6 +100,17 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     return respondError(request, { code: "PAYMENT_METHOD_NOT_FOUND", message: "Payment method reference not found" }, { status: 404 })
   }
 
+  await emitPaymentLifecycleEvent({
+    eventType: updated.status === "disabled" ? "payment_method_expired" : "payment_method_updated",
+    userId: access.sessionUser.userId,
+    customerId: access.sessionUser.userId,
+    source: "api.payment.profile.methods.put",
+    metadata: {
+      paymentMethodLast4: updated.last4,
+      reason: updated.status === "disabled" ? "marked_disabled" : "updated",
+    },
+  })
+
   return respondSuccess(request, updated)
 }
 
@@ -177,6 +189,16 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
   if (!removed) {
     return respondError(request, { code: "PAYMENT_METHOD_NOT_FOUND", message: "Payment method reference not found" }, { status: 404 })
   }
+
+  await emitPaymentLifecycleEvent({
+    eventType: "payment_method_expired",
+    userId: access.sessionUser.userId,
+    customerId: access.sessionUser.userId,
+    source: "api.payment.profile.methods.delete",
+    metadata: {
+      reason: "removed",
+    },
+  })
 
   return respondSuccess(request, { removed: true })
 }

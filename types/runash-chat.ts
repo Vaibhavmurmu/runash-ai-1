@@ -44,10 +44,15 @@ export interface LinkQuickPayPreview {
     merchant_id: string
     amount: number
     currency: "USD" | "INR"
+    idempotency_key?: string
     product_metadata: {
       item_name: string
       sku: string
       tags: string[]
+    }
+    chat_context?: {
+      session_id: string
+      user_intent: string
     }
     country?: string
     region?: string
@@ -71,6 +76,7 @@ export interface Product {
   isOrganic: boolean
   sustainabilityScore: number
   image: string
+  mediaAssets?: ProductMediaAsset[]
   arModelUrl?: string
   imageHd?: string
   imageThumb?: string
@@ -80,6 +86,17 @@ export interface Product {
   nutritionalInfo?: NutritionalInfo
   supplier?: string
   carbonFootprint?: number
+}
+
+export interface ProductMediaAsset {
+  id?: string
+  type?: "image" | "video" | "model"
+  url: string
+  thumbnailUrl?: string
+  hdUrl?: string
+  alt?: string
+  title?: string
+  metadata?: Record<string, string | number | boolean>
 }
 
 export interface Recipe {

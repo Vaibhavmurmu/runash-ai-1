@@ -2,6 +2,14 @@
 
 Last updated: 2026-02
 
+
+## Middleware/admin authorization hardening update (2026-02)
+
+- Middleware public API matching now allowlists only explicit unauthenticated auth endpoints instead of treating the full `/api/auth/**` tree as public.
+- Privileged auth endpoints such as `GET /api/auth/claims` and `GET /api/auth/permissions` now stay behind authenticated session validation at middleware boundary.
+- `requireAdminAuthorization` now enforces an explicit admin-capable role gate (`admin`/`super_admin`) before permission evaluation, preserving response contracts (`401` unauthenticated, `403` unauthorized).
+- No payment request/response contracts or field names were changed by this hardening pass.
+
 ## Admin auth/org operations update (2026-02)
 
 - Added an admin auth/org route inventory with UI coverage mapping at `docs/ADMIN_AUTH_ORG_ROUTE_INVENTORY.md`.
@@ -14,6 +22,14 @@ Last updated: 2026-02
 - Sensitive account actions (password change, API key rotation, and session revoke-all) now trigger session invalidation and session cookie revocation to force secure re-authentication.
 - Auth/admin-sensitive APIs are protected with stricter endpoint-specific rate limits in addition to baseline API rate controls.
 - Auth event logging now redacts credentials/tokens/secrets and stores anonymized session identifiers for audit safety.
+
+
+## Stream session API authorization hardening update (2026-02)
+
+- Added server-session authentication gates (`getServerAuthSession`) to stream session start/end/recordings routes under `app/api/streams/sessions/[id]/**`.
+- Added tenant ownership checks so only the stream owner can start/end a session or read/create recordings. Unauthorized requests now return consistent auth envelopes with `401` (unauthenticated), `403` (cross-tenant forbidden), and `404` (session missing).
+- Added non-sensitive audit logging for `streams.sessions.start`, `streams.sessions.end`, and `streams.sessions.recordings.{read|create}` events with request/user/session identifiers only (no credentials/tokens/keys).
+- Added regression tests for unauthorized and cross-tenant access attempts in `app/api/streams/sessions/route-authz.test.ts`.
 
 ## Better Auth storage migration update (2026-02)
 
@@ -54,11 +70,27 @@ Last updated: 2026-02
 - Legacy response fields (`message`, `user`) are preserved via compatibility mapping for existing frontend callers.
 - Signup entrypoints (`app/get-started/page.tsx`, `components/auth/register-form.tsx`, and `components/auth/better-sign-up-card.tsx`) now converge on `/api/auth/register`.
 
+## Better Auth canonical signup/session path update (2026-02)
+
+- Better Auth email/password remains the canonical signup provider in `lib/auth.ts` with explicit verification-required behavior (`requireEmailVerification=true`, verification email dispatch on signup, and no auto sign-in before/after verification).
+- `POST /api/auth/register` continues to call Better Auth server-side (`auth.api.signUpEmail`) and now determines verification-required messaging directly from Better Auth user verification state while preserving legacy response fields (`message`, `user`).
+- Signup UI entrypoints (`app/get-started/page.tsx`, `components/auth/register-form.tsx`, `components/auth/better-sign-up-card.tsx`) remain unified through `registerWithUnifiedRoute` -> `/api/auth/register`.
+- Protected API session reads remain centralized through `getAuthSessionFromHeaders` / `getServerAuthSession` from `lib/auth.ts` (via direct import or `lib/auth/session` compatibility wrapper).
+
 ## Email verification delivery hardening update (2026-02)
 
 - Better Auth email verification callbacks now normalize all verification links to the canonical endpoint (`/api/auth/verify-email`) before dispatch.
 - Verification emails now route through the safety-aware `lib/email.ts` utility so allowlist/sink/dry-run controls and provider safeguards are consistently applied.
 - Signup UI copy explicitly states that email/password accounts require verification before first login to reduce onboarding ambiguity.
+
+## Email verification flow consistency update (2026-02)
+
+- Better Auth remains the single source of truth for email verification token generation and verification (`auth.api.sendVerificationEmail` + `auth.api.verifyEmail`) with `/api/auth/verify-email` retained as the canonical verifier endpoint.
+- Shared callback URL resolution now lives in `lib/auth.ts` (`emailVerificationCallbackURL`) so signup, resend verification, and verification redirects use the same post-verification destination contract.
+- `POST /api/auth/resend-verification` now uses centralized auth rate-limit policy (`AUTH_ENDPOINT_RATE_LIMITS["resend-verification"]`) and always returns the same non-enumerating response message for unknown or already-verified emails.
+- `GET /verify-email?token=...` now follows the same canonical token path by calling `GET /api/auth/verify-email` and exposing resend UX for known emails without introducing alternate verification token semantics.
+- Resend verification delivery continues through Better Auth's verification callback path (which is wired to the Resend-backed email provider abstraction in `lib/email.ts`) and now normalizes callback URL handling through shared auth email URL utilities.
+- Signup UI now surfaces an in-flow verification notice (`"Check your email to verify your account"`) when verification is required, instead of immediately navigating away as if account access was active.
 
 ## Get-started onboarding flow update (2026-02)
 
@@ -71,6 +103,14 @@ This document tracks the **currently implemented** auth runtime, files, and rout
 
 Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 
+
+## Auth email safety + webhook diagnostics update (2026-03)
+
+- Magic link and email OTP delivery now render through centralized auth-email helpers in `lib/email.ts`, ensuring verification, password reset, magic link, and OTP mail all inherit the same safety policy (safe-mode allowlist/sink + dry-run) and delivery tracking behavior.
+- Email provider diagnostics now expose primary/fallback runtime configuration and failover readiness, with admin visibility at `GET /api/admin/email-provider/health`.
+- Webhook signature verification now supports strict empty-payload checks and timestamp freshness validation (configurable via `EMAIL_WEBHOOK_MAX_SIGNATURE_AGE_SECONDS`) to reduce replay risk.
+- Webhook ingestion diagnostics now include reconciliation counters and actionable status summaries in admin webhook APIs for faster incident triage.
+
 ## Auth email provider unification update (2026-02)
 
 - Introduced one canonical provider module at `lib/email-provider.ts` used by both transactional auth mail (`lib/email.ts`) and report mail (`lib/emails.ts`).
@@ -79,6 +119,8 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
   - `EMAIL_PROVIDER=resend` -> use Resend when configured, otherwise fallback to SMTP if available.
   - unset/invalid `EMAIL_PROVIDER` -> auto-select SMTP first, then Resend.
 - Standardized environment variables on `SMTP_PASSWORD` (canonical) and `EMAIL_FROM` (canonical sender). Legacy aliases `SMTP_PASS` and `SMTP_FROM` remain temporary compatibility fallbacks for migration safety.
+- Resend transport now uses the official SDK client initialization path (`new Resend(process.env.RESEND_API_KEY)`) and sends with explicit `{ data, error }` handling plus bounded retry for rate-limit/transient failures (HTTP `429`, `5xx`, `408`, `425`).
+- Resend send options support optional `replyTo`, `scheduledAt`, `tags`, `attachments`, and `idempotencyKey` fields via the canonical provider abstraction.
 - Existing auth send paths continue through `sendVerificationEmail` and `sendPasswordResetEmail`, but the final transport now resolves through the canonical provider path and keeps delivery tracking + realtime status events unchanged.
 
 ### Required email environment variables
@@ -86,6 +128,8 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 - Shared:
   - `EMAIL_PROVIDER` (`smtp` or `resend`)
   - `EMAIL_FROM` (recommended canonical sender, for both providers)
+- Resend-specific sender domain control:
+  - `RESEND_VERIFIED_FROM` (recommended; verified production sending identity/domain, used before `EMAIL_FROM`)
 - SMTP path:
   - `SMTP_HOST`
   - `SMTP_PORT` (optional, defaults `587`)
@@ -152,6 +196,42 @@ Cross-links: `SECURITY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md`.
 
 ## 1) Runtime and source-of-truth files
 
+## 2026-02 auth/payment validation note (no auth contract changes)
+
+- **Change type:** validation-only run and policy documentation refresh; no auth endpoint additions/removals and no request/response contract changes.
+- **Impacted auth/payment flows reviewed:**
+  - Session validation (`GET /api/auth/get-session`) used by protected payment surfaces
+  - Login/session continuity behavior for payment-linked routes
+  - Authorization guard posture (`401` unauthenticated, `403` unauthorized) on payment/auth-adjacent pages
+- **Risk assessment:** low behavior risk; primary execution risk remains environment-dependent build failures when required database configuration is missing.
+- **Rollback plan:** revert documentation-only commit; no runtime rollback or credential/session migration is required.
+
+## 2026-02-28 auth/payment validation execution note
+
+- **Behavior change summary:** no auth runtime/contract changes were introduced.
+- **Validation command outcomes captured for release auditability:**
+  - `npm run lint` failed in this environment because `eslint` is not installed.
+  - `npm run build` reached successful compilation but failed during page-data collection due to missing database env (`No database connection string was provided to neon()`).
+- **Impacted auth/payment flows reviewed:**
+  - Session retrieval/validation path (`GET /api/auth/get-session`) that protects payment-adjacent routes.
+  - Authenticated access continuity assumptions for billing/credits entrypoints.
+  - Authorization guard posture (`401` unauthenticated, `403` unauthorized) for auth/payment-adjacent surfaces.
+- **Risk + rollback:** risk is environment/dependency readiness for validation pipelines; rollback remains docs-only revert with no auth schema or session migration changes.
+
+
+## 2026-02-28 auth/payment validation rerun (release checklist)
+
+- **Behavior change summary:** none; this rerun only records validation evidence for release auditability.
+- **Validation command outcomes (latest run):**
+  - `npm run lint` failed because the environment is missing `eslint` (`next lint` reported `ESLint must be installed`).
+  - `npm run build` compiled successfully, then failed during page-data collection because Neon database configuration is unset (`No database connection string was provided to neon()`).
+- **Impacted auth/payment flows reviewed:**
+  - Auth session retrieval guard (`GET /api/auth/get-session`) used by payment-adjacent routes.
+  - Authenticated continuity assumptions across billing/credits entrypoints.
+  - Authorization posture (`401` unauthenticated, `403` unauthorized) for auth/payment-adjacent surfaces.
+- **Risks:** validation confidence is gated by local dependency/env readiness (`eslint` package and DB connection string).
+- **Rollback steps:** documentation-only rollback by reverting this commit; no API/schema/session migration rollback is required.
+
 ### Better Auth runtime and adapters
 - `lib/auth.ts` — Better Auth instance, provider config, account-linking hooks, and the canonical server-side session resolver (`getAuthSessionFromHeaders`, `getServerAuthSession`).
 - `app/api/auth/[...nextauth]/route.ts` — Next.js route handler mounted via `toNextJsHandler(auth)`.
@@ -191,7 +271,7 @@ Client/UI
 
 ### Planned (post-baseline, non-blocking)
 
-- Convert `db/migrations/0000_auth_neon_better_auth_baseline.sql` from placeholder to executable migration once canonical Drizzle auth tables are finalized.
+- Keep `db/migrations/0000_auth_neon_better_auth_baseline.sql` immutable post-release and introduce additive follow-up migrations for any auth table evolution.
 - Retire legacy NextAuth compatibility fallback after rollout stability windows complete.
 
 ## 2) Implemented auth routes (API)
@@ -251,7 +331,7 @@ Note: middleware still treats `/signup` as public, but no `app/signup/page.tsx` 
 
 - Protected routes are evaluated in `middleware.ts`.
 - If no valid auth session is resolved, browser routes redirect to `/login`; API routes return `401`.
-- Privileged route prefixes are excluded from the public allowlist: seller surfaces (`/seller/**`, `/api/seller/**`, `/api/v1/seller/**`) and admin surfaces (`/admin/**`, `/ecommerce/admin/**`, `/api/admin/**`) always require authenticated role-aware checks.
+- Privileged route prefixes are excluded from the public allowlist: seller surfaces (`/seller/**`, `/api/seller/**`, `/api/v1/seller/**`) and admin surfaces (`/admin/**`, `/ecommerce/admin/**`, `/api/admin/**`) always require authenticated role-aware checks. Interactive app surfaces (`/chat`, `/runash-chat`, `/live`) are also treated as protected routes and require a valid session.
 - Session checks rely on Better Auth session cookies, middleware validation through `/api/auth/get-session`, and `auth.api.getSession` in server helpers/accessors.
 - Session minting for passkey and magic-link paths now uses the canonical auth secret resolver in `lib/auth.ts`, keeping a single source-of-truth secret for Better Auth runtime and custom JWT issuance.
 - Legacy NextAuth cookie parsing remains available in session accessor fallback paths when feature-flagged compatibility fallback is enabled.
@@ -626,3 +706,92 @@ Rollback:
 2. If needed, set `FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK=true`.
 3. Keep schema changes in place (non-breaking additive migration); no destructive rollback required.
 4. Re-validate auth session endpoints and monitor `auth.legacy_fallback.used` for expected recovery.
+
+### Operator rollback commands (schema-only emergency path)
+
+```sql
+DROP TABLE IF EXISTS auth_one_time_transfer_tokens;
+DROP TABLE IF EXISTS auth_session_registry;
+DROP TABLE IF EXISTS auth_session_identities;
+DROP TABLE IF EXISTS verification_tokens;
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS accounts;
+```
+
+Use this destructive path only when the application rollback cannot restore service and after pausing auth writes. Because the baseline migration is additive, application rollback without table drops remains the default and safer strategy.
+
+
+## Wallet/Link Authentication Hardening
+
+- Wallet Link checkout initiation requires **step-up auth context** for high-value and high-risk operations:
+  - `human_confirmed=true` for HITL approval gates.
+  - `mfa_verified=true` for MFA-gated flows.
+- High-risk wallet mutations (default method switch, subscription status updates) are rejected unless HITL + MFA assertions are present.
+- Geo/risk checks are evaluated at request time and surfaced as explicit reason codes to callers for adaptive auth UX (review queues, challenge loops, or hard-deny).
+- Auth-adjacent telemetry for wallet/link flows is emitted only through sanitized structured logs; secrets, OTP values, and card data are not logged.
+
+
+## 2026-02-28 auth-sensitive logging posture for billing lifecycle events
+
+- Payment lifecycle event emission uses payment logging sanitizer utilities before any structured log output.
+- Sensitive auth/payment fields are redacted by key-pattern policy (`token`, `secret`, `authorization`, `session`, `customer`, payment-method/card identifiers).
+- This preserves auditability while preventing leakage of provider tokens, customer identifiers, and auth material in billing lifecycle logs.
+
+### Rollback notes (auth-impact posture)
+
+- Reverting lifecycle event emitters does not require auth contract, cookie/session, or RBAC schema rollback.
+- If rollback is needed, keep sanitizer behavior intact and revert only lifecycle event callsites.
+
+## 2026-02 settings security session/device management
+
+- Added user-scoped settings security APIs for session and device operations:
+  - `GET|PATCH|DELETE /api/settings/security/sessions`
+  - `GET|POST|DELETE /api/settings/security/devices`
+- Session responses are constrained to operational metadata (id/mode/scope/device/lastSeen timestamps) and do not expose bearer token values or token hashes.
+- Trusted device management stores and revokes trust state by `(user_id, device_id)` to support auditable recovery and remote sign-out workflows.
+- Settings UI now includes session/device tables and per-session scope editing for user-scoped integrations.
+
+## 2026-02 settings security API contract + storage model update
+
+- Added canonical settings architecture and endpoint contract documentation at `docs/SETTINGS_ARCHITECTURE_API_CONTRACT.md`.
+- Session/device/2FA/API key settings behaviors are now documented as a single compatibility contract with additive-only response evolution.
+- Storage model documentation now explicitly captures:
+  - session registry and session identity linkage tables,
+  - trusted-device ownership model `(user_id, device_id)`,
+  - API key hash-only persistence and one-time plaintext return behavior,
+  - 2FA enrollment/challenge/recovery storage as metadata + hashes only.
+
+### Migration + rollback procedure (settings security)
+
+1. Roll out additive settings-security schema changes and metadata backfills.
+2. Validate sessions/devices/2FA/API-key settings endpoints against stable response keys.
+3. If incidents are detected, rollback application artifacts first and temporarily gate new settings mutations.
+4. Keep additive schema in place during incident response; avoid destructive rollback.
+
+
+## 2026-03 OTP verification/session hardening update
+
+- `verifyOTP()` now uses explicit identifier predicates for both variants (`email` and `phone_number`) instead of dynamic identifier-column construction, preserving query contract compatibility while reducing injection-risk surface.
+- OTP observability was tightened to structured/redacted events only; auth logs continue to carry identifier hashes rather than raw email/phone/OTP values.
+- Email OTP `PUT /api/auth/otp/email` login verification continues to issue a persisted auth session token and response cookies after successful OTP verification; non-login OTP purposes remain verification-only with no session issuance.
+- Added OTP regression coverage for send/verify flow behavior, invalid and replayed OTP handling, and login-session cookie issuance boundaries.
+
+### Risks + rollback
+
+- **Risk:** low; changes are scoped to OTP verification and testability seams, with no public request/response schema changes.
+- **Rollback:** revert the OTP hardening commit to restore previous OTP query/logging behavior and test structure; no migration is required.
+
+
+## 2026-03 auth/session tenant consistency migration
+
+- Added SQL migration `scripts/sql/2026-03-03_auth_session_tenant_consistency.sql` to harden tenant-aware auth session storage while preserving compatibility for existing rows.
+- `auth_session_registry` and `auth_trusted_devices` now include nullable `organization_id` columns with backfill from `users.sso_organization_id` for existing records.
+- Added idempotent foreign-key hardening for `auth_session_identities` and `auth_session_registry` to align script-driven environments with baseline migration guarantees.
+- Added missing operational indexes for tenant-scoped session/device queries and transfer-token expiry/session lookups.
+
+### Migration guidance
+
+1. Apply: `scripts/sql/2026-03-03_auth_session_tenant_consistency.sql` after the Better Auth baseline migration.
+2. Validate backfill: compare non-null `organization_id` counts in `auth_session_registry` and `auth_trusted_devices` against users with non-null `sso_organization_id`.
+3. Validate contract compatibility: run `GET /api/auth/sessions`, `DELETE /api/auth/sessions`, and settings security device/session endpoints.
+4. Rollback: this migration is additive; rollback should be application-level first. For emergency DB rollback, drop only the new indexes/columns after traffic pause.

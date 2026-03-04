@@ -145,8 +145,16 @@ export default function GetStartedPage() {
           username: formData.username,
         })
 
-        if (registration.ok) setStep(2)
-        else setError(registration.message || "Unable to create account. Please try again.")
+        if (registration.ok) {
+          const needsVerification = registration.user?.emailVerified === false || /verify your (account|email)/i.test(registration.message)
+          if (needsVerification) {
+            setError("We sent a verification link to your email. Verify your account, then continue.")
+          }
+
+          setStep(2)
+        } else {
+          setError(registration.message || "Unable to create account. Please try again.")
+        }
       } else if (step === 2) {
         setStep(3)
       }
@@ -206,8 +214,8 @@ export default function GetStartedPage() {
             <Button className="rounded-full px-10 bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-400 text-white hover:opacity-90" onClick={() => { setStep(1); setOpen(true) }}>
               Get started
             </Button>
-            <Button variant="outline" className="rounded-full px-10 border-orange-200 dark:border-white/20 bg-white/70 dark:bg-black/40" onClick={() => router.push("/waitlist")}>
-              Join waitlist
+            <Button asChild variant="outline" className="rounded-full px-10 border-orange-200 dark:border-white/20 bg-white/70 dark:bg-black/40">
+              <Link href="/waitlist" aria-label="Join the RunAsh waitlist">Join waitlist</Link>
             </Button>
             <Button variant="outline" className="rounded-full px-10 border-orange-200 dark:border-white/20 bg-white/70 dark:bg-black/40" onClick={() => router.push("/login")}>
               Welcome back

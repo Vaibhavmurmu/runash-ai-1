@@ -15,6 +15,7 @@ import {
 import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
 import { computeTaxForRegion, persistTaxComputation } from "@/lib/services/tax-service"
 import { upsertCustomerCheckoutProfile } from "@/services/payment-checkout-profile-service"
+import { postAccountingEvent } from "@/lib/services/runashbook-accounting-service"
 
 const createCheckoutSchema = z
   .object({
@@ -259,6 +260,29 @@ export async function POST(request: NextRequest) {
       returnUrlPending: finalizedReturnUrlPending,
       returnUrlFailed: finalizedReturnUrlFailed,
       providerTransactionReference: session.id,
+    })
+
+    await postAccountingEvent({
+      event: {
+        eventType: "checkout_initiated",
+        occurredAt: new Date().toISOString(),
+        amount,
+        taxAmount: taxComputation.totalTaxAmount,
+        feeAmount: 0,
+        currency: String(price.currency || "usd").toUpperCase(),
+        merchantCountry: process.env.RUNASH_MERCHANT_REGION || taxComputation.countryCode || "US",
+        merchantEntityId: sessionUser.organizationId ? String(sessionUser.organizationId) : sessionUser.userId,
+        merchantId: sessionUser.userId,
+        customerCountry: billing_address?.country,
+        correlationKey: session.id,
+        idempotencyKey: `checkout_initiated:${session.id}`,
+        provider: "stripe",
+        providerReference: session.id,
+        metadata: {
+          mode,
+          source: "app.api.v1.billing.checkout",
+        },
+      },
     })
 
     await logPrivilegedAction({

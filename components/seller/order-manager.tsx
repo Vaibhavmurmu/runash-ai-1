@@ -27,8 +27,29 @@ type SellerOrder = {
   items: OrderItem[]
 }
 
+type ShipmentEvent = {
+  id: number
+  event_code: string
+  status: string
+  location: string | null
+  event_timestamp: string
+}
+
+type ShipmentTimeline = {
+  id: number
+  provider: string
+  service_level: string
+  status: string
+  tracking_number: string | null
+  tracking_url: string | null
+  label_url: string | null
+  exception_reason: string | null
+  created_at: string
+  events: ShipmentEvent[]
+}
+
 const fetcher = (url: string) =>
-  fetch(url, { headers: { "x-user-id": "1" } }).then((r) => {
+  fetch(url).then((r) => {
     if (!r.ok) throw new Error("Failed to load orders")
     return r.json()
   })
@@ -41,6 +62,11 @@ export function OrderManager() {
 
   const { data: orders = [], error, isLoading, mutate } = useSWR<SellerOrder[]>(
     `/api/orders?status=${selectedStatus}&q=${encodeURIComponent(searchTerm)}`,
+    fetcher,
+  )
+
+  const { data: selectedOrderShipments = [] } = useSWR<ShipmentTimeline[]>(
+    selectedOrder ? `/api/seller/shipments?orderId=${selectedOrder.id}` : null,
     fetcher,
   )
 
@@ -63,7 +89,7 @@ export function OrderManager() {
     try {
       const res = await fetch(`/api/orders/${order.id}`, {
         method: "PUT",
-        headers: { "content-type": "application/json", "x-user-id": "1" },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ status: newStatus, row_version: order.row_version }),
       })
       if (!res.ok) {
@@ -206,6 +232,42 @@ export function OrderManager() {
                             </SelectContent>
                           </Select>
                           <Button onClick={() => updateOrderStatus(selectedOrder, "processing")}>Mark processing</Button>
+                        </div>
+
+                        <div className="space-y-3 border rounded-md p-3">
+                          <p className="font-medium text-sm">Shipment Timeline</p>
+                          {selectedOrderShipments.length === 0 && (
+                            <p className="text-sm text-muted-foreground">No shipments created for this order yet.</p>
+                          )}
+
+                          {selectedOrderShipments.map((shipment) => (
+                            <div key={shipment.id} className="rounded-md bg-muted/40 p-3 space-y-2">
+                              <div className="flex flex-wrap items-center gap-2 text-sm">
+                                <Badge className={`${getStatusBadge(shipment.status)} text-white`}>{shipment.status}</Badge>
+                                <span className="text-muted-foreground">
+                                  {shipment.provider} • {shipment.service_level}
+                                </span>
+                                {shipment.tracking_url && (
+                                  <a
+                                    href={shipment.tracking_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-blue-600 underline"
+                                  >
+                                    Track package
+                                  </a>
+                                )}
+                              </div>
+                              <div className="space-y-1 text-xs text-muted-foreground">
+                                {shipment.events.map((event) => (
+                                  <p key={event.id}>
+                                    {format(new Date(event.event_timestamp), "MMM dd, yyyy HH:mm")} • {event.event_code}
+                                    {event.location ? ` (${event.location})` : ""}
+                                  </p>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
