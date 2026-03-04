@@ -44,6 +44,45 @@ export interface PeerConnectionData {
       currentRoundTripTime: number
     }
   }
+  qualityTierState?: QualityTierState
+}
+
+interface BitrateLadderTier {
+  label: "HD" | "SD" | "Low Data" | "Data Saver"
+  maxBitrate: number
+  maxFramerate: number
+  scaleResolutionDownBy: number
+}
+
+interface AdaptiveQualityState {
+  hostId: string
+  tierIndex: number
+  consecutiveBadSamples: number
+  consecutiveGoodSamples: number
+  lastSample?: NetworkQualitySample
+  samplingTimer?: ReturnType<typeof setInterval>
+  previousOutboundBytes?: number
+  previousOutboundTimestampMs?: number
+  previousFramesEncoded?: number
+  previousFramesDropped?: number
+}
+
+interface NetworkQualitySample {
+  roundTripTimeMs: number
+  packetLossRate: number
+  outboundBitrateKbps: number
+  frameDropRate: number
+}
+
+export interface QualityTierState {
+  hostId: string
+  tierLabel: BitrateLadderTier["label"]
+  modeLabel: string
+  tierIndex: number
+  maxBitrate: number
+  maxFramerate: number
+  scaleResolutionDownBy: number
+  sample?: NetworkQualitySample
 }
 
 export class WebRTCService {
@@ -54,6 +93,18 @@ export class WebRTCService {
   private connectionListeners: ((connections: PeerConnectionData[]) => void)[] = []
   private streamListeners: ((hostId: string, stream: MediaStream | null) => void)[] = []
   private dataChannelListeners: ((hostId: string, data: any) => void)[] = []
+  private qualityTierListeners: ((state: QualityTierState) => void)[] = []
+  private adaptiveQualityStates: Map<string, AdaptiveQualityState> = new Map()
+
+  private readonly bitrateLadder: BitrateLadderTier[] = [
+    { label: "HD", maxBitrate: 2_500_000, maxFramerate: 30, scaleResolutionDownBy: 1 },
+    { label: "SD", maxBitrate: 1_500_000, maxFramerate: 24, scaleResolutionDownBy: 1.25 },
+    { label: "Low Data", maxBitrate: 900_000, maxFramerate: 20, scaleResolutionDownBy: 1.5 },
+    { label: "Data Saver", maxBitrate: 500_000, maxFramerate: 15, scaleResolutionDownBy: 2 },
+  ]
+  private readonly sampleIntervalMs = 5000
+  private readonly downshiftAfterBadIntervals = 3
+  private readonly upshiftAfterGoodIntervals = 4
 
   private constructor() {
     this.config = {
@@ -161,6 +212,7 @@ export class WebRTCService {
     }
 
     this.peerConnections.set(connectionId, peerData)
+    this.initializeAdaptiveQuality(hostId)
     this.notifyConnectionListeners()
 
     return peerData
@@ -188,9 +240,11 @@ export class WebRTCService {
       if (connection.connectionState === "connected") {
         // Update selected candidate pair when connected
         this.updateSelectedCandidatePair(hostId)
+        this.startQualitySampling(hostId)
       }
 
       if (connection.connectionState === "failed" || connection.connectionState === "disconnected") {
+        this.stopQualitySampling(hostId)
         this.handleConnectionFailure(peerData.id)
       }
 
@@ -468,6 +522,8 @@ export class WebRTCService {
 
     // Remove from map
     this.peerConnections.delete(peerData.id)
+    this.stopQualitySampling(hostId)
+    this.adaptiveQualityStates.delete(hostId)
     this.notifyConnectionListeners()
   }
 
@@ -482,6 +538,13 @@ export class WebRTCService {
       this.localStream.getTracks().forEach((track) => track.stop())
       this.localStream = null
     }
+
+    this.adaptiveQualityStates.forEach((state) => {
+      if (state.samplingTimer) {
+        clearInterval(state.samplingTimer)
+      }
+    })
+    this.adaptiveQualityStates.clear()
   }
 
   // Get peer connection by host ID
@@ -554,6 +617,13 @@ export class WebRTCService {
     }
   }
 
+  public onQualityTierChange(callback: (state: QualityTierState) => void): () => void {
+    this.qualityTierListeners.push(callback)
+    return () => {
+      this.qualityTierListeners = this.qualityTierListeners.filter((cb) => cb !== callback)
+    }
+  }
+
   // Notify listeners
   private notifyConnectionListeners(): void {
     const connections = Array.from(this.peerConnections.values())
@@ -582,6 +652,16 @@ export class WebRTCService {
   public getRemoteStream(hostId: string): MediaStream | null {
     const peerData = this.getPeerConnectionByHostId(hostId)
     return peerData?.remoteStream || null
+  }
+
+  public getQualityTierState(hostId: string): QualityTierState | null {
+    return this.buildQualityTierState(hostId)
+  }
+
+  public getAllQualityTierStates(): QualityTierState[] {
+    return Array.from(this.adaptiveQualityStates.values())
+      .map((state) => this.buildQualityTierState(state.hostId))
+      .filter((state): state is QualityTierState => Boolean(state))
   }
 
   // Add a method to update ICE servers
@@ -749,5 +829,233 @@ export class WebRTCService {
     } catch (error) {
       console.error("Failed to get selected candidate pair:", error)
     }
+  }
+
+  private initializeAdaptiveQuality(hostId: string): void {
+    if (this.adaptiveQualityStates.has(hostId)) return
+
+    this.adaptiveQualityStates.set(hostId, {
+      hostId,
+      tierIndex: 0,
+      consecutiveBadSamples: 0,
+      consecutiveGoodSamples: 0,
+    })
+
+    this.applyQualityTier(hostId, 0)
+  }
+
+  private startQualitySampling(hostId: string): void {
+    const state = this.adaptiveQualityStates.get(hostId)
+    if (!state) return
+
+    if (state.samplingTimer) {
+      clearInterval(state.samplingTimer)
+    }
+
+    state.samplingTimer = setInterval(() => {
+      this.sampleNetworkQuality(hostId)
+    }, this.sampleIntervalMs)
+
+    this.sampleNetworkQuality(hostId)
+  }
+
+  private stopQualitySampling(hostId: string): void {
+    const state = this.adaptiveQualityStates.get(hostId)
+    if (!state?.samplingTimer) return
+
+    clearInterval(state.samplingTimer)
+    state.samplingTimer = undefined
+  }
+
+  private async sampleNetworkQuality(hostId: string): Promise<void> {
+    const peerData = this.getPeerConnectionByHostId(hostId)
+    const state = this.adaptiveQualityStates.get(hostId)
+    if (!peerData || !state || peerData.connection.connectionState !== "connected") {
+      return
+    }
+
+    const sample = await this.readNetworkQualitySample(peerData)
+    if (!sample) return
+
+    state.lastSample = sample
+    this.evaluateTierAdjustments(hostId, sample)
+    const tierState = this.buildQualityTierState(hostId)
+    if (tierState) {
+      peerData.qualityTierState = tierState
+      this.notifyQualityTierListeners(tierState)
+    }
+  }
+
+  private async readNetworkQualitySample(peerData: PeerConnectionData): Promise<NetworkQualitySample | null> {
+    const state = this.adaptiveQualityStates.get(peerData.hostId)
+    if (!state) return null
+
+    try {
+      const stats = await peerData.connection.getStats()
+
+      let roundTripTimeMs = 0
+      let packetsSent = 0
+      let packetsLost = 0
+      let framesEncoded = 0
+      let framesDropped = 0
+      let outboundBitrateKbps = 0
+
+      stats.forEach((report) => {
+        if (report.type === "candidate-pair" && (report as any).state === "succeeded") {
+          roundTripTimeMs = ((report as any).currentRoundTripTime || 0) * 1000
+        }
+
+        if (report.type === "outbound-rtp" && (report as any).kind === "video") {
+          packetsSent = (report as any).packetsSent || 0
+          packetsLost = (report as any).packetsLost || 0
+          const totalFramesEncoded = (report as any).framesEncoded || 0
+          const totalFramesDropped = (report as any).framesDropped || 0
+          const timestampMs = report.timestamp || 0
+          const bytesSent = (report as any).bytesSent || 0
+
+          if (
+            state.previousOutboundTimestampMs &&
+            state.previousOutboundTimestampMs > 0 &&
+            timestampMs > state.previousOutboundTimestampMs &&
+            typeof state.previousOutboundBytes === "number" &&
+            bytesSent >= state.previousOutboundBytes
+          ) {
+            outboundBitrateKbps =
+              ((bytesSent - state.previousOutboundBytes) * 8) /
+              ((timestampMs - state.previousOutboundTimestampMs) / 1000) /
+              1000
+          }
+
+          if (typeof state.previousFramesEncoded === "number" && typeof state.previousFramesDropped === "number") {
+            framesEncoded = Math.max(0, totalFramesEncoded - state.previousFramesEncoded)
+            framesDropped = Math.max(0, totalFramesDropped - state.previousFramesDropped)
+          } else {
+            framesEncoded = totalFramesEncoded
+            framesDropped = totalFramesDropped
+          }
+
+          state.previousOutboundBytes = bytesSent
+          state.previousOutboundTimestampMs = timestampMs
+          state.previousFramesEncoded = totalFramesEncoded
+          state.previousFramesDropped = totalFramesDropped
+        }
+      })
+
+      const totalPackets = packetsSent + packetsLost
+      const packetLossRate = totalPackets > 0 ? packetsLost / totalPackets : 0
+      const totalFrames = framesEncoded + framesDropped
+      const frameDropRate = totalFrames > 0 ? framesDropped / totalFrames : 0
+
+      return {
+        roundTripTimeMs,
+        packetLossRate,
+        outboundBitrateKbps,
+        frameDropRate,
+      }
+    } catch (error) {
+      console.error(`Failed network quality sampling for ${peerData.hostId}:`, error)
+      return null
+    }
+  }
+
+  private evaluateTierAdjustments(hostId: string, sample: NetworkQualitySample): void {
+    const state = this.adaptiveQualityStates.get(hostId)
+    if (!state) return
+
+    const currentTier = this.bitrateLadder[state.tierIndex]
+    const isBadSample =
+      sample.roundTripTimeMs > 300 ||
+      sample.packetLossRate > 0.05 ||
+      sample.outboundBitrateKbps < (currentTier.maxBitrate / 1000) * 0.65 ||
+      sample.frameDropRate > 0.08
+
+    if (isBadSample) {
+      state.consecutiveBadSamples += 1
+      state.consecutiveGoodSamples = 0
+    } else {
+      state.consecutiveGoodSamples += 1
+      state.consecutiveBadSamples = 0
+    }
+
+    if (state.consecutiveBadSamples >= this.downshiftAfterBadIntervals && state.tierIndex < this.bitrateLadder.length - 1) {
+      this.applyQualityTier(hostId, state.tierIndex + 1)
+      state.consecutiveBadSamples = 0
+      state.consecutiveGoodSamples = 0
+      return
+    }
+
+    const canUpshift = state.tierIndex > 0
+    const recoveryIsStable =
+      sample.roundTripTimeMs < 180 &&
+      sample.packetLossRate < 0.02 &&
+      sample.frameDropRate < 0.03 &&
+      sample.outboundBitrateKbps > (this.bitrateLadder[state.tierIndex - 1].maxBitrate / 1000) * 0.8
+
+    if (canUpshift && recoveryIsStable && state.consecutiveGoodSamples >= this.upshiftAfterGoodIntervals) {
+      this.applyQualityTier(hostId, state.tierIndex - 1)
+      state.consecutiveGoodSamples = 0
+      state.consecutiveBadSamples = 0
+    }
+  }
+
+  private async applyQualityTier(hostId: string, tierIndex: number): Promise<void> {
+    const peerData = this.getPeerConnectionByHostId(hostId)
+    const state = this.adaptiveQualityStates.get(hostId)
+    if (!peerData || !state) return
+
+    const tier = this.bitrateLadder[tierIndex]
+    if (!tier) return
+
+    const videoSenders = peerData.connection.getSenders().filter((sender) => sender.track?.kind === "video")
+
+    for (const sender of videoSenders) {
+      const params = sender.getParameters()
+      if (!params.encodings || params.encodings.length === 0) {
+        params.encodings = [{}]
+      }
+
+      params.encodings = params.encodings.map((encoding) => ({
+        ...encoding,
+        maxBitrate: tier.maxBitrate,
+        maxFramerate: tier.maxFramerate,
+        scaleResolutionDownBy: tier.scaleResolutionDownBy,
+      }))
+
+      try {
+        await sender.setParameters(params)
+      } catch (error) {
+        console.error(`Failed to apply quality tier for ${hostId}:`, error)
+      }
+    }
+
+    state.tierIndex = tierIndex
+    const tierState = this.buildQualityTierState(hostId)
+    if (tierState) {
+      peerData.qualityTierState = tierState
+      this.notifyQualityTierListeners(tierState)
+    }
+  }
+
+  private buildQualityTierState(hostId: string): QualityTierState | null {
+    const state = this.adaptiveQualityStates.get(hostId)
+    if (!state) return null
+
+    const tier = this.bitrateLadder[state.tierIndex]
+    if (!tier) return null
+
+    return {
+      hostId,
+      tierLabel: tier.label,
+      modeLabel: `Auto: ${tier.label}`,
+      tierIndex: state.tierIndex,
+      maxBitrate: tier.maxBitrate,
+      maxFramerate: tier.maxFramerate,
+      scaleResolutionDownBy: tier.scaleResolutionDownBy,
+      sample: state.lastSample,
+    }
+  }
+
+  private notifyQualityTierListeners(state: QualityTierState): void {
+    this.qualityTierListeners.forEach((listener) => listener(state))
   }
 }
