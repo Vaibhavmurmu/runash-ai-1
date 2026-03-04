@@ -45,6 +45,14 @@ const contenders = [
   },
 ]
 
+const ecosystemLinks = [
+  { name: "Hugging Face", href: "https://huggingface.co" },
+  { name: "Kaggle", href: "https://www.kaggle.com" },
+  { name: "Google Colab", href: "https://colab.research.google.com" },
+  { name: "RunAsh", href: "https://runash.in" },
+  { name: "RunAsh AI Research Lab", href: "https://runash.in/research-paper" },
+]
+
 export default function RealtimeLiveVllmPage() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-white to-orange-50 dark:from-gray-950 dark:to-gray-900">
@@ -115,6 +123,27 @@ export default function RealtimeLiveVllmPage() {
                   Download Model Package <Download className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Platform & Research Links</CardTitle>
+              <CardDescription>Explore supporting platforms and the RunAsh research ecosystem.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-3">
+              {ecosystemLinks.map((item) => (
+                <Button
+                  key={item.name}
+                  asChild
+                  variant="outline"
+                  className="border-orange-300 text-orange-700 hover:bg-orange-100/70 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-900/30"
+                >
+                  <Link href={item.href} target="_blank" rel="noreferrer">
+                    {item.name} <ArrowUpRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+              ))}
             </CardContent>
           </Card>
 
