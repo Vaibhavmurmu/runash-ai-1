@@ -7,6 +7,7 @@ declare module "next-auth" {
       role: string
       username: string
       emailVerified: boolean
+      ssoOrganization?: number
     } & DefaultSession["user"]
   }
 
@@ -14,6 +15,7 @@ declare module "next-auth" {
     role: string
     username: string
     emailVerified: boolean
+    ssoOrganization?: number
   }
 }
 
@@ -22,6 +24,7 @@ declare module "next-auth/jwt" {
     role: string
     username: string
     emailVerified: boolean
+    ssoOrganization?: number
   }
 }
 

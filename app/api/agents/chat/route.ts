@@ -1,27 +1,44 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { openai } from "@ai-sdk/openai"
-import { streamText } from "ai"
 import { z } from "zod"
-
-import { authOptions } from "@/lib/auth"
+import { getServerAuthSession } from "@/lib/auth/session"
 import { logApiEvent } from "@/lib/api/logging"
 import { resolveRequestId } from "@/lib/api/response"
 import { rateLimit } from "@/lib/rate-limit"
 import {
   createAgentMessage,
+  createAgentMessageAttachments,
+  findAgentMessagesByClientRequestId,
   upsertAgentSession,
   updateAgentMessage,
 } from "@/lib/repositories/agent-orchestration"
+import { RELAY_AGENT_TOOLS } from "@/lib/skills/relay-tool-registry"
+import { AGENT_ROLES } from "@/services/agent-role-orchestration"
 import { AgentOrchestrationService, type SupportedTool } from "@/services/agent-orchestration-service"
 import { enqueueToolJob } from "@/services/agent-tool-queue-worker"
-import { buildToolPlan } from "./chat-request-handler"
+import { AIProviderError, resolveModelSelection, streamModelTextWithFallback } from "@/lib/ai/provider-registry"
+import { buildDefaultToolPayloads, buildToolPlan, resolveRunAshChatToolSelection } from "./chat-request-handler"
+import { CHAT_ERROR_CODES, chatAttachmentSchema, clientRequestIdSchema, streamRetrySchema } from "@/lib/chat-contracts"
 
 const requestSchema = z.object({
+  agentRole: z.enum(AGENT_ROLES).default("broker"),
+  preferences: z
+    .object({
+      prioritizeSustainability: z.boolean().optional(),
+      maxBudgetMinor: z.number().int().nonnegative().optional(),
+      minMarginPercent: z.number().min(0).max(100).optional(),
+      urgencyLevel: z.enum(["low", "medium", "high"]).optional(),
+    })
+    .optional(),
   sessionId: z.string().trim().min(1).optional(),
   title: z.string().trim().min(1).max(120).optional(),
   message: z.string().trim().min(1).max(5000),
-  tools: z.array(z.enum(["catalog_lookup", "inventory_health", "checkout_preview", "web_search"])).default([]),
+  provider: z.string().trim().min(1).optional(),
+  model: z.string().trim().min(1).optional(),
+  tools: z.array(z.enum(RELAY_AGENT_TOOLS)).default([]),
+  toolPayloads: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+  attachments: z.array(chatAttachmentSchema).max(3).optional(),
+  clientRequestId: clientRequestIdSchema.optional(),
+  retry: streamRetrySchema.optional(),
 })
 
 const AGENT_CHAT_ENABLED = process.env.RUNASH_AGENT_CHAT_ENABLED !== "false"
@@ -34,27 +51,28 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized", requestId }, { status: 401 })
+      return NextResponse.json({ error: "Unauthorized", code: CHAT_ERROR_CODES.AUTH_REQUIRED, requestId }, { status: 401 })
     }
 
     const userId = String(session.user.id)
     await AgentOrchestrationService.runRetentionSweep()
     const throttle = AgentOrchestrationService.enforceAdaptiveThrottle(`agents-chat:${userId}`, 45, 60_000)
     if (!throttle.allowed) {
-      return NextResponse.json({ error: "Adaptive throttle limit exceeded", requestId }, { status: 429 })
+      return NextResponse.json({ error: "Adaptive throttle limit exceeded", code: CHAT_ERROR_CODES.RATE_LIMITED, requestId }, { status: 429 })
     }
 
     const rateLimitResult = await rateLimit(request, `agents-chat:${userId}`, 30, 60)
     if (!rateLimitResult.success) {
-      return NextResponse.json({ error: "Rate limit exceeded", requestId }, { status: 429 })
+      return NextResponse.json({ error: "Rate limit exceeded", code: CHAT_ERROR_CODES.RATE_LIMITED, requestId }, { status: 429 })
     }
 
     const body = await request.json().catch(() => ({}))
     const parsed = requestSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid request payload", details: parsed.error.flatten(), requestId }, { status: 400 })
+      const hasAttachmentIssue = parsed.error.issues.some((issue) => issue.path.includes("attachments"))
+      return NextResponse.json({ error: hasAttachmentIssue ? "Invalid attachment metadata" : "Invalid request payload", code: hasAttachmentIssue ? CHAT_ERROR_CODES.INVALID_ATTACHMENT : CHAT_ERROR_CODES.INVALID_REQUEST, details: parsed.error.flatten(), requestId }, { status: 400 })
     }
 
     const sanitizedMessage = AgentOrchestrationService.sanitizeUserInput(parsed.data.message)
@@ -63,9 +81,33 @@ export async function POST(request: NextRequest) {
     }
 
     const agentSession = await upsertAgentSession(userId, parsed.data.sessionId, parsed.data.title)
-    const userMessage = await createAgentMessage(agentSession.id, "user", sanitizedMessage, "completed")
-    const assistantMessage = await createAgentMessage(agentSession.id, "assistant", "", "queued")
 
+    if (parsed.data.clientRequestId) {
+      const existingMessages = await findAgentMessagesByClientRequestId(agentSession.id, parsed.data.clientRequestId)
+      const existingAssistant = existingMessages.find((entry) => entry.role === "assistant" && entry.status === "completed")
+      if (existingAssistant) {
+        return NextResponse.json({
+          deduped: true,
+          requestId,
+          sessionId: agentSession.id,
+          messageId: existingAssistant.id,
+          content: existingAssistant.content,
+        })
+      }
+    }
+
+    const userMessage = await createAgentMessage(agentSession.id, "user", sanitizedMessage, "completed", { clientRequestId: parsed.data.clientRequestId })
+    const assistantMessage = await createAgentMessage(agentSession.id, "assistant", "", "queued", { clientRequestId: parsed.data.clientRequestId })
+
+    if (parsed.data.attachments?.length) {
+      await createAgentMessageAttachments({
+        sessionId: agentSession.id,
+        messageId: userMessage.id,
+        attachments: parsed.data.attachments,
+      })
+    }
+
+    const selection = resolveModelSelection(parsed.data.model, parsed.data.provider)
     const encoder = new TextEncoder()
 
     const eventStream = new ReadableStream({
@@ -79,15 +121,47 @@ export async function POST(request: NextRequest) {
           await updateAgentMessage(assistantMessage.id, { status: "streaming" })
 
           const toolOutputs: Record<string, unknown> = {}
-          const toolPlan = buildToolPlan(parsed.data.tools as SupportedTool[])
+          const selectedTools = resolveRunAshChatToolSelection(
+            sanitizedMessage,
+            parsed.data.tools as SupportedTool[],
+          )
+          const toolPlan = buildToolPlan(selectedTools)
+          const defaultPayloads = await buildDefaultToolPayloads({
+            message: sanitizedMessage,
+            sessionId: agentSession.id,
+            requestedTools: selectedTools,
+            authSession: session,
+          })
+          const checkoutValidation = defaultPayloads?.checkout_validation as
+            | { status: "blocked"; missing_fields: string[]; next_action: string }
+            | undefined
+
+          if (checkoutValidation?.status === "blocked") {
+            send("tool_result", {
+              tool: "initiate_link_checkout",
+              result: {
+                status: "blocked",
+                reason: "missing_checkout_context",
+                missing_fields: checkoutValidation.missing_fields,
+                next_action: checkoutValidation.next_action,
+              },
+              fromCache: false,
+            })
+          }
 
           for (const tool of toolPlan.immediate) {
+            if (tool === "initiate_link_checkout" && checkoutValidation?.status === "blocked") {
+              continue
+            }
             send("tool_start", { tool, messageId: assistantMessage.id, status: "tool-running" })
 
-            const execution = await AgentOrchestrationService.executeToolWithPolicy(tool, { query: sanitizedMessage }, {
+            const payload = parsed.data.toolPayloads?.[tool] ?? defaultPayloads?.[tool] ?? { query: sanitizedMessage }
+            const execution = await AgentOrchestrationService.executeToolWithPolicy(tool, payload, {
               sessionId: agentSession.id,
               messageId: assistantMessage.id,
               tenantId: userId,
+              role: parsed.data.agentRole,
+              preferences: parsed.data.preferences,
             })
 
             toolOutputs[tool] = execution.result
@@ -95,10 +169,14 @@ export async function POST(request: NextRequest) {
           }
 
           for (const tool of toolPlan.queued) {
+            if (tool === "initiate_link_checkout" && checkoutValidation?.status === "blocked") {
+              continue
+            }
             send("tool_start", { tool, messageId: assistantMessage.id, status: "tool-running" })
+            const payload = parsed.data.toolPayloads?.[tool] ?? defaultPayloads?.[tool] ?? { query: sanitizedMessage }
             const jobId = enqueueToolJob({
               tool,
-              payload: { query: sanitizedMessage },
+              payload,
               context: {
                 sessionId: agentSession.id,
                 messageId: assistantMessage.id,
@@ -113,12 +191,15 @@ export async function POST(request: NextRequest) {
             })
           }
 
-          const completion = streamText({
-            model: openai("gpt-4o-mini"),
+          const completion = await streamModelTextWithFallback(selection, {
             system:
               "You are RunAsh Agent. Keep answers concise, safe, and avoid exposing secrets. If tools are provided, ground your answer in tool results.",
             messages: [
               { role: "user", content: `User prompt: ${sanitizedMessage}` },
+              {
+                role: "system",
+                content: `Attachment metadata: ${JSON.stringify(parsed.data.attachments ?? [])}`,
+              },
               { role: "system", content: `Tool outputs: ${JSON.stringify(toolOutputs)}` },
             ],
             temperature: 0.4,
@@ -128,7 +209,7 @@ export async function POST(request: NextRequest) {
           let fullText = ""
           for await (const token of completion.textStream) {
             fullText += token
-            send("token", { token, messageId: assistantMessage.id })
+            send("token", { token, messageId: assistantMessage.id, provider: completion.provider, model: completion.model, requestId })
           }
 
           await updateAgentMessage(assistantMessage.id, { status: "completed", content: fullText })
@@ -139,13 +220,19 @@ export async function POST(request: NextRequest) {
             messageId: assistantMessage.id,
             userMessageId: userMessage.id,
             content: fullText,
+            provider: completion.provider,
+            model: completion.model,
+            requestId,
           })
         } catch (error) {
           await updateAgentMessage(assistantMessage.id, { status: "failed" })
 
+          const providerErrorCode = error instanceof AIProviderError ? error.code : undefined
+
           send("error", {
             message: "Unable to complete agent turn",
             requestId,
+            code: providerErrorCode === "TIMEOUT" ? CHAT_ERROR_CODES.PROVIDER_TIMEOUT : providerErrorCode,
           })
 
           logApiEvent("error", "agents.chat.stream_failed", {
@@ -168,6 +255,7 @@ export async function POST(request: NextRequest) {
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
         "x-request-id": requestId,
+        "x-provider": selection.provider,
       },
     })
   } catch (error) {

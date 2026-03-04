@@ -1,6 +1,42 @@
 import { NodeDefinition } from './registry'
 
 export const streamingNodeDefinitions: Record<string, NodeDefinition> = {
+
+  'network-quality-trigger': {
+    id: 'network-quality-trigger',
+    type: 'trigger',
+    label: 'Network Quality Trigger',
+    category: 'Streaming',
+    inputs: {
+      event: { type: 'string', default: 'network_quality_degraded' },
+      packetLossPercent: { type: 'number', default: 0 },
+      uplinkMbps: { type: 'number', default: 12 },
+    },
+    outputs: {
+      triggered: { type: 'boolean' },
+      trigger: { type: 'string' },
+      diagnostics: { type: 'object' },
+    },
+    description: 'Trigger stream fallback or recovery automation from network telemetry',
+    color: '#FFB84D',
+  },
+  'stream-network-resilience': {
+    id: 'stream-network-resilience',
+    type: 'streaming',
+    label: 'Network Resilience Automation',
+    category: 'Streaming',
+    inputs: {
+      sessionId: { type: 'string', required: true },
+      trigger: { type: 'string', default: 'network_quality_degraded' },
+      state: { type: 'object' },
+    },
+    outputs: {
+      state: { type: 'object' },
+      timeline: { type: 'array' },
+    },
+    description: 'Apply idempotent stream profile degradation/recovery actions with audit timeline',
+    color: '#FFB84D',
+  },
   'stream-multi': {
     id: 'stream-multi',
     type: 'streaming',

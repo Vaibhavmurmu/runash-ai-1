@@ -1,73 +1,63 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { type NextRequest } from "next/server"
+import { respondError, respondSuccess } from "@/lib/api/envelope"
+import { logApiEvent } from "@/lib/api/logging"
 import { Database } from "@/lib/database"
+import { getServerAuthSession } from "@/lib/auth/session"
+import { handleStreamsGet, handleStreamsPost, type StreamsRouteDeps } from "./streams-route-handler"
+
+const ROUTE = "/api/streams"
+
+const defaultDeps: StreamsRouteDeps = {
+  getSession: getServerAuthSession,
+  database: Database,
+  respondOk: respondSuccess,
+  respondErr: respondError,
+  logEvent: logApiEvent,
+}
+
+export { sellerScheduleRequestSchema } from "./streams-route-handler"
 
 export async function POST(req: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const { title, description, platform } = await req.json()
-
-    if (!title || !platform) {
-      return NextResponse.json({ error: "Title and platform are required" }, { status: 400 })
-    }
-
-    // Generate stream key
-    const streamKey = `sk_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-
-    const stream = await Database.createStream({
-      title,
-      description: description || "",
-      user_id: session.user.id,
-      status: "scheduled",
-      platform,
-      stream_key: streamKey,
-      viewer_count: 0,
-    })
-
-    return NextResponse.json({ stream })
-  } catch (error) {
-    console.error("Create stream error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
-  }
+  return handleStreamsPost(req, defaultDeps)
 }
 
 export async function GET(req: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const streams = await Database.getUserStreams(session.user.id)
-    return NextResponse.json({ streams })
-  } catch (error) {
-    console.error("Get streams error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
-  }
+  return handleStreamsGet(req, defaultDeps)
 }
 
 export async function PATCH(req: NextRequest) {
+  const requestId = req.headers.get("x-correlation-id") ?? req.headers.get("x-request-id") ?? crypto.randomUUID()
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
     if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return respondError(req, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401, requestId })
     }
 
     const { id, ...updateData } = await req.json()
 
     if (!id) {
-      return NextResponse.json({ error: "Stream ID required" }, { status: 400 })
+      return respondError(req, { code: "VALIDATION_FAILED", message: "Stream ID required" }, { status: 400, requestId })
     }
 
     const stream = await Database.updateStream(id, updateData)
-    return NextResponse.json({ stream })
+
+    logApiEvent("info", "streams.update.success", {
+      requestId,
+      route: ROUTE,
+      method: req.method,
+      userId: session.user.id,
+      details: { operation: "update-stream", streamId: id, changedFields: Object.keys(updateData) },
+    })
+
+    return respondSuccess(req, { stream }, { requestId })
   } catch (error) {
-    console.error("Update stream error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    logApiEvent("error", "streams.update.failed", {
+      requestId,
+      route: ROUTE,
+      method: req.method,
+      details: { operation: "update-stream", code: "STREAM_UPDATE_FAILED" },
+      error,
+    })
+    return respondError(req, { code: "STREAM_UPDATE_FAILED", message: "Unable to update stream." }, { status: 500, requestId })
   }
 }

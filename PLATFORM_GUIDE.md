@@ -450,3 +450,143 @@ For incident debugging and client consistency, chat/session APIs use a standard 
 - `requestId`
 
 See `docs/API_CONTRACTS.md` for request/response examples, streaming compatibility notes, and the endpoint error code catalog.
+
+---
+
+## Editor Domain APIs
+
+The editor now persists project state with first-class domain entities:
+- `project`
+- `timeline`
+- `track`
+- `segment`
+- `asset`
+- `render job`
+
+### API routes
+
+All routes are under `/api/editor/**` and are authenticated per user ownership.
+
+- `GET/POST /api/editor/projects`
+- `GET/PATCH/DELETE /api/editor/projects/:projectId`
+- `GET/PUT /api/editor/projects/:projectId/timeline`
+- `POST /api/editor/projects/:projectId/tracks`
+- `PATCH/DELETE /api/editor/projects/:projectId/tracks/:trackId`
+- `POST /api/editor/projects/:projectId/segments`
+- `PATCH/DELETE /api/editor/projects/:projectId/segments/:segmentId`
+- `GET/POST /api/editor/projects/:projectId/assets`
+- `PATCH/DELETE /api/editor/projects/:projectId/assets/:assetId`
+- `GET/POST /api/editor/render-jobs`
+- `GET/PATCH/DELETE /api/editor/render-jobs/:jobId`
+
+### Persistence
+
+SQL migrations for editor persistence are located in `scripts/sql/2026-02-13_create_editor_domain_tables.sql` and include ownership (`owner_id`) and timestamp tracking (`created_at`, `updated_at`) for all editor entities.
+
+
+
+## Email Delivery Safety Layer
+
+RunAsh email sends now support a safety gate before provider delivery:
+
+- `EMAIL_SAFE_MODE=true` blocks non-allowlisted recipients.
+- `EMAIL_TEST_RECIPIENTS=comma,separated,list` defines the allowlist for safe mode.
+- `EMAIL_DRY_RUN=true` skips provider sends while preserving delivery tracking in `pending` simulated state.
+- `EMAIL_SAFE_SINK_RECIPIENT` optionally rewrites non-allowlisted recipients to a sink mailbox.
+
+For API surfaces that handle safety policy exceptions, blocked sends return an explicit payload with `error: "EMAIL_SAFETY_BLOCKED"`.
+
+
+## Inbound Email Reply Automation
+
+A full inbound-reply architecture is available for provider webhooks and admin review workflows.
+
+### Endpoints
+- `POST /api/email/inbound/[provider]`: receives inbound reply payloads for `resend`, `sendgrid`, `ses`, and `generic`, verifies signatures, normalizes payloads, and persists messages/threads.
+- `GET /api/admin/email-replies`: loads the reply inbox with latest draft/review metadata and action audit trail.
+- `POST /api/admin/email-replies/[messageId]/action`: supports `save_edit`, `approve_send`, and `skip` admin actions.
+
+### Data model
+- `email_reply_threads`: groups inbound conversations and stores mapped contact/broadcast/campaign context.
+- `email_inbound_messages`: immutable normalized inbound message records.
+- `email_reply_actions`: audit log for drafted/sent/skipped/failed outcomes, including confidence and review flags.
+
+### Policy controls
+- Allow/deny auto-reply by campaign: `EMAIL_REPLY_ALLOW_CAMPAIGN_IDS`, `EMAIL_REPLY_DENY_CAMPAIGN_IDS`.
+- Allow/deny auto-reply by contact tags: `EMAIL_REPLY_ALLOW_TAGS`, `EMAIL_REPLY_DENY_TAGS`.
+- Confidence threshold fallback: `EMAIL_REPLY_CONFIDENCE_THRESHOLD`.
+- Strict safe mode: `EMAIL_REPLY_STRICT_SAFE_MODE=true` forces human review and blocks auto-replies.
+- Global toggle: `EMAIL_REPLY_AUTO_ENABLED=true` enables policy-eligible auto reply progression.
+
+### Admin UI
+- Email Management now includes a **Reply Inbox** tab with:
+  - AI draft preview/edit,
+  - approve+send and skip controls,
+  - per-thread audit trail.
+
+---
+
+## Workflow Kit Email Automation Extensions
+
+The workflow kit now supports operational email automation with auditable execution records.
+
+### Email workflow nodes
+- `email.send_broadcast`
+- `email.send_test`
+- `email.import_contacts`
+- `email.handle_inbound_reply`
+- `email.webhook_event_trigger`
+
+### Trigger model
+Workflows can now run from:
+- `manual` runs from the workflow studio
+- `schedule` runs with cron metadata (`scheduleCron`)
+- `webhook_event` runs for provider lifecycle events (`delivered`, `opened`, `bounced`, `clicked`, `inbound_reply`)
+
+### Auditability and rollback
+Each execution writes workflow and node-level audit events, including rollback entries after failed runs. This gives admins a full trace for automated email actions and post-failure remediation.
+
+### Ready-made templates
+Email automation templates are available for:
+- Welcome sequence
+- Re-engagement
+- Bounce cleanup
+- AI reply triage
+
+
+## Streaming Session Backend Contract (2026-02)
+
+- `EnhancedStreamingStudio` uses server-backed stream session APIs for create/start/end lifecycle and authoritative status transitions.
+- The studio reads live health + metrics through a hybrid realtime strategy: primary realtime channel delivery with polling fallback for continuity.
+- Stream lifecycle status is maintained on the server and mirrored in UI with optimistic updates that rollback when API requests fail.
+- Stream chat relay persists through `app/api/streams/[id]/chat/*` endpoints with connector/platform metadata for multi-platform attribution.
+
+### Streaming Studio Runtime Architecture
+
+1. **Session authority (API)**
+   - Stream lifecycle transitions (`create`, `start`, `end`) are accepted only through server routes so the backend remains source-of-truth.
+   - Client controls in Studio issue mutation requests and reconcile local state with returned server timestamps/status.
+
+2. **Realtime event path (primary)**
+   - Studio subscribes to a realtime event channel for low-latency stream health, viewer, and interaction signals.
+   - Event handling is append-only and idempotent on the client to avoid duplicate metric jumps during reconnects.
+
+3. **Polling path (fallback and healing)**
+   - Periodic polling remains enabled as a safety net to refill missed events and verify channel health.
+   - Poll cadence is adaptive (faster while live, slower for background/manage views) to balance freshness and load.
+
+4. **Resilience behavior**
+   - On channel interruption, Studio automatically degrades to polling-only mode while surfacing channel health telemetry.
+   - When channel recovery is detected, Studio re-subscribes and keeps polling briefly for state convergence before returning to normal cadence.
+
+### Incident rollback playbook (production)
+
+If realtime delivery contributes to a production incident:
+
+1. Disable the realtime channel subscription at runtime/feature-flag level.
+2. Force Studio + dashboard read paths to polling-only mode.
+3. Validate stream lifecycle + metrics correctness via polling endpoints and health telemetry.
+4. Re-enable realtime channel only after root-cause mitigation and a controlled canary.
+
+This rollback keeps lifecycle controls operational while reducing transport complexity during active incidents. See `docs/API_CONTRACTS.md` for endpoint-level contracts.
+

@@ -1,5 +1,58 @@
+import { orchestrateNetworkQualityAutomation } from "@/services/agent-orchestration-service"
+
 // Streaming Integration Node Handlers
 export const streamingNodes = {
+
+  'network-quality-trigger': async (inputs: Record<string, any>, config: Record<string, any>) => {
+    const event = String(config.event ?? inputs.event ?? 'network_quality_degraded')
+    const packetLossPercent = Number(config.packetLossPercent ?? inputs.packetLossPercent ?? 0)
+    const uplinkMbps = Number(config.uplinkMbps ?? inputs.uplinkMbps ?? 12)
+    const degraded = event === 'network_quality_degraded' || packetLossPercent > 3 || uplinkMbps < 2
+    const trigger = degraded ? 'network_quality_degraded' : 'network_quality_recovered'
+    return {
+      triggered: true,
+      trigger,
+      diagnostics: {
+        packetLossPercent,
+        uplinkMbps,
+      },
+    }
+  },
+
+  'stream-network-resilience': async (inputs: Record<string, any>, config: Record<string, any>) => {
+    const sessionId = String(config.sessionId ?? inputs.sessionId ?? inputs.streamId ?? '')
+    if (!sessionId) {
+      return {
+        success: false,
+        error: 'sessionId is required',
+      }
+    }
+
+    const trigger = (config.trigger ?? inputs.trigger ?? 'network_quality_degraded') as
+      | 'network_quality_degraded'
+      | 'network_quality_recovered'
+    const state =
+      config.state && typeof config.state === 'object'
+        ? (config.state as Record<string, unknown>)
+        : inputs.state && typeof inputs.state === 'object'
+          ? (inputs.state as Record<string, unknown>)
+          : undefined
+
+    const result = await orchestrateNetworkQualityAutomation({
+      sessionId,
+      streamId: String(config.streamId ?? inputs.streamId ?? sessionId),
+      trigger,
+      state,
+      actorRole: 'seller_ai',
+    })
+
+    return {
+      success: true,
+      trigger: result.trigger,
+      state: result.state,
+      timeline: result.timeline,
+    }
+  },
   'stream-publish': async (inputs: Record<string, any>, config: Record<string, any>) => {
     const { video } = inputs
     const { platform = 'youtube', streamKey, title = 'Live Stream' } = config

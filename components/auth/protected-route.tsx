@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useSession } from "next-auth/react"
+import { useAuthSession } from "@/lib/auth/access-client"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { Loader2 } from "lucide-react"
@@ -27,7 +27,7 @@ export function ProtectedRoute({
   loadingComponent,
   unauthorizedComponent,
 }: ProtectedRouteProps) {
-  const { data: session, status } = useSession()
+  const { data: session, status } = useAuthSession()
   const { hasPermission, hasAnyPermission, hasAllPermissions, hasRole, loading } = usePermissions()
   const router = useRouter()
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null)

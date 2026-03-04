@@ -1,8 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { AuthAnalytics } from "@/lib/auth-analytics"
 import { z } from "zod"
+import { logApiRouteError } from "@/lib/api/logging"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
+import { getScopedAuthMonitoringData, type MonitoringVisibility } from "@/lib/auth-observability"
+import { RBACManager } from "@/lib/rbac"
 
 const analyticsSchema = z.object({
   start: z
@@ -22,24 +24,36 @@ const analyticsSchema = z.object({
 })
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:analytics"],
+    auditEvent: "admin.auth.analytics.read",
+  })
+  if (!auth.success) return auth.response
+
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    // Check admin permissions
-    // This would typically check if user has admin role/permissions
-
     const { searchParams } = new URL(request.url)
     const params = Object.fromEntries(searchParams.entries())
     const { start, end } = analyticsSchema.parse(params)
 
     const analyticsData = await AuthAnalytics.getOverviewMetrics({ start, end })
+    const [canViewSystemLogs, canViewAdminAnalytics] = await Promise.all([
+      RBACManager.hasPermission(auth.userId, "system:logs"),
+      RBACManager.hasPermission(auth.userId, "admin:analytics"),
+    ])
 
-    return NextResponse.json(analyticsData)
+    const visibility: MonitoringVisibility = canViewSystemLogs ? "admin" : canViewAdminAnalytics ? "operator" : "viewer"
+    const monitoring = getScopedAuthMonitoringData(visibility, 24 * 60)
+
+    return NextResponse.json({
+      requestId: auth.requestId,
+      ...analyticsData,
+      monitoring,
+    })
   } catch (error) {
-    console.error("Error fetching auth analytics:", error)
-    return NextResponse.json({ error: "Failed to fetch analytics" }, { status: 500 })
+    logApiRouteError(request, "admin.auth.analytics.fetch_failed", error, {
+      errorCode: "AUTH_ANALYTICS_FETCH_FAILED",
+      requestId: auth.requestId,
+    })
+    return NextResponse.json({ error: "Failed to fetch analytics", requestId: auth.requestId }, { status: 500 })
   }
 }

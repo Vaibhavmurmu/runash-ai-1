@@ -1,11 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { generateBackupCodes, getBackupCodesStatus } from "@/lib/2fa"
+import { logApiRouteError } from "@/lib/api/logging"
+import { getServerAuthSession } from "@/lib/auth/session"
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -15,14 +15,14 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(status)
   } catch (error) {
-    console.error("Backup codes status error:", error)
+    logApiRouteError(request, "auth.2fa.backup_codes.status_failed", error, { errorCode: "AUTH_2FA_BACKUP_CODES_STATUS_FAILED" })
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerAuthSession()
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ backupCodes })
   } catch (error) {
-    console.error("Generate backup codes error:", error)
+    logApiRouteError(request, "auth.2fa.backup_codes.generate_failed", error, { errorCode: "AUTH_2FA_BACKUP_CODES_GENERATE_FAILED" })
     return NextResponse.json({ error: "Failed to generate backup codes" }, { status: 500 })
   }
 }

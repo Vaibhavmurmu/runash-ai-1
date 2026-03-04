@@ -1,193 +1,497 @@
-import type { NextAuthOptions } from "next-auth"
-import CredentialsProvider from "next-auth/providers/credentials"
-import GoogleProvider from "next-auth/providers/google"
-import GitHubProvider from "next-auth/providers/github"
-import AzureADProvider from "next-auth/providers/azure-ad"
-import OktaProvider from "next-auth/providers/okta"
-import { neon } from "@neondatabase/serverless"
-import { compare } from "bcryptjs"
-import { getSSOConfigForDomain, provisionSSOUser, logSSOLoginAttempt } from "./sso"
+import { betterAuth } from "better-auth"
+import { createHash } from "node:crypto"
+import { jwtVerify } from "jose"
+import { recordAuthMetric } from "@/lib/auth-observability"
+import { isFeatureFlagEnabled } from "@/lib/feature-flags"
+import { resolveSessionFromSources } from "@/lib/auth/session-accessor-handler"
+import { sql } from "@/lib/db"
+import { evaluateAccountLinkingPolicy } from "@/lib/auth/plugins/account-linking-policy"
+import { resolveGenericOAuthProviders } from "@/lib/auth/plugins/generic-oauth"
+import { buildTrustedAuthOrigins } from "@/lib/auth/plugins/oauth-proxy"
+import { resolveBearerAuthSession } from "@/lib/auth/session-modes"
+import {
+  buildCanonicalVerificationUrl,
+  resolveAuthCallbackUrl,
+  sendVerificationEmail as sendVerificationEmailMessage,
+} from "@/lib/email"
 
-// Initialize the SQL client
-const sql = neon(process.env.DATABASE_URL!)
+const baseURL =
+  process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
+export const emailVerificationCallbackURL = resolveAuthCallbackUrl(
+  process.env.BETTER_AUTH_EMAIL_VERIFICATION_CALLBACK_URL ?? "/login?emailVerified=1",
+)
+const requireEmailVerificationForEmailPassword = true
+const sendVerificationEmailOnSignUp = true
+const autoSignInAfterEmailPasswordSignUp = false
 
-export const authOptions: NextAuthOptions = {
-  session: {
-    strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+
+export const AUTH_COOKIE_NAMES = ["better-auth.session-token", "__Secure-better-auth.session-token"] as const
+const LEGACY_NEXT_AUTH_COOKIE_NAMES = ["next-auth.session-token", "__Secure-next-auth.session-token"] as const
+
+export type BetterAuthSession = Awaited<ReturnType<typeof auth.api.getSession>>
+
+export interface ServerAuthSession {
+  user: {
+    id: string
+    role: string
+    ssoOrganization: number | null
+    email?: string | null
+    name?: string | null
+  }
+}
+
+export interface AuthenticatedSessionUser {
+  userId: string
+  role: string
+  organizationId: number | null
+  email?: string | null
+  name?: string | null
+}
+
+export function getAuthSecret(): string {
+  const resolvedSecret = process.env.BETTER_AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
+  if (!resolvedSecret) {
+    throw new Error("Missing auth secret: set BETTER_AUTH_SECRET (or NEXTAUTH_SECRET for migration compatibility)")
+  }
+
+  return resolvedSecret
+}
+
+export function getLegacySessionSecrets(): string[] {
+  const secrets = [process.env.NEXTAUTH_SECRET, process.env.BETTER_AUTH_SECRET].filter(
+    (value): value is string => Boolean(value),
+  )
+
+  return [...new Set(secrets)]
+}
+
+const genericOAuthProviders = resolveGenericOAuthProviders()
+
+type AuthAccountLink = {
+  userId: string
+  providerId: string
+  accountId: string
+  idToken?: string | null
+}
+
+type AuthUser = {
+  id: string
+  emailVerified?: boolean
+}
+
+type AuthHookContext = {
+  path?: string
+  request?: {
+    headers?: Headers
+  }
+  context?: {
+    internalAdapter?: {
+      findUserById?: (userId: string) => Promise<AuthUser | null>
+      findAccountByProviderId?: (accountId: string, providerId: string) => Promise<AuthAccountLink | null>
+    }
+  }
+}
+
+function redactSubject(accountId: string) {
+  if (accountId.length <= 6) {
+    return "***"
+  }
+
+  return `${accountId.slice(0, 3)}***${accountId.slice(-3)}`
+}
+
+function anonymizeUserId(userId: string) {
+  return createHash("sha256").update(userId).digest("hex").slice(0, 12)
+}
+
+function auditAccountLinkEvent(
+  event: "account_link_attempt" | "account_link_denied" | "account_link_allowed",
+  payload: {
+    providerId: string
+    userId: string
+    reason?: string
+    requestPath?: string
+    subjectHash?: string
   },
-  pages: {
-    signIn: "/login",
-    signOut: "/logout",
-    error: "/auth/error",
-    verifyRequest: "/auth/verify-request",
-    newUser: "/get-started",
+) {
+  recordAuthMetric(event === "account_link_allowed" ? "auth.account_link.allowed" : "auth.account_link.denied", {
+    providerId: payload.providerId,
+    reason: payload.reason ?? "none",
+  })
+
+  console.info("[auth.account-link]", {
+    event,
+    providerId: payload.providerId,
+    userIdHash: anonymizeUserId(payload.userId),
+    reason: payload.reason,
+    requestPath: payload.requestPath,
+    subjectHash: payload.subjectHash,
+  })
+}
+
+export const auth = betterAuth({
+  appName: "RunAsh AI",
+  baseURL,
+  secret: getAuthSecret(),
+  emailAndPassword: {
+    enabled: true,
+    requireEmailVerification: requireEmailVerificationForEmailPassword,
+    autoSignIn: autoSignInAfterEmailPasswordSignUp,
   },
-  providers: [
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      allowDangerousEmailAccountLinking: true,
-    }),
-    GitHubProvider({
-      clientId: process.env.GITHUB_CLIENT_ID!,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-      allowDangerousEmailAccountLinking: true,
-    }),
-    ...(process.env.AZURE_AD_CLIENT_ID && process.env.AZURE_AD_CLIENT_SECRET && process.env.AZURE_AD_TENANT_ID
-      ? [
-          AzureADProvider({
-            clientId: process.env.AZURE_AD_CLIENT_ID,
-            clientSecret: process.env.AZURE_AD_CLIENT_SECRET,
-            tenantId: process.env.AZURE_AD_TENANT_ID,
-            allowDangerousEmailAccountLinking: true,
-          }),
-        ]
-      : []),
-    ...(process.env.OKTA_CLIENT_ID && process.env.OKTA_CLIENT_SECRET && process.env.OKTA_ISSUER
-      ? [
-          OktaProvider({
-            clientId: process.env.OKTA_CLIENT_ID,
-            clientSecret: process.env.OKTA_CLIENT_SECRET,
-            issuer: process.env.OKTA_ISSUER,
-            allowDangerousEmailAccountLinking: true,
-          }),
-        ]
-      : []),
-    CredentialsProvider({
-      name: "credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          return null
-        }
+  emailVerification: {
+    sendOnSignUp: sendVerificationEmailOnSignUp,
+    autoSignInAfterVerification: false,
+    callbackURL: emailVerificationCallbackURL,
+    sendVerificationEmail: async ({ user, url }) => {
+      const verificationUrl = buildCanonicalVerificationUrl({ url, callbackURL: emailVerificationCallbackURL })
 
-        try {
-          // Find user in database
-          const [user] = await sql`
-            SELECT * FROM users WHERE email = ${credentials.email}
-          `
-
-          if (!user) {
-            return null
-          }
-
-          // Check if password matches
-          const passwordMatch = await compare(credentials.password, user.password_hash)
-
-          if (!passwordMatch) {
-            return null
-          }
-
-          return {
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            image: user.avatar_url,
-            role: user.role,
-          }
-        } catch (error) {
-          console.error("Error during authorization:", error)
-          return null
-        }
-      },
-    }),
-  ],
-  callbacks: {
-    async jwt({ token, user, account }) {
-      if (user) {
-        token.role = user.role
-        token.id = user.id
-      }
-
-      if (
-        account?.provider &&
-        (account.provider === "google" ||
-          account.provider === "github" ||
-          account.provider === "azure-ad" ||
-          account.provider === "okta")
-      ) {
-        try {
-          // Check if this is an SSO login
-          const domain = user.email?.split("@")[1]
-          let ssoConfig = null
-
-          if (domain) {
-            ssoConfig = await getSSOConfigForDomain(domain)
-          }
-
-          // Check if user exists in database
-          const [existingUser] = await sql`
-            SELECT * FROM users WHERE email = ${user.email}
-          `
-
-          if (!existingUser) {
-            if (ssoConfig) {
-              // SSO user provisioning
-              const provisionResult = await provisionSSOUser(
-                user.email!,
-                ssoConfig.organization.id,
-                ssoConfig.provider.id,
-                account.providerAccountId!,
-                {
-                  name: user.name,
-                  image: user.image,
-                  provider: account.provider,
-                },
-              )
-
-              if (provisionResult) {
-                token.role = provisionResult.user.role
-                token.id = provisionResult.user.id
-                token.ssoOrganization = ssoConfig.organization.id
-
-                await logSSOLoginAttempt(ssoConfig.organization.id, ssoConfig.provider.id, true, {
-                  userId: provisionResult.user.id,
-                  externalId: account.providerAccountId,
-                  email: user.email!,
-                })
-              }
-            } else {
-              // Regular OAuth user creation
-              const [newUser] = await sql`
-                INSERT INTO users (email, name, avatar_url, provider, provider_id, role, email_verified)
-                VALUES (${user.email}, ${user.name}, ${user.image}, ${account.provider}, ${account.providerAccountId}, 'user', true)
-                RETURNING *
-              `
-              token.role = newUser.role
-              token.id = newUser.id
-            }
-          } else {
-            token.role = existingUser.role
-            token.id = existingUser.id
-            token.ssoOrganization = existingUser.sso_organization_id
-
-            // Update SSO mapping if this is an SSO login
-            if (ssoConfig && existingUser.is_sso_user) {
-              await logSSOLoginAttempt(ssoConfig.organization.id, ssoConfig.provider.id, true, {
-                userId: existingUser.id,
-                externalId: account.providerAccountId,
-                email: user.email!,
-              })
-            }
-          }
-        } catch (error) {
-          console.error("Error handling OAuth/SSO user:", error)
-        }
-      }
-
-      return token
-    },
-    async session({ session, token }) {
-      if (token) {
-        session.user.id = token.id as string
-        session.user.role = token.role as string
-        session.user.ssoOrganization = token.ssoOrganization as number
-      }
-      return session
+      await sendVerificationEmailMessage(user.email, user.name || "there", verificationUrl)
     },
   },
+  account: {
+    accountLinking: {
+      enabled: true,
+      trustedProviders: [],
+      allowDifferentEmails: false,
+      allowUnlinkingAll: false,
+    },
+  },
+  socialProviders: {
+    ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+      ? {
+          google: {
+            clientId: process.env.GOOGLE_CLIENT_ID,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+            allowDangerousEmailAccountLinking: false,
+          },
+        }
+      : {}),
+    ...(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET
+      ? {
+          github: {
+            clientId: process.env.GITHUB_CLIENT_ID,
+            clientSecret: process.env.GITHUB_CLIENT_SECRET,
+            allowDangerousEmailAccountLinking: false,
+          },
+        }
+      : {}),
+    ...(process.env.HUGGINGFACE_CLIENT_ID && process.env.HUGGINGFACE_CLIENT_SECRET
+      ? {
+          huggingface: {
+            clientId: process.env.HUGGINGFACE_CLIENT_ID,
+            clientSecret: process.env.HUGGINGFACE_CLIENT_SECRET,
+            allowDangerousEmailAccountLinking: false,
+          },
+        }
+      : {}),
+    ...(process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET
+      ? {
+          linkedin: {
+            clientId: process.env.LINKEDIN_CLIENT_ID,
+            clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
+            allowDangerousEmailAccountLinking: false,
+          },
+        }
+      : {}),
+    ...(process.env.TWITTER_CLIENT_ID && process.env.TWITTER_CLIENT_SECRET
+      ? {
+          twitter: {
+            clientId: process.env.TWITTER_CLIENT_ID,
+            clientSecret: process.env.TWITTER_CLIENT_SECRET,
+            allowDangerousEmailAccountLinking: false,
+          },
+        }
+      : {}),
+    ...genericOAuthProviders,
+  },
+  databaseHooks: {
+    account: {
+      create: {
+        before: async (account: AuthAccountLink, context?: AuthHookContext) => {
+          const providerId = account.providerId.toLowerCase()
+          const requestPath = context?.path
+          const subjectHash = redactSubject(account.accountId)
+
+          auditAccountLinkEvent("account_link_attempt", {
+            providerId,
+            userId: account.userId,
+            requestPath,
+            subjectHash,
+          })
+
+          const internalAdapter = context?.context?.internalAdapter
+          const [existingProviderSubject, currentUser] = await Promise.all([
+            internalAdapter?.findAccountByProviderId?.(account.accountId, account.providerId),
+            internalAdapter?.findUserById?.(account.userId),
+          ])
+
+          if (existingProviderSubject && existingProviderSubject.userId !== account.userId) {
+            auditAccountLinkEvent("account_link_denied", {
+              providerId,
+              userId: account.userId,
+              requestPath,
+              subjectHash,
+              reason: "provider_subject_already_linked_to_another_user",
+            })
+            return false
+          }
+
+          if (!currentUser?.emailVerified) {
+            auditAccountLinkEvent("account_link_denied", {
+              providerId,
+              userId: account.userId,
+              requestPath,
+              subjectHash,
+              reason: "primary_user_email_not_verified",
+            })
+            return false
+          }
+
+          const stepUpHeader = context?.request?.headers?.get("x-runash-link-step-up")
+          const identityHeader = context?.request?.headers?.get("x-runash-identity-verified")
+          const hasVerifiedIdentityHeader = identityHeader === "verified" || stepUpHeader === "verified"
+          const hasProviderIdentityToken = Boolean(account.idToken && account.idToken.length > 12)
+          const userAgent = context?.request?.headers?.get("user-agent")
+
+          const accountLinkingPolicy = evaluateAccountLinkingPolicy({
+            providerId,
+            requestPath,
+            userAgent,
+            hasVerifiedIdentityHeader,
+            hasProviderIdentityToken,
+            currentUserEmailVerified: Boolean(currentUser?.emailVerified),
+          })
+
+          if (!accountLinkingPolicy.allowed) {
+            auditAccountLinkEvent("account_link_denied", {
+              providerId,
+              userId: account.userId,
+              requestPath,
+              subjectHash,
+              reason: accountLinkingPolicy.reason,
+            })
+            return false
+          }
+
+          auditAccountLinkEvent("account_link_allowed", {
+            providerId,
+            userId: account.userId,
+            requestPath,
+            subjectHash,
+          })
+
+          return true
+        },
+      },
+    },
+  },
+  trustedOrigins: buildTrustedAuthOrigins(baseURL),
+})
+
+function parseCookieValue(cookieHeader: string | null, cookieName: string): string | null {
+  if (!cookieHeader) {
+    return null
+  }
+
+  for (const segment of cookieHeader.split(";")) {
+    const [name, ...valueParts] = segment.trim().split("=")
+    if (name !== cookieName) {
+      continue
+    }
+
+    const cookieValue = valueParts.join("=")
+    return cookieValue || null
+  }
+
+  return null
+}
+
+
+
+type LegacyFallbackPolicyDecision = {
+  enabled: boolean
+  reason: "disabled" | "sunset_flag" | "sunset_date"
+}
+
+function parseLegacyFallbackSunsetTimestamp() {
+  const rawValue = process.env.FEATURE_FLAG_ALLOW_LEGACY_NEXT_AUTH_FALLBACK_SUNSET_AT
+  if (!rawValue) {
+    return null
+  }
+
+  const parsed = Date.parse(rawValue)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+async function getLegacyFallbackPolicyDecision(): Promise<LegacyFallbackPolicyDecision> {
+  const fallbackEnabled = await isFeatureFlagEnabled("allow_legacy_next_auth_fallback")
+  if (!fallbackEnabled) {
+    return { enabled: false, reason: "disabled" }
+  }
+
+  const sunsetFlagEnabled = await isFeatureFlagEnabled("enforce_legacy_next_auth_fallback_sunset")
+  if (sunsetFlagEnabled) {
+    return { enabled: false, reason: "sunset_flag" }
+  }
+
+  const sunsetTimestamp = parseLegacyFallbackSunsetTimestamp()
+  if (sunsetTimestamp !== null && Date.now() >= sunsetTimestamp) {
+    return { enabled: false, reason: "sunset_date" }
+  }
+
+  return { enabled: true, reason: "disabled" }
+}
+async function readLegacyNextAuthSession(cookieHeader: string | null): Promise<BetterAuthSession | null> {
+  const fallbackSecrets = getLegacySessionSecrets()
+  if (!cookieHeader || fallbackSecrets.length === 0) {
+    return null
+  }
+
+  const token = LEGACY_NEXT_AUTH_COOKIE_NAMES.map((cookieName) => parseCookieValue(cookieHeader, cookieName)).find(Boolean)
+  if (!token) {
+    return null
+  }
+
+  for (const legacySecret of fallbackSecrets) {
+    try {
+      const secretBytes = new TextEncoder().encode(legacySecret)
+      const { payload } = await jwtVerify(token, secretBytes)
+
+      if (!payload.sub) {
+        return null
+      }
+
+      return {
+        session: {
+          id: payload.jti ? String(payload.jti) : `legacy-${String(payload.sub)}`,
+          token,
+          userId: String(payload.sub),
+          expiresAt: payload.exp ? new Date(payload.exp * 1000) : new Date(Date.now() + 60 * 60 * 1000),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        user: {
+          id: String(payload.sub),
+          email: typeof payload.email === "string" ? payload.email : undefined,
+          name: typeof payload.name === "string" ? payload.name : undefined,
+          emailVerified: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      } as BetterAuthSession
+    } catch {
+      continue
+    }
+  }
+
+  return null
+}
+
+export async function getAuthSessionFromHeaders(requestHeaders: Headers): Promise<BetterAuthSession | null> {
+  const authorizationHeader = requestHeaders.get("authorization")
+  if (authorizationHeader?.toLowerCase().startsWith("bearer ")) {
+    const bearerToken = authorizationHeader.slice(7).trim()
+    if (bearerToken) {
+      const bearerSession = await resolveBearerAuthSession(bearerToken)
+      if (bearerSession) {
+        return {
+          session: {
+            id: bearerSession.sessionId,
+            token: "[redacted]",
+            userId: bearerSession.userId,
+            expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          user: {
+            id: bearerSession.userId,
+            emailVerified: true,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        } as BetterAuthSession
+      }
+    }
+  }
+
+  return resolveSessionFromSources({
+    getPrimarySession: () => auth.api.getSession({ headers: requestHeaders }),
+    isLegacyFallbackEnabled: async () => {
+      const decision = await getLegacyFallbackPolicyDecision()
+      if (!decision.enabled) {
+        recordAuthMetric("auth.legacy_fallback.blocked", { reason: decision.reason })
+      }
+      return decision.enabled
+    },
+    getLegacySession: () => readLegacyNextAuthSession(requestHeaders.get("cookie")),
+    recordMetric: recordAuthMetric,
+    now: () => Date.now(),
+  })
+}
+
+async function getRuntimeRequestHeaders(): Promise<Headers> {
+  return (await (await import("next/headers")).headers()) as Headers
+}
+
+export async function getServerAuthSession(requestHeaders?: Headers): Promise<ServerAuthSession | null> {
+  const resolvedHeaders = requestHeaders ?? (await getRuntimeRequestHeaders())
+  const session = await getAuthSessionFromHeaders(resolvedHeaders)
+
+  if (!session?.user) {
+    return null
+  }
+
+  const [dbUser] =
+    session.user.email
+      ? await sql`
+          SELECT id::text AS id, role, sso_organization_id
+          FROM users
+          WHERE email = ${session.user.email}
+          LIMIT 1
+        `
+      : []
+
+  return {
+    user: {
+      id: dbUser?.id ?? String(session.user.id),
+      role: dbUser?.role ?? "user",
+      ssoOrganization: dbUser?.sso_organization_id ?? null,
+      email: session.user.email,
+      name: session.user.name,
+    },
+  }
+}
+
+export async function getAuthenticatedSessionUser(): Promise<AuthenticatedSessionUser | null> {
+  const session = await getServerAuthSession()
+  if (!session?.user?.id) {
+    return null
+  }
+
+  return {
+    userId: session.user.id,
+    role: session.user.role ?? "user",
+    organizationId: session.user.ssoOrganization ?? null,
+    email: session.user.email,
+    name: session.user.name,
+  }
+}
+
+export function isSessionAuthorizedForScope(
+  sessionUser: AuthenticatedSessionUser,
+  scope: { userId?: string | number | null; organizationId?: string | number | null },
+): boolean {
+  if (scope.userId !== undefined && scope.userId !== null && String(scope.userId) !== sessionUser.userId) {
+    return false
+  }
+
+  if (scope.organizationId === undefined || scope.organizationId === null) {
+    return true
+  }
+
+  if (!sessionUser.organizationId) {
+    return false
+  }
+
+  return Number(scope.organizationId) === sessionUser.organizationId
 }

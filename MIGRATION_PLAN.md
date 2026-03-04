@@ -997,3 +997,90 @@ Now let me create the database migration scripts and enhanced authentication ser
   - **Mitigation:** use feature flag rollback and keep contracts unchanged.
 - **Risk:** session ordering regressions.
   - **Mitigation:** indexed sort paths on `(user_id, updated_at)` and `(session_id, created_at)`.
+
+ 
+## Dashboard Streams Repository Migration (2026-02-13)
+
+### Scope
+- Stream dashboard APIs now persist/retrieve `recent`, `scheduled`, and `invite` data from database repositories instead of direct filesystem reads/writes.
+- Added SQL migration: `scripts/sql/2026-02-13_create_stream_invites.sql`.
+
+### Legacy development bootstrap
+- Existing `data/streams.json` is auto-bootstrapped into database-backed records in non-production only.
+- Controls:
+  - `RUNASH_STREAMS_DEV_BOOTSTRAP` (default enabled outside production; set `0` to disable)
+  - `RUNASH_STREAMS_DEV_FALLBACK` (explicitly set `1` to allow filesystem fallback outside production)
+
+### Rollback
+1. Keep migration table in place (non-destructive change).
+2. Disable DB fallback path by unsetting `RUNASH_STREAMS_DEV_FALLBACK`.
+3. Revert repository-backed route changes if needed.
+
+---
+
+## 2026-02 User Settings Persistence Transition
+
+### Goal
+Move user settings persistence from `users.bio.userSettings` to dedicated relational tables while preserving backward compatibility during rollout.
+
+### Delivered artifacts
+- `scripts/sql/2026-02-13_create_user_settings_storage.sql`
+  - `user_settings`
+  - `user_setting_attachments`
+  - `user_settings_audit`
+- `scripts/sql/2026-02-13_backfill_user_settings.sql`
+  - one-time backfill from legacy JSON settings payloads.
+
+### Runtime migration mode
+- API reads first from `user_settings`.
+- If absent, API falls back to `users.bio.userSettings` and lazily persists into `user_settings` + audit.
+- API writes continue to preserve legacy `users.bio` data for rollback compatibility during transition.
+
+### Rollback
+- Revert application reads to legacy `users.bio.userSettings`.
+- Keep `user_settings*` tables intact for forensic audit and replay if needed.
+
+
+## 2026-02 Dashboard Shell Consolidation
+
+### Canonical architecture
+- Canonical shell route: `/dashboard` with workspace module query (`?module=chat|editor|store|seller`).
+- Canonical host components: `components/dashboard/workspace/module-hosts.tsx` + `components/dashboard/workspace/workspace-host-frame.tsx`.
+
+### Deprecated dashboard variants (backward-compatible)
+- `/editor/dashboard` → redirects to `/dashboard?module=editor`.
+- `/seller/dashboard` → redirects to `/dashboard?module=seller`.
+- `/ecommerce/dashboard` → redirects to `/dashboard?module=store`.
+
+### Duplicate shell inventory and status
+- `app/editor/dashboard/page.tsx`: deprecated route shell removed in favor of redirect to canonical dashboard module.
+- `components/platform/platform-layout.tsx`: marked deprecated (legacy shell component).
+- `components/dashboard-content.tsx`: marked deprecated (legacy dashboard composition).
+
+### Data persistence and API alignment
+- Editor module actions are consolidated into existing DB-backed editor APIs under `app/api/editor/projects/**`.
+- Persistence target tables remain SQL-migrated editor domain tables in `scripts/sql/2026-02-13_create_editor_domain_tables.sql` and hardening migration `scripts/sql/2026-02-20_harden_editor_project_timeline_segment_metadata.sql`.
+
+### Rollback
+1. Remove/disable route redirects for deprecated dashboards and temporarily restore direct pages.
+2. Keep canonical `/dashboard` shell and module hosts intact.
+3. No destructive schema rollback needed (route-level consolidation only).
+
+## 2026-02 Dashboard Layout Simplification
+
+### Summary
+- `app/dashboard/layout.tsx` now remains a simple route layout that returns `children`.
+- `/dashboard` no longer mounts a multi-module runtime host container.
+- Dashboard surface modules remain available through their dedicated routes (`/runash-chat`, `/editor/*`, `/seller/*`, `/ecommerce/*`).
+
+### Compatibility notes for removed shell entry points
+- Deprecated import path: `@/components/dashboard/shell/dashboard-shell` → use `@/components/dashboard/dashboard-layout-frame`.
+- Deprecated import path: `@/components/dashboard/shell/navbar` → use `@/components/dashboard/dashboard-navbar`.
+- Deprecated import path: `@/components/dashboard/shell/sidebar` → use `@/components/dashboard/dashboard-sidebar`.
+- Deprecated import path: `@/components/dashboard/shell/nav-config` → use `@/components/dashboard/dashboard-nav-config`.
+- Deprecated import path: `@/components/dashboard/shell/footer` → use `@/components/dashboard/dashboard-shell-footer`.
+- Compatibility re-export stubs remain under `components/dashboard/shell/*` as non-breaking transitional aliases.
+
+### Rollback
+1. Restore prior `/dashboard` module-host page composition if unified-host behavior is required.
+2. Revert direct imports back to `components/dashboard/shell/*` only if consumers cannot migrate in-place.

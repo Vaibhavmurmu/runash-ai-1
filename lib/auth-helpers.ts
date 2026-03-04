@@ -1,53 +1,52 @@
-import { cookies, headers } from "next/headers"
-import { auth } from "./auth"
+import { cookies } from "next/headers"
 import { isFeatureFlagEnabled } from "./feature-flags"
+import { getAuthSessionFromHeaders, getServerAuthSession } from "@/lib/auth"
+
+type GetSessionDependencies = {
+  readSessionFromHeaders: typeof getAuthSessionFromHeaders
+  getCookieHeader: () => Promise<string>
+}
+
+async function getDefaultCookieHeader(): Promise<string> {
+  const cookieStore = await cookies()
+  return cookieStore
+    .getAll()
+    .map((cookie) => `${cookie.name}=${cookie.value}`)
+    .join("; ")
+}
 
 /**
- * Get current session from cookies
- * Works in Server Components and API Routes
+ * Get current session from request cookies.
+ * Works in Server Components and API Routes.
  */
-export async function getSession() {
-  const cookieStore = await cookies()
-  const betterAuthToken = cookieStore.get("better-auth.session-token")?.value
+export async function getSession(dependencies: Partial<GetSessionDependencies> = {}) {
+  const getCookieHeader = dependencies.getCookieHeader ?? getDefaultCookieHeader
+  const readSessionFromHeaders = dependencies.readSessionFromHeaders ?? getAuthSessionFromHeaders
 
-  if (!betterAuthToken) {
+  const cookieHeader = await getCookieHeader()
+
+  if (!cookieHeader) {
     return null
   }
 
-  try {
-    // Verify token with Better Auth
-    const session = await auth.api.getSession({
-      headers: new Headers({
-        cookie: `better-auth.session-token=${betterAuthToken}`,
-      }),
-    })
+  const requestHeaders = new Headers()
+  requestHeaders.set("cookie", cookieHeader)
 
-    return session
-  } catch (error) {
-    console.error("[v0] Error getting session:", error)
-    return null
-  }
+  return readSessionFromHeaders(requestHeaders)
 }
 
 /**
  * Determine which auth system to use (Better Auth or NextAuth during migration)
  */
 export async function shouldUseBetterAuth(userId?: string): Promise<boolean> {
-  const useBetterAuth = await isFeatureFlagEnabled("use_better_auth", { userId })
-  return useBetterAuth
+  return isFeatureFlagEnabled("use_better_auth", { userId })
 }
 
-/**
- * Get current user from session
- */
 export async function getCurrentUser() {
-  const session = await getSession()
+  const session = await getServerAuthSession()
   return session?.user || null
 }
 
-/**
- * Verify if user is authenticated
- */
 export async function requireAuth() {
   const user = await getCurrentUser()
   if (!user) {
@@ -56,10 +55,7 @@ export async function requireAuth() {
   return user
 }
 
-/**
- * Get client IP for security tracking
- */
 export async function getClientIP(): Promise<string> {
-  const headersList = await headers()
+  const headersList = await (await import("next/headers")).headers()
   return headersList.get("x-forwarded-for")?.split(",")[0] || headersList.get("x-real-ip") || "unknown"
 }

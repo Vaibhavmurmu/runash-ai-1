@@ -1,12 +1,12 @@
 import { AppSidebar } from "@/components/app-sidebar"
-import { SidebarInset } from "@/components/ui/sidebar"
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Header } from "@/components/header"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 
 export default function AIAgentsLoading() {
   return (
-    <>
+    <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
         <Header />
@@ -44,6 +44,6 @@ export default function AIAgentsLoading() {
           </div>
         </main>
       </SidebarInset>
-    </>
+    </SidebarProvider>
   )
 }

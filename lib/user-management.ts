@@ -19,6 +19,7 @@ export interface User {
   created_at: string
   updated_at: string
   pending_email: string | null
+  sso_organization_id: number | null
 }
 
 export interface AdminUser {
@@ -52,6 +53,11 @@ export interface PaginationOptions {
   limit: number
 }
 
+export interface UserTenantScope {
+  sessionOrganizationId?: number | null
+  allowLegacyNullOrganization?: boolean
+}
+
 export interface UserListResponse {
   users: UserWithAdmin[]
   total: number
@@ -64,6 +70,7 @@ export class UserManager {
   static async getUsers(
     filters: UserFilters = {},
     pagination: PaginationOptions = { page: 1, limit: 20 },
+    scope: UserTenantScope = {},
   ): Promise<UserListResponse> {
     const { page, limit } = pagination
     const offset = (page - 1) * limit
@@ -119,6 +126,18 @@ export class UserManager {
       }
     }
 
+    if (scope.sessionOrganizationId) {
+      if (scope.allowLegacyNullOrganization ?? true) {
+        whereConditions.push(`(u.sso_organization_id = $${paramIndex} OR u.sso_organization_id IS NULL)`)
+      } else {
+        whereConditions.push(`u.sso_organization_id = $${paramIndex}`)
+      }
+      params.push(scope.sessionOrganizationId)
+      paramIndex++
+    } else {
+      whereConditions.push(`u.sso_organization_id IS NULL`)
+    }
+
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(" AND ")}` : ""
 
     // Get total count
@@ -157,7 +176,42 @@ export class UserManager {
     }
   }
 
-  static async getUserById(id: number): Promise<UserWithAdmin | null> {
+
+  static async createUser(input: {
+    name: string
+    username?: string
+    email: string
+    role: string
+    organizationId?: number | null
+  }, adminId: number): Promise<UserWithAdmin> {
+    const result = await sql(
+      `INSERT INTO users (name, username, email, role, email_verified, sso_organization_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, false, $5, NOW(), NOW())
+       RETURNING id`,
+      [input.name, input.username ?? null, input.email, input.role, input.organizationId ?? null],
+    )
+
+    const createdId = Number(result[0]?.id)
+
+    await this.logActivity(adminId, "create_user", "user", createdId, {
+      email: input.email,
+      role: input.role,
+    })
+
+    const user = await this.getUserById(createdId)
+    if (!user) {
+      throw new Error("Created user could not be loaded")
+    }
+
+    return user
+  }
+  static async getUserById(id: number, scope: UserTenantScope = {}): Promise<UserWithAdmin | null> {
+    const whereScope =
+      scope.sessionOrganizationId == null
+        ? `u.sso_organization_id IS NULL`
+        : scope.allowLegacyNullOrganization ?? true
+          ? `(u.sso_organization_id = $2 OR u.sso_organization_id IS NULL)`
+          : `u.sso_organization_id = $2`
     const query = `
       SELECT 
         u.*,
@@ -166,14 +220,15 @@ export class UserManager {
         CASE WHEN au.id IS NOT NULL THEN true ELSE false END as is_admin
       FROM users u
       LEFT JOIN admin_users au ON u.id = au.user_id
-      WHERE u.id = $1
+      WHERE u.id = $1 AND ${whereScope}
     `
 
-    const result = await sql(query, [id])
+    const params = scope.sessionOrganizationId == null ? [id] : [id, scope.sessionOrganizationId]
+    const result = await sql(query, params)
     return (result[0] as UserWithAdmin) || null
   }
 
-  static async updateUser(id: number, updates: Partial<User>, adminId: number): Promise<UserWithAdmin> {
+  static async updateUser(id: number, updates: Partial<User>, adminId: number, scope: UserTenantScope = {}): Promise<UserWithAdmin> {
     const allowedFields = ["name", "username", "email", "role", "bio", "location", "website", "avatar_url"]
     const updateFields: string[] = []
     const params: any[] = []
@@ -194,14 +249,21 @@ export class UserManager {
     updateFields.push(`updated_at = NOW()`)
     params.push(id)
 
+    const tenantClause =
+      scope.sessionOrganizationId == null
+        ? `sso_organization_id IS NULL`
+        : scope.allowLegacyNullOrganization ?? true
+          ? `(sso_organization_id = $${paramIndex + 1} OR sso_organization_id IS NULL)`
+          : `sso_organization_id = $${paramIndex + 1}`
     const query = `
       UPDATE users 
       SET ${updateFields.join(", ")}
-      WHERE id = $${paramIndex}
+      WHERE id = $${paramIndex} AND ${tenantClause}
       RETURNING *
     `
 
-    const result = await sql(query, params)
+    const tenantParams = scope.sessionOrganizationId == null ? [] : [scope.sessionOrganizationId]
+    const result = await sql(query, [...params, ...tenantParams])
     const updatedUser = result[0]
 
     // Log the activity
@@ -210,12 +272,18 @@ export class UserManager {
       changes: updates,
     })
 
-    return this.getUserById(id) as Promise<UserWithAdmin>
+    return this.getUserById(id, scope) as Promise<UserWithAdmin>
   }
 
-  static async deleteUser(id: number, adminId: number): Promise<void> {
+  static async deleteUser(id: number, adminId: number, scope: UserTenantScope = {}): Promise<void> {
     // Soft delete - we'll add a deleted_at field or disable the user
-    await sql(`UPDATE users SET role = 'disabled', updated_at = NOW() WHERE id = $1`, [id])
+    if (scope.sessionOrganizationId == null) {
+      await sql(`UPDATE users SET role = 'disabled', updated_at = NOW() WHERE id = $1 AND sso_organization_id IS NULL`, [id])
+    } else if (scope.allowLegacyNullOrganization ?? true) {
+      await sql(`UPDATE users SET role = 'disabled', updated_at = NOW() WHERE id = $1 AND (sso_organization_id = $2 OR sso_organization_id IS NULL)`, [id, scope.sessionOrganizationId])
+    } else {
+      await sql(`UPDATE users SET role = 'disabled', updated_at = NOW() WHERE id = $1 AND sso_organization_id = $2`, [id, scope.sessionOrganizationId])
+    }
 
     // Log the activity
     await this.logActivity(adminId, "delete_user", "user", id, {

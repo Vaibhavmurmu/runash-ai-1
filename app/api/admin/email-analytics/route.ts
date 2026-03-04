@@ -1,33 +1,47 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { EmailAnalytics } from "@/lib/email-analytics"
-import { requirePermission } from "@/lib/auth-middleware"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
+import { FilterValidationError } from "@/lib/email-filter-utils"
+import { EmailAnalytics, parseEmailAnalyticsFilters } from "@/lib/email-analytics"
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["admin:analytics"],
+    auditEvent: "admin.email.analytics.read",
+  })
+  if (!auth.success) return auth.response
+
   try {
-    // Check admin permissions
-    const authResult = await requirePermission(request, "view_email_analytics")
-    if (!authResult.success) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
-    }
-
     const { searchParams } = new URL(request.url)
-    const date_from = searchParams.get("date_from") ? new Date(searchParams.get("date_from")!) : undefined
-    const date_to = searchParams.get("date_to") ? new Date(searchParams.get("date_to")!) : undefined
-    const campaign_id = searchParams.get("campaign_id") ? Number.parseInt(searchParams.get("campaign_id")!) : undefined
-    const template_id = searchParams.get("template_id") ? Number.parseInt(searchParams.get("template_id")!) : undefined
-
-    const analytics = await EmailAnalytics.getAnalytics({
-      date_from,
-      date_to,
-      campaign_id,
-      template_id,
+    const filters = parseEmailAnalyticsFilters({
+      date_from: searchParams.get("date_from") || undefined,
+      date_to: searchParams.get("date_to") || undefined,
+      campaign_id: searchParams.get("campaign_id") || undefined,
+      template_id: searchParams.get("template_id") || undefined,
     })
+
+    const [analytics, broadcastFunnels, topLinks, templatePerformance, audienceSegments] = await Promise.all([
+      EmailAnalytics.getAnalytics(filters),
+      EmailAnalytics.getBroadcastFunnels(filters),
+      EmailAnalytics.getTopLinks(filters),
+      EmailAnalytics.getTemplatePerformanceOverTime(filters),
+      EmailAnalytics.getAudienceSegmentComparison(filters),
+    ])
 
     return NextResponse.json({
       success: true,
-      data: analytics,
+      data: {
+        ...analytics,
+        broadcast_funnels: broadcastFunnels,
+        top_links: topLinks,
+        template_performance_over_time: templatePerformance,
+        audience_segment_comparison: audienceSegments,
+      },
     })
   } catch (error) {
+    if (error instanceof FilterValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
     console.error("Error fetching email analytics:", error)
     return NextResponse.json({ error: "Failed to fetch email analytics" }, { status: 500 })
   }

@@ -1,139 +1,72 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useEffect, useState } from "react"
-import { neon } from "@/lib/neon/client"
+import { createContext, useContext } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { useAuth as useSharedAuth } from "@/lib/hooks/use-auth"
 
 interface User {
   id: string
-  email: string
-  full_name?: string
-  phone?: string
+  email?: string
+  name?: string
 }
 
 interface AuthContextType {
   user: User | null
   loading: boolean
-  signIn: (email: string, password: string) => Promise<{ error: any }>
-  signUp: (email: string, password: string, userData: any) => Promise<{ error: any }>
+  signIn: (email: string, password: string) => Promise<{ error: unknown }>
+  signUp: (email: string, password: string, userData: any) => Promise<{ error: unknown }>
   signOut: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
   const router = useRouter()
+  const auth = useSharedAuth()
 
-  useEffect(() => {
-    let mounted = true
-
-    // Get initial session
-    const getSession = async () => {
-      try {
-        const {
-          data: { session },
-          error,
-        } = await neon.auth.getSession()
-        if (mounted) {
-          if (error) {
-            console.error("Error getting session:", error)
-          }
-          if (session?.user) {
-            setUser({
-              id: session.user.id,
-              email: session.user.email || "",
-              full_name: session.user.user_metadata?.full_name,
-              phone: session.user.user_metadata?.phone,
-            })
-          }
-          setLoading(false)
+  const value: AuthContextType = {
+    user: auth.user
+      ? {
+          id: String(auth.user.id),
+          email: auth.user.email ?? "",
+          name: auth.user.name ?? undefined,
         }
-      } catch (error) {
-        console.error("Error in getSession:", error)
-        if (mounted) {
-          setLoading(false)
-        }
+      : null,
+    loading: auth.isLoading,
+    signIn: async (email, password) => {
+      const result = await auth.signIn(email, password)
+      if ((result as { error?: unknown })?.error) {
+        return { error: (result as { error?: unknown }).error }
       }
-    }
 
-    getSession()
-
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = neon.auth.onAuthStateChange(async (event, session) => {
-      if (mounted) {
-        if (session?.user) {
-          setUser({
-            id: session.user.id,
-            email: session.user.email || "",
-            full_name: session.user.user_metadata?.full_name,
-            phone: session.user.user_metadata?.phone,
-          })
-        } else {
-          setUser(null)
-        }
-        setLoading(false)
-
-        if (event === "SIGNED_IN") {
-          toast.success("Successfully signed in!")
-          router.push("/")
-        } else if (event === "SIGNED_OUT") {
-          toast.success("Successfully signed out!")
-          router.push("/auth/login")
-        }
+      toast.success("Successfully signed in!")
+      router.push("/")
+      return { error: null }
+    },
+    signUp: async (email, password, userData) => {
+      const result = await auth.signUp(email, password, userData)
+      if ((result as { error?: unknown })?.error) {
+        return { error: (result as { error?: unknown }).error }
       }
-    })
 
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
-    }
-  }, [router])
+      toast.success("Account created successfully!")
+      return { error: null }
+    },
+    signOut: async () => {
+      const result = await auth.signOut()
+      if ((result as { error?: unknown })?.error) {
+        toast.error("Error signing out")
+        return
+      }
 
-  const signIn = async (email: string, password: string) => {
-    try {
-      const { error } = await neon.auth.signInWithPassword({
-        email,
-        password,
-      })
-      return { error }
-    } catch (error) {
-      console.error("Sign in error:", error)
-      return { error: { message: "Network error. Please try again." } }
-    }
+      toast.success("Successfully signed out!")
+      router.push("/login")
+    },
   }
 
-  const signUp = async (email: string, password: string, userData: any) => {
-    try {
-      const { error } = await neon.auth.signUp({
-        email,
-        password,
-        options: {
-          data: userData,
-        },
-      })
-      return { error }
-    } catch (error) {
-      console.error("Sign up error:", error)
-      return { error: { message: "Network error. Please try again." } }
-    }
-  }
-
-  const signOut = async () => {
-    try {
-      await neon.auth.signOut()
-    } catch (error) {
-      console.error("Sign out error:", error)
-      toast.error("Error signing out")
-    }
-  }
-
-  return <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {
@@ -142,4 +75,19 @@ export function useAuth() {
     throw new Error("useAuth must be used within an AuthProvider")
   }
   return context
+}
+
+export function useOptionalAuth(): AuthContextType {
+  const context = useContext(AuthContext)
+  if (context) {
+    return context
   }
+
+  return {
+    user: null,
+    loading: false,
+    signIn: async () => ({ error: "Auth provider unavailable" }),
+    signUp: async () => ({ error: "Auth provider unavailable" }),
+    signOut: async () => undefined,
+  }
+}

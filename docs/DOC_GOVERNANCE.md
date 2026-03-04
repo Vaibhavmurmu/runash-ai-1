@@ -17,6 +17,7 @@ This matrix defines ownership, maintenance triggers, review frequency, and requi
 | `AGENTIC_IMPLEMENTATION_PLAN.md` | AI Systems Lead | Feature changes in agentic capabilities; policy changes on AI guardrails | Per release | `IMPLEMENTATION _SUMMARY.md`, `PLATFORM_GUIDE.md`, `docs/DOC_GOVERNANCE.md` |
 | `IMPLEMENTATION _SUMMARY.md` | Tech Program Manager | Feature/infra milestones completed or re-scoped | Per release | `AGENTIC_IMPLEMENTATION_PLAN.md`, `MIGRATION_PLAN.md` |
 | `TEAM_GUIDE.md` | Engineering Manager | Policy changes in team process; feature/infra changes requiring workflow updates | Monthly | `.github/pull_request_template.md`, `docs/DOC_GOVERNANCE.md`, `AGENTS.md` |
+| `docs/RELEASE_CONFIDENCE_CHECKLIST.md` | Engineering Manager | Release process changes, CI gate changes, rollback policy updates | Per release | `.github/pull_request_template.md`, `TEAM_GUIDE.md`, `docs/API_CONTRACTS.md` |
 | `AGENTS.md` | Developer Experience Lead | Policy changes affecting AI/automation contribution workflow | Monthly | `TEAM_GUIDE.md`, `docs/DOC_GOVERNANCE.md` |
 
 ## Governance Rules

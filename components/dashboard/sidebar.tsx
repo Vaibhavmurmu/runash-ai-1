@@ -23,7 +23,7 @@ const navigation = [
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { name: "Streams", href: "/dashboard/streams", icon: Video },
   { name: "Audience", href: "/dashboard/audience", icon: Users },
-  { name: "Chat", href: "/dashboard/chat", icon: MessageSquare },
+  { name: "RunAsh Chat", href: "/dashboard/chat", icon: MessageSquare },
   { name: "Notifications", href: "/dashboard/notifications", icon: Bell },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ]
@@ -42,7 +42,7 @@ export function DashboardSidebar() {
             </div>
             <span className="text-xl font-bold">RunAsh</span>
           </Link>
-          <SidebarTrigger />
+          <SidebarTrigger aria-label="Toggle dashboard navigation" />
         </SidebarHeader>
 
         <SidebarContent>
@@ -79,7 +79,7 @@ export function DashboardSidebar() {
 
             <div className="flex items-center justify-between pt-4 border-t border-border">
               <ThemeToggle />
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" aria-label="Log out" className="focus-visible:ring-orange-500/80">
                 <LogOut className="h-5 w-5" />
                 <span className="sr-only">Log out</span>
               </Button>

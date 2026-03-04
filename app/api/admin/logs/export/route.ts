@@ -1,8 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { AuthLogger, type LogFilters } from "@/lib/auth-logger"
 import { z } from "zod"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
 
 const exportSchema = z.object({
   format: z.enum(["csv", "json"]).default("csv"),
@@ -23,12 +22,13 @@ const exportSchema = z.object({
 })
 
 export async function GET(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+  const auth = await requireAdminAuthorization(request, {
+    requiredPermissions: ["system:logs"],
+    auditEvent: "admin.logs.export.read",
+  })
+  if (!auth.success) return auth.response
 
+  try {
     const { searchParams } = new URL(request.url)
     const params = Object.fromEntries(searchParams.entries())
     const validatedParams = exportSchema.parse(params)

@@ -21,6 +21,8 @@ import {
   ChevronDown,
   Search,
   Plus,
+  Keyboard,
+  Palette,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -52,26 +54,61 @@ import {
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { ThemeToggle } from "@/components/theme-toggle"
 
-const mainNavigation = [
-  { name: "Dashboard", href: "/dashboard", icon: Home, badge: null },
-  { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3, badge: "Pro" },
-  { name: "Streams", href: "/dashboard/streams", icon: Video, badge: null },
-  { name: "Upload", href: "/dashboard/upload", icon: Upload, badge: null },
-  { name: "Schedule", href: "/dashboard/schedule", icon: Calendar, badge: "3" },
+const navigationSections = [
+  {
+    label: "Workspace",
+    items: [
+      { name: "Dashboard", href: "/dashboard", icon: Home, badge: null },
+      { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3, badge: "Pro" },
+      { name: "Streams", href: "/dashboard/streams", icon: Video, badge: null },
+      { name: "Upload", href: "/dashboard/upload", icon: Upload, badge: null },
+      { name: "Schedule", href: "/dashboard/schedule", icon: Calendar, badge: "3" },
+    ],
+  },
+  {
+    label: "Account",
+    items: [
+      { name: "Audience", href: "/dashboard/audience", icon: Users, badge: null },
+      { name: "RunAsh Chat", href: "/dashboard/chat", icon: MessageSquare, badge: "12" },
+      { name: "Settings", href: "/dashboard/settings", icon: Settings, badge: null },
+      { name: "Notifications", href: "/dashboard/notifications", icon: Bell, badge: "5" },
+    ],
+  },
+  {
+    label: "Preferences",
+    items: [
+      { name: "Keyboard Shortcuts", href: "/dashboard/settings#keyboard-shortcuts", icon: Keyboard, badge: null },
+      { name: "Theme", href: "/dashboard/settings#theme", icon: Palette, badge: null },
+      { name: "AI Features", href: "/dashboard/ai", icon: Zap, badge: "New" },
+      { name: "Security", href: "/dashboard/security", icon: Shield, badge: null },
+    ],
+  },
+  {
+    label: "Support",
+    items: [
+      { name: "Billing", href: "/dashboard/billing", icon: CreditCard, badge: null },
+      { name: "Help & Support", href: "/dashboard/support", icon: HelpCircle, badge: null },
+    ],
+  },
 ]
 
-const audienceNavigation = [
-  { name: "Audience", href: "/dashboard/audience", icon: Users, badge: null },
-  { name: "Chat", href: "/dashboard/chat", icon: MessageSquare, badge: "12" },
-  { name: "Notifications", href: "/dashboard/notifications", icon: Bell, badge: "5" },
-]
-
-const toolsNavigation = [
-  { name: "AI Features", href: "/dashboard/ai", icon: Zap, badge: "New" },
-  { name: "Security", href: "/dashboard/security", icon: Shield, badge: null },
-  { name: "Billing", href: "/dashboard/billing", icon: CreditCard, badge: null },
-  { name: "Settings", href: "/dashboard/settings", icon: Settings, badge: null },
-]
+const itemDescriptions: Record<string, string> = {
+  Dashboard: "Overview of your streaming performance and quick actions.",
+  Analytics: "Detailed insights into your audience, engagement, and revenue.",
+  Streams: "Manage your live streams and recorded content.",
+  Upload: "Upload and convert your media files for streaming.",
+  Schedule: "Plan and schedule your upcoming streams.",
+  Audience: "Track audience growth and segment your community.",
+  "RunAsh Chat": "Review conversation threads and respond faster.",
+  Settings: "Configure your account-level workspace settings.",
+  Notifications: "Control activity alerts and update delivery channels.",
+  "Keyboard Shortcuts": "Quickly navigate your workspace using shortcuts.",
+  Theme: "Set your preferred appearance and color mode.",
+  "AI Features": "Enable and configure assistant-powered workflows.",
+  Security: "Manage access controls and security safeguards.",
+  Billing: "View plans, invoices, and payment details.",
+  "Help & Support": "Find documentation and contact support.",
+}
 
 export function EnhancedSidebar() {
   const pathname = usePathname()
@@ -108,131 +145,58 @@ export function EnhancedSidebar() {
         </SidebarHeader>
 
         <SidebarContent className="px-2">
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Main
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {mainNavigation.map((item) => {
-                  const isActive = pathname === item.href
+          {navigationSections.map((section, sectionIndex) => (
+            <div key={section.label}>
+              {sectionIndex > 0 && <Separator className="my-4 bg-border/40" />}
+              <SidebarGroup>
+                <SidebarGroupLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  {section.label}
+                </SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {section.items.map((item) => {
+                      const isActive = pathname === item.href
 
-                  return (
-                    <SidebarMenuItem key={item.name}>
-                      <HoverCard>
-                        <HoverCardTrigger asChild>
-                          <SidebarMenuButton asChild isActive={isActive} tooltip={item.name}>
-                            <Link href={item.href} className="flex items-center justify-between">
-                              <div className="flex items-center">
-                                <item.icon className="mr-3 h-4 w-4" />
-                                <span>{item.name}</span>
+                      return (
+                        <SidebarMenuItem key={item.name}>
+                          <HoverCard>
+                            <HoverCardTrigger asChild>
+                              <SidebarMenuButton asChild isActive={isActive} tooltip={item.name}>
+                                <Link href={item.href} className="flex items-center justify-between">
+                                  <div className="flex items-center">
+                                    <item.icon className="mr-3 h-4 w-4" />
+                                    <span>{item.name}</span>
+                                  </div>
+                                  {item.badge && (
+                                    <Badge
+                                      variant={item.badge === "New" ? "default" : "secondary"}
+                                      className={`text-xs ${
+                                        item.badge === "New"
+                                          ? "bg-gradient-to-r from-orange-500 to-amber-400 text-white"
+                                          : ""
+                                      }`}
+                                    >
+                                      {item.badge}
+                                    </Badge>
+                                  )}
+                                </Link>
+                              </SidebarMenuButton>
+                            </HoverCardTrigger>
+                            <HoverCardContent side="right" className="w-80">
+                              <div className="space-y-2">
+                                <h4 className="text-sm font-semibold">{item.name}</h4>
+                                <p className="text-sm text-muted-foreground">{itemDescriptions[item.name]}</p>
                               </div>
-                              {item.badge && (
-                                <Badge
-                                  variant={item.badge === "New" ? "default" : "secondary"}
-                                  className={`text-xs ${
-                                    item.badge === "New"
-                                      ? "bg-gradient-to-r from-orange-500 to-amber-400 text-white"
-                                      : ""
-                                  }`}
-                                >
-                                  {item.badge}
-                                </Badge>
-                              )}
-                            </Link>
-                          </SidebarMenuButton>
-                        </HoverCardTrigger>
-                        <HoverCardContent side="right" className="w-80">
-                          <div className="space-y-2">
-                            <h4 className="text-sm font-semibold">{item.name}</h4>
-                            <p className="text-sm text-muted-foreground">
-                              {item.name === "Dashboard" && "Overview of your streaming performance and quick actions."}
-                              {item.name === "Analytics" &&
-                                "Detailed insights into your audience, engagement, and revenue."}
-                              {item.name === "Streams" && "Manage your live streams and recorded content."}
-                              {item.name === "Upload" && "Upload and convert your media files for streaming."}
-                              {item.name === "Schedule" && "Plan and schedule your upcoming streams."}
-                            </p>
-                          </div>
-                        </HoverCardContent>
-                      </HoverCard>
-                    </SidebarMenuItem>
-                  )
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-
-          <Separator className="my-4 bg-border/40" />
-
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Audience
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {audienceNavigation.map((item) => {
-                  const isActive = pathname === item.href
-
-                  return (
-                    <SidebarMenuItem key={item.name}>
-                      <SidebarMenuButton asChild isActive={isActive} tooltip={item.name}>
-                        <Link href={item.href} className="flex items-center justify-between">
-                          <div className="flex items-center">
-                            <item.icon className="mr-3 h-4 w-4" />
-                            <span>{item.name}</span>
-                          </div>
-                          {item.badge && (
-                            <Badge variant="secondary" className="text-xs">
-                              {item.badge}
-                            </Badge>
-                          )}
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  )
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-
-          <Separator className="my-4 bg-border/40" />
-
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Tools & Settings
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {toolsNavigation.map((item) => {
-                  const isActive = pathname === item.href
-
-                  return (
-                    <SidebarMenuItem key={item.name}>
-                      <SidebarMenuButton asChild isActive={isActive} tooltip={item.name}>
-                        <Link href={item.href} className="flex items-center justify-between">
-                          <div className="flex items-center">
-                            <item.icon className="mr-3 h-4 w-4" />
-                            <span>{item.name}</span>
-                          </div>
-                          {item.badge && (
-                            <Badge
-                              variant={item.badge === "New" ? "default" : "secondary"}
-                              className={`text-xs ${
-                                item.badge === "New" ? "bg-gradient-to-r from-orange-500 to-amber-400 text-white" : ""
-                              }`}
-                            >
-                              {item.badge}
-                            </Badge>
-                          )}
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  )
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+                            </HoverCardContent>
+                          </HoverCard>
+                        </SidebarMenuItem>
+                      )
+                    })}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            </div>
+          ))}
         </SidebarContent>
 
         <SidebarFooter className="border-t border-border/40 p-4">
@@ -260,12 +224,22 @@ export function EnhancedSidebar() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Workspace
+                  </DropdownMenuLabel>
                   <DropdownMenuItem>
                     <Users className="mr-2 h-4 w-4" />
                     Profile
                   </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Bell className="mr-2 h-4 w-4" />
+                    Notifications
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuLabel className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Account
+                  </DropdownMenuLabel>
                   <DropdownMenuItem>
                     <CreditCard className="mr-2 h-4 w-4" />
                     Billing
@@ -275,6 +249,23 @@ export function EnhancedSidebar() {
                     Settings
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
+
+                  <DropdownMenuLabel className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Preferences
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem>
+                    <Keyboard className="mr-2 h-4 w-4" />
+                    Keyboard Shortcuts
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Palette className="mr-2 h-4 w-4" />
+                    Theme
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuLabel className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Support
+                  </DropdownMenuLabel>
                   <DropdownMenuItem>
                     <HelpCircle className="mr-2 h-4 w-4" />
                     Help & Support

@@ -1,4 +1,121 @@
+import type {
+  DashboardRecentStreamsResponse,
+  DashboardScheduledStreamsResponse,
+  IntegrationKeyResponse,
+  InviteCollaboratorRequest,
+  InviteCollaboratorResponse,
+  ScheduleStreamRequest,
+  ScheduleStreamResponse,
+  StartStreamRequest,
+  StartStreamResponse,
+  DashboardStreamDetailsResponse,
+  FollowUpCreationResponse,
+  LatestCompletedStreamSummaryResponse,
+  RestoreLastStreamDraftResponse,
+} from "@/lib/types/dashboard-streams"
+import { fetchApiData } from "@/lib/api/client"
+
 import { BackgroundSync } from "./background-sync" // Assuming BackgroundSync is in a separate file
+
+async function dashboardStreamsRequest<T>(input: RequestInfo, init: RequestInit, fallback: string): Promise<T> {
+  return fetchApiData<T>(input, { init, fallbackMessage: fallback })
+}
+
+export const dashboardStreamingService = {
+  fetchRecentStreams(limit?: number) {
+    const suffix = typeof limit === "number" ? `?limit=${encodeURIComponent(String(limit))}` : ""
+    return dashboardStreamsRequest<DashboardRecentStreamsResponse>(
+      `/api/dashboard/streams/recent${suffix}`,
+      { method: "GET" },
+      "Failed to fetch recent streams",
+    )
+  },
+  fetchScheduledStreams() {
+    return dashboardStreamsRequest<DashboardScheduledStreamsResponse>(
+      "/api/dashboard/streams/scheduled",
+      { method: "GET" },
+      "Failed to fetch scheduled streams",
+    )
+  },
+  startStream(payload: StartStreamRequest) {
+    return dashboardStreamsRequest<StartStreamResponse>(
+      "/api/dashboard/streams/start",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      "Failed to start stream",
+    )
+  },
+  scheduleStream(payload: ScheduleStreamRequest) {
+    return dashboardStreamsRequest<ScheduleStreamResponse>(
+      "/api/dashboard/streams/schedule",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      "Failed to schedule stream",
+    )
+  },
+  inviteCollaborator(payload: InviteCollaboratorRequest) {
+    return dashboardStreamsRequest<InviteCollaboratorResponse>(
+      "/api/dashboard/streams/invite",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      "Failed to invite collaborator",
+    )
+  },
+  fetchIntegrationKey() {
+    return dashboardStreamsRequest<IntegrationKeyResponse>(
+      "/api/dashboard/streams/integration-key",
+      { method: "POST" },
+      "Failed to fetch integration key",
+    )
+  },
+  fetchStreamDetails(streamId: string) {
+    return dashboardStreamsRequest<DashboardStreamDetailsResponse>(
+      `/api/dashboard/streams/${encodeURIComponent(streamId)}`,
+      { method: "GET" },
+      "Failed to fetch stream details",
+    )
+  },
+  async openPreviousLiveSessionContext() {
+    const restoreDraft = await this.restoreLastStreamConfigurationDraft()
+    if (restoreDraft.draft?.streamId) {
+      return restoreDraft.draft.streamId
+    }
+
+    const [recentData, scheduledData] = await Promise.all([this.fetchRecentStreams(1), this.fetchScheduledStreams()])
+    const target = scheduledData.streams[0] ?? recentData.streams[0]
+    return target?.id ?? null
+  },
+  fetchLatestCompletedStreamSummary() {
+    return dashboardStreamsRequest<LatestCompletedStreamSummaryResponse>(
+      "/api/dashboard/streams/previous-live/summary",
+      { method: "GET" },
+      "Failed to fetch latest completed stream summary",
+    )
+  },
+  restoreLastStreamConfigurationDraft() {
+    return dashboardStreamsRequest<RestoreLastStreamDraftResponse>(
+      "/api/dashboard/streams/previous-live/restore-draft",
+      { method: "POST" },
+      "Failed to restore last stream configuration draft",
+    )
+  },
+  createFollowUpFromPreviousLiveSession() {
+    return dashboardStreamsRequest<FollowUpCreationResponse>(
+      "/api/dashboard/streams/previous-live/follow-up",
+      { method: "POST" },
+      "Failed to create follow-up from previous live session",
+    )
+  },
+}
 
 export interface StreamData {
   id: string
@@ -21,6 +138,7 @@ export interface StreamMetrics {
   fps: number
   droppedFrames: number
   bandwidth: number
+  latency: number
 }
 
 export class StreamingService {
@@ -185,6 +303,7 @@ export class StreamingService {
     const fps = 30 + Math.floor(Math.random() * 5) // 30-35 fps
     const droppedFrames = Math.floor(Math.random() * 5) // 0-5 dropped frames
     const bandwidth = bitrate * 1.2 // Slightly higher than bitrate
+    const latency = 60 + Math.floor(Math.random() * 90) // 60-150ms
 
     // Determine stream health based on metrics
     let streamHealth: StreamMetrics["streamHealth"] = "Excellent"
@@ -203,6 +322,7 @@ export class StreamingService {
       fps,
       droppedFrames,
       bandwidth,
+      latency,
     }
   }
 
