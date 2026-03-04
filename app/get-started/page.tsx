@@ -29,6 +29,7 @@ import { MagicLinkForm } from "@/components/auth/magic-link-form"
 import { OTPForm } from "@/components/auth/otp-form"
 import { PasskeyLoginForm } from "@/components/auth/passkey-form"
 import { SSOLogin } from "@/components/auth/sso-login"
+import { FooterBrand } from "@/components/branding/footer-brand"
 import ThemeToggle from "@/components/theme-toggle"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -435,7 +436,24 @@ export default function GetStartedPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <footer className="relative z-10 py-8">
+        <div className="container mx-auto px-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col items-center gap-3 text-center md:flex-row md:text-left">
+              <FooterBrand />
+              <p className="text-sm text-slate-500 dark:text-white/45">© {new Date().getFullYear()} RunAsh AI. All rights reserved.</p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-6 md:justify-end">
+              <Link href="/support" className="text-sm text-slate-500 transition-colors hover:text-orange-500 dark:text-white/45 dark:hover:text-white">Support</Link>
+              <Link href="/terms" className="text-sm text-slate-500 transition-colors hover:text-orange-500 dark:text-white/45 dark:hover:text-white">Terms</Link>
+              <Link href="/privacy" className="text-sm text-slate-500 transition-colors hover:text-orange-500 dark:text-white/45 dark:hover:text-white">Privacy</Link>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }
-          
+
+
