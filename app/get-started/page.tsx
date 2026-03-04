@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import Image from "next/image"
 import { signIn } from "next-auth/react"
 import {
   ArrowRight,
@@ -29,6 +30,7 @@ import { MagicLinkForm } from "@/components/auth/magic-link-form"
 import { OTPForm } from "@/components/auth/otp-form"
 import { PasskeyLoginForm } from "@/components/auth/passkey-form"
 import { SSOLogin } from "@/components/auth/sso-login"
+import { FooterBrand } from "@/components/branding/footer-brand"
 import ThemeToggle from "@/components/theme-toggle"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -174,8 +176,13 @@ export default function GetStartedPage() {
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(249,115,22,0.20),transparent_50%),radial-gradient(ellipse_at_top_right,rgba(250,204,21,0.15),transparent_45%)] dark:bg-[radial-gradient(ellipse_at_top_left,rgba(249,115,22,0.18),transparent_50%),radial-gradient(ellipse_at_top_right,rgba(61,81,255,0.10),transparent_45%)]" />
 
       <header className="relative z-10 flex items-center justify-between px-5 py-6">
-        <Link href="/" className="font-semibold bg-gradient-to-r from-orange-600 via-amber-500 to-yellow-400 bg-clip-text text-transparent">
-          RunAsh
+        <Link href="/" className="group flex items-center gap-3" aria-label="RunAsh home">
+          <div className="relative h-9 w-9 overflow-hidden rounded-md border border-orange-200/70 bg-white shadow-sm dark:border-white/20 dark:bg-black/40">
+            <Image src="/logo.png" alt="RunAsh logo" fill sizes="36px" className="object-contain" priority={false} />
+          </div>
+          <span className="font-semibold bg-gradient-to-r from-orange-600 via-amber-500 to-yellow-400 bg-clip-text text-transparent">
+            RunAsh
+          </span>
         </Link>
         <div className="flex items-center gap-2">
           <ThemeToggle />
@@ -435,7 +442,24 @@ export default function GetStartedPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <footer className="relative z-10 py-8">
+        <div className="container mx-auto px-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col items-center gap-3 text-center md:flex-row md:text-left">
+              <FooterBrand />
+              <p className="text-sm text-slate-500 dark:text-white/45">© {new Date().getFullYear()} RunAsh AI. All rights reserved.</p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-6 md:justify-end">
+              <Link href="/support" className="text-sm text-slate-500 transition-colors hover:text-orange-500 dark:text-white/45 dark:hover:text-white">Support</Link>
+              <Link href="/terms" className="text-sm text-slate-500 transition-colors hover:text-orange-500 dark:text-white/45 dark:hover:text-white">Terms</Link>
+              <Link href="/privacy" className="text-sm text-slate-500 transition-colors hover:text-orange-500 dark:text-white/45 dark:hover:text-white">Privacy</Link>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }
-          
+
+

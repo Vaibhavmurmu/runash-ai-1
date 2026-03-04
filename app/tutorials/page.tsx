@@ -9,31 +9,21 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 
-type TutorialCategory = "getting-started" | "ai-features" | "streaming" | "advanced"
-type TutorialTab = "all" | TutorialCategory
-
 type Tutorial = {
+  id: string
   title: string
   description: string
   duration: string
-  difficulty: string
+  difficulty: "Beginner" | "Intermediate" | "Advanced"
   author: string
   thumbnail: string
-  category: TutorialCategory
-  featured?: boolean
+  category: string
+  featured: boolean
 }
 
-const CATEGORY_LABELS: Record<TutorialCategory, string> = {
-  "getting-started": "Getting Started",
-  "ai-features": "AI Features",
-  streaming: "Streaming",
-  advanced: "Advanced",
-}
-
-const getCategoryLabel = (category: string) => CATEGORY_LABELS[category as TutorialCategory] ?? "Tutorial"
-
-const TUTORIALS: Tutorial[] = [
+const tutorials: Tutorial[] = [
   {
+    id: "complete-runash-ai-setup-guide",
     title: "Complete RunAsh AI Setup Guide",
     description:
       "Learn how to set up RunAsh AI from scratch, connect your streaming platforms, and configure your first AI-enhanced stream in under 15 minutes.",
@@ -41,105 +31,89 @@ const TUTORIALS: Tutorial[] = [
     difficulty: "Beginner",
     author: "Sarah Johnson",
     thumbnail: "/placeholder.svg?height=300&width=400",
-    category: "getting-started",
+    category: "Getting Started",
     featured: true,
   },
   {
+    id: "your-first-ai-enhanced-stream",
     title: "Your First AI-Enhanced Stream",
     description: "Step-by-step guide to creating your first stream with AI enhancements.",
     duration: "10 min",
     difficulty: "Beginner",
     author: "Alex Chen",
     thumbnail: "/placeholder.svg?height=300&width=400",
-    category: "getting-started",
+    category: "Getting Started",
+    featured: false,
   },
   {
+    id: "ai-video-enhancement-basics",
     title: "AI Video Enhancement Basics",
     description: "Learn how to use RunAsh's AI video enhancement to automatically improve your stream quality.",
     duration: "8 min",
     difficulty: "Beginner",
     author: "Alex Chen",
     thumbnail: "/placeholder.svg?height=300&width=400",
-    category: "ai-features",
+    category: "AI Features",
+    featured: false,
   },
   {
-    title: "Custom Virtual Backgrounds",
-    description: "Create and use custom virtual backgrounds without a green screen using AI.",
-    duration: "6 min",
-    difficulty: "Beginner",
-    author: "Emma Wilson",
-    thumbnail: "/placeholder.svg?height=300&width=400",
-    category: "ai-features",
-  },
-  {
+    id: "multi-platform-streaming-setup",
     title: "Multi-Platform Streaming Setup",
     description: "Configure streaming to multiple platforms simultaneously with platform-specific optimizations.",
     duration: "12 min",
     difficulty: "Intermediate",
     author: "Michael Rodriguez",
     thumbnail: "/placeholder.svg?height=300&width=400",
-    category: "streaming",
+    category: "Streaming",
+    featured: false,
   },
   {
+    id: "custom-virtual-backgrounds",
+    title: "Custom Virtual Backgrounds",
+    description: "Create and use custom virtual backgrounds without a green screen using AI.",
+    duration: "6 min",
+    difficulty: "Beginner",
+    author: "Emma Wilson",
+    thumbnail: "/placeholder.svg?height=300&width=400",
+    category: "AI Features",
+    featured: false,
+  },
+  {
+    id: "advanced-chat-moderation",
     title: "Advanced Chat Moderation",
     description: "Set up AI-powered chat moderation with custom rules and automated responses.",
     duration: "10 min",
     difficulty: "Advanced",
     author: "David Kim",
     thumbnail: "/placeholder.svg?height=300&width=400",
-    category: "advanced",
+    category: "Advanced",
+    featured: false,
   },
   {
+    id: "stream-analytics-deep-dive",
     title: "Stream Analytics Deep Dive",
     description: "Understand your audience with RunAsh's comprehensive analytics dashboard.",
     duration: "14 min",
     difficulty: "Intermediate",
     author: "Priya Patel",
     thumbnail: "/placeholder.svg?height=300&width=400",
-    category: "advanced",
+    category: "Analytics",
+    featured: false,
   },
   {
+    id: "api-integration-guide",
     title: "API Integration Guide",
     description: "Integrate RunAsh AI with your existing tools using our comprehensive API.",
     duration: "20 min",
     difficulty: "Advanced",
     author: "Tech Team",
     thumbnail: "/placeholder.svg?height=300&width=400",
-    category: "advanced",
+    category: "Advanced",
+    featured: false,
   },
 ]
 
-const getFeaturedTutorial = () => TUTORIALS.find((tutorial) => tutorial.featured)
-
-const getTutorialsByCategory = (category: TutorialCategory) => TUTORIALS.filter((tutorial) => tutorial.category === category)
-
-const getVisibleTutorials = ({ tab, searchQuery }: { tab: TutorialTab; searchQuery: string }) => {
-  const normalizedQuery = searchQuery.trim().toLowerCase()
-
-  return TUTORIALS.filter((tutorial) => {
-    const matchesTab = tab === "all" ? true : tutorial.category === tab
-    const matchesSearch =
-      normalizedQuery.length === 0
-        ? true
-        : [tutorial.title, tutorial.description, tutorial.author, getCategoryLabel(tutorial.category)]
-            .join(" ")
-            .toLowerCase()
-            .includes(normalizedQuery)
-
-    return matchesTab && matchesSearch
-  })
-}
-
-const TutorialCard = ({
-  title,
-  description,
-  duration,
-  difficulty,
-  author,
-  thumbnail,
-  category,
-  featured = false,
-}: Tutorial) => {
+const TutorialCard = ({ title, description, duration, difficulty, author, thumbnail, category, featured = false }: Tutorial) => {
   return (
     <Card
       className={`overflow-hidden ${featured ? "border-orange-500/50 bg-orange-50/50 dark:bg-orange-950/20" : "border-orange-200/50 dark:border-orange-900/30"}`}
@@ -212,6 +186,41 @@ export default function TutorialsPage() {
     [activeTab, searchQuery],
   )
 
+  const filteredTutorials = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase()
+
+    if (!normalizedQuery) {
+      return tutorials
+    }
+
+    return tutorials.filter((tutorial) =>
+      [tutorial.title, tutorial.description, tutorial.author, tutorial.category].some((field) =>
+        field.toLowerCase().includes(normalizedQuery),
+      ),
+    )
+  }, [searchQuery])
+
+  const renderTutorialGrid = (items: Tutorial[]) => {
+    if (items.length === 0) {
+      return (
+        <Card className="border-dashed border-orange-300 dark:border-orange-800/50">
+          <CardContent className="p-8 text-center text-gray-600 dark:text-gray-300">
+            <p className="text-lg font-medium">No tutorials found for “{searchQuery}”</p>
+            <p className="mt-2 text-sm">Try a different keyword or browse another category.</p>
+          </CardContent>
+        </Card>
+      )
+    }
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {items.map((tutorial) => (
+          <TutorialCard key={tutorial.id} {...tutorial} />
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-white">
       {/* Hero Section */}
@@ -261,80 +270,24 @@ export default function TutorialsPage() {
               </TabsList>
 
               <TabsContent value="all" className="mt-8">
-                {featuredTutorial && (
-                  <div className="mb-12 p-8 rounded-2xl border border-orange-200/50 dark:border-orange-900/30 bg-orange-50/30 dark:bg-orange-950/10">
-                    <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">Featured Tutorial</h2>
-                    <div className="grid lg:grid-cols-2 gap-8 items-center">
-                      <div className="relative aspect-video rounded-xl overflow-hidden group cursor-pointer">
-                        <img src={featuredTutorial.thumbnail} alt={featuredTutorial.title} className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/40 group-hover:bg-black/50 transition-colors duration-300 flex items-center justify-center">
-                          <div className="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                            <Play className="h-10 w-10 text-white ml-1" />
-                          </div>
-                        </div>
-                        <div className="absolute top-4 left-4">
-                          <Badge variant="secondary" className="bg-black/50 text-white">
-                            <Clock className="h-3 w-3 mr-1" />
-                            {featuredTutorial.duration}
-                          </Badge>
-                        </div>
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 mb-3">
-                          <Badge variant="outline" className="text-orange-600 dark:text-orange-400 border-orange-500/50">
-                            {getCategoryLabel(featuredTutorial.category)}
-                          </Badge>
-                          <Badge className="bg-yellow-500 text-black">
-                            <Star className="h-3 w-3 mr-1" />
-                            Featured
-                          </Badge>
-                        </div>
-                        <h3 className="text-3xl font-bold mb-4">{featuredTutorial.title}</h3>
-                        <p className="text-gray-600 dark:text-gray-400 mb-6 text-lg">{featuredTutorial.description}</p>
-                        <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mb-6">
-                          <div className="flex items-center gap-1">
-                            <User className="h-4 w-4" />
-                            <span>{featuredTutorial.author}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Clock className="h-4 w-4" />
-                            <span>{featuredTutorial.duration}</span>
-                          </div>
-                          <Badge variant="default">{featuredTutorial.difficulty}</Badge>
-                        </div>
-                        <Button className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white">
-                          Watch Tutorial <Play className="ml-2 h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">All Tutorials</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    {allVisibleTutorials.map((tutorial) => (
-                      <TutorialCard key={tutorial.title} {...tutorial} />
-                    ))}
-                  </div>
-                </div>
+                {renderTutorialGrid(filteredTutorials)}
               </TabsContent>
 
-              {categoryTabs.map((category) => {
-                const categoryVisibleTutorials = getVisibleTutorials({ tab: category, searchQuery })
+              <TabsContent value="getting-started" className="mt-8">
+                {renderTutorialGrid(filteredTutorials.filter((tutorial) => tutorial.category === "Getting Started"))}
+              </TabsContent>
 
-                return (
-                  <TabsContent key={category} value={category} className="mt-8">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                      {getTutorialsByCategory(category)
-                        .filter((tutorial) => categoryVisibleTutorials.some((visibleTutorial) => visibleTutorial.title === tutorial.title))
-                        .map((tutorial) => (
-                          <TutorialCard key={tutorial.title} {...tutorial} />
-                        ))}
-                    </div>
-                  </TabsContent>
-                )
-              })}
+              <TabsContent value="ai-features" className="mt-8">
+                {renderTutorialGrid(filteredTutorials.filter((tutorial) => tutorial.category === "AI Features"))}
+              </TabsContent>
+
+              <TabsContent value="streaming" className="mt-8">
+                {renderTutorialGrid(filteredTutorials.filter((tutorial) => tutorial.category === "Streaming"))}
+              </TabsContent>
+
+              <TabsContent value="advanced" className="mt-8">
+                {renderTutorialGrid(filteredTutorials.filter((tutorial) => tutorial.category === "Advanced"))}
+              </TabsContent>
             </Tabs>
           </div>
         </div>
