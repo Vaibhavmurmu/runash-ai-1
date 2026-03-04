@@ -3,7 +3,7 @@ import { SimplePage } from "@/components/marketing/simple-page"
 
 export const metadata: Metadata = {
   title: "Research Overview | RunAsh",
-  description: "Track RunAsh AI research streams, milestones, and platform integrations.",
+  description: "Review RunAsh research focus areas, execution streams, and milestone tracking.",
 }
 
 export default function Page() {
@@ -26,8 +26,8 @@ export default function Page() {
           description: "Hugging Face, Colab, and Kaggle workflows are used for sharing models, experiments, and benchmark results.",
         },
       ]}
-      ctaLabel="Browse research papers"
-      ctaHref="/research-paper"
+      ctaLabel="Visit the Research Hub"
+      ctaHref="/research"
     />
   )
 }

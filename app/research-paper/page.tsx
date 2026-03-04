@@ -3,7 +3,7 @@ import { SimplePage } from "@/components/marketing/simple-page"
 
 export const metadata: Metadata = {
   title: "Research Papers | RunAsh",
-  description: "Read RunAsh AI papers, implementation briefs, and reproducible notebook resources.",
+  description: "Browse RunAsh research papers, safety notes, and implementation briefs.",
 }
 
 export default function Page() {
@@ -26,8 +26,8 @@ export default function Page() {
           description: "Implementation details and release notes linked to Hugging Face model cards and evaluation logs.",
         },
       ]}
-      ctaLabel="Open AI research lab"
-      ctaHref="/ai-research-lab"
+      ctaLabel="Explore the Research Overview"
+      ctaHref="/research-overview"
     />
   )
 }

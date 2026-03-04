@@ -43,7 +43,7 @@ import TechStack from "@/components/tech-stack"
 export const metadata: Metadata = {
   title: "AI Research & Development | RunAsh",
   description:
-    "Explore RunAsh AI's cutting-edge research, technical papers, development roadmap, and interactive demos.",
+    "Discover RunAsh AI research programs, technical papers, roadmap milestones, and live demos.",
 }
 
 export default function AIPage() {
@@ -76,8 +76,8 @@ export default function AIPage() {
       conference: "Hugging Face, Kaggle",
       abstract:
         "This research explores multi-modal emotion recognition techniques combining audio, visual, and textual data to enhance viewer engagement metrics in live streaming environments.",
-      link: "/research-paper",
-      tags: ["Emotion Recognition", "Action Recognition", "Multi-modal AI", "Engagement Metrics"],
+      link: "#",
+      tags: ["Emotion Recognition", "Action Recognition", "Multimodal AI", "Engagement Metrics"],
     },
   ]
 
@@ -128,9 +128,9 @@ export default function AIPage() {
     },
     {
       name: "Vaibhav Murmu",
-      role: "Principal Research Team Member",
+      role: "Principal AI Researcher",
       image: "/vaibhavmurmu.jpg?height=300&width=300",
-      bio: "Vaibhav Murmu contribute in deep learning architectures for streaming media optimization and bandwidth prediction.",
+      bio: "Vaibhav Murmu contributes deep learning expertise for streaming media optimization and bandwidth prediction.",
       publications: 0,
       citations: 0,
       links: {
@@ -141,7 +141,7 @@ export default function AIPage() {
     },
     {
       name: "P K Murmu",
-      role: "Researcher Team Members",
+      role: "AI Researcher",
       image: "/placeholder.svg?height=300&width=300",
       bio: "P K Murmu focuses on multi-modal learning and emotion recognition systems for enhanced viewer engagement.",
       publications: 0,
@@ -188,19 +188,19 @@ export default function AIPage() {
     },
     {
       title: "Kaggle",
-      description: "Datasets, notebooks, and competitions for model evaluation",
+      description: "Machine learning platform for production deployment",
       icon: <Code className="h-6 w-6 text-orange-500" />,
       gradient: "from-yellow-500 to-orange-500",
     },
     {
       title: "Scikit-learn",
-      description: "Machine learning in python",
+      description: "Machine learning in Python",
       icon: <Code className="h-6 w-6 text-orange-500" />,
       gradient: "from-yellow-500 to-orange-500",
     },
     {
-      title: "Colab",
-      description: "Collaborative notebook runtime for rapid model prototyping",
+      title: "Google Colab",
+      description: "Machine learning platform for production deployment",
       icon: <Code className="h-6 w-6 text-orange-500" />,
       gradient: "from-yellow-500 to-orange-500",
     },
@@ -314,7 +314,7 @@ export default function AIPage() {
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              Learn More <ArrowRight className="ml-2 h-4 w-4" />
+              Explore Feature Details <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
             </div>
@@ -332,7 +332,7 @@ export default function AIPage() {
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              Learn More <ArrowRight className="ml-2 h-4 w-4" />
+              Explore Feature Details <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
             </div>
@@ -349,7 +349,7 @@ export default function AIPage() {
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              Learn More <ArrowRight className="ml-2 h-4 w-4" />
+              Explore Feature Details <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
             </div>
@@ -366,7 +366,7 @@ export default function AIPage() {
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              Learn More <ArrowRight className="ml-2 h-4 w-4" />
+              Explore Feature Details <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
             </div>
@@ -400,7 +400,7 @@ export default function AIPage() {
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              Learn More <ArrowRight className="ml-2 h-4 w-4" />
+              Explore Feature Details <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
             </div>
@@ -417,7 +417,7 @@ export default function AIPage() {
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              Learn More <ArrowRight className="ml-2 h-4 w-4" />
+              Explore Feature Details <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
             </div>
@@ -434,7 +434,7 @@ export default function AIPage() {
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              Learn More <ArrowRight className="ml-2 h-4 w-4" />
+              Explore Feature Details <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
             </div>
@@ -444,14 +444,14 @@ export default function AIPage() {
               </div>
               <h3 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Automatic Speech Recognition</h3>
               <p className="text-gray-700 dark:text-gray-300">
-                Our model supports TTS capabilities, allowing you to generate spoken language from text inputs in real-time.
+                Our model supports TTS capabilities, allowing creators to generate spoken language from text inputs in real time.
               </p>
               <div className="flex justify-left mt-12">
             <Button
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              Learn More <ArrowRight className="ml-2 h-4 w-4" />
+              Explore Feature Details <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
             </div>
@@ -459,16 +459,16 @@ export default function AIPage() {
               <div className="p-3 rounded-lg bg-gradient-to-br from-orange-500 to-yellow-500 mb-4 inline-block">
                 <Speech className="h-6 w-6 text-white" />
               </div>
-              <h3 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Text-toSpeech</h3>
+              <h3 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Text-to-Speech</h3>
               <p className="text-gray-700 dark:text-gray-300">
-                This model supports TTS capabilities, allowing  to generate spoken language from text inputs in real-time.
+                This model supports TTS capabilities, allowing creators to generate spoken language from text inputs in real time.
               </p>
               <div className="flex justify-left mt-12">
             <Button
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              Learn More <ArrowRight className="ml-2 h-4 w-4" />
+              Explore Feature Details <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
             </div>
@@ -510,54 +510,7 @@ export default function AIPage() {
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              <Link href="/research-paper">
-                View All Papers <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      <section className="py-20 bg-gradient-to-b from-white to-orange-50 dark:from-gray-900 dark:to-gray-900">
-        <div className="container px-4 mx-auto">
-          <div className="flex flex-col items-center text-center mb-16">
-            <div className="p-3 rounded-lg bg-gradient-to-br from-orange-500 to-yellow-500 mb-4">
-              <Flask className="h-6 w-6 text-white" />
-            </div>
-            <h2 className="text-4xl font-bold bg-gradient-to-r from-orange-600 via-orange-500 to-yellow-500 dark:from-orange-400 dark:via-orange-300 dark:to-yellow-300 text-transparent bg-clip-text mb-4">
-              Research Platforms & Integrations
-            </h2>
-            <p className="text-xl text-gray-700 dark:text-gray-300 max-w-3xl">
-              Explore the ecosystem we use to build, validate, and ship production-ready AI features.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10">
-            {researchHubs.map((hub) => (
-              <article
-                key={hub.name}
-                className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-lg border border-orange-100 dark:border-orange-900/20"
-              >
-                <h3 className="text-2xl font-bold mb-3 text-gray-900 dark:text-white">{hub.name}</h3>
-                <p className="text-gray-700 dark:text-gray-300 mb-6">{hub.description}</p>
-                <Link
-                  href={hub.href}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center text-orange-600 dark:text-orange-400 font-semibold"
-                >
-                  Open {hub.name} <ExternalLink className="ml-2 h-4 w-4" />
-                </Link>
-              </article>
-            ))}
-          </div>
-
-          <div className="flex flex-wrap justify-center gap-4">
-            <Button asChild className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:opacity-90 text-white">
-              <Link href="/integrations">Explore Integrations</Link>
-            </Button>
-            <Button asChild variant="outline" className="border-orange-500 text-orange-600 hover:bg-orange-50">
-              <Link href="/research-overview">Read Research Overview</Link>
+              Explore All Research Papers <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -677,7 +630,7 @@ export default function AIPage() {
           <div className="mt-16 text-center">
             <Link href="/careers">
               <Button className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:opacity-90 text-white">
-                Join Our Research Team
+                View Open Research Roles
               </Button>
             </Link>
           </div>
@@ -717,9 +670,9 @@ export default function AIPage() {
               the state of AI in live streaming technology.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button className="bg-white text-orange-600 hover:bg-orange-50">Research Partnerships</Button>
+              <Button className="bg-white text-orange-600 hover:bg-orange-50">Apply for Research Partnerships</Button>
               <Button variant="outline" className="border-white text-orange-600 hover:bg-white/10">
-                Contact Research Team
+                Contact the Research Team
               </Button>
             </div>
           </div>
