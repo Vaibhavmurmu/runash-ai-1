@@ -7,7 +7,26 @@ export const metadata: Metadata = {
   description: "Top-level dashboard module with streamlined summary, CTA, and recent activity.",
 }
 
-export default function DashboardPage() {
+function DashboardGate() {
+  const { user, loading } = useAuthContext()
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>
+  if (!user) return <LoginForm />
+
+  return (
+    <>
+      <AppSidebar />
+      <SidebarInset>
+        <Header />
+        <main className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+          <DashboardContent />
+        </main>
+      </SidebarInset>
+    </>
+  )
+}
+
+export default function Page() {
   return (
     <div className="container mx-auto space-y-6 p-4 md:p-6 lg:p-8">
       <TopLevelModulePage
