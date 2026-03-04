@@ -104,3 +104,14 @@ test("unknown admin endpoints retain baseline admin access guard", async () => {
 
   assert.deepEqual(permissions, ["admin:access"])
 })
+
+
+test("admin operations endpoint requires maintenance permission", async () => {
+  const resolveRequiredAdminPermissions = await loadResolver()
+  const permissions = resolveRequiredAdminPermissions({
+    pathname: "/api/admin/operations",
+    method: "POST",
+  })
+
+  assert.ok(permissions.includes("system:maintenance"))
+})

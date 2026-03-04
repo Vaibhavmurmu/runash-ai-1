@@ -14,12 +14,16 @@ import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
 import { signIn } from "next-auth/react"
+import { PhoneOtpVerification } from "@/components/auth/phone-otp-verification"
+import { PasswordStrengthMeter } from "@/components/auth/password-strength-meter"
+import { registerWithUnifiedRoute } from "@/lib/auth/register-client"
 
 export function RegisterForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState(false)
+  const [phoneVerification, setPhoneVerification] = useState({ verified: false, phoneNumber: "" })
   const [formData, setFormData] = useState({
     name: "",
     username: "",
@@ -42,30 +46,22 @@ export function RegisterForm() {
     }
 
     try {
-      const response = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: formData.name,
-          username: formData.username,
-          email: formData.email,
-          password: formData.password,
-        }),
+      const registration = await registerWithUnifiedRoute({
+        name: formData.name,
+        username: formData.username,
+        email: formData.email,
+        password: formData.password,
       })
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        setError(data.message || "Registration failed")
+      if (!registration.ok) {
+        setError(registration.message || "Registration failed")
         return
       }
 
       setSuccess(true)
       toast({
         title: "Account created!",
-        description: "Please check your email to verify your account.",
+        description: registration.message || "Please verify your email before signing in.",
       })
 
       // Redirect to login after 3 seconds
@@ -105,7 +101,8 @@ export function RegisterForm() {
                 <h3 className="text-xl font-semibold">Account Created!</h3>
                 <p className="text-muted-foreground mt-2">
                   We've sent a verification email to <strong>{formData.email}</strong>. Please check your inbox and
-                  click the verification link to activate your account.
+                  click the verification link to activate your account. You need to verify your email before full
+                  access is enabled.
                 </p>
               </div>
               <Button asChild className="w-full">
@@ -126,7 +123,7 @@ export function RegisterForm() {
           <CardTitle className="text-3xl font-bold bg-gradient-to-r from-orange-500 to-orange-600 bg-clip-text text-transparent">
             Create Account
           </CardTitle>
-          <CardDescription className="text-base">Join us and start your journey today</CardDescription>
+          <CardDescription className="text-base text-foreground/80 dark:text-foreground/75">Join us and start your journey today</CardDescription>
         </CardHeader>
         <CardContent className="relative">
           {error && (
@@ -210,8 +207,9 @@ export function RegisterForm() {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent focus-visible:ring-2 focus-visible:ring-orange-500/80"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4 text-muted-foreground" />
@@ -221,10 +219,10 @@ export function RegisterForm() {
                   <span className="sr-only">{showPassword ? "Hide password" : "Show password"}</span>
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Must be at least 8 characters with uppercase, lowercase, number, and special character
-              </p>
+              <PasswordStrengthMeter password={formData.password} />
             </div>
+
+            <PhoneOtpVerification purpose="registration" onVerifiedChange={setPhoneVerification} />
 
             <div className="flex items-start space-x-2">
               <Checkbox
@@ -235,11 +233,11 @@ export function RegisterForm() {
               />
               <Label htmlFor="terms" className="text-sm font-normal leading-5">
                 I agree to the{" "}
-                <Link href="/terms" className="text-orange-600 hover:text-orange-700 hover:underline">
+                <Link href="/terms" className="text-orange-700 dark:text-orange-400 hover:text-orange-800 dark:hover:text-orange-300 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/80 focus-visible:ring-offset-2">
                   Terms of Service
                 </Link>{" "}
                 and{" "}
-                <Link href="/privacy" className="text-orange-600 hover:text-orange-700 hover:underline">
+                <Link href="/privacy" className="text-orange-700 dark:text-orange-400 hover:text-orange-800 dark:hover:text-orange-300 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/80 focus-visible:ring-offset-2">
                   Privacy Policy
                 </Link>
               </Label>
@@ -307,11 +305,11 @@ export function RegisterForm() {
           </div>
         </CardContent>
         <CardFooter className="relative flex flex-col items-center justify-center space-y-2">
-          <div className="text-sm text-muted-foreground">
+          <div className="text-sm text-foreground/75 dark:text-foreground/70">
             Already have an account?{" "}
             <Link
               href="/login"
-              className="text-orange-600 hover:text-orange-700 hover:underline font-medium transition-colors"
+              className="text-orange-700 dark:text-orange-400 hover:text-orange-800 dark:hover:text-orange-300 hover:underline font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/80 focus-visible:ring-offset-2"
             >
               Sign in
             </Link>

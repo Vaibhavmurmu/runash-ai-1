@@ -1,10 +1,10 @@
 "use client"
 
-import { useSession } from "next-auth/react"
+import { useAuthSession } from "@/lib/auth/access-client"
 import { useEffect, useState } from "react"
 
 export function usePermissions() {
-  const { data: session } = useSession()
+  const { data: session } = useAuthSession()
   const [permissions, setPermissions] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
 

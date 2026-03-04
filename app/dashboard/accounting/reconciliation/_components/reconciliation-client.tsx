@@ -1,0 +1,105 @@
+"use client"
+
+import { useEffect, useMemo, useState } from "react"
+import { Download, FileUp, RefreshCw, Upload } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+
+type Item = { invoiceNumber: string; status: string; bookTax: number; gstPortalTax: number; variance: number }
+const formatInr = (amount: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(amount)
+
+export function ReconciliationClient() {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [items, setItems] = useState<Item[]>([])
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await fetch("/api/v1/accounting/reconciliation?taxPeriod=apr-2025", { cache: "no-store" })
+        if (!res.ok) throw new Error("Failed")
+        const payload = await res.json()
+        setItems(payload?.data?.items ?? [])
+      } catch {
+        setError("Failed to load reconciliation data.")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    void load()
+  }, [])
+
+  const mismatched = useMemo(() => items.filter((item) => item.status === "mismatched"), [items])
+
+  return (
+    <div className="container mx-auto space-y-6 p-4 md:p-6 lg:p-8">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">GST Reconciliation</h1>
+          <p className="text-sm text-muted-foreground">Match purchase records with GSTR-2A/2B data from GST portal.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="h-8 gap-1"><Download className="h-3.5 w-3.5" />Export</Button>
+          <Button size="sm" className="h-8 gap-1 bg-gradient-to-r from-orange-600 to-orange-400"><Upload className="h-3.5 w-3.5" />Import GSTR-2B</Button>
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader><CardTitle>Reconciliation Settings</CardTitle><CardDescription>Configure your reconciliation parameters</CardDescription></CardHeader>
+        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="space-y-2">
+            <Label htmlFor="tax-period">Tax Period</Label>
+            <Select defaultValue="apr-2025"><SelectTrigger id="tax-period"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="apr-2025">April 2025</SelectItem></SelectContent></Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="gstr-file">GSTR-2B JSON File</Label>
+            <div className="flex gap-2"><Input id="gstr-file" type="file" className="flex-1" /><Button variant="outline" size="icon"><FileUp className="h-4 w-4" /></Button></div>
+          </div>
+          <div className="flex items-end"><Button className="w-full bg-gradient-to-r from-orange-600 to-orange-400"><RefreshCw className="mr-2 h-4 w-4" />Run Reconciliation</Button></div>
+        </CardContent>
+      </Card>
+
+      {loading ? <Card><CardContent className="py-8 text-sm text-muted-foreground">Loading reconciliation data…</CardContent></Card> : null}
+      {error ? <Card><CardContent className="py-8 text-sm text-destructive">{error}</CardContent></Card> : null}
+
+      {!loading && !error ? (
+        <Tabs defaultValue="all">
+          <TabsList>
+            <TabsTrigger value="all">All Invoices</TabsTrigger>
+            <TabsTrigger value="mismatched">Mismatched</TabsTrigger>
+          </TabsList>
+          <TabsContent value="all">
+            <Card><CardHeader><CardTitle>All Invoices</CardTitle></CardHeader><CardContent>
+              {items.length === 0 ? <p className="text-sm text-muted-foreground">No invoices found.</p> : (
+                <Table><TableHeader><TableRow><TableHead>Invoice</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Tax</TableHead></TableRow></TableHeader><TableBody>
+                  {items.map((item) => (
+                    <TableRow key={item.invoiceNumber}><TableCell>{item.invoiceNumber}</TableCell><TableCell className="capitalize">{item.status}</TableCell><TableCell className="text-right">{formatInr(item.bookTax)}</TableCell></TableRow>
+                  ))}
+                </TableBody></Table>
+              )}
+            </CardContent></Card>
+          </TabsContent>
+          <TabsContent value="mismatched">
+            <Card><CardHeader><CardTitle>Mismatched Invoices</CardTitle></CardHeader><CardContent>
+              {mismatched.length === 0 ? <p className="text-sm text-muted-foreground">No mismatched invoices found.</p> : (
+                <Table><TableHeader><TableRow><TableHead>Invoice</TableHead><TableHead>Book Tax</TableHead><TableHead>GSTR-2B Tax</TableHead><TableHead className="text-right">Variance</TableHead></TableRow></TableHeader><TableBody>
+                  {mismatched.map((item) => (
+                    <TableRow key={item.invoiceNumber}><TableCell>{item.invoiceNumber}</TableCell><TableCell>{formatInr(item.bookTax)}</TableCell><TableCell>{formatInr(item.gstPortalTax)}</TableCell><TableCell className="text-right">{formatInr(item.variance)}</TableCell></TableRow>
+                  ))}
+                </TableBody></Table>
+              )}
+            </CardContent></Card>
+          </TabsContent>
+        </Tabs>
+      ) : null}
+    </div>
+  )
+}

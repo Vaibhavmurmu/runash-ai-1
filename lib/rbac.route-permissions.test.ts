@@ -31,7 +31,9 @@ test("RBAC UI route rules enforce admin page-specific permissions", async () => 
   const getRouteRequiredPermissions = await loadGetRouteRequiredPermissions()
   const performancePermissions = getRouteRequiredPermissions("/admin/performance", "GET", "ui")
   const emailManagementPermissions = getRouteRequiredPermissions("/admin/email-management", "GET", "ui")
+  const ecommerceAdminPermissions = getRouteRequiredPermissions("/ecommerce/admin", "GET", "ui")
 
   assert.deepEqual(performancePermissions, ["admin:analytics"])
   assert.deepEqual(emailManagementPermissions, ["admin:settings"])
+  assert.deepEqual(ecommerceAdminPermissions, ["admin:analytics"])
 })

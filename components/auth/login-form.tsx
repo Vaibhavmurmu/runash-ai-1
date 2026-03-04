@@ -1,10 +1,11 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { signIn, getSession } from "next-auth/react"
+import { signIn } from "next-auth/react"
+import { getAuthSession } from "@/lib/auth/access-client"
 import { Eye, EyeOff, Github, Loader2, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,13 +13,20 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { CardAlert } from "@/components/ui/card-alert"
+import { CardAlertDialog } from "@/components/ui/card-alert-dialog"
 import { useToast } from "@/hooks/use-toast"
+import { PhoneOtpVerification } from "@/components/auth/phone-otp-verification"
+import { GoogleOneTap } from "@/components/auth/google-one-tap"
+import { formatLoginMethodLabel, getLastLoginMethod, setLastLoginMethod, type LoginMethod } from "@/lib/auth/last-login-method"
 
 export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
+  const [phoneVerified, setPhoneVerified] = useState(false)
+  const [pendingOAuthProvider, setPendingOAuthProvider] = useState<"github" | "google" | null>(null)
+  const [lastLoginMethod, setLastLoginMethodState] = useState<LoginMethod>("unknown")
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -27,12 +35,18 @@ export function LoginForm() {
   const router = useRouter()
   const { toast } = useToast()
 
+  useEffect(() => {
+    setLastLoginMethodState(getLastLoginMethod())
+  }, [])
+
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setIsLoading(true)
     setError("")
 
     try {
+      setLastLoginMethod("password")
       const result = await signIn("credentials", {
         email: formData.email,
         password: formData.password,
@@ -45,7 +59,7 @@ export function LoginForm() {
       }
 
       // Get updated session
-      const session = await getSession()
+      const session = await getAuthSession()
 
       toast({
         title: "Welcome back!",
@@ -63,6 +77,7 @@ export function LoginForm() {
 
   const handleOAuthSignIn = async (provider: string) => {
     try {
+      setLastLoginMethod(provider === "google" || provider === "github" ? provider : "unknown")
       await signIn(provider, { callbackUrl: "/dashboard" })
     } catch (error) {
       toast({
@@ -73,6 +88,8 @@ export function LoginForm() {
     }
   }
 
+  const providerName = pendingOAuthProvider === "github" ? "GitHub" : "Google"
+
   return (
     <div className="w-full max-w-md mx-auto">
       <Card className="relative overflow-hidden border-0 shadow-2xl bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl">
@@ -81,14 +98,21 @@ export function LoginForm() {
           <CardTitle className="text-3xl font-bold bg-gradient-to-r from-orange-500 to-orange-600 bg-clip-text text-transparent">
             Welcome Back
           </CardTitle>
-          <CardDescription className="text-base">Sign in to your account to continue</CardDescription>
+          <CardDescription className="text-base text-foreground/80 dark:text-foreground/75">Sign in to your account to continue</CardDescription>
         </CardHeader>
         <CardContent className="relative">
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+          {error ? <CardAlert severity="danger" title="Sign-in failed" description={error} className="mb-4" /> : null}
+
+          {lastLoginMethod !== "unknown" ? (
+            <CardAlert
+              severity="info"
+              title="Recent activity"
+              description={`Last login method: ${formatLoginMethodLabel(lastLoginMethod)}`}
+              className="mb-4"
+            />
+          ) : null}
+
+          <GoogleOneTap callbackUrl="/dashboard" />
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
@@ -117,7 +141,7 @@ export function LoginForm() {
                 </Label>
                 <Link
                   href="/forgot-password"
-                  className="text-xs text-orange-600 hover:text-orange-700 hover:underline transition-colors"
+                  className="text-xs text-orange-700 dark:text-orange-400 hover:text-orange-800 dark:hover:text-orange-300 hover:underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/80 focus-visible:ring-offset-2"
                 >
                   Forgot password?
                 </Link>
@@ -137,8 +161,9 @@ export function LoginForm() {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent focus-visible:ring-2 focus-visible:ring-orange-500/80"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4 text-muted-foreground" />
@@ -149,6 +174,9 @@ export function LoginForm() {
                 </Button>
               </div>
             </div>
+
+            <PhoneOtpVerification purpose="login" onVerifiedChange={({ verified }) => setPhoneVerified(verified)} />
+            {phoneVerified ? <p className="text-xs text-green-700 dark:text-green-400">Phone verified by server challenge.</p> : null}
 
             <div className="flex items-center space-x-2">
               <Checkbox
@@ -190,7 +218,7 @@ export function LoginForm() {
             <Button
               variant="outline"
               className="h-12 border-2 hover:border-orange-500 hover:bg-orange-50 dark:hover:bg-orange-950 transition-colors bg-transparent"
-              onClick={() => handleOAuthSignIn("github")}
+              onClick={() => setPendingOAuthProvider("github")}
             >
               <Github className="mr-2 h-4 w-4" />
               GitHub
@@ -198,7 +226,7 @@ export function LoginForm() {
             <Button
               variant="outline"
               className="h-12 border-2 hover:border-orange-500 hover:bg-orange-50 dark:hover:bg-orange-950 transition-colors bg-transparent"
-              onClick={() => handleOAuthSignIn("google")}
+              onClick={() => setPendingOAuthProvider("google")}
             >
               <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
                 <path
@@ -223,17 +251,38 @@ export function LoginForm() {
           </div>
         </CardContent>
         <CardFooter className="relative flex flex-col items-center justify-center space-y-2">
-          <div className="text-sm text-muted-foreground">
+          <div className="text-sm text-foreground/75 dark:text-foreground/70">
             Don't have an account?{" "}
             <Link
               href="/signup"
-              className="text-orange-600 hover:text-orange-700 hover:underline font-medium transition-colors"
+              className="text-orange-700 dark:text-orange-400 hover:text-orange-800 dark:hover:text-orange-300 hover:underline font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/80 focus-visible:ring-offset-2"
             >
               Sign up
             </Link>
           </div>
         </CardFooter>
       </Card>
+
+      <CardAlertDialog
+        open={pendingOAuthProvider !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingOAuthProvider(null)
+          }
+        }}
+        severity="warning"
+        title="Confirm account link"
+        description={`Continue with ${providerName} to link this provider to your RunAsh account and merge any active guest session data.`}
+        confirmLabel={`Continue with ${providerName}`}
+        cancelLabel="Stay on sign in"
+        confirmAriaLabel={`Confirm account link with ${providerName}`}
+        onConfirm={() => {
+          if (pendingOAuthProvider) {
+            void handleOAuthSignIn(pendingOAuthProvider)
+            setPendingOAuthProvider(null)
+          }
+        }}
+      />
     </div>
   )
 }

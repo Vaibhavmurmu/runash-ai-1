@@ -19,7 +19,13 @@ export function ThemeToggle() {
   }
 
   return (
-    <Button variant="ghost" size="icon" onClick={() => setTheme(theme === "light" ? "dark" : "light")}>
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label="Toggle theme"
+      className="focus-visible:ring-2 focus-visible:ring-orange-500/80 focus-visible:ring-offset-2"
+      onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+    >
       {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
       <span className="sr-only">Toggle theme</span>
     </Button>

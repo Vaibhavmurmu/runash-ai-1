@@ -4,6 +4,8 @@ type FeatureFlagContext = {
 
 const STATIC_FLAG_MAP: Record<string, boolean> = {
   use_better_auth: true,
+  allow_legacy_next_auth_fallback: false,
+  enforce_legacy_next_auth_fallback_sunset: false,
 }
 
 function readPercentFlag(flagName: string): number | null {

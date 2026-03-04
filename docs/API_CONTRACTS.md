@@ -108,6 +108,22 @@ Response:
 | `SESSION_MESSAGES_FETCH_FAILED` | 500 | `GET /api/messages/session/:id` | Session messages query failed unexpectedly. |
 
 
+
+## Stream Schedule API (`/api/streams/schedule`)
+
+### Auth & identity behavior
+- `GET /api/streams/schedule` and `POST /api/streams/schedule` require a valid server auth session (`getServerAuthSession`).
+- Schedules are always scoped and stored by `session.user.id`.
+- Unauthenticated requests return `401` with `{ "error": "Unauthorized" }`.
+- `x-user-id` header identity override and `demo-user` fallback are not accepted.
+
+### Development-only fallback (disabled by default)
+- For local development only, a fallback identity can be enabled when **all** of the following are true:
+  - `NODE_ENV=development`
+  - `ENABLE_DEV_SCHEDULE_USER_FALLBACK=true`
+  - `DEV_SCHEDULE_FALLBACK_USER_ID=<non-empty-user-id>`
+- If any of the above conditions are not met, unauthenticated requests remain `401`.
+
 ## Upload API (`/api/upload`)
 
 ### `POST /api/upload`
@@ -194,6 +210,14 @@ Structured API logs include:
 - route and method metadata
 
 Sensitive payload fields in auth/payment/chat context are redacted before logging, including keys such as `password`, `token`, `secret`, `authorization`, `cookie`, `card`, `cvv`, `payment`, `otp`, `message`, `content`, and `prompt`.
+
+## Admin Email Broadcast Queue (`/api/admin/email-broadcasts/*`)
+
+- `POST /api/admin/email-broadcasts` and `PUT /api/admin/email-broadcasts/:id` now enqueue send jobs automatically when `scheduled_at` is provided.
+- `POST /api/admin/email-broadcasts/:id/send` remains a manual trigger, but it now writes into the same queue path as scheduled jobs.
+- Queue workers can be run through `POST /api/admin/email-broadcasts/worker`.
+- Delivery is processed in batches with retry/backoff and idempotency key headers (`X-Idempotency-Key`) to reduce duplicate sends.
+- Realtime progress is emitted through `/api/email/realtime` as `broadcast_progress` events in the SSE `event` envelope.
 
 ## Agent APIs (`/api/agents/*`)
 
@@ -502,3 +526,318 @@ Returns paginated, customer-owned invoices and aggregated line items.
 Legacy paths remain active as aliases to v1 handlers:
 - `/api/payment/*` → `/api/v1/payment/*`
 - `/api/billing/*` → `/api/v1/billing/*`
+
+
+## Admin API contracts (`/api/admin/*`)
+
+### Standardized auth/system error responses
+
+Admin routes that rely on `requireAdminAuthorization` and `respondInternalServerError` now share the same 401/403/500 response contract:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Unauthorized"
+  },
+  "requestId": "req_123"
+}
+```
+
+`error.code` values:
+- `UNAUTHORIZED` for 401
+- `FORBIDDEN` for 403
+- `INTERNAL_ERROR` for 500
+
+### Monitoring list endpoints
+
+The following list endpoints support pagination with `page` and `limit`, plus filtering/search:
+
+- `GET /api/admin/audit-logs`
+  - filters: `entityType`, `action`, `actorUserId`
+  - search: `search` (matches action/entity type/entity id)
+- `GET /api/admin/sessions`
+  - filters: `userId`, `isActive`, `deviceName`
+  - search: `search` (matches device id/name, user agent, IP)
+- `GET /api/admin/security/events`
+  - filters: `action`, `adminId`
+  - search: `search` (matches action, target id, details)
+
+### Operator actions endpoint
+
+`POST /api/admin/operations` supports operational actions for operator/admin workflows:
+
+Request body:
+
+```json
+{
+  "action": "cache.clear"
+}
+```
+
+Allowed actions:
+- `cache.clear`
+- `jobs.cleanup`
+- `service.restart_hook` (uses `restartUrl` or `OPERATIONS_RESTART_HOOK_URL`)
+
+Success response:
+
+```json
+{
+  "success": true,
+  "action": "cache.clear"
+}
+```
+
+## Editor Projects API (`/api/editor/projects`)
+
+### `GET /api/editor/projects`
+- Auth required.
+- Returns projects owned by the authenticated user, sorted by `updatedAt` descending.
+
+### `POST /api/editor/projects`
+- Auth required.
+- Request:
+  - `title` (required, 1-150 chars)
+  - `description` (optional)
+  - `selectedModel` (optional)
+  - `timeline` (optional: `duration`, `fps`, `tracks[]`)
+  - `settings` / `metadata` (optional JSON objects)
+- Response: `201` with created `project`.
+
+### `GET /api/editor/projects/:id`
+- Auth required.
+- Returns one editor project scoped to current user.
+- `404` if not found.
+
+### `PATCH /api/editor/projects/:id`
+- Auth required.
+- Supports partial updates for:
+  - `title`, `description`, `status`, `selectedModel`, `timeline`, `settings`, `metadata`
+- Requires at least one update field; returns `400` on invalid payload.
+
+### `DELETE /api/editor/projects/:id`
+- Auth required.
+- Soft response contract: `{ "success": true }` when deletion succeeds.
+- `404` when the project does not exist for current user.
+
+### Migration note
+- Apply `scripts/sql/2026-02-19_create_editor_projects.sql` before using editor project endpoints in production.
+
+
+
+
+## Recording Edits API (`/api/recordings/edit`)
+
+### `POST /api/recordings/edit`
+- Auth required.
+- Writes edit jobs to `recording_edits` (not `streams`) to keep recording-edit metadata isolated from stream contracts.
+- Request (strict schema):
+  - `originalId` (required string)
+  - `title` (required, trimmed, max 160)
+  - `startTime` / `endTime` (required ISO datetime with timezone, `endTime > startTime`, max span 12h)
+  - `filters` (optional object, defaults `{}`)
+  - `audioLevel` (required number, range `0..2`)
+  - `exportSettings` (optional object, defaults `{}`)
+- Response success: `{ "success": true, "editId": "...", "message": "Video edit queued for processing" }`
+- Response errors:
+  - `401` unauthorized
+  - `400` invalid payload with `details[]`
+  - `500` persistence failure
+
+### Transaction behavior
+
+- The route executes the recording edit insert inside an explicit DB transaction (`BEGIN` / `COMMIT`, rollback on failure).
+
+
+- The route executes the recording edit insert inside an explicit DB transaction (`BEGIN` / `COMMIT`, rollback on failure).
+
+- The route executes the recording edit insert inside an explicit DB transaction (`BEGIN` / `COMMIT`, rollback on fail
+
+
+## Stream Interactions API (`/api/streams/:id/*`)
+
+These endpoints power live interactivity for polls, Q&A, reactions, member-only mode, and pinned message references.
+
+### `GET /api/streams/:id/interactions`
+Returns a combined snapshot:
+- `state`: `{ pinnedMessageId, reactionsEnabled, memberOnly, activePollId, activeQASessionId, updatedAt }`
+- `polls`: poll history for stream
+- `qaSessions`: Q&A session history
+- `questions`: submitted questions list
+
+### `PATCH /api/streams/:id/interactions`
+Auth required.
+
+Payload (all optional):
+```json
+{
+  "reactionsEnabled": true,
+  "memberOnly": false,
+  "pinnedMessageId": "chat-message-id-or-null"
+}
+```
+
+### Poll endpoints
+- `GET /api/streams/:id/polls`
+- `POST /api/streams/:id/polls` (auth required)
+  - payload: `{ "question": string, "options": string[] }`
+  - option count: 2-6
+- `POST /api/streams/:id/polls/:pollId/vote`
+  - payload: `{ "optionId": string }`
+- `POST /api/streams/:id/polls/:pollId/end` (auth required)
+
+### Q&A endpoints
+- `GET /api/streams/:id/qa`
+- `POST /api/streams/:id/qa` (auth required)
+  - payload: `{ "prompt": string }`
+- `POST /api/streams/:id/qa/:sessionId/end` (auth required)
+- `GET /api/streams/:id/qa/questions`
+- `POST /api/streams/:id/qa/questions`
+  - payload: `{ "username"?: string, "text": string }`
+- `PATCH /api/streams/:id/qa/questions/:questionId` (auth required)
+  - payload: `{ "selected": boolean }`
+
+### Storage behavior
+- Uses Upstash Redis when `KV_REST_API_URL` and `KV_REST_API_TOKEN` are configured.
+- Falls back to in-memory store when KV is unavailable (development convenience only).
+
+
+## Studio Realtime Delivery & Polling Fallback
+
+The Streaming Studio runtime uses a **hybrid read model** for live state consistency:
+
+- **Primary transport:** realtime channel events for low-latency updates (viewer count, health, interaction deltas).
+- **Fallback transport:** polling snapshots for continuity and drift correction.
+
+### Realtime behavior contract
+
+1. Mutation endpoints (`create/start/end`, interactions writes) remain API-driven and authoritative.
+2. Realtime events are treated as non-authoritative deltas unless reconciled with API snapshots.
+3. Clients must tolerate duplicate/reordered events and apply idempotent reducers.
+4. On realtime channel health degradation, clients MUST degrade to polling-only until channel health is restored.
+
+### Incident rollback contract
+
+If production stability is impacted by realtime transport:
+- Disable realtime channel delivery (feature flag/config switch).
+- Keep Studio operational with polling-only reads against existing REST endpoints.
+- Re-enable realtime only after mitigation + canary verification.
+
+### API-level checks (recommended)
+
+- `GET /api/streams/:id/health` returns healthy status during live session.
+- `GET /api/streams/:id/metrics/realtime` returns monotonic/non-negative counters.
+- `GET /api/streams/:id/interactions` snapshot remains queryable while realtime channel is disabled.
+
+## Dashboard Live Control Visibility Defaults
+
+`/api/dashboard/streams/live-control/:id` now supports `visibility.creatorAge` as the default visibility resolver input:
+
+- `creatorAge` between 13 and 17 => default visibility resolves to `private`.
+- `creatorAge` 18 and above => default visibility resolves to `public`.
+- explicit visibility, when set, still overrides default resolution.
+
+Example update payload:
+
+```json
+{
+  "visibility": {
+    "creatorAge": 16,
+    "explicitVisibility": null
+  }
+}
+```
+
+## Chat Contract Canonicalization (2026-02)
+
+### Canonical request fields
+
+Applicable to `POST /api/chat`, `POST /api/agents/chat`, and `POST /api/mobile/chat`:
+
+- `clientRequestId` (string, optional): idempotency key supplied by client. If repeated, server returns previously accepted message/result when available.
+- `attachments` (array, optional): metadata-only references, max 3-4 items depending on endpoint.
+  - `name` (required)
+  - `type` (required)
+  - `size` (required, positive, max 8MB)
+  - `url`, `checksum`, `width`, `height`, `id` (optional)
+- `retry` (object, optional for streaming endpoints):
+  - `mode`: `none | auto | manual`
+  - `maxAttempts`: `0..3`
+
+### Canonical error codes
+
+| Code | Meaning |
+| --- | --- |
+| `AUTH_REQUIRED` | Auth/session missing for endpoint requiring identity. |
+| `RATE_LIMITED` | Adaptive throttle/rate limit exceeded. |
+| `INVALID_ATTACHMENT` | Attachment metadata failed validation. |
+| `PROVIDER_TIMEOUT` | Upstream AI provider timed out. |
+| `INVALID_REQUEST` | Payload schema validation failure. |
+
+### `POST /api/mobile/chat` example
+
+Request:
+
+```json
+{
+  "platform": "youtube",
+  "username": "creator_mod",
+  "message": "Pinned message for checkout",
+  "clientRequestId": "mob-req-20260228-00041",
+  "attachments": [
+    {
+      "name": "promo.png",
+      "type": "image/png",
+      "size": 140231,
+      "url": "https://cdn.runash.in/chat/promo.png",
+      "checksum": "sha256:abc123"
+    }
+  ]
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": {
+      "id": "c4a2...",
+      "platform": "youtube",
+      "username": "creator_mod",
+      "message": "Pinned message for checkout",
+      "timestamp": "2026-02-28T08:01:44.311Z",
+      "cursor": "mc_1882",
+      "clientRequestId": "mob-req-20260228-00041"
+    },
+    "deduped": false
+  },
+  "error": null,
+  "requestId": "req_..."
+}
+```
+
+### Mobile chat cursor guarantees
+
+- `/api/mobile/chat` and `/api/mobile/chat/stream` use a monotonic cursor: `mc_<cursor_seq>`.
+- Cursor progression is based on `mobile_chat_messages.cursor_seq` (bigserial), not wall-clock timestamps.
+- History and stream polling both query with `cursor_seq > last_seen`, ensuring stable ordering and no duplicate/skip due to same timestamp values.
+
+### `POST /api/agents/chat` idempotent replay behavior
+
+When `clientRequestId` is repeated for the same session and a completed assistant message exists, endpoint returns a non-stream replay response:
+
+```json
+{
+  "deduped": true,
+  "requestId": "req_...",
+  "sessionId": "as_...",
+  "messageId": "am_...",
+  "content": "Previously generated assistant response"
+}
+```
+
+Attachment metadata is persisted and linked to the originating user message for auditability.

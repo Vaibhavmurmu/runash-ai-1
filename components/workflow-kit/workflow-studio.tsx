@@ -19,6 +19,7 @@ const initialWorkflow: WorkflowGraph = {
   description: "Compose AI-driven live workflows",
   nodes: [],
   connections: [],
+  trigger: { type: "manual" },
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 }

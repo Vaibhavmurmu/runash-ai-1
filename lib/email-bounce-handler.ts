@@ -1,5 +1,6 @@
 import { neon } from "@neondatabase/serverless"
 import { EmailDeliveryTracker } from "./email-delivery"
+import { normalizePagination, SafeWhereBuilder, validateDateRange } from "@/lib/email-filter-utils"
 
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -202,34 +203,26 @@ export class EmailBounceHandler {
     offset?: number
   }): Promise<{ suppressions: EmailSuppression[]; total: number }> {
     try {
-      let whereClause = "WHERE 1=1"
+      const { limit, offset } = normalizePagination(filters.limit, filters.offset, {
+        defaultLimit: 50,
+        maxLimit: 200,
+      })
 
-      if (filters.type) {
-        whereClause += ` AND type = '${filters.type}'`
-      }
-      if (filters.search) {
-        whereClause += ` AND email ILIKE '%${filters.search}%'`
-      }
-      if (filters.is_permanent !== undefined) {
-        whereClause += ` AND is_permanent = ${filters.is_permanent}`
-      }
+      const { whereClause, params } = new SafeWhereBuilder()
+        .addEquals("type", filters.type)
+        .addIlikeContains("email", filters.search)
+        .addEquals("is_permanent", filters.is_permanent)
+        .build()
 
       // Get total count
-      const countResult = await sql`
-        SELECT COUNT(*) as total FROM email_suppressions ${sql.unsafe(whereClause)}
-      `
+      const countResult = await sql.query(`SELECT COUNT(*) as total FROM email_suppressions ${whereClause}`, params)
       const total = Number.parseInt(countResult[0].total)
 
       // Get suppressions with pagination
-      const limit = filters.limit || 50
-      const offset = filters.offset || 0
-
-      const suppressions = await sql`
-        SELECT * FROM email_suppressions 
-        ${sql.unsafe(whereClause)}
-        ORDER BY created_at DESC 
-        LIMIT ${limit} OFFSET ${offset}
-      `
+      const suppressions = await sql.query(
+        `SELECT * FROM email_suppressions ${whereClause} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset],
+      )
 
       return { suppressions: suppressions as EmailSuppression[], total }
     } catch (error) {
@@ -299,49 +292,52 @@ export class EmailBounceHandler {
     top_bounce_reasons: Array<{ reason: string; count: number }>
   }> {
     try {
-      let whereClause = "WHERE status = 'bounced'"
+      validateDateRange(filters.date_from, filters.date_to)
 
-      if (filters.date_from) {
-        whereClause += ` AND bounced_at >= '${filters.date_from.toISOString()}'`
-      }
-      if (filters.date_to) {
-        whereClause += ` AND bounced_at <= '${filters.date_to.toISOString()}'`
-      }
+      const bounceWhere = new SafeWhereBuilder()
+        .addRaw("status = 'bounced'")
+        .addGte("bounced_at", filters.date_from)
+        .addLte("bounced_at", filters.date_to)
+        .build("TRUE")
 
       // Get bounce counts
-      const bounceStats = await sql`
+      const bounceStats = await sql.query(
+        `
         SELECT 
           COUNT(*) as total_bounces,
           COUNT(CASE WHEN tracking_data->>'bounce_type' = 'hard' THEN 1 END) as hard_bounces,
           COUNT(CASE WHEN tracking_data->>'bounce_type' = 'soft' THEN 1 END) as soft_bounces,
           COUNT(CASE WHEN tracking_data->>'bounce_type' = 'complaint' THEN 1 END) as complaints
         FROM email_deliveries 
-        ${sql.unsafe(whereClause)}
-      `
+        ${bounceWhere.whereClause}
+      `,
+        bounceWhere.params,
+      )
 
       // Get total emails sent for bounce rate calculation
-      let totalWhereClause = "WHERE 1=1"
-      if (filters.date_from) {
-        totalWhereClause += ` AND created_at >= '${filters.date_from.toISOString()}'`
-      }
-      if (filters.date_to) {
-        totalWhereClause += ` AND created_at <= '${filters.date_to.toISOString()}'`
-      }
+      const totalWhere = new SafeWhereBuilder()
+        .addGte("created_at", filters.date_from)
+        .addLte("created_at", filters.date_to)
+        .build()
 
-      const totalStats = await sql`
-        SELECT COUNT(*) as total_sent FROM email_deliveries ${sql.unsafe(totalWhereClause)}
-      `
+      const totalStats = await sql.query(
+        `SELECT COUNT(*) as total_sent FROM email_deliveries ${totalWhere.whereClause}`,
+        totalWhere.params,
+      )
 
       // Get top bounce reasons
-      const topReasons = await sql`
+      const topReasons = await sql.query(
+        `
         SELECT bounce_reason as reason, COUNT(*) as count
         FROM email_deliveries 
-        ${sql.unsafe(whereClause)}
+        ${bounceWhere.whereClause}
         AND bounce_reason IS NOT NULL
         GROUP BY bounce_reason
         ORDER BY count DESC
         LIMIT 10
-      `
+      `,
+        bounceWhere.params,
+      )
 
       const stats = bounceStats[0]
       const total_bounces = Number.parseInt(stats.total_bounces)
@@ -430,16 +426,12 @@ export class EmailBounceHandler {
   // Export suppressions
   static async exportSuppressions(type?: string): Promise<EmailSuppression[]> {
     try {
-      let whereClause = "WHERE 1=1"
-      if (type) {
-        whereClause += ` AND type = '${type}'`
-      }
+      const { whereClause, params } = new SafeWhereBuilder().addEquals("type", type).build()
 
-      const suppressions = await sql`
-        SELECT * FROM email_suppressions 
-        ${sql.unsafe(whereClause)}
-        ORDER BY created_at DESC
-      `
+      const suppressions = await sql.query(
+        `SELECT * FROM email_suppressions ${whereClause} ORDER BY created_at DESC`,
+        params,
+      )
 
       return suppressions as EmailSuppression[]
     } catch (error) {

@@ -316,4 +316,4 @@ export default function AIHighlights({ streamId, streamTitle }: AIHighlightsProp
       </div>
     </div>
   )
-  }
+}

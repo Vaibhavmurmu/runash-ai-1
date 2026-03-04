@@ -1,8 +1,27 @@
-export type WorkflowNodeCategory = "input" | "video" | "ai" | "streaming" | "output"
+export type WorkflowNodeCategory = "input" | "video" | "ai" | "streaming" | "output" | "email" | "trigger"
 
 export type WorkflowExecutionStatus = "idle" | "running" | "paused" | "completed" | "failed"
 
 export type WorkflowPortType = "video" | "audio" | "metadata" | "text" | "analytics" | "event"
+
+export type WorkflowTriggerType = "schedule" | "webhook_event" | "manual"
+
+export type WorkflowWebhookEventType =
+  | "delivered"
+  | "opened"
+  | "bounced"
+  | "clicked"
+  | "inbound_reply"
+  | "payment_succeeded"
+  | "payment_failed"
+  | "invoice_overdue"
+  | "checkout_abandoned"
+
+export interface WorkflowTriggerConfig {
+  type: WorkflowTriggerType
+  scheduleCron?: string
+  webhookEventType?: WorkflowWebhookEventType
+}
 
 export interface WorkflowPort {
   id: string
@@ -45,6 +64,7 @@ export interface WorkflowGraph {
   description?: string
   nodes: WorkflowNode[]
   connections: WorkflowConnection[]
+  trigger: WorkflowTriggerConfig
   createdAt: string
   updatedAt: string
 }
@@ -67,12 +87,29 @@ export interface WorkflowExecution {
   completedAt?: string
   results: NodeExecutionResult[]
   logs: string[]
+  rollbackStatus?: "not-required" | "completed" | "failed"
+  rollbackLogs?: string[]
+}
+
+export interface WorkflowAuditRecord {
+  id: string
+  executionId: string
+  workflowId: string
+  workflowName: string
+  trigger: WorkflowTriggerConfig
+  action: "workflow_start" | "node_start" | "node_complete" | "node_failed" | "workflow_complete" | "workflow_failed" | "rollback"
+  nodeId?: string
+  nodeType?: string
+  status: "info" | "success" | "failed"
+  message: string
+  timestamp: string
+  metadata?: Record<string, unknown>
 }
 
 export interface WorkflowTemplate {
   id: string
   name: string
-  category: "live-commerce" | "sports" | "education" | "gaming" | "events" | "news"
+  category: "live-commerce" | "sports" | "education" | "gaming" | "events" | "news" | "email-automation"
   description: string
   rating: number
   uses: number

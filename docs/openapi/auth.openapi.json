@@ -1,0 +1,1791 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "RunAsh Auth API",
+    "version": "1.0.0",
+    "description": "OpenAPI contract for core auth routes and enabled auth plugins."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "RunAsh deployment"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Core Auth"
+    },
+    {
+      "name": "OTP"
+    },
+    {
+      "name": "SIWE"
+    },
+    {
+      "name": "SCIM"
+    },
+    {
+      "name": "SSO"
+    },
+    {
+      "name": "Device Flow"
+    },
+    {
+      "name": "Bearer"
+    },
+    {
+      "name": "OTT"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "better-auth.session-token",
+        "description": "Better Auth session cookie."
+      },
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      },
+      "scimBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "SCIM provisioning token."
+      }
+    }
+  },
+  "paths": {
+    "/api/auth/2fa/backup-codes": {
+      "get": {
+        "operationId": "get_api_auth_2fa_backup_codes",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "GET /api/auth/2fa/backup-codes",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "post_api_auth_2fa_backup_codes",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/2fa/backup-codes",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/2fa/setup": {
+      "get": {
+        "operationId": "get_api_auth_2fa_setup",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "GET /api/auth/2fa/setup",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "post_api_auth_2fa_setup",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/2fa/setup",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/2fa/verify": {
+      "post": {
+        "operationId": "post_api_auth_2fa_verify",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/2fa/verify",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "put_api_auth_2fa_verify",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "PUT /api/auth/2fa/verify",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/account/change-email": {
+      "post": {
+        "operationId": "post_api_auth_account_change_email",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/account/change-email",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "put_api_auth_account_change_email",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "PUT /api/auth/account/change-email",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/account/link-anonymous": {
+      "post": {
+        "operationId": "post_api_auth_account_link_anonymous",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/account/link-anonymous",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/account/password": {
+      "post": {
+        "operationId": "post_api_auth_account_password",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/account/password",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/account/resend-code": {
+      "post": {
+        "operationId": "post_api_auth_account_resend_code",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/account/resend-code",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/account": {
+      "get": {
+        "operationId": "get_api_auth_account",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "GET /api/auth/account",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patch_api_auth_account",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "PATCH /api/auth/account",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "delete_api_auth_account",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "DELETE /api/auth/account",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/account/unlink": {
+      "post": {
+        "operationId": "post_api_auth_account_unlink",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/account/unlink",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/anonymous": {
+      "post": {
+        "operationId": "post_api_auth_anonymous",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/anonymous",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/bearer-token": {
+      "post": {
+        "operationId": "post_api_auth_bearer_token",
+        "tags": [
+          "Bearer"
+        ],
+        "summary": "Issue bearer session token",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "examples": {
+                "issueToken": {
+                  "value": {
+                    "scope": "api",
+                    "ttlMinutes": 60
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "delete_api_auth_bearer_token",
+        "tags": [
+          "Bearer"
+        ],
+        "summary": "Revoke bearer session token",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "examples": {
+                "revokeToken": {
+                  "value": {
+                    "sessionId": "session_123"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/change-password": {
+      "post": {
+        "operationId": "post_api_auth_change_password",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/change-password",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/docs": {
+      "get": {
+        "operationId": "get_api_auth_docs",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "GET /api/auth/docs",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/forgot-password": {
+      "post": {
+        "operationId": "post_api_auth_forgot_password",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/forgot-password",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/get-session": {
+      "get": {
+        "operationId": "get_api_auth_get_session",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "GET /api/auth/get-session",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/google-one-tap/callback": {
+      "post": {
+        "operationId": "post_api_auth_google_one_tap_callback",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/google-one-tap/callback",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/magic-link": {
+      "post": {
+        "operationId": "post_api_auth_magic_link",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/magic-link",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/magic-link/verify": {
+      "post": {
+        "operationId": "post_api_auth_magic_link_verify",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/magic-link/verify",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/oauth/device/authorize": {
+      "post": {
+        "operationId": "post_api_auth_oauth_device_authorize",
+        "tags": [
+          "Device Flow"
+        ],
+        "summary": "Start OAuth device authorization",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "examples": {
+                "authorize": {
+                  "value": {
+                    "client_id": "runash-kiosk",
+                    "scope": "openid profile"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/oauth/device/token": {
+      "post": {
+        "operationId": "post_api_auth_oauth_device_token",
+        "tags": [
+          "Device Flow"
+        ],
+        "summary": "Exchange OAuth device code for access token",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "examples": {
+                "exchange": {
+                  "value": {
+                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                    "device_code": "dev_123"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/oauth/device/verify": {
+      "post": {
+        "operationId": "post_api_auth_oauth_device_verify",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/oauth/device/verify",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/oauth/proxy": {
+      "get": {
+        "operationId": "get_api_auth_oauth_proxy",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "GET /api/auth/oauth/proxy",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/openapi": {
+      "get": {
+        "operationId": "get_api_auth_openapi",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "GET /api/auth/openapi",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/otp/email": {
+      "post": {
+        "operationId": "post_api_auth_otp_email",
+        "tags": [
+          "OTP"
+        ],
+        "summary": "Send email OTP",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "examples": {
+                "loginOtp": {
+                  "summary": "Login OTP",
+                  "value": {
+                    "email": "seller@runash.ai",
+                    "purpose": "login"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "put_api_auth_otp_email",
+        "tags": [
+          "OTP"
+        ],
+        "summary": "Verify email OTP",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "examples": {
+                "verifyOtp": {
+                  "value": {
+                    "email": "seller@runash.ai",
+                    "code": "123456",
+                    "purpose": "login"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/otp/sms": {
+      "post": {
+        "operationId": "post_api_auth_otp_sms",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/otp/sms",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "put_api_auth_otp_sms",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "PUT /api/auth/otp/sms",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/ott/issue": {
+      "post": {
+        "operationId": "post_api_auth_ott_issue",
+        "tags": [
+          "OTT"
+        ],
+        "summary": "Issue one-time transfer token",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "examples": {
+                "issueOtt": {
+                  "value": {
+                    "sourceDomain": "console.runash.ai",
+                    "targetDomain": "stream.runash.ai",
+                    "ttlSeconds": 120
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/ott/verify": {
+      "post": {
+        "operationId": "post_api_auth_ott_verify",
+        "tags": [
+          "OTT"
+        ],
+        "summary": "Verify one-time transfer token",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "examples": {
+                "verifyOtt": {
+                  "value": {
+                    "token": "ott_123",
+                    "sourceDomain": "console.runash.ai",
+                    "targetDomain": "stream.runash.ai"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/passkey/authenticate": {
+      "get": {
+        "operationId": "get_api_auth_passkey_authenticate",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "GET /api/auth/passkey/authenticate",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "post_api_auth_passkey_authenticate",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/passkey/authenticate",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/passkey/register": {
+      "get": {
+        "operationId": "get_api_auth_passkey_register",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "GET /api/auth/passkey/register",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "post_api_auth_passkey_register",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/passkey/register",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/permissions": {
+      "get": {
+        "operationId": "get_api_auth_permissions",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "GET /api/auth/permissions",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/phone-otp": {
+      "post": {
+        "operationId": "post_api_auth_phone_otp",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/phone-otp",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "put_api_auth_phone_otp",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "PUT /api/auth/phone-otp",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patch_api_auth_phone_otp",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "PATCH /api/auth/phone-otp",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "operationId": "post_api_auth_refresh",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/refresh",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "operationId": "post_api_auth_register",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/register",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/resend-verification": {
+      "post": {
+        "operationId": "post_api_auth_resend_verification",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/resend-verification",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/reset-password": {
+      "post": {
+        "operationId": "post_api_auth_reset_password",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/reset-password",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/session": {
+      "get": {
+        "operationId": "get_api_auth_session",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "GET /api/auth/session",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/sessions": {
+      "get": {
+        "operationId": "get_api_auth_sessions",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "GET /api/auth/sessions",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/sessions/switch": {
+      "post": {
+        "operationId": "post_api_auth_sessions_switch",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/sessions/switch",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/sign-in": {
+      "post": {
+        "operationId": "post_api_auth_sign_in",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/sign-in",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/sign-out": {
+      "post": {
+        "operationId": "post_api_auth_sign_out",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/sign-out",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/siwe/nonce": {
+      "post": {
+        "operationId": "post_api_auth_siwe_nonce",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/siwe/nonce",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/auth/siwe/verify": {
+      "post": {
+        "operationId": "post_api_auth_siwe_verify",
+        "tags": [
+          "SIWE"
+        ],
+        "summary": "Verify Sign-In with Ethereum",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "examples": {
+                "siweVerification": {
+                  "value": {
+                    "nonce": "nonce_123",
+                    "message": "runash.ai wants you to sign in with your Ethereum account...",
+                    "signature": "0xabc123",
+                    "walletAddress": "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
+                    "chainId": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/sso/check": {
+      "post": {
+        "operationId": "post_api_auth_sso_check",
+        "tags": [
+          "SSO"
+        ],
+        "summary": "Check enterprise SSO availability by email domain",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "examples": {
+                "domainLookup": {
+                  "value": {
+                    "email": "user@enterprise.example"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/verify-email": {
+      "get": {
+        "operationId": "get_api_auth_verify_email",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "GET /api/auth/verify-email",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "post_api_auth_verify_email",
+        "tags": [
+          "Core Auth"
+        ],
+        "summary": "POST /api/auth/verify-email",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/scim/v2/Groups": {
+      "get": {
+        "operationId": "get_api_scim_v2_Groups",
+        "tags": [
+          "SCIM"
+        ],
+        "summary": "GET /api/scim/v2/Groups",
+        "security": [
+          {
+            "scimBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "post_api_scim_v2_Groups",
+        "tags": [
+          "SCIM"
+        ],
+        "summary": "POST /api/scim/v2/Groups",
+        "security": [
+          {
+            "scimBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patch_api_scim_v2_Groups",
+        "tags": [
+          "SCIM"
+        ],
+        "summary": "PATCH /api/scim/v2/Groups",
+        "security": [
+          {
+            "scimBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/scim/v2/Users": {
+      "get": {
+        "operationId": "get_api_scim_v2_Users",
+        "tags": [
+          "SCIM"
+        ],
+        "summary": "List SCIM users for an organization",
+        "security": [
+          {
+            "scimBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "post_api_scim_v2_Users",
+        "tags": [
+          "SCIM"
+        ],
+        "summary": "Provision SCIM user",
+        "security": [
+          {
+            "scimBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "examples": {
+                "createScimUser": {
+                  "value": {
+                    "organizationId": 42,
+                    "externalId": "okta-usr-1001",
+                    "userName": "user@enterprise.example",
+                    "active": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patch_api_scim_v2_Users",
+        "tags": [
+          "SCIM"
+        ],
+        "summary": "Deactivate SCIM user",
+        "security": [
+          {
+            "scimBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    }
+  },
+  "x-runash-auth-plugins": {
+    "otp": true,
+    "siwe": true,
+    "scim": true,
+    "sso": true,
+    "deviceFlow": true,
+    "bearer": true,
+    "ott": true
+  }
+}

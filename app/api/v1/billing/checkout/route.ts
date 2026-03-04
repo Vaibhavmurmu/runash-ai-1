@@ -3,14 +3,19 @@ import { z } from "zod"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { logPrivilegedAction } from "@/lib/audit-logging"
 import { getAuthorizedBillingIdentity, requireScopedBillingAccess } from "@/lib/billing-auth"
-import { computeTaxForRegion, persistTaxComputation } from "@/lib/services/tax-service"
-import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
+import { createSignedCheckoutReturnState } from "@/lib/payments/checkout-return-state"
 import { sanitizePaymentActivityDetails } from "@/lib/payments/logging-sanitizer"
 import {
+  buildComplianceSafePaymentMetadata,
   createPaymentRoutingAuditEvent,
+  createPaymentRoutingContextMetadata,
   resolveEdgeRoutingPolicy,
   withRouteContextMetadata,
 } from "@/lib/payments/edge-routing-policy"
+import { enforcePaymentValidatorMiddleware } from "@/lib/payments/validator-gate"
+import { computeTaxForRegion, persistTaxComputation } from "@/lib/services/tax-service"
+import { upsertCustomerCheckoutProfile } from "@/services/payment-checkout-profile-service"
+import { postAccountingEvent } from "@/lib/services/runashbook-accounting-service"
 
 const createCheckoutSchema = z
   .object({
@@ -18,6 +23,10 @@ const createCheckoutSchema = z
     mode: z.enum(["payment", "subscription"]).default("subscription"),
     success_url: z.string().url(),
     cancel_url: z.string().url(),
+    redirectUrl: z.string().url().optional(),
+    returnUrlSuccess: z.string().url().optional(),
+    returnUrlPending: z.string().url().optional(),
+    returnUrlFailed: z.string().url().optional(),
     humanConfirmed: z.boolean().optional(),
     mfaVerified: z.boolean().optional(),
     product_tax_code: z.enum(["physical_goods", "digital_services", "professional_services"]).optional(),
@@ -32,6 +41,14 @@ const createCheckoutSchema = z
   })
   .strict()
 
+function appendCallbackParams(url: string, params: Record<string, string>) {
+  const target = new URL(url)
+  for (const [key, value] of Object.entries(params)) {
+    target.searchParams.set(key, value)
+  }
+  return target.toString()
+}
+
 export async function POST(request: NextRequest) {
   const access = await requireScopedBillingAccess("startup")
   if ("response" in access) return access.response
@@ -44,8 +61,20 @@ export async function POST(request: NextRequest) {
       return respondError(request, { code: "INVALID_CHECKOUT_PAYLOAD", message: "Invalid checkout payload" }, { status: 400 })
     }
 
-    const { priceId, mode, success_url, cancel_url, product_tax_code, billing_address, humanConfirmed, mfaVerified } =
-      validation.data
+    const {
+      priceId,
+      mode,
+      success_url,
+      cancel_url,
+      redirectUrl,
+      returnUrlSuccess,
+      returnUrlPending,
+      returnUrlFailed,
+      product_tax_code,
+      billing_address,
+      humanConfirmed,
+      mfaVerified,
+    } = validation.data
 
     if (!process.env.STRIPE_SECRET_KEY) {
       return respondError(request, { code: "STRIPE_NOT_CONFIGURED", message: "Stripe not configured" }, { status: 500 })
@@ -71,6 +100,10 @@ export async function POST(request: NextRequest) {
         mode,
         currency_hint: priceId,
       },
+    })
+    const routingContextMetadata = createPaymentRoutingContextMetadata({
+      requestId: routeAudit.requestId,
+      routeDecision: edgeRouting,
     })
 
     await logPrivilegedAction({
@@ -132,25 +165,56 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    const returnBaseUrl = redirectUrl || `${request.nextUrl.origin}/payment-redirect/return`
+    const normalizedReturnSuccess = returnUrlSuccess || success_url
+    const normalizedReturnFailed = returnUrlFailed || cancel_url
+    const normalizedReturnPending = returnUrlPending || appendCallbackParams(returnBaseUrl, { status: "pending" })
+
+    const initialState = createSignedCheckoutReturnState({
+      checkoutSessionId: "{CHECKOUT_SESSION_ID}",
+      customerId: sessionUser.userId,
+      providerTransactionReference: "{CHECKOUT_SESSION_ID}",
+      ttlSeconds: 60 * 30,
+    })
+
+    const stripeSuccessUrl = appendCallbackParams(normalizedReturnSuccess, {
+      state: initialState,
+      provider_ref: "{CHECKOUT_SESSION_ID}",
+      checkout_session_id: "{CHECKOUT_SESSION_ID}",
+      provider: "stripe",
+    })
+    const stripeCancelUrl = appendCallbackParams(normalizedReturnFailed, {
+      state: initialState,
+      provider_ref: "{CHECKOUT_SESSION_ID}",
+      checkout_session_id: "{CHECKOUT_SESSION_ID}",
+      provider: "stripe",
+      status: "failed",
+    })
+
     const session = await stripe.checkout.sessions.create({
       mode,
-      success_url,
-      cancel_url,
+      success_url: stripeSuccessUrl,
+      cancel_url: stripeCancelUrl,
       customer: identity.user.stripe_customer_id || undefined,
       customer_email: sessionUser.email || undefined,
       line_items: [{ price: priceId, quantity: 1 }],
       allow_promotion_codes: true,
       metadata: withRouteContextMetadata(
-        {
-          user_id: sessionUser.userId,
-          organization_id: sessionUser.organizationId ? String(sessionUser.organizationId) : "",
-          tax_country_code: taxComputation.countryCode,
-          tax_state_code: taxComputation.stateCode ?? "",
-          tax_total_amount: String(taxComputation.totalTaxAmount),
-          product_tax_code: product_tax_code ?? "digital_services",
-          validator_decision: JSON.stringify(validatorDecision),
-        },
+        buildComplianceSafePaymentMetadata({
+          requestId: routingContextMetadata.requestId,
+          routeDecision: edgeRouting,
+          metadata: {
+            user_id: sessionUser.userId,
+            organization_id: sessionUser.organizationId ? String(sessionUser.organizationId) : "",
+            tax_country_code: taxComputation.countryCode,
+            tax_state_code: taxComputation.stateCode ?? "",
+            tax_total_amount: String(taxComputation.totalTaxAmount),
+            product_tax_code: product_tax_code ?? "digital_services",
+            validator_decision: JSON.stringify(validatorDecision),
+          },
+        }),
         edgeRouting,
+        routingContextMetadata,
       ),
     })
 
@@ -160,6 +224,65 @@ export async function POST(request: NextRequest) {
       userId: Number(sessionUser.userId),
       currency: String(price.currency || "usd").toUpperCase(),
       computation: taxComputation,
+    })
+
+    const signedState = createSignedCheckoutReturnState({
+      checkoutSessionId: session.id,
+      customerId: sessionUser.userId,
+      providerTransactionReference: session.id,
+    })
+
+    const finalizedReturnUrlSuccess = appendCallbackParams(normalizedReturnSuccess, {
+      state: signedState,
+      provider_ref: session.id,
+      checkout_session_id: session.id,
+      provider: "stripe",
+    })
+    const finalizedReturnUrlPending = appendCallbackParams(normalizedReturnPending, {
+      state: signedState,
+      provider_ref: session.id,
+      checkout_session_id: session.id,
+      provider: "stripe",
+      status: "pending",
+    })
+    const finalizedReturnUrlFailed = appendCallbackParams(normalizedReturnFailed, {
+      state: signedState,
+      provider_ref: session.id,
+      checkout_session_id: session.id,
+      provider: "stripe",
+      status: "failed",
+    })
+
+    await upsertCustomerCheckoutProfile({
+      customerId: sessionUser.userId,
+      redirectUrl: session.url ?? null,
+      returnUrlSuccess: finalizedReturnUrlSuccess,
+      returnUrlPending: finalizedReturnUrlPending,
+      returnUrlFailed: finalizedReturnUrlFailed,
+      providerTransactionReference: session.id,
+    })
+
+    await postAccountingEvent({
+      event: {
+        eventType: "checkout_initiated",
+        occurredAt: new Date().toISOString(),
+        amount,
+        taxAmount: taxComputation.totalTaxAmount,
+        feeAmount: 0,
+        currency: String(price.currency || "usd").toUpperCase(),
+        merchantCountry: process.env.RUNASH_MERCHANT_REGION || taxComputation.countryCode || "US",
+        merchantEntityId: sessionUser.organizationId ? String(sessionUser.organizationId) : sessionUser.userId,
+        merchantId: sessionUser.userId,
+        customerCountry: billing_address?.country,
+        correlationKey: session.id,
+        idempotencyKey: `checkout_initiated:${session.id}`,
+        provider: "stripe",
+        providerReference: session.id,
+        metadata: {
+          mode,
+          source: "app.api.v1.billing.checkout",
+        },
+      },
     })
 
     await logPrivilegedAction({
@@ -174,11 +297,19 @@ export async function POST(request: NextRequest) {
         validatorDecision,
         requestId: routeAudit.requestId,
         routeDecision: routeAudit.routeDecision,
+        provider: "stripe",
       }),
     })
 
     return respondSuccess(request, {
       url: session.url,
+      redirectUrl: session.url,
+      returnUrlSuccess: finalizedReturnUrlSuccess,
+      returnUrlPending: finalizedReturnUrlPending,
+      returnUrlFailed: finalizedReturnUrlFailed,
+      providerTransactionReference: session.id,
+      provider: "stripe",
+      state: signedState,
       validatorDecision,
       tax: {
         country_code: taxComputation.countryCode,

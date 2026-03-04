@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { useChatRealtime } from "@/lib/hooks/use-module-realtime"
 
 export type ChatMessage = {
   id: string
@@ -17,13 +18,7 @@ export function useChat(streamId: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    if (streamId) {
-      fetchMessages()
-    }
-  }, [streamId])
-
-  const fetchMessages = async () => {
+  const fetchMessages = useCallback(async () => {
     try {
       setLoading(true)
       // TODO: Implement /api/streams/[id]/messages endpoint for Neon
@@ -33,7 +28,50 @@ export function useChat(streamId: string) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  const realtime = useChatRealtime({
+    refreshOnStale: fetchMessages,
+  })
+
+  const streamMessages = useMemo(() => {
+    if (!streamId) return []
+
+    const list = realtime.state.byStreamId[streamId] ?? []
+    return list.map((message) => ({
+      id: message.id,
+      stream_id: message.streamId,
+      user_id: message.userId,
+      username: message.username ?? "anonymous",
+      message: message.message,
+      message_type: "message" as const,
+      created_at: message.createdAt,
+    }))
+  }, [realtime.state.byStreamId, streamId])
+
+  useEffect(() => {
+    if (streamId) {
+      void fetchMessages()
+    }
+  }, [fetchMessages, streamId])
+
+  useEffect(() => {
+    if (!streamMessages.length) return
+
+    setMessages((previous) => {
+      const merged = new Map<string, ChatMessage>()
+      streamMessages.forEach((message) => {
+        merged.set(message.id, message)
+      })
+      previous.forEach((message) => {
+        if (!merged.has(message.id)) {
+          merged.set(message.id, message)
+        }
+      })
+
+      return Array.from(merged.values())
+    })
+  }, [streamMessages])
 
   const sendMessage = async (messageData: Partial<ChatMessage>) => {
     try {
@@ -48,5 +86,6 @@ export function useChat(streamId: string) {
     messages,
     loading,
     sendMessage,
+    realtime,
   }
 }

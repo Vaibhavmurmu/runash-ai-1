@@ -76,3 +76,18 @@ export function useAuth() {
   }
   return context
 }
+
+export function useOptionalAuth(): AuthContextType {
+  const context = useContext(AuthContext)
+  if (context) {
+    return context
+  }
+
+  return {
+    user: null,
+    loading: false,
+    signIn: async () => ({ error: "Auth provider unavailable" }),
+    signUp: async () => ({ error: "Auth provider unavailable" }),
+    signOut: async () => undefined,
+  }
+}

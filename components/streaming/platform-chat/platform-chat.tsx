@@ -22,10 +22,11 @@ import PlatformSelector from "./platform-selector"
 
 interface PlatformChatProps {
   isStreaming: boolean
+  streamId?: string
   initialSettings?: Partial<ChatSettings>
 }
 
-export default function PlatformChat({ isStreaming, initialSettings }: PlatformChatProps) {
+export default function PlatformChat({ isStreaming, streamId, initialSettings }: PlatformChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [messageInput, setMessageInput] = useState("")
   const [selectedPlatform, setSelectedPlatform] = useState<StreamingPlatform | "all">("all")
@@ -58,7 +59,9 @@ export default function PlatformChat({ isStreaming, initialSettings }: PlatformC
 
   // Initialize chat service
   useEffect(() => {
-    if (isStreaming) {
+    if (isStreaming && streamId) {
+            chatService.configureStream(streamId, "sse")
+
       // Connect to platforms
       const connectToPlatforms = async () => {
         await chatService.connectToPlatform("twitch", {})
@@ -113,7 +116,7 @@ export default function PlatformChat({ isStreaming, initialSettings }: PlatformC
         },
       ])
     }
-  }, [isStreaming])
+  }, [chatService, isStreaming, streamId])
 
   // Apply initial settings
   useEffect(() => {

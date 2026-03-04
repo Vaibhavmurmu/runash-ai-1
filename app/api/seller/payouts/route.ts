@@ -1,9 +1,12 @@
-import { NextResponse } from "next/server"
 import { getSql } from "@/lib/db/neon"
+import { respondError, respondSuccess } from "@/lib/api/envelope"
+import { requireSellerSessionUserId } from "@/app/api/seller/_auth"
 
 export async function GET(request: Request) {
   try {
-    const userId = Number(request.headers.get("x-user-id") || 1)
+    const userId = await requireSellerSessionUserId(request)
+    if (userId instanceof Response) return userId
+
     const sql = getSql()
 
     const [summary] = await sql/* sql */`
@@ -33,7 +36,7 @@ export async function GET(request: Request) {
       LIMIT 12
     `
 
-    return NextResponse.json({
+    const payload = {
       availableBalance: Number(summary?.available_balance || 0),
       totalEarned: Number(summary?.total_earned || 0),
       deliveredOrders: Number(summary?.delivered_orders || 0),
@@ -47,8 +50,10 @@ export async function GET(request: Request) {
         method: "Bank Transfer",
         ordersCount: Number(row.orders_count || 0),
       })),
-    })
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to load payouts" }, { status: 500 })
+    }
+
+    return respondSuccess(request, payload, { legacy: payload })
+  } catch {
+    return respondError(request, { code: "SELLER_PAYOUTS_READ_FAILED", message: "Failed to load payouts" }, { status: 500, legacy: { error: "Failed to load payouts" } })
   }
 }

@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Invalid email address" }, { status: 400 })
     }
 
-    const { email } = validationResult.data
+    const email = validationResult.data.email.trim().toLowerCase()
 
     const [user] = await sql`
       SELECT id, email, name FROM users WHERE email = ${email}

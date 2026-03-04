@@ -1,26 +1,64 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import type { Stream, UUID } from "@/lib/types"
+import { useStreamsRealtime } from "@/lib/hooks/use-module-realtime"
 
 export function useStreams(userId?: UUID) {
   const [streams, setStreams] = useState<Stream[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let mounted = true
+  const fetchStreams = useCallback(async () => {
     setLoading(true)
-    const url = userId ? `/api/streams?userId=${userId}` : "/api/streams"
-    fetch(url)
-      .then((r) => r.json())
-      .then((json) => mounted && setStreams(json.data ?? []))
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false))
-    return () => {
-      mounted = false
+
+    try {
+      setError(null)
+      const url = userId ? `/api/streams?userId=${userId}` : "/api/streams"
+      const response = await fetch(url)
+      const json = await response.json()
+      if (!response.ok) throw new Error(json.error || "Failed to fetch streams")
+      setStreams(json.data ?? [])
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : String(fetchError))
+    } finally {
+      setLoading(false)
     }
   }, [userId])
+
+  const realtime = useStreamsRealtime({
+    refreshOnStale: fetchStreams,
+  })
+
+  const realtimeStreamsById = realtime.state.byId
+
+  const hydratedRealtimeStreams = useMemo(
+    () => Object.values(realtimeStreamsById).map((stream) => stream as Stream),
+    [realtimeStreamsById],
+  )
+
+  useEffect(() => {
+    void fetchStreams()
+  }, [fetchStreams])
+
+  useEffect(() => {
+    if (!hydratedRealtimeStreams.length) return
+
+    setStreams((previous) => {
+      const merged = new Map<string, Stream>()
+
+      hydratedRealtimeStreams.forEach((stream) => {
+        merged.set(stream.id, stream)
+      })
+
+      previous.forEach((stream) => {
+        const existing = merged.get(stream.id)
+        merged.set(stream.id, existing ? { ...stream, ...existing } : stream)
+      })
+
+      return Array.from(merged.values())
+    })
+  }, [hydratedRealtimeStreams])
 
   return {
     streams,
@@ -53,5 +91,6 @@ export function useStreams(userId?: UUID) {
       if (!r.ok) throw new Error("delete failed")
       setStreams((prev) => prev.filter((s) => s.id !== id))
     },
+    realtime,
   }
 }

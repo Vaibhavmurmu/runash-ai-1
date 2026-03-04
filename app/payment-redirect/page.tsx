@@ -5,11 +5,23 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/contexts/cart-context"
 
+type RedirectOrchestrationState = {
+  checkoutSessionId?: string
+  provider?: string
+  providerTransactionReference?: string
+  state?: string
+  redirectUrl: string
+  returnUrlSuccess?: string
+  returnUrlPending?: string
+  returnUrlFailed?: string
+  createdAt: string
+}
+
 export default function PaymentRedirectPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { state, clearCart } = useCart()
-  const { cart, totals } = state
+  const { state } = useCart()
+  const { cart } = state
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
@@ -21,7 +33,6 @@ export default function PaymentRedirectPage() {
     async function startFlow() {
       setError(null)
       try {
-        // If order_id provided, use it; otherwise try pendingOrder from sessionStorage fallback
         let orderId = orderIdParam
         if (!orderId) {
           const pending = typeof window !== "undefined" ? sessionStorage.getItem("pendingOrder") : null
@@ -29,7 +40,6 @@ export default function PaymentRedirectPage() {
             throw new Error("No pending order available. Please retry from checkout.")
           }
           const orderPayload = JSON.parse(pending)
-          // Create server-side order
           const createRes = await fetch("/api/orders", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -41,7 +51,6 @@ export default function PaymentRedirectPage() {
           }
           const created = await createRes.json()
           orderId = created?.id
-          // Save created orderId locally to allow retries if needed
           if (orderId) {
             sessionStorage.setItem("pendingOrderId", orderId)
           }
@@ -51,24 +60,36 @@ export default function PaymentRedirectPage() {
           throw new Error("Failed to obtain an order id")
         }
 
-        // Ask server to create Stripe Checkout Session for this order
         const sessionRes = await fetch("/api/checkout/session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             orderId,
-            successUrl: window.location.origin + `/order/success?order_id=${orderId}&session_id={CHECKOUT_SESSION_ID}`,
-            cancelUrl: window.location.origin + "/checkout",
+            successUrl: window.location.origin + `/payment-redirect/return`,
+            cancelUrl: window.location.origin + "/payment-redirect/return?status=failed",
           }),
         })
 
         const sessionData = await sessionRes.json()
-        if (!sessionRes.ok || !sessionData.url) {
+        const redirectUrl = sessionData.redirectUrl || sessionData.url
+        if (!sessionRes.ok || !redirectUrl) {
           throw new Error(sessionData?.error || "Failed to create checkout session")
         }
 
-        // Redirect to Stripe Checkout
-        window.location.href = sessionData.url
+        const checkoutAttemptState: RedirectOrchestrationState = {
+          checkoutSessionId: sessionData.checkoutSessionId,
+          provider: sessionData.provider || "stripe",
+          providerTransactionReference: sessionData.providerTransactionReference || sessionData.checkoutSessionId,
+          state: sessionData.state,
+          redirectUrl,
+          returnUrlSuccess: sessionData.returnUrlSuccess,
+          returnUrlPending: sessionData.returnUrlPending,
+          returnUrlFailed: sessionData.returnUrlFailed,
+          createdAt: new Date().toISOString(),
+        }
+
+        sessionStorage.setItem("checkoutRedirectAttempt", JSON.stringify(checkoutAttemptState))
+        window.location.href = redirectUrl
       } catch (err: any) {
         if (!cancelled) {
           console.error("Payment flow error:", err)
@@ -82,7 +103,7 @@ export default function PaymentRedirectPage() {
     return () => {
       cancelled = true
     }
-  }, [retryCount, orderIdParam])
+  }, [retryCount, orderIdParam, cart.items.length])
 
   const onRetry = () => {
     setLoading(true)
@@ -107,9 +128,7 @@ export default function PaymentRedirectPage() {
             <p className="mt-2 text-sm text-gray-600">{error}</p>
             <div className="mt-4 flex justify-center space-x-2">
               <Button onClick={onRetry}>Retry</Button>
-              <Button variant="ghost" onClick={() => router.push("/checkout")}>
-                Back to Checkout
-              </Button>
+              <Button variant="ghost" onClick={() => router.push("/checkout")}>Back to Checkout</Button>
             </div>
           </div>
         )}
@@ -117,4 +136,3 @@ export default function PaymentRedirectPage() {
     </div>
   )
 }
-

@@ -23,7 +23,8 @@ export interface LinkQuickPayPreview {
   last4: string
   tags: string[]
   taxPreview?: number
-  status?: string
+  status?: "idle" | "processing" | "success" | "failed"
+  requestCorrelationId?: string
   subtotal?: number
   taxAmount?: number
   totalAmount?: number
@@ -32,6 +33,7 @@ export interface LinkQuickPayPreview {
   blockedReason?: string
   checkoutId?: string
   nextAction?: "open_link_checkout" | "collect_valid_checkout_fields" | "retry_or_manual_review"
+  attemptedMethods?: string[]
   attemptTimeline?: Array<{
     method: string
     reason: "primary" | "fallback_retry" | "no_retry"
@@ -42,10 +44,15 @@ export interface LinkQuickPayPreview {
     merchant_id: string
     amount: number
     currency: "USD" | "INR"
+    idempotency_key?: string
     product_metadata: {
       item_name: string
       sku: string
       tags: string[]
+    }
+    chat_context?: {
+      session_id: string
+      user_intent: string
     }
     country?: string
     region?: string
@@ -69,6 +76,7 @@ export interface Product {
   isOrganic: boolean
   sustainabilityScore: number
   image: string
+  mediaAssets?: ProductMediaAsset[]
   arModelUrl?: string
   imageHd?: string
   imageThumb?: string
@@ -78,6 +86,17 @@ export interface Product {
   nutritionalInfo?: NutritionalInfo
   supplier?: string
   carbonFootprint?: number
+}
+
+export interface ProductMediaAsset {
+  id?: string
+  type?: "image" | "video" | "model"
+  url: string
+  thumbnailUrl?: string
+  hdUrl?: string
+  alt?: string
+  title?: string
+  metadata?: Record<string, string | number | boolean>
 }
 
 export interface Recipe {
@@ -177,6 +196,6 @@ export interface QuickAction {
   id: string
   label: string
   icon: string
-  action: () => void
+  action: (trigger?: HTMLElement | null) => void
   category: "product" | "recipe" | "tip" | "automation" | "search"
 }

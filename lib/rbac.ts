@@ -1,4 +1,5 @@
 import { neon } from "@neondatabase/serverless"
+import { ensureAdminAuthMigrationTables } from "@/lib/migration-helpers"
 
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -73,28 +74,30 @@ export const DEFAULT_PERMISSIONS = {
   "system:logs": "View system logs",
 } as const
 
-const VIEWER_PERMISSION_BUNDLE = ["content:read", "dashboard:read", "admin:access", "admin:analytics"] as const
+const VIEWER_PERMISSION_BUNDLE = ["admin:access", "dashboard:read"] as const
 const OPERATOR_PERMISSION_BUNDLE = [
   ...VIEWER_PERMISSION_BUNDLE,
-  "content:write",
-  "streams:create",
-  "payments:read",
-  "payments:write",
-  "system:maintenance",
   "operations:restart",
   "operations:cache:clear",
+  "system:maintenance",
 ] as const
 const ADMIN_PERMISSION_BUNDLE = [
   ...OPERATOR_PERMISSION_BUNDLE,
+  "admin:analytics",
+  "admin:settings",
   "users:read",
   "users:write",
   "users:delete",
   "users:ban",
+  "content:read",
+  "content:write",
   "content:delete",
   "content:moderate",
-  "admin:settings",
+  "streams:create",
   "streams:moderate",
   "streams:analytics",
+  "payments:read",
+  "payments:write",
   "payments:refund",
   "system:logs",
   "system:control",
@@ -132,6 +135,7 @@ const ADMIN_API_ROUTE_RULES: readonly RoutePermissionRule[] = [
   { prefix: "/api/admin/security", requiredPermissions: ["system:maintenance"], methods: ["POST", "PUT", "PATCH"] },
   { prefix: "/api/admin/security", requiredPermissions: ["system:control"], methods: ["DELETE"] },
   { prefix: "/api/admin/performance", requiredPermissions: ["system:maintenance"] },
+  { prefix: "/api/admin/operations", requiredPermissions: ["system:maintenance"] },
   { prefix: "/api/admin/analytics", requiredPermissions: ["admin:analytics"] },
   { prefix: "/api/admin/logs", requiredPermissions: ["system:logs"] },
 
@@ -144,6 +148,7 @@ const ADMIN_API_ROUTE_RULES: readonly RoutePermissionRule[] = [
   { prefix: "/api/admin/users", requiredPermissions: ["users:write"], methods: ["POST", "PUT", "PATCH"] },
   { prefix: "/api/admin/users", requiredPermissions: ["users:write", "system:control"], methods: ["DELETE"] },
   { prefix: "/api/admin/flags", requiredPermissions: ["admin:settings"] },
+  { prefix: "/api/admin/payment-auth", requiredPermissions: ["admin:settings"] },
 ]
 
 const PROTECTED_UI_ROUTE_RULES: readonly RoutePermissionRule[] = [
@@ -153,6 +158,8 @@ const PROTECTED_UI_ROUTE_RULES: readonly RoutePermissionRule[] = [
   { prefix: "/admin/email-management", requiredPermissions: ["admin:settings"] },
   { prefix: "/admin/roles", requiredPermissions: ["admin:settings"] },
   { prefix: "/admin/users", requiredPermissions: ["users:read"] },
+  { prefix: "/admin/payment-auth", requiredPermissions: ["admin:settings"] },
+  { prefix: "/ecommerce/admin", requiredPermissions: ["admin:analytics"] },
 ]
 
 export const BASELINE_ROLE_PERMISSIONS: Record<BaselineRole, readonly string[]> = {
@@ -221,10 +228,10 @@ export const LEGACY_ROLE_TO_BASELINE: Record<string, BaselineRole> = {
   [CANONICAL_ADMIN_ROLES.ADMIN]: BASELINE_ROLES.ADMIN,
 }
 
-export const BASELINE_TO_LEGACY_STORAGE_ROLE: Record<BaselineRole, string> = {
-  [BASELINE_ROLES.VIEWER]: DEFAULT_ROLES.GUEST,
-  [BASELINE_ROLES.OPERATOR]: DEFAULT_ROLES.USER,
-  [BASELINE_ROLES.ADMIN]: DEFAULT_ROLES.ADMIN,
+export const BASELINE_TO_STORAGE_ROLE: Record<BaselineRole, string> = {
+  [BASELINE_ROLES.VIEWER]: BASELINE_ROLES.VIEWER,
+  [BASELINE_ROLES.OPERATOR]: BASELINE_ROLES.OPERATOR,
+  [BASELINE_ROLES.ADMIN]: BASELINE_ROLES.ADMIN,
 }
 
 export const ASSIGNABLE_ADMIN_ROLES = [
@@ -303,6 +310,22 @@ export const ROLE_PERMISSIONS = {
   [BASELINE_ROLES.ADMIN]: [...BASELINE_ROLE_PERMISSIONS[BASELINE_ROLES.ADMIN]],
 } as const
 
+export const LEGACY_ROLE_PERMISSION_COMPATIBILITY: Partial<Record<string, readonly string[]>> = {
+  [DEFAULT_ROLES.SUPER_ADMIN]: ROLE_PERMISSIONS[DEFAULT_ROLES.SUPER_ADMIN],
+  [DEFAULT_ROLES.ADMIN]: ROLE_PERMISSIONS[DEFAULT_ROLES.ADMIN],
+  [DEFAULT_ROLES.MODERATOR]: ROLE_PERMISSIONS[DEFAULT_ROLES.MODERATOR],
+  [DEFAULT_ROLES.USER]: ROLE_PERMISSIONS[DEFAULT_ROLES.USER],
+  [DEFAULT_ROLES.GUEST]: ROLE_PERMISSIONS[DEFAULT_ROLES.GUEST],
+  premium: ROLE_PERMISSIONS.premium,
+  [DEFAULT_ROLES.BUSINESS_ADMIN]: ROLE_PERMISSIONS[DEFAULT_ROLES.BUSINESS_ADMIN],
+  [DEFAULT_ROLES.BUSINESS_OPERATOR]: ROLE_PERMISSIONS[DEFAULT_ROLES.BUSINESS_OPERATOR],
+  [DEFAULT_ROLES.STARTUP_ADMIN]: ROLE_PERMISSIONS[DEFAULT_ROLES.STARTUP_ADMIN],
+  [DEFAULT_ROLES.STARTUP_OPERATOR]: ROLE_PERMISSIONS[DEFAULT_ROLES.STARTUP_OPERATOR],
+  [DEFAULT_ROLES.CUSTOMER_ADMIN]: ROLE_PERMISSIONS[DEFAULT_ROLES.CUSTOMER_ADMIN],
+  [DEFAULT_ROLES.CUSTOMER_OPERATOR]: ROLE_PERMISSIONS[DEFAULT_ROLES.CUSTOMER_OPERATOR],
+  [DEFAULT_ROLES.CUSTOMER_FINANCE]: ROLE_PERMISSIONS[DEFAULT_ROLES.CUSTOMER_FINANCE],
+}
+
 export function resolveBaselineRole(role: string): BaselineRole | null {
   if (role === BASELINE_ROLES.VIEWER || role === BASELINE_ROLES.OPERATOR || role === BASELINE_ROLES.ADMIN) {
     return role
@@ -314,19 +337,22 @@ export function resolveBaselineRole(role: string): BaselineRole | null {
 export function normalizeRoleForStorage(role: string): string {
   const baselineRole = resolveBaselineRole(role)
   if (!baselineRole) return role
-  return BASELINE_TO_LEGACY_STORAGE_ROLE[baselineRole]
+  return BASELINE_TO_STORAGE_ROLE[baselineRole]
 }
 
 export function getEffectiveRolePermissions(role: string): string[] {
+  const baselineRole = resolveBaselineRole(role)
+  if (baselineRole) {
+    const compatibilityPermissions = LEGACY_ROLE_PERMISSION_COMPATIBILITY[role] ?? []
+    return Array.from(new Set([...BASELINE_ROLE_PERMISSIONS[baselineRole], ...compatibilityPermissions]))
+  }
+
   const directPermissions = ROLE_PERMISSIONS[role as keyof typeof ROLE_PERMISSIONS]
   if (directPermissions) {
     return Array.from(new Set(directPermissions))
   }
 
-  const baselineRole = resolveBaselineRole(role)
-  if (!baselineRole) return []
-
-  return Array.from(new Set(BASELINE_ROLE_PERMISSIONS[baselineRole]))
+  return []
 }
 
 export class RBACManager {
@@ -435,20 +461,39 @@ export class RBACManager {
    */
   static async getUserPermissions(userId: number): Promise<string[]> {
     try {
+      await ensureAdminAuthMigrationTables()
       const [user] = await sql`
-        SELECT u.role, au.permissions 
+        SELECT u.role,
+               rg.role AS granted_role,
+               COALESCE(
+                 (
+                   SELECT jsonb_agg(jsonb_build_object('permission_key', apo.permission_key, 'effect', apo.effect))
+                   FROM admin_permission_overrides apo
+                   WHERE apo.user_id = u.id
+                 ),
+                 '[]'::jsonb
+               ) AS permission_overrides
         FROM users u
-        LEFT JOIN admin_users au ON u.id = au.user_id
+        LEFT JOIN admin_role_grants rg ON u.id = rg.user_id
         WHERE u.id = ${userId}
       `
 
       if (!user) return []
 
-      const rolePermissions = getEffectiveRolePermissions(user.role)
-      const customPermissions = user.permissions && Array.isArray(user.permissions) ? user.permissions : []
+      const rolePermissions = getEffectiveRolePermissions(user.granted_role ?? user.role)
+      const overrides = Array.isArray(user.permission_overrides) ? user.permission_overrides : []
+
+      const grantedOverrides = overrides
+        .filter((entry: { effect?: string }) => entry?.effect === "grant")
+        .map((entry: { permission_key?: string }) => entry.permission_key)
+      const revokedOverrides = new Set(
+        overrides
+          .filter((entry: { effect?: string }) => entry?.effect === "revoke")
+          .map((entry: { permission_key?: string }) => entry.permission_key),
+      )
 
       // Combine and deduplicate permissions
-      return Array.from(new Set([...rolePermissions, ...customPermissions]))
+      return Array.from(new Set([...rolePermissions, ...grantedOverrides])).filter((permission) => !revokedOverrides.has(permission))
     } catch (error) {
       console.error("Error getting user permissions:", error)
       return []
@@ -468,29 +513,13 @@ export class RBACManager {
    */
   static async grantPermission(userId: number, permission: string, grantedBy: number): Promise<void> {
     try {
-      // Check if admin_users record exists
-      const [existingAdmin] = await sql`
-        SELECT id, permissions FROM admin_users WHERE user_id = ${userId}
+      await ensureAdminAuthMigrationTables()
+      await sql`
+        INSERT INTO admin_permission_overrides (user_id, permission_key, effect, updated_by, created_at, updated_at)
+        VALUES (${userId}, ${permission}, 'grant', ${grantedBy}, NOW(), NOW())
+        ON CONFLICT (user_id, permission_key)
+        DO UPDATE SET effect = EXCLUDED.effect, updated_by = EXCLUDED.updated_by, updated_at = NOW()
       `
-
-      if (existingAdmin) {
-        // Update existing permissions
-        const currentPermissions = existingAdmin.permissions || []
-        if (!currentPermissions.includes(permission)) {
-          const updatedPermissions = [...currentPermissions, permission]
-          await sql`
-            UPDATE admin_users 
-            SET permissions = ${JSON.stringify(updatedPermissions)}, updated_at = NOW()
-            WHERE user_id = ${userId}
-          `
-        }
-      } else {
-        // Create new admin_users record
-        await sql`
-          INSERT INTO admin_users (user_id, permissions, created_by, created_at, updated_at)
-          VALUES (${userId}, ${JSON.stringify([permission])}, ${grantedBy}, NOW(), NOW())
-        `
-      }
 
       // Log the action
       await sql`
@@ -508,24 +537,19 @@ export class RBACManager {
    */
   static async revokePermission(userId: number, permission: string, revokedBy: number): Promise<void> {
     try {
-      const [existingAdmin] = await sql`
-        SELECT id, permissions FROM admin_users WHERE user_id = ${userId}
+      await ensureAdminAuthMigrationTables()
+      await sql`
+        INSERT INTO admin_permission_overrides (user_id, permission_key, effect, updated_by, created_at, updated_at)
+        VALUES (${userId}, ${permission}, 'revoke', ${revokedBy}, NOW(), NOW())
+        ON CONFLICT (user_id, permission_key)
+        DO UPDATE SET effect = EXCLUDED.effect, updated_by = EXCLUDED.updated_by, updated_at = NOW()
       `
 
-      if (existingAdmin && existingAdmin.permissions) {
-        const updatedPermissions = existingAdmin.permissions.filter((p: string) => p !== permission)
-        await sql`
-          UPDATE admin_users 
-          SET permissions = ${JSON.stringify(updatedPermissions)}, updated_at = NOW()
-          WHERE user_id = ${userId}
-        `
-
-        // Log the action
-        await sql`
-          INSERT INTO admin_activity_logs (admin_id, action, target_type, target_id, details, created_at)
-          VALUES (${revokedBy}, 'revoke_permission', 'user', ${userId}, ${JSON.stringify({ permission })}, NOW())
-        `
-      }
+      // Log the action
+      await sql`
+        INSERT INTO admin_activity_logs (admin_id, action, target_type, target_id, details, created_at)
+        VALUES (${revokedBy}, 'revoke_permission', 'user', ${userId}, ${JSON.stringify({ permission })}, NOW())
+      `
     } catch (error) {
       console.error("Error revoking permission:", error)
       throw error
@@ -537,13 +561,21 @@ export class RBACManager {
    */
   static async changeUserRole(userId: number, newRole: string, changedBy: number): Promise<void> {
     try {
+      await ensureAdminAuthMigrationTables()
       const [oldUser] = await sql`SELECT role FROM users WHERE id = ${userId}`
       const normalizedRole = normalizeRoleForStorage(newRole)
 
       await sql`
-        UPDATE users 
+        UPDATE users
         SET role = ${normalizedRole}, updated_at = NOW()
         WHERE id = ${userId}
+      `
+
+      await sql`
+        INSERT INTO admin_role_grants (user_id, role, granted_by, created_at, updated_at)
+        VALUES (${userId}, ${normalizedRole}, ${changedBy}, NOW(), NOW())
+        ON CONFLICT (user_id)
+        DO UPDATE SET role = EXCLUDED.role, granted_by = EXCLUDED.granted_by, updated_at = NOW()
       `
 
       // Log the action

@@ -18,11 +18,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Bot, MessageSquare, ShoppingCart, BarChart3 } from "lucide-react"
+import type { CreateAIAgentInput } from "@/lib/repositories/ai-agents"
 
 interface CreateAgentDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSubmit: (data: any) => void
+  onSubmit: (data: CreateAIAgentInput) => Promise<void> | void
 }
 
 export function CreateAgentDialog({ open, onOpenChange, onSubmit }: CreateAgentDialogProps) {
@@ -35,12 +36,12 @@ export function CreateAgentDialog({ open, onOpenChange, onSubmit }: CreateAgentD
     performance_score: 100,
     tasks_completed: 0,
     current_task: null,
-    settings: {},
+    settings: {} as Record<string, unknown>,
   })
 
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleChange = (field: string, value: any) => {
+  const handleChange = (field: keyof CreateAIAgentInput | "description", value: unknown) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
@@ -49,7 +50,8 @@ export function CreateAgentDialog({ open, onOpenChange, onSubmit }: CreateAgentD
     setIsSubmitting(true)
 
     try {
-      await onSubmit(formData)
+      const { description: _description, ...payload } = formData
+      await onSubmit(payload)
       setFormData({
         name: "",
         type: "sales",
@@ -59,7 +61,7 @@ export function CreateAgentDialog({ open, onOpenChange, onSubmit }: CreateAgentD
         performance_score: 100,
         tasks_completed: 0,
         current_task: null,
-        settings: {},
+        settings: {} as Record<string, unknown>,
       })
     } finally {
       setIsSubmitting(false)

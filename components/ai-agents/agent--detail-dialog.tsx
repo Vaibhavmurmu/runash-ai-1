@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useState } from "react"
 import type { AIAgent } from "@/lib/hooks/use-ai-agents"
+import type { UpdateAIAgentInput } from "@/lib/repositories/ai-agents"
 import {
   Dialog,
   DialogContent,
@@ -38,7 +39,7 @@ interface AgentDetailDialogProps {
   agent: AIAgent
   open: boolean
   onOpenChange: (open: boolean) => void
-  onUpdate: (data: any) => void
+  onUpdate: (data: UpdateAIAgentInput) => Promise<void> | void
   onDelete: () => void
 }
 
@@ -55,7 +56,7 @@ export function AgentDetailDialog({ agent, open, onOpenChange, onUpdate, onDelet
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeTab, setActiveTab] = useState("general")
 
-  const handleChange = (field: string, value: any) => {
+  const handleChange = (field: keyof UpdateAIAgentInput | "description", value: unknown) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
@@ -64,7 +65,8 @@ export function AgentDetailDialog({ agent, open, onOpenChange, onUpdate, onDelet
     setIsSubmitting(true)
 
     try {
-      await onUpdate(formData)
+      const { description, ...payload } = formData
+      await onUpdate({ ...payload, current_task: description || null })
     } finally {
       setIsSubmitting(false)
     }
@@ -212,7 +214,7 @@ export function AgentDetailDialog({ agent, open, onOpenChange, onUpdate, onDelet
                 <div>
                   <h4 className="text-sm font-medium mb-2">Response Style</h4>
                   <Select
-                    value={(formData.settings as any)?.responseStyle || "helpful"}
+                    value={(formData.settings as Record<string, string>)?.responseStyle || "helpful"}
                     onValueChange={(value) => handleChange("settings", { ...formData.settings, responseStyle: value })}
                   >
                     <SelectTrigger>
@@ -230,7 +232,7 @@ export function AgentDetailDialog({ agent, open, onOpenChange, onUpdate, onDelet
                 <div>
                   <h4 className="text-sm font-medium mb-2">Knowledge Base</h4>
                   <Select
-                    value={(formData.settings as any)?.knowledgeBase || "products"}
+                    value={(formData.settings as Record<string, string>)?.knowledgeBase || "products"}
                     onValueChange={(value) => handleChange("settings", { ...formData.settings, knowledgeBase: value })}
                   >
                     <SelectTrigger>
@@ -248,7 +250,7 @@ export function AgentDetailDialog({ agent, open, onOpenChange, onUpdate, onDelet
                 <div>
                   <h4 className="text-sm font-medium mb-2">Automation Level</h4>
                   <Select
-                    value={(formData.settings as any)?.automationLevel || "medium"}
+                    value={(formData.settings as Record<string, string>)?.automationLevel || "medium"}
                     onValueChange={(value) =>
                       handleChange("settings", { ...formData.settings, automationLevel: value })
                     }

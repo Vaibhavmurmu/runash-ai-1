@@ -3,7 +3,18 @@ import type { NextRequest } from "next/server"
 import { logApiEvent } from "@/lib/api/logging"
 import { getAuthEndpointRateLimit } from "@/lib/auth-security-config"
 import { recordAuthMetric } from "@/lib/auth-observability"
-import { auth, AUTH_COOKIE_NAMES } from "@/lib/auth"
+
+type SessionRole = "admin" | "super_admin" | "seller" | "user" | string
+
+type AuthClaims = {
+  isAuthenticated: boolean
+  role: SessionRole | null
+}
+
+type AccessRequirement = {
+  requiresSession: boolean
+  requiredRoles: SessionRole[]
+}
 
 const publicRoutes = [
   "/",
@@ -28,54 +39,89 @@ const publicRoutes = [
   "/cookies",
   "/roadmap",
   "/status",
-  "/creator",
-  "/business",
-  "/partners",
-  "/changelog",
-  "/forum",
-  "/community",
   "/pro",
   "/enterprise",
   "/ai-overview",
   "/models",
   "/company",
-  "/faq",
-  "/docs",
-  "/live",
+  "/waitlist",
 ] as const
 
-const publicApiRoutes = [
-  "/api/auth",
-  "/api/turn-credentials",
-  "/api/users/search", // Public user search
+const publicApiRouteMatchers = [
+  { pattern: /^\/api\/auth\/(signin|signout|callback|csrf|providers|error|verify-request)(?:\/|$)/ },
+  { path: "/api/auth/get-session", type: "exact" },
+  { path: "/api/auth/session", type: "exact" },
+  { path: "/api/auth/refresh", type: "exact" },
+  { path: "/api/auth/siwe/nonce", type: "exact" },
+  { path: "/api/auth/siwe/verify", type: "exact" },
+  { path: "/api/auth/magic-link", type: "prefix" },
+  { path: "/api/auth/phone-otp", type: "exact" },
+  { path: "/api/auth/ott/issue", type: "exact" },
+  { path: "/api/auth/ott/verify", type: "exact" },
+  { path: "/api/auth/google-one-tap/callback", type: "exact" },
+  { path: "/api/auth/anonymous", type: "exact" },
+  { path: "/api/auth/resend-verification", type: "exact" },
+  { path: "/api/auth/sso/check", type: "exact" },
+  { path: "/api/turn-credentials", type: "exact" },
+  { path: "/api/users/search", type: "exact" }, // Public user search
 ] as const
 
-function parseCookieValue(cookieHeader: string | null, cookieName: string): string | null {
-  if (!cookieHeader) {
-    return null
+const adminOnlyRoutePrefixes = ["/admin", "/ecommerce/admin", "/api/admin"] as const
+const sellerOnlyRoutePrefixes = ["/seller", "/seller-dashboard", "/api/seller", "/api/v1/seller"] as const
+const authenticatedRoutePrefixes = ["/dashboard", "/settings", "/api/settings", "/api/billing", "/api/upload"] as const
+
+function pathMatchesPrefixes(pathname: string, prefixes: readonly string[]): boolean {
+  return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"))
+}
+
+export function resolveRouteAccessRequirement(pathname: string): AccessRequirement {
+  if (pathMatchesPrefixes(pathname, adminOnlyRoutePrefixes)) {
+    return { requiresSession: true, requiredRoles: ["admin", "super_admin"] }
   }
 
-  for (const segment of cookieHeader.split(";")) {
-    const [name, ...valueParts] = segment.trim().split("=")
-    if (name !== cookieName) {
-      continue
+  if (pathMatchesPrefixes(pathname, sellerOnlyRoutePrefixes)) {
+    return { requiresSession: true, requiredRoles: ["seller", "admin", "super_admin"] }
+  }
+
+  if (pathMatchesPrefixes(pathname, authenticatedRoutePrefixes)) {
+    return { requiresSession: true, requiredRoles: [] }
+  }
+
+  return { requiresSession: false, requiredRoles: [] }
+}
+
+export function evaluateRoleAccess(pathname: string, claims: AuthClaims): { status: "allowed" | "unauthorized" | "forbidden" } {
+  const requirement = resolveRouteAccessRequirement(pathname)
+  if (!requirement.requiresSession) {
+    return { status: "allowed" }
+  }
+
+  if (!claims.isAuthenticated) {
+    return { status: "unauthorized" }
+  }
+
+  if (requirement.requiredRoles.length > 0) {
+    if (!claims.role || !requirement.requiredRoles.includes(claims.role)) {
+      return { status: "forbidden" }
+    }
+  }
+
+  return { status: "allowed" }
+}
+
+export function resolveAuthDecision(pathname: string) {
+  const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + "/"))
+  const isPublicApiRoute = publicApiRouteMatchers.some((matcher) => {
+    if ("pattern" in matcher) {
+      return matcher.pattern.test(pathname)
     }
 
-    const cookieValue = valueParts.join("=")
-    return cookieValue || null
-  }
+    if (matcher.type === "exact") {
+      return pathname === matcher.path
+    }
 
-  return null
-}
-
-function hasBetterAuthSessionCookie(request: NextRequest): boolean {
-  const cookieHeader = request.headers.get("cookie")
-  return AUTH_COOKIE_NAMES.some((cookieName) => Boolean(parseCookieValue(cookieHeader, cookieName)))
-}
-
-function resolveAuthDecision(pathname: string) {
-  const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + "/"))
-  const isPublicApiRoute = publicApiRoutes.some((route) => pathname.startsWith(route))
+    return pathname === matcher.path || pathname.startsWith(matcher.path + "/")
+  })
   const isAuthPage = pathname === "/login" || pathname === "/signup" || pathname === "/get-started"
 
   return {
@@ -85,10 +131,6 @@ function resolveAuthDecision(pathname: string) {
 }
 
 async function hasValidAuthSession(request: NextRequest): Promise<boolean> {
-  if (!hasBetterAuthSessionCookie(request)) {
-    return false
-  }
-
   try {
     const sessionPayload = await auth.api.getSession({
       headers: request.headers,
@@ -96,6 +138,31 @@ async function hasValidAuthSession(request: NextRequest): Promise<boolean> {
     return Boolean(sessionPayload?.user && sessionPayload?.session)
   } catch {
     return false
+  }
+}
+
+async function getAuthClaimsFromSession(request: NextRequest): Promise<AuthClaims> {
+  try {
+    const sessionClaimsResponse = await fetch(new URL("/api/auth/claims", request.url), {
+      method: "GET",
+      headers: {
+        cookie: request.headers.get("cookie") ?? "",
+        authorization: request.headers.get("authorization") ?? "",
+      },
+      cache: "no-store",
+    })
+
+    if (!sessionClaimsResponse.ok) {
+      return { isAuthenticated: false, role: null }
+    }
+
+    const sessionClaims = await sessionClaimsResponse.json()
+    return {
+      isAuthenticated: Boolean(sessionClaims?.authenticated),
+      role: typeof sessionClaims?.role === "string" ? sessionClaims.role : null,
+    }
+  } catch {
+    return { isAuthenticated: false, role: null }
   }
 }
 
@@ -193,6 +260,32 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  if (pathname.startsWith("/api/admin")) {
+    if (!checkRateLimit(request, "admin-sensitive", 40, 5 * 60 * 1000)) {
+      recordAuthMetric("auth.rate_limited", { endpoint: "admin-sensitive" })
+      return new NextResponse(JSON.stringify({ message: "Admin API rate limit exceeded" }), {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "Retry-After": "300",
+        },
+      })
+    }
+  }
+
+  if (pathname === "/api/settings/actions/regenerate-api-key" || pathname === "/api/settings/actions/revoke-sessions") {
+    if (!checkRateLimit(request, "settings-sensitive", 10, 15 * 60 * 1000)) {
+      recordAuthMetric("auth.rate_limited", { endpoint: "settings-sensitive" })
+      return new NextResponse(JSON.stringify({ message: "Sensitive action rate limit exceeded" }), {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "Retry-After": "900",
+        },
+      })
+    }
+  }
+
   // General API rate limiting
   if (pathname.startsWith("/api/") && !pathname.startsWith("/api/auth/")) {
     if (!checkRateLimit(request, "api-general", 100, 60 * 1000)) {
@@ -231,6 +324,29 @@ export async function middleware(request: NextRequest) {
       })
     }
     return NextResponse.redirect(new URL("/login", request.url))
+  }
+
+  const authClaims = await getAuthClaimsFromSession(request)
+  const accessDecision = evaluateRoleAccess(pathname, authClaims)
+
+  if (accessDecision.status === "unauthorized") {
+    if (pathname.startsWith("/api/")) {
+      return new NextResponse(JSON.stringify({ message: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+    return NextResponse.redirect(new URL("/login", request.url))
+  }
+
+  if (accessDecision.status === "forbidden") {
+    if (pathname.startsWith("/api/")) {
+      return new NextResponse(JSON.stringify({ message: "Forbidden" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+    return NextResponse.redirect(new URL("/dashboard?error=forbidden", request.url))
   }
 
   // Log security events for audit

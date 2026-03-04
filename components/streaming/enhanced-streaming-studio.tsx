@@ -55,14 +55,28 @@ import MultiPlatformStreaming from "./multi-platform-streaming"
 import AlertDisplay from "./alerts/alert-display"
 import StreamChat from "./stream-chat"
 import { MultiHostManager } from "./multi-host/multi-host-manager"
+import PollQuizManager from "@/components/grocery/live-shopping/poll-quiz-manager"
 import {
   type MediaAIPipelineSettings,
   defaultMediaAIPipelineSettings,
   MediaAIPipeline,
 } from "@/services/media-ai-pipeline"
+import {
+  createStreamSession,
+  endStreamSession,
+  getStreamHealthTelemetry,
+  getStreamLiveMetrics,
+  reportStreamNetworkMetrics,
+  startStreamSession,
+} from "@/lib/stream-session-contract"
+import { saveStudioConsent } from "@/lib/streams-studio-pro-client"
+
+type StreamStage = "permissions" | "preview" | "live"
+type DevicePermissionStatus = "idle" | "granted" | "denied" | "error"
 
 export function EnhancedStreamingStudio() {
   const pipeline = useMemo(() => new MediaAIPipeline(), [])
+  const [streamSessionId, setStreamSessionId] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
@@ -71,31 +85,98 @@ export function EnhancedStreamingStudio() {
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false)
   const [streamDuration, setStreamDuration] = useState("00:00:00")
   const [viewerCount, setViewerCount] = useState(0)
-  const [streamHealth, setStreamHealth] = useState("Excellent")
+  const [streamHealth, setStreamHealth] = useState<"excellent" | "good" | "fair" | "poor">("good")
   const [activePlatforms, setActivePlatforms] = useState<string[]>([])
   const [selectedLayout, setSelectedLayout] = useState("standard")
   const [streamQuality, setStreamQuality] = useState(85)
   const [aiSettings, setAiSettings] = useState<MediaAIPipelineSettings>(defaultMediaAIPipelineSettings)
+  const [stage, setStage] = useState<StreamStage>("permissions")
+  const [isPreviewVisible, setIsPreviewVisible] = useState(false)
+  const [consentPreferences, setConsentPreferences] = useState({
+    allowMic: true,
+    allowCamera: true,
+    allowScreenShare: true,
+    allowRecording: false,
+    preferredLanguage: "en" as "en" | "hi",
+  })
+  const [deviceStatus, setDeviceStatus] = useState<Record<"mic" | "camera" | "screen", DevicePermissionStatus>>({
+    mic: "idle",
+    camera: "idle",
+    screen: "idle",
+  })
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState({ mic: "", camera: "" })
+  const [isMetadataHydrated, setIsMetadataHydrated] = useState(false)
   const router = useRouter()
+  const studioStreamId = "studio-default"
 
   useEffect(() => {
     setAiSettings(pipeline.restoreSettings())
   }, [pipeline])
 
   useEffect(() => {
-    pipeline.persistSettings(aiSettings)
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        "runash.stream.session.metadata",
-        JSON.stringify({
-          updatedAt: new Date().toISOString(),
-          aiSettings,
-          streamQuality,
-          selectedLayout,
-        }),
-      )
+    if (typeof window === "undefined") return
+    const raw = window.localStorage.getItem("runash.stream.session.metadata")
+    if (!raw) {
+      setIsMetadataHydrated(true)
+      return
     }
-  }, [aiSettings, streamQuality, selectedLayout, pipeline])
+
+    try {
+      const parsed = JSON.parse(raw) as {
+        aiSettings?: MediaAIPipelineSettings
+        streamQuality?: number
+        selectedLayout?: string
+        isMuted?: boolean
+        isCameraOn?: boolean
+        selectedDeviceIds?: { mic?: string; camera?: string }
+        consentPreferences?: typeof consentPreferences
+      }
+
+      if (parsed.aiSettings) setAiSettings(parsed.aiSettings)
+      if (typeof parsed.streamQuality === "number") setStreamQuality(parsed.streamQuality)
+      if (parsed.selectedLayout) setSelectedLayout(parsed.selectedLayout)
+      if (typeof parsed.isMuted === "boolean") setIsMuted(parsed.isMuted)
+      if (typeof parsed.isCameraOn === "boolean") setIsCameraOn(parsed.isCameraOn)
+      if (parsed.selectedDeviceIds) {
+        setSelectedDeviceIds({ mic: parsed.selectedDeviceIds.mic ?? "", camera: parsed.selectedDeviceIds.camera ?? "" })
+      }
+      if (parsed.consentPreferences) {
+        setConsentPreferences((prev) => ({ ...prev, ...parsed.consentPreferences }))
+      }
+    } catch {
+      // no-op on corrupted local storage payload
+    } finally {
+      setIsMetadataHydrated(true)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isMetadataHydrated || typeof window === "undefined") return
+    pipeline.persistSettings(aiSettings)
+    window.localStorage.setItem(
+      "runash.stream.session.metadata",
+      JSON.stringify({
+        updatedAt: new Date().toISOString(),
+        aiSettings,
+        streamQuality,
+        selectedLayout,
+        isMuted,
+        isCameraOn,
+        selectedDeviceIds,
+        consentPreferences,
+      }),
+    )
+  }, [
+    aiSettings,
+    streamQuality,
+    selectedLayout,
+    pipeline,
+    isMetadataHydrated,
+    isMuted,
+    isCameraOn,
+    selectedDeviceIds,
+    consentPreferences,
+  ])
 
   // Simulated real-time data
   const [realtimeStats, setRealtimeStats] = useState({
@@ -105,104 +186,184 @@ export function EnhancedStreamingStudio() {
     shares: 0,
   })
 
-  // Simulated stream health metrics
   const [healthMetrics, setHealthMetrics] = useState({
-    bitrate: 5000,
-    fps: 60,
-    dropped: 0,
-    latency: 1.2,
+    bitrateKbps: 0,
+    rttMs: 0,
+    packetLossPct: 0,
+    droppedFrames: 0,
+    reconnects: 0,
   })
 
   useEffect(() => {
-    let interval: NodeJS.Timeout
+    let alive = true
+    const bootstrapSession = async () => {
+      if (streamSessionId) return
+      try {
+        const created = await createStreamSession({ title: "Streaming Studio Session", platform: "custom" })
+        if (alive) {
+          setStreamSessionId(String(created.session.id))
+          setIsStreaming(created.session.status === "live")
+        }
+      } catch {
+        toast({ title: "Session Error", description: "Unable to initialize stream session.", variant: "destructive" })
+      }
+    }
+    void bootstrapSession()
+    return () => {
+      alive = false
+    }
+  }, [streamSessionId])
 
-    if (isStreaming) {
-      let seconds = 0
-      interval = setInterval(() => {
-        seconds++
-        const hours = Math.floor(seconds / 3600)
-        const minutes = Math.floor((seconds % 3600) / 60)
-        const secs = seconds % 60
+  const syncConsent = async (payload = consentPreferences) => {
+    if (!streamSessionId) return
+    try {
+      await saveStudioConsent(streamSessionId, payload)
+    } catch {
+      toast({ title: "Consent Sync Failed", description: "Could not save consent settings.", variant: "destructive" })
+    }
+  }
 
+  const requestMediaPermission = async (kind: "mic" | "camera") => {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setDeviceStatus((prev) => ({ ...prev, [kind]: "error" }))
+        return
+      }
+
+      const constraint = kind === "mic"
+        ? { audio: selectedDeviceIds.mic ? { deviceId: { exact: selectedDeviceIds.mic } } : true, video: false }
+        : { audio: false, video: selectedDeviceIds.camera ? { deviceId: { exact: selectedDeviceIds.camera } } : true }
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraint)
+      const track = kind === "mic" ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0]
+      const deviceId = track?.getSettings().deviceId
+      if (deviceId) {
+        setSelectedDeviceIds((prev) => ({ ...prev, [kind]: deviceId }))
+      }
+      stream.getTracks().forEach((trackItem) => trackItem.stop())
+      setDeviceStatus((prev) => ({ ...prev, [kind]: "granted" }))
+    } catch (error) {
+      setDeviceStatus((prev) => ({ ...prev, [kind]: error instanceof DOMException && error.name === "NotAllowedError" ? "denied" : "error" }))
+    }
+  }
+
+  const requestScreenSharePermission = async () => {
+    try {
+      if (!navigator.mediaDevices?.getDisplayMedia) {
+        setDeviceStatus((prev) => ({ ...prev, screen: "error" }))
+        return
+      }
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+      stream.getTracks().forEach((track) => track.stop())
+      setDeviceStatus((prev) => ({ ...prev, screen: "granted" }))
+    } catch (error) {
+      setDeviceStatus((prev) => ({ ...prev, screen: error instanceof DOMException && error.name === "NotAllowedError" ? "denied" : "error" }))
+    }
+  }
+
+  const areRequiredPermissionsGranted =
+    (!consentPreferences.allowMic || deviceStatus.mic === "granted") &&
+    (!consentPreferences.allowCamera || deviceStatus.camera === "granted") &&
+    (!consentPreferences.allowScreenShare || deviceStatus.screen === "granted")
+
+  const canStartLive = areRequiredPermissionsGranted && isPreviewVisible && stage !== "permissions"
+
+  useEffect(() => {
+    if (!streamSessionId) return
+    const interval = setInterval(async () => {
+      try {
+        if (isStreaming) {
+          const sampledAt = new Date().toISOString()
+          const seconds = Math.floor(Date.now() / 1000)
+          await reportStreamNetworkMetrics(streamSessionId, {
+            bitrateKbps: 4200 + (seconds % 5) * 220,
+            rttMs: 85 + (seconds % 6) * 14,
+            packetLossPct: Number(((seconds % 4) * 0.35).toFixed(2)),
+            droppedFrames: seconds % 9,
+            reconnects: seconds % 120 === 0 ? 1 : 0,
+            sampledAt,
+          })
+        }
+
+        const [{ metrics, network }, { telemetry }] = await Promise.all([
+          getStreamLiveMetrics(streamSessionId),
+          getStreamHealthTelemetry(streamSessionId),
+        ])
+
+        const hours = Math.floor(metrics.durationSeconds / 3600)
+        const minutes = Math.floor((metrics.durationSeconds % 3600) / 60)
+        const secs = metrics.durationSeconds % 60
         setStreamDuration(
           `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`,
         )
+        setViewerCount(metrics.viewers)
+        setRealtimeStats({
+          viewers: metrics.viewers,
+          likes: metrics.likes,
+          comments: metrics.comments,
+          shares: metrics.shares,
+        })
+        setStreamHealth(telemetry.status)
+        const latestNetwork = network.latest
+        setHealthMetrics({
+          bitrateKbps: latestNetwork?.bitrateKbps ?? telemetry.bitrateKbps,
+          rttMs: latestNetwork?.rttMs ?? telemetry.rttMs,
+          packetLossPct: latestNetwork?.packetLossPct ?? telemetry.packetLossPct,
+          droppedFrames: latestNetwork?.droppedFrames ?? telemetry.droppedFrames,
+          reconnects: latestNetwork?.reconnects ?? telemetry.reconnects,
+        })
+      } catch {
+        // no-op polling failure
+      }
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [isStreaming, streamSessionId])
 
-        // Simulate viewer count increasing
-        if (seconds % 5 === 0) {
-          setViewerCount((prev) => Math.floor(prev + Math.random() * 5))
-          setRealtimeStats((prev) => ({
-            viewers: viewerCount,
-            likes: prev.likes + Math.floor(Math.random() * 3),
-            comments: prev.comments + Math.floor(Math.random() * 2),
-            shares: seconds % 15 === 0 ? prev.shares + 1 : prev.shares,
-          }))
-        }
-
-        // Simulate stream health changes
-        if (seconds % 10 === 0) {
-          const healthOptions = ["Excellent", "Good", "Fair", "Poor"]
-          const weights = [0.7, 0.2, 0.07, 0.03] // Weighted probabilities
-
-          const random = Math.random()
-          let cumulativeWeight = 0
-          let selectedHealth = "Excellent"
-
-          for (let i = 0; i < healthOptions.length; i++) {
-            cumulativeWeight += weights[i]
-            if (random <= cumulativeWeight) {
-              selectedHealth = healthOptions[i]
-              break
-            }
-          }
-
-          setStreamHealth(selectedHealth)
-
-          // Update health metrics
-          setHealthMetrics({
-            bitrate: 5000 + Math.floor(Math.random() * 500 - 250),
-            fps: 60 + Math.floor(Math.random() * 6 - 3),
-            dropped: Math.max(0, healthMetrics.dropped + (Math.random() > 0.9 ? 1 : 0)),
-            latency: 1.2 + (Math.random() * 0.4 - 0.2),
-          })
-        }
-      }, 1000)
-    } else {
-      setStreamDuration("00:00:00")
-      setViewerCount(0)
-      setRealtimeStats({
-        viewers: 0,
-        likes: 0,
-        comments: 0,
-        shares: 0,
-      })
-    }
-
-    return () => {
-      if (interval) clearInterval(interval)
-    }
-  }, [isStreaming, viewerCount, healthMetrics.dropped])
-
-  const handleToggleStream = () => {
+  const handleToggleStream = async () => {
+    if (!streamSessionId) return
+    const previous = isStreaming
+    setIsStreaming(!previous)
     if (!isStreaming) {
+      if (!canStartLive) {
+        setIsStreaming(previous)
+        toast({
+          title: "Setup Required",
+          description: "Grant required permissions and open preview before going live.",
+          variant: "destructive",
+        })
+        return
+      }
       // Starting stream
-      toast({
-        title: "Stream Started",
-        description: "Your stream is now live on your selected platforms.",
-        variant: "default",
-      })
-      setActivePlatforms(["twitch"]) // Example platform
+      try {
+        await syncConsent()
+        await startStreamSession(streamSessionId)
+        setStage("live")
+        toast({
+          title: "Stream Started",
+          description: "Your stream is now live on your selected platforms.",
+          variant: "default",
+        })
+        setActivePlatforms(["twitch"])
+      } catch {
+        setIsStreaming(previous)
+        toast({ title: "Start Failed", description: "Could not start stream session.", variant: "destructive" })
+      }
     } else {
-      // Ending stream
-      toast({
-        title: "Stream Ended",
-        description: "Your stream has ended. View your analytics in the dashboard.",
-        variant: "default",
-      })
-      setIsRecording(false)
-      setActivePlatforms([])
+      try {
+        await endStreamSession(streamSessionId)
+        toast({
+          title: "Stream Ended",
+          description: "Your stream has ended. View your analytics in the dashboard.",
+          variant: "default",
+        })
+        setIsRecording(false)
+        setActivePlatforms([])
+        setStage("preview")
+      } catch {
+        setIsStreaming(previous)
+        toast({ title: "End Failed", description: "Could not end stream session.", variant: "destructive" })
+      }
     }
-    setIsStreaming((prev) => !prev)
   }
 
   const handleStartRecording = () => {
@@ -243,13 +404,13 @@ export function EnhancedStreamingStudio() {
 
   const getHealthColor = (health: string) => {
     switch (health) {
-      case "Excellent":
+      case "excellent":
         return "text-green-500"
-      case "Good":
+      case "good":
         return "text-emerald-500"
-      case "Fair":
+      case "fair":
         return "text-amber-500"
-      case "Poor":
+      case "poor":
         return "text-red-500"
       default:
         return "text-green-500"
@@ -311,16 +472,16 @@ export function EnhancedStreamingStudio() {
                 <Button
                   variant="outline"
                   size="icon"
-                  className={`${streamHealth === "Excellent" || streamHealth === "Good" ? "border-green-200 text-green-700 dark:border-green-800 dark:text-green-400" : "border-amber-200 text-amber-700 dark:border-amber-800 dark:text-amber-400"}`}
+                  className={`${streamHealth === "excellent" || streamHealth === "good" ? "border-green-200 text-green-700 dark:border-green-800 dark:text-green-400" : "border-amber-200 text-amber-700 dark:border-amber-800 dark:text-amber-400"}`}
                   onClick={() => {
                     toast({
                       title: "Stream Health",
-                      description: `Your stream health is ${streamHealth}. ${streamHealth === "Excellent" || streamHealth === "Good" ? "Everything looks good!" : "Check your connection."}`,
+                      description: `Your stream health is ${streamHealth.toUpperCase()}. ${streamHealth === "excellent" || streamHealth === "good" ? "Everything looks good!" : "Check your connection."}`,
                       variant: "default",
                     })
                   }}
                 >
-                  {streamHealth === "Excellent" || streamHealth === "Good" ? (
+                  {streamHealth === "excellent" || streamHealth === "good" ? (
                     <CheckCircle className="h-4 w-4" />
                   ) : (
                     <AlertTriangle className="h-4 w-4" />
@@ -329,7 +490,7 @@ export function EnhancedStreamingStudio() {
               </TooltipTrigger>
               <TooltipContent>
                 <p>
-                  Stream Health: <span className={getHealthColor(streamHealth)}>{streamHealth}</span>
+                  Stream Health: <span className={getHealthColor(streamHealth)}>{streamHealth.toUpperCase()}</span>
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -437,6 +598,87 @@ export function EnhancedStreamingStudio() {
           <div className="h-full flex flex-col">
             {/* Stream Preview */}
             <div className="relative flex-1 bg-black overflow-hidden">
+              <div className="absolute top-4 right-4 z-20 space-y-2">
+                <Badge variant="secondary">Stage: {stage}</Badge>
+                <div className="flex gap-2">
+                  <Badge variant={deviceStatus.mic === "granted" || !consentPreferences.allowMic ? "default" : "destructive"}>Mic: {consentPreferences.allowMic ? deviceStatus.mic : "optional"}</Badge>
+                  <Badge variant={deviceStatus.camera === "granted" || !consentPreferences.allowCamera ? "default" : "destructive"}>Cam: {consentPreferences.allowCamera ? deviceStatus.camera : "optional"}</Badge>
+                  <Badge variant={deviceStatus.screen === "granted" || !consentPreferences.allowScreenShare ? "default" : "destructive"}>Screen: {consentPreferences.allowScreenShare ? deviceStatus.screen : "optional"}</Badge>
+                </div>
+              </div>
+
+              {!isStreaming && (
+                <Card className="absolute left-4 top-4 z-20 w-full max-w-xl bg-background/95">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Live Setup</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <label className="flex items-center justify-between rounded border p-2 text-sm">
+                        <span>Allow mic</span>
+                        <Switch
+                          checked={consentPreferences.allowMic}
+                          onCheckedChange={(checked) => {
+                            const next = { ...consentPreferences, allowMic: checked }
+                            setConsentPreferences(next)
+                            void syncConsent(next)
+                          }}
+                        />
+                      </label>
+                      <label className="flex items-center justify-between rounded border p-2 text-sm">
+                        <span>Allow camera</span>
+                        <Switch
+                          checked={consentPreferences.allowCamera}
+                          onCheckedChange={(checked) => {
+                            const next = { ...consentPreferences, allowCamera: checked }
+                            setConsentPreferences(next)
+                            void syncConsent(next)
+                          }}
+                        />
+                      </label>
+                      <label className="flex items-center justify-between rounded border p-2 text-sm">
+                        <span>Allow screen share</span>
+                        <Switch
+                          checked={consentPreferences.allowScreenShare}
+                          onCheckedChange={(checked) => {
+                            const next = { ...consentPreferences, allowScreenShare: checked }
+                            setConsentPreferences(next)
+                            void syncConsent(next)
+                          }}
+                        />
+                      </label>
+                      <label className="flex items-center justify-between rounded border p-2 text-sm">
+                        <span>Allow recording</span>
+                        <Switch
+                          checked={consentPreferences.allowRecording}
+                          onCheckedChange={(checked) => {
+                            const next = { ...consentPreferences, allowRecording: checked }
+                            setConsentPreferences(next)
+                            void syncConsent(next)
+                          }}
+                        />
+                      </label>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {stage === "permissions" && (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => void requestMediaPermission("mic")}>Grant microphone</Button>
+                          <Button size="sm" variant="outline" onClick={() => void requestMediaPermission("camera")}>Grant camera</Button>
+                          <Button size="sm" variant="outline" onClick={() => void requestScreenSharePermission()}>Grant screen share</Button>
+                          <Button size="sm" disabled={!areRequiredPermissionsGranted} onClick={() => setStage("preview")}>Continue to preview</Button>
+                        </>
+                      )}
+                      {stage === "preview" && (
+                        <Button size="sm" onClick={() => setIsPreviewVisible(true)}>
+                          {isPreviewVisible ? "Preview visible" : "Show preview"}
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               <ScreenShareWithAnnotations
                 isStreaming={isStreaming}
                 initialSettings={aiSettings}
@@ -497,7 +739,12 @@ export function EnhancedStreamingStudio() {
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="rounded-full text-white hover:bg-white/20">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="rounded-full text-white hover:bg-white/20"
+                        onClick={() => void requestScreenSharePermission()}
+                      >
                         <ScreenShare className="h-5 w-5" />
                       </Button>
                     </TooltipTrigger>
@@ -517,6 +764,7 @@ export function EnhancedStreamingStudio() {
                       : "bg-gradient-to-r from-orange-500 to-amber-400 hover:from-orange-600 hover:to-amber-500"
                   }
                   onClick={handleToggleStream}
+                  disabled={!isStreaming && !canStartLive}
                 >
                   {isStreaming ? "End Stream" : "Go Live"}
                 </Button>
@@ -622,10 +870,17 @@ export function EnhancedStreamingStudio() {
                     <Users className="h-4 w-4 mr-2" />
                     Multi-Host
                   </TabsTrigger>
+                  <TabsTrigger
+                    value="engagement"
+                    className="data-[state=active]:bg-orange-50 dark:data-[state=active]:bg-orange-950/20"
+                  >
+                    <MessageSquare className="h-4 w-4 mr-2" />
+                    Engagement
+                  </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="chat" className="flex-1 p-0 m-0">
-                  <StreamChat isStreaming={isStreaming} />
+                  <StreamChat isStreaming={isStreaming} streamId={streamSessionId} />
                 </TabsContent>
 
                 <TabsContent value="health" className="flex-1 p-3 m-0 space-y-4">
@@ -638,19 +893,19 @@ export function EnhancedStreamingStudio() {
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground">Bitrate</p>
-                            <p className="font-medium">{healthMetrics.bitrate.toLocaleString()} kbps</p>
+                            <p className="font-medium">{healthMetrics.bitrateKbps.toLocaleString()} kbps</p>
                           </div>
                           <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Frame Rate</p>
-                            <p className="font-medium">{healthMetrics.fps} fps</p>
+                            <p className="text-xs text-muted-foreground">RTT</p>
+                            <p className="font-medium">{healthMetrics.rttMs.toFixed(0)} ms</p>
                           </div>
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground">Dropped Frames</p>
-                            <p className="font-medium">{healthMetrics.dropped}</p>
+                            <p className="font-medium">{healthMetrics.droppedFrames}</p>
                           </div>
                           <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Latency</p>
-                            <p className="font-medium">{healthMetrics.latency.toFixed(1)}s</p>
+                            <p className="text-xs text-muted-foreground">Packet Loss</p>
+                            <p className="font-medium">{healthMetrics.packetLossPct.toFixed(2)}%</p>
                           </div>
                         </div>
 
@@ -660,22 +915,22 @@ export function EnhancedStreamingStudio() {
                             <Badge
                               variant="outline"
                               className={`
-                                ${streamHealth === "Excellent" ? "border-green-200 text-green-700 dark:border-green-800 dark:text-green-400" : ""}
-                                ${streamHealth === "Good" ? "border-emerald-200 text-emerald-700 dark:border-emerald-800 dark:text-emerald-400" : ""}
-                                ${streamHealth === "Fair" ? "border-amber-200 text-amber-700 dark:border-amber-800 dark:text-amber-400" : ""}
-                                ${streamHealth === "Poor" ? "border-red-200 text-red-700 dark:border-red-800 dark:text-red-400" : ""}
+                                ${streamHealth === "excellent" ? "border-green-200 text-green-700 dark:border-green-800 dark:text-green-400" : ""}
+                                ${streamHealth === "good" ? "border-emerald-200 text-emerald-700 dark:border-emerald-800 dark:text-emerald-400" : ""}
+                                ${streamHealth === "fair" ? "border-amber-200 text-amber-700 dark:border-amber-800 dark:text-amber-400" : ""}
+                                ${streamHealth === "poor" ? "border-red-200 text-red-700 dark:border-red-800 dark:text-red-400" : ""}
                               `}
                             >
-                              {streamHealth}
+                              {streamHealth.toUpperCase()}
                             </Badge>
                           </div>
                           <Progress
                             value={
-                              streamHealth === "Excellent"
+                              streamHealth === "excellent"
                                 ? 95
-                                : streamHealth === "Good"
+                                : streamHealth === "good"
                                   ? 75
-                                  : streamHealth === "Fair"
+                                  : streamHealth === "fair"
                                     ? 50
                                     : 25
                             }
@@ -686,7 +941,7 @@ export function EnhancedStreamingStudio() {
                     </CardContent>
                   </Card>
 
-                  <StreamHealth />
+                  <StreamHealth streamId={streamSessionId ?? undefined} />
                 </TabsContent>
 
                 <TabsContent value="platforms" className="flex-1 p-3 m-0">

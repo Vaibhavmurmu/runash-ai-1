@@ -1,21 +1,21 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { cn } from "@/lib/utils"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { cn } from "@/lib/utils";
 
 interface Activity {
-  id: string
+  id: string;
   user: {
-    name: string
-    avatar?: string
-  }
-  action: string
-  target: string
-  time: string
-  type: "comment" | "follow" | "subscription" | "donation"
+    name: string;
+    avatar?: string;
+  };
+  action: string;
+  target: string;
+  time: string;
+  type: "comment" | "follow" | "subscription" | "donation";
 }
 
 interface ActivityFeedProps {
-  activities: Activity[]
+  activities: Activity[];
 }
 
 export function ActivityFeed({ activities }: ActivityFeedProps) {
@@ -33,9 +33,12 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
             >
               <Avatar className="h-8 w-8">
                 {activity.user.avatar ? (
-                  <AvatarImage src={activity.user.avatar || "/placeholder.svg"} alt={activity.user.name} />
+                  <AvatarImage
+                    src={activity.user.avatar || "/placeholder.svg"}
+                    alt={activity.user.name}
+                  />
                 ) : (
-                  <AvatarFallback className="bg-gradient-to-br from-orange-500 to-amber-300 text-white">
+                  <AvatarFallback className="bg-brand-gradient text-brand-foreground">
                     {activity.user.name.substring(0, 2).toUpperCase()}
                   </AvatarFallback>
                 )}
@@ -43,7 +46,9 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
               <div className="flex-1 space-y-1">
                 <p className="text-sm">
                   <span className="font-medium">{activity.user.name}</span>{" "}
-                  <span className="text-muted-foreground">{activity.action}</span>{" "}
+                  <span className="text-muted-foreground">
+                    {activity.action}
+                  </span>{" "}
                   <span className="font-medium">{activity.target}</span>
                 </p>
                 <p className="text-xs text-muted-foreground">{activity.time}</p>
@@ -52,10 +57,10 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
                 <span
                   className={cn(
                     "flex h-2 w-2 rounded-full",
-                    activity.type === "comment" && "bg-blue-500",
-                    activity.type === "follow" && "bg-green-500",
-                    activity.type === "subscription" && "bg-purple-500",
-                    activity.type === "donation" && "bg-amber-500",
+                    activity.type === "comment" && "bg-info",
+                    activity.type === "follow" && "bg-success",
+                    activity.type === "subscription" && "bg-brand-middle",
+                    activity.type === "donation" && "bg-warning",
                   )}
                 />
               </div>
@@ -64,5 +69,5 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }

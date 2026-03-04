@@ -28,6 +28,7 @@ export default function StreamingStudio() {
     fps: 0,
     droppedFrames: 0,
     bandwidth: 0,
+    latency: 0,
   })
   const [activePlatforms, setActivePlatforms] = useState<string[]>([])
   const router = useRouter()
@@ -150,7 +151,7 @@ export default function StreamingStudio() {
                 <TabsTrigger value="platforms">Platforms</TabsTrigger>
               </TabsList>
               <TabsContent value="chat" className="mt-4">
-                <StreamChat isStreaming={isStreaming} />
+                <StreamChat isStreaming={isStreaming} streamId={currentStream?.id ?? null} />
               </TabsContent>
               <TabsContent value="analytics" className="mt-4">
                 <StreamAnalytics isStreaming={isStreaming} metrics={streamMetrics} />
@@ -168,8 +169,10 @@ export default function StreamingStudio() {
             <Card>
               <CardContent className="p-4">
                 <StreamControls
+                  streamId={currentStream?.id ?? null}
                   isStreaming={isStreaming}
                   isRecording={isRecording}
+                  metrics={{ bitrate: streamMetrics.bitrate, fps: streamMetrics.fps, latency: streamMetrics.latency }}
                   onToggleStream={handleToggleStream}
                   onStartRecording={handleStartRecording}
                   onStopRecording={handleStopRecording}
@@ -179,7 +182,7 @@ export default function StreamingStudio() {
 
             <Card>
               <CardContent className="p-4">
-                <StreamSettings />
+                <StreamSettings streamId={currentStream?.id ?? null} />
               </CardContent>
             </Card>
 

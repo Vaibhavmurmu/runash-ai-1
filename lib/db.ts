@@ -12,6 +12,20 @@ const DATABASE_ENV_CANDIDATES = [
   "runash_POSTGRES_URL_NON_POOLING",
 ] as const
 
+const DATABASE_ENV_PRECEDENCE = DATABASE_ENV_CANDIDATES.join(" -> ")
+
+function buildMissingDbEnvError(context?: string): Error {
+  const contextNote = context ? ` (${context})` : ""
+  return new Error(
+    [
+      `Database URL not configured${contextNote}.`,
+      `Set one of: ${DATABASE_ENV_CANDIDATES.join(", ")}.`,
+      `Fallback precedence: ${DATABASE_ENV_PRECEDENCE}.`,
+      "Example: export DATABASE_URL='postgresql://user:pass@host/dbname'",
+    ].join(" "),
+  )
+}
+
 function resolveDatabaseUrl(): string | null {
   for (const key of DATABASE_ENV_CANDIDATES) {
     const value = process.env[key]
@@ -21,31 +35,33 @@ function resolveDatabaseUrl(): string | null {
   return null
 }
 
-function getClient() {
-  if (_client) return _client
-
+export function assertDatabaseConfigured(context?: string): string {
   const url = resolveDatabaseUrl()
   if (!url) {
-    const errFn = (() => {
-      throw new Error(`Database URL not configured. Set one of: ${DATABASE_ENV_CANDIDATES.join(", ")}.`)
-    }) as unknown as ReturnType<typeof neon>
-
-    _client = errFn
-    return _client
+    throw buildMissingDbEnvError(context)
   }
 
+  return url
+}
+
+export function getSql() {
+  if (_client) return _client
+
+  const url = assertDatabaseConfigured("lib/db.ts:getSql")
   _client = neon(url)
   return _client
 }
 
+export function getDatabaseEnvResolutionOrder(): readonly string[] {
+  return DATABASE_ENV_CANDIDATES
+}
+
 export function sql<T = any>(strings: TemplateStringsArray, ...values: any[]): Promise<T[]> {
-  const c = getClient() as any
-  return c(strings, ...values)
+  return getSql()(strings, ...values)
 }
 
 ;(sql as any).unsafe = (query: string, params?: any[]) => {
-  const c = getClient() as any
-  return c.unsafe(query, params)
+  return (getSql() as any).unsafe(query, params)
 }
 
 export async function one<T = any>(queryPromise: Promise<T[]>): Promise<T | null> {

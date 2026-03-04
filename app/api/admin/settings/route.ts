@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { AdminSettings } from "@/lib/admin-settings"
-import { logAdminActivity, requireAdminAuthorization } from "@/lib/auth-middleware"
+import { requireAdminAuthorization } from "@/lib/auth-middleware"
+import { recordAdminAuditLog, respondInternalServerError } from "@/lib/api/admin-route-utils"
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdminAuthorization(request, {
@@ -21,8 +22,12 @@ export async function GET(request: NextRequest) {
     const categories = await AdminSettings.getAllCategories()
     return NextResponse.json({ success: true, data: categories })
   } catch (error) {
-    console.error("Settings fetch error:", error)
-    return NextResponse.json({ error: "Failed to fetch settings" }, { status: 500 })
+    return respondInternalServerError(request, error, {
+      event: "admin.settings.read.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_SETTINGS_READ_FAILED",
+    })
   }
 }
 
@@ -38,16 +43,26 @@ export async function POST(request: NextRequest) {
 
     await AdminSettings.set(category, key, value, type, auth.session.user.id, description)
 
-    await logAdminActivity(
-      auth.session.user.id,
-      "settings_update",
-      { category, key, value, type },
-      request.headers.get("x-forwarded-for") || "unknown",
-    )
+    await recordAdminAuditLog({
+      actorUserId: auth.userId,
+      action: "admin.settings.updated",
+      entityType: "admin_setting",
+      entityId: `${category}:${key}`,
+      metadata: {
+        category,
+        key,
+        type,
+        hasDescription: Boolean(description),
+      },
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("Settings update error:", error)
-    return NextResponse.json({ error: "Failed to update settings" }, { status: 500 })
+    return respondInternalServerError(request, error, {
+      event: "admin.settings.update.failed",
+      requestId: auth.requestId,
+      userId: String(auth.userId),
+      errorCode: "ADMIN_SETTINGS_UPDATE_FAILED",
+    })
   }
 }

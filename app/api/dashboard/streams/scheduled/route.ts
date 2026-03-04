@@ -1,21 +1,16 @@
-import { NextResponse } from "next/server";
-import { listDashboardScheduledStreams } from "@/lib/repositories/streams";
-import { getCanonicalStreamUrl, requireStreamDashboardUserId } from "../utils";
-import type {
-  DashboardScheduledStream,
-  DashboardScheduledStreamsResponse,
-} from "@/lib/types/dashboard-streams";
+import { respondSuccess } from "@/lib/api/envelope"
+import { listDashboardScheduledStreams } from "@/lib/repositories/streams"
+import { getCanonicalStreamUrl, requireStreamDashboardUserId } from "../utils"
+import type { DashboardScheduledStream, DashboardScheduledStreamsResponse } from "@/lib/types/dashboard-streams"
 
 export async function GET(request: Request) {
-  const scopedUserId = requireStreamDashboardUserId(request);
-  if (scopedUserId instanceof NextResponse) return scopedUserId;
+  const scopedUserId = await requireStreamDashboardUserId(request)
+  if (scopedUserId instanceof Response) return scopedUserId
 
-  const streams = await listDashboardScheduledStreams(scopedUserId);
+  const streams = await listDashboardScheduledStreams(scopedUserId)
   const payload: DashboardScheduledStreamsResponse = {
     streams: streams.map((stream) => {
-      const startsAt =
-        stream.startsAt ??
-        (stream as DashboardScheduledStream & { dateTime?: string }).dateTime;
+      const startsAt = stream.startsAt ?? (stream as DashboardScheduledStream & { dateTime?: string }).dateTime
 
       return {
         ...stream,
@@ -31,8 +26,9 @@ export async function GET(request: Request) {
         notificationTime: stream.notificationTime ?? 15,
         createdAt: stream.createdAt ?? new Date().toISOString(),
         updatedAt: stream.updatedAt ?? new Date().toISOString(),
-      };
+      }
     }),
-  };
-  return NextResponse.json(payload);
+  }
+
+  return respondSuccess(request, payload, { legacy: payload })
 }

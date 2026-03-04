@@ -1,5 +1,7 @@
 import type { NextRequest } from "next/server"
 
+type RequestLike = Pick<Request, "headers"> & { ip?: string | null }
+
 interface RateLimitResult {
   success: boolean
   remaining?: number
@@ -10,7 +12,7 @@ interface RateLimitResult {
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>()
 
 export async function rateLimit(
-  request: NextRequest,
+  request: NextRequest | RequestLike,
   identifier: string,
   limit: number,
   windowMs: number,
@@ -50,6 +52,49 @@ export async function rateLimit(
   }
 
   // Increment count
+  current.count++
+  rateLimitStore.set(key, current)
+
+  return {
+    success: true,
+    remaining: limit - current.count,
+    resetTime: current.resetTime,
+  }
+}
+
+
+export async function rateLimitByKey(key: string, limit: number, windowMs: number): Promise<RateLimitResult> {
+  const now = Date.now()
+
+  for (const [k, v] of rateLimitStore.entries()) {
+    if (v.resetTime < now) {
+      rateLimitStore.delete(k)
+    }
+  }
+
+  const current = rateLimitStore.get(key)
+
+  if (!current || current.resetTime < now) {
+    rateLimitStore.set(key, {
+      count: 1,
+      resetTime: now + windowMs,
+    })
+
+    return {
+      success: true,
+      remaining: limit - 1,
+      resetTime: now + windowMs,
+    }
+  }
+
+  if (current.count >= limit) {
+    return {
+      success: false,
+      remaining: 0,
+      resetTime: current.resetTime,
+    }
+  }
+
   current.count++
   rateLimitStore.set(key, current)
 

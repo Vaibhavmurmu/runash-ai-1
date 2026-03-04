@@ -5,6 +5,7 @@ import { z } from "zod"
 import { logApiRouteError } from "@/lib/api/logging"
 import { AUTH_ENDPOINT_RATE_LIMITS } from "@/lib/auth-security-config"
 import { recordAuthMetric } from "@/lib/auth-observability"
+import { applyAuthCaptchaMiddleware } from "@/lib/auth/captcha-middleware"
 
 const resetPasswordSchema = z.object({
   token: z.string().min(1, "Token is required"),
@@ -35,6 +36,15 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
 
+    const captchaFailure = await applyAuthCaptchaMiddleware(request, {
+      endpoint: "reset-password",
+      action: "reset-password",
+      body,
+    })
+    if (captchaFailure) {
+      return captchaFailure
+    }
+
     const validationResult = resetPasswordSchema.safeParse(body)
     if (!validationResult.success) {
       return NextResponse.json(
@@ -61,7 +71,7 @@ export async function POST(request: NextRequest) {
     recordAuthMetric("auth.suspicious_activity", { endpoint: "reset-password", reason: "error" })
     logApiRouteError(request, "auth.reset_password.failed", error, { errorCode: "AUTH_RESET_PASSWORD_FAILED" })
 
-    if (error instanceof Error && error.message === "Invalid or expired token") {
+    if (error instanceof Error && /invalid|expired|used|token/i.test(error.message)) {
       return NextResponse.json({ message: "Invalid or expired reset token" }, { status: 400 })
     }
 

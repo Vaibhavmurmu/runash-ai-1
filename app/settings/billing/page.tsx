@@ -1,6 +1,5 @@
-import { SettingsSectionPage } from "@/app/settings/_components/settings-section-page"
-import { settingsRouteTargets } from "@/app/settings/route-targets"
+import { redirect } from "next/navigation"
 
-export default function SettingsBillingPage() {
-  return <SettingsSectionPage {...settingsRouteTargets.billing} />
+export default function SettingsBillingLegacyPage() {
+  redirect("/dashboard/billing")
 }

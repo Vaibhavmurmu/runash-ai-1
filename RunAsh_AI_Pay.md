@@ -1,1151 +1,760 @@
-# 🏦 RunAsh AI Pay 
+# 🏦 RunAsh AI Pay
 
+_Last verified: 2026-02-24 (UTC)_
 
-## Security alignment note (Auth/Payment shared controls)
+This document is payment-domain specific. For contributor workflow/process policy, use `docs/CONTRIBUTOR_POLICY_INDEX.md`, `TEAM_GUIDE.md`, and `docs/DOC_GOVERNANCE.md`.
 
-To protect payment-linked identities and admin access pathways, the auth hardening rollout now includes:
+## Canonical payment contract posture
 
-- strict verified-identity account linking (no dangerous provider email-link fallback),
-- stronger session expiry/invalidation controls after sensitive auth events,
-- centralized auth abuse-rate controls,
-- expanded sensitive log redaction and static guards against secret leakage,
-- dashboard-ready auth/admin security telemetry for operational detection and response.
+- Preserve existing payment API request/response field names and signatures unless an explicitly versioned migration is published.
+- Preserve webhook contract compatibility; any contract change must include migration notes and rollback guidance.
+- Keep payment/auth sensitive values out of logs and telemetry.
+- Maintain auditability for payment-impacting behavior changes.
 
-Payment contracts and field-level payment API signatures are unchanged in this update.
+## Current payment reliability notes (2026-02)
 
-## Auth dependency update (2026-02)
+- RunAsh Chat payment-adjacent actions route through existing settings action APIs:
+  - `POST /api/settings/actions/credits-balance`
+  - `POST /api/settings/actions/refer-earn`
+  - `POST /api/settings/actions/upgrade-plan`
+- Project create/import flows initialize with `POST /api/editor/projects` before editor/payment handoff.
+- Credits purchase routing uses `/pricing?intent=credits`; redeem flow uses in-app validated redeem input before billing handoff.
+- Payment API contract fields, webhook schemas, and auth/payment token formats remain unchanged by these routing updates.
 
-The payment stack is coupled to auth security controls in the following ways:
+## 2026-02 Ecommerce payments theme/UI refactor (no contract changes)
 
-- **Account-linking hardening:** linked identities used for payer/operator access must satisfy verified-identity linking policy before they can operate payment surfaces.
-- **Session policy:** billing/payment actions require authenticated server-session identity checks; unauthorized requests remain fail-closed (`401` for APIs, login redirect for UI).
-- **RBAC policy:** payment operations require role + permission checks (including org-scoped customer finance/operator/admin roles where applicable).
-- **Incident readiness:** payment-impacting auth incidents require session revocation + credential rotation + audit trail updates per `SECURITY.md`.
+- Updated `/ecommerce/payments` presentation layer to use semantic theme tokens (`bg-background`, `text-foreground`, `border-border`, `muted-foreground`) and shared design-system inputs/select/textarea components.
+- Payment API request/response contracts, webhook schemas, and payment/auth field names remain unchanged.
+- Risk + rollback: low runtime risk (UI-only). If visual regressions are observed, revert `app/ecommerce/payments/page.tsx` to restore prior styling without data or contract rollback.
 
-No new payment endpoint signatures, field names, or webhook contracts were changed by this documentation update.
+## 2026-02 validation-only reliability check (no contract changes)
 
-### 2026-02 middleware auth validation migration note
+- **Change type:** validation-only pass; no payment runtime behavior, API signature, webhook schema, or field-name changes were introduced.
+- **Impacted payment/auth flows reviewed:**
+  - Checkout entry via `/pricing?intent=credits`
+  - Settings action payment-adjacent APIs (`credits-balance`, `refer-earn`, `upgrade-plan`)
+  - Auth-gated payment access via Better Auth session validation (`/api/auth/get-session`)
+- **Risk assessment:** low product risk because this update is documentation + validation only; primary operational risk is CI/local build interruption when database environment variables are absent.
+- **Rollback plan:** revert this documentation commit if needed; no data migration, no API rollback, and no payment contract rollback required.
 
-- Route protection still follows existing public/protected behavior for web and API surfaces.
-- Protected requests now rely on direct Better Auth session validation (`auth.api.getSession`) and canonical Better Auth session cookies (`better-auth.session-token`, `__Secure-better-auth.session-token`) before granting access.
-- Legacy NextAuth cookies (`next-auth.session-token`, `__Secure-next-auth.session-token`) are cleared on fresh session writes; controlled fallback verification remains available during migration windows to prevent lockouts.
-- No payment request/response contract fields were changed; this is an auth-gating reliability hardening update.
+## 2026-02-28 validation run (dependency/environment constrained)
 
+- **Behavior change summary:** no payment/auth runtime behavior changes and no contract/schema changes.
+- **Validation commands + outcomes:**
+  - `npm run lint` -> failed because ESLint is not installed in the current dependency state (`ESLint must be installed`).
+  - `npm run build` -> compilation succeeded, then build failed while collecting page data because database connection env was missing (`No database connection string was provided to neon()`).
+- **Impacted payment/auth flows reviewed:**
+  - Auth-gated payment access checks (`/api/auth/get-session`)
+  - Credits checkout entry handoff (`/pricing?intent=credits`)
+  - Settings payment-adjacent action endpoints (`/api/settings/actions/credits-balance`, `/api/settings/actions/refer-earn`, `/api/settings/actions/upgrade-plan`)
+- **Risk + rollback:** operational release risk is environment readiness (missing lint dependency + DB env), not payment contract behavior. Rollback is documentation-only revert; no payment data migration or API rollback required.
 
+## 2026-02-28 seller commerce API session-scoping hardening (no payment contract changes)
 
-### The Future of Agentic, Intent-Driven Payments
+- Seller commerce APIs for products/orders now derive seller identity from the authenticated server session instead of `x-user-id` headers on mutable/listing endpoints.
+- Missing session and invalid-role access continue to return explicit `401`/`403` envelope responses via shared seller auth guards.
+- No payment API request/response fields, webhook schemas, or checkout contracts were changed.
+- Risk + rollback: low-to-medium auth access risk (seller-only data scoping). Rollback is reverting seller API auth guard adoption in `app/api/products/*` and `app/api/orders/*`; no payment migration required.
 
-RunAsh AI Pay is a high-performance, multi-agent fintech platform designed to move money at the speed of thought. By replacing traditional banking menus with **Intent-Based Voice Commands** and a **Consensus-Driven Security Layer**, we provide a "Supreme Court for Payments."
+## 2026-02-28 auth verification routing consistency (no payment contract changes)
 
----
+- Better Auth email verification remains canonical for auth-gated payment surfaces; signup + resend verification now consistently use Better Auth verification dispatch and the canonical verifier endpoint (`/api/auth/verify-email`).
+- No payment API request/response fields, billing webhook contracts, checkout signatures, or auth/payment token formats were changed.
+- Risk + rollback: low runtime risk (auth UX/message + resend consistency only). Rollback is app-level revert of auth verification routing/UI updates; no payment migration or contract rollback needed.
 
-## 🌟 Core Features
 
-- **🎙️ Voice-Activated Intent:** Pay vendors or check balances hands-free. *"Ash, pay the JCB operator ₹8,000 for site leveling."*
-- **🧠 Agentic Consensus (RAPP):** No transaction leaves the account without a "Vote" from three specialized AI agents.
-- **🛡️ Biometric Voiceprint:** Text-independent vocal frequency analysis replaces vulnerable passwords.
-- **📍 Geo-Fenced Validation:** Enhanced security triggers if transactions occur outside known project areas (e.g., your Bokaro residential plot).
-- **📈 Strategist Insights:** Automatic tax-sidekick and budget optimization focused on the Jharkhand 2026 economic landscape.
+## 2026-02 stream network resilience automation (no payment contract changes)
 
----
+- Added orchestration-layer stream reliability automation for the new trigger `network_quality_degraded` with idempotent fallback actions (lower profile, reduce non-essential overlays/effects, chat notice, and host dashboard alert), plus gradual recovery rollback when network quality returns.
+- Added automation timeline exposure for stream host transparency via stream dashboard/session automation APIs.
+- **Impacted payment/auth flows identified:** none. This change is stream orchestration + dashboard visibility only; payment API fields, webhook schemas, checkout signatures, and auth/session contracts are unchanged.
+- **Risk + rollback:** medium operational UX risk (aggressive quality downgrade if noisy network telemetry). Rollback by reverting orchestration/network trigger handling and dashboard timeline surface; no payment data migration required.
 
-## 🤖 The Agent Suite
+## Auth dependency notes for payment flows
 
-RunAsh AI utilizes a multi-agent architecture to ensure safety and precision:
-
-| Agent | Persona | Primary Responsibility |
-| :--- | :--- | :--- |
-| **Ash** | Lead Orchestrator | Intent parsing, routing, and user communication. |
-| **Validator** | Security Guard | Voice biometrics, Geo-fencing, and Fraud detection. |
-| **Strategist** | Financial Advisor | Budget health, Tax set-asides, and Wealth growth. |
-| **Relay** | The Executer | Deterministic API calls to banking & UPI gateways. |
-
----
-
-## 🛠️ Technical Specifications
-
-### Agentic Payment Protocol (RAPP)
-The system follows a **Lock-Verify-Release** sequence to ensure zero-hallucination execution:
-
-1. **Intent Lock:** Ash identifies the recipient and amount.
-2. **Consensus Handshake:** - **Validator** checks voiceprint match ($V > 0.85$) and location.
-   - **Strategist** checks category limits (e.g., Construction budget).
-3. **Atomic Release:** Relay calls the bank API only upon receiving a cryptographically signed Consensus Token.
-
-### Security Thresholds
-- **Tier 1 ( < ₹8,000 ):** Voice Intent + Voice Biometric.
-- **Tier 2 ( > ₹8,000 ):** Voice + FaceID/PIN + Mandatory OTP.
-- **Tier 3 (Anomaly):** Transactions outside of **Bokaro Plot** coordinates trigger a Tier 2 check regardless of amount.
-
----
-
-## 💻 Tech Stack
-
-- **Frontend:** Next.js 14 (App Router), Tailwind CSS, shadcn/ui.
-- **Infrastructure:** Vercel (Edge Functions), Supabase (Postgres + Auth).
-- **AI/NLP:** OpenAI GPT-4o-mini (Routing), Claude 3.5 Sonnet (Strategist).
-- **Voice:** Deepgram (STT), Vapi (Voice AI), Pindrop (Biometrics).
-
----
-
-## 📁 Repository Structure
-
-```text
-├── agents/              # Agent logic and persona definitions
-│   ├── Ash.ts           # Lead Orchestrator
-│   ├── Validator.ts     # Security & Biometrics
-│   └── Strategist.ts    # Financial Logic
-├── components/          # v0-generated high-contrast UI
-├── lib/                 # Core Protocol (RAPP) & Geo-fencing
-├── docs/                # Post-mortems and Maintenance logs
-└── llms.txt             # AI-readable project essence
-
-```
-
----
-
-## 🚀 Getting Started
-
-1. **Clone & Install:**
-```bash
-git clone [https://github.com/RunAshAI/pay-platform.git](https://github.com/RunAshAI/pay-platform.git)
-npm install
-
-```
-
-
-2. **Environment Setup:**
-Create a `.env.local` and add your keys for OpenAI, Vapi, and your preferred Payment Gateway.
-3. **Development:**
-```bash
-pnpm run dev
-
-```
-
-
-
----
-
-## 📜 Compliance & Ethics
-
-RunAsh AI Pay is built in alignment with the **"AI for All - Jharkhand 2026"** policy. We prioritize data residency within India and utilize "Privacy-First" biometric hashing where raw audio is never stored—only mathematical signatures.
-
----
-
-## 🤝 Contributing
-
-Please see `CONTRIBUTING.md` for guidelines on adding new Agent Skills or UI components.
-
-**Founder:** Vaibhav Murmu
-
-**Location:** Bokaro, Jharkhand, India
-
-**Vision:** Democratizing high-fidelity AI finance for everyone.
-
-```
-
----
-
-### Next Step:
-**add new "Skills" to the agents?**
-
-```
-
-## API Reliability Update: Stable Envelope and `/api/v1`
-
-Payment APIs are being standardized around a shared response envelope:
-
-- `success`
-- `data`
-- `error`
-- `requestId`
-- optional `meta`
-
-The stabilized payment contract is exposed under `/api/v1/payment/*` where supported (for example: `/api/v1/payment/create-intent`). Existing `/api/payment/*` routes remain available for compatibility.
-
-### Migration guidance
-- Prefer `/api/v1` routes for all new client/server integrations.
-- Use `requestId` for reconciliation and support diagnostics.
-- Use `error.code` for deterministic retry/UX logic.
-- Continue accepting legacy fields during transition; remove fallbacks only after rollout verification.
-
-## Agent action safety integration
-
-RunAsh agent orchestration now treats payment/account-impacting intents as high-risk actions. These actions are recorded in action audit records and require explicit user confirmation (`confirmedByUser=true`) before approval.
-
-This preserves backward-compatible payment contracts while adding an approval gate at the orchestration layer.
-
-
-## Settings billing confirmation controls
-
-Billing-impacting settings actions now use explicit confirmation dialogs for cancel-subscription and downgrade-plan mutations. Each dialog describes financial consequences (renewal stop, feature downgrades) and requires a primary confirm action before requests are sent.
-
-
-## Billing settings contract-first rollout (Settings UI)
-
-The Settings billing experience now ships seven contract-first cards with read-only defaults before mutation paths:
-- Upgrade
-- Subscription
-- Invoice delivery
-- Billing method summary
-- Usage meters
-- Credits balance
-- Refer & earn
-
-Status badges now explicitly use: `Active`, `Trial`, `At risk`, `Past due`, and `Available credits` to reflect payment health without changing legacy payload keys (`invoiceEmail`, `autoRechargeEnabled`).
-
-Mutation-capable actions (upgrade and invoice delivery updates) are now gated behind explicit confirmation dialogs in the client before server calls are made.
-
-Server endpoint mapping for billing card actions lives under:
-`/api/settings/actions/{upgrade-plan|manage-subscription|invoice-delivery|billing-method-summary|usage-meters|credits-balance|refer-earn}`.
-
-## Settings safety confirmation requirements (2026-02)
-
-To reduce accidental destructive billing/security mutations, RunAsh now enforces an explicit confirmation contract for sensitive settings actions:
-
-- Client requests must include `{ "confirm": true }` for mutation endpoints that disable security controls, revoke access, rotate/delete API credentials, downgrade plans, or cancel subscriptions.
-- Server handlers reject requests missing the explicit confirmation flag before running any mutation.
-- UI confirmation dialogs now present consequence copy and irreversible warnings for destructive operations so users can complete or retry from the same dialog context.
-
-This preserves backward-compatible response field shapes while hardening mutation intent validation.
-
-## Payment Surface Routes (Current)
-
-RunAsh Pay now exposes a dedicated route map for product navigation:
-
-- `/payment/runash-pay` — primary RunAsh Pay landing/dashboard shell.
-- `/payment/startup` — Startup segment journey and quick actions.
-- `/payment/business` — Business segment journey and onboarding/support actions.
-- `/payment/dashboard` — transaction monitoring and analytics dashboard.
-- `/ecommerce/payments` — payment link creation and method management.
-- `/payment/subscription` — subscription and billing management.
-
-### User journey references
-
-1. **Create payment link:** `/payment/runash-pay` → `/ecommerce/payments`.
-2. **Collect payment:** `/payment/runash-pay#create-intent` (calls `/api/v1/payment/create-intent`).
-3. **Manage payout/subscription:** `/payment/runash-pay` or `/payment/business` → `/payment/subscription`.
-4. **View analytics:** `/payment/runash-pay` or segment pages → `/payment/dashboard#analytics`.
-5. **Onboarding:** `/payment/runash-pay` → `/payment/startup` or `/payment/business`.
-
-Existing entry points (`/payment/dashboard` and `/ecommerce/payments`) include navigation to RunAsh Pay plus key actions (collect payment, manage payout/subscription, and view analytics).
-
-## 🧾 E-commerce Payment Link API (v1)
-
-The e-commerce payments dashboard now reads and writes payment links/methods through server APIs under `/api/v1`.
-
-- `GET /api/v1/payment-links` - list links with analytics (`clicks`, `conversions`, `status`).
-- `POST /api/v1/payment-links` - create a payment link.
-- `GET /api/v1/payment-links/:id` - fetch a single payment link by id.
-- `PUT /api/v1/payment-links/:id` and `PATCH /api/v1/payment-links/:id` - update link details/status/analytics fields.
-- `DELETE /api/v1/payment-links/:id` - remove a payment link.
-- `GET /api/v1/payment-methods` - list available payment methods.
-- `PUT /api/v1/payment-methods/:id` - update method connection state.
-- `DELETE /api/v1/payment-methods/:id` - remove a payment method.
-
-Persistence is backed by database tables `ecommerce_payment_links` and `ecommerce_payment_methods` (see `scripts/014-ecommerce-payment-links-methods.sql`).
-
-Compatibility aliases are also available at `/api/payment-links` and `/api/payment-links/:id` so legacy clients can migrate without contract breaks.
-
-Dashboard UX now uses optimistic create/update/delete behavior with rollback on failure, plus 15-second/background visibility refresh so conversions and revenue counters stay in sync with backend analytics.
-
-## Payment backend reliability hardening (implementation update)
-
-RunAsh Pay payment intent/confirmation execution now runs on DB-backed repositories and provider adapters while keeping the existing API response payload shape.
-
-### What changed
-- Payment intents are persisted in `payment_intents` with provider IDs, provider event trail, and create idempotency keys.
-- Payment confirmations persist transactions in `payment_transactions_v2` with unique `intent_id` and unique confirm idempotency keys.
-- Refund records are persisted in `payment_refunds` and linked to transaction IDs for auditability.
-- Payment link persistence support is available through `payment_links_v2` repository primitives for payment-flow linkage.
-- Provider integration is handled behind a gateway boundary (`lib/services/payment-provider-gateway.ts`) so Stripe/Razorpay-class adapters can be swapped/expanded without changing API contracts.
-
-### Reliability and safety notes
-- Transaction amount now comes from the persisted intent amount (no runtime randomization).
-- Transaction status transitions are provider-result-driven and appended to provider event history for audit trails.
-- Existing `success/data` response shape remains unchanged for `/api/payment/create-intent` and `/api/payment/confirm`.
-- Idempotency keys are accepted from body `idempotencyKey` or `x-idempotency-key` header for create/confirm operations.
-- When idempotency keys are omitted, create/confirm routes now derive deterministic keys from authenticated scope + request payload to guarantee replay-safe behavior.
-
-
-## Billing API Contract Stabilization (2026-02)
-
-To improve contract stability for subscription and invoice workflows, RunAsh Pay now includes explicit billing API coverage for:
-
-- `GET /api/billing/plans`
-- `GET /api/billing/plans/:id`
-- `GET /api/billing/invoices`
-- `GET /api/billing/invoices/:id`
-- `GET /api/billing/invoices/:id/download`
-- `POST /api/billing/subscription/cancel`
-- `POST /api/billing/subscription/reactivate`
-
-Long-term aliases are also exposed under `/api/v1/billing/*` for the same flows.
-
-### Compatibility and audit notes
-
-- Existing field names are preserved (`plan_id`, `cancel_at_period_end`, `line_items`, etc.).
-- Subscription payloads remain backward compatible while supporting a normalized envelope (`{ subscription: ... }`) for mutating actions.
-- Invoice listing returns deterministic pagination metadata (`limit`, `offset`, `total`) for reliable reconciliation.
-- Invoice download now resolves via `GET /api/billing/invoices/:id/download`, redirecting to the stored PDF/hosted URL without changing invoice field contracts.
-- No sensitive payment method or auth secrets are logged as part of this rollout.
-
-## Auth, authorization, and auditability updates (server routes)
-
-The payment/billing API surface now uses session-based server identity as the canonical auth layer.
-
-### What changed
-- `/api/billing/usage` no longer accepts placeholder header identity and now derives user identity from authenticated server session claims.
-- Billing and payment routes require authenticated sessions and enforce ownership checks against user/organization context.
-- Business vs startup operator/admin route scope checks are enforced through RBAC helper logic.
-- Privileged payment/billing actions emit audit records with redacted/sanitized details.
-
-### Backward compatibility notes
-- API path and payload contracts remain unchanged for existing billing/payment clients.
-- `/api/v1/*` aliases continue to re-export the same handlers.
-- Webhook route behavior is unchanged except for continued signature-based verification.
-
-
-## Payment observability hardening (logging contract)
-
-Payment route error logging is standardized on `lib/api/logging.ts` with structured, redacted events.
-
-### Logging contract (payment flows)
-- Emit `event`, `requestId`, `route`, `method`, and safe `details.errorCode`.
-- Do not emit raw provider tokens, payer email, card metadata, or authorization credentials.
-- Use `requestId` for payment support reconciliation and trace stitching.
-
-### Backward compatibility
-- API response fields and payment route signatures remain unchanged.
-- This update affects observability output only (sanitized internal logs).
-
-## API Auth & Ownership Enforcement (2026-02)
-- Billing and payment APIs now require canonical NextAuth server session identity (JWT/session) and no longer accept header-based placeholder identities for protected operations.
-- Payment link and payment method CRUD endpoints now enforce owner/tenant scoping (`owner_user_id` / `owner_organization_id`) before reads or writes.
-- Operator APIs require role checks for startup/business/admin scopes via `lib/rbac.ts` role constants.
-
-## Payment protocol orchestration migration notes (v1)
-
-RunAsh Pay now introduces protocol-level orchestration records for payment execution gating.
-
-### Backward compatibility
-- Existing create-intent and confirm endpoint payloads are unchanged.
-- The protocol contract is versioned under `v1` and additive: no existing field names are renamed.
-- High-risk actions (payment/refund/charge/payout/account destructive actions) now require explicit `userConfirmed=true` before execution release.
-
-### DB rollout plan
-1. Apply migration: `scripts/sql/2026-02-14_create_payment_protocol_tables.sql`.
-2. Deploy services that write protocol events and consensus records.
-3. Monitor new tables (`payment_protocol_events`, `payment_consensus_records`) for release/block decisions before enforcing dashboards or external dependencies.
-
-### Phased rollout
-- **Phase 1 (observe):** write protocol events while preserving existing execution behavior.
-- **Phase 2 (guard):** enforce deterministic policy checks before release for high-risk and consensus-required actions.
-- **Phase 3 (enforce):** fail closed when confirmation/consensus/policy checks are not satisfied.
-
-### Rollback
-- If incident risk appears, disable protocol enforcement path in service configuration and keep event writes enabled for audit continuity.
-- Existing payment APIs continue to function using current intent/transaction repositories.
-
-
-
-## Billing usage ingestion reliability update (2026-02)
-
-To support durable AI usage billing and reconciliation, usage ingestion now supports authenticated single and batch event ingestion with idempotency safeguards.
-
-### What changed
-- `POST /api/v1/billing/usage` now supports event-style ingestion with `eventId`, token usage, execution time (`deltaMs`), and pricing model payloads.
-- `PUT /api/v1/billing/usage` adds authenticated batch ingestion with per-event ingestion/duplicate reporting.
-- Usage events persist to `usage_events` with `resolver_id`, `resolver_type`, and arbitrary `metadata` JSON payloads for bring-your-own-resolver attribution.
-- Daily and monthly rollups persist in `usage_aggregates` keyed by customer/subscription.
-- Delayed ingestion reconciliation is supported through queue-backed retry processing and `eventId` idempotency uniqueness.
-
-### Compatibility and security notes
-- Existing legacy usage increment payloads (`metric`/`amount`) remain supported for backward compatibility.
-- No payment/auth secrets are logged as part of ingestion handling.
-- New ingestion behavior is additive and does not change existing billing route identity requirements.
-
-## Payment API observability update (2026 reliability hardening)
-
-- Billing and payment endpoints now emit correlation headers (`x-request-id`, `x-correlation-id`) and include `requestId` in key response payloads for traceability.
-- Error paths were migrated from raw `console.error` statements to structured sanitized logs for payment/billing/auth-adjacent routes.
-- Logging redaction now explicitly covers provider/payload/customer key patterns in addition to token/email/payment key detection.
-- No payment contract fields were removed; response additions are backward-compatible metadata for auditability.
-
-
-## 2026 API Reliability hardening
-
-- Canonical payment/billing contracts now live under `/api/v1/payment/*` and `/api/v1/billing/*`.
-- Legacy `/api/payment/*` and `/api/billing/*` routes are maintained as compatibility aliases to avoid integration breakage.
-- Customer-scoped resources enforce auth-backed ownership checks.
-- Payment intents, transactions, subscriptions, invoices, and usage are persisted in DB-backed storage (no in-memory simulation path).
-
-## Tax computation and compliance boundary update (2026-02)
-
-RunAsh AI Pay now includes first-party tax domain persistence and reporting for business-grade reconciliation.
-
-### What changed
-- Added tax domain models: `tax_registrations`, `tax_rates`, `tax_calculations`, `tax_line_items`.
-- Billing checkout and subscription creation now computes region-aware tax for:
-  - **US**: sales tax model (state-aware fallback + configured rates)
-  - **India**: GST model (IGST / CGST+SGST fallback + configured rates)
-- Invoice webhook ingestion stores tax breakdown with jurisdiction details and links tax records to invoice/payment identifiers.
-- Added reporting endpoint `GET /api/v1/payment/reporting` (also available via `/api/payment/reporting`) with:
-  - `revenue_summary`
-  - `payouts_summary`
-  - `tax_liability_by_jurisdiction`
-
-### MOR and compliance boundaries
-- RunAsh Pay provides calculation, storage, and reporting capabilities, but does not replace statutory tax filing obligations.
-- Merchants retain responsibility for registration validity, return filing, exemptions, and final legal treatment.
-- Platform logs and reporting intentionally avoid sensitive auth/payment secrets while preserving tax audit metadata.
-
-## Checkout Link + Vaulted Customer Profile Enhancements (2026-02)
-
-RunAsh AI Pay now includes first-party checkout profile persistence for secure autofill and payment-method vault references:
-
-- Added `checkout_links` with slug-based routing, amount rules (`fixed_amount` or min/max range), product metadata, expiry, and status lifecycle.
-- Added `checkout_sessions` to capture customer, selected method reference, and device/browser context for auditability.
-- Added `customer_payment_method_vault_refs` to store tokenized provider identifiers only (`provider_token_id`) with zero raw PAN/CVV storage.
-- Added `customer_checkout_profiles` for encrypted-at-rest billing/shipping addresses plus default and backup payment method references.
-
-### New APIs
-
-- `GET|PUT /api/v1/payment/profile` → read/update customer billing + shipping profile (encrypted at rest).
-- `GET|POST /api/v1/payment/profile/methods` → list/add tokenized payment method references.
-- `PATCH|DELETE /api/v1/payment/profile/methods/:id` → switch default/backup method or remove method.
-- `POST /api/v1/payment/profile/autofill/authorize` → authorize checkout autofill by checkout link slug, with checkout session creation and context capture.
-- `POST /api/v1/payment/checkout-links` → create checkout links with amount-rule validation.
-
-### Security + compatibility notes
-
-- Backward compatibility preserved for existing payment-intent/transaction contracts.
-- Address payloads are encrypted before DB persistence (application-layer encryption-at-rest).
-- APIs continue using HTTPS-only transport expectations (encryption in transit).
-- Logging intentionally avoids sensitive payment/auth data.
-
-## Customer lifecycle analytics and provenance update (2026-02)
-
-### Scope
-- Added lifecycle persistence tables: `customer_profiles`, `customer_events`, and `payment_recovery_events`.
-- Added dashboard-facing lifecycle aggregates for MRR, ARPU, LTV, churn, failed recovery rate, and cohort conversion.
-- Added provenance capture (`source`: `web` | `api` | `agent_action`) for lifecycle and recovery events.
-
-### Backward compatibility and safety
-- Existing payment intent, transaction, and billing contracts are preserved.
-- New lifecycle APIs and response fields are additive.
-- No sensitive payment/auth data is logged; provenance tracks only event origin and actor IDs.
-
-### Operational note
-- Lifecycle analytics endpoint: `GET /api/payment/lifecycle`.
-- Lifecycle event ingestion endpoint: `POST /api/payment/lifecycle`.
-
-## Stripe webhook reliability hardening (2026-02)
-
-- Billing webhook verification now requires a valid `stripe-signature` header and enforces strict signature tolerance checks before any processing.
-- Stripe webhook events are persisted in a durable `webhook_events` table with idempotency on `(provider, event_id)` and lifecycle states: `received`, `processed`, `failed`, `dead_letter`.
-- Domain routing is explicit for invoice paid/failed, subscription lifecycle updates, and payout status updates.
-- Failed events can be replayed in received-order via admin-protected internal endpoint `POST /api/internal/billing/webhook/replay`.
-- Webhook logs use centralized redaction and intentionally exclude raw auth/payment payload details.
-
-## Unified payment pages and live API wiring
-
-The payment routes below now share a unified responsive layout and reusable sections:
-
-- `/payment/runash-pay`
-- `/payment/business`
-- `/payment/startup`
-- `/payment/subscription`
-- `/payment/dashboard`
-
-Reusable sections:
-- Payment Methods (`GET /api/v1/payment/methods`)
-- Checkout Links (`POST /api/v1/payment/checkout-links`)
-- Usage Billing (`GET/POST /api/v1/billing/usage`)
-- Customer Portal (`POST /api/v1/billing/portal`)
-- Tax & Payout Reports (`GET /api/v1/payment/reporting`)
-
-All section actions now call live APIs and expose loading/success/error states with accessible labels and keyboard-friendly form submission.
-
-## Auth & access reliability update (payment APIs)
-
-- Payment/billing endpoints now consistently use server-session-based auth guards.
-- Placeholder identity fallbacks (header-only user spoofing patterns) have been removed from billing usage flow ownership.
-- Payment operations now include customer-role RBAC support (`customer_admin`, `customer_operator`, `customer_finance`) with required org-scoped session context.
-- Payment-method mutation actions are protected with cross-device session integrity verification tied to checkout authorization fingerprints.
-
-## Billing API Reliability Notes (2026-02)
-
-To improve payment UX reliability and reduce client parsing ambiguity, billing contract responses now use a normalized API envelope with backward-compatible legacy fields for subscription and invoice routes.
-
-- Canonical billing contracts are documented in `docs/API_CONTRACTS.md` under **Billing APIs (`/api/billing/*`)**.
-- Compatibility fields (`plans`, `subscription`, `invoices`, `invoice`) remain available at the response top level during migration.
-- Invoice download supports redirect mode (default) and JSON compatibility mode via `?redirect=false`.
-
-## Payment service persistence and idempotency hardening (2026 update)
-
-- Payment internals now persist and read **payment methods, intents, transactions, and refunds** from repository-backed tables under `lib/repositories/*`.
-- `create-intent` and `confirm` now enforce idempotent behavior through stored idempotency keys (`create_idempotency_key` and `confirm_idempotency_key`) to prevent duplicate charges.
-- Transaction status is derived from provider confirmation/callback event semantics (`event.type` + provider status), replacing synthetic/randomized status assignment.
-- Public response fields are unchanged for API compatibility; only internal persistence and status derivation paths were updated.
-
-## Billing usage ingestion reliability (API)
-
-Billing usage ingestion now supports authenticated single-event and batch-event submission under `/api/billing/usage` (backed by `/api/v1/billing/usage`).
-
-### Supported payloads
-- **Single ingestion**: accepts `event_id`/`eventId`, token metrics (`prompt_tokens`, `completion_tokens`, `total_tokens`), `delta_ms`, `resolver`, and `metadata`.
-- **Batch ingestion**: accepts `{ "events": [...] }` with the same schema.
-- **Cost preview**: accepts `{ "mode": "cost_preview", "events": [...] }` and returns charge projections without persisting events.
-- **Current period aggregate**: `GET /api/billing/usage?mode=current_period` returns current-month token/time/charge totals.
-
-### Idempotency and deduplication
-- `event_id` is treated as the idempotency key.
-- Duplicate ingestion attempts are ignored (`ON CONFLICT DO NOTHING`).
-- A deterministic payload hash is persisted to detect duplicate key reuse with mismatched event payload content.
-
-### Backward compatibility
-- Legacy usage metric writes (`metric` + `amount`) remain supported.
-- Existing API route shape is preserved; enhancements are additive.
-
-## Payment UI route modules (App Router)
-
-The payment hub now exposes a shared core entry plus audience-specific route modules:
-
-- `/payment/runash-pay` → Core entry surface (checkout links, payment methods, subscriptions, analytics, usage, portal, reporting)
-- `/payment/startup` → Startup-tailored module set (methods, checkout links, subscriptions, usage, portal)
-- `/payment/business` → Business-tailored module set (methods, checkout links, subscriptions, analytics, reporting, portal)
-
-### Live API CTA bindings
-
-All primary CTAs are wired to live contract-first endpoints:
-
-- Payment methods: `GET /api/v1/payment/methods`
-- Checkout links: `POST /api/v1/payment/checkout-links`
-- Subscription state: `GET /api/v1/billing/subscription`
-- Analytics snapshot: `GET /api/v1/analytics`
-- Usage billing: `GET/POST /api/v1/billing/usage`
-- Billing portal: `POST /api/v1/billing/portal`
-- Tax/reporting: `GET /api/v1/payment/reporting`
-
-Navigation links to these routes are exposed from existing payment/ecommerce UI surfaces to streamline onboarding and operations.
-
-## 2026-02 Checkout link + portal lifecycle APIs expansion
-
-Implemented additive APIs and entities for business checkout and portal management:
-
-- Checkout link management now supports full lifecycle actions:
-  - `GET /api/v1/payment/checkout-links` (list)
-  - `PATCH /api/v1/payment/checkout-links/:id` (update)
-  - `PATCH /api/v1/payment/checkout-links/:id` with `{ "action": "disable" | "expire" }`
-- Added customer-portal profile API surface:
-  - `GET|PUT /api/v1/payment/profile/portal` for billing/shipping details and default/backup method pointers.
-  - `GET /api/v1/payment/profile/portal/metrics` for payment/failure/recovery/renewal status metrics.
-  - `GET|POST /api/v1/payment/profile/portal/lifecycle` for lifecycle actions (`update_method`, `retry_failed_payment`, `subscription_state_change`).
-- Storage remains tokenized-reference only for cards (`provider_token_id`); raw PAN/CVV fields are blocked.
-- Added `portal_lifecycle_actions` persistence for auditability of portal actions.
-
-Backward compatibility notes:
-
-- Existing payment profile and checkout link APIs remain available.
-- New routes and entities are additive and do not break current field names.
-
-## Webhook durability + operator diagnostics upgrade (2026-02)
-
-- Billing webhook verification now performs strict Stripe signature header validation (`t` + `v1` checks) prior to cryptographic event construction, with configurable tolerance via `BILLING_WEBHOOK_SIGNATURE_TOLERANCE_SECONDS`.
-- Event processing remains idempotent by `(provider,event_id)` and now short-circuits already-processed duplicate deliveries.
-- Webhook lifecycle persistence continues to use durable event states: `received`, `processed`, `failed`, `dead_letter`.
-- Added domain persistence handlers for:
-  - Subscription lifecycle events (`customer.subscription.*`)
-  - Invoice events (`invoice.created`, `invoice.payment_succeeded`, `invoice.payment_failed`)
-  - Payment intent events (`payment_intent.succeeded`, `payment_intent.payment_failed`)
-  - Payout events (`payout.*`)
-- Operator tooling:
-  - `POST /api/internal/billing/webhook/replay` for failed/dead-letter replay
-  - `GET /api/internal/billing/webhook/events` for diagnostics listing
-  - `POST /api/internal/billing/webhook/events/:eventId/rollback` to reset eligible failed/dead-letter events and trigger replay.
-- Reporting enhancements in `GET /api/v1/payment/reporting` now include transaction-level revenue rows, payout visibility rows, and tax breakdown records in addition to existing summaries.
-- Security note: webhook and reporting paths continue to avoid logging sensitive payment/auth secrets.
-
-
-## Authorization hardening update
-
-- Billing usage and payment lifecycle actions bind customer identity to authenticated server session claims; no caller-provided customer identity is trusted for authorization.
-- Customer-scoped payment resources require ownership verification against session user/tenant scope before mutation.
-- Payment route authorization now supports explicit action-level RBAC classes for finance read access, billing admin actions, and billing operator actions.
-- Role normalization now accepts baseline role requests (`viewer`, `operator`, `admin`) while preserving legacy compatibility through role-to-capability mapping in RBAC.
-- Baseline role assignments are normalized to legacy storage role values (`guest`, `user`, `admin`) to keep existing payment/auth contracts and queries backward compatible.
-- Rollback behavior: revert normalization helpers and baseline input acceptance, then continue operating on persisted legacy roles without data migration.
-
-
-## 2026-02 tax modeling and finance visibility update
-
-RunAsh AI Pay now applies product-aware tax computation during checkout and subscription creation using customer location plus product tax classification (`physical_goods`, `digital_services`, `professional_services`).
-
-### What is now persisted
-- Jurisdiction-aware tax models and effective rates.
-- Tax calculation artifacts for checkout, subscription, invoice, and transaction records.
-- Transaction tax line items with tax type, jurisdiction, rate, taxable amount, and tax amount.
-
-### What is now exposed
-- Invoice APIs return tax breakdown plus a tax-inclusive `financial_summary` view.
-- Payment reporting includes:
-  - `revenue_tax_summary`
-  - `operations_finance_summary`
-  - existing `revenue_summary`, `payouts_summary`, `tax_liability_by_jurisdiction`, `tax_breakdown`
-
-### Compliance responsibility reminder
-RunAsh provides tax estimation and reporting support. Customers and finance operators remain responsible for tax registration validation, filing decisions, and legal compliance in their operating jurisdictions.
-
-## Relay Agent Link Checkout Skill (Instant Checkout)
-
-- Added Relay skill `initiate_link_checkout` for RunAshChat "buy this"/instant-checkout flows.
-- Runtime contract requires:
-  - `merchant_id: string`
-  - `amount: number` in smallest unit (paise/cents)
-  - `currency: "USD" | "INR"` with default enum handling
-  - `product_metadata: { item_name, sku, tags }` with `"via RunAshChat"` tag enforced
-- Safety gates before external invocation:
-  - HITL threshold precheck
-  - MFA gate (env-controlled)
-  - PII-safe logging (merchant fingerprint hashing)
-- External payment API call: `POST https://api.runash.in/v3/pay`
-- Runtime input validation now executes before external invocation using JSON schema + zod parsing.
-- Structured activity payload returned to Relay includes:
-  - `status`
-  - `checkout_session_id`
-  - `request_id`
-  - `next_action`
-- Backward compatibility preserved for existing agent tools and API signatures (tool name and API surface unchanged).
-
-
-## Validator Gate for Instant Checkout (RunAshChat + Stripe Link)
-
-RunAsh AI Link checkout now enforces a middleware validator gate before payment intent/session creation.
-
-- `requiresHitl`: `true` when amount is above **$100 USD-equivalent** (currency-aware via INR/USD normalization) or configured threshold override.
-- `requiresMfa`: `true` when INR amount exceeds `800000` paise (₹8,000) or configured override.
-- `allowed`: only `true` when required HITL confirmation and MFA checks are satisfied.
-- `reasonCodes`: structured machine-readable reasons such as `HITL_CONFIRMATION_REQUIRED` and `MFA_REQUIRED_FOR_HIGH_VALUE_INR`.
-
-Security hardening for payment activity logs:
-- Raw PAN/card number/CVV are never persisted.
-- Activity/audit logs store only masked card form, e.g. `*4242`.
-
-## RunAshChat Instant Checkout (Link Quick Pay)
-
-RunAshChat buy-intent messages now support an in-chat Link quick-pay experience for instant checkout.
-
-- Renderer integration: assistant messages can include a `metadata.linkQuickPay` payload.
-- UI label: `Pay with Link *{last4}` for continuity with saved Link instruments.
-- Status lifecycle: `idle` → `processing` → `success | failed`.
-- Eligibility signal: digital products tagged with `digital` and marked as Link-eligible show a `Sold through Link` badge.
-- Safety posture: no sensitive payment/auth fields are logged in the UI flow.
-
-This preserves existing checkout contracts and only augments chat rendering/metadata for backward-compatible payment UX.
-
-## Checkout execution fallback sequencing update (2026-02)
-
-Payment confirmation now executes deterministic method fallback for one checkout action while preserving existing route contracts.
-
-### Execution behavior
-- Attempt 1 always uses `default_payment_method`.
-- If attempt 1 fails with retryable/default-method failure codes, attempt 2 automatically uses `backup_payment_method`.
-- Both attempts are persisted into the transaction timeline with explicit `attemptIndex` and `reason` for auditability.
-- A single confirm idempotency key is reused for all attempts inside the same checkout action.
-
-### Response fields
-The confirm response now includes additive fields:
-- `attemptedMethods`: ordered list of method attempts.
-- `fallbackUsed`: boolean indicating whether backup fallback executed.
-- `finalStatus`: final transaction status after fallback resolution.
-
-### Rollback and compatibility
-- Existing transaction fields and endpoint paths are unchanged.
-- This rollout is additive and backward compatible; clients can ignore the new fields.
-
-## Tax preview + confirmation gate for RunAshChat Instant Checkout
-
-RunAshChat Instant Checkout now enforces a tax-preview-first payment sequence for Relay → Stripe Link flows:
-
-1. `checkout_preview` computes and returns a tax preview object before final confirmation is accepted.
-2. Preview includes:
-   - `subtotal`
-   - `gstVatAmount`
-   - `totalPayable`
-3. Final charge is blocked unless both conditions are true:
-   - `preview_displayed=true`
-   - `user_confirmation_after_preview=true`
-4. Activity summaries include tax details (`label`, `ratePercent`, `amount`, `country/region`, `totalPayable`).
-5. Final receipt payload now includes tax-aware totals (`subtotal`, `taxAmount`, `totalPayable`, `taxLabel`, `taxRatePercent`, `currency`).
-
-This change preserves existing checkout contracts while adding a mandatory audit-friendly confirmation step for payment reliability.
-
-## Data residency + edge routing policy for Instant Checkout
-
-RunAshChat Instant Checkout now applies a deterministic routing policy before invoking `POST https://api.runash.in/v3/pay`.
-
-### Routing decision model
-- A payment edge router resolves traffic to `IN_EDGE` or `US_EDGE`.
-- Routing uses merchant/customer regional hints (`merchant_region`, `country`) with India-first handling for India-linked flows.
-- The transaction context now includes:
-  - `regionRoute`: `IN_EDGE | US_EDGE`
-  - `residencyPolicy`: `IN_DATA_RESIDENCY | US_DATA_RESIDENCY`
-
-### Outbound contract safety
-- Outbound payment calls include only safe residency metadata:
-  - Header: `X-RunAsh-Region-Route`
-  - Header: `X-RunAsh-Residency-Policy`
-  - Body metadata: `routing_metadata` (`regionRoute`, `residencyPolicy`, normalized merchant/customer region codes)
-- No sensitive payment instrument data is added as part of routing metadata.
-
-### Compliance-safe audit behavior
-- Instant checkout emits compliance-safe audit records for routing and validator outcomes.
-- Logs include merchant fingerprint (hashed), route, policy, amount/currency, and validator status.
-- Raw sensitive payment/auth data is not logged.
-
-### Backward compatibility
-- Existing API signatures and payment flow contracts are preserved.
-- Routing and residency fields are additive in internal transaction context and agent activity summary.
-
-## 2026-02 Reliability Extension — Checkout Attempts, Usage Ingestion, Reporting Trail
-
-Implemented for RunAshChat Instant Checkout + Stripe Link reliability:
-
-- Added checkout attempt/result persistence model for per-session attempt outcomes (`authorized|completed|failed|expired`) with result code/message and metadata trail.
-- Added customer portal metrics expansion to include checkout attempt analytics (total/completed/failed/expired, success rate, attempts/session).
-- Added explicit usage ingestion APIs for manual and batch modes at `/api/v1/payment/usage/ingest` supporting custom metadata.
-- Extended reporting transaction payloads with financial reliability fields:
-  - `estimatedTaxAmount`
-  - `payoutEligibleAmount`
-  - `metadata`
-  - `transactionTrail` (provider event trail for auditability)
-- Dashboard components now surface checkout attempt KPIs and reporting finance highlights.
-
-Backward compatibility notes:
-- Existing billing/payment/profile API signatures are preserved.
-- New fields are additive only.
-
-Rollback notes:
-- Revert service/API/UI changes in this PR and keep previous reporting payload shape.
-- Keep database additive tables; they are isolated and non-breaking.
-
-## Relay Instant Checkout safety gate (2026-02)
-
-RunAshChat "Instant Checkout" now enforces a deterministic Relay safety middleware before Link checkout execution:
-
-- Middleware enforcement layer: `lib/payments/validator-gate.ts` (built on `lib/payments/validator-safety-gate.ts`).
-- Middleware is enforced in both API execution paths (`/api/v1/payment/create-intent`, `/api/v1/billing/checkout`) and Relay agent tool execution path (`services/agent-orchestration-service.ts` + `lib/skills/link-checkout-skill.ts`).
-- Policy decision contract returned by Relay tooling:
-  - `allowed`
-  - `requiresHitl`
-  - `requiresMfa`
-  - `reasonCodes`
-  - `requires_hitl` (backward-compatible alias)
-  - `requires_mfa` (backward-compatible alias)
-  - `reason_codes` (backward-compatible alias)
-- HITL rule: USD-equivalent amount above **$100.00** requires explicit human confirmation before checkout execution.
-- MFA rule: INR-equivalent amount above **₹8,000** (`800000` paise) requires MFA verification before confirmation.
-- Currency normalization is now applied for cross-currency threshold checks, so INR and USD amounts are evaluated consistently.
-- Payment activity/tool lineage logging now sanitizes card-like values to masked format (for example `*4242`) and redacts CVV/security codes.
-
-### Risk + rollback notes
-
-- **Risk level:** medium (may block high-value checkout attempts that previously proceeded without HITL/MFA flags).
-- **Rollback:** revert validator middleware integration in `lib/payments/validator-gate.ts`, API payment routes, and `services/agent-orchestration-service.ts`, then redeploy.
-
-## RunAshChat Instant Checkout (Stripe Link bridge)
-
-RunAshChat now supports an in-thread Link instant-checkout CTA for eligible product cards so users can complete "buy this" style intents without leaving chat context.
-
-### UI/UX behavior contract
-
-- Primary action label remains `Pay with Link *{last4}` for backward-compatible recognition in payment QA and support playbooks.
-- Button lifecycle is explicit: `idle` → `processing` → (`success` | `failed`).
-- Failed attempts stay recoverable in place (retry from the same control) so the Relay Agent can re-attempt Link checkout once authorization becomes available.
-- Eligible digital products render a `Sold through Link` badge to indicate Link-supported fulfillment.
-- Accessibility hardening: disabled state during processing/success, live status messaging, and loading affordances for screen-reader users.
-
-### Reliability notes
-
-- No payment payload field names or API signatures are changed by this UI update.
-- This change is presentation/state-management only and remains compatible with existing `/api/payment/*` and `/api/v1/payment/*` flows.
-
-## Link Instant Checkout Reliability (Relay → Stripe Link)
-
-RunAshChat Link checkout now uses a reliability-first payment orchestration path for natural-language intents such as **"buy this"**:
-
-- Primary attempt always starts with `stripe_link` on `https://api.runash.in/v3/pay`.
-- If the first attempt fails with a retryable condition (network/timeout/rate-limit/upstream transient), the orchestrator automatically retries once with `backup_payment_method` when provided.
-- Both primary and fallback attempts reuse the same `idempotency_key` and are persisted with attempt metadata for reconciliation and auditability.
-- Unified response fields include:
-  - `fallback_used`
-  - `attempted_methods`
-  - `final_status`
-  - `attempt_timeline` (`method`, `reason`, `status`, `timestamp`)
-  - additive aliases `fallbackUsed`, `attemptedMethods`, and `attemptTimeline` for Relay/client compatibility
-- Primary attempt selection now honors optional `default_payment_method` (falls back to `stripe_link` if omitted); retryable failures automatically attempt `backup_payment_method` once.
-- One idempotency key is reused for all attempts in a single checkout action (`Idempotency-Key` header + `idempotency_key` body) to prevent duplicate charges.
-- Attempt-level failures now expose only safe error codes (`rate_limited`, `timeout`, `temporarily_unavailable`, `network_error`, `payment_declined`, `authentication_required`, `invalid_request`, `checkout_failed`) to avoid leaking provider-internal details.
-- Sensitive payment payload fields must remain redacted in logs; checkout orchestration avoids logging raw payment instrument details.
-- RunAshChat quick-pay UI now surfaces the attempt timeline so users/operators can see primary vs fallback routing outcomes in-chat without exposing sensitive payment data.
-
-## Instant Checkout Tax Preview and Confirmation Gate
-
-RunAshChat Instant Checkout now enforces a tax-preview confirmation step before final charge execution:
-
-- Tax estimation is computed by `lib/payments/tax-preview.ts` with:
-- Tax estimation normalizes INR/USD minor units (paise/cents) into currency major units before computing preview totals.
-  - `india_gst` mode for INR/India GST flows
-  - `sales_tax` (US states) and `vat` modes for USD-region flows
-- The checkout preview card includes **subtotal, tax, and total** so users can review the complete payable amount.
-- Final Link charge is blocked until user confirms **after** tax preview.
-- Tax line items are persisted in transaction metadata for reporting and auditability.
-- Persisted tax metadata now includes explicit line-item tuples (`type`, `label`, `jurisdiction`, `rate_percent`, `amount`) per checkout attempt for reconciliation exports.
-
-This rollout is backward compatible with existing checkout contracts and keeps sensitive payment/auth values out of logs.
-
-## Edge routing policy + compliance profile metadata (2026-02)
-
-RunAsh AI Pay now enforces a dedicated payment routing policy layer (`lib/payments/edge-routing-policy.ts`) for outbound checkout/subscription/portal Stripe requests.
-
-- Routing decision is deterministic by normalized merchant/customer region:
-  - India merchant/customer region (`IN`, `IND`, `IN-*`, `APAC_IN`) => `IN_EDGE` + `IN_RBI_PROFILE`
-  - Otherwise => `US_EDGE` + `US_STRIPE_PROFILE`
-- Payment metadata now includes route context keys:
-  - `region_route`
-  - `residency_policy`
-  - `compliance_profile`
-- Intent metadata also carries a `payment_context` object with `{ regionRoute, residencyPolicy }` for downstream orchestration and analytics.
-- Route decisions are audit logged with a structured envelope containing:
-  - `requestId`
-  - route decision payload (`regionRoute`, `residencyPolicy`, `complianceProfile`, `reason`)
-  - sanitized metadata only (no sensitive payment/auth values)
-- Outbound Stripe/provider payment calls now receive only sanitized metadata fields; raw payment instruments/auth artifacts are excluded from provider-bound metadata.
-- Outbound Stripe payment calls in billing flows now execute after policy resolution and route-audit capture.
-
-Backward compatibility:
-- Existing API signatures/response contracts are unchanged.
-- Route/compliance fields are additive metadata for compliance observability.
-
-## 2026-02 Reliability Update: Instant Checkout Controls & Analytics
-
-RunAsh AI Link + Relay-to-Stripe Link flows now expose customer profile controls and reliability analytics APIs for safe natural-language checkout actions (e.g., "buy this").
-
-### New profile controls APIs
-- `GET /api/v1/payment/profile/controls`
-  - Returns `defaultPaymentMethodId`, `backupPaymentMethodId`, plus billing history and retry summaries.
-- `PUT /api/v1/payment/profile/controls`
-  - Updates default/backup payment method assignments.
-
-### New analytics summary APIs
-- `GET /api/v1/payment/analytics/summary`
-- `GET /api/payment/analytics/summary` (compat mirror)
-
-Summary payload includes:
-- checkout conversion (`attempted`, `completed`, `conversionRatePercent`)
-- failed payment recovery (`failedAttempts`, `recoveredAfterRetry`, `recoveryRatePercent`)
-- fallback usage (`transactionsWithFallback`, `fallbackUsageRatePercent`)
-- revenue/tax/payout summaries (`revenueTaxSummary`, `payoutSummary`, `operationsSummary`)
-
-### Usage-based billing hooks
-`POST /api/v1/payment/create-intent` now accepts optional `usageHook` payload with:
-- `eventId`
-- `promptTokens`
-- `completionTokens`
-- `deltaMs`
-- `metadata`
-- `pricingModel`
-
-When supplied, usage is ingested alongside payment intent creation for auditability.
-
-### Security and authorization
-Profile and analytics endpoints enforce billing-role checks and customer organization scope checks. Sensitive payment/auth data remains tokenized only (no PAN/CVV logging).
-
-## Relay Instant Checkout contract update (RunAshChat)
-
-RunAshChat instant checkout (`initiate_link_checkout`) now enforces explicit runtime input validation before Link execution and returns structured validation diagnostics for agent UX remediation.
-
-### Structured validation output
-- `status: "validation_failed"` for invalid payloads.
-- `validation_issues: [{ path, message }]` to support deterministic prompt repair/retry.
-- Currency validation remains constrained to `INR | USD`, with default `USD` when omitted.
-
-### Compatibility note
-This update is additive and preserves existing payment flow field names and Relay tool routing contracts.
-
-## 2026-02 RunAshChat AI Link Instant Checkout UX Update
-
-### What changed
-- Added a dedicated `LinkQuickPayButton` chat component for Link-powered instant checkout cards in RunAshChat.
-- CTA copy is now standardized as `Pay with Link *{last4}`.
-- Checkout UI now follows an explicit state machine: `idle -> processing -> success | failed`.
-- Eligible digital products now display a `Sold through Link` badge for clear merchandising context.
-- Added responsive checkout layout behavior (1-column on mobile, 2-column on desktop) to keep totals and actions readable.
-- Tool execution wiring now exposes failure details and a retry affordance without changing checkout API contracts.
-
-### Backward compatibility and safety
-- Existing relay tool name (`initiate_link_checkout`) and payload field names are preserved.
-- Added UX behavior is contract-safe and additive; no payment field was renamed or removed.
-- Error copy avoids sensitive payment/auth logging and only surfaces actionable, user-safe messages.
-
-### Risk and rollback
-- **Risk level:** Low to medium (client-side checkout experience + retry behavior).
-- **Rollback:** Revert chat Link quick-pay component wiring in `components/chat/chat-message.tsx` and `components/chat/link-quick-pay-button.tsx`.
-
-## 2026-02 Instant Checkout Reliability Expansion (Profile + Analytics + Reporting)
-
-### New profile management APIs
-- `GET|PUT /api/v1/payment/profile`
-  - Supports `billingDetails` in addition to billing/shipping addresses.
-  - Preserves existing `defaultPaymentMethodId` and `backupPaymentMethodId` fields.
-- `GET|PUT /api/v1/payment/profile/billing-details`
-  - Dedicated billing-detail management endpoint for customer portal/profile workflows.
-- `GET|PUT /api/v1/payment/profile/controls`
-  - Continues default/backup payment method control and billing history/retry visibility.
-
-### New analytics endpoints
-- `GET /api/v1/payment/analytics/checkout-conversion`
-- `GET /api/v1/payment/analytics/payment-failures`
-- `GET /api/v1/payment/analytics/fallback-usage`
-- `GET /api/v1/payment/analytics/revenue-payout-tax`
-- Existing `GET /api/v1/payment/analytics/summary` now also includes `checkoutAttemptFinancialSummary`.
-
-### Checkout-attempt reporting metadata
-- `POST /api/v1/payment/checkout-attempts` now normalizes additive `metadata.reporting` fields:
-  - `grossAmount`, `netAmount`, `processingFeeAmount`, `taxAmount`, `payoutAmount`, `taxWithheldAmount`
-  - optional context keys: `exchangeRate`, `settlementCurrency`, `taxJurisdiction`, `payoutSchedule`
-- Added aggregation support for attempt-level finance reporting via service-level summary helpers.
-
-### Dashboard + customer portal visibility
-- Payment analytics UI now loads dedicated endpoint slices (conversion, failures/recovery, fallback, revenue/payout/tax).
-- Customer portal UI now surfaces billing-details payloads and financial-attempt aggregates with portal metrics.
-
-### Compatibility + security
-- All changes are additive and backward compatible; existing field names/contracts remain valid.
-- Sensitive card/auth data remains prohibited from logs/storage; tokenized references only.
-
-## RunAsh Pay dashboard data and action APIs (latest)
-
-The `/payment/runash-pay` surface now uses real server-backed APIs for wallet summary and transaction history:
-
-- `GET /api/v1/payment/summary` – returns current balance + headline payment totals.
-- `GET /api/v1/payment/transactions?limit=<n>&page=<n>&status=<...>&query=<...>` – paginated, filterable transaction list.
-
-It also includes mutation contracts for request and bill operations used by Instant Checkout support flows:
-
-- `GET /api/v1/payment/requests`
-- `POST /api/v1/payment/requests`
-- `PATCH /api/v1/payment/requests/:id`
-- `GET /api/v1/payment/bill-payments`
-- `POST /api/v1/payment/bill-payments`
-- `PATCH /api/v1/payment/bill-payments/:id`
-
-Client behavior now uses optimistic UI updates with rollback on mutation failures for payment requests and bill payments, and refresh now performs real API refetch instead of timeout simulation.
-
-## 2026-02 RunAshChat Instant Checkout intent + activity payload update
-
-RunAshChat Relay integration now formalizes natural-language checkout intent mapping and structured activity payload delivery for Link checkout.
-
-### Relay tool contract updates
-- `initiate_link_checkout` parameter schema now explicitly requires:
-  - `merchant_id: string`
-  - `amount: number` (paise/cents)
-  - `currency: "INR" | "USD"`
-  - `product_metadata: { item_name, sku, tags }` where tags include `"via RunAshChat"`
-- Existing field names and tool name are preserved; this is additive/strictness alignment for safer invocation.
-
-### Intent phrase mapping
-- RunAshChat now maps buy-intent phrases to Link checkout tool invocation, including:
-  - `buy this`
-  - `confirm purchase`
-  - `pay now`
-
-### Structured chat activity summary
-- Relay checkout responses now include `activity_summary_payload` for deterministic chat UX rendering:
-  - `status`
+- OTP email login verification now mints canonical auth sessions and secure Better Auth cookies for `purpose=login`; non-login OTP purposes remain verification-only.
+- This auth-session alignment does not change payment API contracts, webhook payloads, or billing field names.
+- Payment-linked auth messaging uses the canonical provider module (`lib/email-provider.ts`) and deterministic provider selection (`EMAIL_PROVIDER=smtp|resend`).
+- Protected payment flows rely on Better Auth session validation via `/api/auth/get-session` and canonical Better Auth session cookies.
+- Better Auth signup verification emails now always resolve to the canonical verification endpoint (`/api/auth/verify-email`) and use safety-aware auth email delivery utilities (`lib/email.ts` -> `lib/email-provider.ts`) to preserve secure, auditable routing.
+- Legacy NextAuth cookie compatibility remains temporary during migration windows to avoid lockouts.
+- RBAC authorization remains aligned with canonical `viewer` / `operator` / `admin` capabilities with compatibility mapping where still required.
+- Middleware and seller/admin route guards enforce role-aware authorization server-side with explicit `401 Unauthorized` (missing session) and `403 Forbidden` (insufficient role) behavior for payment/auth-adjacent surfaces.
+
+## Payment surface routes (current)
+
+- Dashboard: `/dashboard/payments`
+- Checkout entry points: `/checkout/*`
+- Billing surfaces: `/pricing`, `/settings/billing`
+- Customer portal surfaces: `/portal/*`
+
+## Safety + rollback expectations for payment-impacting updates
+
+- Roll back immediately if payment authorization anomalies, checkout failures, or webhook processing regressions are observed.
+- Use staged rollout for auth-dependent payment changes and verify metrics before advancing rollout percentage.
+- Record payment-impacting changes in PR risk notes and in this document.
+
+## Checkout redirect orchestration contract
+
+- Billing checkout APIs return and persist redirect orchestration fields: `redirectUrl`, `returnUrlSuccess`, `returnUrlPending`, `returnUrlFailed`, and `providerTransactionReference`.
+- Redirect callbacks must include signed `state` plus provider reference so the callback endpoint can validate integrity before resuming checkout state.
+- Final status resolution order: webhook-backed checkout attempt state first, provider session lookup second (fallback).
+- Callback handlers must never trust query `status` without validating signed state/reference.
+
+## Payment status surfaces and backend resolution
+
+- Dedicated payment status pages exist at `/payment/status/[state]` where `state ∈ {success,error,incomplete,pending,complete}` for explicit status UX states.
+- Status pages resolve from backend payment records using `GET /api/v1/payment/status` (and alias `GET /api/payment/status`), not query-string status text alone.
+- Status resolution validates signed checkout return state/reference, then resolves status via persisted checkout attempts first and provider session lookup second.
+- UI contract for status pages includes transaction summary values, checkout attempt/reference identifiers, and recommended user actions (retry, dashboard return, support, invoice download when available).
+
+## 2026-02 invoice operations UX/API update
+
+- Added first-party invoice workflows backed by existing billing APIs: list, create, detail, payment status, and receipt/download surfaces under `/payment/invoices`.
+- `POST /api/v1/billing/invoices` now accepts validated customer + line-item + tax + due-date + currency payloads and persists invoice records and line items.
+- Invoice records now persist customer details and invoice-linked payment attempts (`invoice_payment_attempts`) to improve auditability.
+- Webhook payment events now append invoice payment attempts and synchronize invoice status (`open`/`paid`/`uncollectible`) + `amount_paid` in local invoice records when references match.
+
+## 2026-02 Payment State Normalization & Reconciliation
+
+- Normalized payment intent states now use a shared domain enum: `pending`, `processing`, `requires_action`, `succeeded`, `failed`, `canceled`, `expired`, and `incomplete`.
+- Payment intent status updates are transition-validated in the service/repository layer to avoid invalid jumps and preserve backward-compatible API response shapes.
+- Payment intent records now persist status transition timestamps (`status_transitions` + `last_status_transition_at`) for auditability.
+- New reconciliation endpoint pattern is available at `POST /api/v1/payment/usage/reconcile` (and alias `/api/payment/usage/reconcile`) to:
+  - recover payment intents from provider event mismatches,
+  - expire stale checkout sessions and prevent stuck authorized/created sessions.
+- Risk/rollback: if reconciliation behavior needs rollback, disable scheduled calls to the endpoint and revert to existing manual status updates while preserving the newly added transition metadata columns.
+
+## 2026-02 Webhook + Callback Reliability hardening
+
+- Stripe webhook intake enforces provider signature verification and idempotent event ingestion keyed by provider event id.
+- Webhook replay now reuses the same processing claim path as live events and replays in provider-created order to reduce out-of-order side effects.
+- Payment attempts now persist retry-safe dedupe keys and provider event timestamps in `invoice_payment_attempts`; invoice status synchronization reads the latest ordered attempt state.
+- Internal billing webhook replay/rollback routes additionally accept signed service-to-service calls (`x-runash-timestamp` + `x-runash-signature`) to verify non-session automation callers.
+- Checkout callback/payment resolution now prefers the unified invoice payment-attempt ledger (`invoice_payment_attempts`) before legacy checkout attempt records, keeping UI status surfaces consistent.
+
+## 2026-02 Payment dashboard operations visibility refresh
+
+- `/payment/dashboard` now renders an operations-focused dashboard surface instead of redirecting to legacy billing navigation.
+- Customer-facing telemetry blocks include current balance/plan context, recent transactions, pending payment actions, and failed-payment recovery status.
+- Operator panel cards now surface recent failures, webhook lag/error counters, refund/chargeback risk flags, and reconciliation health metrics for faster triage.
+- No payment API request/response fields, webhook payload contracts, or auth/session signatures were changed by this UI refresh.
+- Rollback plan: revert the dashboard page/component pair (`app/payment/dashboard/page.tsx` and `components/payment/payment-operations-dashboard.tsx`) to restore previous redirect behavior.
+
+
+
+## 2026-02 RunAshBook dashboard compliance + automation telemetry
+
+- Expanded `/payment/dashboard` operations UI with a **RunAshBook** section for accounting integration visibility.
+- Added integration status card values for connection state, last sync timestamp, and jurisdiction mode (India/US/Both).
+- Added compliance cards for India (GST filing readiness + pending GST-tagged transactions) and US (sales-tax classification completeness + uncategorized revenue events).
+- Added agentic automation metrics for relay-triggered accounting posts, success/fail/retry counters, and unsynced queue size.
+- Added RunAshBook actions (`Sync now`, `View journal queue`, `Export audit trail`) for finance/operator workflows.
+- Backward compatibility: this is a UI-only enhancement and does not change payment/auth API signatures, payload field names, or persistence contracts.
+- Security posture: no sensitive payment/auth secrets are rendered; displayed values are aggregate operational metrics only.
+- Rollback plan: revert `components/payment/payment-operations-dashboard.tsx` and this section to restore the previous dashboard layout.
+
+## 2026-02 Payment automation trigger/action mappings
+
+- Workflow automation now supports payment webhook trigger events:
+  - `payment_succeeded`
+  - `payment_failed`
+  - `invoice_overdue`
+  - `checkout_abandoned`
+- Payment trigger-to-action mappings are available in workflow templates and node handlers:
+  - `payment_succeeded` → `payment.send_receipt`, `payment.unlock_feature_entitlement`
+  - `payment_failed` → `payment.notify_support`
+  - `invoice_overdue` → `payment.retry_reminder`
+  - `checkout_abandoned` → `payment.retry_reminder`
+- Actions execute through the existing workflow automation engine and emit queue-oriented metadata (`queue: automation`, `queued`, `jobId`) for worker handoff where queue workers are enabled.
+- Backward compatibility: existing payment API signatures, webhook contracts, and billing field names are unchanged.
+- Rollback plan: remove payment workflow node/template references in `lib/workflow-kit/*` and revert to pre-payment trigger workflow configurations.
+
+## 2026-02 payment reliability test coverage expansion
+
+- Added targeted automated coverage for checkout redirect callback status mapping, payment status route-state mapping, invoice create total calculation lifecycle, webhook duplicate idempotency classification, and failed/incomplete retry lifecycle behavior.
+- Backward compatibility: no payment API field names, webhook payload fields, or billing endpoint signatures were changed; test-focused helper modules mirror existing route/service behavior.
+- Migration notes: no schema or contract migration required for this change set because logic is extracted to shared mappers/helpers without altering persisted formats.
+- Risks:
+  - Behavioral drift risk if helper mappers diverge from route/service call sites in future edits.
+  - Build/lint environment dependency risk remains (missing local lint/build env secrets/deps can mask unrelated regressions).
+- Rollback steps:
+  1. Revert helper module imports in payment routes/services to prior inline logic.
+  2. Revert added helper modules/tests (`lib/payments/*mappers*`, `lib/services/billing-webhook-idempotency.ts`, `lib/billing/invoice-calculations.ts`, and corresponding `*.test.ts` files).
+  3. Re-run payment route tests and deploy previous known-good commit if mapping regression is confirmed.
+
+## 2026-02 Scan & Pay UPI lifecycle confirmation hardening
+
+- The `/scan` payment UX now persists `transactionId` after initiation and models lifecycle states as `initiated` → `pending` → (`success` | `failed`) with timeout handling.
+- Client flow no longer transitions directly to success after initiation; it polls `GET /api/upi/status/[transactionId]` and only renders success UI when backend status is confirmed `success`.
+- Failed and timeout states now render explicit recovery UI (retry status check / return to RunAsh Pay) without changing payment contract field names.
+- Success rendering includes provider-facing `transactionReference` and `updatedAt` confirmation timestamp returned from the status API.
+- Risk/rollback:
+  1. If confirmation polling causes UX regressions, revert `app/scan/page.tsx` and restore previous route behavior.
+  2. If status endpoint behavior is unstable, roll back `app/api/upi/status/[transactionId]/route.ts` and gate Scan & Pay launch behind existing stable payment surfaces.
+
+## 2026-02 UPI backend PIN validation, rate-limits, and idempotency hardening
+
+- `POST /api/upi/initiate` and `POST /api/upi/confirm` now accept/reuse idempotency keys (header `idempotency-key` or body `idempotencyKey`) to prevent duplicate initiation/confirmation charging behavior under retries.
+- UPI PIN validation now executes only on backend confirmation (`/api/upi/confirm`) and no longer depends on client-side PIN length assumptions.
+- Payment routes now enforce request rate limits and PIN retry limits. Exhausted retries return `PIN_ATTEMPTS_EXCEEDED`; route-level risk controls return `RISK_BLOCKED`.
+- UPI confirmation and status APIs now expose structured error codes (`INVALID_PIN`, `PIN_ATTEMPTS_EXCEEDED`, `RISK_BLOCKED`) to support deterministic UI messaging without exposing provider internals.
+- Logging hardening expands payment log sanitization to redact PIN/auth-like fields (`pin`, `otp`, `token`, `authorization`, `secret`) so raw credentials never reach app logs.
+- Risks + rollback:
+  1. In-memory idempotency/rate-limit state resets on process restart; if this causes inconsistent behavior, replace store with Redis/DB-backed state before high-scale rollout.
+  2. If new confirmation API introduces regressions, rollback by reverting `app/api/upi/confirm/route.ts`, `lib/services/upi-checkout-service.ts`, and `app/scan/page.tsx` together to keep client/server flow aligned.
+  3. Keep API contracts backward-compatible by preserving existing payload fields (`transactionId`, `status`, `transactionReference`, `updatedAt`) while additive fields (`errorCode`) remain optional.
+
+## 2026-02 RunAshChat Instant Checkout (Relay → Link)
+
+- Added/confirmed `initiate_link_checkout` tool contract for RunAshChat relay with required fields: `merchant_id`, `amount` (smallest unit), `currency` (`INR`/`USD`), and `product_metadata` (`item_name`, `sku`, `tags` including `via RunAshChat`).
+- Relay chat routing now auto-selects payment tooling for natural-language intents such as `buy this` and `confirm`, while preserving explicit caller-provided tool lists for backward compatibility.
+- Link execution path now calls `https://api.runash.in/v3/pay` and emits structured execution activity summary metadata including request correlation ID, endpoint, attempt count, and fallback usage.
+- RunAshChat UI now surfaces checkout state (`idle` / `processing` / `success` / `failed`) and request correlation ID to improve support/audit workflows.
+- Added explicit tax estimation utility support to compute and expose subtotal, GST/VAT amount, and total payable before payment confirmation; step-3 confirmation UI now requires explicit post-preview user confirmation before charge execution.
+- Payment execution service now enforces primary-method-first execution with automatic backup-method retry only for retryable failures, and persists both attempts with reason/status in transaction metadata for auditability.
+- Receipt/audit payloads now include fallback metadata (`fallbackUsed`, `attemptedMethods`) in addition to existing snake_case fields for backward-compatible display across RunAshChat and operational reporting.
+- Risks + rollback:
+  1. Intent over-matching could trigger checkout tooling for ambiguous prompts; rollback by reverting intent selection helper in `app/api/agents/chat/chat-request-handler.ts`.
+  2. If upstream `/v3/pay` payload/response behavior changes, rollback to prior `runLinkCheckoutWithFallback` return mapping while preserving request headers and idempotency behavior.
+  3. UI state inconsistencies can be rolled back by reverting `components/chat/link-quick-pay-button.tsx` + `components/dashboard/workspace/chat-workspace.tsx` together to keep metadata/state mapping aligned.
+
+
+## 2026-02 Validator middleware hardening for execution path
+
+- Added currency-normalized policy evaluation in payment validator middleware with explicit thresholds: HITL required when amount exceeds USD-equivalent $100 (`RUNASH_HITL_THRESHOLD_USD_CENTS`, default `10000`) and MFA required when amount exceeds INR-equivalent ₹8,000 (`RUNASH_MFA_THRESHOLD_INR_PAISE`, default `800000`).
+- Enforced validator middleware before both payment intent creation and payment confirmation/execution paths so blocked decisions are returned prior to charge confirmation.
+- Validator decision contract is propagated to callers with stable fields: `requiresHitl`, `requiresMfa`, `allowed`, and `reasonCodes` (plus existing snake_case compatibility fields internally).
+- Payment/auth activity log payloads now mask payment identifiers (e.g., `*4242`) for keys like `paymentMethodId`, `intentId`, and provider transaction identifiers, while continuing to redact PIN/OTP/CVV style secrets.
+- Risks + rollback:
+  1. **Risk:** Strict execution-time gate could block legacy intents missing `human_confirmed`/`mfa_verified`. **Mitigation:** confirm route accepts override flags and metadata now persists both fields at create-intent time.
+  2. **Rollback:** Revert validator check insertion in `app/api/v1/payment/confirm/route.ts` and `lib/payment-service.ts`, then redeploy previous stable build if false positives are observed.
+  3. **Compatibility:** Existing API signatures remain backward compatible; added fields are additive in successful and blocked responses.
+
+
+## 2026-02 payment routing residency policy update (India/US)
+
+- Added centralized payment routing policy module (`lib/payments/edge-routing-policy.ts`) to deterministically choose `IN_EDGE` vs `US_EDGE` based on merchant/customer region context.
+- Routing context metadata now includes `region`, `residencyPolicyVersion`, and `requestId`; these fields are attached to transaction context and provider metadata in compliance-safe form.
+- Outbound provider metadata is minimized to required operational fields and routing context only; sensitive auth/payment details remain redacted via payment logging sanitization.
+- Routing decision audits now persist request-scoped records with route decision + sanitized metadata only (no PAN/CVV/PIN/payment secrets).
+- Operational note: if routing anomalies occur, rollback by reverting routing-context metadata builder usage in checkout/subscription/create-intent handlers while keeping API response contracts unchanged.
+
+## 2026-02 Scan & Pay UX resiliency + receipt data wiring
+
+- `/scan` now includes explicit component-level UX surfaces for `pending`, `failed`, and `retry` states (including timeout-retry status sync) to reduce ambiguous in-flight payment states.
+- Added explicit user-controlled cancel/back actions from amount entry and PIN confirmation steps so users can safely exit or revise flow state without forcing hidden resets.
+- In-flight transaction continuity is now persisted on the client (`transactionId` + current lifecycle status + step) so refresh/navigation does not drop active payment context.
+- Per-action loading locks are enforced for initiate, confirm, status retry, share receipt, and download actions to prevent duplicate submissions.
+- Receipt actions now resolve live transaction details from `GET /api/upi/transactions/[transactionId]`; “Share Receipt” uses fetched receipt data and “Download transaction details” exports real transaction payload JSON.
+
+Risk and rollback notes:
+1. If local storage persistence causes stale states in user sessions, rollback persistence in `app/scan/page.tsx` while retaining backend transaction contracts.
+2. If receipt endpoint integration causes regressions, rollback `app/api/upi/transactions/[transactionId]/route.ts` and disable share/download controls while preserving UPI confirm/status behavior.
+
+
+## Send Money Reliability Hardening (UPI)
+
+RunAsh Pay send-money flows now follow an explicit lifecycle to reduce false-positive success states:
+
+- Initiate payment (`/api/upi/initiate`) with idempotency keys.
+- Confirm payment (`/api/upi/confirm`) with server-side PIN validation and risk controls.
+- Poll final status (`/api/upi/status/:transactionId`) before rendering success UI.
+
+### UX behavior update
+- Success screen is shown only after terminal `success` status.
+- Failed and timeout outcomes are surfaced with retry actions.
+- Transaction reference and details endpoints are exposed for reconciliation.
+
+This change preserves API compatibility while improving operational correctness for payment status handling.
+
+
+
+## 2026-02 Custom Wallet + Link autofill integration
+
+- Added custom wallet APIs and pages for card vaulting, activity timeline, and subscription management:
+  - `GET/POST /api/wallet/cards`, `PATCH/DELETE /api/wallet/cards/:id`
+  - `GET /api/wallet/activity`
+  - `GET/PATCH /api/wallet/subscriptions`
+  - pages: `/wallet`, `/wallet/activity`, `/wallet/subscriptions`
+- Added Link UX flows aligned to RunAshChat checkout behavior:
+  1. Save payment info at checkout (`POST /api/wallet/link/save`).
+  2. Account verification with one-time code for new device/site (`POST /api/wallet/link/session`, `POST /api/wallet/link/verify`).
+  3. Checkout autofill preview after verification (saved email + masked payment method + billing details).
+- Security and compatibility notes:
+  - Card payloads are reduced to masked last4 storage in wallet records and never expose full PAN in API responses.
+  - Existing payment API signatures remain unchanged; wallet/link routes are additive and can be rolled back independently.
+
+
+## 2026-02 Link wallet persistence hardening (Instant Checkout)
+
+- Replaced in-memory wallet/link state maps with PostgreSQL-backed repositories for cards, link sessions, activity logs, subscription snapshots, and OTP verification attempts.
+- Card persistence stores only tokenized payment references and masked metadata (`brand`, `last4`, `expMonth`, `expYear`); full PAN is never persisted.
+- Link verification codes are stored as hashes; OTP verification attempts are captured for auditability and abuse monitoring.
+- Sensitive wallet profile fields are encrypted at rest with envelope metadata (`kid`, `iv`, `tag`, `data`) and key-ring based decrypt fallback to support key rotation.
+- Backfill strategy for existing seeded demo flow is published in `scripts/sql/2026-02-26_backfill_wallet_demo_data.sql` and is idempotent.
+
+Risks + rollback:
+1. **Risk:** key-ring misconfiguration can block decryption of existing encrypted profile fields. **Mitigation:** key-ring fallback decrypt and lazy re-encryption on read.
+2. **Rollback:** revert wallet repository migration and switch API handlers back to prior in-memory store while preserving API signatures.
+3. **Compatibility:** wallet API request/response field names remain unchanged for existing clients.
+
+## 2026-02 Link provider service hardening (Stripe Link)
+
+- Wallet Link APIs now route through a dedicated provider service (`lib/services/link-provider-service.ts`) that wraps Stripe Link-capable setup/session primitives for:
+  - session bootstrap (`/api/wallet/link/session`)
+  - verification status lookup (`/api/wallet/link/verify`)
+  - payment method save (`/api/wallet/link/save`)
+- API envelope compatibility is preserved (`success`, `data`, `error`, `requestId`) and legacy response fields remain additive.
+- Provider request identifiers are captured and returned for audit/support workflows via `providerRequestId`.
+- Verification status now supports webhook-driven state updates from Stripe SetupIntent events (`setup_intent.succeeded|setup_failed|canceled`) via `/api/billing/webhook` and persisted session status.
+- Error mapping now emits stable payment-safe error codes with user-safe messages:
+  - `LINK_SESSION_FAILED`
+  - `LINK_VERIFICATION_FAILED`
+  - `LINK_SAVE_FAILED`
+  - `LINK_PROVIDER_UNAVAILABLE`
+
+Risks + rollback:
+1. If Stripe SDK/credentials are unavailable in a non-prod environment, provider service falls back to deterministic mock IDs to keep local UX paths testable.
+2. If webhook event mapping causes false verification transitions, rollback by reverting wallet-link sync logic in `app/api/billing/webhook/route.ts` while preserving existing billing webhook processing.
+3. No breaking API contract changes were introduced; rollback is code revert only (no schema migration required for compatibility due to additive columns).
+
+## 2026-02 Relay Instant Checkout hardening (RunAshChat → Stripe Link)
+
+- `initiate_link_checkout` in relay tool registry now enforces validator middleware before tool execution, ensuring checkout calls are blocked before provider execution when HITL/MFA policy fails.
+- Added deterministic handoff contract generation from chat context (`session_id`, normalized user intent), merchant metadata, and product metadata so checkout session creation is stable across retries.
+- Chat activity payload now includes UI-safe structured fields for rendering instant checkout state:
   - `checkoutId`
-  - `taxBreakdown`
+  - `status`
   - `nextAction`
-- Tax breakdown includes subtotal/tax/total, currency, label, rate, jurisdiction context, and line items for audit-friendly display.
+  - `requestId`
+- Retry behavior uses per-intent deterministic idempotency keys to prevent duplicate checkout sessions across retries and reconnect flows.
+- Intent routing coverage expanded for phrases: `buy this`, `confirm purchase`, and `pay now` to ensure consistent `catalog_lookup -> initiate_link_checkout` path selection.
 
-### Risk and rollback
-- **Risk level:** Low (contract additive + UI mapping updates).
-- **Rollback:** Revert `lib/agent-tools/initiate-link-checkout.ts`, `app/chat/page.tsx`, and `types/runash-chat.ts` to previous revision.
-
-
-## Instant Checkout Tax Preview & Capture Safeguards (RunAshChat)
-
-RunAshChat Instant Checkout now applies a deterministic tax estimation and confirmation gate before final Link capture:
-
-- `lib/payments/tax-estimator.ts` computes `subtotal`, GST/VAT estimate, and `totalPayable` for confirmation UX and payment handoff.
-- RunAshChat renders this tax preview (subtotal + tax + total) in the checkout confirmation step so users can review exact payable totals before charge execution.
-- Final capture remains blocked until explicit post-preview confirmation (`preview_displayed=true` and `user_confirmation_after_preview=true`).
-- Tax line items are persisted in transaction metadata (`tax_line_items` and `tax_reporting`) to support finance reporting and invoice export pipelines.
-
-Backward-compatibility notes:
-- Existing payment API fields and signatures remain unchanged.
-- The preview/confirmation gate adds validation behavior without changing existing request field names.
+Risks + rollback:
+1. **Risk:** deterministic idempotency keys may over-deduplicate if upstream intent normalization is too broad. **Mitigation:** key includes session and normalized intent digest.
+2. **Rollback:** revert relay handoff contract generation and registry middleware wrapper in a single commit; API signatures remain backward compatible.
+3. **Compatibility:** existing payload fields remain additive; no breaking changes to payment contract field names.
 
 
-## 2026-02 Portal expansion: methods CRUD, subscriptions, invoices/receipts, and finance visibility
+## Link Checkout Reliability + Audit Controls
 
-### New customer portal pages
-- Added dedicated payment portal routes for:
-  - `/payment/portal`
-  - `/payment/methods`
-  - `/payment/billing-profile`
-  - `/payment/subscriptions`
-  - `/payment/invoices`
-- These pages surface method role controls (default/backup), billing profile updates, subscription recovery actions, and invoice visibility.
+- Link checkout now enforces validator threshold controls for HITL and MFA before provider session creation.
+- Wallet default payment method updates and subscription lifecycle transitions are treated as high-risk payment actions and require HITL + MFA.
+- Risk engine decisioning includes geo mismatch review, risk-score review/block thresholds, and block-signal deny rules with explicit reason codes.
+- Payment-impacting wallet/link transitions emit structured audit logs with sanitized metadata for compliance review and rollback tracing.
 
-### Payment/profile API additions
-- Extended method CRUD scope with single-resource operations:
-  - `GET /api/v1/payment/profile/methods/:id`
-  - `PUT /api/v1/payment/profile/methods/:id`
-  - existing `PATCH /api/v1/payment/profile/methods/:id` retained for role switching
-  - existing `DELETE /api/v1/payment/profile/methods/:id` retained
-- Added failed payment retry trigger endpoint:
-  - `POST /api/v1/payment/profile/portal/retry-failed-payment`
-- Added invoice receipt retrieval alias endpoint:
-  - `GET /api/v1/billing/invoices/:id/receipt`
+## 2026-02 Wallet lifecycle + subscription reliability operations
 
-### Analytics endpoint coverage
-- Added churn-risk visibility endpoint:
-  - `GET /api/v1/payment/analytics/churn`
-- Added MRR/revenue trend endpoint:
-  - `GET /api/v1/payment/analytics/mrr-revenue`
-- Added payout and tax visibility endpoint:
-  - `GET /api/v1/payment/analytics/payout-tax-visibility`
+- Added card lifecycle operations with ownership-aware repository checks:
+  - add/remove cards and lifecycle updates (disable/enable, set default, set backup)
+  - non-owner card IDs return not-found under scoped user queries, preventing cross-user mutation.
+- Extended subscription operations to support reliability workflows:
+  - plan changes
+  - pause/cancel/reactivate transitions with reason capture
+  - persisted subscription timeline events for auditability.
+- Added activity + transaction reporting with downloadable CSV exports and reconciliation fields:
+  - `/api/wallet/activity` now supports `limit`, `offset`, `search`, `type`, and `format=csv`.
+  - `/api/wallet/transactions` provides paged/searchable transaction views with `reconciliationRef` and `settlementDate` plus `format=csv` export.
+- Wallet UX now includes failed-renewal recovery:
+  - simulate failed renewal state
+  - fallback retry via designated backup card by promoting backup to default.
 
-### Backward compatibility + security
-- Existing API field names and routes remain intact; new endpoints are additive.
-- No raw PAN/CVV logging or storage introduced; tokenized provider references remain enforced.
+Risks + rollback:
+1. **Risk:** lifecycle flags (`is_backup`, `is_disabled`) may be absent on older DB states. **Mitigation:** additive `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` migration-at-runtime handling.
+2. **Risk:** aggressive fallback promotion could switch default method unexpectedly if UI misuse occurs. **Mitigation:** explicit operator action and visible card badges.
+3. **Rollback:** revert wallet lifecycle route/UI changes and retain existing card add/remove/default behavior; additive schema remains backward-compatible.
 
-### Risk + rollback
-- **Risk:** Medium (expanded portal/API surface).
-- **Rollback:** Revert newly added `payment/portal` pages and new `/api/v1/payment/analytics/*`, `/api/v1/payment/profile/portal/retry-failed-payment`, and `/api/v1/billing/invoices/:id/receipt` routes.
+## 2026-02 Webhook domain endpoints + replay-safe reconciliation hardening
 
-## 2026-02 Reliability & Compliance Hardening Update
-
-### DB-backed billing entities (authoritative storage)
-RunAsh AI Pay now relies on persistent database-backed entities for all critical billing workflow objects:
-- payment intents
-- transactions
-- checkout links
-- usage events (single + batch ingestion)
-- webhook events (including dead-letter records)
-- tax line items
-
-### Deterministic checkout/payment execution
-Payment execution and checkout-link flows were hardened to remove random/in-memory outcomes. All attempt outcomes are now persisted and replay-safe so retries and reconciliation produce deterministic states.
-
-### Webhook idempotency, retries, and dead-lettering
-Billing webhook processing now uses:
-- provider+event id uniqueness for idempotency,
-- signature verification and tolerance checks,
-- retry-safe claim/processing semantics,
-- dead-letter tracking for repeatedly failing events.
-
-### Sensitive billing/profile data policy
-Billing profile details remain encrypted at rest. Production now requires an explicit encryption key via environment configuration (`CHECKOUT_PROFILE_ENCRYPTION_KEY` or approved auth secret fallback) and disallows weak implicit defaults.
-
-## RunAsh Pay Dashboard UI reliability baseline (2026-02)
-
-To support Instant Checkout operations in RunAshChat and Stripe Link relay monitoring, the dashboard now follows a reusable UI primitive system:
-
-- **Reusable primitives:** shared header, dashboard card shell, quick actions, transaction row, and bottom navigation components.
-- **Responsive standards:** mobile-first single-column stack, with desktop two-column sections for payment request and bill workflows.
-- **Consistency layer:** unified spacing and typography, empty states for no-data results, and skeleton rows for loading transaction history.
-- **Accessibility hardening:** keyboard-focusable rows, explicit ARIA labels on key controls, focus-visible states, and contrast-safe muted/foreground pairings.
-
-### Visual QA checklist (payment-critical components)
-
-- [ ] Header balance card updates correctly on refresh and announces loading/value changes.
-- [ ] Quick action buttons are keyboard reachable in tab order and route to the expected flows.
-- [ ] Transaction list shows skeleton rows while loading and empty state messaging when no records are returned.
-- [ ] Transaction rows show amount, timestamp, status badge, and visible focus ring when tabbed.
-- [ ] Payment request and bill payment forms preserve legibility, spacing, and action contrast on mobile and desktop.
-- [ ] Bottom navigation remains reachable and readable on narrow screens without clipping.
-
-## Bank account intake hardening (masked profile flow)
-
-Updated customer billing profile bank-account handling for safer payout onboarding:
-
-- Added `GET|POST /api/v1/payment/profile/bank-accounts` for customer-scoped bank account listing and creation.
-- Enforced server-side validation before persistence:
-  - account number must be 9-18 digits,
-  - IFSC format must match `^[A-Z]{4}0[A-Z0-9]{6}$`,
-  - account-holder name supports 3-100 chars with restricted safe characters.
-- `BankService.addBankAccount` now accepts only user-entered fields and applies server defaults (`balance=0`, `is_active=true`, default `account_type`, default `currency`).
-- API responses now return masked account metadata only (e.g., `accountNumberMasked`, `accountLast4`) and avoid returning raw account numbers.
-
-Compatibility and rollout notes:
-- Existing persistence fields and table contracts are preserved.
-- No migration is required; this is an additive API surface and stricter validation gate.
-
-## 2026-02 customer bank-account management hardening
-
-- Added dedicated ownership-checked account mutation endpoints:
-  - `PATCH /api/v1/payment/profile/bank-accounts/:id`
-  - `DELETE /api/v1/payment/profile/bank-accounts/:id` (implemented as soft-archive).
-- Introduced soft-delete semantics for portal-managed bank accounts:
-  - archival writes `is_active = false`
-  - archival stamps `archived_at` for audit timeline visibility.
-- Enforced primary-account safety invariant so customer mutations cannot leave the user without an active primary account.
-- Wired customer portal account actions (`Manage`, `Archive`, `Delete`) to real API handlers with confirmation UX and prefilled edit state.
-
-Risk/rollback notes:
-- Risk: low-medium (additive API + stricter mutation guards on existing flows).
-- Rollback: revert `/api/v1/payment/profile/bank-accounts/[id]` route and UI action handlers; retain additive `archived_at` column (non-breaking) or stop writing it.
-
-## 2026-02 auth runtime migration impact on AI Pay
-
-- Payment and billing authorization paths now depend on Better Auth session resolution through shared auth session helpers.
-- `lib/auth-helpers.ts#getSession` now calls the canonical Better Auth API (`auth.api.getSession`) using forwarded cookie headers to keep payment-adjacent auth lookups aligned with runtime behavior.
-- No payment contract field names or API signatures were changed in this auth migration.
-- Rollback for payment-impacting auth regressions: revert auth runtime migration commit and restore prior NextAuth session guards.
-
-## Auth & identity prerequisites for payment operations (2026-02)
-
-Payment/admin operations depend on trustworthy account ownership. OAuth account-linking now requires verified account state and provider subject ownership enforcement before linking to existing RunAsh identities.
-
-Operational impact:
-- Existing account links are unaffected.
-- New high-risk OAuth links can require a completed step-up challenge before they are accepted.
-- This reduces risk of payment-admin takeover through weak or unsafe social account linking.
-
-See `RUNASH-AUTH.md` and `SECURITY.md` for the full linking policy and migration notes.
-
-## Auth migration dependency tracking (2026-02)
-
-- Before payment/auth rollout changes, verify auth endpoint readiness against `RUNASH-AUTH.md` ("Endpoint Audit" + "Current Status").
-- Security controls for this dependency are tracked in `SECURITY.md` (auth/payment hardening and redaction policies).
-- This linkage is required for payment governance auditability under `docs/DOC_GOVERNANCE.md`.
-
-## Billing subscription/tax reliability note (2026-02)
-
-- Subscription tax persistence now treats auth user IDs as string-first identifiers.
-- Tax computation writes only set `user_id` when the session identifier is a safe integer, preventing `NaN` writes in UUID-backed auth deployments.
-- This avoids partial-success failures where Stripe subscription creation succeeds but API persistence fails.
+- Added dedicated Stripe-signed webhook endpoints for domain routing:
+  - `POST /api/billing/webhook/checkout` (`checkout.session.*`)
+  - `POST /api/billing/webhook/session` (`setup_intent.*`)
+  - `POST /api/billing/webhook/payment` (`payment_intent.*`, `invoice.*`, `charge.*`)
+  - `POST /api/billing/webhook/subscription` (`customer.subscription.*`)
+  - Existing `POST /api/billing/webhook` remains backward compatible as the catch-all endpoint.
+- Event processing remains idempotent through `webhook_events` (`provider + event_id` uniqueness), claim-based processing transitions, exponential retry scheduling, and dead-letter promotion once retry threshold is reached.
+- Added dead-letter operations workflow:
+  - `GET /api/internal/billing/webhook/dead-letter` to inspect failed events.
+  - `POST /api/internal/billing/webhook/dead-letter` with `{ eventId }` for targeted retry or `{ limit }` for batch replay.
+- Async reconciliation now writes customer-facing wallet timeline records for checkout/payment/invoice/subscription lifecycle transitions and updates subscription snapshots where applicable.
+- Reconciliation health metrics are exposed via:
+  - `GET /api/internal/billing/webhook/health`
+  - `GET /api/dashboard/operations/monitoring` under `reconciliation.webhook` for operator dashboards.
+- Risk/rollback:
+  1. If per-domain endpoint routing causes delivery mismatch, temporarily direct Stripe to `POST /api/billing/webhook` (catch-all) while preserving signatures.
+  2. If timeline reconciliation introduces noisy events, disable wallet timeline writes by reverting `reconcileWalletTimeline` logic while retaining core billing ledger upserts.
 
 
-## Implemented vs Planned (Auth/Payment dependency clarity)
+## 2026-02 Link funnel observability + callback validation hardening
 
-### Implemented
-- Auth readiness now includes implemented admin management APIs for roles, permissions, sessions, audit logs, and feature flags.
-- Payment rollout dependency checks should use the updated `RUNASH-AUTH.md` implemented/planned refresh block.
+- Standardized wallet Link endpoints to the canonical API envelope (`success`, `data`, `error`, `requestId`, optional `meta`) without legacy top-level compatibility fields.
+  - `POST /api/wallet/link/session`
+  - `POST /api/wallet/link/verify`
+  - `POST /api/wallet/link/save`
+- Added strict schema validation (Zod) for every Link request payload above, plus Stripe setup-intent webhook callback payload parsing before wallet session status updates.
+- Added funnel metrics emission for Link reliability tracking:
+  - `session_created`
+  - `session_verified`
+  - `autofill_success`
+  - `checkout_completion`
+  - `fallback_usage`
+- Added correlation/tracing propagation across Relay tool execution and provider/API calls:
+  - relay tool execution lifecycle logs (`started`, `cache_hit`, `retry`, `completed`, `failed`)
+  - provider session/save logs tied to request correlation IDs
+  - upstream Link checkout call now forwards `x-correlation-id`.
+- Exposed Link funnel health and alerting in operations monitoring payload under `payments.linkFunnel` with `errorRatePercent` and `alert` severity.
+- Added operator dashboard tiles for Link funnel health and error-rate alerting.
 
-### Planned
-- Better Auth route-surface migration and Drizzle-first migration artifacts remain planned; payment contracts remain backward-compatible until those phases are versioned.
+Risks + rollback:
+1. **Risk:** Removal of legacy top-level wallet/link fields can impact stale clients expecting direct `providerRequestId`. **Mitigation:** values remain available in `data` and envelope contract is now canonical; update any stale client mappers.
+2. **Risk:** Strict payload schemas can reject malformed requests previously tolerated. **Mitigation:** explicit validation errors are returned with stable envelope error codes.
+3. **Rollback:** revert Link observability module and wallet route payload parsing changes in one rollback commit; restore previous route handlers and dashboard tile blocks.
 
-## Release note addendum: Auth migration compatibility for AI Pay (2026-02)
+## 2026-02 RunAsh AI Link final architecture, data flow, and migration notes
 
-- Compatibility: payment request/response contracts remain unchanged; rollout is auth-session plumbing only.
-- Risk: elevated checkout/auth denial risk during phased flag increases if session extraction regresses.
-- Rollback: immediately disable `FEATURE_FLAG_USE_BETTER_AUTH`, keep payment APIs online, and re-run checkout + refund permission smoke tests.
-- Incident accounting: include payment/auth coupled incidents in `payment_auth_incident_count` and require on-call review before next phase bump.
+### Final architecture (persistent + provider-backed)
 
-## 2026-02 Reliability Note (Auth/Payment Boundary)
+- **RunAshChat intent plane:** user natural-language intents (for example, `buy this`) are converted by Relay Agent into typed checkout commands with idempotency keys.
+- **Payment orchestration plane:** checkout commands are validated, enriched with tenant/session context, and routed to Link/session and billing services.
+- **Provider execution plane:** Stripe Link + Checkout/Payment Intent APIs perform payer authentication and payment authorization/capture.
+- **Durable state plane:** checkout attempts, link sessions, wallet artifacts, webhook events, dead-letter queue items, and reconciliation outcomes are persisted in DB.
+- **Status resolution plane:** webhook-confirmed state remains source-of-truth; provider lookup is fallback for delayed webhook arrival.
 
-Auth module consolidation and session helper standardization were completed without changing payment route contracts or payment payload field names. This improves reliability at the auth boundary while keeping payment integrations backward compatible.
+### Data flow: RunAshChat "Instant Checkout"
+
+1. User says `buy this` in RunAshChat.
+2. Relay Agent resolves product/plan, amount/currency, merchant scope, and correlation/idempotency metadata.
+3. Payment API creates checkout attempt and returns canonical redirect contract fields (`redirectUrl`, `returnUrlSuccess`, `returnUrlPending`, `returnUrlFailed`, `providerTransactionReference`).
+4. User completes Link verification/auth flow and confirms payment.
+5. Domain webhook endpoints validate provider signatures and process events idempotently.
+6. Canonical payment status pages resolve from persisted attempt + webhook state, with provider lookup fallback.
+7. Reconciliation jobs backfill drift/backlog and sync wallet activity + subscription snapshots.
+
+### Migration: prototype to persistent/provider-backed implementation
+
+- **Prototype mode (legacy):** in-memory Link/wallet session state for demos.
+- **Target mode (current):** DB-backed repositories + provider-backed Link execution + replay-safe webhook pipeline.
+- **Migration steps:**
+  1. Apply `db/migrations/0002_wallet_link_persistence.sql`.
+  2. Run `scripts/sql/2026-02-26_backfill_wallet_demo_data.sql` where demo continuity is required.
+  3. Enable domain webhook handlers and dead-letter replay operations.
+  4. Validate `POST /api/v1/payment/usage/reconcile` against pending/expired checkout cohorts.
+- **Data protection controls:** tokenized payment references, masked card metadata only, hashed OTP artifacts, encrypted profile/billing metadata at rest.
+- **Rollback (non-breaking):** disable Link rollout flags and revert repository wiring to in-memory fallback while preserving API request/response contracts.
+
+### Backward compatibility notes for existing API consumers
+
+- Existing startup/business API field names and signatures are preserved; no required client payload/schema migration.
+- Existing webhook contracts remain compatible; newly introduced metadata is additive.
+- Existing checkout redirect/status contracts remain valid; signed-state validation hardens integrity without renaming fields.
+- Existing billing entry points (`/pricing`, `/settings/billing`, `/checkout/*`, `/portal/*`) remain stable through staged rollout.
+
+## 2026-02 RunAshBook accounting posting module for payment lifecycle events
+
+- Added `lib/services/runashbook-accounting-service.ts` to normalize accounting events from checkout + webhook payment lifecycle paths.
+- Supported normalized event types: `checkout_initiated`, `payment_succeeded`, `refund`, `chargeback`, `fee`.
+- Added deterministic chart-of-accounts mapping keyed by merchant country/entity with config-first defaults for `IN` and `US`.
+- Jurisdiction adapters:
+  - **India (IN):** GST split computation (`CGST`, `SGST`, `IGST`) + compliance metadata tags for invoice/journal processing.
+  - **US:** sales-tax treatment metadata, ASC-606/GAAP-friendly recognition/account classification tags.
+- Added idempotent accounting posting method (`idempotencyKey` + `correlationKey`) backed by `runash_accounting_posts` and unique idempotency enforcement.
+- Added safe logging guardrails for accounting posting diagnostics using payment log sanitization (never logs PAN/card/auth/payment secrets).
+- Wiring:
+  - Checkout initiation path now emits `checkout_initiated` accounting events from `POST /api/v1/billing/checkout`.
+  - Webhook processing emits accounting events for `payment_intent.succeeded`, `charge.refunded`, `charge.dispute.*`, and `application_fee.created` paths.
+
+Risks + rollback:
+1. **Risk:** If merchant country metadata is absent in provider payloads, fallback country default may classify to US chart mapping. **Mitigation:** metadata remains additive; override `RUNASH_MERCHANT_REGION` per tenant.
+2. **Risk:** Accounting table bootstrap (`CREATE TABLE IF NOT EXISTS`) in runtime may add slight cold-path latency on first post. **Mitigation:** idempotent and one-time; can be moved to migration in future hardening.
+3. **Rollback:** Revert accounting event emit calls in checkout/webhook handlers while preserving existing payment route API contracts and webhook idempotency behavior.
+
+## 2026-02 Relay post-payment accounting sync for RunAshChat Instant Checkout
+
+- Added post-payment accounting sync in Relay orchestration (`executeInitiateLinkCheckout`) so successful checkout confirmation and refund states trigger RunAshBook posting after checkout tool execution.
+- Relay checkout handoff contract now includes accounting-required fields end-to-end:
+  - merchant/entity + jurisdiction (`merchant_id`, `merchant_entity_id`, `merchant_country`)
+  - monetary + tax/fee fields (`amount`, `currency`, `accounting_context.tax_breakdown`, `accounting_context.fee_breakdown`)
+  - product/plan metadata (`accounting_context.product_plan_metadata`)
+  - payment status + timestamp (`payment_status`, `event_timestamp`)
+  - correlation + idempotency markers (`accounting_context.correlation_key`, `idempotency_key`)
+- Exactly-once business semantics: Relay derives deterministic accounting idempotency keys using checkout idempotency key reuse (`<checkout-idempotency>:accounting:<eventType>`), so retries/duplicates collapse into single accounting effect.
+- Failure fallback: if RunAshBook sync fails, Relay marks response with `pending_sync: true` and `accounting_sync.status: "pending_sync"`, emits internal ops reconciliation signal (`ops.accounting.reconcile_required` via structured warn log), and still returns successful checkout response to user.
+
+Risks + rollback:
+1. **Risk:** misconfigured merchant/entity metadata can route accounting entries to fallback defaults. **Mitigation:** deterministic defaults preserve continuity while preserving non-breaking API signatures.
+2. **Risk:** transient accounting DB/service outages increase pending-sync backlog. **Mitigation:** explicit ops reconciliation signal and non-blocking checkout completion maintain user path reliability.
+3. **Rollback:** remove Relay accounting sync call path while retaining checkout handoff fields and existing payment execution API contracts.
+
+## 2026-02-26 Relay-to-RunAshBook automation flow update
+
+### 1) Relay -> RunAshBook automation flow and event lifecycle
+
+- **Intent capture:** RunAshChat captures natural-language checkout intent (for example, "buy this") and forwards it to Relay with tenant, user, and cart context.
+- **Checkout orchestration:** Relay opens a RunAsh AI Link checkout attempt and emits `relay.checkout.initiated` with a stable `checkout_attempt_id`.
+- **Payment processing:** Gateway lifecycle events (`payment_intent.created`, `payment_intent.requires_action`, `payment_intent.succeeded`, `payment_intent.failed`) are reconciled with webhook idempotency controls.
+- **Accounting automation:** after terminal success, Relay emits `relay.checkout.completed` and posts an accounting-safe event envelope to RunAshBook (`runashbook.accounting.post.requested`) for journal creation.
+- **Settlement + closure:** RunAshBook acknowledgement (`runashbook.accounting.posted` or `runashbook.accounting.deferred`) is correlated back to the checkout timeline without mutating customer-facing checkout status semantics.
+
+### 2) Backward compatibility statement
+
+- Existing payment API signatures and field names remain unchanged for startup/business consumers.
+- Relay-to-RunAshBook automation introduces only additive internal events/metadata.
+- No version bump is required for current payment API/webhook consumers.
+
+### 3) Risk and rollback plan
+
+- **Primary risk:** accounting posting latency/failure could delay financial journal visibility.
+- **Rollback action:** disable accounting posting feature flag (`FEATURE_FLAG_RUNASHBOOK_ACCOUNTING_POSTING=0`) while preserving checkout, webhook ingestion, and payment status resolution.
+- **Customer impact posture:** checkout continuity is preserved; only downstream accounting automation is paused until recovery.
+
+### 4) Security note (logs + payload hygiene)
+
+- Sensitive payment/auth data (PAN, full tokens, OTP secrets, session secrets, raw auth credentials) is excluded from logs.
+- Accounting payloads sent to RunAshBook are restricted to non-sensitive identifiers, masked references, monetary totals, and reconciliation keys.
+- Event/audit entries must store redacted metadata only, consistent with payment/auth security policy.
+
+### 5) Validation checklist/results format
+
+Use the following format in PRs and release notes:
+
+```md
+Validation checklist (Relay -> RunAshBook)
+- [ ] npm run lint
+- [ ] npm run build
+- [ ] Integration: checkout success -> webhook reconcile -> RunAshBook post requested
+- [ ] Integration: accounting-posting feature flag OFF preserves checkout completion
+- [ ] Integration: failed accounting post does not regress payment status UX
+
+Results
+- lint: <pass|fail> (notes)
+- build: <pass|fail> (notes)
+- integration-checkout-accounting: <pass|fail> (notes)
+- integration-flag-rollback: <pass|fail> (notes)
+- integration-failure-isolation: <pass|fail> (notes)
+```
+
+## 2026-02 RunAshChat checkout handoff canonical context v2
+
+- Refactored Relay handoff contract generation to consume canonical commerce/session context (`cartId`, `selectedSku`, merchant profile, pricing snapshot, billing profile) instead of deriving payload details from free-text alone.
+- Added `lib/services/checkout-handoff-context-resolver.ts` to resolve merchant/account scope from authenticated session, SKU/amount from canonical selection inputs, billing currency/country, and tax/fee breakdowns via tax/payment service pathways.
+- Backward compatibility is preserved: existing `merchant_id`, `product_metadata`, and `idempotency_key` are still accepted and propagated. New metadata keys are versioned under `context_version: "v2"` and `handoff_context_v2` for richer context without breaking existing consumers.
+
+### Impacted flows
+- RunAshChat Relay → `initiate_link_checkout`
+- Accounting sync payloads consuming `accounting_context.tax_breakdown` / `fee_breakdown`
+
+### Risks and rollback
+1. **Risk:** canonical pricing inputs may be absent on legacy callers. **Mitigation:** resolver falls back to legacy-compatible defaults and deterministic digest identifiers.
+2. **Risk:** service tax computation may be unavailable during infra outages. **Mitigation:** fallback tax model emits deterministic non-zero jurisdictional approximation for continuity.
+3. **Rollback:** revert `chat-request-handler` + `checkout-handoff-context-resolver` changes; legacy `merchant_id`/`product_metadata`/idempotency behavior remains contract-compatible.
+
+## 2026-02 Agent role orchestration audit trail for RunAshChat Link checkout
+
+- Added role-aware agent orchestration controls for `buyer`, `seller`, and `broker` to gate tool access for payment-adjacent chat flows while preserving existing checkout API contracts.
+- Role policies now carry objective weights (`price`, `sustainability`, `inventory urgency`, `margin`) and enforce guardrails (`max discount`, approval threshold, negotiation limit) during tool execution planning.
+- Relay tool execution now emits role-tagged activity summaries for auditability and writes structured role decision outcomes (`allowed`/`blocked`/`completed`/`failed`) to persistent storage for post-hoc deal review and matching analysis.
+- Migration added: `db/migrations/0004_agent_role_decisions.sql`.
+- Risks + rollback:
+  1. **Risk:** role misconfiguration could over-block tool usage for valid checkout intents. **Mitigation:** default fallback role remains `broker` and role policy checks return explicit blocked reasons.
+  2. **Rollback:** revert role-conditioned execution path changes in `services/agent-orchestration-service.ts` and `lib/skills/relay-tool-registry.ts`, then keep migration table dormant (no contract break).
+  3. **Compatibility:** all new request fields are additive (`agentRole`, `preferences`) and existing tool contracts remain backward compatible.
+
+## 2026-02-26 Buyer product search ranking in Relay (additive, no checkout contract break)
+
+- Added `buyer_product_search` Relay tool for pre-checkout intent handling (`find`, `compare`, `best under`) to improve recommendation explainability before `initiate_link_checkout` is triggered.
+- Ranking now combines catalog data, sustainability attributes, normalized price in user currency, and stock availability; each result returns explicit reasons (`matched_budget`, `sustainability_score`, `tradeoffs`).
+- Backward compatibility preserved: no existing payment request/response fields were removed or renamed; checkout tool contracts are unchanged.
+- Risk + rollback:
+  1. **Risk:** intent over-selection could call search tool for vague phrasing and increase chat latency.
+  2. **Mitigation:** search tool remains immediate/read-only and does not execute payment operations.
+  3. **Rollback:** revert `resolveRunAshChatToolSelection` mapping and remove `buyer_product_search` registration to restore prior catalog/web-search-only routing.
+
+
+## Negotiation-to-Link Checkout Handoff (2026-02)
+
+RunAsh AI Link now supports deterministic negotiation handoff before Link checkout initiation.
+
+- Relay agents can create and settle negotiated deals through explicit tools: `create_initial_quote`, `submit_counter_offer`, and `broker_settle_deal`.
+- Accepted deals persist a payment-safe snapshot (`deal_id`, `final_price_minor`, `discount_basis`, `sku`, `quantity`, `currency`).
+- `initiate_link_checkout` consumes the accepted snapshot when `deal_id` is provided, ensuring payment amount and line item context match the finalized negotiation outcome.
+- Backward compatibility is preserved: direct `initiate_link_checkout` payloads without `deal_id` continue to work unchanged.
+- No sensitive card/auth data is logged by negotiation services; only deal metadata and pricing outcomes are recorded.
+
+
+## 2026-02-26 Checkout finalization strict-mode gates (RunAshChat -> Link)
+
+- Introduced strict checkout-finalization validation in `resolveCheckoutHandoffContext` for production flows:
+  - requires authenticated merchant identity resolution,
+  - requires canonical pricing snapshot (`subtotal`, `total`, `currency`),
+  - requires canonical cart/product selection and customer billing region,
+  - rejects synthetic fallback merchant/item defaults during production checkout finalization.
+- Added explicit non-production compatibility override via `RUNASH_ALLOW_NON_PRODUCTION_CHECKOUT_FALLBACK=true` for local/dev/test workflows.
+- Added chat-layer validation gates so `buy this` intent cannot execute `initiate_link_checkout` when required checkout context is incomplete.
+- Blocked checkout attempts now return actionable remediation payloads (`missing_fields`, `next_action`) instead of silently applying implicit defaults.
+
+### Impacted payment/auth flows
+- RunAshChat Relay handoff generation for `initiate_link_checkout`.
+- Authenticated merchant context propagation from session -> checkout handoff.
+
+### Risks + rollback
+1. **Risk:** legacy callers that depended on implicit fallback pricing/merchant defaults can now be blocked in production.
+2. **Mitigation:** remediation payloads identify exact context gaps and required next action; local/dev can enable explicit fallback flag.
+3. **Rollback:** disable strict enforcement by reverting `checkout-handoff-context-resolver` + `chat-request-handler` gate changes, restoring legacy defaulting behavior.
+
+## 2026-02-26 Voice commerce orchestrator + streaming checkout contract
+
+- Added a dedicated voice commerce orchestration chain that executes: speech-to-intent extraction, buyer preference search, negotiation/deal workflow, and `initiate_link_checkout` handoff for RunAshChat Instant Checkout.
+- Introduced streaming-safe agent response contract (`voice-commerce-turn.v1`) that emits intermediate recommendation/negotiation events before the final checkout action payload.
+- Integrated seller-side live session automation controls for product presentation, buyer query handling, bundle promotions, limited-time discounts, and approved-deal initiation with broker mediation fallback.
+- Added persistent session automation event storage for replay/compliance (`stream_session_automation_events`) to support auditability across voice and live stream routes.
+
+### Impacted payment/auth flows
+- Relay Agent voice turn orchestration -> `initiate_link_checkout`.
+- Deal negotiation acceptance/broker settlement path before payment handoff.
+- Live stream seller AI automation actions that can culminate in approved deal checkout initiation.
+
+### Risks + rollback
+1. **Risk:** false-positive intent classification can route non-checkout utterances into negotiation/checkout preparation.
+2. **Mitigation:** final checkout still respects `preview_displayed`, `user_confirmation_after_preview`, and validator middleware gates before terminal handoff.
+3. **Rollback:** disable voice commerce entry routes (`/api/agents/voice-commerce`, `/api/streams/sessions/[id]/automation`) and retain existing chat-based checkout path.
+
+## 2026-02 RunAshChat unified task shell + instant checkout intent simplification
+
+- Simplified RunAshChat tool routing by centralizing message-to-tool selection in `lib/runash-chat/tooling.ts`.
+- Added buyer-focused routing for prompts like `find ... under ₹/$...` to include `buyer_product_search` before checkout.
+- Unified quick actions in `lib/runash-chat/quick-actions.ts` and surfaced a shared RunAshChat task board + feature grid for buyer/seller/broker/live-commerce/instant-checkout paths.
+- Backward compatibility: existing `buy this` / `confirm purchase` / `pay now` intent behavior remains mapped to `catalog_lookup + initiate_link_checkout` without changing checkout payload contracts.
+- Risks + rollback:
+  1. If prompt routing over-triggers search tools, rollback by reverting `lib/runash-chat/tooling.ts` and restoring inline selection in `chat-workspace.tsx`.
+  2. If new UI task cards create noise, rollback by removing `RunAshChatFeatureGrid`/`RunAshChatTaskBoard` imports in `chat-workspace.tsx` while keeping existing quick actions.
+
+
+## 2026-02 Agentic commerce expansion (buyer/seller/broker + negotiation guardrails)
+
+- Added buyer-preference aware routing and search stack support for prompts such as `find ... under ₹/$...` to execute `buyer_product_search + catalog_lookup + web_search`.
+- Added seller optimization capabilities (`seller_optimize_commerce`) that return pricing recommendations, inventory risk insights, and bundle promotion suggestions.
+- Added broker deal-matching capability (`broker_match_deal`) that returns deal recommendations with negotiation state and settlement recommendation metadata.
+- Added negotiation guardrail on checkout execution: when `deal_id` is provided, checkout is blocked unless the deal has an accepted snapshot, preventing pre-settlement checkout bypass.
+- Expanded role policy tool coverage so buyer/seller/broker permissions include new buyer/seller/broker commerce tools.
+- Accounting sync metadata now carries accepted deal identifiers (`deal_id`, `accepted_offer_id`, `discount_basis`) through accounting context for auditability.
+
+Risks and rollback:
+1. If intent routing over-classifies seller/broker prompts, rollback by reverting intent branches in `app/api/agents/chat/chat-request-handler.ts` and `lib/runash-chat/tooling.ts`.
+2. If merchant ops prefer manual optimization, rollback by removing `seller_optimize_commerce` from registry/policy while keeping buyer checkout path intact.
+3. If negotiation-gate blocks expected sandbox checkouts, temporarily disable deal-id checkout enforcement in `services/agent-orchestration-service.ts` and re-enable after settlement data integrity validation.
+
+## 2026-02 email dispatch webhook observability flags (billing-safe rollout)
+
+- Added structured dispatch status metrics for email dispatch + webhook reconciliation with explicit counters: `sent`, `delivered`, `deferred`, `bounced`, `complained`, `suppressed`.
+- Added provider-agnostic webhook status ingestion endpoint `POST /api/email/webhook/status` for normalized status updates (`provider` + `payload`) while preserving existing provider-native webhook routes.
+- Billing-facing rollout is gated by module-level feature flags with explicit rollback toggles:
+  - `FEATURE_FLAG_EMAIL_DISPATCH_BILLING=true|false`
+  - `FEATURE_FLAG_EMAIL_DISPATCH_BILLING_ROLLBACK=true|false`
+- Contact/newsletter module gates follow the same control-plane pattern for staged rollout + rapid rollback:
+  - `FEATURE_FLAG_EMAIL_DISPATCH_CONTACT(_ROLLBACK)`
+  - `FEATURE_FLAG_EMAIL_DISPATCH_NEWSLETTER(_ROLLBACK)`
+- Payment/auth compatibility posture: no billing API contract shape changes, no webhook schema removals, and no payment/auth sensitive data logging added.
+- Risk + rollback:
+  1. If billing email status ingestion causes noisy metrics, set `FEATURE_FLAG_EMAIL_DISPATCH_BILLING_ROLLBACK=true` for immediate module rollback.
+  2. If only campaign/contact paths regress, disable `FEATURE_FLAG_EMAIL_DISPATCH_NEWSLETTER` and/or `FEATURE_FLAG_EMAIL_DISPATCH_CONTACT` while keeping billing enabled.
+
+
+## 2026-02-28 billing/subscription lifecycle event matrix (typed + templated)
+
+Payment services now emit typed lifecycle events into `payment_lifecycle_events` with template binding + dynamic metadata for amount, plan, next billing date, and invoice link.
+
+### Event matrix
+
+| Event type | Trigger source | Template key | Dynamic metadata |
+| --- | --- | --- | --- |
+| `plan_upgrade_initiated` | `PATCH /api/v1/billing/subscription` before Stripe mutation | `billing.plan-upgrade-initiated` | `previousPlan`, `plan`, `nextBillingDate` |
+| `plan_upgrade_completed` | `PATCH /api/v1/billing/subscription` after DB update | `billing.plan-upgrade-completed` | `previousPlan`, `plan`, `nextBillingDate` |
+| `invoice_generated` | Billing webhook `invoice.created` / `invoice.payment_succeeded` flow | `billing.invoice-generated` | `amount`, `currency`, `invoiceLink`, `nextBillingDate` |
+| `invoice_paid` | Billing webhook paid invoice flow | `billing.invoice-paid` | `amount`, `currency`, `invoiceLink`, `nextBillingDate` |
+| `invoice_failed` | Billing webhook `invoice.payment_failed` | `billing.invoice-failed` | `amount`, `currency`, `invoiceLink`, `reason` |
+| `payment_method_updated` | Payment profile method add/update APIs | `billing.payment-method-updated` | `paymentMethodLast4`, `reason` |
+| `payment_method_expired` | Payment profile method disable/remove APIs | `billing.payment-method-expired` | `reason`, optional `paymentMethodLast4` |
+| `subscription_started` | Subscription create/reactivate web + webhook create flows | `billing.subscription-started` | `plan`, `nextBillingDate`, `amount`, `currency` |
+| `subscription_renewed` | Billing webhook `customer.subscription.updated` | `billing.subscription-renewed` | `plan`, `nextBillingDate`, `amount`, `currency` |
+| `subscription_canceled` | Cancel API + webhook delete/canceled status | `billing.subscription-canceled` | `plan`, `nextBillingDate`, `reason` |
+| `subscription_trial_ending` | Webhook trialing subscriptions with `trial_end` | `billing.subscription-trial-ending` | `plan`, `nextBillingDate`, `amount`, `currency` |
+
+### Logging + redaction hardening
+
+- Lifecycle event metadata is sanitized with payment/auth redaction rules before persistence/logging.
+- Sensitive keys (`token`, `secret`, `authorization`, `paymentMethod*`, `customer*`, etc.) are redacted.
+- No raw payment method IDs, provider tokens, customer emails, or auth secrets are logged in lifecycle event logs.
+
+### Rollback notes
+
+1. Revert lifecycle emit callsites in:
+   - `app/api/v1/billing/subscription/route.ts`
+   - `app/api/billing/subscription/cancel/route.ts`
+   - `app/api/billing/subscription/reactivate/route.ts`
+   - `app/api/v1/payment/profile/methods/route.ts`
+   - `app/api/v1/payment/profile/methods/[id]/route.ts`
+   - `lib/services/billing-webhook-service.ts`
+2. If required, keep `payment_lifecycle_events` table in place (non-breaking additive schema) and stop writes by reverting callers.
+3. Existing payment API signatures and webhook contracts remain unchanged; rollback is code-only and does not require field or payload migrations.
+
+
+
+## 2026-02 Settings billing contract expansion (backward-compatible)
+
+Expanded the Settings Billing contract surface with dedicated endpoints that preserve stable payload keys consumed by the Settings UI cards.
+
+### New/extended Settings billing endpoints
+- `GET /api/settings/billing/summary`
+- `GET /api/settings/billing/invoices`
+- `GET /api/settings/billing/usage`
+- `POST /api/settings/billing/upgrade`
+- `POST /api/settings/billing/redeem-code`
+- `GET /api/settings/billing/referrals`
+
+### Backward-compatibility notes
+- Existing stable keys are preserved and continue to be returned: `planName`, `subscriptionStatus`, `creditsBalance`, `billingMethodSummary`, `usageThisCycle`, `usageLimit`, `referralCode`, `invoiceEmail`, and `autoRechargeEnabled`.
+- No existing settings billing keys were removed or renamed.
+- Existing action routes remain available and now resolve values from the new settings-billing data layer.
+
+### Risks + rollback
+1. **Risk:** environments with sparse billing data can surface defaults more often (for example, fallback plan labels).
+2. **Mitigation:** endpoints clamp/normalize outputs and preserve existing defaults to avoid UI regressions.
+3. **Rollback:** revert `app/api/settings/billing/**`, restore prior static responses in `app/api/settings/actions/*` billing routes, and keep UI consuming previously persisted settings-only billing values.
+
+## 2026-02 Settings action error contract hardening (backward-compatible)
+
+Standardized settings action/billing error payloads to include a shared field-map shape:
+
+- `errors: { <section>: { <field>: <message> } }`
+- `error.code` machine-readable codes for action failures, authorization, validation, and rate limits.
+- `error.details.validationErrors` preserved for compatibility with existing clients.
+
+### Sensitive action controls
+- Added/standardized 429 rate-limit responses and explicit error codes for:
+  - 2FA disable (`/api/settings/actions/disable-2fa`)
+  - API key regenerate/delete (`/api/settings/actions/regenerate-api-key`, `/api/settings/actions/delete-api-key`)
+  - Session revocation (`/api/settings/actions/revoke-sessions`)
+
+### Risks + rollback
+1. **Risk:** clients hard-coded to `{ error: string }` only may ignore granular field errors.
+2. **Mitigation:** legacy-compatible `error.message` and `error.details.validationErrors` are still returned.
+3. **Rollback:** revert `app/api/settings/_lib/errors.ts` and route-level formatter adoption in `app/api/settings/**` if downstream compatibility issues surface.
+
+## 2026-02 Settings billing/invoice/credits/referral behavior contract update
+
+- Added canonical settings architecture + API contract reference at `docs/SETTINGS_ARCHITECTURE_API_CONTRACT.md` covering billing summary, invoices, usage, credits, redeem-code, referrals, and upgrade behavior.
+- Confirmed backward-compatible stable response keys for settings billing:
+  - `planName`, `subscriptionStatus`, `creditsBalance`, `billingMethodSummary`, `usageThisCycle`, `usageLimit`, `invoiceEmail`, `autoRechargeEnabled`.
+- Invoice contract now documents normalized totals and hosted/PDF links as stable fields for settings consumers.
+- Credits/redeem behavior now documents idempotent code application semantics to prevent duplicate credit grants.
+- Referral behavior now documents stable counters for pending/earned/lifetime credits.
+
+### Storage model + migration/rollback note (billing settings)
+
+1. Billing settings read-models are backed by reconciliation-safe billing/invoice/credit/referral records.
+2. Migration path remains additive: deploy schema + backfills, then switch settings endpoints to canonical projections.
+3. Rollback path is application-first with feature-flag gating for new billing settings mutations while keeping additive schema intact.
+4. Reconciliation parity checks are required before and after rollback to ensure invoice/credit/referral counters remain consistent.
+
+

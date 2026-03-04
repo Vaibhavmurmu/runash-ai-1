@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -7,6 +8,7 @@ import { Star, Leaf, ShoppingCart, Clock, Zap } from "lucide-react"
 import { useCurrency } from "@/contexts/currency-context"
 import { useCart } from "@/contexts/cart-context"
 import type { GroceryProduct } from "@/types/grocery-store"
+import { ProductMediaModal } from "@/components/grocery/product-media-modal"
 
 interface FeaturedProductsProps {
   products: GroceryProduct[]
@@ -15,6 +17,7 @@ interface FeaturedProductsProps {
 export default function FeaturedProducts({ products }: FeaturedProductsProps) {
   const { currency, formatPrice, convertPrice } = useCurrency()
   const { addToCart } = useCart()
+  const [selectedProduct, setSelectedProduct] = useState<GroceryProduct | null>(null)
 
   const handleAddToCart = (product: GroceryProduct) => {
     const cartProduct = {
@@ -56,11 +59,18 @@ export default function FeaturedProducts({ products }: FeaturedProductsProps) {
             className="group overflow-hidden hover:shadow-xl transition-all duration-300 border-0 shadow-lg"
           >
             <div className="relative">
-              <img
-                src={product.images[0] || "/placeholder.svg"}
-                alt={product.name}
-                className="w-full h-56 object-cover group-hover:scale-105 transition-transform duration-300"
-              />
+              <button
+                type="button"
+                className="w-full"
+                onClick={() => setSelectedProduct(product)}
+                aria-label={`View ${product.name} media in fullscreen`}
+              >
+                <img
+                  src={product.images[0] || "/placeholder.svg"}
+                  alt={product.name}
+                  className="w-full h-56 object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+              </button>
 
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
 
@@ -138,6 +148,20 @@ export default function FeaturedProducts({ products }: FeaturedProductsProps) {
           </Card>
         ))}
       </div>
+
+      <ProductMediaModal
+        open={Boolean(selectedProduct)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedProduct(null)
+        }}
+        title={selectedProduct?.name || "Product"}
+        media={(selectedProduct?.images ?? []).map((src, index) => ({
+          id: `${selectedProduct?.id ?? "product"}-img-${index}`,
+          type: "image" as const,
+          src,
+          alt: `${selectedProduct?.name || "Product"} image ${index + 1}`,
+        }))}
+      />
     </div>
   )
 }

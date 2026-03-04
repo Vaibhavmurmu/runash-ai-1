@@ -10,6 +10,12 @@ const createPermissionSchema = z.object({
   description: z.string().max(300).optional(),
 })
 
+const listPermissionsSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  search: z.string().trim().max(100).optional(),
+})
+
 export async function GET(request: NextRequest) {
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings"],
@@ -18,9 +24,26 @@ export async function GET(request: NextRequest) {
   if (!auth.success) return auth.response
 
   try {
+    const parsed = listPermissionsSchema.parse(Object.fromEntries(request.nextUrl.searchParams.entries()))
     await ensureAdminAuthMigrationTables()
-    const permissions = await queryMany(`SELECT id, key, description, created_at FROM admin_permissions ORDER BY key ASC`)
-    return NextResponse.json({ data: permissions })
+    const offset = (parsed.page - 1) * parsed.limit
+    const filter = parsed.search ? `%${parsed.search}%` : null
+    const [countRow] = await queryMany<{ total: string }>(
+      `SELECT COUNT(*)::text AS total FROM admin_permissions WHERE ($1::text IS NULL OR key ILIKE $1)`,
+      [filter],
+    )
+    const permissions = await queryMany(
+      `SELECT id, key, description, created_at
+       FROM admin_permissions
+       WHERE ($1::text IS NULL OR key ILIKE $1)
+       ORDER BY key ASC
+       LIMIT $2 OFFSET $3`,
+      [filter, parsed.limit, offset],
+    )
+    return NextResponse.json({
+      data: permissions,
+      pagination: { page: parsed.page, limit: parsed.limit, total: Number.parseInt(countRow?.total ?? "0", 10) },
+    })
   } catch (error) {
     return respondInternalServerError(request, error, {
       event: "admin.permissions.list.failed",

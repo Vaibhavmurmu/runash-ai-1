@@ -1,10 +1,5 @@
-import { UnifiedPaymentPage } from "@/components/payment/unified-payment-page"
+import { PaymentOperationsDashboard } from "@/components/payment/payment-operations-dashboard"
 
 export default function PaymentDashboardPage() {
-  return (
-    <UnifiedPaymentPage
-      title="Payment Dashboard"
-      description="Central dashboard for payment methods, checkout links, usage billing, customer portal flows, and tax/payout reporting."
-    />
-  )
+  return <PaymentOperationsDashboard />
 }

@@ -27,6 +27,28 @@ DATABASE_URL=postgresql://...       # Your PostgreSQL connection
 MIGRATION_SECRET=your-secret-key    # For securing admin endpoints
 \`\`\`
 
+#### Neon CLI bootstrap (project + branch selection)
+
+For first-time setup, initialize Neon CLI and select the target project/branch before running migrations:
+
+\`\`\`bash
+export NEON_API_KEY="<your-neon-api-key>"
+npx neonctl@latest init
+\`\`\`
+
+Expected bootstrap flow:
+1. Authenticate Neon CLI with `NEON_API_KEY` (or interactive auth).
+2. Choose the Neon **project** that maps to your RunAsh environment.
+3. Choose the Neon **branch** (`dev`, `staging`, `prod`) for the migration target.
+4. Capture the returned connection URL and export it in your local/hosted env.
+
+RunAsh env mapping from Neon output:
+- `DATABASE_URL`: primary runtime connection variable.
+- `NEON_DATABASE_URL`: supported alias when teams prefer explicit naming.
+- `lib/db.ts` fallback order then checks: `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `POSTGRES_URL_NON_POOLING`, `runash_POSTGRES_URL`, `runash_POSTGRES_URL_NON_POOLING`.
+
+Use `DATABASE_URL` for consistency, and keep fallback vars only for compatibility with existing CI/platform defaults.
+
 ### 3. Generate Drizzle Client
 
 The Drizzle client is automatically created in `lib/drizzle.ts` with:
@@ -107,6 +129,9 @@ Or use the admin dashboard at `/admin/db`
 - `messages` - Direct messages with read status
 - `conversations` - Message groups
 - `notifications` - User notifications
+- `email_contacts` - Broadcast audience contacts with status and metadata
+- `email_contact_tags` - Contact segmentation tags for filtering and targeting
+- `email_contact_import_jobs` - CSV import audit trail and processing summaries
 
 ### Additional
 - `wishlist` - User saved items
@@ -272,3 +297,12 @@ For issues:
 2. Review error logs in console
 3. Verify environment variables in Vercel dashboard
 4. Check Neon/PostgreSQL dashboard for connection issues
+
+
+## Email broadcast workflow tables
+
+Recent schema additions support admin-authored outbound broadcasts:
+- `email_broadcasts`: stores draft/scheduled/sending/sent broadcast metadata, template key, JSON props, audience filter, and send counters.
+- `email_broadcast_recipients`: stores per-recipient send status and delivery metadata for auditability and retry analysis.
+
+Apply migration: `scripts/sql/2026-02-18_create_email_broadcast_tables.sql`.

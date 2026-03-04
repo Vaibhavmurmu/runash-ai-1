@@ -3,23 +3,7 @@ import { randomBytes } from "crypto"
 import { recordAuthMetric } from "@/lib/auth-observability"
 import { recordSecurityAuditEvent } from "@/lib/security-audit-events"
 import { sql } from "@/lib/db"
-
-export async function createUser(email: string, password: string, name: string) {
-  try {
-    const passwordHash = await hash(password, 12)
-
-    const [user] = await sql`
-      INSERT INTO users (email, password_hash, name, role)
-      VALUES (${email}, ${passwordHash}, ${name}, 'user')
-      RETURNING id, email, name, role, created_at
-    `
-
-    return user
-  } catch (error) {
-    console.error("Error creating user")
-    throw new Error("Failed to create user")
-  }
-}
+import { createAuthSession, invalidateSession } from "@/lib/auth/session-modes"
 
 export async function createPasswordResetToken(userId: number) {
   try {
@@ -222,12 +206,30 @@ export async function generateEmailVerificationToken(userId: number) {
   }
 }
 
-export async function createUserSession(userId: number, sessionToken: string, expires: Date) {
+export async function createUserSession(
+  userId: number,
+  sessionToken: string,
+  expires: Date,
+  metadata?: { deviceName?: string; deviceId?: string; ipAddress?: string; userAgent?: string },
+) {
   try {
     await sql`
       INSERT INTO user_sessions (user_id, session_token, expires_at)
       VALUES (${userId}, ${sessionToken}, ${expires})
     `
+
+    await createAuthSession({
+      userId: String(userId),
+      mode: "cookie",
+      token: sessionToken,
+      ttlMinutes: Math.max(1, Math.round((expires.getTime() - Date.now()) / 60_000)),
+      device: {
+        deviceName: metadata?.deviceName,
+        deviceId: metadata?.deviceId,
+        ipAddress: metadata?.ipAddress,
+        userAgent: metadata?.userAgent,
+      },
+    })
 
     recordAuthMetric("auth.session.created", { source: "createUserSession", userId })
     await recordSecurityAuditEvent({
@@ -269,7 +271,10 @@ export async function deleteUserSession(sessionToken: string) {
   }
 }
 
-export async function invalidateUserSessions(userId: number, reason: "password_change" | "password_reset") {
+export async function invalidateUserSessions(
+  userId: number,
+  reason: "password_change" | "password_reset" | "api_key_rotated" | "manual_revoke",
+) {
   try {
     await sql`
       DELETE FROM user_sessions WHERE user_id = ${userId}
@@ -285,6 +290,8 @@ export async function invalidateUserSessions(userId: number, reason: "password_c
   } catch {
     // best-effort invalidation for Better Auth session table
   }
+
+  await invalidateSession({ userId: String(userId), reason })
 
   recordAuthMetric("auth.session.invalidated", { reason, userId })
   await recordSecurityAuditEvent({

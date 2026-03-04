@@ -5,10 +5,8 @@ import { logApiRouteError } from "@/lib/api/logging"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 
 const eventsSchema = z.object({
-  limit: z
-    .string()
-    .optional()
-    .transform((val) => (val ? Number.parseInt(val) : 50)),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
 })
 
 export async function GET(request: NextRequest) {
@@ -21,11 +19,12 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const params = Object.fromEntries(searchParams.entries())
-    const { limit } = eventsSchema.parse(params)
+    const { page, limit } = eventsSchema.parse(params)
+    const events = await AuthAnalytics.getRecentAuthEvents(page * limit)
+    const start = (page - 1) * limit
+    const pagedEvents = events.slice(start, start + limit)
 
-    const events = await AuthAnalytics.getRecentAuthEvents(limit)
-
-    return NextResponse.json({ requestId: auth.requestId, events })
+    return NextResponse.json({ requestId: auth.requestId, events: pagedEvents, pagination: { page, limit, total: events.length } })
   } catch (error) {
     logApiRouteError(request, "admin.auth.events.fetch_failed", error, {
       errorCode: "AUTH_EVENTS_FETCH_FAILED",

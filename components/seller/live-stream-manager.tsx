@@ -37,16 +37,61 @@ import {
   Share2,
 } from "lucide-react"
 
+type ApiStream = {
+  id: string
+  title?: string
+  description?: string
+  status?: string
+  scheduled_for?: string
+  created_at?: string
+  started_at?: string
+  startTime?: string
+  viewer_count?: number
+  viewers?: number
+  revenue?: number
+}
+
+type UiStream = {
+  id: string
+  title: string
+  description: string
+  status: string
+  startTime: string
+  viewers: number
+  revenue: number
+}
+
+type StreamsEnvelope = {
+  data?: {
+    streams?: ApiStream[]
+  }
+}
+
+const adaptStreamForUi = (stream: ApiStream): UiStream => {
+  const normalizedStartTime =
+    stream.startTime ?? stream.scheduled_for ?? stream.started_at ?? stream.created_at ?? new Date().toISOString()
+
+  return {
+    id: stream.id,
+    title: stream.title ?? "Untitled stream",
+    description: stream.description ?? "",
+    status: stream.status ?? "scheduled",
+    startTime: normalizedStartTime,
+    viewers: stream.viewers ?? stream.viewer_count ?? 0,
+    revenue: stream.revenue ?? 0,
+  }
+}
+
 const fetcher = (url: string) =>
-  fetch(url, { headers: { "x-user-id": "1" } }).then((r) => {
+  fetch(url).then((r) => {
     if (!r.ok) throw new Error("Failed to load streams")
-    return r.json()
+    return r.json().then((envelope: StreamsEnvelope) => (envelope.data?.streams ?? []).map(adaptStreamForUi))
   })
 
 export function LiveStreamManager() {
   const { toast } = useToast()
 
-  const [streams, setStreams] = useState([])
+  const [streams, setStreams] = useState<UiStream[]>([])
   const [selectedDate, setSelectedDate] = useState<Date>()
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [title, setTitle] = useState("")
@@ -71,11 +116,12 @@ export function LiveStreamManager() {
       const when = new Date(`${format(selectedDate, "yyyy-MM-dd")}T${time}:00`)
       const res = await fetch("/api/streams", {
         method: "POST",
-        headers: { "content-type": "application/json", "x-user-id": "1" },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           title,
           description,
           category: category || "general",
+          platform: "runash",
           scheduled_for: when.toISOString(),
         }),
       })

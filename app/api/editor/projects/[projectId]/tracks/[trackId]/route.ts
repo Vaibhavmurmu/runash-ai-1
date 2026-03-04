@@ -2,8 +2,19 @@ import { NextResponse } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
 import { sql, touchProject } from "@/lib/editor/repository"
 
+export async function GET(request: Request, { params }: { params: { projectId: string; trackId: string } }) {
+  const auth = await requireEditorUser(request)
+  if ("error" in auth) return auth.error
+  const { projectId, trackId } = params
+
+  const [track] = await sql`SELECT * FROM editor_tracks WHERE id=${trackId} AND project_id=${projectId} AND owner_id=${auth.userId}`
+  if (!track) return NextResponse.json({ error: "Track not found" }, { status: 404 })
+
+  return NextResponse.json({ track })
+}
+
 export async function PATCH(request: Request, { params }: { params: { projectId: string; trackId: string } }) {
-  const auth = await requireEditorUser()
+  const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
   const { projectId, trackId } = params
   const body = await request.json()
@@ -24,8 +35,8 @@ export async function PATCH(request: Request, { params }: { params: { projectId:
   return NextResponse.json({ track })
 }
 
-export async function DELETE(_: Request, { params }: { params: { projectId: string; trackId: string } }) {
-  const auth = await requireEditorUser()
+export async function DELETE(request: Request, { params }: { params: { projectId: string; trackId: string } }) {
+  const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
   const { projectId, trackId } = params
 

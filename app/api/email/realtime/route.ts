@@ -17,63 +17,75 @@ export async function GET(request: NextRequest) {
 
   // Create SSE connection
   const connectionId = `${session.user.id}-${Date.now()}`
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
+  const writer = writable.getWriter()
+  const encoder = new TextEncoder()
 
-  const stream = new ReadableStream({
-    start(controller) {
-      // Set up SSE headers
-      const response = new Response(stream, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Headers": "Cache-Control",
-        },
-      })
+  let isClosed = false
 
-      // Add connection to manager
-      emailRealtimeManager.addConnection(connectionId, response)
+  const unregisterConnection = async (reason: "abort" | "close" | "error") => {
+    if (isClosed) {
+      return
+    }
 
-      // Send initial connection message
-      const encoder = new TextEncoder()
-      const initialMessage = encoder.encode(
-        `data: ${JSON.stringify({
-          type: "connected",
-          connectionId,
-          timestamp: new Date().toISOString(),
-        })}\n\n`,
-      )
+    isClosed = true
+    clearInterval(pingInterval)
+    await emailRealtimeManager.removeConnection(connectionId, { closeWriter: reason !== "close" })
 
-      controller.enqueue(initialMessage)
+    console.info("[email-realtime] SSE connection cleanup", {
+      connectionId,
+      reason,
+    })
+  }
 
-      // Keep connection alive with periodic pings
-      const pingInterval = setInterval(() => {
-        try {
-          const pingMessage = encoder.encode(
+  emailRealtimeManager.addConnection(connectionId, writer)
+
+  await writer.ready
+  await writer.write(
+    encoder.encode(
+      `data: ${JSON.stringify({
+        type: "connected",
+        connectionId,
+        timestamp: new Date().toISOString(),
+      })}\n\n`,
+    ),
+  )
+
+  const pingInterval = setInterval(() => {
+    void (async () => {
+      if (isClosed) {
+        return
+      }
+
+      try {
+        await writer.ready
+        await writer.write(
+          encoder.encode(
             `data: ${JSON.stringify({
               type: "ping",
               timestamp: new Date().toISOString(),
             })}\n\n`,
-          )
-          controller.enqueue(pingMessage)
-        } catch (error) {
-          console.error("Error sending ping:", error)
-          clearInterval(pingInterval)
-          emailRealtimeManager.removeConnection(connectionId)
-          controller.close()
-        }
-      }, 30000) // Ping every 30 seconds
+          ),
+        )
+      } catch (error) {
+        console.warn("[email-realtime] SSE ping failed", {
+          connectionId,
+          error: error instanceof Error ? error.message : "unknown",
+        })
+        await unregisterConnection("error")
+      }
+    })()
+  }, 30000) // Ping every 30 seconds
 
-      // Handle connection close
-      request.signal.addEventListener("abort", () => {
-        clearInterval(pingInterval)
-        emailRealtimeManager.removeConnection(connectionId)
-        controller.close()
-      })
-    },
+  request.signal.addEventListener("abort", () => {
+    void unregisterConnection("abort")
   })
 
-  return new Response(stream, {
+  void writer.closed.finally(() => {
+    void unregisterConnection("close")
+  })
+
+  return new Response(readable, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",

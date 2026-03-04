@@ -1,34 +1,28 @@
-"use client"
+import type { Metadata } from "next"
+import { TopLevelModulePage } from "@/components/dashboard/top-level-module-page"
+import { ReferralFeedbackWidgets } from "@/components/dashboard/referral-feedback-widgets"
 
-import { EnhancedDashboard } from "@/components/dashboard/enhanced-dashboard"
-import { StreamQuickAccess } from "@/components/dashboard/stream-quick-access"
-import { AIAgentsDashboard } from "@/components/ai-agents/ai-agents-dashboard"
-import { AutomationDashboard } from "@/components/automation/automation-dashboard"
-import { AnalyticsDashboard } from "@/components/analytics/analytics-dashboard"
+export const metadata: Metadata = {
+  title: "Dashboard Module | RunAsh AI",
+  description: "Top-level dashboard module with streamlined summary, CTA, and recent activity.",
+}
 
 export default function DashboardPage() {
   return (
-    <div className="container mx-auto p-4 md:p-6 lg:p-8">
-      <div className="grid gap-6 lg:grid-cols-4">
-        <div className="lg:col-span-3">
-          <EnhancedDashboard />
-        </div>
-        <div>
-          <StreamQuickAccess />
-        </div>
-      </div>
-
-      <div className="mt-6">
-        <AnalyticsDashboard />
-      </div>
-
-      <div className="mt-6">
-        <AIAgentsDashboard />
-      </div>
-
-      <div className="mt-6">
-        <AutomationDashboard />
-      </div>
+    <div className="container mx-auto space-y-6 p-4 md:p-6 lg:p-8">
+      <TopLevelModulePage
+        title="Dashboard"
+        summary="Monitor workspace health and quickly launch your core dashboard journey."
+        ctaLabel="Open streaming studio"
+        ctaHref="/dashboard/streaming-studio"
+        secondaryLinks={[
+          { label: "Analytics", href: "/dashboard/analytics" },
+          { label: "API keys", href: "/dashboard/api" },
+          { label: "Developer docs", href: "/dashboard/documentation" },
+          { label: "Settings", href: "/dashboard/settings" },
+        ]}
+      />
+      <ReferralFeedbackWidgets />
     </div>
   )
 }

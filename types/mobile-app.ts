@@ -23,9 +23,42 @@ export interface ChatMessage {
   username: string
   message: string
   timestamp: string
+  cursor?: string
+  clientRequestId?: string
   isHighlighted?: boolean
   isModerator?: boolean
   isSubscriber?: boolean
+}
+
+export interface ChatAttachmentMetadata {
+  id?: string
+  url?: string
+  name: string
+  size: number
+  type: string
+  width?: number
+  height?: number
+  checksum?: string
+}
+
+export interface MobileChatListResponse {
+  messages: ChatMessage[]
+  cursor: string
+}
+
+export interface MobileSendChatMessageRequest {
+  platform: string
+  username: string
+  message: string
+  clientRequestId?: string
+  attachments?: ChatAttachmentMetadata[]
+  isModerator?: boolean
+  isSubscriber?: boolean
+}
+
+export interface MobileSendChatMessageResponse {
+  message: ChatMessage
+  deduped?: boolean
 }
 
 export interface StreamAnalytics {
@@ -61,22 +94,65 @@ export interface ScheduledStream {
   id: string
   title: string
   description: string
-  scheduledDate: string // ISO date string
-  duration: number // in minutes
-  platforms: string[] // platform IDs
+  scheduledDate: string
+  duration: number
+  platforms: string[]
   isRecurring: boolean
   recurrencePattern?: {
     frequency: "daily" | "weekly" | "monthly"
-    interval: number // every X days/weeks/months
-    daysOfWeek?: number[] // 0-6, Sunday to Saturday
-    endDate?: string // ISO date string
+    interval: number
+    daysOfWeek?: number[]
+    endDate?: string
   }
   thumbnail?: string
   tags: string[]
   category: string
   isPublic: boolean
-  notificationTime: number // minutes before stream to send notification
+  notificationTime: number
   templateId?: string
   createdAt: string
   updatedAt: string
+  version?: number
 }
+
+export interface MobileScheduleSyncMetadata {
+  lastSyncedAt: string
+  pendingChanges: number
+}
+
+export interface MobileScheduleListResponse {
+  streams: ScheduledStream[]
+  sync: MobileScheduleSyncMetadata
+}
+
+export interface MobileCreateScheduleRequest {
+  title: string
+  description?: string
+  scheduledDate: string
+  duration: number
+  platforms: string[]
+  isRecurring?: boolean
+  recurrencePattern?: ScheduledStream["recurrencePattern"]
+  tags?: string[]
+  category?: string
+  isPublic?: boolean
+  notificationTime?: number
+  templateId?: string
+}
+
+export interface MobileUpdateScheduleRequest extends Partial<MobileCreateScheduleRequest> {
+  expectedVersion?: number
+}
+
+export interface MobileCreateScheduleResponse {
+  stream: ScheduledStream
+  sync: MobileScheduleSyncMetadata
+}
+
+export interface MobileScheduleMutationResponse {
+  stream?: ScheduledStream
+  conflict?: boolean
+  sync: MobileScheduleSyncMetadata
+}
+
+export type MobileCreateScheduleResult = MobileScheduleMutationResponse

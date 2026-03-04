@@ -12,8 +12,8 @@ type SessionShape = {
 type SessionAccessorDependencies<TSession extends SessionShape> = {
   getPrimarySession: () => Promise<TSession | null>
   getLegacySession: () => Promise<TSession | null>
-  isBetterAuthEnabled: () => Promise<boolean>
-  recordMetric: (name: "auth.session.invalidated" | "auth.session.rotation_due", tags?: Record<string, string>) => void
+  isLegacyFallbackEnabled: () => Promise<boolean>
+  recordMetric: (name: "auth.session.invalidated" | "auth.session.rotation_due" | "auth.legacy_fallback.used" | "auth.legacy_fallback.unavailable", tags?: Record<string, string>) => void
   now: () => number
 }
 
@@ -36,18 +36,23 @@ export async function resolveSessionFromSources<TSession extends SessionShape>(
 
     if (now - updatedAt > SESSION_SECURITY_POLICY.rotationIntervalMs) {
       dependencies.recordMetric("auth.session.rotation_due", {
-        sessionId: betterAuthSession.session.id,
+        reason: "rotation_interval_exceeded",
       })
     }
 
     return betterAuthSession
   }
 
-  const useBetterAuth = await dependencies.isBetterAuthEnabled()
-  if (useBetterAuth) {
+  const useLegacyFallback = await dependencies.isLegacyFallbackEnabled()
+  if (!useLegacyFallback) {
+    dependencies.recordMetric("auth.legacy_fallback.unavailable", { reason: "flag_disabled_or_sunset" })
     return null
   }
 
-  return dependencies.getLegacySession()
-}
+  const legacySession = await dependencies.getLegacySession()
+  if (legacySession?.user) {
+    dependencies.recordMetric("auth.legacy_fallback.used", { reason: "primary_session_missing" })
+  }
 
+  return legacySession
+}
