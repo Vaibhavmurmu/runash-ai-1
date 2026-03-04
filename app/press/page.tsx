@@ -168,7 +168,7 @@ export default function PressPage() {
               <TabsList className="w-full flex-wrap justify-start gap-2 bg-orange-100/50 dark:bg-orange-900/20">
                 <TabsTrigger value="press-releases">Press Releases</TabsTrigger>
                 <TabsTrigger value="news">News Coverage</TabsTrigger>
-                <TabsTrigger value="media-kit">Media Kit</TabsTrigger>
+                <TabsTrigger value="media-kit">Brand Assets</TabsTrigger>
                 <TabsTrigger value="contact">Press Contact</TabsTrigger>
               </TabsList>
 
