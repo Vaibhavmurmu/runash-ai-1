@@ -132,19 +132,9 @@ export function resolveAuthDecision(pathname: string) {
 
 async function hasValidAuthSession(request: NextRequest): Promise<boolean> {
   try {
-    const sessionResponse = await fetch(new URL("/api/auth/get-session", request.url), {
-      method: "GET",
-      headers: {
-        cookie: request.headers.get("cookie") ?? "",
-      },
-      cache: "no-store",
+    const sessionPayload = await auth.api.getSession({
+      headers: request.headers,
     })
-
-    if (!sessionResponse.ok) {
-      return false
-    }
-
-    const sessionPayload = await sessionResponse.json()
     return Boolean(sessionPayload?.user && sessionPayload?.session)
   } catch {
     return false
