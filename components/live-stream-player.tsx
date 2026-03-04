@@ -36,6 +36,9 @@ import { Label } from "@/components/ui/label"
 import { useRecordings } from "@/hooks/use-recordings"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
+const LIVE_RENDITIONS = ["1080p", "720p", "480p", "360p"] as const
+type LiveRendition = (typeof LIVE_RENDITIONS)[number]
+
 interface LiveStreamPlayerProps {
   streamId: string
   isRecording?: boolean
@@ -380,6 +383,13 @@ export default function LiveStreamPlayer({
           <Badge className="bg-zinc-800/80 backdrop-blur-sm">
             <Users className="mr-1 h-3 w-3" /> {isReplay ? "2.5K views" : "1.2K watching"}
           </Badge>
+          {!isReplay && <Badge className="bg-zinc-800/80">Latency {Math.round(targetLatencyBufferMs / 1000)}s</Badge>}
+          {!isReplay && <Badge className="bg-zinc-800/80">{rendition}</Badge>}
+          {!isReplay && isRebuffering && <Badge className="bg-amber-500">Rebuffering…</Badge>}
+          {!isReplay && catchUpActive && <Badge className="bg-blue-500">Catching up</Badge>}
+          {!isReplay && sourceStatus !== "healthy" && (
+            <Badge className={cn(sourceStatus === "failed" ? "bg-red-500" : "bg-amber-500")}>{sourceStatus}</Badge>
+          )}
           {recordingState !== "inactive" && (
             <Badge
               className={cn(
@@ -524,6 +534,28 @@ export default function LiveStreamPlayer({
                 {isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
               </Button>
             </div>
+
+            {!isReplay && sourceStatus !== "healthy" && (
+              <div className="flex items-center justify-between rounded-md bg-black/50 px-3 py-2 text-xs text-white">
+                <span>Source {sourceStatus}. Retry attempt {retryAttempt || 1}.</span>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="secondary" onClick={retryStreamSource}>
+                    Retry source
+                  </Button>
+                  {sourceStatus === "failed" && (
+                    <Button size="sm" variant="destructive" onClick={hardResetPlayer}>
+                      Hard reset
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!isReplay && (
+              <div className="rounded-md bg-black/50 px-3 py-2 text-xs text-white/90">
+                QoE: stalls {stallCount} · stall duration {Math.round(stallDurationMs / 1000)}s · reconnects {reconnectCount}
+              </div>
+            )}
           </div>
         </div>
       </div>
