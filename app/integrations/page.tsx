@@ -26,6 +26,8 @@ const IntegrationCard = ({
   status,
   featured = false,
   comingSoon = false,
+  href,
+  external = false,
 }: {
   name: string
   description: string
@@ -34,7 +36,18 @@ const IntegrationCard = ({
   status: "connected" | "available" | "coming-soon"
   featured?: boolean
   comingSoon?: boolean
+  href?: string
+  external?: boolean
 }) => {
+  const actionLabel = status === "connected" ? "Configure" : status === "coming-soon" ? "Coming Soon" : "Connect"
+
+  const buttonClassName =
+    status === "connected"
+      ? "border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50"
+      : status === "coming-soon"
+        ? "opacity-50 cursor-not-allowed"
+        : "bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white"
+
   return (
     <Card
       className={`${featured ? "border-orange-500/50 bg-orange-50/50 dark:bg-orange-950/20" : "border-orange-200/50 dark:border-orange-900/30"} hover:border-orange-500/50 dark:hover:border-orange-500/50 transition-all duration-300`}
@@ -73,21 +86,24 @@ const IntegrationCard = ({
             {status === "coming-soon" && <Badge variant="secondary">Coming Soon</Badge>}
           </div>
 
-          <Button
-            size="sm"
-            variant={status === "connected" ? "outline" : "default"}
-            className={
-              status === "connected"
-                ? "border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50"
-                : status === "coming-soon"
-                  ? "opacity-50 cursor-not-allowed"
-                  : "bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white"
-            }
-            disabled={status === "coming-soon"}
-          >
-            {status === "connected" ? "Configure" : status === "coming-soon" ? "Coming Soon" : "Connect"}
-            {status !== "coming-soon" && <ExternalLink className="ml-1 h-3 w-3" />}
-          </Button>
+          {href && status !== "coming-soon" ? (
+            <Button size="sm" variant={status === "connected" ? "outline" : "default"} className={buttonClassName} asChild>
+              <a href={href} target={external ? "_blank" : undefined} rel={external ? "noreferrer" : undefined}>
+                {actionLabel}
+                <ExternalLink className="ml-1 h-3 w-3" />
+              </a>
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant={status === "connected" ? "outline" : "default"}
+              className={buttonClassName}
+              disabled={status === "coming-soon"}
+            >
+              {actionLabel}
+              {status !== "coming-soon" && <ExternalLink className="ml-1 h-3 w-3" />}
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -354,10 +370,100 @@ export default function IntegrationsPage() {
                 )}
 
                 {/* All Integrations */}
-                {filteredAllIntegrations.length > 0 && (
-                  <div>
-                    <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">All Integrations</h2>
-                    {renderIntegrationGrid(filteredAllIntegrations)}
+                <div>
+                  <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">All Integrations</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <IntegrationCard
+                      name="Discord"
+                      description="Connect your Discord community with stream notifications and interactive features."
+                      icon="/placeholder.svg?height=32&width=32"
+                      category="Social Media"
+                      status="available"
+                    />
+                    <IntegrationCard
+                      name="Streamlabs"
+                      description="Integrate with Streamlabs for enhanced alerts and donation features."
+                      icon="/placeholder.svg?height=32&width=32"
+                      category="Creator Tool"
+                      status="available"
+                    />
+                    <IntegrationCard
+                      name="TikTok Live"
+                      description="Stream to TikTok Live with vertical video optimization and engagement tools."
+                      icon="/placeholder.svg?height=32&width=32"
+                      category="Streaming Platform"
+                      status="available"
+                    />
+                    <IntegrationCard
+                      name="Facebook Live"
+                      description="Broadcast to Facebook with AI-powered audience engagement features."
+                      icon="/placeholder.svg?height=32&width=32"
+                      category="Streaming Platform"
+                      status="available"
+                    />
+                    <IntegrationCard
+                      name="Instagram Live"
+                      description="Go live on Instagram with professional quality and AI enhancements."
+                      icon="/placeholder.svg?height=32&width=32"
+                      category="Streaming Platform"
+                      status="available"
+                    />
+                    <IntegrationCard
+                      name="Spotify"
+                      description="Display your currently playing music and integrate with your stream overlay."
+                      icon="/placeholder.svg?height=32&width=32"
+                      category="Music"
+                      status="available"
+                    />
+                    <IntegrationCard
+                      name="Google Analytics"
+                      description="Track your streaming performance with detailed analytics and insights."
+                      icon="/placeholder.svg?height=32&width=32"
+                      category="Analytics"
+                      status="available"
+                    />
+                    <IntegrationCard
+                      name="Zapier"
+                      description="Automate your workflow by connecting RunAsh with thousands of other apps."
+                      icon="/placeholder.svg?height=32&width=32"
+                      category="Automation"
+                      status="available"
+                    />
+                    <IntegrationCard
+                      name="Hugging Face"
+                      description="Access state-of-the-art models and share community demos for your AI-powered workflows."
+                      icon="/placeholder.svg?height=32&width=32"
+                      category="AI Platform"
+                      status="available"
+                      href="https://huggingface.co"
+                      external={true}
+                    />
+                    <IntegrationCard
+                      name="Google Colab"
+                      description="Prototype and run notebooks in the cloud for rapid experimentation and model tuning."
+                      icon="/placeholder.svg?height=32&width=32"
+                      category="AI Platform"
+                      status="available"
+                      href="https://colab.research.google.com"
+                      external={true}
+                    />
+                    <IntegrationCard
+                      name="Kaggle"
+                      description="Leverage datasets, competitions, and notebooks to benchmark and improve your models."
+                      icon="/placeholder.svg?height=32&width=32"
+                      category="AI Platform"
+                      status="available"
+                      href="https://www.kaggle.com"
+                      external={true}
+                    />
+                    <IntegrationCard
+                      name="Slack"
+                      description="Get stream notifications and manage your team communication."
+                      icon="/placeholder.svg?height=32&width=32"
+                      category="Communication"
+                      status="coming-soon"
+                      comingSoon={true}
+                    />
                   </div>
                 )}
 
@@ -374,10 +480,50 @@ export default function IntegrationsPage() {
               </TabsContent>
 
               <TabsContent value="tools" className="mt-8">
-                {renderIntegrationGrid(filteredCreatorToolIntegrations)}
-                {showNoResults && filteredCreatorToolIntegrations.length === 0 && (
-                  <p className="text-gray-600 dark:text-gray-400">No integrations match your search query.</p>
-                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <IntegrationCard
+                    name="OBS Studio"
+                    description="Enhance your OBS workflow with our plugin for real-time AI video processing."
+                    icon="/placeholder.svg?height=32&width=32"
+                    category="Creator Tool"
+                    status="available"
+                    featured={true}
+                  />
+                  <IntegrationCard
+                    name="Streamlabs"
+                    description="Integrate with Streamlabs for enhanced alerts and donation features."
+                    icon="/placeholder.svg?height=32&width=32"
+                    category="Creator Tool"
+                    status="available"
+                  />
+                  <IntegrationCard
+                    name="Hugging Face"
+                    description="Access state-of-the-art models and share community demos for your AI-powered workflows."
+                    icon="/placeholder.svg?height=32&width=32"
+                    category="AI Platform"
+                    status="available"
+                    href="https://huggingface.co"
+                    external={true}
+                  />
+                  <IntegrationCard
+                    name="Google Colab"
+                    description="Prototype and run notebooks in the cloud for rapid experimentation and model tuning."
+                    icon="/placeholder.svg?height=32&width=32"
+                    category="AI Platform"
+                    status="available"
+                    href="https://colab.research.google.com"
+                    external={true}
+                  />
+                  <IntegrationCard
+                    name="Kaggle"
+                    description="Leverage datasets, competitions, and notebooks to benchmark and improve your models."
+                    icon="/placeholder.svg?height=32&width=32"
+                    category="AI Platform"
+                    status="available"
+                    href="https://www.kaggle.com"
+                    external={true}
+                  />
+                </div>
               </TabsContent>
 
               <TabsContent value="social" className="mt-8">
