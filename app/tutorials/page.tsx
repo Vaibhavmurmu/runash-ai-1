@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Clock, Play, Search, Star, User } from "lucide-react"
@@ -33,18 +34,24 @@ const TutorialCard = ({
       className={`overflow-hidden ${featured ? "border-orange-500/50 bg-orange-50/50 dark:bg-orange-950/20" : "border-orange-200/50 dark:border-orange-900/30"}`}
     >
       <div className="relative aspect-video overflow-hidden group">
-        <img
+        <Image
           src={thumbnail || "/placeholder.svg"}
-          alt={title}
+          alt={`Thumbnail for tutorial: ${title}`}
+          width={400}
+          height={300}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         />
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-          <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
+        <button
+          type="button"
+          aria-label={`Play tutorial: ${title}`}
+          className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-300 flex items-center justify-center focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
+        >
+          <span className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
             <Play className="h-8 w-8 text-white ml-1" />
-          </div>
-        </div>
+          </span>
+        </button>
         <div className="absolute top-3 left-3">
-          <Badge variant="secondary" className="bg-black/50 text-white">
+          <Badge variant="secondary" className="bg-black/70 text-white">
             {duration}
           </Badge>
         </div>
@@ -59,7 +66,7 @@ const TutorialCard = ({
       </div>
       <CardContent className="p-6">
         <div className="flex items-center gap-2 mb-3">
-          <Badge variant="outline" className="text-orange-600 dark:text-orange-400 border-orange-500/50">
+          <Badge variant="outline" className="text-orange-700 dark:text-orange-300 border-orange-500/50 dark:border-orange-300/70">
             {category}
           </Badge>
           <Badge
@@ -71,9 +78,9 @@ const TutorialCard = ({
           </Badge>
         </div>
         <h3 className="text-xl font-bold mb-3 line-clamp-2">{title}</h3>
-        <p className="text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">{description}</p>
+        <p className="text-gray-700 dark:text-gray-300 mb-4 line-clamp-2">{description}</p>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
             <User className="h-4 w-4" />
             <span>{author}</span>
           </div>
@@ -147,18 +154,24 @@ export default function TutorialsPage() {
                   <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">Featured Tutorial</h2>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
                     <div className="relative aspect-video overflow-hidden rounded-xl group">
-                      <img
+                      <Image
                         src="/placeholder.svg?height=400&width=600"
-                        alt="Featured tutorial"
+                        alt="Preview image for tutorial: Complete RunAsh AI Setup Guide"
+                        width={600}
+                        height={400}
                         className="w-full h-full object-cover"
                       />
-                      <div className="absolute inset-0 bg-black/40 group-hover:bg-black/50 transition-colors duration-300 flex items-center justify-center">
-                        <div className="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                      <button
+                        type="button"
+                        aria-label="Play tutorial: Complete RunAsh AI Setup Guide"
+                        className="absolute inset-0 bg-black/40 group-hover:bg-black/50 transition-colors duration-300 flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
+                      >
+                        <span className="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
                           <Play className="h-10 w-10 text-white ml-1" />
-                        </div>
-                      </div>
+                        </span>
+                      </button>
                       <div className="absolute top-4 left-4">
-                        <Badge variant="secondary" className="bg-black/50 text-white">
+                        <Badge variant="secondary" className="bg-black/70 text-white">
                           <Clock className="h-3 w-3 mr-1" />
                           15 min
                         </Badge>
@@ -166,7 +179,7 @@ export default function TutorialsPage() {
                     </div>
                     <div>
                       <div className="flex items-center gap-2 mb-3">
-                        <Badge variant="outline" className="text-orange-600 dark:text-orange-400 border-orange-500/50">
+                        <Badge variant="outline" className="text-orange-700 dark:text-orange-300 border-orange-500/50 dark:border-orange-300/70">
                           Getting Started
                         </Badge>
                         <Badge className="bg-yellow-500 text-black">
@@ -175,11 +188,11 @@ export default function TutorialsPage() {
                         </Badge>
                       </div>
                       <h3 className="text-3xl font-bold mb-4">Complete RunAsh AI Setup Guide</h3>
-                      <p className="text-gray-600 dark:text-gray-400 mb-6 text-lg">
+                      <p className="text-gray-700 dark:text-gray-300 mb-6 text-lg">
                         Learn how to set up RunAsh AI from scratch, connect your streaming platforms, and configure your
                         first AI-enhanced stream in under 15 minutes.
                       </p>
-                      <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mb-6">
+                      <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300 mb-6">
                         <div className="flex items-center gap-1">
                           <User className="h-4 w-4" />
                           <span>Sarah Johnson</span>
