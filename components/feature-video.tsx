@@ -14,7 +14,7 @@ export default function FeatureVideo({ title, description, videoThumbnail, durat
       <div className="relative aspect-video rounded-xl overflow-hidden">
         <img
           src={videoThumbnail || "/placeholder.svg"}
-          alt={title}
+          alt={`${title} video thumbnail preview`}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent"></div>
