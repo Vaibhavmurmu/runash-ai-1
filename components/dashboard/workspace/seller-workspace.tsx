@@ -161,6 +161,7 @@ export function SellerWorkspace() {
             <TabsTrigger value="inventory">Inventory</TabsTrigger>
             <TabsTrigger value="orders">Orders</TabsTrigger>
             <TabsTrigger value="payouts">Payouts</TabsTrigger>
+            <TabsTrigger value="shorts">Shorts/Reels</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
             <TabsTrigger value="live-chat">AI Live Chat</TabsTrigger>
             <TabsTrigger value="business">Business</TabsTrigger>
@@ -221,6 +222,7 @@ export function SellerWorkspace() {
           <TabsContent value="inventory"><InventoryManager /></TabsContent>
           <TabsContent value="orders"><OrderManager /></TabsContent>
           <TabsContent value="payouts"><PayoutManager /></TabsContent>
+          <TabsContent value="shorts"><ShortsGenerator /></TabsContent>
           <TabsContent value="analytics"><SellerAnalytics /></TabsContent>
           <TabsContent value="live-chat"><AiLiveChatPanel /></TabsContent>
           <TabsContent value="business"><BusinessSettings /></TabsContent>
