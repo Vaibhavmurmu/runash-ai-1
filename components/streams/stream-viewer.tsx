@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -18,6 +18,16 @@ export function StreamViewer({ streamId }: StreamViewerProps) {
   const [isMuted, setIsMuted] = useState(false)
   const [viewerCount, setViewerCount] = useState(2847)
   const [isFollowing, setIsFollowing] = useState(false)
+  const [targetLatencyBufferMs, setTargetLatencyBufferMs] = useState(2200)
+  const [streamQuality, setStreamQuality] = useState<"1080p" | "720p" | "480p">("1080p")
+  const [stallCount, setStallCount] = useState(0)
+  const [stallDurationMs, setStallDurationMs] = useState(0)
+  const [reconnectCount, setReconnectCount] = useState(0)
+  const [isRebuffering, setIsRebuffering] = useState(false)
+  const [sourceStatus, setSourceStatus] = useState<"healthy" | "recovering" | "failed">("healthy")
+  const [retryAttempt, setRetryAttempt] = useState(0)
+  const [isCatchingUp, setIsCatchingUp] = useState(false)
+  const stallStartedAt = useRef<number | null>(null)
 
   // Simulate viewer count updates
   useEffect(() => {
@@ -27,6 +37,95 @@ export function StreamViewer({ streamId }: StreamViewerProps) {
 
     return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const congestion = Math.random()
+      setTargetLatencyBufferMs(congestion > 0.7 ? 3500 : congestion > 0.4 ? 2400 : 1700)
+    }, 7000)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (sourceStatus !== "healthy") return
+
+      if (Math.random() < 0.22 && !stallStartedAt.current) {
+        stallStartedAt.current = Date.now()
+        setIsRebuffering(true)
+        setStallCount((prev) => prev + 1)
+        setStreamQuality((quality) => (quality === "1080p" ? "720p" : "480p"))
+
+        setTimeout(() => {
+          if (!stallStartedAt.current) return
+          setStallDurationMs((prev) => prev + (Date.now() - stallStartedAt.current))
+          stallStartedAt.current = null
+          setIsRebuffering(false)
+        }, 1000)
+      }
+    }, 8000)
+
+    return () => clearInterval(interval)
+  }, [sourceStatus])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (sourceStatus === "healthy" && Math.random() < 0.08) {
+        setSourceStatus("recovering")
+        setRetryAttempt(1)
+      }
+    }, 12000)
+
+    return () => clearInterval(interval)
+  }, [sourceStatus])
+
+  useEffect(() => {
+    if (sourceStatus !== "recovering") return
+
+    const timeout = setTimeout(() => {
+      const recovered = Math.random() > 0.3 || retryAttempt >= 3
+      if (recovered) {
+        setSourceStatus("healthy")
+        setReconnectCount((prev) => prev + 1)
+        setRetryAttempt(0)
+        setIsCatchingUp(true)
+        setTimeout(() => setIsCatchingUp(false), 4000)
+      } else if (retryAttempt >= 4) {
+        setSourceStatus("failed")
+      } else {
+        setRetryAttempt((prev) => prev + 1)
+      }
+    }, Math.min(5000, retryAttempt * 1000))
+
+    return () => clearTimeout(timeout)
+  }, [retryAttempt, sourceStatus])
+
+  useEffect(() => {
+    console.info("[qoe] stream-viewer", {
+      streamId,
+      stallCount,
+      stallDurationMs,
+      reconnectCount,
+      streamQuality,
+      targetLatencyBufferMs,
+      sourceStatus,
+      ts: new Date().toISOString(),
+    })
+  }, [reconnectCount, sourceStatus, stallCount, stallDurationMs, streamId, streamQuality, targetLatencyBufferMs])
+
+  const retrySource = () => {
+    if (sourceStatus === "healthy") return
+    setSourceStatus("recovering")
+    setRetryAttempt((prev) => Math.max(prev, 1))
+  }
+
+  const hardReset = () => {
+    setSourceStatus("healthy")
+    setRetryAttempt(0)
+    setIsRebuffering(false)
+    setIsCatchingUp(false)
+  }
 
   const streamData = {
     title: "Organic Skincare Live Show",
@@ -89,6 +188,15 @@ export function StreamViewer({ streamId }: StreamViewerProps) {
                       LIVE
                     </Badge>
                     <Badge variant="secondary">{viewerCount.toLocaleString()} watching</Badge>
+                    <Badge variant="secondary">Latency {Math.round(targetLatencyBufferMs / 1000)}s</Badge>
+                    <Badge variant="secondary">{streamQuality}</Badge>
+                    {isRebuffering && <Badge className="bg-amber-500 hover:bg-amber-600">Rebuffering…</Badge>}
+                    {isCatchingUp && <Badge className="bg-blue-500 hover:bg-blue-600">Catch-up</Badge>}
+                    {sourceStatus !== "healthy" && (
+                      <Badge className={sourceStatus === "failed" ? "bg-red-500 hover:bg-red-600" : "bg-amber-500"}>
+                        {sourceStatus}
+                      </Badge>
+                    )}
                   </div>
 
                   <div className="flex gap-2">
@@ -107,6 +215,24 @@ export function StreamViewer({ streamId }: StreamViewerProps) {
                       <Maximize className="h-4 w-4" />
                     </Button>
                   </div>
+                </div>
+
+                <div className="absolute top-4 right-4 space-y-2 text-right text-xs text-white">
+                  <div className="rounded-md bg-black/40 px-2 py-1">
+                    QoE: stalls {stallCount} · stall {Math.round(stallDurationMs / 1000)}s · reconnects {reconnectCount}
+                  </div>
+                  {sourceStatus !== "healthy" && (
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" variant="secondary" onClick={retrySource}>
+                        Retry
+                      </Button>
+                      {sourceStatus === "failed" && (
+                        <Button size="sm" variant="destructive" onClick={hardReset}>
+                          Hard reset
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>

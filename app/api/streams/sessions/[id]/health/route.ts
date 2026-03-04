@@ -1,20 +1,25 @@
 import { NextResponse } from "next/server"
+
 import { Database } from "@/lib/database"
+import { listStreamSessionNetworkMetrics } from "@/lib/repositories/stream-session-network-metrics"
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
   const stream = await Database.getStream(params.id)
   if (!stream) return NextResponse.json({ error: "Stream not found" }, { status: 404 })
 
-  const viewerCount = stream.viewer_count ?? 0
-  const status = viewerCount > 500 ? "Excellent" : viewerCount > 150 ? "Good" : viewerCount > 50 ? "Fair" : "Good"
+  const metrics = await listStreamSessionNetworkMetrics(params.id, 1)
+  const latest = metrics.at(-1)
 
   return NextResponse.json({
     telemetry: {
-      status,
-      bitrate: 5000,
-      fps: 60,
-      dropped: 0,
-      latency: 1.2,
+      status: latest?.healthState ?? "good",
+      score: latest?.healthScore ?? 80,
+      bitrateKbps: latest?.bitrateKbps ?? 0,
+      rttMs: latest?.rttMs ?? 0,
+      packetLossPct: latest?.packetLossPct ?? 0,
+      droppedFrames: latest?.droppedFrames ?? 0,
+      reconnects: latest?.reconnects ?? 0,
+      sampledAt: latest?.sampledAt?.toISOString() ?? null,
     },
   })
 }
