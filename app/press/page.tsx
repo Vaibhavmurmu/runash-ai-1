@@ -1,270 +1,234 @@
 "use client"
 
-import type React from "react"
-import { useRouter } from "next/navigation"
+import type { ReactNode } from "react"
 
+import Image from "next/image"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import ThemeToggle from "@/components/theme-toggle"
 import {
   ArrowRight,
   Calendar,
   Download,
   ExternalLink,
+  FileArchive,
   FileText,
   Globe,
   Mail,
-  Briefcase,
-  MapPin,
-  Clock,
+  Megaphone,
 } from "lucide-react"
-import ThemeToggle from "@/components/theme-toggle"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+
+type PressItem = {
+  title: string
+  date: string
+  excerpt: string
+  href: string
+}
+
+type ArticleItem = PressItem & { publication: string }
+
+const pressReleases: PressItem[] = [
+  {
+    title: "RunAsh AI Raises $125K Seed Grant to Accelerate AI Live Commerce",
+    date: "Jan 20, 2022",
+    excerpt:
+      "The seed grant supports core R&D in video intelligence, global creator onboarding, and platform reliability.",
+    href: "#",
+  },
+  {
+    title: "RunAsh AI Introduces Real-time Video Quality Intelligence",
+    date: "Apr 06, 2023",
+    excerpt:
+      "New models detect low-light, noise, and stream instability to auto-tune output quality while live.",
+    href: "#",
+  },
+  {
+    title: "RunAsh AI Launches Public Beta for Sellers and Creators",
+    date: "Apr 06, 2024",
+    excerpt:
+      "The public beta opens the platform to digital storefronts, live sellers, and high-volume creator teams.",
+    href: "#",
+  },
+  {
+    title: "RunAsh AI Debuts Multi-Host Live Collaboration Studio",
+    date: "Aug 12, 2024",
+    excerpt:
+      "Teams can now run synchronized multi-host sessions with AI moderation and production support.",
+    href: "#",
+  },
+  {
+    title: "RunAsh AI Releases RunAsh Chat for Commerce Workflows",
+    date: "Nov 10, 2025",
+    excerpt:
+      "RunAsh Chat now powers campaign planning, product QA, and seller-assistant automations from one workspace.",
+    href: "#",
+  },
+]
+
+const featuredArticles: ArticleItem[] = [
+  {
+    publication: "TechSphere",
+    title: "How RunAsh AI is rethinking live-selling operations with agentic AI",
+    date: "Feb 12, 2026",
+    excerpt: "A deep-dive into RunAsh AI's creator stack, commerce workflows, and real-time production tooling.",
+    href: "#",
+  },
+  {
+    publication: "The Founder Ledger",
+    title: "From creator pain points to a unified AI live platform",
+    date: "Jan 27, 2026",
+    excerpt: "RunAsh founders discuss product design decisions behind their growth across creator-first markets.",
+    href: "#",
+  },
+  {
+    publication: "Build in Public Weekly",
+    title: "Scaling support and moderation across thousands of concurrent streams",
+    date: "Dec 15, 2025",
+    excerpt:
+      "How RunAsh AI combines observability, policy tooling, and automation for enterprise-grade livestreaming.",
+    href: "#",
+  },
+]
+
+const mediaKitItems: { title: string; description: string; href: string; icon: ReactNode }[] = [
+  {
+    title: "Logo Package",
+    description: "Official RunAsh logos in PNG and SVG for light and dark backgrounds.",
+    href: "/logo.png",
+    icon: <FileText className="h-6 w-6 text-orange-600 dark:text-orange-400" />,
+  },
+  {
+    title: "Founder Photos",
+    description: "Approved founder headshots and profile images for editorial use.",
+    href: "/vaibhavmurmu.jpg",
+    icon: <FileText className="h-6 w-6 text-orange-600 dark:text-orange-400" />,
+  },
+  {
+    title: "Product Screenshots",
+    description: "Platform screenshots highlighting live commerce, chat, and dashboard workflows.",
+    href: "/runash live shopping.webp",
+    icon: <FileText className="h-6 w-6 text-orange-600 dark:text-orange-400" />,
+  },
+  {
+    title: "Brand Guidelines",
+    description: "Voice, colors, typography, and usage standards for RunAsh visual identity.",
+    href: "/about",
+    icon: <FileText className="h-6 w-6 text-orange-600 dark:text-orange-400" />,
+  },
+]
+
+const featuredIn = [
+  { name: "MIT", src: "/mit logo.png" },
+  { name: "RunAsh", src: "/runashlogo.jpg" },
+  { name: "RunAsh Alt", src: "/runas-logo .png" },
+  { name: "RunAsh Chat", src: "/RunAshChat.png" },
+  { name: "RunAsh AI", src: "/runash ai.webp" },
+  { name: "RunAsh Studio", src: "/runash studio.webp" },
+]
 
 export default function PressPage() {
-  const router = useRouter()
-
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-white">
-      {/* Hero Section */}
-      <section className="relative py-24 overflow-hidden">
-        {/* Gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-white via-orange-50/30 to-white dark:from-gray-950 dark:via-orange-950/30 dark:to-gray-950"></div>
-
-        {/* Animated gradient orbs */}
-        <div className="absolute top-20 right-20 w-72 h-72 bg-orange-500/20 rounded-full blur-3xl animate-pulse"></div>
-        <div
-          className="absolute bottom-10 left-10 w-96 h-96 bg-orange-500/20 rounded-full blur-3xl animate-pulse"
-          style={{ animationDelay: "1s" }}
-        ></div>
-        <div
-          className="absolute top-40 left-1/4 w-64 h-64 bg-yellow-500/20 rounded-full blur-3xl animate-pulse"
-          style={{ animationDelay: "2s" }}
-        ></div>
-
-        {/* Grid pattern overlay */}
-        <div className="absolute inset-0 bg-[url('/grid-pattern.svg')] bg-center opacity-5 dark:opacity-10"></div>
+    <div className="min-h-screen bg-white text-gray-900 dark:bg-gray-950 dark:text-white">
+      <section className="relative overflow-hidden py-24">
+        <div className="absolute inset-0 bg-gradient-to-br from-white via-orange-50/30 to-white dark:from-gray-950 dark:via-orange-950/30 dark:to-gray-950" />
+        <div className="absolute inset-0 bg-[url('/grid-pattern.svg')] bg-center opacity-5 dark:opacity-10" />
 
         <div className="container relative z-10 mx-auto px-4">
-          <div className="flex justify-end mb-4">
+          <div className="mb-4 flex justify-end">
             <ThemeToggle />
           </div>
-          <div className="max-w-3xl mx-auto text-center">
-            <div className="inline-block mb-6 px-6 py-2 border border-orange-500/30 rounded-full bg-orange-500/10 backdrop-blur-sm">
-              <span className="text-orange-600 dark:text-orange-400">Press & Media</span>
+          <div className="mx-auto max-w-3xl text-center">
+            <div className="mb-6 inline-flex items-center rounded-full border border-orange-500/30 bg-orange-500/10 px-4 py-2 backdrop-blur-sm">
+              <Megaphone className="mr-2 h-4 w-4 text-orange-600 dark:text-orange-400" />
+              <span className="text-orange-600 dark:text-orange-400">Press & Media Center</span>
             </div>
-            <h1 className="text-4xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-orange-600 via-orange-500 to-yellow-500 dark:from-orange-400 dark:via-orange-300 dark:to-yellow-300 text-transparent bg-clip-text">
+            <h1 className="mb-6 bg-gradient-to-r from-orange-600 via-orange-500 to-yellow-500 bg-clip-text text-4xl font-bold text-transparent dark:from-orange-400 dark:via-orange-300 dark:to-yellow-300 md:text-6xl">
               RunAsh AI in the News
             </h1>
-            <p className="text-xl text-gray-700 dark:text-gray-300 mb-8">
-              The latest news, press releases, and media resources for RunAsh AI's live streaming platform.
+            <p className="mb-8 text-xl text-gray-700 dark:text-gray-300">
+              Read announcements, latest coverage, and access approved assets for editorial and partnership use.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button
-                size="lg"
-                className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white"
-                onClick={() => router.push("/press")}
-              >
-                Press Releases <ArrowRight className="ml-2 h-4 w-4" />
+            <div className="flex flex-col justify-center gap-4 sm:flex-row">
+              <Button asChild size="lg" className="bg-gradient-to-r from-orange-600 to-yellow-600 text-white hover:from-orange-700 hover:to-yellow-700">
+                <a href="#press-releases">Press Releases <ArrowRight className="ml-2 h-4 w-4" /></a>
               </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50"
-                onClick={() => router.push("/press#media-kit")}
-              >
-                Media Kit <Download className="ml-2 h-4 w-4" />
+              <Button asChild size="lg" variant="outline" className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50">
+                <a href="#media-kit">Media Kit <Download className="ml-2 h-4 w-4" /></a>
               </Button>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Press Content */}
-      <section className="py-16 bg-white dark:bg-gray-950">
+      <section className="bg-white py-16 dark:bg-gray-950">
         <div className="container mx-auto px-4">
-          <div className="max-w-4xl mx-auto">
+          <div className="mx-auto max-w-5xl">
             <Tabs defaultValue="press-releases" className="mb-8">
-              <TabsList className="bg-orange-100/50 dark:bg-orange-900/20">
+              <TabsList className="w-full flex-wrap justify-start gap-2 bg-orange-100/50 dark:bg-orange-900/20">
                 <TabsTrigger value="press-releases">Press Releases</TabsTrigger>
                 <TabsTrigger value="news">News Coverage</TabsTrigger>
                 <TabsTrigger value="media-kit">Media Kit</TabsTrigger>
                 <TabsTrigger value="contact">Press Contact</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="press-releases" className="mt-6">
-                <div className="space-y-8">
-                  <PressReleaseCard
-                    title="RunAsh AI Raises $125K Seed grant funding  to Transform Live Streaming with AI"
-                    date="Jan 20, 2022"
-                    excerpt="Funding will accelerate product development and global expansion of the AI-powered live streaming platform."
-                    link="#"
-                  />
-                  <PressReleaseCard
-                    title="RunAsh AI Pre Launches Revolutionary Real-time Video Enhancement Technology"
-                    date="April 06, 2023"
-                    excerpt="New AI-powered features automatically enhance video quality, reduce noise, and optimize bandwidth in real-time."
-                    link="#"
-                  />
-                  <PressReleaseCard
-                    title="RunAsh AI Partners with Major Gaming Platforms to Enhance Streaming Experience"
-                    date="April 12, 2023"
-                    excerpt="Strategic partnerships will bring AI-powered streaming enhancements to millions of gamers worldwide."
-                    link="#"
-                  />
-                  <PressReleaseCard
-                    title="RunAsh AI Announces Public Beta Launch"
-                    date="April 06, 2024"
-                    excerpt="After months of private testing, RunAsh AI opens its platform to public beta users."
-                    link="#"
-                  />
-                  <PressReleaseCard
-                    title="RunAsh AI Founded to Revolutionize Live Streaming with Artificial Intelligence"
-                    date="January 22, 2025"
-                    excerpt="Tech industry veterans launch startup focused on bringing advanced AI capabilities to content creators."
-                    link="#"
-                  />
+              <TabsContent value="press-releases" className="mt-6" id="press-releases">
+                <div className="space-y-6">
+                  {pressReleases.map((item) => (
+                    <PressReleaseCard key={item.title} {...item} />
+                  ))}
                 </div>
               </TabsContent>
 
               <TabsContent value="news" className="mt-6">
-                <div className="space-y-8">
-                  <NewsCard
-                    title="'RunAsh AI Is Changing How We Stream' - Tech Today"
-                    publication=""
-                    date="Feb 22, 2025"
-                    excerpt="An in-depth look at how RunAsh AI is transforming the streaming landscape with its innovative AI technology."
-                    link="#"
-                  />
-                  <NewsCard
-                    title="'The Future of Streaming: RunAsh AI's Innovative Approach' - Streaming Insider"
-                    publication=""
-                    date="April 22, 2025"
-                    excerpt="RunAsh AI's platform is setting new standards for video quality and audience engagement in live streaming."
-                    link="#"
-                  />
-                  <NewsCard
-                    title="'RunAsh AI Secures Major Seed Funding to Expand AI Streaming Tools' - RunAsh"
-                    publication=""
-                    date="May 22, 2025"
-                    excerpt="The $1M Seed funding round positions RunAsh AI as a leader in the growing AI-enhanced streaming market."
-                    link="#"
-                  />
-                  <NewsCard
-                    title="'How RunAsh AI Is Making Professional-Quality Streaming Accessible to All' - Creator Economy"
-                    publication=""
-                    date="Jun 06, 2025"
-                    excerpt="RunAsh AI's technology is democratizing high-quality streaming, allowing creators of all sizes to produce professional content."
-                    link="#"
-                  />
+                <div className="space-y-6">
+                  {featuredArticles.map((item) => (
+                    <NewsCard key={item.title} {...item} />
+                  ))}
                 </div>
               </TabsContent>
 
-              <TabsContent value="media-kit" id="media-kit" className="mt-6">
-                <div className="bg-white dark:bg-gray-900 rounded-xl p-8 border border-orange-200/50 dark:border-orange-900/30">
-                  <h2 className="text-2xl font-bold mb-6">Media Kit Resources</h2>
-                  <p className="text-gray-700 dark:text-gray-300 mb-8">
-                    Download official RunAsh AI logos, product screenshots, founder photos, and brand guidelines for
-                    media use.
+              <TabsContent value="media-kit" className="mt-6" id="media-kit">
+                <div className="rounded-xl border border-orange-200/50 bg-white p-8 dark:border-orange-900/30 dark:bg-gray-900">
+                  <h2 className="mb-4 text-2xl font-bold">Media Kit Resources</h2>
+                  <p className="mb-8 text-gray-700 dark:text-gray-300">
+                    Download official logos, product visuals, and approved brand material.
                   </p>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <MediaKitCard
-                      title="Logo Package"
-                      description="RunAsh AI logos in various formats and colors"
-                      icon={<FileText className="h-6 w-6 text-orange-600 dark:text-orange-400" />}
-                    />
-                    <MediaKitCard
-                      title="Product Screenshots"
-                      description="High-resolution screenshots of the RunAsh AI platform"
-                      icon={<FileText className="h-6 w-6 text-orange-600 dark:text-orange-400" />}
-                    />
-                    <MediaKitCard
-                      title="Founder Photos"
-                      description="Professional headshots of RunAsh AI's founding team"
-                      icon={<FileText className="h-6 w-6 text-orange-600 dark:text-orange-400" />}
-                    />
-                    <MediaKitCard
-                      title="Brand Guidelines"
-                      description="Official brand colors, typography, and usage guidelines"
-                      icon={<FileText className="h-6 w-6 text-orange-600 dark:text-orange-400" />}
-                    />
+                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                    {mediaKitItems.map((item) => (
+                      <MediaKitCard key={item.title} {...item} />
+                    ))}
                   </div>
 
                   <div className="mt-8 text-center">
-                    <Button className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white">
-                      Download Complete Media Kit <Download className="ml-2 h-4 w-4" />
+                    <Button asChild className="bg-gradient-to-r from-orange-600 to-yellow-600 text-white hover:from-orange-700 hover:to-yellow-700">
+                      <Link href="/logo.png">Download Starter Asset <FileArchive className="ml-2 h-4 w-4" /></Link>
                     </Button>
                   </div>
                 </div>
               </TabsContent>
 
               <TabsContent value="contact" className="mt-6">
-                <div className="bg-white dark:bg-gray-900 rounded-xl p-8 border border-orange-200/50 dark:border-orange-900/30">
-                  <h2 className="text-2xl font-bold mb-6">Press Contact</h2>
-                  <p className="text-gray-700 dark:text-gray-300 mb-8">
-                    For press inquiries, interview requests, or additional information about RunAsh AI, please contact
-                    our media relations team.
+                <div className="rounded-xl border border-orange-200/50 bg-white p-8 dark:border-orange-900/30 dark:bg-gray-900">
+                  <h2 className="mb-6 text-2xl font-bold">Press Contact</h2>
+                  <p className="mb-8 text-gray-700 dark:text-gray-300">
+                    For interviews, podcast bookings, contributor quotes, and product briefings, contact our media desk.
                   </p>
 
-                  <div className="space-y-6">
-                    <div className="flex items-start gap-4">
-                      <div className="p-3 bg-orange-100 dark:bg-orange-900/30 rounded-full">
-                        <Mail className="h-6 w-6 text-orange-600 dark:text-orange-400" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-lg">Email</h3>
-                        <p className="text-gray-700 dark:text-gray-300 mb-1">For press inquiries:</p>
-                        <a
-                          href="mailto:press@runash.ai"
-                          className="text-orange-600 dark:text-orange-400 hover:underline"
-                        >
-                          press@runash.in
-                        </a>
-                      </div>
+                  <div className="space-y-5">
+                    <div className="flex items-center gap-3">
+                      <Mail className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                      <a className="text-orange-600 hover:underline dark:text-orange-400" href="mailto:press@runash.in">
+                        press@runash.in
+                      </a>
                     </div>
-
-                    <div className="flex items-start gap-4">
-                      <div className="p-3 bg-orange-100 dark:bg-orange-900/30 rounded-full">
-                        <Globe className="h-6 w-6 text-orange-600 dark:text-orange-400" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-lg">Social Media</h3>
-                        <p className="text-gray-700 dark:text-gray-300 mb-1">Follow us for the latest updates:</p>
-                        <div className="flex gap-3 mt-2">
-                          <a href="https://x.com/runash.ai" className="text-orange-600 dark:text-orange-400 hover:underline">
-                            Twitter
-                          </a>
-                          <a href="https://linkedin.com/in/runash.ai" className="text-orange-600 dark:text-orange-400 hover:underline">
-                            LinkedIn
-                          </a>
-                          <a href="https://instagram.com/runash.ai" className="text-orange-600 dark:text-orange-400 hover:underline">
-                            Instagram
-                          </a>
-                        </div>
-                      </div>
+                    <div className="flex items-center gap-3">
+                      <Globe className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                      <a href="https://x.com/runash.ai" className="text-orange-600 hover:underline dark:text-orange-400">
+                        x.com/runash.ai
+                      </a>
                     </div>
-
-                    <div className="flex items-start gap-4">
-                      <div className="p-3 bg-orange-100 dark:bg-orange-900/30 rounded-full">
-                        <Calendar className="h-6 w-6 text-orange-600 dark:text-orange-400" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-lg">Interview Requests</h3>
-                        <p className="text-gray-700 dark:text-gray-300 mb-1">
-                          For interview requests with our founders or team members, please email with the subject line
-                          "Interview Request" and include your publication details and deadline.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-8 p-6 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800/30">
-                    <h3 className="font-semibold text-lg mb-2">Press List Signup</h3>
-                    <p className="text-gray-700 dark:text-gray-300 mb-4">
-                      Join our press list to receive the latest news and updates from RunAsh AI.
-                    </p>
-                    <Button className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white">
-                      Subscribe to Press Updates
-                    </Button>
                   </div>
                 </div>
               </TabsContent>
@@ -273,331 +237,83 @@ export default function PressPage() {
         </div>
       </section>
 
-      {/* In The News */}
-      <section className="py-20 bg-gradient-to-b from-white via-orange-50/50 to-white dark:from-gray-950 dark:via-orange-950/20 dark:to-gray-950 relative">
-        <div className="absolute inset-0 bg-[url('/grid-pattern.svg')] bg-center opacity-5"></div>
-        <div className="container mx-auto px-4">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold mb-6 bg-gradient-to-r from-orange-600 via-orange-500 to-yellow-500 dark:from-orange-400 dark:via-orange-300 dark:to-yellow-300 text-transparent bg-clip-text">
+      <section className="relative bg-gradient-to-b from-white via-orange-50/50 to-white py-20 dark:from-gray-950 dark:via-orange-950/20 dark:to-gray-950">
+        <div className="absolute inset-0 bg-[url('/grid-pattern.svg')] bg-center opacity-5" />
+        <div className="container relative z-10 mx-auto px-4">
+          <div className="mx-auto mb-12 max-w-3xl text-center">
+            <h2 className="mb-4 bg-gradient-to-r from-orange-600 via-orange-500 to-yellow-500 bg-clip-text text-3xl font-bold text-transparent dark:from-orange-400 dark:via-orange-300 dark:to-yellow-300 md:text-4xl">
               Featured In
             </h2>
-            <p className="text-gray-700 dark:text-gray-300 text-lg">
-              RunAsh AI has been featured in leading technology and business publications.
+            <p className="text-lg text-gray-700 dark:text-gray-300">
+              Publications, communities, and ecosystem partners that have highlighted RunAsh AI.
             </p>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
+          <div className="grid grid-cols-2 gap-6 md:grid-cols-3 lg:grid-cols-6">
+            {featuredIn.map((item) => (
               <div
-                key={i}
-                className="flex items-center justify-center p-6 bg-white dark:bg-gray-900 border border-orange-200 dark:border-orange-800/30 rounded-xl hover:border-orange-500/50 dark:hover:border-orange-500/50 transition-all duration-300"
+                key={item.name}
+                className="flex h-28 items-center justify-center rounded-xl border border-orange-200 bg-white p-4 dark:border-orange-800/30 dark:bg-gray-900"
               >
-                <div className="w-full h-12 bg-gradient-to-r from-orange-500/10 via-yellow-500/10 to-orange-500/10 dark:from-orange-500/20 dark:via-yellow-500/20 dark:to-orange-500/20 rounded-md flex items-center justify-center">
-                  <span className="text-gray-600 dark:text-gray-400 font-semibold">Publication {i}</span>
-                </div>
+                <Image src={item.src} alt={`${item.name} featured logo`} width={120} height={44} className="h-auto max-h-12 w-auto object-contain" />
               </div>
             ))}
           </div>
         </div>
       </section>
-
-      {/* CTA Section */}
-      <section className="py-20 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-orange-100/70 via-yellow-100/70 to-orange-100/70 dark:from-orange-900/30 dark:via-yellow-900/30 dark:to-orange-900/30"></div>
-        <div className="absolute inset-0 bg-[url('/grid-pattern.svg')] bg-center opacity-10"></div>
-
-        <div className="container relative z-10 mx-auto px-4">
-          <div className="max-w-4xl mx-auto bg-gradient-to-br from-white/80 to-orange-50/80 dark:from-gray-900/80 dark:to-orange-950/80 border border-orange-200/50 dark:border-orange-800/30 rounded-2xl p-8 md:p-12 backdrop-blur-sm shadow-xl">
-            <div className="text-center mb-8">
-              <h2 className="text-3xl md:text-4xl font-bold mb-6 bg-gradient-to-r from-orange-600 via-orange-500 to-yellow-500 dark:from-orange-400 dark:via-orange-300 dark:to-yellow-300 text-transparent bg-clip-text">
-                Experience RunAsh AI Today
-              </h2>
-              <p className="text-gray-700 dark:text-gray-300 text-lg max-w-2xl mx-auto">
-                Join thousands of content creators who are already using our AI-powered platform to create stunning live
-                streams.
-              </p>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button
-                size="lg"
-                className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white"
-                onClick={() => router.push("/get-started")}
-              >
-                Start Free Trial <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50"
-                onClick={() => router.push("/request")}
-              >
-                Request Demo
-              </Button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="py-12 bg-white dark:bg-gray-950 border-t border-orange-200/50 dark:border-orange-900/30">
-        <div className="container mx-auto px-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            <div>
-              <h3 className="font-bold text-lg mb-4 bg-gradient-to-r from-orange-600 to-yellow-600 dark:from-orange-400 dark:to-yellow-400 text-transparent bg-clip-text">
-                Company
-              </h3>
-              <ul className="space-y-2">
-                <li>
-                  <a
-                    href="/about"
-                    className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
-                  >
-                    About
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="/careers"
-                    className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
-                  >
-                    Careers
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="/press"
-                    className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
-                  >
-                    Press
-                  </a>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="font-bold text-lg mb-4 bg-gradient-to-r from-yellow-600 to-orange-600 dark:from-yellow-400 dark:to-orange-400 text-transparent bg-clip-text">
-                Product
-              </h3>
-              <ul className="space-y-2">
-                <li>
-                  <a
-                    href="/features"
-                    className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
-                  >
-                    Features
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="/pricing"
-                    className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
-                  >
-                    Pricing
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="/integrations"
-                    className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
-                  >
-                    Integrations
-                  </a>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="font-bold text-lg mb-4 bg-gradient-to-r from-orange-600 to-yellow-600 dark:from-orange-400 dark:to-yellow-400 text-transparent bg-clip-text">
-                Resources
-              </h3>
-              <ul className="space-y-2">
-                <li>
-                  <a
-                    href="/docs/auth-api"
-                    className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
-                  >
-                    API Docs
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="/tutorials"
-                    className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
-                  >
-                    Tutorials
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="/press"
-                    className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
-                  >
-                    Press Updates
-                  </a>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="font-bold text-lg mb-4 bg-gradient-to-r from-yellow-600 to-orange-600 dark:from-yellow-400 dark:to-orange-400 text-transparent bg-clip-text">
-                Connect
-              </h3>
-              <ul className="space-y-2">
-                <li>
-                  <a
-                    href="/contact"
-                    className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
-                  >
-                    Contact
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="/community"
-                    className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
-                  >
-                    Community
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="/support"
-                    className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
-                  >
-                    Support
-                  </a>
-                </li>
-              </ul>
-            </div>
-          </div>
-          <div className="mt-12 pt-8 border-t border-gray-200 dark:border-gray-800 text-center text-gray-500">
-            <p>© {new Date().getFullYear()} RunAsh AI. All rights reserved.</p>
-          </div>
-        </div>
-      </footer>
     </div>
   )
 }
 
-// Component for Press Release Card
-function PressReleaseCard({
-  title,
-  date,
-  excerpt,
-  link,
-}: { title: string; date: string; excerpt: string; link: string }) {
+function PressReleaseCard({ title, date, excerpt, href }: PressItem) {
   return (
-    <div className="border border-orange-200/50 dark:border-orange-900/30 rounded-lg p-6 bg-white dark:bg-gray-900 hover:border-orange-500/50 dark:hover:border-orange-500/50 transition-all duration-300">
-      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-2">
+    <article className="rounded-lg border border-orange-200/50 bg-white p-6 transition-all duration-300 hover:border-orange-500/50 dark:border-orange-900/30 dark:bg-gray-900 dark:hover:border-orange-500/50">
+      <div className="mb-2 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
         <Calendar className="h-4 w-4" />
         <span>{date}</span>
       </div>
-      <h3 className="text-xl font-bold mb-2">{title}</h3>
-      <p className="text-gray-600 dark:text-gray-400 mb-4">{excerpt}</p>
-      <a
-        href={link}
-        className="inline-flex items-center text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300"
-      >
+      <h3 className="mb-2 text-xl font-bold">{title}</h3>
+      <p className="mb-4 text-gray-600 dark:text-gray-400">{excerpt}</p>
+      <a href={href} className="inline-flex items-center text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300">
         Read Press Release <ArrowRight className="ml-2 h-4 w-4" />
       </a>
-    </div>
+    </article>
   )
 }
 
-// Component for News Card
-function NewsCard({
-  title,
-  publication,
-  date,
-  excerpt,
-  link,
-}: { title: string; publication: string; date: string; excerpt: string; link: string }) {
+function NewsCard({ title, publication, date, excerpt, href }: ArticleItem) {
   return (
-    <div className="border border-orange-200/50 dark:border-orange-900/30 rounded-lg p-6 bg-white dark:bg-gray-900 hover:border-orange-500/50 dark:hover:border-orange-500/50 transition-all duration-300">
-      <div className="flex items-center justify-between mb-2">
+    <article className="rounded-lg border border-orange-200/50 bg-white p-6 transition-all duration-300 hover:border-orange-500/50 dark:border-orange-900/30 dark:bg-gray-900 dark:hover:border-orange-500/50">
+      <div className="mb-2 flex items-center justify-between gap-4">
         <span className="text-sm font-medium text-orange-600 dark:text-orange-400">{publication}</span>
         <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
           <Calendar className="h-4 w-4" />
           <span>{date}</span>
         </div>
       </div>
-      <h3 className="text-xl font-bold mb-2">{title}</h3>
-      <p className="text-gray-600 dark:text-gray-400 mb-4">{excerpt}</p>
-      <a
-        href={link}
-        className="inline-flex items-center text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300"
-      >
+      <h3 className="mb-2 text-xl font-bold">{title}</h3>
+      <p className="mb-4 text-gray-600 dark:text-gray-400">{excerpt}</p>
+      <a href={href} className="inline-flex items-center text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300">
         Read Article <ExternalLink className="ml-2 h-4 w-4" />
       </a>
-    </div>
+    </article>
   )
 }
 
-// Component for Media Kit Card
-function MediaKitCard({ title, description, icon }: { title: string; description: string; icon: React.ReactNode }) {
+function MediaKitCard({ title, description, href, icon }: { title: string; description: string; href: string; icon: ReactNode }) {
   return (
-    <div className="border border-orange-200/50 dark:border-orange-900/30 rounded-lg p-6 bg-white dark:bg-gray-900 hover:border-orange-500/50 dark:hover:border-orange-500/50 transition-all duration-300">
+    <div className="rounded-lg border border-orange-200/50 bg-white p-6 transition-all duration-300 hover:border-orange-500/50 dark:border-orange-900/30 dark:bg-gray-900 dark:hover:border-orange-500/50">
       <div className="flex items-start gap-4">
-        <div className="p-3 bg-orange-100 dark:bg-orange-900/30 rounded-full">{icon}</div>
+        <div className="rounded-full bg-orange-100 p-3 dark:bg-orange-900/30">{icon}</div>
         <div>
-          <h3 className="font-semibold text-lg mb-1">{title}</h3>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">{description}</p>
-          <Button
-            variant="outline"
-            className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50"
-          >
-            Download <Download className="ml-2 h-4 w-4" />
+          <h3 className="mb-1 text-lg font-semibold">{title}</h3>
+          <p className="mb-4 text-gray-600 dark:text-gray-400">{description}</p>
+          <Button asChild variant="outline" className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50">
+            <a href={href} download>
+              Download <Download className="ml-2 h-4 w-4" />
+            </a>
           </Button>
         </div>
-      </div>
-    </div>
-  )
-}
-
-// Component for Job Card
-function JobCard({
-  title,
-  department,
-  location,
-  type,
-  featured,
-}: { title: string; department: string; location: string; type: string; featured: boolean }) {
-  return (
-    <div
-      className={`border ${featured ? "border-orange-500/50 bg-orange-50/50 dark:bg-orange-900/20" : "border-orange-200/50 dark:border-orange-900/30 bg-white dark:bg-gray-900"} rounded-lg p-6 hover:border-orange-500/50 dark:hover:border-orange-500/50 transition-all duration-300`}
-    >
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <h3 className="text-xl font-bold">{title}</h3>
-            {featured && (
-              <span className="px-2 py-1 text-xs font-medium bg-orange-200 dark:bg-orange-800 text-orange-800 dark:text-orange-200 rounded-full">
-                Featured
-              </span>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-3 text-sm text-gray-600 dark:text-gray-400">
-            <div className="flex items-center gap-1">
-              <Briefcase className="h-4 w-4" />
-              <span>{department}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <MapPin className="h-4 w-4" />
-              <span>{location}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Clock className="h-4 w-4" />
-              <span>{type}</span>
-            </div>
-          </div>
-        </div>
-        <Button
-          className={`mt-4 md:mt-0 ${
-            featured
-              ? "bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white"
-              : "border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50"
-          }`}
-        >
-          Apply Now
-        </Button>
       </div>
     </div>
   )
