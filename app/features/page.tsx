@@ -246,24 +246,30 @@ export default function FeaturesPage() {
                       description="Watch how our AI instantly improves video quality in challenging lighting conditions."
                       videoThumbnail="/real%20time%20video%20processing.webp"
                       duration="2:45"
+                      videoUrl="https://www.youtube.com/watch?v=jfKfPfyJRdk"
+                      embedUrl="https://www.youtube.com/embed/jfKfPfyJRdk"
                     />
                     <FeatureVideo
                       title="Virtual Backgrounds"
                       description="See how our AI creates professional virtual backgrounds without a green screen."
                       videoThumbnail="/futuristic-ai-video-background.jpg"
                       duration="3:12"
+                      videoUrl="https://vimeo.com/76979871"
                     />
                     <FeatureVideo
                       title="Multi-platform Streaming"
                       description="Learn how to stream to multiple platforms simultaneously with optimized settings."
                       videoThumbnail="/multi%20platform%20streaming.webp"
                       duration="4:30"
+                      videoUrl="https://www.youtube.com/watch?v=ysz5S6PUM-U"
+                      embedUrl="https://www.youtube.com/embed/ysz5S6PUM-U"
                     />
                     <FeatureVideo
                       title="Live Translation"
                       description="Watch our real-time caption translation in action, reaching global audiences."
                       videoThumbnail="/runash%20live.webp"
                       duration="2:18"
+                      videoUrl="https://www.youtube.com/watch?v=aqz-KE-bpKQ"
                     />
                   </div>
 
