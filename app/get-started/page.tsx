@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import Image from "next/image"
 import { signIn } from "next-auth/react"
 import {
   ArrowRight,
@@ -175,8 +176,13 @@ export default function GetStartedPage() {
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(249,115,22,0.20),transparent_50%),radial-gradient(ellipse_at_top_right,rgba(250,204,21,0.15),transparent_45%)] dark:bg-[radial-gradient(ellipse_at_top_left,rgba(249,115,22,0.18),transparent_50%),radial-gradient(ellipse_at_top_right,rgba(61,81,255,0.10),transparent_45%)]" />
 
       <header className="relative z-10 flex items-center justify-between px-5 py-6">
-        <Link href="/" className="font-semibold bg-gradient-to-r from-orange-600 via-amber-500 to-yellow-400 bg-clip-text text-transparent">
-          RunAsh
+        <Link href="/" className="group flex items-center gap-3" aria-label="RunAsh home">
+          <div className="relative h-9 w-9 overflow-hidden rounded-md border border-orange-200/70 bg-white shadow-sm dark:border-white/20 dark:bg-black/40">
+            <Image src="/logo.png" alt="RunAsh logo" fill sizes="36px" className="object-contain" priority={false} />
+          </div>
+          <span className="font-semibold bg-gradient-to-r from-orange-600 via-amber-500 to-yellow-400 bg-clip-text text-transparent">
+            RunAsh
+          </span>
         </Link>
         <div className="flex items-center gap-2">
           <ThemeToggle />
