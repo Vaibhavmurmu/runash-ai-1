@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { Bell, ChevronRight, Command, LogOut, Menu, MessageSquare, MoreHorizontal, Plus, Search, Settings, User } from "lucide-react"
 import { signOut } from "@/lib/auth/client"
@@ -66,6 +67,12 @@ export function DashboardNavbar({ onOpenMobileMenu, navConfig }: DashboardNavbar
             <Menu className="h-5 w-5" />
             <span className="sr-only">Open sidebar</span>
           </Button>
+          <Link href="/dashboard" aria-label="RunAsh dashboard" className="hidden items-center gap-2 rounded-md border border-border/70 bg-background/70 px-2 py-1.5 transition-colors hover:bg-card/90 md:inline-flex">
+            <div className="relative h-6 w-6 overflow-hidden rounded-sm">
+              <Image src="/logo.png" alt="RunAsh logo" fill sizes="24px" className="object-contain" priority={false} />
+            </div>
+            <span className="text-xs font-semibold tracking-tight text-foreground/90">RunAsh</span>
+          </Link>
           <div className="space-y-1">
             <p className="text-[11px] font-medium uppercase tracking-wide text-foreground/75 md:text-xs">{navContext.currentSection}</p>
             <p className="text-sm font-semibold text-foreground md:hidden">{currentPageTitle}</p>

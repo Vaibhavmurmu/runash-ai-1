@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Zap, Shield, Users, Sparkles, Layers, Globe, Cpu, Gauge } from "lucide-react"
 import FeatureCard from "@/components/feature-card"
@@ -52,17 +53,21 @@ export default function FeaturesPage() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button
+                asChild
                 size="lg"
                 className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white"
               >
-                Start Free Trial <ArrowRight className="ml-2 h-4 w-4" />
+                <Link href="/signup">
+                  Start Free Trial <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
               </Button>
               <Button
+                asChild
                 size="lg"
                 variant="outline"
                 className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50"
               >
-                View Demo
+                <Link href="/recordings/live">View Demo</Link>
               </Button>
             </div>
           </div>
@@ -143,8 +148,8 @@ export default function FeaturesPage() {
                   <FeatureShowcase
                     title="AI Video Enhancement"
                     description="Our advanced neural networks analyze and enhance your video in real-time, improving quality even in challenging lighting conditions."
-                    image="/placeholder.svg?height=500&width=800"
-                    imageAlt="AI Video Enhancement Demonstration"
+                    image="/real%20time%20video%20processing.webp"
+                    imageAlt="RunAsh real-time video processing dashboard improving stream quality"
                     features={[
                       "Automatic lighting correction",
                       "Background noise reduction",
@@ -165,8 +170,8 @@ export default function FeaturesPage() {
                   <FeatureShowcase
                     title="Smart Content Protection"
                     description="Keep your streams safe and compliant with our AI-powered content moderation system that works in real-time."
-                    image="/placeholder.svg?height=500&width=800"
-                    imageAlt="Content Protection Demonstration"
+                    image="/runash%20ai.webp"
+                    imageAlt="RunAsh AI moderation panel detecting unsafe content during a live stream"
                     features={[
                       "Automatic content moderation",
                       "Inappropriate content detection",
@@ -188,8 +193,8 @@ export default function FeaturesPage() {
                   <FeatureShowcase
                     title="AI-Powered Audience Engagement"
                     description="Boost viewer interaction and grow your community with smart engagement tools that analyze chat and viewer behavior."
-                    image="/placeholder.svg?height=500&width=800"
-                    imageAlt="Audience Engagement Demonstration"
+                    image="/runash%20live%20shopping.webp"
+                    imageAlt="Audience engagement analytics with live shopping interactions"
                     features={[
                       "Smart chat moderation",
                       "Automated highlight clips",
@@ -210,8 +215,8 @@ export default function FeaturesPage() {
                   <FeatureShowcase
                     title="Performance Optimization"
                     description="Our platform automatically optimizes your stream for maximum quality and stability, regardless of your internet connection."
-                    image="/placeholder.svg?height=500&width=800"
-                    imageAlt="Performance Optimization Demonstration"
+                    image="/runash%20studio.webp"
+                    imageAlt="RunAsh Studio performance optimization controls for adaptive streaming"
                     features={[
                       "Adaptive bitrate streaming",
                       "Network condition detection",
@@ -244,35 +249,44 @@ export default function FeaturesPage() {
                     <FeatureVideo
                       title="AI Video Enhancement"
                       description="Watch how our AI instantly improves video quality in challenging lighting conditions."
-                      videoThumbnail="/placeholder.svg?height=400&width=600"
+                      videoThumbnail="/real%20time%20video%20processing.webp"
                       duration="2:45"
+                      videoUrl="https://www.youtube.com/watch?v=jfKfPfyJRdk"
+                      embedUrl="https://www.youtube.com/embed/jfKfPfyJRdk"
                     />
                     <FeatureVideo
                       title="Virtual Backgrounds"
                       description="See how our AI creates professional virtual backgrounds without a green screen."
-                      videoThumbnail="/placeholder.svg?height=400&width=600"
+                      videoThumbnail="/futuristic-ai-video-background.jpg"
                       duration="3:12"
+                      videoUrl="https://vimeo.com/76979871"
                     />
                     <FeatureVideo
                       title="Multi-platform Streaming"
                       description="Learn how to stream to multiple platforms simultaneously with optimized settings."
-                      videoThumbnail="/placeholder.svg?height=400&width=600"
+                      videoThumbnail="/multi%20platform%20streaming.webp"
                       duration="4:30"
+                      videoUrl="https://www.youtube.com/watch?v=ysz5S6PUM-U"
+                      embedUrl="https://www.youtube.com/embed/ysz5S6PUM-U"
                     />
                     <FeatureVideo
                       title="Live Translation"
                       description="Watch our real-time caption translation in action, reaching global audiences."
-                      videoThumbnail="/placeholder.svg?height=400&width=600"
+                      videoThumbnail="/runash%20live.webp"
                       duration="2:18"
+                      videoUrl="https://www.youtube.com/watch?v=aqz-KE-bpKQ"
                     />
                   </div>
 
                   <div className="mt-12 text-center">
                     <Button
+                      asChild
                       size="lg"
                       className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white"
                     >
-                      View All Tutorials <ArrowRight className="ml-2 h-4 w-4" />
+                      <Link href="/tutorials">
+                        View All Tutorials <ArrowRight className="ml-2 h-4 w-4" />
+                      </Link>
                     </Button>
                   </div>
                 </div>
@@ -314,37 +328,43 @@ export default function FeaturesPage() {
                     <IntegrationCard
                       name="Twitch"
                       description="Stream directly to Twitch with enhanced video quality and smart chat moderation."
-                      icon="/placeholder.svg?height=80&width=80"
+                      icon="/logo.png"
+                      iconAlt="RunAsh integration icon for Twitch"
                       gradient="from-purple-500 to-purple-700"
                     />
                     <IntegrationCard
                       name="YouTube"
                       description="Reach your YouTube audience with AI-enhanced streams and automatic highlight clips."
-                      icon="/placeholder.svg?height=80&width=80"
+                      icon="/runashlogo.jpg"
+                      iconAlt="RunAsh integration icon for YouTube"
                       gradient="from-red-500 to-red-700"
                     />
                     <IntegrationCard
                       name="Discord"
                       description="Connect your Discord community with stream notifications and interactive features."
-                      icon="/placeholder.svg?height=80&width=80"
+                      icon="/RunAshChat.png"
+                      iconAlt="RunAsh integration icon for Discord"
                       gradient="from-indigo-500 to-indigo-700"
                     />
                     <IntegrationCard
                       name="OBS Studio"
                       description="Enhance your OBS workflow with our plugin for real-time AI video processing."
-                      icon="/placeholder.svg?height=80&width=80"
+                      icon="/runash%20studio.webp"
+                      iconAlt="RunAsh integration icon for OBS Studio"
                       gradient="from-blue-500 to-blue-700"
                     />
                     <IntegrationCard
                       name="Streamlabs"
                       description="Integrate with Streamlabs for enhanced alerts and donation features."
-                      icon="/placeholder.svg?height=80&width=80"
+                      icon="/runash%20organic.webp"
+                      iconAlt="RunAsh integration icon for Streamlabs"
                       gradient="from-green-500 to-green-700"
                     />
                     <IntegrationCard
                       name="TikTok Live"
                       description="Stream to TikTok Live with vertical video optimization and engagement tools."
-                      icon="/placeholder.svg?height=80&width=80"
+                      icon="/runash%20live%20selling.webp"
+                      iconAlt="RunAsh integration icon for TikTok Live"
                       gradient="from-black to-gray-800"
                     />
                   </div>
@@ -455,17 +475,21 @@ export default function FeaturesPage() {
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button
+                asChild
                 size="lg"
                 className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white"
               >
-                Start Free Trial <ArrowRight className="ml-2 h-4 w-4" />
+                <Link href="/signup">
+                  Start Free Trial <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
               </Button>
               <Button
+                asChild
                 size="lg"
                 variant="outline"
                 className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/50"
               >
-                Schedule a Demo
+                <Link href="/schedule">Schedule a Demo</Link>
               </Button>
             </div>
           </div>
@@ -565,6 +589,14 @@ export default function FeaturesPage() {
                     className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
                   >
                     Blog
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/brand"
+                    className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
+                  >
+                    Brand Assets
                   </a>
                 </li>
               </ul>
