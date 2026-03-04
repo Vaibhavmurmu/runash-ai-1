@@ -33,7 +33,18 @@ export default function Navbar() {
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center">
-            <Link href="/" className="flex items-center">
+            <Link href="/" className="group flex items-center gap-3" aria-label="RunAsh Home">
+              <div className="relative h-9 w-9 overflow-hidden rounded-md border border-orange-200/70 bg-white shadow-sm dark:border-orange-900/40 dark:bg-gray-900">
+                <Image
+                  src="/logo.png"
+                  alt="RunAsh logo"
+                  fill
+                  sizes="36px"
+                  className="object-cover transition-transform duration-300 group-hover:scale-105"
+                  priority
+                />
+              </div>
+            
               <span className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-yellow-500 dark:from-orange-400 dark:to-yellow-300 text-transparent bg-clip-text">
                 RunAsh
               </span>
