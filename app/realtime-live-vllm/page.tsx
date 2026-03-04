@@ -2,14 +2,33 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { ArrowUpRight, Download, Radio, Video } from "lucide-react"
 
+import TrackedLinkButton from "@/components/marketing/tracked-link-button"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
+const pageUrl = "https://runash.in/realtime-live-vllm"
+const pageTitle = "RunAsh Real-Time/Live Streaming vLLM | RunAsh"
+const pageDescription =
+  "Introducing RunAsh real-time/live streaming vLLM for efficient fine-tuning of Stable Video Diffusion SVD-XT (25-30 frame clips), with benchmark contenders and paper links."
+
 export const metadata: Metadata = {
-  title: "RunAsh Real-Time/Live Streaming vLLM | RunAsh",
-  description:
-    "Introducing RunAsh real-time/live streaming vLLM for efficient fine-tuning of Stable Video Diffusion SVD-XT (25-30 frame clips), with benchmark contenders and paper links.",
+  title: pageTitle,
+  description: pageDescription,
+  alternates: {
+    canonical: pageUrl,
+  },
+  openGraph: {
+    title: pageTitle,
+    description: pageDescription,
+    url: pageUrl,
+    siteName: "RunAsh",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: pageTitle,
+    description: pageDescription,
+  },
 }
 
 const contenders = [
@@ -113,16 +132,26 @@ export default function RealtimeLiveVllmPage() {
               <CardDescription>Read technical details or download the RunAsh real-time model package.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-3">
-              <Button asChild className="bg-gradient-to-r from-orange-600 to-yellow-500 text-white hover:from-orange-700 hover:to-yellow-600">
-                <Link href="https://arxiv.org/abs/2401.12345" target="_blank" rel="noreferrer">
-                  Read arXiv Paper <ArrowUpRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-              <Button asChild variant="outline" className="border-orange-300 text-orange-700 hover:bg-orange-100/70 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-900/30">
-                <Link href="/downloads/runash-realtime-live-vllm-svd-xt.zip">
-                  Download Model Package <Download className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
+              <TrackedLinkButton
+                href="https://arxiv.org/abs/2401.12345"
+                external
+                label="Read arXiv Paper"
+                eventName="marketing_link_click"
+                source="realtime_live_vllm"
+                className="bg-gradient-to-r from-orange-600 to-yellow-500 text-white hover:from-orange-700 hover:to-yellow-600"
+              >
+                Read arXiv Paper <ArrowUpRight className="ml-2 h-4 w-4" />
+              </TrackedLinkButton>
+              <TrackedLinkButton
+                href="/downloads/runash-realtime-live-vllm-svd-xt.zip"
+                label="Download Model Package"
+                eventName="marketing_link_click"
+                source="realtime_live_vllm"
+                variant="outline"
+                className="border-orange-300 text-orange-700 hover:bg-orange-100/70 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-900/30"
+              >
+                Download Model Package <Download className="ml-2 h-4 w-4" />
+              </TrackedLinkButton>
             </CardContent>
           </Card>
 
@@ -133,17 +162,38 @@ export default function RealtimeLiveVllmPage() {
             </CardHeader>
             <CardContent className="flex flex-wrap gap-3">
               {ecosystemLinks.map((item) => (
-                <Button
+                <TrackedLinkButton
                   key={item.name}
-                  asChild
+                  href={item.href}
+                  external
+                  label={item.name}
+                  eventName="marketing_link_click"
+                  source="realtime_live_vllm"
                   variant="outline"
                   className="border-orange-300 text-orange-700 hover:bg-orange-100/70 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-900/30"
                 >
-                  <Link href={item.href} target="_blank" rel="noreferrer">
-                    {item.name} <ArrowUpRight className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
+                  {item.name} <ArrowUpRight className="ml-2 h-4 w-4" />
+                </TrackedLinkButton>
               ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Explore RunAsh LLM</CardTitle>
+              <CardDescription>Need text-first model fine-tuning? Check the RunAsh LLM track.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TrackedLinkButton
+                href="/runash-llm"
+                label="Open RunAsh LLM Page"
+                eventName="marketing_link_click"
+                source="realtime_live_vllm"
+                variant="outline"
+                className="border-orange-300 text-orange-700 hover:bg-orange-100/70 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-900/30"
+              >
+                Open RunAsh LLM Page <ArrowUpRight className="ml-2 h-4 w-4" />
+              </TrackedLinkButton>
             </CardContent>
           </Card>
 

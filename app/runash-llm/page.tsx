@@ -1,15 +1,33 @@
 import type { Metadata } from "next"
-import Link from "next/link"
 import { ArrowUpRight, BrainCircuit, Cpu, Download, Gauge, Sparkles } from "lucide-react"
 
+import TrackedLinkButton from "@/components/marketing/tracked-link-button"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
+const pageUrl = "https://runash.in/runash-llm"
+const pageTitle = "RunAsh LLM | RunAsh"
+const pageDescription =
+  "Introducing RunAsh LLM, optimized for efficient fine-tuning on Mistral 7B and Mistral Small 3 for real-world production workflows."
+
 export const metadata: Metadata = {
-  title: "RunAsh LLM | RunAsh",
-  description:
-    "Introducing RunAsh LLM, optimized for efficient fine-tuning on Mistral 7B and Mistral Small 3 for real-world production workflows.",
+  title: pageTitle,
+  description: pageDescription,
+  alternates: {
+    canonical: pageUrl,
+  },
+  openGraph: {
+    title: pageTitle,
+    description: pageDescription,
+    url: pageUrl,
+    siteName: "RunAsh",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: pageTitle,
+    description: pageDescription,
+  },
 }
 
 const modelTracks = [
@@ -92,16 +110,26 @@ export default function RunAshLlmPage() {
               <CardDescription>Open the technical write-up or download the model package.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-3">
-              <Button asChild className="bg-gradient-to-r from-orange-600 to-yellow-500 text-white hover:from-orange-700 hover:to-yellow-600">
-                <Link href="https://arxiv.org/abs/2310.06825" target="_blank" rel="noreferrer">
-                  Read Mistral Paper <ArrowUpRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-              <Button asChild variant="outline" className="border-orange-300 text-orange-700 hover:bg-orange-100/70 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-900/30">
-                <Link href="/downloads/runash-llm-mistral-finetune-pack.zip">
-                  Download RunAsh LLM Package <Download className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
+              <TrackedLinkButton
+                href="https://arxiv.org/abs/2310.06825"
+                external
+                label="Read Mistral Paper"
+                eventName="marketing_link_click"
+                source="runash_llm"
+                className="bg-gradient-to-r from-orange-600 to-yellow-500 text-white hover:from-orange-700 hover:to-yellow-600"
+              >
+                Read Mistral Paper <ArrowUpRight className="ml-2 h-4 w-4" />
+              </TrackedLinkButton>
+              <TrackedLinkButton
+                href="/downloads/runash-llm-mistral-finetune-pack.zip"
+                label="Download RunAsh LLM Package"
+                eventName="marketing_link_click"
+                source="runash_llm"
+                variant="outline"
+                className="border-orange-300 text-orange-700 hover:bg-orange-100/70 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-900/30"
+              >
+                Download RunAsh LLM Package <Download className="ml-2 h-4 w-4" />
+              </TrackedLinkButton>
             </CardContent>
           </Card>
 
@@ -132,17 +160,38 @@ export default function RunAshLlmPage() {
             </CardHeader>
             <CardContent className="flex flex-wrap gap-3">
               {stackLinks.map((item) => (
-                <Button
+                <TrackedLinkButton
                   key={item.name}
-                  asChild
+                  href={item.href}
+                  external
+                  label={item.name}
+                  eventName="marketing_link_click"
+                  source="runash_llm"
                   variant="outline"
                   className="border-orange-300 text-orange-700 hover:bg-orange-100/70 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-900/30"
                 >
-                  <Link href={item.href} target="_blank" rel="noreferrer">
-                    {item.name} <ArrowUpRight className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
+                  {item.name} <ArrowUpRight className="ml-2 h-4 w-4" />
+                </TrackedLinkButton>
               ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Explore Real-time vLLM</CardTitle>
+              <CardDescription>Need live video generation workflows? Check the real-time model page.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TrackedLinkButton
+                href="/realtime-live-vllm"
+                label="Open Real-time vLLM Page"
+                eventName="marketing_link_click"
+                source="runash_llm"
+                variant="outline"
+                className="border-orange-300 text-orange-700 hover:bg-orange-100/70 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-900/30"
+              >
+                Open Real-time vLLM Page <ArrowUpRight className="ml-2 h-4 w-4" />
+              </TrackedLinkButton>
             </CardContent>
           </Card>
         </div>
