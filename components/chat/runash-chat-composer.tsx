@@ -104,8 +104,10 @@ const SLASH_COMMANDS: SlashCommand[] = [
   },
 ]
 
-const SECONDARY_ACTION_BUTTON_CLASS = "h-8 rounded-lg border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
-const ATTACHMENT_ACTION_BUTTON_CLASS = "h-8 rounded-lg border-zinc-600 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+const SECONDARY_ACTION_BUTTON_CLASS =
+  "h-8 rounded-lg border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+const ATTACHMENT_ACTION_BUTTON_CLASS =
+  "h-8 rounded-lg border-zinc-600 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
 
 export function RunAshChatComposer({
   value,
@@ -342,9 +344,17 @@ export function RunAshChatComposer({
 
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault()
-              if (canSend) {
+              if (canSend || value.trim()) {
                 handleSubmit()
-              } else if (isRetryableFailure && onRetry) {
+              } else if (
+                isRetryableFailure &&
+                onRetry &&
+                !attachmentPreview &&
+                !isBusy &&
+                !isHardLimitExceeded &&
+                !disabled &&
+                !value.trim()
+              ) {
                 onRetry()
               }
             }
@@ -509,7 +519,7 @@ export function RunAshChatComposer({
               <button
                 key={item.command}
                 type="button"
-                className="flex w-full items-center justify-between rounded px-2 py-1 text-left hover:bg-zinc-800"
+                className="flex w-full items-center justify-between rounded px-2 py-1 text-left hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"
                 onClick={() => applySlashCommand(item)}
               >
                 <span>{item.command}</span>
@@ -528,7 +538,7 @@ export function RunAshChatComposer({
             <button
               key={suggestion}
               type="button"
-              className="flex w-full items-center px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800"
+              className="flex w-full items-center px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"
               onClick={() => {
                 onChange(suggestion)
                 setShowSuggestions(false)
@@ -599,12 +609,19 @@ export function RunAshChatComposer({
               onClick={onRetry}
               className="h-8 rounded-lg border-amber-700 text-amber-200 hover:bg-amber-950"
               disabled={disabled || isBusy}
+              aria-label="Retry previous request"
             >
               <RotateCcw className="mr-1 h-4 w-4" /> Retry
             </Button>
           ) : null}
           {isStreaming && onStop ? (
-            <Button type="button" variant="outline" onClick={onStop} className="h-8 rounded-lg border-red-700 text-red-200 hover:bg-red-950">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onStop}
+              className="h-8 rounded-lg border-red-700 text-red-200 hover:bg-red-950"
+              aria-label="Stop generating response"
+            >
               <OctagonX className="mr-1 h-4 w-4" /> Stop
             </Button>
           ) : null}

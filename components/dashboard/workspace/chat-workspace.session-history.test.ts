@@ -17,4 +17,6 @@ test("chat workspace exposes resilient session-history states and recovery actio
   assert.match(source, />\s*Retry history sync\s*</)
   assert.match(source, /aria-label=\{leftDrawerOpen \? "Hide history" : "Show history"\}/)
   assert.match(source, /aria-label="Close session history"/)
+  assert.match(source, /aria-label=\{`Open recent session \$\{recentSession\.title\}`\}/)
+  assert.match(source, /focus-visible:ring-orange-300/)
 })

@@ -1885,7 +1885,8 @@ export function ChatWorkspace() {
                       <button
                         type="button"
                         onClick={() => loadSession(recentSession)}
-                        className="mt-1.5 w-full rounded-md border border-transparent px-2 py-1.5 text-left text-xs text-zinc-200 transition hover:border-zinc-700 hover:bg-zinc-800/80"
+                        className="mt-1.5 w-full rounded-md border border-transparent px-2 py-1.5 text-left text-xs text-zinc-200 transition hover:border-zinc-700 hover:bg-zinc-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"
+                        aria-label={`Open recent session ${recentSession.title}`}
                       >
                         <span className="block font-medium text-zinc-100">{recentSession.title}</span>
                         <span className="block text-zinc-400">Continue where you left off.</span>
