@@ -4,6 +4,7 @@ import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 
 import { MCPServerManagerContent, type ChatMcpServer } from "@/components/chat/mcp-server-manager"
+import { MCP_MANAGER_ENABLED, RunAshChatCommandCenter } from "@/components/chat/runash-chat-command-center"
 
 test("MCP server manager exposes add/edit/enable-disable actions", () => {
   const servers: ChatMcpServer[] = [
@@ -32,4 +33,21 @@ test("MCP server manager exposes add/edit/enable-disable actions", () => {
   assert.match(html, /Edit/)
   assert.match(html, /Disable/)
   assert.match(html, /Enable/)
+})
+
+test("command center smoke: manager entry point is discoverable when feature flag is enabled", () => {
+  if (!MCP_MANAGER_ENABLED) {
+    return
+  }
+
+  const html = renderToStaticMarkup(
+    createElement(RunAshChatCommandCenter, {
+      quickActions: [],
+      onSelectPrompt: () => undefined,
+    }),
+  )
+
+  assert.match(html, /Chat settings/)
+  assert.match(html, /MCP tools/)
+  assert.match(html, /Manage servers/)
 })
