@@ -12,9 +12,7 @@ import { Label } from "@/components/ui/label"
 import { useOptionalAuth } from "@/lib/auth/auth-context"
 import { BillClient } from "@/lib/services/bill-client"
 
-"use client"
-
-export default function PayBillPage(props: { params: Promise<{ id: string }> }) {
+export default function PayBillPage({ params }: { params: { id: string } }) {
   const [bill, setBill] = useState<any>(null)
   const [billDetails, setBillDetails] = useState<any>(null)
   const [amount, setAmount] = useState("")
@@ -23,27 +21,20 @@ export default function PayBillPage(props: { params: Promise<{ id: string }> }) 
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState(false)
   const { user } = useOptionalAuth()
-  const [billId, setBillId] = useState<string | null>(null)
 
   useEffect(() => {
-    // Initialize params
-    const initParams = async () => {
-      const { id } = await props.params
-      setBillId(id)
-      void loadBillData()
-    }
-    void initParams()
-  }, [props.params, user?.id])
+    void loadBillData()
+  }, [params.id, user?.id])
 
   const loadBillData = async () => {
-    if (!user?.id || !billId) {
+    if (!user?.id) {
       setLoading(false)
       return
     }
 
     try {
       const { data: userBills } = await BillClient.getUserBills(user.id)
-      const userBill = userBills?.find((b) => b.id === billId)
+      const userBill = userBills?.find((b) => b.id === params.id)
 
       if (userBill) {
         setBill(userBill)
@@ -80,7 +71,7 @@ export default function PayBillPage(props: { params: Promise<{ id: string }> }) 
       try {
         const { error } = await BillClient.payBill({
           userId: user?.id || 'anonymous',
-          userBillId: params.id,
+          userBillId: bill?.id,
           billAmount: Number.parseFloat(amount),
           convenienceFee: 2.5,
           paymentMethod: "UPI",
