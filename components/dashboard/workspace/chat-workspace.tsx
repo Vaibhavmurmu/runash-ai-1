@@ -43,6 +43,15 @@ import { getRecommendedProducts, shouldRecommendProducts } from "@/lib/chat-prod
 
 const UPGRADE_METRICS_KEY = "runash_upgrade_metrics_v2"
 
+const DEFAULT_ASSISTANT_MESSAGE: ChatMessage = {
+  id: "1",
+  content:
+    "Hello! I'm RunAshChat, your AI assistant for organic products, sustainable living, recipes, and retailing automation. How can I help you today?",
+  role: "assistant",
+  timestamp: new Date(),
+  type: "text",
+}
+
 export function ChatWorkspace() {
   type StreamControllerState = "idle" | "sending" | "streaming" | "stopping" | "failed"
   type ComposerHealthState = "ready" | "usage-limit" | "provider-error" | "network-timeout"
@@ -59,16 +68,7 @@ export function ChatWorkspace() {
   const queryLibraryItemTitle = searchParams.get("libraryItemTitle")
   const bootstrapCompletedRef = useRef(false)
   const [bootstrapProjectName, setBootstrapProjectName] = useState<string | null>(null)
-  const defaultAssistantMessage: ChatMessage = {
-    id: "1",
-    content:
-      "Hello! I'm RunAshChat, your AI assistant for organic products, sustainable living, recipes, and retailing automation. How can I help you today?",
-    role: "assistant",
-    timestamp: new Date(),
-    type: "text",
-  }
-
-  const [messages, setMessages] = useState<ChatMessage[]>([defaultAssistantMessage])
+  const [messages, setMessages] = useState<ChatMessage[]>([DEFAULT_ASSISTANT_MESSAGE])
   const [inputValue, setInputValue] = useState("")
   const [isTyping, setIsTyping] = useState(false)
   const [streamControllerState, setStreamControllerState] = useState<StreamControllerState>("idle")
@@ -488,6 +488,9 @@ export function ChatWorkspace() {
         const listed = Array.isArray(payload?.data) ? payload.data : []
         if (listed.length === 0) {
           setPersistedSessionIds([])
+          setChatSessions([])
+          setCurrentSession(null)
+          setMessages([DEFAULT_ASSISTANT_MESSAGE])
           setSessionsStatus("ready")
           return
         }
@@ -495,7 +498,7 @@ export function ChatWorkspace() {
         setPersistedSessionIds(listed.map((entry: { id: string }) => String(entry.id)))
 
         setChatSessions((previous) => {
-          const mapped = listed.map((entry: { id: string; title?: string; created_at?: string }) => ({
+          return listed.map((entry: { id: string; title?: string; created_at?: string }) => ({
             id: String(entry.id),
             title: entry.title ?? "Session",
             messages: previous.find((session) => session.id === String(entry.id))?.messages ?? [],
@@ -513,8 +516,6 @@ export function ChatWorkspace() {
               recentSearches: [],
             },
           }))
-
-          return [...mapped, ...previous.filter((session) => !mapped.some((item) => item.id === session.id))]
         })
         setSessionsStatus("ready")
       } catch {
@@ -532,7 +533,7 @@ export function ChatWorkspace() {
     try {
       const hydratedMessages = (await fetchSessionMessages(session.id)).map(normalizeChatMessage)
       if (sessionHydrationRequestRef.current !== requestId) return
-      const nextMessages = hydratedMessages.length > 0 ? hydratedMessages : [defaultAssistantMessage]
+      const nextMessages = hydratedMessages.length > 0 ? hydratedMessages : [DEFAULT_ASSISTANT_MESSAGE]
 
       setMessages(nextMessages)
       setChatSessions((prev) =>
@@ -559,7 +560,7 @@ export function ChatWorkspace() {
 
   const handleNewChatSession = () => {
     setCurrentSession(null)
-    setMessages([defaultAssistantMessage])
+    setMessages([DEFAULT_ASSISTANT_MESSAGE])
     setInputValue("")
     setComposerHealth("ready")
     setStreamControllerState("idle")
@@ -570,7 +571,7 @@ export function ChatWorkspace() {
     setPersistedSessionIds((prev) => prev.filter((id) => id !== sessionId))
     if (currentSession?.id === sessionId) {
       setCurrentSession(null)
-      setMessages([defaultAssistantMessage])
+      setMessages([DEFAULT_ASSISTANT_MESSAGE])
     }
   }
 
@@ -582,6 +583,13 @@ export function ChatWorkspace() {
 
     void loadSession(matchedSession)
   }, [querySessionId, chatSessions])
+
+  useEffect(() => {
+    if (!currentSession) return
+    if (persistedSessionIds.includes(currentSession.id)) return
+    setCurrentSession(null)
+    setMessages([DEFAULT_ASSISTANT_MESSAGE])
+  }, [currentSession, persistedSessionIds])
 
   useEffect(() => {
     if (bootstrapCompletedRef.current) return
@@ -1844,7 +1852,7 @@ export function ChatWorkspace() {
                             className="text-zinc-300 hover:text-zinc-100"
                             onClick={() => handleSendMessage(starterPromptCards[0]?.prompt ?? "")}
                           >
-                            Suggested starter
+                            Suggested starters
                           </Button>
                         </div>
                       </div>
