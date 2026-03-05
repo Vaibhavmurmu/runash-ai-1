@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -22,6 +22,7 @@ interface ChatSidebarProps {
   activeProjectName?: string | null
   selectedLibraryItemTitle?: string | null
   onNavigateToWorkspaceTool?: () => void
+  persistedSessionIds?: string[]
 }
 
 export default function ChatSidebar({
@@ -36,14 +37,18 @@ export default function ChatSidebar({
   activeProjectName,
   selectedLibraryItemTitle,
   onNavigateToWorkspaceTool,
+  persistedSessionIds,
 }: ChatSidebarProps) {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState("")
   const [workspaceToolsOpen, setWorkspaceToolsOpen] = useState(true)
 
-  const filteredSessions = sessions.filter((session) =>
-    session.title.toLowerCase().includes(searchQuery.toLowerCase()),
+  const persistedSessionIdSet = useMemo(() => new Set(persistedSessionIds ?? []), [persistedSessionIds])
+  const persistedSessions = useMemo(
+    () => sessions.filter((session) => (persistedSessionIds ? persistedSessionIdSet.has(session.id) : true)),
+    [persistedSessionIdSet, persistedSessionIds, sessions],
   )
+  const filteredSessions = persistedSessions.filter((session) => session.title.toLowerCase().includes(searchQuery.toLowerCase()))
   const isSearching = searchQuery.trim().length > 0
 
   const handleNewChat = () => {
@@ -175,18 +180,18 @@ export default function ChatSidebar({
               ) : null}
             </section>
 
-            {sessions.length === 0 ? (
+            {persistedSessions.length === 0 ? (
               <div className="rounded-lg border border-dashed p-4 text-sm">
                 <p className="font-medium">No chat history yet</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Start your first conversation or load context to get better answers.
+                  You don&apos;t have any saved sessions yet. Start a new chat or use a suggested starter.
                 </p>
                 <div className="mt-3 grid gap-2">
                   <Button size="sm" onClick={handleNewChat}>
                     <Plus className="mr-1 h-4 w-4" /> New chat
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => onSuggestedPrompts?.()}>
-                    Suggested prompts
+                    Suggested starters
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => onImportContext?.()}>
                     Import context
@@ -195,10 +200,10 @@ export default function ChatSidebar({
               </div>
             ) : null}
 
-            {sessions.length > 0 && filteredSessions.length === 0 && isSearching ? (
+            {persistedSessions.length > 0 && filteredSessions.length === 0 && isSearching ? (
               <div className="rounded-lg border border-dashed p-4 text-sm">
-                <p className="font-medium">No matching sessions</p>
-                <p className="mt-1 text-xs text-muted-foreground">Try a different keyword or start a new chat.</p>
+                <p className="font-medium">No results</p>
+                <p className="mt-1 text-xs text-muted-foreground">No persisted sessions match your search.</p>
                 <Button size="sm" variant="outline" className="mt-3" onClick={handleNewChat}>
                   <Plus className="mr-1 h-4 w-4" /> New chat
                 </Button>
