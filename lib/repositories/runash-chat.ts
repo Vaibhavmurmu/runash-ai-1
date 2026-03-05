@@ -19,7 +19,6 @@ import {
 const DATA_DIR = path.join(process.cwd(), "data")
 const SESSIONS_FILE = path.join(DATA_DIR, "sessions.json")
 const MESSAGES_FILE = path.join(DATA_DIR, "messages.json")
-const DEFAULT_USER_ID = "anonymous"
 
 const useDatabaseBackedChatStorage = process.env.RUNASH_CHAT_DB_REPOSITORY_ENABLED === "true"
 
@@ -46,11 +45,6 @@ function readJsonFile<T>(filePath: string, fallback: T): T {
 function writeJsonFile<T>(filePath: string, value: T) {
   ensureDataFile(filePath, JSON.stringify(Array.isArray(value) ? [] : {}))
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2))
-}
-
-function resolveUserId(userId?: string | null) {
-  const normalized = String(userId ?? "").trim()
-  return normalized || DEFAULT_USER_ID
 }
 
 function requireUserId(userId?: string | null) {
