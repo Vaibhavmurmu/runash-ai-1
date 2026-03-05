@@ -310,9 +310,9 @@ export function RunAshChatComposer({
           : "Send"
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       <div
-        className={`rounded-md border bg-zinc-900 p-2 transition-colors ${isDragging ? "border-orange-400" : "border-zinc-700"}`}
+        className={`rounded-2xl border bg-zinc-900/90 p-3 shadow-[0_10px_30px_-24px_rgba(0,0,0,0.9)] transition-colors ${isDragging ? "border-orange-400" : "border-zinc-700/80"}`}
         onDragOver={(event) => {
           event.preventDefault()
           if (!onAttachFile || isTouchDevice) return
@@ -348,7 +348,7 @@ export function RunAshChatComposer({
           }}
           rows={4}
           placeholder={placeholder}
-          className="min-h-[96px] resize-y border-0 bg-transparent text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-0"
+          className="min-h-[88px] resize-y border-0 bg-transparent px-1 text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-0"
           aria-invalid={Boolean(composerError)}
           disabled={disabled || streamState === "stopping"}
         />
@@ -362,7 +362,7 @@ export function RunAshChatComposer({
               onClick={() => setShowSecondaryControls((previous) => !previous)}
               aria-expanded={showSecondaryControls}
               aria-controls="composer-secondary-controls"
-              className="border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+              className="h-8 rounded-full border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
             >
               Advanced options
               <ChevronDown className={`ml-1 h-3.5 w-3.5 transition-transform ${showSecondaryControls ? "rotate-180" : ""}`} />
@@ -383,7 +383,7 @@ export function RunAshChatComposer({
                   size="sm"
                   onClick={() => attachmentInputRef.current?.click()}
                   disabled={disabled || isBusy}
-                  className="h-8 border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+                  className="h-8 rounded-full border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
                   aria-label="Attach image"
                 >
                   <ImageIcon className="mr-1 h-3.5 w-3.5" />
@@ -391,7 +391,7 @@ export function RunAshChatComposer({
                 </Button>
               </>
             ) : null}
-            <span className="text-zinc-500">Type / for RunAsh templates • Ctrl/Cmd+Shift+P to polish</span>
+            <span className="text-zinc-500">Type / for templates • Ctrl/Cmd+Shift+P to polish</span>
           </div>
 
           <div className="flex items-center gap-3 text-zinc-500">
@@ -454,9 +454,9 @@ export function RunAshChatComposer({
         ) : null}
 
         {attachmentPreview ? (
-          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-zinc-700 bg-zinc-950/70 p-2">
-            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900/70 px-2 py-1 text-xs text-zinc-300">
-              <img src={attachmentPreview.previewUrl} alt={attachmentPreview.metadata.name} className="h-8 w-8 rounded object-cover" />
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-zinc-700/80 bg-zinc-950/70 p-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/70 px-2 py-1.5 text-xs text-zinc-300">
+              <img src={attachmentPreview.previewUrl} alt={attachmentPreview.metadata.name} className="h-9 w-9 rounded-lg object-cover" />
               <div className="min-w-0">
                 <p className="truncate font-medium text-zinc-100">{attachmentPreview.metadata.name}</p>
                 <p className={attachmentPreview.uploadState === "failed" ? "text-red-300" : "text-zinc-400"}>
@@ -467,17 +467,17 @@ export function RunAshChatComposer({
             </div>
 
             {attachmentPreview.uploadState === "failed" && onRetryAttachment ? (
-              <Button type="button" variant="outline" size="sm" className="h-7 border-zinc-600 bg-zinc-900 text-zinc-200" onClick={onRetryAttachment}>
+              <Button type="button" variant="outline" size="sm" className="h-7 rounded-full border-zinc-600 bg-zinc-900 text-zinc-200" onClick={onRetryAttachment}>
                 <RefreshCcw className="mr-1 h-3.5 w-3.5" /> Retry
               </Button>
             ) : null}
             {onAttachFile ? (
-              <Button type="button" variant="outline" size="sm" className="h-7 border-zinc-600 bg-zinc-900 text-zinc-200" onClick={() => attachmentInputRef.current?.click()} disabled={disabled || isBusy}>
+              <Button type="button" variant="outline" size="sm" className="h-7 rounded-full border-zinc-600 bg-zinc-900 text-zinc-200" onClick={() => attachmentInputRef.current?.click()} disabled={disabled || isBusy}>
                 Replace
               </Button>
             ) : null}
             {onRemoveAttachment ? (
-              <Button type="button" variant="outline" size="sm" className="h-7 border-zinc-600 bg-zinc-900 text-zinc-200" onClick={onRemoveAttachment} disabled={disabled || isBusy}>
+              <Button type="button" variant="outline" size="sm" className="h-7 rounded-full border-zinc-600 bg-zinc-900 text-zinc-200" onClick={onRemoveAttachment} disabled={disabled || isBusy}>
                 <X className="mr-1 h-3.5 w-3.5" /> Remove
               </Button>
             ) : null}
@@ -605,22 +605,34 @@ export function RunAshChatComposer({
               <OctagonX className="mr-1 h-4 w-4" /> Stop
             </Button>
           ) : null}
-          <Button
-            onClick={() => handleSubmit()}
-            disabled={!canSend}
-            className="bg-orange-500 px-4 font-semibold text-zinc-950 hover:bg-orange-400"
-            aria-label="Send prompt"
-          >
+            <Button
+              onClick={() => handleSubmit()}
+              disabled={!canSend}
+              className="rounded-full bg-orange-500 px-4 font-semibold text-zinc-950 hover:bg-orange-400"
+              aria-label="Send prompt"
+            >
             <Send className="mr-1 h-4 w-4" />
             {sendButtonLabel}
           </Button>
         </div>
       </div>
 
-      <div className="rounded-md border border-zinc-800/80 bg-zinc-950/60 px-3 py-2 text-[11px] text-zinc-400">
-
-        <span>Need higher usage limits? <a href="/upgrade" className="text-amber-300 underline underline-offset-2">Upgrade your plan</a>.</span>
-        {onAttachFile ? <span className="ml-1">{isTouchDevice ? "Tap Attach to pick an image." : "Drag and drop an image, or click Attach."}</span> : null}
+      <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/60 px-3 py-2 text-[11px] text-zinc-400">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>
+            Need higher usage limits?{" "}
+            <a href="/upgrade" className="text-amber-300 underline underline-offset-2">
+              Upgrade your plan
+            </a>
+            .
+          </span>
+          {onAttachFile ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-zinc-700/80 bg-zinc-900/80 px-2 py-0.5 text-zinc-300">
+              <ImageIcon className="h-3 w-3" />
+              {isTouchDevice ? "Tap Attach to upload" : "Drag & drop or click Attach"}
+            </span>
+          ) : null}
+        </div>
 
         {shouldShowUpgradePrompt ? (
           <div className="flex items-center justify-between gap-2">
@@ -647,8 +659,6 @@ export function RunAshChatComposer({
             </Button>
           </div>
         ) : null}
-        {onAttachFile ? <span className={shouldShowUpgradePrompt ? "mt-1 block" : ""}>Drag and drop an image on desktop, or tap the image button on mobile.</span> : null}
-
       </div>
     </div>
   )
