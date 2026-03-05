@@ -16,7 +16,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 
-import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, OctagonX, MoreHorizontal, FileText, CreditCard, Megaphone, Workflow, ListChecks } from "lucide-react"
+import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, OctagonX, MoreHorizontal, FileText, CreditCard, Megaphone, Workflow, ListChecks, Loader2 } from "lucide-react"
 import type { ChatMessage, ChatSession, UserPreferences, QuickAction } from "@/types/runash-chat"
 import ChatMessageComponent from "@/components/chat/chat-message"
 import ChatSidebar from "@/components/chat/chat-sidebar"
@@ -154,6 +154,11 @@ export function ChatWorkspace() {
   const [voiceEnabled, setVoiceEnabled] = useState(false)
   const [voiceTranscriptHistory, setVoiceTranscriptHistory] = useState<string[]>([])
   const [sessionsStatus, setSessionsStatus] = useState<"loading" | "ready" | "error">("loading")
+  const [sessionOpenState, setSessionOpenState] = useState<{
+    status: "idle" | "loading" | "error"
+    sessionId: string | null
+    errorMessage: string | null
+  }>({ status: "idle", sessionId: null, errorMessage: null })
 
   const [attachmentPreview, setAttachmentPreview] = useState<ComposerAttachmentPreview | null>(null)
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
@@ -266,6 +271,126 @@ export function ChatWorkspace() {
       },
     },
   ])
+
+  const buildEmptySessionContext = () => ({
+    preferences: {
+      dietaryRestrictions: [],
+      sustainabilityPriority: "medium" as const,
+      budgetRange: [0, 100] as [number, number],
+      preferredCategories: [],
+      cookingSkillLevel: "intermediate" as const,
+    },
+    currentCart: [],
+    recentSearches: [],
+  })
+
+  const mapSessionMessageToChatMessage = (message: {
+    id?: string | number
+    role?: string
+    content?: string
+    created_at?: string
+    message_type?: string
+  }): ChatMessage | null => {
+    if ((message.role !== "user" && message.role !== "assistant") || typeof message.content !== "string") {
+      return null
+    }
+
+    return {
+      id: String(message.id ?? `${Date.now()}-${Math.random()}`),
+      role: message.role,
+      content: message.content,
+      timestamp: new Date(message.created_at ?? Date.now()),
+      type:
+        message.message_type === "product" ||
+        message.message_type === "recipe" ||
+        message.message_type === "tip" ||
+        message.message_type === "automation"
+          ? message.message_type
+          : "text",
+      status: "completed",
+    }
+  }
+
+  const fetchSessionMessages = async (sessionId: string) => {
+    const response = await fetch(`/api/messages/session/${encodeURIComponent(sessionId)}?limit=50`, { cache: "no-store" })
+    if (!response.ok) {
+      throw new Error("Unable to hydrate session")
+    }
+
+    const payload = (await response.json()) as { data?: Array<Record<string, unknown>> }
+    const rawMessages = Array.isArray(payload.data) ? payload.data : []
+
+    return rawMessages
+      .map((entry) =>
+        mapSessionMessageToChatMessage({
+          id: typeof entry.id === "string" || typeof entry.id === "number" ? entry.id : undefined,
+          role: typeof entry.role === "string" ? entry.role : undefined,
+          content: typeof entry.content === "string" ? entry.content : undefined,
+          created_at: typeof entry.created_at === "string" ? entry.created_at : undefined,
+          message_type: typeof entry.message_type === "string" ? entry.message_type : undefined,
+        }),
+      )
+      .filter((message): message is ChatMessage => message !== null)
+      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+  }
+
+  const persistSessionMessage = async (sessionId: string, role: "user" | "assistant", content: string) => {
+    if (!content.trim()) return null
+
+    const response = await fetch("/api/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId,
+        role,
+        content,
+        messageType: "text",
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error("Unable to persist message")
+    }
+
+    const payload = (await response.json()) as { data?: Record<string, unknown> }
+    return mapSessionMessageToChatMessage({
+      id: typeof payload.data?.id === "string" || typeof payload.data?.id === "number" ? payload.data.id : undefined,
+      role: typeof payload.data?.role === "string" ? payload.data.role : undefined,
+      content: typeof payload.data?.content === "string" ? payload.data.content : undefined,
+      created_at: typeof payload.data?.created_at === "string" ? payload.data.created_at : undefined,
+      message_type: typeof payload.data?.message_type === "string" ? payload.data.message_type : undefined,
+    })
+  }
+
+  const ensureActiveSession = async (titleSeed: string) => {
+    if (currentSession) {
+      return currentSession
+    }
+
+    const response = await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: titleSeed.trim().slice(0, 80) || "RunAsh Agent Session" }),
+    })
+
+    if (!response.ok) {
+      throw new Error("Unable to create chat session")
+    }
+
+    const payload = (await response.json()) as { data?: { id?: string | number; title?: string; created_at?: string } }
+    const newSession: ChatSession = {
+      id: String(payload.data?.id ?? `session-${Date.now()}`),
+      title: payload.data?.title ?? (titleSeed.trim().slice(0, 80) || "RunAsh Agent Session"),
+      messages: [],
+      createdAt: new Date(payload.data?.created_at ?? Date.now()),
+      updatedAt: new Date(payload.data?.created_at ?? Date.now()),
+      context: buildEmptySessionContext(),
+    }
+
+    setCurrentSession(newSession)
+    setChatSessions((prev) => [newSession, ...prev.filter((session) => session.id !== newSession.id)])
+    return newSession
+  }
 
   const quickActions: QuickAction[] = useMemo(
     () =>
@@ -457,9 +582,34 @@ export function ChatWorkspace() {
     })()
   }, [])
 
-  const loadSession = (session: ChatSession) => {
+  const loadSession = async (session: ChatSession) => {
     setCurrentSession(session)
-    setMessages(session.messages.length > 0 ? session.messages : [defaultAssistantMessage])
+    setSessionOpenState({ status: "loading", sessionId: session.id, errorMessage: null })
+
+    try {
+      const hydratedMessages = await fetchSessionMessages(session.id)
+      const nextMessages = hydratedMessages.length > 0 ? hydratedMessages : [defaultAssistantMessage]
+
+      setMessages(nextMessages)
+      setChatSessions((prev) =>
+        prev.map((item) =>
+          item.id === session.id
+            ? {
+                ...item,
+                messages: hydratedMessages,
+                updatedAt: hydratedMessages.at(-1)?.timestamp ?? item.updatedAt,
+              }
+            : item,
+        ),
+      )
+      setSessionOpenState({ status: "idle", sessionId: null, errorMessage: null })
+    } catch {
+      setSessionOpenState({
+        status: "error",
+        sessionId: session.id,
+        errorMessage: "Could not load this chat. Please retry.",
+      })
+    }
   }
 
   const handleNewChatSession = () => {
@@ -484,7 +634,7 @@ export function ChatWorkspace() {
     const matchedSession = chatSessions.find((session) => session.id === querySessionId)
     if (!matchedSession) return
 
-    loadSession(matchedSession)
+    void loadSession(matchedSession)
   }, [querySessionId, chatSessions])
 
   useEffect(() => {
@@ -639,6 +789,9 @@ export function ChatWorkspace() {
     }
 
     const assistantId = `${Date.now()}-assistant`
+    let activeSessionId: string | null = null
+    let activeSessionTitle: string | null = null
+    let assistantFinalContent = ""
     const assistantMessage: ChatMessage = {
       id: assistantId,
       content: "",
@@ -669,6 +822,16 @@ export function ChatWorkspace() {
     }, 45000)
 
     try {
+      const activeSession = await ensureActiveSession(content)
+      activeSessionId = activeSession.id
+      activeSessionTitle = activeSession.title
+
+      try {
+        await persistSessionMessage(activeSessionId, "user", content)
+      } catch {
+        // continue chat even when persistence is temporarily unavailable
+      }
+
       const requestedTools = resolveRequestedToolsForMessage(content)
       const normalizedContent = applyComposerModifiers(content)
 
@@ -679,8 +842,8 @@ export function ChatWorkspace() {
         headers: { "Content-Type": "application/json" },
         signal: abortController.signal,
         body: JSON.stringify({
-          sessionId: currentSession?.id ?? querySessionId ?? undefined,
-          title: currentSession?.title ?? "RunAsh Agent Session",
+          sessionId: activeSessionId ?? undefined,
+          title: activeSessionTitle ?? "RunAsh Agent Session",
           message: normalizedContent,
           model: selectedModel,
           provider: modelCatalog.find((entry) => entry.id === selectedModel)?.provider,
@@ -779,6 +942,7 @@ export function ChatWorkspace() {
               status: "streaming",
               content: `${existing.content}${String(payload.token ?? "")}`,
             }))
+            assistantFinalContent += String(payload.token ?? "")
           }
 
           if (eventName === "tool_start") {
@@ -935,6 +1099,9 @@ export function ChatWorkspace() {
           }
 
           if (eventName === "final") {
+            if (typeof payload.content === "string" && payload.content.length > 0) {
+              assistantFinalContent = payload.content
+            }
             updateAssistantMessage((existing) => ({
               ...existing,
               status: payload.status === "completed" ? "completed" : existing.status,
@@ -942,6 +1109,23 @@ export function ChatWorkspace() {
             }))
 
             if (payload.status === "completed") {
+              if (activeSessionId) {
+                try {
+                  await persistSessionMessage(activeSessionId, "assistant", assistantFinalContent)
+                } catch {
+                  // keep the in-memory assistant response even if persistence fails
+                }
+              }
+              setChatSessions((prev) =>
+                prev.map((session) =>
+                  session.id === activeSessionId
+                    ? {
+                        ...session,
+                        updatedAt: new Date(),
+                      }
+                    : session,
+                ),
+              )
               setHasCompletedFirstMessage(true)
               if (!firstCompletionTrackedRef.current) {
                 firstCompletionTrackedRef.current = true
@@ -988,6 +1172,13 @@ export function ChatWorkspace() {
         setRunDiagnostics((previous) => ({ ...previous, lastErrorCode: previous.lastErrorCode || "STREAM_REQUEST_FAILED" }))
         const fallback = buildAssistantResponse(content)
         setMessages((prev) => prev.map((entry) => (entry.id === assistantId ? { ...fallback, id: assistantId } : entry)))
+        if (activeSessionId) {
+          try {
+            await persistSessionMessage(activeSessionId, "assistant", fallback.content)
+          } catch {
+            // keep fallback response visible even if persistence fails
+          }
+        }
       }
     } finally {
       window.clearTimeout(timeoutId)
@@ -1308,6 +1499,13 @@ export function ChatWorkspace() {
   const handleUpgradeClick = (location: "composer_inline" | "header_account") => {
     trackUpgradeMetric("upgrade_click", location)
   }
+
+  const retrySessionOpen = () => {
+    if (!sessionOpenState.sessionId) return
+    const target = chatSessions.find((session) => session.id === sessionOpenState.sessionId)
+    if (!target) return
+    void loadSession(target)
+  }
   const recentSession = currentSession ?? chatSessions.at(0) ?? null
 
   const leftDrawer = (
@@ -1545,9 +1743,28 @@ export function ChatWorkspace() {
 
             <ScrollArea className="min-h-0 flex-1 p-3 sm:p-4">
               <div className="space-y-4">
-                {messages.map((message) => (
-                  <ChatMessageComponent key={message.id} message={message} sessionId={currentSession?.id} />
-                ))}
+                {sessionOpenState.status === "loading" ? (
+                  <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 text-zinc-300" aria-live="polite">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading conversation…
+                    </div>
+                    <div className="space-y-2">
+                      <div className="h-4 w-4/5 animate-pulse rounded bg-zinc-800" />
+                      <div className="h-4 w-2/3 animate-pulse rounded bg-zinc-800" />
+                      <div className="h-4 w-3/4 animate-pulse rounded bg-zinc-800" />
+                    </div>
+                  </div>
+                ) : sessionOpenState.status === "error" ? (
+                  <div className="rounded-lg border border-red-900/50 bg-red-950/20 p-4 text-sm text-red-100">
+                    <p>{sessionOpenState.errorMessage ?? "Unable to open this chat."}</p>
+                    <Button type="button" size="sm" variant="outline" className="mt-3" onClick={retrySessionOpen}>
+                      Retry opening chat
+                    </Button>
+                  </div>
+                ) : (
+                  messages.map((message) => <ChatMessageComponent key={message.id} message={message} sessionId={currentSession?.id} />)
+                )}
 
                 {(isTyping || streamControllerState === "sending" || streamControllerState === "streaming") && (
                   <div className="flex items-center space-x-2 text-zinc-400" aria-live="polite">
@@ -1644,7 +1861,7 @@ export function ChatWorkspace() {
                 value={inputValue}
                 onChange={setInputValue}
                 onSend={handleSendMessage}
-                disabled={streamControllerState === "sending" || streamControllerState === "streaming" || streamControllerState === "stopping"}
+                disabled={streamControllerState === "sending" || streamControllerState === "streaming" || streamControllerState === "stopping" || sessionOpenState.status === "loading"}
                 streamState={streamControllerState}
                 composerHealth={composerHealth}
                 onRetry={retryLastPrompt}
