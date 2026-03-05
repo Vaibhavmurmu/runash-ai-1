@@ -26,6 +26,8 @@
 
 ### 4) Lint / type / build / test gates
 
+> Use only exact commands defined in `package.json` for outcomes. Do not report `yarn`/`pnpm` command results in place of these rows.
+
 | Gate | Command | Outcome | Notes |
 | --- | --- | --- | --- |
 | Lint | `npm run lint` | ✅/⚠️/❌ | |
@@ -53,7 +55,7 @@
 
 ## Validation Commands (Executed)
 
-<!-- Copy the exact command output summary here so release confidence is auditable. -->
+<!-- Copy exact output summaries from executed package.json commands only (`npm run lint`, `npm run build`, `npm test`). If a command fails, document the concrete reason and add a follow-up action instead of marking success. -->
 
 | Command | Outcome | Output summary |
 | --- | --- | --- |
