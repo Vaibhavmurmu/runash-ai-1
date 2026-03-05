@@ -296,6 +296,9 @@ export function RunAshChatComposer({
   }, [upgradePromptDismissed])
 
   const shouldShowUpgradePrompt = showUpgradePrompt && !upgradePromptDismissed
+  const isStreaming = streamState === "sending" || streamState === "streaming"
+  const isBusy = isStreaming || streamState === "stopping" || isEnhancing || attachmentPreview?.uploadState === "uploading"
+  const canSend = !disabled && !isBusy && !isHardLimitExceeded && Boolean(value.trim())
 
   return (
     <div className="space-y-2">
@@ -318,6 +321,7 @@ export function RunAshChatComposer({
             if (composerError) setComposerError(null)
           }}
           onKeyDown={(event) => {
+            if ((event.nativeEvent as KeyboardEvent).isComposing) return
             if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "p") {
               event.preventDefault()
               void enhancePrompt()
@@ -333,7 +337,7 @@ export function RunAshChatComposer({
           placeholder={placeholder}
           className="min-h-[96px] resize-y border-0 bg-transparent text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-0"
           aria-invalid={Boolean(composerError)}
-          disabled={disabled}
+          disabled={disabled || streamState === "stopping"}
         />
 
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -365,6 +369,7 @@ export function RunAshChatComposer({
                   variant="outline"
                   size="sm"
                   onClick={() => attachmentInputRef.current?.click()}
+                  disabled={disabled || isBusy}
                   className="h-8 border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
                   aria-label="Attach image"
                 >
@@ -425,7 +430,7 @@ export function RunAshChatComposer({
               size="sm"
               variant="outline"
               onClick={() => void enhancePrompt()}
-              disabled={disabled || isEnhancing}
+              disabled={disabled || isBusy}
               className="border-zinc-600 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
               aria-label="Enhance prompt"
             >
@@ -454,12 +459,12 @@ export function RunAshChatComposer({
               </Button>
             ) : null}
             {onAttachFile ? (
-              <Button type="button" variant="outline" size="sm" className="h-7 border-zinc-600 bg-zinc-900 text-zinc-200" onClick={() => attachmentInputRef.current?.click()}>
+              <Button type="button" variant="outline" size="sm" className="h-7 border-zinc-600 bg-zinc-900 text-zinc-200" onClick={() => attachmentInputRef.current?.click()} disabled={disabled || isBusy}>
                 Replace
               </Button>
             ) : null}
             {onRemoveAttachment ? (
-              <Button type="button" variant="outline" size="sm" className="h-7 border-zinc-600 bg-zinc-900 text-zinc-200" onClick={onRemoveAttachment}>
+              <Button type="button" variant="outline" size="sm" className="h-7 border-zinc-600 bg-zinc-900 text-zinc-200" onClick={onRemoveAttachment} disabled={disabled || isBusy}>
                 <X className="mr-1 h-3.5 w-3.5" /> Remove
               </Button>
             ) : null}
@@ -571,19 +576,24 @@ export function RunAshChatComposer({
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
         <span>Enter to send • Shift+Enter newline • Controls are keyboard accessible.</span>
         <div className="flex items-center gap-2">
-          {(streamState === "sending" || streamState === "streaming") && onStop ? (
+          {streamState === "failed" && onRetry ? (
+            <Button type="button" variant="outline" onClick={onRetry} className="border-amber-700 text-amber-200 hover:bg-amber-950">
+              <RotateCcw className="mr-1 h-4 w-4" /> Retry response
+            </Button>
+          ) : null}
+          {isStreaming && onStop ? (
             <Button type="button" variant="outline" onClick={onStop} className="border-red-700 text-red-200 hover:bg-red-950">
               <OctagonX className="mr-1 h-4 w-4" /> Stop
             </Button>
           ) : null}
           <Button
             onClick={() => handleSubmit()}
-            disabled={disabled || !value.trim() || isHardLimitExceeded || attachmentPreview?.uploadState === "uploading"}
+            disabled={!canSend}
             className="bg-orange-500 px-4 font-semibold text-zinc-950 hover:bg-orange-400"
             aria-label="Send prompt"
           >
             <Send className="mr-1 h-4 w-4" />
-            Send
+            {streamState === "stopping" ? "Stopping..." : isStreaming ? "Sending..." : "Send"}
           </Button>
         </div>
       </div>
