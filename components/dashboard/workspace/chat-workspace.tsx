@@ -1858,11 +1858,11 @@ export function ChatWorkspace() {
 
             {showComposerEmptyState ? (
               <div className="border-t border-zinc-800 p-2.5 sm:p-3">
-                <div className="space-y-2.5 rounded-lg border border-zinc-800 bg-zinc-950/40 p-2.5 sm:space-y-3 sm:p-3">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-zinc-100">What do you want to create?</p>
-                    <p className="text-xs text-zinc-400">
-                      Create faster content, automate repeat work, and summarize complex tasks in seconds.
+                <div className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 sm:space-y-4 sm:p-4">
+                  <div className="space-y-1.5 text-center">
+                    <p className="text-lg font-semibold tracking-tight text-zinc-100 sm:text-xl">What should RunAshChat help you with next?</p>
+                    <p className="text-xs text-zinc-400 sm:text-sm">
+                      Start with a prompt, upload a screenshot, or choose a task below.
                     </p>
                   </div>
 
@@ -1915,7 +1915,7 @@ export function ChatWorkspace() {
             ) : null}
 
 
-            <div className="sticky bottom-0 border-t border-zinc-800 bg-[#050607]/95 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur supports-[backdrop-filter]:bg-[#050607]/90 sm:p-4 sm:pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+            <div className="sticky bottom-0 border-t border-zinc-800 bg-[#050607]/95 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] shadow-[0_-18px_40px_-30px_rgba(0,0,0,0.9)] backdrop-blur supports-[backdrop-filter]:bg-[#050607]/90 sm:p-4 sm:pb-[calc(env(safe-area-inset-bottom)+1rem)]">
 
               <RunAshChatComposer
                 value={inputValue}
