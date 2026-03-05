@@ -159,6 +159,7 @@ export function ChatWorkspace() {
     sessionId: string | null
     errorMessage: string | null
   }>({ status: "idle", sessionId: null, errorMessage: null })
+  const [sessionListRetryToken, setSessionListRetryToken] = useState(0)
 
   const [attachmentPreview, setAttachmentPreview] = useState<ComposerAttachmentPreview | null>(null)
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
@@ -188,7 +189,9 @@ export function ChatWorkspace() {
     role?: string
     content?: string
     created_at?: string
+    createdAt?: string
     message_type?: string
+    messageType?: string
   }): ChatMessage | null => {
     if ((message.role !== "user" && message.role !== "assistant") || typeof message.content !== "string") {
       return null
@@ -198,16 +201,34 @@ export function ChatWorkspace() {
       id: String(message.id ?? `${Date.now()}-${Math.random()}`),
       role: message.role,
       content: message.content,
-      timestamp: new Date(message.created_at ?? Date.now()),
+      timestamp: new Date(message.created_at ?? message.createdAt ?? Date.now()),
       type:
         message.message_type === "product" ||
         message.message_type === "recipe" ||
         message.message_type === "tip" ||
-        message.message_type === "automation"
-          ? message.message_type
+        message.message_type === "automation" ||
+        message.messageType === "product" ||
+        message.messageType === "recipe" ||
+        message.messageType === "tip" ||
+        message.messageType === "automation"
+          ? (message.message_type ?? message.messageType)
           : "text",
       status: "completed",
     }
+  }
+
+  const pushMessageToSessionState = (sessionId: string, message: ChatMessage) => {
+    setChatSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              messages: [...session.messages.filter((entry) => entry.id !== message.id), message],
+              updatedAt: message.timestamp,
+            }
+          : session,
+      ),
+    )
   }
 
   const fetchSessionMessages = async (sessionId: string) => {
@@ -225,10 +246,12 @@ export function ChatWorkspace() {
           id: typeof entry.id === "string" || typeof entry.id === "number" ? entry.id : undefined,
           role: typeof entry.role === "string" ? entry.role : undefined,
           content: typeof entry.content === "string" ? entry.content : undefined,
-          created_at: typeof entry.created_at === "string" ? entry.created_at : undefined,
-          message_type: typeof entry.message_type === "string" ? entry.message_type : undefined,
-        }),
-      )
+      created_at: typeof entry.created_at === "string" ? entry.created_at : undefined,
+      createdAt: typeof entry.createdAt === "string" ? entry.createdAt : undefined,
+      message_type: typeof entry.message_type === "string" ? entry.message_type : undefined,
+      messageType: typeof entry.messageType === "string" ? entry.messageType : undefined,
+    }),
+  )
       .filter((message): message is ChatMessage => message !== null)
       .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
   }
@@ -257,7 +280,9 @@ export function ChatWorkspace() {
       role: typeof payload.data?.role === "string" ? payload.data.role : undefined,
       content: typeof payload.data?.content === "string" ? payload.data.content : undefined,
       created_at: typeof payload.data?.created_at === "string" ? payload.data.created_at : undefined,
+      createdAt: typeof payload.data?.createdAt === "string" ? payload.data.createdAt : undefined,
       message_type: typeof payload.data?.message_type === "string" ? payload.data.message_type : undefined,
+      messageType: typeof payload.data?.messageType === "string" ? payload.data.messageType : undefined,
     })
   }
 
@@ -437,12 +462,10 @@ export function ChatWorkspace() {
   }, [userPreferences])
 
   useEffect(() => {
-
-
     ;(async () => {
       try {
         setSessionsStatus("loading")
-        const response = await fetch("/api/sessions")
+        const response = await fetch("/api/sessions", { cache: "no-store" })
         if (!response.ok) throw new Error("Unable to load sessions")
         const payload = await response.json()
         const listed = Array.isArray(payload?.data) ? payload.data : []
@@ -455,7 +478,7 @@ export function ChatWorkspace() {
           const mapped = listed.map((entry: { id: string; title?: string; created_at?: string }) => ({
             id: String(entry.id),
             title: entry.title ?? "Session",
-            messages: [],
+            messages: previous.find((session) => session.id === String(entry.id))?.messages ?? [],
             createdAt: new Date(entry.created_at ?? Date.now()),
             updatedAt: new Date(entry.created_at ?? Date.now()),
             context: {
@@ -476,10 +499,9 @@ export function ChatWorkspace() {
         setSessionsStatus("ready")
       } catch {
         setSessionsStatus("error")
-        // session list remains empty when api is unavailable
       }
     })()
-  }, [])
+  }, [sessionListRetryToken])
 
   const loadSession = async (session: ChatSession) => {
     setCurrentSession(session)
@@ -608,6 +630,7 @@ export function ChatWorkspace() {
     setInputValue(message)
 
     if (mode === "search") {
+      let activeSessionId: string | null = null
       const userMessage: ChatMessage = {
         id: `${Date.now()}-search-user`,
         content: message,
@@ -621,34 +644,67 @@ export function ChatWorkspace() {
       setIsTyping(true)
 
       try {
+        const activeSession = await ensureActiveSession(message)
+        activeSessionId = activeSession.id
+
+        try {
+          const persistedUser = await persistSessionMessage(activeSessionId, "user", message)
+          if (persistedUser) {
+            setMessages((prev) => prev.map((entry) => (entry.id === userMessage.id ? persistedUser : entry)))
+            pushMessageToSessionState(activeSessionId, persistedUser)
+          }
+        } catch {
+          // keep search UX active even if persistence is unavailable
+        }
+
         const response = await fetch(`/api/web-search?query=${encodeURIComponent(message)}`)
         const payload = await response.json()
         const searchResults = Array.isArray(payload?.data?.results) ? payload.data.results : []
+        const searchSummary: ChatMessage = {
+          id: `${Date.now()}-search-assistant`,
+          content: "Here are top product search results from EXA/MCP-compatible providers.",
+          role: "assistant",
+          timestamp: new Date(),
+          type: "text",
+          status: "completed",
+          metadata: { searchResults },
+        }
 
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `${Date.now()}-search-assistant`,
-            content: "Here are top product search results from EXA/MCP-compatible providers.",
-            role: "assistant",
-            timestamp: new Date(),
-            type: "text",
-            status: "completed",
-            metadata: { searchResults },
-          },
-        ])
+        setMessages((prev) => [...prev, searchSummary])
+
+        if (activeSessionId) {
+          try {
+            const persistedAssistant = await persistSessionMessage(activeSessionId, "assistant", searchSummary.content)
+            if (persistedAssistant) {
+              setMessages((prev) => prev.map((entry) => (entry.id === searchSummary.id ? { ...persistedAssistant, metadata: searchSummary.metadata } : entry)))
+              pushMessageToSessionState(activeSessionId, { ...persistedAssistant, metadata: searchSummary.metadata })
+            }
+          } catch {
+            // keep search summary visible even if persistence fails
+          }
+        }
       } catch {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `${Date.now()}-search-error`,
-            content: "Web search is unavailable right now. Please try again in a moment.",
-            role: "assistant",
-            timestamp: new Date(),
-            type: "text",
-            status: "failed",
-          },
-        ])
+        const unavailableMessage: ChatMessage = {
+          id: `${Date.now()}-search-error`,
+          content: "Web search is unavailable right now. Please try again in a moment.",
+          role: "assistant",
+          timestamp: new Date(),
+          type: "text",
+          status: "failed",
+        }
+
+        setMessages((prev) => [...prev, unavailableMessage])
+        if (activeSessionId) {
+          try {
+            const persistedAssistant = await persistSessionMessage(activeSessionId, "assistant", unavailableMessage.content)
+            if (persistedAssistant) {
+              setMessages((prev) => prev.map((entry) => (entry.id === unavailableMessage.id ? persistedAssistant : entry)))
+              pushMessageToSessionState(activeSessionId, persistedAssistant)
+            }
+          } catch {
+            // no-op
+          }
+        }
       } finally {
         setIsTyping(false)
       }
@@ -726,7 +782,11 @@ export function ChatWorkspace() {
       activeSessionTitle = activeSession.title
 
       try {
-        await persistSessionMessage(activeSessionId, "user", content)
+        const persistedUser = await persistSessionMessage(activeSessionId, "user", content)
+        if (persistedUser) {
+          setMessages((prev) => prev.map((entry) => (entry.id === userMessage.id ? persistedUser : entry)))
+          pushMessageToSessionState(activeSessionId, persistedUser)
+        }
       } catch {
         // continue chat even when persistence is temporarily unavailable
       }
@@ -1010,21 +1070,15 @@ export function ChatWorkspace() {
             if (payload.status === "completed") {
               if (activeSessionId) {
                 try {
-                  await persistSessionMessage(activeSessionId, "assistant", assistantFinalContent)
+                  const persistedAssistant = await persistSessionMessage(activeSessionId, "assistant", assistantFinalContent)
+                  if (persistedAssistant) {
+                    setMessages((prev) => prev.map((entry) => (entry.id === assistantId ? persistedAssistant : entry)))
+                    pushMessageToSessionState(activeSessionId, persistedAssistant)
+                  }
                 } catch {
                   // keep the in-memory assistant response even if persistence fails
                 }
               }
-              setChatSessions((prev) =>
-                prev.map((session) =>
-                  session.id === activeSessionId
-                    ? {
-                        ...session,
-                        updatedAt: new Date(),
-                      }
-                    : session,
-                ),
-              )
               setHasCompletedFirstMessage(true)
               if (!firstCompletionTrackedRef.current) {
                 firstCompletionTrackedRef.current = true
@@ -1073,7 +1127,11 @@ export function ChatWorkspace() {
         setMessages((prev) => prev.map((entry) => (entry.id === assistantId ? { ...fallback, id: assistantId } : entry)))
         if (activeSessionId) {
           try {
-            await persistSessionMessage(activeSessionId, "assistant", fallback.content)
+            const persistedAssistant = await persistSessionMessage(activeSessionId, "assistant", fallback.content)
+            if (persistedAssistant) {
+              setMessages((prev) => prev.map((entry) => (entry.id === assistantId ? persistedAssistant : entry)))
+              pushMessageToSessionState(activeSessionId, persistedAssistant)
+            }
           } catch {
             // keep fallback response visible even if persistence fails
           }
@@ -1405,6 +1463,9 @@ export function ChatWorkspace() {
     if (!target) return
     void loadSession(target)
   }
+  const retrySessionList = () => {
+    setSessionListRetryToken((prev) => prev + 1)
+  }
   const recentSession = currentSession ?? chatSessions.at(0) ?? null
 
   const leftDrawer = (
@@ -1418,12 +1479,17 @@ export function ChatWorkspace() {
         />
       ) : null}
       {sessionsStatus === "error" ? (
-        <ChatDataState
-          state="error"
-          loadingMessage=""
-          emptyMessage=""
-          errorMessage="Unable to sync session history. Please retry in a moment."
-        />
+        <div className="space-y-2">
+          <ChatDataState
+            state="error"
+            loadingMessage=""
+            emptyMessage=""
+            errorMessage="Unable to sync session history. Please retry in a moment."
+          />
+          <Button size="sm" variant="outline" onClick={retrySessionList}>
+            Retry history sync
+          </Button>
+        </div>
       ) : null}
       <ChatSidebar
         sessions={chatSessions}
