@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -97,6 +97,8 @@ export function ChatWorkspace() {
   })
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement | null>(null)
+  const scrollViewportRef = useRef<HTMLDivElement | null>(null)
+  const shouldAutoScrollRef = useRef(true)
   const sendAbortRef = useRef<AbortController | null>(null)
   const sessionHydrationRequestRef = useRef(0)
   const firstCompletionTrackedRef = useRef(false)
@@ -342,15 +344,43 @@ export function ChatWorkspace() {
   )
 
   const scrollMessagesToBottom = (behavior: ScrollBehavior = "auto") => {
-    const viewport = scrollAreaRef.current?.querySelector("[data-radix-scroll-area-viewport]") as HTMLDivElement | null
+    const viewport =
+      scrollViewportRef.current ??
+      (scrollAreaRef.current?.querySelector("[data-radix-scroll-area-viewport]") as HTMLDivElement | null)
+
     if (viewport) {
+      scrollViewportRef.current = viewport
       viewport.scrollTo({ top: viewport.scrollHeight, behavior })
+      shouldAutoScrollRef.current = true
       return
     }
-    messagesEndRef.current?.scrollIntoView({ behavior })
+
+    messagesEndRef.current?.scrollIntoView({ behavior, block: "end" })
+    shouldAutoScrollRef.current = true
   }
 
   useEffect(() => {
+    const viewport = scrollAreaRef.current?.querySelector("[data-radix-scroll-area-viewport]") as HTMLDivElement | null
+    if (!viewport) return
+
+    scrollViewportRef.current = viewport
+    const handleViewportScroll = () => {
+      const distanceFromBottom = viewport.scrollHeight - (viewport.scrollTop + viewport.clientHeight)
+      shouldAutoScrollRef.current = distanceFromBottom < 72
+    }
+
+    handleViewportScroll()
+    viewport.addEventListener("scroll", handleViewportScroll, { passive: true })
+    return () => {
+      viewport.removeEventListener("scroll", handleViewportScroll)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!shouldAutoScrollRef.current && streamControllerState !== "streaming") {
+      return
+    }
+
     scrollMessagesToBottom(streamControllerState === "streaming" ? "auto" : "smooth")
   }, [messages, streamControllerState])
 
@@ -425,10 +455,31 @@ export function ChatWorkspace() {
   }, [leftDrawerOpen, rightDrawerOpen])
 
   useEffect(() => {
-    if (!isDesktop && leftDrawerOpen && rightDrawerOpen) {
+    if (isDesktop) return
+    if (leftDrawerOpen && rightDrawerOpen) {
       setRightDrawerOpen(false)
     }
   }, [isDesktop, leftDrawerOpen, rightDrawerOpen])
+
+  const toggleLeftDrawer = useCallback(() => {
+    setLeftDrawerOpen((prev) => {
+      const next = !prev
+      if (!isDesktop && next) {
+        setRightDrawerOpen(false)
+      }
+      return next
+    })
+  }, [isDesktop])
+
+  const toggleRightDrawer = useCallback(() => {
+    setRightDrawerOpen((prev) => {
+      const next = !prev
+      if (!isDesktop && next) {
+        setLeftDrawerOpen(false)
+      }
+      return next
+    })
+  }, [isDesktop])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -440,13 +491,13 @@ export function ChatWorkspace() {
 
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "[") {
         event.preventDefault()
-        setLeftDrawerOpen((prev) => !prev)
+        toggleLeftDrawer()
         return
       }
 
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "]") {
         event.preventDefault()
-        setRightDrawerOpen((prev) => !prev)
+        toggleRightDrawer()
         return
       }
 
@@ -454,12 +505,12 @@ export function ChatWorkspace() {
 
       if (event.key === "ArrowLeft") {
         event.preventDefault()
-        setLeftDrawerOpen((prev) => !prev)
+        toggleLeftDrawer()
       }
 
       if (event.key === "ArrowRight") {
         event.preventDefault()
-        setRightDrawerOpen((prev) => !prev)
+        toggleRightDrawer()
       }
     }
 
@@ -467,7 +518,7 @@ export function ChatWorkspace() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown)
     }
-  }, [])
+  }, [toggleLeftDrawer, toggleRightDrawer])
 
   useEffect(() => {
  
@@ -491,6 +542,7 @@ export function ChatWorkspace() {
           setChatSessions([])
           setCurrentSession(null)
           setMessages([DEFAULT_ASSISTANT_MESSAGE])
+          shouldAutoScrollRef.current = true
           setSessionsStatus("ready")
           return
         }
@@ -1555,7 +1607,7 @@ export function ChatWorkspace() {
               <>
                 <div className="flex items-center gap-1.5 sm:gap-2 lg:hidden">
                   <ActionPill
-                    onClick={() => setLeftDrawerOpen((prev) => !prev)}
+                    onClick={toggleLeftDrawer}
                     aria-pressed={leftDrawerOpen}
                     aria-label={leftDrawerOpen ? "Hide history" : "Show history"}
                     className="h-8 w-8 px-0"
@@ -1601,7 +1653,7 @@ export function ChatWorkspace() {
                               {voiceEnabled ? "Voice On" : "Voice Off"}
                             </ActionPill>
                             <ActionPill
-                              onClick={() => setRightDrawerOpen((prev) => !prev)}
+                              onClick={toggleRightDrawer}
                               aria-pressed={rightDrawerOpen}
                               aria-label={rightDrawerOpen ? "Hide tools" : "Show tools"}
                               className="h-8 gap-1.5 px-3"
@@ -1641,11 +1693,11 @@ export function ChatWorkspace() {
                       Upgrade
                     </a>
                   </ActionPill>
-                  <ActionPill onClick={() => setLeftDrawerOpen((prev) => !prev)} aria-pressed={leftDrawerOpen}>
+                  <ActionPill onClick={toggleLeftDrawer} aria-pressed={leftDrawerOpen}>
                     <History className="mr-1.5 h-3.5 w-3.5" />
                     {leftDrawerOpen ? "Hide History" : "Show History"}
                   </ActionPill>
-                  <ActionPill onClick={() => setRightDrawerOpen((prev) => !prev)} aria-pressed={rightDrawerOpen}>
+                  <ActionPill onClick={toggleRightDrawer} aria-pressed={rightDrawerOpen}>
                     <Sparkles className="mr-1.5 h-3.5 w-3.5" />
                     {rightDrawerOpen ? "Hide Tools" : "Show Tools"}
                   </ActionPill>
