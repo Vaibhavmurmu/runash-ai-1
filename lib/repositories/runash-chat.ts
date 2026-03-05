@@ -102,8 +102,13 @@ export async function getMostRecentSession(userId?: string): Promise<RunashSessi
   return sessions[0] ?? null
 }
 
-export async function listSessionMessages(sessionId: string, limit?: number): Promise<RunashSessionMessage[]> {
+export async function listSessionMessages(sessionId: string, limit?: number, userId?: string): Promise<RunashSessionMessage[]> {
   if (useDatabaseBackedChatStorage) {
+    const ownerSession = await getChatSessionById(requireUserId(userId), String(sessionId))
+    if (!ownerSession) {
+      return []
+    }
+
     return listMessagesBySession(String(sessionId), limit)
   }
 
@@ -136,8 +141,14 @@ export async function updateSessionMessage(
   sessionId: string,
   messageId: string | number,
   content: string,
+  userId?: string,
 ): Promise<RunashSessionMessage | null> {
   if (useDatabaseBackedChatStorage) {
+    const ownerSession = await getChatSessionById(requireUserId(userId), String(sessionId))
+    if (!ownerSession) {
+      return null
+    }
+
     return updateChatSessionMessage(sessionId, messageId, content)
   }
 
@@ -163,8 +174,13 @@ export async function updateSessionMessage(
   return updatedMessage
 }
 
-export async function deleteSessionMessage(sessionId: string, messageId: string | number): Promise<boolean> {
+export async function deleteSessionMessage(sessionId: string, messageId: string | number, userId?: string): Promise<boolean> {
   if (useDatabaseBackedChatStorage) {
+    const ownerSession = await getChatSessionById(requireUserId(userId), String(sessionId))
+    if (!ownerSession) {
+      return false
+    }
+
     return deleteChatSessionMessage(sessionId, messageId)
   }
 
@@ -187,8 +203,14 @@ export async function createSessionMessage(
   role: RunashSessionMessage["role"],
   content: string,
   messageType: RunashSessionMessage["message_type"] = "text",
+  userId?: string,
 ): Promise<RunashSessionMessage> {
   if (useDatabaseBackedChatStorage) {
+    const ownerSession = await getChatSessionById(requireUserId(userId), String(sessionId))
+    if (!ownerSession) {
+      throw new Error("SESSION_ACCESS_DENIED")
+    }
+
     return createChatSessionMessage(sessionId, role, content, messageType)
   }
 

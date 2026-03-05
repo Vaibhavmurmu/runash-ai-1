@@ -54,7 +54,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       )
     }
 
-    const message = await updateSessionMessage(parsed.data.sessionId, params.id, parsed.data.content)
+    const message = await updateSessionMessage(parsed.data.sessionId, params.id, parsed.data.content, userId)
 
     if (!message) {
       return respondError(request, { code: "MESSAGE_NOT_FOUND", message: "Message not found" }, { status: 404, requestId })
@@ -99,7 +99,7 @@ export async function DELETE(request: Request, { params }: RouteContext) {
       )
     }
 
-    const deleted = await deleteSessionMessage(parsed.data.sessionId, params.id)
+    const deleted = await deleteSessionMessage(parsed.data.sessionId, params.id, userId)
 
     if (!deleted) {
       return respondError(request, { code: "MESSAGE_NOT_FOUND", message: "Message not found" }, { status: 404, requestId })

@@ -19,6 +19,7 @@ export type MessagesDependencies = {
     role: "user" | "assistant",
     content: string,
     messageType: "text" | "product" | "recipe" | "tip" | "automation",
+    userId: string,
   ) => Promise<Awaited<ReturnType<typeof createSessionMessage>>>
 }
 
@@ -56,6 +57,7 @@ export async function handleCreateMessage(request: Request, dependencies: Messag
       parsed.data.role,
       parsed.data.content,
       parsed.data.messageType ?? "text",
+      userId,
     )
 
     return respondSuccess(request, message, { status: 201, requestId })
