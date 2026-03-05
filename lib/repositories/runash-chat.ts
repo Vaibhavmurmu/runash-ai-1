@@ -3,6 +3,7 @@ import path from "path"
 
 import {
   createChatSession,
+  getChatSessionById,
   getMostRecentChatSession,
   listChatSessions,
   type ChatSession,
@@ -52,6 +53,15 @@ function resolveUserId(userId?: string | null) {
   return normalized || DEFAULT_USER_ID
 }
 
+function requireUserId(userId?: string | null) {
+  const normalized = String(userId ?? "").trim()
+  if (!normalized) {
+    throw new Error("USER_CONTEXT_REQUIRED")
+  }
+
+  return normalized
+}
+
 function mapSession(session: ChatSession): RunashSession {
   return {
     id: session.id,
@@ -62,7 +72,7 @@ function mapSession(session: ChatSession): RunashSession {
 
 export async function listSessions(userId?: string): Promise<RunashSession[]> {
   if (useDatabaseBackedChatStorage) {
-    const sessions = await listChatSessions(resolveUserId(userId))
+    const sessions = await listChatSessions(requireUserId(userId))
     return sessions.map(mapSession)
   }
 
@@ -71,7 +81,7 @@ export async function listSessions(userId?: string): Promise<RunashSession[]> {
 
 export async function createSession(title = "Session", userId?: string): Promise<RunashSession> {
   if (useDatabaseBackedChatStorage) {
-    const session = await createChatSession(resolveUserId(userId), title)
+    const session = await createChatSession(requireUserId(userId), title)
     return mapSession(session)
   }
 
@@ -90,7 +100,7 @@ export async function createSession(title = "Session", userId?: string): Promise
 
 export async function getMostRecentSession(userId?: string): Promise<RunashSession | null> {
   if (useDatabaseBackedChatStorage) {
-    const session = await getMostRecentChatSession(resolveUserId(userId))
+    const session = await getMostRecentChatSession(requireUserId(userId))
     return session ? mapSession(session) : null
   }
 
@@ -116,6 +126,15 @@ export async function listSessionMessages(sessionId: string, limit?: number): Pr
 
   if (!limit || limit < 1) return filtered
   return filtered.slice(0, limit)
+}
+
+export async function isSessionOwnedByUser(sessionId: string, userId?: string): Promise<boolean> {
+  if (useDatabaseBackedChatStorage) {
+    const session = await getChatSessionById(requireUserId(userId), String(sessionId))
+    return Boolean(session)
+  }
+
+  return true
 }
 
 

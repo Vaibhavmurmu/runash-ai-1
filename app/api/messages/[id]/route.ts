@@ -1,8 +1,9 @@
 import { z } from "zod"
 
+import { getServerAuthSession } from "@/lib/auth/session"
 import { logApiEvent } from "@/lib/api/logging"
 import { respondError, respondSuccess, resolveRequestId } from "@/lib/api/response"
-import { deleteSessionMessage, updateSessionMessage } from "@/lib/repositories/runash-chat"
+import { deleteSessionMessage, isSessionOwnedByUser, updateSessionMessage } from "@/lib/repositories/runash-chat"
 
 const updateMessageSchema = z.object({
   sessionId: z.string().trim().min(1),
@@ -19,8 +20,18 @@ type RouteContext = {
   }
 }
 
+async function getAuthenticatedUserId() {
+  const session = await getServerAuthSession()
+  return session?.user?.id ? String(session.user.id) : null
+}
+
 export async function PATCH(request: Request, { params }: RouteContext) {
   const requestId = resolveRequestId(request)
+  const userId = await getAuthenticatedUserId()
+
+  if (!userId) {
+    return respondError(request, { code: "AUTH_REQUIRED", message: "Unauthorized" }, { status: 401, requestId })
+  }
 
   try {
     const payload = await request.json().catch(() => ({}))
@@ -31,6 +42,15 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         request,
         { code: "INVALID_REQUEST", message: "sessionId and content are required" },
         { status: 400, requestId },
+      )
+    }
+
+    const isOwned = await isSessionOwnedByUser(parsed.data.sessionId, userId)
+    if (!isOwned) {
+      return respondError(
+        request,
+        { code: "SESSION_NOT_FOUND", message: "Session not found" },
+        { status: 404, requestId },
       )
     }
 
@@ -56,6 +76,11 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
 export async function DELETE(request: Request, { params }: RouteContext) {
   const requestId = resolveRequestId(request)
+  const userId = await getAuthenticatedUserId()
+
+  if (!userId) {
+    return respondError(request, { code: "AUTH_REQUIRED", message: "Unauthorized" }, { status: 401, requestId })
+  }
 
   try {
     const payload = await request.json().catch(() => ({}))
@@ -63,6 +88,15 @@ export async function DELETE(request: Request, { params }: RouteContext) {
 
     if (!parsed.success) {
       return respondError(request, { code: "INVALID_REQUEST", message: "sessionId is required" }, { status: 400, requestId })
+    }
+
+    const isOwned = await isSessionOwnedByUser(parsed.data.sessionId, userId)
+    if (!isOwned) {
+      return respondError(
+        request,
+        { code: "SESSION_NOT_FOUND", message: "Session not found" },
+        { status: 404, requestId },
+      )
     }
 
     const deleted = await deleteSessionMessage(parsed.data.sessionId, params.id)
