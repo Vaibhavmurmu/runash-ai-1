@@ -171,6 +171,7 @@ export function ChatWorkspace() {
 
 
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([])
+  const [persistedSessionIds, setPersistedSessionIds] = useState<string[]>([])
 
   const buildEmptySessionContext = () => ({
     preferences: {
@@ -313,6 +314,9 @@ export function ChatWorkspace() {
 
     setCurrentSession(newSession)
     setChatSessions((prev) => [newSession, ...prev.filter((session) => session.id !== newSession.id)])
+    if (payload.data?.id !== undefined && payload.data?.id !== null) {
+      setPersistedSessionIds((prev) => (prev.includes(newSession.id) ? prev : [newSession.id, ...prev]))
+    }
     return newSession
   }
 
@@ -470,9 +474,12 @@ export function ChatWorkspace() {
         const payload = await response.json()
         const listed = Array.isArray(payload?.data) ? payload.data : []
         if (listed.length === 0) {
+          setPersistedSessionIds([])
           setSessionsStatus("ready")
           return
         }
+
+        setPersistedSessionIds(listed.map((entry: { id: string }) => String(entry.id)))
 
         setChatSessions((previous) => {
           const mapped = listed.map((entry: { id: string; title?: string; created_at?: string }) => ({
@@ -543,6 +550,7 @@ export function ChatWorkspace() {
 
   const handleDeleteSession = (sessionId: string) => {
     setChatSessions((prev) => prev.filter((session) => session.id !== sessionId))
+    setPersistedSessionIds((prev) => prev.filter((id) => id !== sessionId))
     if (currentSession?.id === sessionId) {
       setCurrentSession(null)
       setMessages([defaultAssistantMessage])
@@ -1466,7 +1474,8 @@ export function ChatWorkspace() {
   const retrySessionList = () => {
     setSessionListRetryToken((prev) => prev + 1)
   }
-  const recentSession = currentSession ?? chatSessions.at(0) ?? null
+  const persistedSessions = useMemo(() => chatSessions.filter((session) => persistedSessionIds.includes(session.id)), [chatSessions, persistedSessionIds])
+  const recentSession = currentSession ?? persistedSessions.at(0) ?? null
 
   const leftDrawer = (
     <div className="space-y-2">
@@ -1501,6 +1510,7 @@ export function ChatWorkspace() {
           window.location.href = "/dashboard/library"
         }}
         onDeleteSession={handleDeleteSession}
+        persistedSessionIds={persistedSessionIds}
         streamId={queryStreamId}
         activeProjectName={queryProjectName ?? bootstrapProjectName ?? currentSession?.title ?? null}
         selectedLibraryItemTitle={queryLibraryItemTitle}
@@ -1816,7 +1826,23 @@ export function ChatWorkspace() {
                         <span className="block text-zinc-400">Continue where you left off.</span>
                       </button>
                     ) : (
-                      <p className="mt-1.5 text-xs text-zinc-400">No recent sessions yet. Start with a prompt chip above.</p>
+                      <div className="mt-1.5 space-y-2">
+                        <p className="text-xs text-zinc-400">No saved sessions yet. Start a new chat or use a suggested starter.</p>
+                        <div className="flex flex-wrap gap-2">
+                          <Button type="button" size="sm" variant="outline" onClick={handleNewChatSession}>
+                            New chat
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="text-zinc-300 hover:text-zinc-100"
+                            onClick={() => handleSendMessage(starterPromptCards[0]?.prompt ?? "")}
+                          >
+                            Suggested starter
+                          </Button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
