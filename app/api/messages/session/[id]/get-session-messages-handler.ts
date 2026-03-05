@@ -22,7 +22,7 @@ const sessionQuerySchema = z.object({
 export type SessionMessagesDependencies = {
   getUserId: () => Promise<string | null>
   isSessionOwnedByUser: (sessionId: string, userId: string) => Promise<boolean>
-  listSessionMessages: (sessionId: string, limit?: number) => Promise<RunashSessionMessage[]>
+  listSessionMessages: (sessionId: string, limit: number, userId: string) => Promise<RunashSessionMessage[]>
 }
 
 export async function handleGetSessionMessages(
@@ -95,7 +95,7 @@ export async function handleGetSessionMessages(
       )
     }
 
-    const messages = await dependencies.listSessionMessages(sessionId, limit)
+    const messages = await dependencies.listSessionMessages(sessionId, limit, userId)
 
     logApiEvent("info", "session.messages.fetch_success", {
       requestId,
