@@ -15,8 +15,8 @@ export const metadata: Metadata = {
   description: "Watch the recorded Tech Showcase 2025 featuring the latest AI-powered gadgets and innovations.",
 }
 
-export default function RecordingPage({ params }: { params: { id: string } }) {
-  const recordingId = params.id
+export default async function RecordingPage(props: { params: Promise<{ id: string }> }) {
+  const { id: recordingId } = await props.params
 
   // Mock recording data - in a real app, this would come from an API
   const recording = {

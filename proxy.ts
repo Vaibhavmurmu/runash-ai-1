@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
+import { auth } from "@/lib/auth"
 import { logApiEvent } from "@/lib/api/logging"
 import { getAuthEndpointRateLimit } from "@/lib/auth-security-config"
 import { recordAuthMetric } from "@/lib/auth-observability"
@@ -215,7 +216,7 @@ function checkRateLimit(request: NextRequest, identifier: string, limit: number,
   return true
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const { isAuthPage, requiresSessionValidation } = resolveAuthDecision(pathname)
   const response = NextResponse.next()
