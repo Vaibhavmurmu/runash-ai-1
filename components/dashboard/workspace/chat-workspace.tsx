@@ -96,6 +96,7 @@ export function ChatWorkspace() {
     return storedState === "true"
   })
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null)
   const sendAbortRef = useRef<AbortController | null>(null)
   const firstCompletionTrackedRef = useRef(false)
 
@@ -343,9 +344,18 @@ export function ChatWorkspace() {
     [openFromTrigger],
   )
 
+  const scrollMessagesToBottom = (behavior: ScrollBehavior = "auto") => {
+    const viewport = scrollAreaRef.current?.querySelector("[data-radix-scroll-area-viewport]") as HTMLDivElement | null
+    if (viewport) {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior })
+      return
+    }
+    messagesEndRef.current?.scrollIntoView({ behavior })
+  }
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+    scrollMessagesToBottom(streamControllerState === "streaming" ? "auto" : "smooth")
+  }, [messages, streamControllerState])
 
   useEffect(() => {
     let active = true
@@ -416,6 +426,12 @@ export function ChatWorkspace() {
       // ignore storage errors
     }
   }, [leftDrawerOpen, rightDrawerOpen])
+
+  useEffect(() => {
+    if (!isDesktop && leftDrawerOpen && rightDrawerOpen) {
+      setRightDrawerOpen(false)
+    }
+  }, [isDesktop, leftDrawerOpen, rightDrawerOpen])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1686,7 +1702,7 @@ export function ChatWorkspace() {
                 aria-label="Close session history"
                 onClick={() => setLeftDrawerOpen(false)}
               />
-              <aside className="fixed left-0 top-0 bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] z-50 w-[85vw] max-w-sm overflow-y-auto border-r border-zinc-800 bg-zinc-950 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] lg:hidden">
+              <aside className="fixed left-0 top-0 bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] z-50 w-[92vw] max-w-sm overflow-y-auto border-r border-zinc-800 bg-zinc-950 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:w-[85vw] lg:hidden">
                 {leftDrawer}
               </aside>
             </>
@@ -1700,7 +1716,7 @@ export function ChatWorkspace() {
                 aria-label="Close utilities panel"
                 onClick={() => setRightDrawerOpen(false)}
               />
-              <aside className="fixed right-0 top-0 bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] z-50 w-[85vw] max-w-sm overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] lg:hidden">
+              <aside className="fixed right-0 top-0 bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] z-50 w-[92vw] max-w-sm overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:w-[85vw] lg:hidden">
                 {rightDrawer}
               </aside>
             </>
@@ -1715,12 +1731,7 @@ export function ChatWorkspace() {
             ) : null}
 
 
-            <div className="hidden border-b border-zinc-800 px-3 py-2 text-xs text-zinc-400 lg:block sm:px-4">
-              <span>Shortcuts: Ctrl/Cmd+[ history • Ctrl/Cmd+] tools • Alt+←/→ toggle drawers.</span>
-            </div>
-
-
-            <ScrollArea className="min-h-0 flex-1 p-3 sm:p-4">
+            <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1 p-3 sm:p-4">
               <div className="space-y-4">
                 {sessionOpenState.status === "loading" ? (
                   <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 text-zinc-300" aria-live="polite">
@@ -1742,7 +1753,25 @@ export function ChatWorkspace() {
                     </Button>
                   </div>
                 ) : (
-                  messages.map((message) => <ChatMessageComponent key={message.id} message={message} sessionId={currentSession?.id} />)
+                  messages.map((message) => (
+                    <ChatMessageComponent
+                      key={message.id}
+                      message={message}
+                      sessionId={currentSession?.id}
+                      onEditRequest={(messageId, nextContent) => {
+                        setMessages((prev) => prev.map((entry) => (entry.id === messageId ? { ...entry, content: nextContent } : entry)))
+                      }}
+                      onRegenerate={(messageId) => {
+                        const currentIndex = messages.findIndex((item) => item.id === messageId)
+                        const sourcePrompt =
+                          currentIndex > 0
+                            ? [...messages.slice(0, currentIndex)].reverse().find((item) => item.role === "user")?.content
+                            : messages.filter((item) => item.role === "user").at(-1)?.content
+                        if (!sourcePrompt) return
+                        void handleSendMessage(sourcePrompt)
+                      }}
+                    />
+                  ))
                 )}
 
                 {(isTyping || streamControllerState === "sending" || streamControllerState === "streaming") && (
