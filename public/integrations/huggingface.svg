@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Hugging Face logo">
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="#FFD21E"/>
+  <circle cx="23" cy="27" r="4" fill="#2B2B2B"/>
+  <circle cx="41" cy="27" r="4" fill="#2B2B2B"/>
+  <path d="M20 39c3.2 4 7.4 6 12 6s8.8-2 12-6" stroke="#2B2B2B" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <circle cx="14" cy="36" r="5" fill="#FF6A6A"/>
+  <circle cx="50" cy="36" r="5" fill="#FF6A6A"/>
+</svg>
