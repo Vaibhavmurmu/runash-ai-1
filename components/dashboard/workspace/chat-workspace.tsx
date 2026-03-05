@@ -98,6 +98,7 @@ export function ChatWorkspace() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement | null>(null)
   const sendAbortRef = useRef<AbortController | null>(null)
+  const sessionHydrationRequestRef = useRef(0)
   const firstCompletionTrackedRef = useRef(false)
 
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => {
@@ -219,6 +220,22 @@ export function ChatWorkspace() {
     }
   }
 
+  const normalizeChatMessage = (message: ChatMessage): ChatMessage => ({
+    ...message,
+    timestamp: message.timestamp instanceof Date ? message.timestamp : new Date(message.timestamp),
+    type: message.type ?? "text",
+    status: message.status ?? "completed",
+  })
+
+  const appendLocalMessage = (message: ChatMessage) => {
+    const normalizedMessage = normalizeChatMessage(message)
+    setMessages((prev) => [...prev, normalizedMessage])
+    if (currentSession?.id) {
+      pushMessageToSessionState(currentSession.id, normalizedMessage)
+    }
+    return normalizedMessage
+  }
+
   const pushMessageToSessionState = (sessionId: string, message: ChatMessage) => {
     setChatSessions((prev) =>
       prev.map((session) =>
@@ -248,12 +265,12 @@ export function ChatWorkspace() {
           id: typeof entry.id === "string" || typeof entry.id === "number" ? entry.id : undefined,
           role: typeof entry.role === "string" ? entry.role : undefined,
           content: typeof entry.content === "string" ? entry.content : undefined,
-      created_at: typeof entry.created_at === "string" ? entry.created_at : undefined,
-      createdAt: typeof entry.createdAt === "string" ? entry.createdAt : undefined,
-      message_type: typeof entry.message_type === "string" ? entry.message_type : undefined,
-      messageType: typeof entry.messageType === "string" ? entry.messageType : undefined,
-    }),
-  )
+          created_at: typeof entry.created_at === "string" ? entry.created_at : undefined,
+          createdAt: typeof entry.createdAt === "string" ? entry.createdAt : undefined,
+          message_type: typeof entry.message_type === "string" ? entry.message_type : undefined,
+          messageType: typeof entry.messageType === "string" ? entry.messageType : undefined,
+        }),
+      )
       .filter((message): message is ChatMessage => message !== null)
       .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
   }
@@ -527,11 +544,14 @@ export function ChatWorkspace() {
   }, [sessionListRetryToken])
 
   const loadSession = async (session: ChatSession) => {
+    const requestId = sessionHydrationRequestRef.current + 1
+    sessionHydrationRequestRef.current = requestId
     setCurrentSession(session)
     setSessionOpenState({ status: "loading", sessionId: session.id, errorMessage: null })
 
     try {
-      const hydratedMessages = await fetchSessionMessages(session.id)
+      const hydratedMessages = (await fetchSessionMessages(session.id)).map(normalizeChatMessage)
+      if (sessionHydrationRequestRef.current !== requestId) return
       const nextMessages = hydratedMessages.length > 0 ? hydratedMessages : [defaultAssistantMessage]
 
       setMessages(nextMessages)
@@ -548,6 +568,7 @@ export function ChatWorkspace() {
       )
       setSessionOpenState({ status: "idle", sessionId: null, errorMessage: null })
     } catch {
+      if (sessionHydrationRequestRef.current !== requestId) return
       setSessionOpenState({
         status: "error",
         sessionId: session.id,
@@ -664,7 +685,7 @@ export function ChatWorkspace() {
         status: "completed",
       }
 
-      setMessages((prev) => [...prev, userMessage])
+      appendLocalMessage(userMessage)
       setIsTyping(true)
 
       try {
@@ -694,7 +715,7 @@ export function ChatWorkspace() {
           metadata: { searchResults },
         }
 
-        setMessages((prev) => [...prev, searchSummary])
+        appendLocalMessage(searchSummary)
 
         if (activeSessionId) {
           try {
@@ -717,7 +738,7 @@ export function ChatWorkspace() {
           status: "failed",
         }
 
-        setMessages((prev) => [...prev, unavailableMessage])
+        appendLocalMessage(unavailableMessage)
         if (activeSessionId) {
           try {
             const persistedAssistant = await persistSessionMessage(activeSessionId, "assistant", unavailableMessage.content)
@@ -780,7 +801,8 @@ export function ChatWorkspace() {
       status: "queued",
     }
 
-    setMessages((prev) => [...prev, userMessage, assistantMessage])
+    const normalizedUserMessage = appendLocalMessage(userMessage)
+    appendLocalMessage(assistantMessage)
     setInputValue("")
     setIsTyping(true)
     setStreamControllerState("sending")
@@ -808,7 +830,7 @@ export function ChatWorkspace() {
       try {
         const persistedUser = await persistSessionMessage(activeSessionId, "user", content)
         if (persistedUser) {
-          setMessages((prev) => prev.map((entry) => (entry.id === userMessage.id ? persistedUser : entry)))
+          setMessages((prev) => prev.map((entry) => (entry.id === normalizedUserMessage.id ? persistedUser : entry)))
           pushMessageToSessionState(activeSessionId, persistedUser)
         }
       } catch {
