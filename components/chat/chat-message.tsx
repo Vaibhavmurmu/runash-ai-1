@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { memo, useEffect, useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Bot, User, Copy, ThumbsUp, ThumbsDown, Share, Pencil, Trash2, Loader2, Check, AlertCircle, RefreshCw, Wrench } from "lucide-react"
@@ -32,7 +32,7 @@ type MessageActionState = {
 
 const supportsWebShare = typeof navigator !== "undefined" && "share" in navigator
 
-export default function ChatMessageComponent({ message, sessionId, onEditRequest, onRegenerate }: ChatMessageProps) {
+function ChatMessageComponent({ message, sessionId, onEditRequest, onRegenerate }: ChatMessageProps) {
   const isUser = message.role === "user"
   const [isDeletedLocally, setIsDeletedLocally] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
@@ -185,14 +185,16 @@ export default function ChatMessageComponent({ message, sessionId, onEditRequest
 
   const statusLabel =
     message.status === "streaming"
-      ? "Streaming"
+      ? "Generating response"
       : message.status === "queued"
-        ? "Queued"
+        ? "Queued for processing"
         : message.status === "tool-running"
           ? "Running tools"
           : message.status === "failed"
-            ? "Failed"
-            : "Completed"
+            ? "Generation failed"
+            : "Response ready"
+
+  const canRegenerateNow = capabilities.canRegenerate && message.status !== "streaming" && message.status !== "tool-running"
 
   const toolResultSections = [
     { key: "products", label: "Products", content: message.metadata?.products },
@@ -230,7 +232,7 @@ export default function ChatMessageComponent({ message, sessionId, onEditRequest
               <span className={isUser ? "text-white/80" : "text-zinc-400"}>{statusLabel}</span>
               {!isUser && (message.status === "streaming" || message.status === "tool-running") ? (
                 <span className="inline-flex items-center text-emerald-300" role="status" aria-live="polite">
-                  <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Live
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Live update
                 </span>
               ) : null}
             </div>
@@ -242,7 +244,7 @@ export default function ChatMessageComponent({ message, sessionId, onEditRequest
                 onChange={(event) => setDraftContent(event.target.value)}
               />
             ) : (
-              <p className="text-sm leading-relaxed">{displayedContent}</p>
+              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{displayedContent}</p>
             )}
           </div>
 
@@ -386,8 +388,8 @@ export default function ChatMessageComponent({ message, sessionId, onEditRequest
 
           {!isUser && (
             <div className="mt-2 flex flex-wrap items-center gap-2" role="toolbar" aria-label="Message actions">
-              <Button variant="ghost" size="sm" title={state.copied ? "Copied" : "Copy message"} aria-label={state.copied ? "Copied message" : "Copy message"} onClick={handleCopy}>
-                {state.copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}<span className="ml-1">Copy</span>
+              <Button variant="ghost" size="sm" title={state.copied ? "Copied to clipboard" : "Copy message"} aria-label={state.copied ? "Copied to clipboard" : "Copy message"} onClick={handleCopy}>
+                {state.copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}<span className="ml-1">{state.copied ? "Copied" : "Copy"}</span>
               </Button>
               <Button variant="ghost" size="sm" title="Mark message as helpful" aria-label="Like message" onClick={() => handleFeedback("up")} disabled={state.feedbackStatus === "pending"}>
                 {state.feedbackStatus === "pending" && state.feedback === "up" ? <Loader2 className="h-3 w-3 animate-spin" /> : <ThumbsUp className={`h-3 w-3 ${state.feedback === "up" ? "text-green-500" : ""}`} />}<span className="ml-1">Like</span>
@@ -398,8 +400,8 @@ export default function ChatMessageComponent({ message, sessionId, onEditRequest
               <Button variant="ghost" size="sm" title="Share message" aria-label="Share message" onClick={handleShare} disabled={state.shareStatus === "pending"}>
                 {state.shareStatus === "pending" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Share className="h-3 w-3" />}<span className="ml-1">Share</span>
               </Button>
-              <Button variant="ghost" size="sm" title={capabilities.canEdit ? "Edit message" : "Edit locally only (server unavailable)"} aria-label="Edit message" onClick={isEditing ? handleEdit : () => setIsEditing(true)} disabled={state.editStatus === "pending"}>
-                {state.editStatus === "pending" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Pencil className="h-3 w-3" />}<span className="ml-1">{isEditing ? "Save" : "Edit"}</span>
+              <Button variant="ghost" size="sm" title={capabilities.canEdit ? "Edit and save message" : "Edit locally only (server unavailable)"} aria-label="Edit message" onClick={isEditing ? handleEdit : () => setIsEditing(true)} disabled={state.editStatus === "pending" || message.status === "streaming" || message.status === "tool-running"}>
+                {state.editStatus === "pending" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Pencil className="h-3 w-3" />}<span className="ml-1">{isEditing ? "Save edit" : "Edit"}</span>
               </Button>
               {isEditing ? (
                 <Button
@@ -417,7 +419,14 @@ export default function ChatMessageComponent({ message, sessionId, onEditRequest
                 </Button>
               ) : null}
               {capabilities.canRegenerate ? (
-                <Button variant="ghost" size="sm" title="Regenerate response" aria-label="Regenerate response" onClick={() => onRegenerate?.(message.id)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  title={canRegenerateNow ? "Regenerate response" : "Wait for response to finish"}
+                  aria-label="Regenerate response"
+                  onClick={() => onRegenerate?.(message.id)}
+                  disabled={!canRegenerateNow}
+                >
                   <RefreshCw className="h-3 w-3" /> <span className="ml-1">Regenerate</span>
                 </Button>
               ) : null}
@@ -440,3 +449,6 @@ export default function ChatMessageComponent({ message, sessionId, onEditRequest
     </div>
   )
 }
+
+
+export default memo(ChatMessageComponent)

@@ -297,8 +297,17 @@ export function RunAshChatComposer({
 
   const shouldShowUpgradePrompt = showUpgradePrompt && !upgradePromptDismissed
   const isStreaming = streamState === "sending" || streamState === "streaming"
+  const isRetryableFailure = streamState === "failed" || composerHealth === "provider-error" || composerHealth === "network-timeout"
   const isBusy = isStreaming || streamState === "stopping" || isEnhancing || attachmentPreview?.uploadState === "uploading"
-  const canSend = !disabled && !isBusy && !isHardLimitExceeded && Boolean(value.trim())
+  const canSend = !disabled && !isBusy && !isHardLimitExceeded && attachmentPreview?.uploadState !== "failed" && Boolean(value.trim())
+  const sendButtonLabel =
+    streamState === "stopping"
+      ? "Stopping..."
+      : isStreaming
+        ? "Sending..."
+        : isRetryableFailure && !value.trim()
+          ? "Retry send"
+          : "Send"
 
   return (
     <div className="space-y-2">
@@ -330,7 +339,11 @@ export function RunAshChatComposer({
 
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault()
-              handleSubmit()
+              if (canSend) {
+                handleSubmit()
+              } else if (isRetryableFailure && onRetry) {
+                onRetry()
+              }
             }
           }}
           rows={4}
@@ -576,9 +589,15 @@ export function RunAshChatComposer({
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
         <span>Enter to send • Shift+Enter newline • Controls are keyboard accessible.</span>
         <div className="flex items-center gap-2">
-          {streamState === "failed" && onRetry ? (
-            <Button type="button" variant="outline" onClick={onRetry} className="border-amber-700 text-amber-200 hover:bg-amber-950">
-              <RotateCcw className="mr-1 h-4 w-4" /> Retry response
+          {isRetryableFailure && onRetry ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onRetry}
+              className="border-amber-700 text-amber-200 hover:bg-amber-950"
+              disabled={disabled || isBusy}
+            >
+              <RotateCcw className="mr-1 h-4 w-4" /> Retry
             </Button>
           ) : null}
           {isStreaming && onStop ? (
@@ -593,7 +612,7 @@ export function RunAshChatComposer({
             aria-label="Send prompt"
           >
             <Send className="mr-1 h-4 w-4" />
-            {streamState === "stopping" ? "Stopping..." : isStreaming ? "Sending..." : "Send"}
+            {sendButtonLabel}
           </Button>
         </div>
       </div>
