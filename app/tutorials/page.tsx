@@ -39,7 +39,6 @@ const tutorials: Tutorial[] = [
     duration: "15 min",
     difficulty: "Beginner",
     author: "Sarah Johnson",
-    link: "/placeholder.svg?height=300&width=400",
     thumbnail: "/placeholder.svg?height=300&width=400",
     category: "Getting Started",
     featured: true,
