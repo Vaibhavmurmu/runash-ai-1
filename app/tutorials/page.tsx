@@ -8,6 +8,15 @@ import ThemeToggle from "@/components/theme-toggle"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import {
+  getCategoryLabel,
+  getFeaturedTutorial,
+  getTutorialsByCategory,
+  getVisibleTutorials,
+  type Tutorial,
+  type TutorialCategory,
+  type TutorialTab,
+} from "@/lib/tutorials"
 
 type Tutorial = {
   id: string
@@ -146,7 +155,7 @@ const TutorialCard = ({ title, description, duration, difficulty, author, thumbn
       <CardContent className="p-6">
         <div className="flex items-center gap-2 mb-3">
           <Badge variant="outline" className="text-orange-600 dark:text-orange-400 border-orange-500/50">
-            {category}
+            {getCategoryLabel(category)}
           </Badge>
           <Badge
             variant={
@@ -189,10 +198,11 @@ const TutorialCard = ({ title, description, duration, difficulty, author, thumbn
 
 export default function TutorialsPage() {
   const [searchQuery, setSearchQuery] = useState("")
-  const featuredTutorialCta = {
-    href: "https://docs.runash.in/tutorials",
-    isExternal: true,
-  }
+  const [activeTab, setActiveTab] = useState<TutorialTab>("all")
+
+  const categoryTabs: TutorialCategory[] = ["getting-started", "ai-features", "streaming", "advanced"]
+  const featuredTutorial = getFeaturedTutorial()
+  const allVisibleTutorials = getVisibleTutorials({ tab: activeTab, searchQuery })
 
   const filteredTutorials = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase()
@@ -251,7 +261,6 @@ export default function TutorialsPage() {
               Master RunAsh AI with our comprehensive video tutorials. From basic setup to advanced features.
             </p>
 
-            {/* Search */}
             <div className="max-w-md mx-auto relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               <Input
@@ -265,17 +274,17 @@ export default function TutorialsPage() {
         </div>
       </section>
 
-      {/* Tutorial Content */}
       <section className="py-16 bg-white dark:bg-gray-950">
         <div className="container mx-auto px-4">
           <div className="max-w-6xl mx-auto">
-            <Tabs defaultValue="all" className="mb-8">
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TutorialTab)} className="mb-8">
               <TabsList className="bg-orange-100/50 dark:bg-orange-900/20">
                 <TabsTrigger value="all">All Tutorials</TabsTrigger>
-                <TabsTrigger value="getting-started">Getting Started</TabsTrigger>
-                <TabsTrigger value="ai-features">AI Features</TabsTrigger>
-                <TabsTrigger value="streaming">Streaming</TabsTrigger>
-                <TabsTrigger value="advanced">Advanced</TabsTrigger>
+                {categoryTabs.map((category) => (
+                  <TabsTrigger key={category} value={category}>
+                    {getCategoryLabel(category)} ({getTutorialsByCategory(category).length})
+                  </TabsTrigger>
+                ))}
               </TabsList>
 
               <TabsContent value="all" className="mt-8">
@@ -302,7 +311,6 @@ export default function TutorialsPage() {
         </div>
       </section>
 
-      {/* Footer */}
       <footer className="py-12 bg-white dark:bg-gray-950 border-t border-orange-200/50 dark:border-orange-900/30">
         <div className="container mx-auto px-4">
           <div className="text-center text-gray-500">
