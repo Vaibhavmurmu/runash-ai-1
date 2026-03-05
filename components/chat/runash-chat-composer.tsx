@@ -104,6 +104,9 @@ const SLASH_COMMANDS: SlashCommand[] = [
   },
 ]
 
+const SECONDARY_ACTION_BUTTON_CLASS = "h-8 rounded-lg border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+const ATTACHMENT_ACTION_BUTTON_CLASS = "h-8 rounded-lg border-zinc-600 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+
 export function RunAshChatComposer({
   value,
   onChange,
@@ -362,7 +365,7 @@ export function RunAshChatComposer({
               onClick={() => setShowSecondaryControls((previous) => !previous)}
               aria-expanded={showSecondaryControls}
               aria-controls="composer-secondary-controls"
-              className="h-8 rounded-full border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+              className={SECONDARY_ACTION_BUTTON_CLASS}
             >
               Advanced options
               <ChevronDown className={`ml-1 h-3.5 w-3.5 transition-transform ${showSecondaryControls ? "rotate-180" : ""}`} />
@@ -383,7 +386,7 @@ export function RunAshChatComposer({
                   size="sm"
                   onClick={() => attachmentInputRef.current?.click()}
                   disabled={disabled || isBusy}
-                  className="h-8 rounded-full border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+                  className={SECONDARY_ACTION_BUTTON_CLASS}
                   aria-label="Attach image"
                 >
                   <ImageIcon className="mr-1 h-3.5 w-3.5" />
@@ -391,7 +394,7 @@ export function RunAshChatComposer({
                 </Button>
               </>
             ) : null}
-            <span className="text-zinc-500">Type / for templates • Ctrl/Cmd+Shift+P to polish</span>
+            <span className="text-zinc-400">Type / for templates • Ctrl/Cmd+Shift+P to polish</span>
           </div>
 
           <div className="flex items-center gap-3 text-zinc-500">
@@ -444,7 +447,7 @@ export function RunAshChatComposer({
               variant="outline"
               onClick={() => void enhancePrompt()}
               disabled={disabled || isBusy}
-              className="border-zinc-600 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+              className={ATTACHMENT_ACTION_BUTTON_CLASS}
               aria-label="Enhance prompt"
             >
               <Sparkles className="mr-1 h-3.5 w-3.5" />
@@ -467,17 +470,17 @@ export function RunAshChatComposer({
             </div>
 
             {attachmentPreview.uploadState === "failed" && onRetryAttachment ? (
-              <Button type="button" variant="outline" size="sm" className="h-7 rounded-full border-zinc-600 bg-zinc-900 text-zinc-200" onClick={onRetryAttachment}>
+              <Button type="button" variant="outline" size="sm" className={ATTACHMENT_ACTION_BUTTON_CLASS} onClick={onRetryAttachment}>
                 <RefreshCcw className="mr-1 h-3.5 w-3.5" /> Retry
               </Button>
             ) : null}
             {onAttachFile ? (
-              <Button type="button" variant="outline" size="sm" className="h-7 rounded-full border-zinc-600 bg-zinc-900 text-zinc-200" onClick={() => attachmentInputRef.current?.click()} disabled={disabled || isBusy}>
+              <Button type="button" variant="outline" size="sm" className={ATTACHMENT_ACTION_BUTTON_CLASS} onClick={() => attachmentInputRef.current?.click()} disabled={disabled || isBusy}>
                 Replace
               </Button>
             ) : null}
             {onRemoveAttachment ? (
-              <Button type="button" variant="outline" size="sm" className="h-7 rounded-full border-zinc-600 bg-zinc-900 text-zinc-200" onClick={onRemoveAttachment} disabled={disabled || isBusy}>
+              <Button type="button" variant="outline" size="sm" className={ATTACHMENT_ACTION_BUTTON_CLASS} onClick={onRemoveAttachment} disabled={disabled || isBusy}>
                 <X className="mr-1 h-3.5 w-3.5" /> Remove
               </Button>
             ) : null}
@@ -594,21 +597,21 @@ export function RunAshChatComposer({
               type="button"
               variant="outline"
               onClick={onRetry}
-              className="border-amber-700 text-amber-200 hover:bg-amber-950"
+              className="h-8 rounded-lg border-amber-700 text-amber-200 hover:bg-amber-950"
               disabled={disabled || isBusy}
             >
               <RotateCcw className="mr-1 h-4 w-4" /> Retry
             </Button>
           ) : null}
           {isStreaming && onStop ? (
-            <Button type="button" variant="outline" onClick={onStop} className="border-red-700 text-red-200 hover:bg-red-950">
+            <Button type="button" variant="outline" onClick={onStop} className="h-8 rounded-lg border-red-700 text-red-200 hover:bg-red-950">
               <OctagonX className="mr-1 h-4 w-4" /> Stop
             </Button>
           ) : null}
             <Button
               onClick={() => handleSubmit()}
               disabled={!canSend}
-              className="rounded-full bg-orange-500 px-4 font-semibold text-zinc-950 hover:bg-orange-400"
+              className="h-8 rounded-lg bg-orange-500 px-4 font-semibold text-zinc-950 hover:bg-orange-400"
               aria-label="Send prompt"
             >
             <Send className="mr-1 h-4 w-4" />
@@ -617,25 +620,19 @@ export function RunAshChatComposer({
         </div>
       </div>
 
-      <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/60 px-3 py-2 text-[11px] text-zinc-400">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span>
-            Need higher usage limits?{" "}
-            <a href="/upgrade" className="text-amber-300 underline underline-offset-2">
-              Upgrade your plan
-            </a>
-            .
-          </span>
+      <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/60 px-3 py-2 text-[11px]">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           {onAttachFile ? (
-            <span className="inline-flex items-center gap-1 rounded-full border border-zinc-700/80 bg-zinc-900/80 px-2 py-0.5 text-zinc-300">
+            <span className="inline-flex items-center gap-1 text-zinc-400">
               <ImageIcon className="h-3 w-3" />
-              {isTouchDevice ? "Tap Attach to upload" : "Drag & drop or click Attach"}
+              {isTouchDevice ? "Tap Attach to upload an image" : "Drag and drop an image, or click Attach"}
             </span>
-          ) : null}
-        </div>
+          ) : (
+            <span className="text-zinc-400">Use templates or customize tone from Advanced options.</span>
+          )}
 
-        {shouldShowUpgradePrompt ? (
-          <div className="flex items-center justify-between gap-2">
+          {shouldShowUpgradePrompt ? (
+            <div className="flex items-center gap-2 text-zinc-300">
             <span>
               Need higher usage limits?{" "}
               <a
@@ -657,8 +654,9 @@ export function RunAshChatComposer({
             >
               Dismiss
             </Button>
-          </div>
-        ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   )
