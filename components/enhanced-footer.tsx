@@ -92,6 +92,11 @@ export function EnhancedFooter() {
                 </Link>
               </li>
               <li>
+                <Link href="/brand" className="text-muted-foreground hover:text-foreground transition-colors">
+                  Brand Assets
+                </Link>
+              </li>
+              <li>
                 <Link href="/status" className="text-muted-foreground hover:text-foreground transition-colors">
                   Status
                 </Link>

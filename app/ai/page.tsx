@@ -42,7 +42,7 @@ import TechStack from "@/components/tech-stack"
 export const metadata: Metadata = {
   title: "AI Research & Development | RunAsh",
   description:
-    "Explore RunAsh AI's cutting-edge research, technical papers, development roadmap, and interactive demos.",
+    "Discover RunAsh AI research programs, technical papers, roadmap milestones, and live demos.",
 }
 
 export default function AIPage() {
@@ -52,7 +52,7 @@ export default function AIPage() {
       title: "Real-time AI-Powered Content Analysis for Live Streaming",
       authors: ["Ram Murmu", "Vaibhav Murmu", "P K Murmu"],
       date: "January 2025",
-      conference: "HuggingFace",
+      conference: "Hugging Face",
       abstract:
         "This paper presents a novel approach to real-time content analysis for live streaming platforms using a lightweight transformer architecture optimized for edge devices.",
       link: "#",
@@ -62,7 +62,7 @@ export default function AIPage() {
       title: "Adaptive Bandwidth Optimization Using Predictive AI Models",
       authors: ["Ram Murmu", "Vaibhav Murmu", "P K Murmu"],
       date: "January 2025",
-      conference: "HuggingFace",
+      conference: "Hugging Face",
       abstract:
         "We introduce an adaptive bandwidth optimization system that uses predictive AI models to anticipate streaming quality requirements based on content type and viewer engagement patterns.",
       link: "#",
@@ -72,11 +72,11 @@ export default function AIPage() {
       title: "Multi-modal Emotion Recognition for Enhanced Viewer Engagement",
       authors: ["Ram Murmu", "Vaibhav Murmu", "P K Murmu"],
       date: "January 2025",
-      conference: "HuggingFace,Kaggle",
+      conference: "Hugging Face, Kaggle",
       abstract:
         "This research explores multi-modal emotion recognition techniques combining audio, visual, and textual data to enhance viewer engagement metrics in live streaming environments.",
       link: "#",
-      tags: ["Emotion Recognition", "Action Recognition", "Action Recognition","Multi-modal AI", "Engagement Metrics"],
+      tags: ["Emotion Recognition", "Action Recognition", "Multimodal AI", "Engagement Metrics"],
     },
   ]
 
@@ -127,9 +127,9 @@ export default function AIPage() {
     },
     {
       name: "Vaibhav Murmu",
-      role: "Principal Research Team Member",
+      role: "Principal AI Researcher",
       image: "/vaibhavmurmu.jpg?height=300&width=300",
-      bio: "Vaibhav Murmu contribute in deep learning architectures for streaming media optimization and bandwidth prediction.",
+      bio: "Vaibhav Murmu contributes deep learning expertise for streaming media optimization and bandwidth prediction.",
       publications: 0,
       citations: 0,
       links: {
@@ -140,7 +140,7 @@ export default function AIPage() {
     },
     {
       name: "P K Murmu",
-      role: "Researcher Team Members",
+      role: "AI Researcher",
       image: "/placeholder.svg?height=300&width=300",
       bio: "P K Murmu focuses on multi-modal learning and emotion recognition systems for enhanced viewer engagement.",
       publications: 0,
@@ -186,19 +186,19 @@ export default function AIPage() {
       gradient: "from-yellow-500 to-orange-500",
     },
     {
-      title: "Kaggl",
+      title: "Kaggle",
       description: "Machine learning platform for production deployment",
       icon: <Code className="h-6 w-6 text-orange-500" />,
       gradient: "from-yellow-500 to-orange-500",
     },
     {
       title: "Scikit-learn",
-      description: "Machine learning in python",
+      description: "Machine learning in Python",
       icon: <Code className="h-6 w-6 text-orange-500" />,
       gradient: "from-yellow-500 to-orange-500",
     },
     {
-      title: "Colab",
+      title: "Google Colab",
       description: "Machine learning platform for production deployment",
       icon: <Code className="h-6 w-6 text-orange-500" />,
       gradient: "from-yellow-500 to-orange-500",
@@ -295,7 +295,7 @@ export default function AIPage() {
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              Learn More <ArrowRight className="ml-2 h-4 w-4" />
+              Explore Feature Details <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
             </div>
@@ -313,7 +313,7 @@ export default function AIPage() {
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              Learn More <ArrowRight className="ml-2 h-4 w-4" />
+              Explore Feature Details <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
             </div>
@@ -330,7 +330,7 @@ export default function AIPage() {
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              Learn More <ArrowRight className="ml-2 h-4 w-4" />
+              Explore Feature Details <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
             </div>
@@ -347,7 +347,7 @@ export default function AIPage() {
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              Learn More <ArrowRight className="ml-2 h-4 w-4" />
+              Explore Feature Details <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
             </div>
@@ -381,7 +381,7 @@ export default function AIPage() {
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              Learn More <ArrowRight className="ml-2 h-4 w-4" />
+              Explore Feature Details <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
             </div>
@@ -398,7 +398,7 @@ export default function AIPage() {
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              Learn More <ArrowRight className="ml-2 h-4 w-4" />
+              Explore Feature Details <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
             </div>
@@ -415,7 +415,7 @@ export default function AIPage() {
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              Learn More <ArrowRight className="ml-2 h-4 w-4" />
+              Explore Feature Details <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
             </div>
@@ -425,14 +425,14 @@ export default function AIPage() {
               </div>
               <h3 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Automatic Speech Recognition</h3>
               <p className="text-gray-700 dark:text-gray-300">
-                Our model supports TTS capabilities, allowing you to generate spoken language from text inputs in real-time.
+                Our model supports TTS capabilities, allowing creators to generate spoken language from text inputs in real time.
               </p>
               <div className="flex justify-left mt-12">
             <Button
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              Learn More <ArrowRight className="ml-2 h-4 w-4" />
+              Explore Feature Details <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
             </div>
@@ -440,16 +440,16 @@ export default function AIPage() {
               <div className="p-3 rounded-lg bg-gradient-to-br from-orange-500 to-yellow-500 mb-4 inline-block">
                 <Speech className="h-6 w-6 text-white" />
               </div>
-              <h3 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Text-toSpeech</h3>
+              <h3 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Text-to-Speech</h3>
               <p className="text-gray-700 dark:text-gray-300">
-                This model supports TTS capabilities, allowing  to generate spoken language from text inputs in real-time.
+                This model supports TTS capabilities, allowing creators to generate spoken language from text inputs in real time.
               </p>
               <div className="flex justify-left mt-12">
             <Button
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              Learn More <ArrowRight className="ml-2 h-4 w-4" />
+              Explore Feature Details <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
             </div>
@@ -490,7 +490,7 @@ export default function AIPage() {
               variant="outline"
               className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-950"
             >
-              View All Papers <ArrowRight className="ml-2 h-4 w-4" />
+              Explore All Research Papers <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -610,7 +610,7 @@ export default function AIPage() {
           <div className="mt-16 text-center">
             <Link href="/careers">
               <Button className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:opacity-90 text-white">
-                Join Our Research Team
+                View Open Research Roles
               </Button>
             </Link>
           </div>
@@ -650,9 +650,9 @@ export default function AIPage() {
               the state of AI in live streaming technology.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button className="bg-white text-orange-600 hover:bg-orange-50">Research Partnerships</Button>
+              <Button className="bg-white text-orange-600 hover:bg-orange-50">Apply for Research Partnerships</Button>
               <Button variant="outline" className="border-white text-orange-600 hover:bg-white/10">
-                Contact Research Team
+                Contact the Research Team
               </Button>
             </div>
           </div>
