@@ -580,6 +580,14 @@ export default function AboutPage() {
                     Blog
                   </Link>
                 </li>
+                <li>
+                  <Link
+                    href="/brand"
+                    className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
+                  >
+                    Brand Assets
+                  </Link>
+                </li>
               </ul>
             </div>
             <div>

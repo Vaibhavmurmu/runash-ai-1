@@ -3,7 +3,7 @@ import { SimplePage } from "@/components/marketing/simple-page"
 
 export const metadata: Metadata = {
   title: "Research Overview | RunAsh",
-  description: "A concise overview of RunAsh research themes and milestones.",
+  description: "Review RunAsh research focus areas, execution streams, and milestone tracking.",
 }
 
 export default function Page() {
@@ -17,7 +17,7 @@ export default function Page() {
         { title: "Execution", description: "Each stream moves from hypothesis to measurable product impact." },
         { title: "Milestones", description: "Quarterly checkpoints keep research practical and accountable." },
       ]}
-      ctaLabel="Open research hub"
+      ctaLabel="Visit the Research Hub"
       ctaHref="/research"
     />
   )
