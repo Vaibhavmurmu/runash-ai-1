@@ -44,12 +44,13 @@ export default function ChatSidebar({
   const [workspaceToolsOpen, setWorkspaceToolsOpen] = useState(true)
 
   const persistedSessionIdSet = useMemo(() => new Set(persistedSessionIds ?? []), [persistedSessionIds])
-  const persistedSessions = useMemo(
-    () => sessions.filter((session) => (persistedSessionIds ? persistedSessionIdSet.has(session.id) : true)),
-    [persistedSessionIdSet, persistedSessionIds, sessions],
+  const persistedSessions = useMemo(() => sessions.filter((session) => persistedSessionIdSet.has(session.id)), [persistedSessionIdSet, sessions])
+  const normalizedQuery = searchQuery.trim().toLowerCase()
+  const filteredSessions = useMemo(
+    () => (normalizedQuery ? persistedSessions.filter((session) => session.title.toLowerCase().includes(normalizedQuery)) : persistedSessions),
+    [normalizedQuery, persistedSessions],
   )
-  const filteredSessions = persistedSessions.filter((session) => session.title.toLowerCase().includes(searchQuery.toLowerCase()))
-  const isSearching = searchQuery.trim().length > 0
+  const isSearching = normalizedQuery.length > 0
 
   const handleNewChat = () => {
     onNewChat?.()
@@ -203,7 +204,7 @@ export default function ChatSidebar({
             {persistedSessions.length > 0 && filteredSessions.length === 0 && isSearching ? (
               <div className="rounded-lg border border-dashed p-4 text-sm">
                 <p className="font-medium">No results</p>
-                <p className="mt-1 text-xs text-muted-foreground">No persisted sessions match your search.</p>
+                <p className="mt-1 text-xs text-muted-foreground">No saved sessions match “{searchQuery.trim()}”. Try a different title or start a new chat.</p>
                 <Button size="sm" variant="outline" className="mt-3" onClick={handleNewChat}>
                   <Plus className="mr-1 h-4 w-4" /> New chat
                 </Button>
