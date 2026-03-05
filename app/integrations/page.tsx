@@ -188,6 +188,27 @@ export default function IntegrationsPage() {
                       status="available"
                     />
                     <IntegrationCard
+                      name="Hugging Face"
+                      description="Sync models and datasets from Hugging Face directly into your RunAsh workflows."
+                      icon="/integrations/huggingface.svg"
+                      category="AI Platform"
+                      status="available"
+                    />
+                    <IntegrationCard
+                      name="Google Colab"
+                      description="Launch notebooks in Google Colab and connect trained outputs back to your stream tooling."
+                      icon="/integrations/colab.svg"
+                      category="Developer Tool"
+                      status="available"
+                    />
+                    <IntegrationCard
+                      name="Kaggle"
+                      description="Integrate Kaggle models and competitions data for rapid experimentation and deployment."
+                      icon="/integrations/kaggle.svg"
+                      category="AI Platform"
+                      status="available"
+                    />
+                    <IntegrationCard
                       name="TikTok Live"
                       description="Stream to TikTok Live with vertical video optimization and engagement tools."
                       icon="/placeholder.svg?height=32&width=32"
@@ -299,6 +320,27 @@ export default function IntegrationsPage() {
                     category="Creator Tool"
                     status="available"
                   />
+                  <IntegrationCard
+                    name="Hugging Face"
+                    description="Sync models and datasets from Hugging Face directly into your RunAsh workflows."
+                    icon="/integrations/huggingface.svg"
+                    category="AI Platform"
+                    status="available"
+                  />
+                  <IntegrationCard
+                    name="Google Colab"
+                    description="Launch notebooks in Google Colab and connect trained outputs back to your stream tooling."
+                    icon="/integrations/colab.svg"
+                    category="Developer Tool"
+                    status="available"
+                  />
+                  <IntegrationCard
+                    name="Kaggle"
+                    description="Integrate Kaggle models and competitions data for rapid experimentation and deployment."
+                    icon="/integrations/kaggle.svg"
+                    category="AI Platform"
+                    status="available"
+                  />
                 </div>
               </TabsContent>
 
@@ -335,7 +377,7 @@ export default function IntegrationsPage() {
               </TabsContent>
             </Tabs>
 
-            {/* API Section */}
+            {/* Build Custom Integrations */}
             <div className="mt-16 p-8 rounded-xl bg-gradient-to-br from-orange-100 to-yellow-100 dark:from-orange-900/30 dark:to-yellow-900/30 border border-orange-200 dark:border-orange-800/30">
               <div className="text-center mb-8">
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-orange-500 to-yellow-500 dark:from-orange-400 dark:to-yellow-400 mb-4">
@@ -345,35 +387,70 @@ export default function IntegrationsPage() {
                   Build Custom Integrations
                 </h3>
                 <p className="text-gray-700 dark:text-gray-300 max-w-2xl mx-auto">
-                  Use our comprehensive API to build custom integrations and connect RunAsh AI with any platform or
-                  tool.
+                  Use our integration toolkit to connect RunAsh AI with your internal stack, automate workflows, and
+                  ship production-ready features quickly.
                 </p>
               </div>
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div className="p-6 bg-white dark:bg-gray-900 rounded-lg shadow-sm">
+                <div className="p-6 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-orange-100 dark:border-orange-900/30">
                   <h4 className="font-bold mb-2 text-orange-600 dark:text-orange-400">RESTful API</h4>
-                  <p className="text-gray-600 dark:text-gray-400 text-sm">
-                    Access all RunAsh features programmatically with our well-documented REST API.
+                  <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">
+                    Access projects, streams, analytics, and automation endpoints with token-based authentication.
                   </p>
+                  <Button size="sm" variant="outline" className="border-orange-300 dark:border-orange-700">
+                    Integrate API <ExternalLink className="ml-1 h-3 w-3" />
+                  </Button>
                 </div>
-                <div className="p-6 bg-white dark:bg-gray-900 rounded-lg shadow-sm">
+                <div className="p-6 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-orange-100 dark:border-orange-900/30">
                   <h4 className="font-bold mb-2 text-orange-600 dark:text-orange-400">Webhooks</h4>
-                  <p className="text-gray-600 dark:text-gray-400 text-sm">
-                    Get real-time notifications for stream events and viewer interactions.
+                  <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">
+                    Trigger real-time automations from stream, payout, moderation, and engagement events.
                   </p>
+                  <Button size="sm" variant="outline" className="border-orange-300 dark:border-orange-700">
+                    Configure Webhooks <ExternalLink className="ml-1 h-3 w-3" />
+                  </Button>
                 </div>
-                <div className="p-6 bg-white dark:bg-gray-900 rounded-lg shadow-sm">
+                <div className="p-6 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-orange-100 dark:border-orange-900/30">
                   <h4 className="font-bold mb-2 text-orange-600 dark:text-orange-400">SDKs</h4>
-                  <p className="text-gray-600 dark:text-gray-400 text-sm">
-                    Use our SDKs for popular programming languages to get started quickly.
+                  <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">
+                    Start faster using official SDKs for JavaScript, Python, and server-side integrations.
                   </p>
+                  <Button size="sm" variant="outline" className="border-orange-300 dark:border-orange-700">
+                    Explore SDKs <ExternalLink className="ml-1 h-3 w-3" />
+                  </Button>
                 </div>
               </div>
-              <div className="text-center">
+
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <Button className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white">
-                  View API Documentation <ArrowRight className="ml-2 h-4 w-4" />
+                  API Documentation <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+                <Button variant="outline" className="border-orange-400 text-orange-700 dark:text-orange-300">
+                  Integrate Now <ExternalLink className="ml-2 h-4 w-4" />
                 </Button>
               </div>
+            </div>
+
+            {/* Integration Roadmap */}
+            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card className="border-orange-200/60 dark:border-orange-900/40">
+                <CardContent className="p-6">
+                  <h4 className="font-semibold mb-2">Remaining Features</h4>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Enterprise SSO, role-based access, integration health checks, and usage quotas are next in the
+                    integration roadmap.
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="border-orange-200/60 dark:border-orange-900/40">
+                <CardContent className="p-6">
+                  <h4 className="font-semibold mb-2">Need an Integration?</h4>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Tell us which platform you want next and we will prioritize it in upcoming releases.
+                  </p>
+                </CardContent>
+              </Card>
             </div>
           </div>
         </div>
