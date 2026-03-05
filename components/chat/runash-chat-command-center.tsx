@@ -9,7 +9,7 @@ import { RunAshChatTaskBoard } from "@/components/chat/runash-chat-task-board"
 import { Button } from "@/components/ui/button"
 import { MCPServerManager, type ChatMcpServer } from "@/components/chat/mcp-server-manager"
 
-const MCP_MANAGER_ENABLED = process.env.NEXT_PUBLIC_RUNASH_CHAT_MCP_MANAGER_ENABLED !== "false"
+export const MCP_MANAGER_ENABLED = process.env.NEXT_PUBLIC_RUNASH_CHAT_MCP_MANAGER_ENABLED !== "false"
 
 const defaultMcpServers: ChatMcpServer[] = [
   {
@@ -46,7 +46,10 @@ export function RunAshChatCommandCenter({
         <>
           <div className="rounded-lg border bg-card p-3">
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-medium">MCP tools</p>
+              <div>
+                <p className="text-sm font-medium">Chat settings · MCP tools</p>
+                <p className="text-xs text-muted-foreground">Configure external MCP servers used by chat automations.</p>
+              </div>
               <Button size="sm" variant="outline" onClick={() => setMcpDialogOpen(true)}>
                 Manage servers
               </Button>
