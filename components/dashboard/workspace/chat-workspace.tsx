@@ -169,108 +169,7 @@ export function ChatWorkspace() {
   const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"]
 
 
-  const [chatSessions, setChatSessions] = useState<ChatSession[]>([
-    {
-      id: "1",
-      title: "Organic Breakfast Ideas",
-      messages: [
-        {
-          id: "s1-1",
-          content: "Can you suggest a few organic vegan breakfast ideas under $20?",
-          role: "user",
-          timestamp: new Date(Date.now() - 86400000),
-          type: "text",
-        },
-        {
-          id: "s1-2",
-          content: "Absolutely — try overnight oats, tofu scramble wraps, and fruit-chia parfaits.",
-          role: "assistant",
-          timestamp: new Date(Date.now() - 86300000),
-          type: "text",
-        },
-      ],
-      createdAt: new Date(Date.now() - 86400000),
-      updatedAt: new Date(Date.now() - 86400000),
-      context: {
-        preferences: {
-          dietaryRestrictions: ["vegan"],
-          sustainabilityPriority: "high",
-          budgetRange: [0, 50],
-          preferredCategories: ["fruits-vegetables"],
-          cookingSkillLevel: "beginner",
-        },
-        currentCart: [],
-        recentSearches: ["organic oats", "plant milk"],
-      },
-    },
-    {
-      id: "2",
-      title: "Store Automation Setup",
-      messages: [
-        {
-          id: "s2-1",
-          content: "How do I automate low-stock alerts for my store?",
-          role: "user",
-          timestamp: new Date(Date.now() - 172800000),
-          type: "text",
-        },
-        {
-          id: "s2-2",
-          content: "Set reorder thresholds per SKU and trigger notifications when inventory drops below limits.",
-          role: "assistant",
-          timestamp: new Date(Date.now() - 172700000),
-          type: "text",
-        },
-      ],
-      createdAt: new Date(Date.now() - 172800000),
-      updatedAt: new Date(Date.now() - 172800000),
-      context: {
-        preferences: {
-          dietaryRestrictions: [],
-          sustainabilityPriority: "medium",
-          budgetRange: [0, 1000],
-          preferredCategories: [],
-          cookingSkillLevel: "intermediate",
-          businessType: "retail",
-        },
-        currentCart: [],
-        recentSearches: ["inventory management", "POS system"],
-      },
-    },
-    {
-      id: "3",
-      title: "Sustainable Living Tips",
-      messages: [
-        {
-          id: "s3-1",
-          content: "What are easy ways to reduce daily household waste?",
-          role: "user",
-          timestamp: new Date(Date.now() - 259200000),
-          type: "text",
-        },
-        {
-          id: "s3-2",
-          content: "Start with reusable bags, meal planning, and composting food scraps.",
-          role: "assistant",
-          timestamp: new Date(Date.now() - 259100000),
-          type: "text",
-        },
-      ],
-      createdAt: new Date(Date.now() - 259200000),
-      updatedAt: new Date(Date.now() - 259200000),
-      context: {
-        preferences: {
-          dietaryRestrictions: [],
-          sustainabilityPriority: "high",
-          budgetRange: [0, 100],
-          preferredCategories: [],
-          cookingSkillLevel: "advanced",
-        },
-        currentCart: [],
-        recentSearches: ["zero waste", "renewable energy"],
-      },
-    },
-  ])
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([])
 
   const buildEmptySessionContext = () => ({
     preferences: {
@@ -577,7 +476,7 @@ export function ChatWorkspace() {
         setSessionsStatus("ready")
       } catch {
         setSessionsStatus("error")
-        // keep local fallback sessions when api is unavailable
+        // session list remains empty when api is unavailable
       }
     })()
   }, [])
@@ -1523,7 +1422,7 @@ export function ChatWorkspace() {
           state="error"
           loadingMessage=""
           emptyMessage=""
-          errorMessage="Unable to sync session history. Showing local sessions."
+          errorMessage="Unable to sync session history. Please retry in a moment."
         />
       ) : null}
       <ChatSidebar
@@ -1531,6 +1430,10 @@ export function ChatWorkspace() {
         onSessionSelect={loadSession}
         currentSession={currentSession}
         onNewChat={handleNewChatSession}
+        onSuggestedPrompts={handleNewChatSession}
+        onImportContext={() => {
+          window.location.href = "/dashboard/library"
+        }}
         onDeleteSession={handleDeleteSession}
         streamId={queryStreamId}
         activeProjectName={queryProjectName ?? bootstrapProjectName ?? currentSession?.title ?? null}
