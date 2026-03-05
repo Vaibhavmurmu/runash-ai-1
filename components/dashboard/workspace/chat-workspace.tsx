@@ -100,6 +100,7 @@ export function ChatWorkspace() {
   const sendAbortRef = useRef<AbortController | null>(null)
   const sessionHydrationRequestRef = useRef(0)
   const firstCompletionTrackedRef = useRef(false)
+  const turnCompletionDedupRef = useRef<Set<string>>(new Set())
 
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => {
     if (typeof window === "undefined") {
@@ -193,6 +194,7 @@ export function ChatWorkspace() {
     content?: string
     created_at?: string
     createdAt?: string
+    status?: string
     message_type?: string
     messageType?: string
   }): ChatMessage | null => {
@@ -205,6 +207,14 @@ export function ChatWorkspace() {
       role: message.role,
       content: message.content,
       timestamp: new Date(message.created_at ?? message.createdAt ?? Date.now()),
+      status:
+        message.status === "queued" ||
+        message.status === "streaming" ||
+        message.status === "tool-running" ||
+        message.status === "completed" ||
+        message.status === "failed"
+          ? message.status
+          : "completed",
       type:
         message.message_type === "product" ||
         message.message_type === "recipe" ||
@@ -216,7 +226,6 @@ export function ChatWorkspace() {
         message.messageType === "automation"
           ? (message.message_type ?? message.messageType)
           : "text",
-      status: "completed",
     }
   }
 
@@ -251,13 +260,13 @@ export function ChatWorkspace() {
   }
 
   const fetchSessionMessages = async (sessionId: string) => {
-    const response = await fetch(`/api/messages/session/${encodeURIComponent(sessionId)}?limit=50`, { cache: "no-store" })
+    const response = await fetch(`/api/agents/sessions/${encodeURIComponent(sessionId)}?limit=100`, { cache: "no-store" })
     if (!response.ok) {
       throw new Error("Unable to hydrate session")
     }
 
-    const payload = (await response.json()) as { data?: Array<Record<string, unknown>> }
-    const rawMessages = Array.isArray(payload.data) ? payload.data : []
+    const payload = (await response.json()) as { data?: { messages?: Array<Record<string, unknown>> } }
+    const rawMessages = Array.isArray(payload.data?.messages) ? payload.data.messages : []
 
     return rawMessages
       .map((entry) =>
@@ -267,42 +276,13 @@ export function ChatWorkspace() {
           content: typeof entry.content === "string" ? entry.content : undefined,
           created_at: typeof entry.created_at === "string" ? entry.created_at : undefined,
           createdAt: typeof entry.createdAt === "string" ? entry.createdAt : undefined,
+          status: typeof entry.status === "string" ? entry.status : undefined,
           message_type: typeof entry.message_type === "string" ? entry.message_type : undefined,
           messageType: typeof entry.messageType === "string" ? entry.messageType : undefined,
         }),
       )
       .filter((message): message is ChatMessage => message !== null)
       .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
-  }
-
-  const persistSessionMessage = async (sessionId: string, role: "user" | "assistant", content: string) => {
-    if (!content.trim()) return null
-
-    const response = await fetch("/api/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId,
-        role,
-        content,
-        messageType: "text",
-      }),
-    })
-
-    if (!response.ok) {
-      throw new Error("Unable to persist message")
-    }
-
-    const payload = (await response.json()) as { data?: Record<string, unknown> }
-    return mapSessionMessageToChatMessage({
-      id: typeof payload.data?.id === "string" || typeof payload.data?.id === "number" ? payload.data.id : undefined,
-      role: typeof payload.data?.role === "string" ? payload.data.role : undefined,
-      content: typeof payload.data?.content === "string" ? payload.data.content : undefined,
-      created_at: typeof payload.data?.created_at === "string" ? payload.data.created_at : undefined,
-      createdAt: typeof payload.data?.createdAt === "string" ? payload.data.createdAt : undefined,
-      message_type: typeof payload.data?.message_type === "string" ? payload.data.message_type : undefined,
-      messageType: typeof payload.data?.messageType === "string" ? payload.data.messageType : undefined,
-    })
   }
 
   const ensureActiveSession = async (titleSeed: string) => {
@@ -675,7 +655,6 @@ export function ChatWorkspace() {
     setInputValue(message)
 
     if (mode === "search") {
-      let activeSessionId: string | null = null
       const userMessage: ChatMessage = {
         id: `${Date.now()}-search-user`,
         content: message,
@@ -689,18 +668,7 @@ export function ChatWorkspace() {
       setIsTyping(true)
 
       try {
-        const activeSession = await ensureActiveSession(message)
-        activeSessionId = activeSession.id
-
-        try {
-          const persistedUser = await persistSessionMessage(activeSessionId, "user", message)
-          if (persistedUser) {
-            setMessages((prev) => prev.map((entry) => (entry.id === userMessage.id ? persistedUser : entry)))
-            pushMessageToSessionState(activeSessionId, persistedUser)
-          }
-        } catch {
-          // keep search UX active even if persistence is unavailable
-        }
+        await ensureActiveSession(message)
 
         const response = await fetch(`/api/web-search?query=${encodeURIComponent(message)}`)
         const payload = await response.json()
@@ -717,17 +685,6 @@ export function ChatWorkspace() {
 
         appendLocalMessage(searchSummary)
 
-        if (activeSessionId) {
-          try {
-            const persistedAssistant = await persistSessionMessage(activeSessionId, "assistant", searchSummary.content)
-            if (persistedAssistant) {
-              setMessages((prev) => prev.map((entry) => (entry.id === searchSummary.id ? { ...persistedAssistant, metadata: searchSummary.metadata } : entry)))
-              pushMessageToSessionState(activeSessionId, { ...persistedAssistant, metadata: searchSummary.metadata })
-            }
-          } catch {
-            // keep search summary visible even if persistence fails
-          }
-        }
       } catch {
         const unavailableMessage: ChatMessage = {
           id: `${Date.now()}-search-error`,
@@ -739,17 +696,6 @@ export function ChatWorkspace() {
         }
 
         appendLocalMessage(unavailableMessage)
-        if (activeSessionId) {
-          try {
-            const persistedAssistant = await persistSessionMessage(activeSessionId, "assistant", unavailableMessage.content)
-            if (persistedAssistant) {
-              setMessages((prev) => prev.map((entry) => (entry.id === unavailableMessage.id ? persistedAssistant : entry)))
-              pushMessageToSessionState(activeSessionId, persistedAssistant)
-            }
-          } catch {
-            // no-op
-          }
-        }
       } finally {
         setIsTyping(false)
       }
@@ -789,9 +735,9 @@ export function ChatWorkspace() {
     }
 
     const assistantId = `${Date.now()}-assistant`
+    const clientRequestId = `chat-turn-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
     let activeSessionId: string | null = null
     let activeSessionTitle: string | null = null
-    let assistantFinalContent = ""
     const assistantMessage: ChatMessage = {
       id: assistantId,
       content: "",
@@ -801,7 +747,7 @@ export function ChatWorkspace() {
       status: "queued",
     }
 
-    const normalizedUserMessage = appendLocalMessage(userMessage)
+    appendLocalMessage(userMessage)
     appendLocalMessage(assistantMessage)
     setInputValue("")
     setIsTyping(true)
@@ -827,16 +773,6 @@ export function ChatWorkspace() {
       activeSessionId = activeSession.id
       activeSessionTitle = activeSession.title
 
-      try {
-        const persistedUser = await persistSessionMessage(activeSessionId, "user", content)
-        if (persistedUser) {
-          setMessages((prev) => prev.map((entry) => (entry.id === normalizedUserMessage.id ? persistedUser : entry)))
-          pushMessageToSessionState(activeSessionId, persistedUser)
-        }
-      } catch {
-        // continue chat even when persistence is temporarily unavailable
-      }
-
       const requestedTools = resolveRequestedToolsForMessage(content)
       const normalizedContent = applyComposerModifiers(content)
 
@@ -855,6 +791,7 @@ export function ChatWorkspace() {
           tools: requestedTools,
           toolPayloads,
           attachments: attachmentMetadata,
+          clientRequestId,
         }),
       })
 
@@ -863,6 +800,35 @@ export function ChatWorkspace() {
         requestId: response.headers.get("x-request-id") || previous.requestId,
         provider: response.headers.get("x-provider") || previous.provider || "RunAsh AI",
       }))
+
+      const responseContentType = response.headers.get("content-type") ?? ""
+      if (response.ok && responseContentType.includes("application/json")) {
+        const payload = (await response.json()) as { deduped?: boolean; sessionId?: string; messageId?: string; content?: string; requestId?: string }
+        if (payload.deduped) {
+          const dedupeKey = payload.sessionId && payload.requestId ? `${payload.sessionId}:${payload.requestId}` : payload.messageId
+          if (dedupeKey && turnCompletionDedupRef.current.has(dedupeKey)) {
+            setStreamControllerState("idle")
+            return
+          }
+          if (dedupeKey) {
+            turnCompletionDedupRef.current.add(dedupeKey)
+          }
+          setMessages((prev) =>
+            prev.map((entry) =>
+              entry.id === assistantId
+                ? {
+                    ...entry,
+                    id: payload.messageId ?? entry.id,
+                    content: payload.content ?? entry.content,
+                    status: "completed",
+                  }
+                : entry,
+            ),
+          )
+          setStreamControllerState("idle")
+          return
+        }
+      }
 
       if (response.status === 429) {
         setComposerHealth("usage-limit")
@@ -947,7 +913,6 @@ export function ChatWorkspace() {
               status: "streaming",
               content: `${existing.content}${String(payload.token ?? "")}`,
             }))
-            assistantFinalContent += String(payload.token ?? "")
           }
 
           if (eventName === "tool_start") {
@@ -1104,27 +1069,27 @@ export function ChatWorkspace() {
           }
 
           if (eventName === "final") {
-            if (typeof payload.content === "string" && payload.content.length > 0) {
-              assistantFinalContent = payload.content
+            const finalSessionId = typeof payload.sessionId === "string" ? payload.sessionId : activeSessionId
+            const finalRequestId = typeof payload.requestId === "string" ? payload.requestId : payloadRequestId
+            const finalMessageId = typeof payload.messageId === "string" ? payload.messageId : null
+            const dedupeKey = finalSessionId && finalRequestId ? `${finalSessionId}:${finalRequestId}` : finalMessageId
+
+            if (dedupeKey && turnCompletionDedupRef.current.has(dedupeKey)) {
+              continue
             }
+
             updateAssistantMessage((existing) => ({
               ...existing,
+              id: finalMessageId ?? existing.id,
               status: payload.status === "completed" ? "completed" : existing.status,
               content: typeof payload.content === "string" && payload.content.length > 0 ? payload.content : existing.content,
             }))
 
+            if (dedupeKey) {
+              turnCompletionDedupRef.current.add(dedupeKey)
+            }
+
             if (payload.status === "completed") {
-              if (activeSessionId) {
-                try {
-                  const persistedAssistant = await persistSessionMessage(activeSessionId, "assistant", assistantFinalContent)
-                  if (persistedAssistant) {
-                    setMessages((prev) => prev.map((entry) => (entry.id === assistantId ? persistedAssistant : entry)))
-                    pushMessageToSessionState(activeSessionId, persistedAssistant)
-                  }
-                } catch {
-                  // keep the in-memory assistant response even if persistence fails
-                }
-              }
               setHasCompletedFirstMessage(true)
               if (!firstCompletionTrackedRef.current) {
                 firstCompletionTrackedRef.current = true
@@ -1171,17 +1136,6 @@ export function ChatWorkspace() {
         setRunDiagnostics((previous) => ({ ...previous, lastErrorCode: previous.lastErrorCode || "STREAM_REQUEST_FAILED" }))
         const fallback = buildAssistantResponse(content)
         setMessages((prev) => prev.map((entry) => (entry.id === assistantId ? { ...fallback, id: assistantId } : entry)))
-        if (activeSessionId) {
-          try {
-            const persistedAssistant = await persistSessionMessage(activeSessionId, "assistant", fallback.content)
-            if (persistedAssistant) {
-              setMessages((prev) => prev.map((entry) => (entry.id === assistantId ? persistedAssistant : entry)))
-              pushMessageToSessionState(activeSessionId, persistedAssistant)
-            }
-          } catch {
-            // keep fallback response visible even if persistence fails
-          }
-        }
       }
     } finally {
       window.clearTimeout(timeoutId)
