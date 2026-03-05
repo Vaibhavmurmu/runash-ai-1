@@ -8,6 +8,15 @@ import ThemeToggle from "@/components/theme-toggle"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import {
+  getCategoryLabel,
+  getFeaturedTutorial,
+  getTutorialsByCategory,
+  getVisibleTutorials,
+  type Tutorial,
+  type TutorialCategory,
+  type TutorialTab,
+} from "@/lib/tutorials"
 
 const TutorialCard = ({
   title,
@@ -18,16 +27,7 @@ const TutorialCard = ({
   thumbnail,
   category,
   featured = false,
-}: {
-  title: string
-  description: string
-  duration: string
-  difficulty: string
-  author: string
-  thumbnail: string
-  category: string
-  featured?: boolean
-}) => {
+}: Tutorial) => {
   return (
     <Card
       className={`overflow-hidden ${featured ? "border-orange-500/50 bg-orange-50/50 dark:bg-orange-950/20" : "border-orange-200/50 dark:border-orange-900/30"}`}
@@ -60,7 +60,7 @@ const TutorialCard = ({
       <CardContent className="p-6">
         <div className="flex items-center gap-2 mb-3">
           <Badge variant="outline" className="text-orange-600 dark:text-orange-400 border-orange-500/50">
-            {category}
+            {getCategoryLabel(category)}
           </Badge>
           <Badge
             variant={
@@ -91,6 +91,11 @@ const TutorialCard = ({
 
 export default function TutorialsPage() {
   const [searchQuery, setSearchQuery] = useState("")
+  const [activeTab, setActiveTab] = useState<TutorialTab>("all")
+
+  const categoryTabs: TutorialCategory[] = ["getting-started", "ai-features", "streaming", "advanced"]
+  const featuredTutorial = getFeaturedTutorial()
+  const allVisibleTutorials = getVisibleTutorials({ tab: activeTab, searchQuery })
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-white">
@@ -114,7 +119,6 @@ export default function TutorialsPage() {
               Master RunAsh AI with our comprehensive video tutorials. From basic setup to advanced features.
             </p>
 
-            {/* Search */}
             <div className="max-w-md mx-auto relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               <Input
@@ -128,226 +132,97 @@ export default function TutorialsPage() {
         </div>
       </section>
 
-      {/* Tutorial Content */}
       <section className="py-16 bg-white dark:bg-gray-950">
         <div className="container mx-auto px-4">
           <div className="max-w-6xl mx-auto">
-            <Tabs defaultValue="all" className="mb-8">
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TutorialTab)} className="mb-8">
               <TabsList className="bg-orange-100/50 dark:bg-orange-900/20">
                 <TabsTrigger value="all">All Tutorials</TabsTrigger>
-                <TabsTrigger value="getting-started">Getting Started</TabsTrigger>
-                <TabsTrigger value="ai-features">AI Features</TabsTrigger>
-                <TabsTrigger value="streaming">Streaming</TabsTrigger>
-                <TabsTrigger value="advanced">Advanced</TabsTrigger>
+                {categoryTabs.map((category) => (
+                  <TabsTrigger key={category} value={category}>
+                    {getCategoryLabel(category)} ({getTutorialsByCategory(category).length})
+                  </TabsTrigger>
+                ))}
               </TabsList>
 
               <TabsContent value="all" className="mt-8">
-                {/* Featured Tutorial */}
-                <div className="mb-12">
-                  <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">Featured Tutorial</h2>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-                    <div className="relative aspect-video overflow-hidden rounded-xl group">
-                      <img
-                        src="/placeholder.svg?height=400&width=600"
-                        alt="Featured tutorial"
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute inset-0 bg-black/40 group-hover:bg-black/50 transition-colors duration-300 flex items-center justify-center">
-                        <div className="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                          <Play className="h-10 w-10 text-white ml-1" />
+                {featuredTutorial && (
+                  <div className="mb-12 p-8 rounded-2xl border border-orange-200/50 dark:border-orange-900/30 bg-orange-50/30 dark:bg-orange-950/10">
+                    <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">Featured Tutorial</h2>
+                    <div className="grid lg:grid-cols-2 gap-8 items-center">
+                      <div className="relative aspect-video rounded-xl overflow-hidden group cursor-pointer">
+                        <img src={featuredTutorial.thumbnail} alt={featuredTutorial.title} className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/40 group-hover:bg-black/50 transition-colors duration-300 flex items-center justify-center">
+                          <div className="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                            <Play className="h-10 w-10 text-white ml-1" />
+                          </div>
+                        </div>
+                        <div className="absolute top-4 left-4">
+                          <Badge variant="secondary" className="bg-black/50 text-white">
+                            <Clock className="h-3 w-3 mr-1" />
+                            {featuredTutorial.duration}
+                          </Badge>
                         </div>
                       </div>
-                      <div className="absolute top-4 left-4">
-                        <Badge variant="secondary" className="bg-black/50 text-white">
-                          <Clock className="h-3 w-3 mr-1" />
-                          15 min
-                        </Badge>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <Badge variant="outline" className="text-orange-600 dark:text-orange-400 border-orange-500/50">
-                          Getting Started
-                        </Badge>
-                        <Badge className="bg-yellow-500 text-black">
-                          <Star className="h-3 w-3 mr-1" />
-                          Featured
-                        </Badge>
-                      </div>
-                      <h3 className="text-3xl font-bold mb-4">Complete RunAsh AI Setup Guide</h3>
-                      <p className="text-gray-600 dark:text-gray-400 mb-6 text-lg">
-                        Learn how to set up RunAsh AI from scratch, connect your streaming platforms, and configure your
-                        first AI-enhanced stream in under 15 minutes.
-                      </p>
-                      <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mb-6">
-                        <div className="flex items-center gap-1">
-                          <User className="h-4 w-4" />
-                          <span>Sarah Johnson</span>
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <Badge variant="outline" className="text-orange-600 dark:text-orange-400 border-orange-500/50">
+                            {getCategoryLabel(featuredTutorial.category)}
+                          </Badge>
+                          <Badge className="bg-yellow-500 text-black">
+                            <Star className="h-3 w-3 mr-1" />
+                            Featured
+                          </Badge>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-4 w-4" />
-                          <span>15 minutes</span>
+                        <h3 className="text-3xl font-bold mb-4">{featuredTutorial.title}</h3>
+                        <p className="text-gray-600 dark:text-gray-400 mb-6 text-lg">{featuredTutorial.description}</p>
+                        <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mb-6">
+                          <div className="flex items-center gap-1">
+                            <User className="h-4 w-4" />
+                            <span>{featuredTutorial.author}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-4 w-4" />
+                            <span>{featuredTutorial.duration}</span>
+                          </div>
+                          <Badge variant="default">{featuredTutorial.difficulty}</Badge>
                         </div>
-                        <Badge variant="default">Beginner</Badge>
+                        <Button className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white">
+                          Watch Tutorial <Play className="ml-2 h-4 w-4" />
+                        </Button>
                       </div>
-                      <Button className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white">
-                        Watch Tutorial <Play className="ml-2 h-4 w-4" />
-                      </Button>
                     </div>
                   </div>
-                </div>
+                )}
 
-                {/* Tutorial Grid */}
                 <div>
                   <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">All Tutorials</h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    <TutorialCard
-                      title="AI Video Enhancement Basics"
-                      description="Learn how to use RunAsh's AI video enhancement to automatically improve your stream quality."
-                      duration="8 min"
-                      difficulty="Beginner"
-                      author="Alex Chen"
-                      thumbnail="/placeholder.svg?height=300&width=400"
-                      category="AI Features"
-                    />
-                    <TutorialCard
-                      title="Multi-Platform Streaming Setup"
-                      description="Configure streaming to multiple platforms simultaneously with platform-specific optimizations."
-                      duration="12 min"
-                      difficulty="Intermediate"
-                      author="Michael Rodriguez"
-                      thumbnail="/placeholder.svg?height=300&width=400"
-                      category="Streaming"
-                    />
-                    <TutorialCard
-                      title="Custom Virtual Backgrounds"
-                      description="Create and use custom virtual backgrounds without a green screen using AI."
-                      duration="6 min"
-                      difficulty="Beginner"
-                      author="Emma Wilson"
-                      thumbnail="/placeholder.svg?height=300&width=400"
-                      category="AI Features"
-                    />
-                    <TutorialCard
-                      title="Advanced Chat Moderation"
-                      description="Set up AI-powered chat moderation with custom rules and automated responses."
-                      duration="10 min"
-                      difficulty="Advanced"
-                      author="David Kim"
-                      thumbnail="/placeholder.svg?height=300&width=400"
-                      category="Advanced"
-                    />
-                    <TutorialCard
-                      title="Stream Analytics Deep Dive"
-                      description="Understand your audience with RunAsh's comprehensive analytics dashboard."
-                      duration="14 min"
-                      difficulty="Intermediate"
-                      author="Priya Patel"
-                      thumbnail="/placeholder.svg?height=300&width=400"
-                      category="Analytics"
-                    />
-                    <TutorialCard
-                      title="API Integration Guide"
-                      description="Integrate RunAsh AI with your existing tools using our comprehensive API."
-                      duration="20 min"
-                      difficulty="Advanced"
-                      author="Tech Team"
-                      thumbnail="/placeholder.svg?height=300&width=400"
-                      category="Advanced"
-                    />
+                    {allVisibleTutorials.map((tutorial) => (
+                      <TutorialCard key={tutorial.title} {...tutorial} />
+                    ))}
                   </div>
                 </div>
               </TabsContent>
 
-              <TabsContent value="getting-started" className="mt-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                  <TutorialCard
-                    title="Complete RunAsh AI Setup Guide"
-                    description="Learn how to set up RunAsh AI from scratch and configure your first stream."
-                    duration="15 min"
-                    difficulty="Beginner"
-                    author="Sarah Johnson"
-                    thumbnail="/placeholder.svg?height=300&width=400"
-                    category="Getting Started"
-                    featured={true}
-                  />
-                  <TutorialCard
-                    title="Your First AI-Enhanced Stream"
-                    description="Step-by-step guide to creating your first stream with AI enhancements."
-                    duration="10 min"
-                    difficulty="Beginner"
-                    author="Alex Chen"
-                    thumbnail="/placeholder.svg?height=300&width=400"
-                    category="Getting Started"
-                  />
-                </div>
-              </TabsContent>
+              {categoryTabs.map((category) => {
+                const categoryVisibleTutorials = getVisibleTutorials({ tab: category, searchQuery })
 
-              <TabsContent value="ai-features" className="mt-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                  <TutorialCard
-                    title="AI Video Enhancement Basics"
-                    description="Learn how to use RunAsh's AI video enhancement to automatically improve your stream quality."
-                    duration="8 min"
-                    difficulty="Beginner"
-                    author="Alex Chen"
-                    thumbnail="/placeholder.svg?height=300&width=400"
-                    category="AI Features"
-                  />
-                  <TutorialCard
-                    title="Custom Virtual Backgrounds"
-                    description="Create and use custom virtual backgrounds without a green screen using AI."
-                    duration="6 min"
-                    difficulty="Beginner"
-                    author="Emma Wilson"
-                    thumbnail="/placeholder.svg?height=300&width=400"
-                    category="AI Features"
-                  />
-                </div>
-              </TabsContent>
-
-              <TabsContent value="streaming" className="mt-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                  <TutorialCard
-                    title="Multi-Platform Streaming Setup"
-                    description="Configure streaming to multiple platforms simultaneously with platform-specific optimizations."
-                    duration="12 min"
-                    difficulty="Intermediate"
-                    author="Michael Rodriguez"
-                    thumbnail="/placeholder.svg?height=300&width=400"
-                    category="Streaming"
-                  />
-                </div>
-              </TabsContent>
-
-              <TabsContent value="advanced" className="mt-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                  <TutorialCard
-                    title="Advanced Chat Moderation"
-                    description="Set up AI-powered chat moderation with custom rules and automated responses."
-                    duration="10 min"
-                    difficulty="Advanced"
-                    author="David Kim"
-                    thumbnail="/placeholder.svg?height=300&width=400"
-                    category="Advanced"
-                  />
-                  <TutorialCard
-                    title="API Integration Guide"
-                    description="Integrate RunAsh AI with your existing tools using our comprehensive API."
-                    duration="20 min"
-                    difficulty="Advanced"
-                    author="Tech Team"
-                    thumbnail="/placeholder.svg?height=300&width=400"
-                    category="Advanced"
-                  />
-                </div>
-              </TabsContent>
+                return (
+                  <TabsContent key={category} value={category} className="mt-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                      {categoryVisibleTutorials.map((tutorial) => (
+                        <TutorialCard key={tutorial.title} {...tutorial} />
+                      ))}
+                    </div>
+                  </TabsContent>
+                )
+              })}
             </Tabs>
           </div>
         </div>
       </section>
 
-      {/* Footer */}
       <footer className="py-12 bg-white dark:bg-gray-950 border-t border-orange-200/50 dark:border-orange-900/30">
         <div className="container mx-auto px-4">
           <div className="text-center text-gray-500">
