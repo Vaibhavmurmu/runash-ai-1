@@ -20,6 +20,8 @@ const sessionQuerySchema = z.object({
 })
 
 export type SessionMessagesDependencies = {
+  getUserId: () => Promise<string | null>
+  isSessionOwnedByUser: (sessionId: string, userId: string) => Promise<boolean>
   listSessionMessages: (sessionId: string, limit?: number) => Promise<RunashSessionMessage[]>
 }
 
@@ -31,6 +33,18 @@ export async function handleGetSessionMessages(
   const requestId = resolveRequestId(request)
 
   try {
+    const userId = await dependencies.getUserId()
+    if (!userId) {
+      return respondError(
+        request,
+        {
+          code: "AUTH_REQUIRED",
+          message: "Unauthorized",
+        } satisfies ApiError,
+        { status: 401, requestId },
+      )
+    }
+
     const parsedParams = sessionParamsSchema.safeParse(params)
     if (!parsedParams.success) {
       logApiEvent("warn", "session.messages.validation_failed", {
@@ -68,6 +82,18 @@ export async function handleGetSessionMessages(
 
     const { id: sessionId } = parsedParams.data
     const { limit } = parsedQuery.data
+
+    const isOwned = await dependencies.isSessionOwnedByUser(sessionId, userId)
+    if (!isOwned) {
+      return respondError(
+        request,
+        {
+          code: "SESSION_NOT_FOUND",
+          message: "Session not found",
+        } satisfies ApiError,
+        { status: 404, requestId },
+      )
+    }
 
     const messages = await dependencies.listSessionMessages(sessionId, limit)
 
