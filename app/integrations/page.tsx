@@ -9,6 +9,15 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
+type Integration = {
+  name: string
+  description: string
+  icon: string
+  category: string
+  status: "connected" | "available" | "coming-soon"
+  featured?: boolean
+}
+
 const IntegrationCard = ({
   name,
   description,
@@ -88,6 +97,213 @@ const IntegrationCard = ({
 export default function IntegrationsPage() {
   const [searchQuery, setSearchQuery] = useState("")
 
+  const featuredIntegrations: Integration[] = [
+    {
+      name: "Twitch",
+      description: "Stream directly to Twitch with enhanced video quality and smart chat moderation.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Streaming Platform",
+      status: "connected",
+      featured: true,
+    },
+    {
+      name: "YouTube",
+      description: "Reach your YouTube audience with AI-enhanced streams and automatic highlight clips.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Streaming Platform",
+      status: "available",
+      featured: true,
+    },
+    {
+      name: "OBS Studio",
+      description: "Enhance your OBS workflow with our plugin for real-time AI video processing.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Creator Tool",
+      status: "available",
+      featured: true,
+    },
+  ]
+
+  const allIntegrations: Integration[] = [
+    {
+      name: "Discord",
+      description: "Connect your Discord community with stream notifications and interactive features.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Social Media",
+      status: "available",
+    },
+    {
+      name: "Streamlabs",
+      description: "Integrate with Streamlabs for enhanced alerts and donation features.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Creator Tool",
+      status: "available",
+    },
+    {
+      name: "TikTok Live",
+      description: "Stream to TikTok Live with vertical video optimization and engagement tools.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Streaming Platform",
+      status: "available",
+    },
+    {
+      name: "Facebook Live",
+      description: "Broadcast to Facebook with AI-powered audience engagement features.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Streaming Platform",
+      status: "available",
+    },
+    {
+      name: "Instagram Live",
+      description: "Go live on Instagram with professional quality and AI enhancements.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Streaming Platform",
+      status: "available",
+    },
+    {
+      name: "Spotify",
+      description: "Display your currently playing music and integrate with your stream overlay.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Music",
+      status: "available",
+    },
+    {
+      name: "Google Analytics",
+      description: "Track your streaming performance with detailed analytics and insights.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Analytics",
+      status: "available",
+    },
+    {
+      name: "Zapier",
+      description: "Automate your workflow by connecting RunAsh with thousands of other apps.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Automation",
+      status: "available",
+    },
+    {
+      name: "Slack",
+      description: "Get stream notifications and manage your team communication.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Communication",
+      status: "coming-soon",
+    },
+  ]
+
+  const streamingIntegrations: Integration[] = [
+    featuredIntegrations[0],
+    {
+      name: "YouTube",
+      description: "Reach your YouTube audience with AI-enhanced streams and automatic highlight clips.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Streaming Platform",
+      status: "available",
+    },
+    {
+      name: "TikTok Live",
+      description: "Stream to TikTok Live with vertical video optimization and engagement tools.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Streaming Platform",
+      status: "available",
+    },
+    {
+      name: "Facebook Live",
+      description: "Broadcast to Facebook with AI-powered audience engagement features.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Streaming Platform",
+      status: "available",
+    },
+    {
+      name: "Instagram Live",
+      description: "Go live on Instagram with professional quality and AI enhancements.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Streaming Platform",
+      status: "available",
+    },
+  ]
+
+  const creatorToolIntegrations: Integration[] = [
+    featuredIntegrations[2],
+    {
+      name: "Streamlabs",
+      description: "Integrate with Streamlabs for enhanced alerts and donation features.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Creator Tool",
+      status: "available",
+    },
+  ]
+
+  const socialIntegrations: Integration[] = [
+    {
+      name: "Discord",
+      description: "Connect your Discord community with stream notifications and interactive features.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Social Media",
+      status: "available",
+    },
+    {
+      name: "Twitter",
+      description: "Auto-tweet when you go live and share highlights with your followers.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Social Media",
+      status: "coming-soon",
+    },
+  ]
+
+  const analyticsIntegrations: Integration[] = [
+    {
+      name: "Google Analytics",
+      description: "Track your streaming performance with detailed analytics and insights.",
+      icon: "/placeholder.svg?height=32&width=32",
+      category: "Analytics",
+      status: "available",
+    },
+  ]
+
+  const normalizedQuery = searchQuery.trim().toLowerCase()
+
+  const filterIntegrations = (integrations: Integration[]) => {
+    if (!normalizedQuery) {
+      return integrations
+    }
+
+    return integrations.filter(({ name, category, description }) =>
+      [name, category, description].some((value) => value.toLowerCase().includes(normalizedQuery)),
+    )
+  }
+
+  const filteredFeaturedIntegrations = filterIntegrations(featuredIntegrations)
+  const filteredAllIntegrations = filterIntegrations(allIntegrations)
+  const filteredStreamingIntegrations = filterIntegrations(streamingIntegrations)
+  const filteredCreatorToolIntegrations = filterIntegrations(creatorToolIntegrations)
+  const filteredSocialIntegrations = filterIntegrations(socialIntegrations)
+  const filteredAnalyticsIntegrations = filterIntegrations(analyticsIntegrations)
+
+  const renderIntegrationGrid = (integrations: Integration[]) => {
+    if (!integrations.length) {
+      return null
+    }
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {integrations.map((integration) => (
+          <IntegrationCard key={integration.name} {...integration} comingSoon={integration.status === "coming-soon"} />
+        ))}
+      </div>
+    )
+  }
+
+  const showNoResults = normalizedQuery.length > 0
+  const noResultsMessage = "No integrations match your search query."
+
+  const renderNoResults = (integrations: Integration[]) => {
+    if (!showNoResults || integrations.length > 0) {
+      return null
+    }
+
+    return <p className="text-gray-600 dark:text-gray-400">{noResultsMessage}</p>
+  }
+
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-white">
       {/* Hero Section */}
@@ -139,199 +355,42 @@ export default function IntegrationsPage() {
 
               <TabsContent value="all" className="mt-8">
                 {/* Featured Integrations */}
-                <div className="mb-12">
-                  <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">Featured Integrations</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <IntegrationCard
-                      name="Twitch"
-                      description="Stream directly to Twitch with enhanced video quality and smart chat moderation."
-                      icon="/placeholder.svg?height=32&width=32"
-                      category="Streaming Platform"
-                      status="connected"
-                      featured={true}
-                    />
-                    <IntegrationCard
-                      name="YouTube"
-                      description="Reach your YouTube audience with AI-enhanced streams and automatic highlight clips."
-                      icon="/placeholder.svg?height=32&width=32"
-                      category="Streaming Platform"
-                      status="available"
-                      featured={true}
-                    />
-                    <IntegrationCard
-                      name="OBS Studio"
-                      description="Enhance your OBS workflow with our plugin for real-time AI video processing."
-                      icon="/placeholder.svg?height=32&width=32"
-                      category="Creator Tool"
-                      status="available"
-                      featured={true}
-                    />
+                {filteredFeaturedIntegrations.length > 0 && (
+                  <div className="mb-12">
+                    <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">Featured Integrations</h2>
+                    {renderIntegrationGrid(filteredFeaturedIntegrations)}
                   </div>
-                </div>
+                )}
 
                 {/* All Integrations */}
-                <div>
-                  <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">All Integrations</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <IntegrationCard
-                      name="Discord"
-                      description="Connect your Discord community with stream notifications and interactive features."
-                      icon="/placeholder.svg?height=32&width=32"
-                      category="Social Media"
-                      status="available"
-                    />
-                    <IntegrationCard
-                      name="Streamlabs"
-                      description="Integrate with Streamlabs for enhanced alerts and donation features."
-                      icon="/placeholder.svg?height=32&width=32"
-                      category="Creator Tool"
-                      status="available"
-                    />
-                    <IntegrationCard
-                      name="TikTok Live"
-                      description="Stream to TikTok Live with vertical video optimization and engagement tools."
-                      icon="/placeholder.svg?height=32&width=32"
-                      category="Streaming Platform"
-                      status="available"
-                    />
-                    <IntegrationCard
-                      name="Facebook Live"
-                      description="Broadcast to Facebook with AI-powered audience engagement features."
-                      icon="/placeholder.svg?height=32&width=32"
-                      category="Streaming Platform"
-                      status="available"
-                    />
-                    <IntegrationCard
-                      name="Instagram Live"
-                      description="Go live on Instagram with professional quality and AI enhancements."
-                      icon="/placeholder.svg?height=32&width=32"
-                      category="Streaming Platform"
-                      status="available"
-                    />
-                    <IntegrationCard
-                      name="Spotify"
-                      description="Display your currently playing music and integrate with your stream overlay."
-                      icon="/placeholder.svg?height=32&width=32"
-                      category="Music"
-                      status="available"
-                    />
-                    <IntegrationCard
-                      name="Google Analytics"
-                      description="Track your streaming performance with detailed analytics and insights."
-                      icon="/placeholder.svg?height=32&width=32"
-                      category="Analytics"
-                      status="available"
-                    />
-                    <IntegrationCard
-                      name="Zapier"
-                      description="Automate your workflow by connecting RunAsh with thousands of other apps."
-                      icon="/placeholder.svg?height=32&width=32"
-                      category="Automation"
-                      status="available"
-                    />
-                    <IntegrationCard
-                      name="Slack"
-                      description="Get stream notifications and manage your team communication."
-                      icon="/placeholder.svg?height=32&width=32"
-                      category="Communication"
-                      status="coming-soon"
-                      comingSoon={true}
-                    />
+                {filteredAllIntegrations.length > 0 && (
+                  <div>
+                    <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">All Integrations</h2>
+                    {renderIntegrationGrid(filteredAllIntegrations)}
                   </div>
-                </div>
+                )}
+
+                {renderNoResults([...filteredFeaturedIntegrations, ...filteredAllIntegrations])}
               </TabsContent>
 
               <TabsContent value="streaming" className="mt-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  <IntegrationCard
-                    name="Twitch"
-                    description="Stream directly to Twitch with enhanced video quality and smart chat moderation."
-                    icon="/placeholder.svg?height=32&width=32"
-                    category="Streaming Platform"
-                    status="connected"
-                    featured={true}
-                  />
-                  <IntegrationCard
-                    name="YouTube"
-                    description="Reach your YouTube audience with AI-enhanced streams and automatic highlight clips."
-                    icon="/placeholder.svg?height=32&width=32"
-                    category="Streaming Platform"
-                    status="available"
-                  />
-                  <IntegrationCard
-                    name="TikTok Live"
-                    description="Stream to TikTok Live with vertical video optimization and engagement tools."
-                    icon="/placeholder.svg?height=32&width=32"
-                    category="Streaming Platform"
-                    status="available"
-                  />
-                  <IntegrationCard
-                    name="Facebook Live"
-                    description="Broadcast to Facebook with AI-powered audience engagement features."
-                    icon="/placeholder.svg?height=32&width=32"
-                    category="Streaming Platform"
-                    status="available"
-                  />
-                  <IntegrationCard
-                    name="Instagram Live"
-                    description="Go live on Instagram with professional quality and AI enhancements."
-                    icon="/placeholder.svg?height=32&width=32"
-                    category="Streaming Platform"
-                    status="available"
-                  />
-                </div>
+                {renderIntegrationGrid(filteredStreamingIntegrations)}
+                {renderNoResults(filteredStreamingIntegrations)}
               </TabsContent>
 
               <TabsContent value="tools" className="mt-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  <IntegrationCard
-                    name="OBS Studio"
-                    description="Enhance your OBS workflow with our plugin for real-time AI video processing."
-                    icon="/placeholder.svg?height=32&width=32"
-                    category="Creator Tool"
-                    status="available"
-                    featured={true}
-                  />
-                  <IntegrationCard
-                    name="Streamlabs"
-                    description="Integrate with Streamlabs for enhanced alerts and donation features."
-                    icon="/placeholder.svg?height=32&width=32"
-                    category="Creator Tool"
-                    status="available"
-                  />
-                </div>
+                {renderIntegrationGrid(filteredCreatorToolIntegrations)}
+                {renderNoResults(filteredCreatorToolIntegrations)}
               </TabsContent>
 
               <TabsContent value="social" className="mt-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  <IntegrationCard
-                    name="Discord"
-                    description="Connect your Discord community with stream notifications and interactive features."
-                    icon="/placeholder.svg?height=32&width=32"
-                    category="Social Media"
-                    status="available"
-                  />
-                  <IntegrationCard
-                    name="Twitter"
-                    description="Auto-tweet when you go live and share highlights with your followers."
-                    icon="/placeholder.svg?height=32&width=32"
-                    category="Social Media"
-                    status="coming-soon"
-                    comingSoon={true}
-                  />
-                </div>
+                {renderIntegrationGrid(filteredSocialIntegrations)}
+                {renderNoResults(filteredSocialIntegrations)}
               </TabsContent>
 
               <TabsContent value="analytics" className="mt-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  <IntegrationCard
-                    name="Google Analytics"
-                    description="Track your streaming performance with detailed analytics and insights."
-                    icon="/placeholder.svg?height=32&width=32"
-                    category="Analytics"
-                    status="available"
-                  />
-                </div>
+                {renderIntegrationGrid(filteredAnalyticsIntegrations)}
+                {renderNoResults(filteredAnalyticsIntegrations)}
               </TabsContent>
             </Tabs>
 
