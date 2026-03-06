@@ -3,9 +3,9 @@
 import { memo, useEffect, useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
-import { Bot, User, Copy, ThumbsUp, ThumbsDown, Share, Pencil, Trash2, Loader2, Check, AlertCircle, RefreshCw, Wrench } from "lucide-react"
+import { Bot, User, Copy, ThumbsUp, ThumbsDown, Share, Pencil, Trash2, Loader2, Check, AlertCircle, RefreshCw, Wrench, ChevronDown, ChevronRight, Clock3, TriangleAlert } from "lucide-react"
 
-import type { ChatMessage } from "@/types/runash-chat"
+import type { ChatMessage, ToolExecutionSummary } from "@/types/runash-chat"
 
 import AutomationSuggestion from "./automation-suggestion"
 import LinkQuickPayButton from "./link-quick-pay-button"
@@ -46,6 +46,7 @@ function ChatMessageComponent({ message, sessionId, onEditRequest, onRegenerate 
     deleteStatus: "idle",
     shareStatus: "idle",
   })
+  const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({})
 
   const capabilities = useMemo(
     () => ({
@@ -196,6 +197,36 @@ function ChatMessageComponent({ message, sessionId, onEditRequest, onRegenerate 
 
   const canRegenerateNow = capabilities.canRegenerate && message.status !== "streaming" && message.status !== "tool-running"
 
+  const toolExecutions = message.metadata?.toolExecutions ?? []
+
+  const formatToolLabel = (tool: string) =>
+    tool
+      .split("_")
+      .filter(Boolean)
+      .map((part) => part[0]?.toUpperCase() + part.slice(1))
+      .join(" ")
+
+  const formatDuration = (durationMs?: number) => {
+    if (typeof durationMs !== "number" || Number.isNaN(durationMs) || durationMs < 0) return null
+    if (durationMs < 1000) return `${durationMs}ms`
+    return `${(durationMs / 1000).toFixed(1)}s`
+  }
+
+  const toggleToolExpansion = (id: string) => {
+    setExpandedTools((current) => ({ ...current, [id]: !current[id] }))
+  }
+
+  const renderToolStatusChip = (tool: ToolExecutionSummary) => {
+    const base = "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium"
+    if (tool.status === "running") {
+      return <span className={`${base} border-emerald-500/40 bg-emerald-500/10 text-emerald-300`}><Loader2 className="h-2.5 w-2.5 animate-spin" />Running</span>
+    }
+    if (tool.status === "failed") {
+      return <span className={`${base} border-rose-500/40 bg-rose-500/10 text-rose-300`}><TriangleAlert className="h-2.5 w-2.5" />Failed</span>
+    }
+    return <span className={`${base} border-zinc-600 bg-zinc-800/80 text-zinc-200`}><Check className="h-2.5 w-2.5" />Done</span>
+  }
+
   const toolResultSections = [
     { key: "products", label: "Products", content: message.metadata?.products },
     { key: "recipes", label: "Recipes", content: message.metadata?.recipes },
@@ -236,6 +267,43 @@ function ChatMessageComponent({ message, sessionId, onEditRequest, onRegenerate 
                 </span>
               ) : null}
             </div>
+            {!isUser && toolExecutions.length > 0 ? (
+              <div className="mb-2 space-y-1.5 rounded-md border border-zinc-800 bg-zinc-950/60 p-2">
+                {toolExecutions.map((tool) => {
+                  const isExpanded = Boolean(expandedTools[tool.id])
+                  const durationLabel = formatDuration(tool.durationMs)
+                  const timingLabel = tool.status === "running" ? "In progress" : durationLabel
+
+                  return (
+                    <div key={tool.id} className="rounded border border-zinc-800/80 bg-zinc-900/70">
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left"
+                        onClick={() => toggleToolExpansion(tool.id)}
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 text-[11px] text-zinc-200">
+                            {isExpanded ? <ChevronDown className="h-3 w-3 text-zinc-400" /> : <ChevronRight className="h-3 w-3 text-zinc-400" />}
+                            <span className="truncate font-medium">{formatToolLabel(tool.tool)}</span>
+                            {renderToolStatusChip(tool)}
+                          </div>
+                          <div className="mt-0.5 flex items-center gap-2 text-[10px] text-zinc-400">
+                            {tool.progressLabel ? <span>{tool.progressLabel}</span> : null}
+                            {timingLabel ? <span className="inline-flex items-center gap-1"><Clock3 className="h-2.5 w-2.5" />{timingLabel}</span> : null}
+                          </div>
+                        </div>
+                      </button>
+                      {isExpanded ? (
+                        <div className="border-t border-zinc-800 px-2 py-1.5 text-[11px] text-zinc-300">
+                          {tool.errorMessage ? <p className="mb-1 text-rose-300">{tool.errorMessage}</p> : null}
+                          {tool.outputPreview ? <p className="line-clamp-3 whitespace-pre-wrap break-all">{tool.outputPreview}</p> : <p className="text-zinc-500">No output captured.</p>}
+                        </div>
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : null}
             {isEditing ? (
               <textarea
                 aria-label="Edit chat message"
@@ -403,7 +471,44 @@ function ChatMessageComponent({ message, sessionId, onEditRequest, onRegenerate 
               <Button variant="ghost" size="sm" title={capabilities.canEdit ? "Edit and save message" : "Edit locally only (server unavailable)"} aria-label="Edit message" onClick={isEditing ? handleEdit : () => setIsEditing(true)} disabled={state.editStatus === "pending" || message.status === "streaming" || message.status === "tool-running"}>
                 {state.editStatus === "pending" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Pencil className="h-3 w-3" />}<span className="ml-1">{isEditing ? "Save edit" : "Edit"}</span>
               </Button>
-              {isEditing ? (
+              {!isUser && toolExecutions.length > 0 ? (
+              <div className="mb-2 space-y-1.5 rounded-md border border-zinc-800 bg-zinc-950/60 p-2">
+                {toolExecutions.map((tool) => {
+                  const isExpanded = Boolean(expandedTools[tool.id])
+                  const durationLabel = formatDuration(tool.durationMs)
+                  const timingLabel = tool.status === "running" ? "In progress" : durationLabel
+
+                  return (
+                    <div key={tool.id} className="rounded border border-zinc-800/80 bg-zinc-900/70">
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left"
+                        onClick={() => toggleToolExpansion(tool.id)}
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 text-[11px] text-zinc-200">
+                            {isExpanded ? <ChevronDown className="h-3 w-3 text-zinc-400" /> : <ChevronRight className="h-3 w-3 text-zinc-400" />}
+                            <span className="truncate font-medium">{formatToolLabel(tool.tool)}</span>
+                            {renderToolStatusChip(tool)}
+                          </div>
+                          <div className="mt-0.5 flex items-center gap-2 text-[10px] text-zinc-400">
+                            {tool.progressLabel ? <span>{tool.progressLabel}</span> : null}
+                            {timingLabel ? <span className="inline-flex items-center gap-1"><Clock3 className="h-2.5 w-2.5" />{timingLabel}</span> : null}
+                          </div>
+                        </div>
+                      </button>
+                      {isExpanded ? (
+                        <div className="border-t border-zinc-800 px-2 py-1.5 text-[11px] text-zinc-300">
+                          {tool.errorMessage ? <p className="mb-1 text-rose-300">{tool.errorMessage}</p> : null}
+                          {tool.outputPreview ? <p className="line-clamp-3 whitespace-pre-wrap break-all">{tool.outputPreview}</p> : <p className="text-zinc-500">No output captured.</p>}
+                        </div>
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : null}
+            {isEditing ? (
                 <Button
                   variant="ghost"
                   size="sm"

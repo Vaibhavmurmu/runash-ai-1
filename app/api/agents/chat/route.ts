@@ -10,6 +10,7 @@ import {
   findAgentMessagesByClientRequestId,
   upsertAgentSession,
   updateAgentMessage,
+  type AgentMessageMetadata,
 } from "@/lib/repositories/agent-orchestration"
 import { RELAY_AGENT_TOOLS } from "@/lib/skills/relay-tool-registry"
 import { AGENT_ROLES } from "@/services/agent-role-orchestration"
@@ -42,6 +43,22 @@ const requestSchema = z.object({
 })
 
 const AGENT_CHAT_ENABLED = process.env.RUNASH_AGENT_CHAT_ENABLED !== "false"
+
+const formatToolOutputPreview = (value: unknown) => {
+  if (value === null || value === undefined) return undefined
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed.slice(0, 240) : undefined
+  }
+
+  try {
+    const serialized = JSON.stringify(value)
+    if (!serialized || serialized === "{}" || serialized === "[]") return undefined
+    return serialized.slice(0, 240)
+  } catch {
+    return undefined
+  }
+}
 
 export async function POST(request: NextRequest) {
   const requestId = resolveRequestId(request)
@@ -116,6 +133,8 @@ export async function POST(request: NextRequest) {
           controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
         }
 
+        const toolExecutionSummaries = new Map<string, Record<string, unknown>>()
+
         try {
           send("final", { type: "meta", status: "queued", sessionId: agentSession.id, requestId })
           await updateAgentMessage(assistantMessage.id, { status: "streaming" })
@@ -153,7 +172,16 @@ export async function POST(request: NextRequest) {
             if (tool === "initiate_link_checkout" && checkoutValidation?.status === "blocked") {
               continue
             }
-            send("tool_start", { tool, messageId: assistantMessage.id, status: "tool-running" })
+            const toolExecutionId = `${tool}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+            const startedAt = new Date().toISOString()
+            toolExecutionSummaries.set(toolExecutionId, {
+              id: toolExecutionId,
+              tool,
+              status: "running",
+              startedAt,
+              progressLabel: `Running ${tool.replace(/_/g, " ")}`,
+            })
+            send("tool_start", { tool, messageId: assistantMessage.id, status: "tool-running", executionId: toolExecutionId, startedAt })
 
             const payload = parsed.data.toolPayloads?.[tool] ?? defaultPayloads?.[tool] ?? { query: sanitizedMessage }
             const execution = await AgentOrchestrationService.executeToolWithPolicy(tool, payload, {
@@ -165,14 +193,33 @@ export async function POST(request: NextRequest) {
             })
 
             toolOutputs[tool] = execution.result
-            send("tool_result", { tool, result: execution.result, fromCache: execution.fromCache })
+            const summaryEntry = [...toolExecutionSummaries.values()].reverse().find((entry) => entry.tool === tool && entry.status === "running")
+            const finishedAt = new Date().toISOString()
+            if (summaryEntry) {
+              const startedAt = typeof summaryEntry.startedAt === "string" ? summaryEntry.startedAt : finishedAt
+              summaryEntry.status = "completed"
+              summaryEntry.finishedAt = finishedAt
+              summaryEntry.durationMs = Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime())
+              summaryEntry.progressLabel = execution.fromCache ? `${tool.replace(/_/g, " ")} (cache)` : `${tool.replace(/_/g, " ")} complete`
+              summaryEntry.outputPreview = formatToolOutputPreview(execution.result)
+            }
+            send("tool_result", { tool, result: execution.result, fromCache: execution.fromCache, executionId: summaryEntry?.id })
           }
 
           for (const tool of toolPlan.queued) {
             if (tool === "initiate_link_checkout" && checkoutValidation?.status === "blocked") {
               continue
             }
-            send("tool_start", { tool, messageId: assistantMessage.id, status: "tool-running" })
+            const toolExecutionId = `${tool}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+            const startedAt = new Date().toISOString()
+            toolExecutionSummaries.set(toolExecutionId, {
+              id: toolExecutionId,
+              tool,
+              status: "running",
+              startedAt,
+              progressLabel: `Queueing ${tool.replace(/_/g, " ")}`,
+            })
+            send("tool_start", { tool, messageId: assistantMessage.id, status: "tool-running", executionId: toolExecutionId, startedAt })
             const payload = parsed.data.toolPayloads?.[tool] ?? defaultPayloads?.[tool] ?? { query: sanitizedMessage }
             const jobId = enqueueToolJob({
               tool,
@@ -184,10 +231,21 @@ export async function POST(request: NextRequest) {
               },
             })
 
+            const summaryEntry = [...toolExecutionSummaries.values()].reverse().find((entry) => entry.tool === tool && entry.status === "running")
+            const finishedAt = new Date().toISOString()
+            if (summaryEntry) {
+              const startedAt = typeof summaryEntry.startedAt === "string" ? summaryEntry.startedAt : finishedAt
+              summaryEntry.status = "completed"
+              summaryEntry.finishedAt = finishedAt
+              summaryEntry.durationMs = Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime())
+              summaryEntry.progressLabel = `${tool.replace(/_/g, " ")} queued`
+              summaryEntry.outputPreview = `Queued job ${jobId}`
+            }
             send("tool_result", {
               tool,
               result: { queued: true, jobId },
               fromCache: false,
+              executionId: summaryEntry?.id,
             })
           }
 
@@ -212,7 +270,11 @@ export async function POST(request: NextRequest) {
             send("token", { token, messageId: assistantMessage.id, provider: completion.provider, model: completion.model, requestId })
           }
 
-          await updateAgentMessage(assistantMessage.id, { status: "completed", content: fullText })
+          await updateAgentMessage(assistantMessage.id, {
+            status: "completed",
+            content: fullText,
+            metadata: { toolExecutions: [...toolExecutionSummaries.values()] } satisfies AgentMessageMetadata,
+          })
           send("final", {
             type: "final",
             status: "completed",
@@ -225,9 +287,24 @@ export async function POST(request: NextRequest) {
             requestId,
           })
         } catch (error) {
-          await updateAgentMessage(assistantMessage.id, { status: "failed" })
-
           const providerErrorCode = error instanceof AIProviderError ? error.code : undefined
+          const activeSummary = [...toolExecutionSummaries.values()].reverse().find((entry) => entry.status === "running")
+          if (activeSummary) {
+            const finishedAt = new Date().toISOString()
+            const startedAt = typeof activeSummary.startedAt === "string" ? activeSummary.startedAt : finishedAt
+            activeSummary.status = "failed"
+            activeSummary.finishedAt = finishedAt
+            activeSummary.durationMs = Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime())
+            activeSummary.progressLabel = `${String(activeSummary.tool ?? "tool").replace(/_/g, " ")} failed`
+            activeSummary.errorCode = providerErrorCode ?? "PROVIDER_ERROR"
+            activeSummary.errorMessage = "Unable to complete tool execution"
+          }
+
+          await updateAgentMessage(assistantMessage.id, {
+            status: "failed",
+            metadata: { toolExecutions: [...toolExecutionSummaries.values()] } satisfies AgentMessageMetadata,
+          })
+
 
           send("error", {
             message: "Unable to complete agent turn",

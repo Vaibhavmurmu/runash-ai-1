@@ -12,7 +12,22 @@ export interface ChatMessage {
     automationSuggestions?: AutomationSuggestion[]
     searchResults?: SearchResult[]
     linkQuickPay?: LinkQuickPayPreview
+    toolExecutions?: ToolExecutionSummary[]
   }
+}
+
+export interface ToolExecutionSummary {
+  id: string
+  tool: string
+  status: "running" | "completed" | "failed"
+  startedAt: string
+  finishedAt?: string
+  durationMs?: number
+  progressLabel?: string
+  outputPreview?: string
+  output?: Record<string, unknown>
+  errorCode?: string
+  errorMessage?: string
 }
 
 export interface LinkQuickPayPreview {
