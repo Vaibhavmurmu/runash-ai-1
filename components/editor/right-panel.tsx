@@ -199,18 +199,26 @@ export default function RightPanel({
     </div>
   )
 
-  const tabPanels: Record<RightPanelTabId, JSX.Element> = {
-    generate: generatePanel,
-    edit: <EditPanel />,
-    layers: <LayersPanel />,
-    stream: (
-      <div className="h-full min-h-0">
-        <StreamManager />
-      </div>
-    ),
+  function renderPanelContent(tab: RightPanelTabId): JSX.Element {
+    switch (tab) {
+      case "generate":
+        return generatePanel
+      case "edit":
+        return <EditPanel />
+      case "layers":
+        return <LayersPanel />
+      case "stream":
+        return (
+          <div className="h-full min-h-0">
+            <StreamManager />
+          </div>
+        )
+      default:
+        return generatePanel
+    }
   }
 
-  const panelContent = tabPanels[resolvedTab] ?? tabPanels.generate
+  const panelContent = renderPanelContent(resolvedTab)
 
   return (
     <>
