@@ -315,6 +315,51 @@ export function EditorWorkspace() {
     if (!project || !activeTimeline) return
     setUploadInProgress(true)
     try {
+      const isVideoAsset = file.type.startsWith("video")
+      const safeDefaultDurationSeconds = 3
+
+      const readNumericMetadataDuration = (value: unknown): number | null => {
+        if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+          return value
+        }
+
+        if (typeof value === "string") {
+          const parsed = Number(value)
+          if (Number.isFinite(parsed) && parsed > 0) {
+            return parsed
+          }
+        }
+
+        return null
+      }
+
+      const resolveVideoDurationSeconds = async (): Promise<number | null> => {
+        if (!isVideoAsset || typeof window === "undefined") return null
+
+        return new Promise<number | null>((resolve) => {
+          const objectUrl = URL.createObjectURL(file)
+          const video = document.createElement("video")
+
+          const cleanup = () => {
+            URL.revokeObjectURL(objectUrl)
+            video.removeAttribute("src")
+            video.load()
+          }
+
+          video.preload = "metadata"
+          video.onloadedmetadata = () => {
+            const candidate = video.duration
+            cleanup()
+            resolve(Number.isFinite(candidate) && candidate > 0 ? candidate : null)
+          }
+          video.onerror = () => {
+            cleanup()
+            resolve(null)
+          }
+          video.src = objectUrl
+        })
+      }
+
       const form = new FormData()
       form.append("file", file)
       form.append("projectId", project.id)
@@ -359,8 +404,28 @@ export function EditorWorkspace() {
 
       const track = activeTimeline.tracks[0]
       if (track) {
+        const segmentsOnTrack = activeTimeline.segments.filter((segment) => segment.trackId === track.id)
+        const latestSegmentEnd = segmentsOnTrack.reduce((latest, segment) => {
+          const safeEnd = Number.isFinite(segment.endSeconds) ? Math.max(0, segment.endSeconds) : 0
+          return Math.max(latest, safeEnd)
+        }, 0)
+
+        const hasValidPlayhead = Number.isFinite(playbackTime) && playbackTime >= 0
+        const preferredStart = hasValidPlayhead ? playbackTime : latestSegmentEnd
+        const insertionStart = Math.max(0, preferredStart, latestSegmentEnd)
+
+        const metadataDuration = isVideoAsset
+          ? readNumericMetadataDuration(assetJson.asset?.metadata?.durationSeconds)
+          : null
+        const measuredVideoDuration = metadataDuration ?? (await resolveVideoDurationSeconds())
+        const insertionDuration = isVideoAsset
+          ? measuredVideoDuration ?? safeDefaultDurationSeconds
+          : safeDefaultDurationSeconds
+        const insertionEnd = insertionStart + insertionDuration
+
         handleTimelineChange({
           ...activeTimeline,
+          durationSeconds: Math.max(activeTimeline.durationSeconds, insertionEnd),
           segments: [
             ...activeTimeline.segments,
             {
@@ -371,9 +436,9 @@ export function EditorWorkspace() {
               trackId: track.id,
               assetId: assetJson.asset.id,
               label: file.name,
-              segmentType: file.type.startsWith("video") ? "video" : "image",
-              startSeconds: 0,
-              endSeconds: 3,
+              segmentType: isVideoAsset ? "video" : "image",
+              startSeconds: insertionStart,
+              endSeconds: insertionEnd,
               metadata: {},
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
