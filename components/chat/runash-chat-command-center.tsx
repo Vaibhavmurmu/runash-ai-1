@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { MCPServerManager, type ChatMcpServer } from "@/components/chat/mcp-server-manager"
 
 export const MCP_MANAGER_ENABLED = process.env.NEXT_PUBLIC_RUNASH_CHAT_MCP_MANAGER_ENABLED !== "false"
+export const MCP_TOOL_ENDPOINTS_AVAILABLE = process.env.NEXT_PUBLIC_RUNASH_CHAT_MCP_ENDPOINTS_AVAILABLE !== "false"
 
 const defaultMcpServers: ChatMcpServer[] = [
   {
@@ -35,6 +36,7 @@ export function RunAshChatCommandCenter({
 }) {
   const [mcpDialogOpen, setMcpDialogOpen] = useState(false)
   const [mcpServers, setMcpServers] = useState<ChatMcpServer[]>(defaultMcpServers)
+  const enabledServerCount = mcpServers.filter((server) => server.enabled).length
 
   return (
     <div className="space-y-3">
@@ -48,23 +50,40 @@ export function RunAshChatCommandCenter({
             <div className="mb-2 flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium">Chat settings · MCP tools</p>
-                <p className="text-xs text-muted-foreground">Configure external MCP servers used by chat automations.</p>
+                <p className="text-xs text-muted-foreground">
+                  Configure external MCP/tool servers used by chat automations.
+                </p>
               </div>
-              <Button size="sm" variant="outline" onClick={() => setMcpDialogOpen(true)}>
-                Manage servers
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!MCP_TOOL_ENDPOINTS_AVAILABLE}
+                onClick={() => setMcpDialogOpen(true)}
+              >
+                Open tool server manager
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              {mcpServers.filter((server) => server.enabled).length} of {mcpServers.length} servers enabled
-            </p>
+
+            {MCP_TOOL_ENDPOINTS_AVAILABLE ? (
+              <p className="text-xs text-muted-foreground">
+                {enabledServerCount} of {mcpServers.length} servers enabled
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Tool servers are temporarily unavailable. Chat will safely continue with built-in responses until MCP
+                endpoints recover.
+              </p>
+            )}
           </div>
 
-          <MCPServerManager
-            open={mcpDialogOpen}
-            onOpenChange={setMcpDialogOpen}
-            servers={mcpServers}
-            onServersChange={setMcpServers}
-          />
+          {MCP_TOOL_ENDPOINTS_AVAILABLE ? (
+            <MCPServerManager
+              open={mcpDialogOpen}
+              onOpenChange={setMcpDialogOpen}
+              servers={mcpServers}
+              onServersChange={setMcpServers}
+            />
+          ) : null}
         </>
       ) : null}
     </div>

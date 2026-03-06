@@ -4,7 +4,11 @@ import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 
 import { MCPServerManagerContent, type ChatMcpServer } from "@/components/chat/mcp-server-manager"
-import { MCP_MANAGER_ENABLED, RunAshChatCommandCenter } from "@/components/chat/runash-chat-command-center"
+import {
+  MCP_MANAGER_ENABLED,
+  MCP_TOOL_ENDPOINTS_AVAILABLE,
+  RunAshChatCommandCenter,
+} from "@/components/chat/runash-chat-command-center"
 
 test("MCP server manager exposes add/edit/enable-disable actions", () => {
   const servers: ChatMcpServer[] = [
@@ -49,5 +53,12 @@ test("command center smoke: manager entry point is discoverable when feature fla
 
   assert.match(html, /Chat settings/)
   assert.match(html, /MCP tools/)
-  assert.match(html, /Manage servers/)
+  assert.match(html, /Open tool server manager/)
+
+  if (MCP_TOOL_ENDPOINTS_AVAILABLE) {
+    assert.match(html, /servers enabled/)
+  } else {
+    assert.match(html, /Tool servers are temporarily unavailable/)
+    assert.doesNotMatch(html, /MCP server manager/)
+  }
 })
