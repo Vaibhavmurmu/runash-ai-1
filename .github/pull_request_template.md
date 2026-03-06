@@ -26,14 +26,14 @@
 
 ### 4) Lint / type / build / test gates
 
-> Use only exact commands defined in `package.json` for outcomes. Do not report `yarn`/`pnpm` command results in place of these rows.
+> Use only exact commands defined in `package.json` for outcomes (`npm run lint`, `npm run build`, `npm test` when applicable). Do not report `yarn`/`pnpm` command results in place of these rows.
 
 | Gate | Command | Outcome | Notes |
 | --- | --- | --- | --- |
 | Lint | `npm run lint` | ✅/⚠️/❌ | |
 | Type check | `npx tsc --noEmit` | ✅/⚠️/❌ | |
 | Build | `npm run build` | ✅/⚠️/❌ | |
-| Tests | `npm run test` | ✅/⚠️/❌ | |
+| Tests | `npm test` | ✅/⚠️/❌ | |
 
 ### 5) API contract verification
 
@@ -55,14 +55,14 @@
 
 ## Validation Commands (Executed)
 
-<!-- Copy exact output summaries from executed package.json commands only (`npm run lint`, `npm run build`, `npm test`). If a command fails, document the concrete reason and add a follow-up action instead of marking success. -->
+<!-- Copy exact output summaries from executed package.json commands only (`npm run lint`, `npm run build`, `npm test` when applicable). If a command fails, document the concrete reason and add a follow-up action instead of marking success. -->
 
 | Command | Outcome | Output summary |
 | --- | --- | --- |
 | `npm run lint` | ✅/⚠️/❌ | |
 | `npx tsc --noEmit` | ✅/⚠️/❌ | |
 | `npm run build` | ✅/⚠️/❌ | |
-| `npm run test` | ✅/⚠️/❌ | |
+| `npm test` | ✅/⚠️/❌ | |
 | `npm run openapi:auth:check` | ✅/⚠️/❌ | |
 
 ## Checklist
