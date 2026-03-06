@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server"
-import { requireEditorUser } from "@/app/api/editor/_lib"
+import { requireEditorOperation } from "@/app/api/editor/_lib"
 import { bumpTimelineVersion, claimProjectVersion, parseExpectedVersion } from "@/lib/editor/versioned-mutations"
 import { sql } from "@/lib/editor/repository"
 
 export async function GET(request: Request, { params }: { params: { projectId: string; trackId: string } }) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId, trackId } = params
 
@@ -15,7 +15,7 @@ export async function GET(request: Request, { params }: { params: { projectId: s
 }
 
 export async function PATCH(request: Request, { params }: { params: { projectId: string; trackId: string } }) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId, trackId } = params
   const body = await request.json()
@@ -50,7 +50,7 @@ export async function PATCH(request: Request, { params }: { params: { projectId:
 }
 
 export async function DELETE(request: Request, { params }: { params: { projectId: string; trackId: string } }) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId, trackId } = params
   const { searchParams } = new URL(request.url)

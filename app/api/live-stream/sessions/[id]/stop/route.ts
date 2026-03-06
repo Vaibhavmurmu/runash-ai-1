@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 
-import { requireSellerSessionUserId } from "@/app/api/seller/_auth"
+import { requireSellerOperation } from "@/app/api/seller/_auth"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { liveStreamService, LiveStreamValidationError } from "@/services/live-stream/live-stream-service"
 
@@ -12,8 +12,9 @@ function readIdempotencyKey(request: NextRequest): string | null {
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
-    const actorUserId = await requireSellerSessionUserId(request)
-    if (actorUserId instanceof Response) return actorUserId
+    const auth = await requireSellerOperation(request, "stop_stream")
+    if (auth instanceof Response) return auth
+    const actorUserId = auth.userId
 
     const idempotencyKey = readIdempotencyKey(request)
     if (!idempotencyKey) {

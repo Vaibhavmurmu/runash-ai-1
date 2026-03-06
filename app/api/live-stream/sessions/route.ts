@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
 
-import { requireSellerSessionUserId } from "@/app/api/seller/_auth"
+import { requireSellerOperation } from "@/app/api/seller/_auth"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { liveStreamService, LiveStreamValidationError } from "@/services/live-stream/live-stream-service"
 import { LIVE_STREAM_LATENCY_PROFILES } from "@/types/live-stream-domain"
@@ -15,8 +15,9 @@ const createSessionSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const actorUserId = await requireSellerSessionUserId(request)
-    if (actorUserId instanceof Response) return actorUserId
+    const auth = await requireSellerOperation(request, "create_stream")
+    if (auth instanceof Response) return auth
+    const actorUserId = auth.userId
 
     const body = await request.json().catch(() => ({}))
     const parsed = createSessionSchema.safeParse(body)
