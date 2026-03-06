@@ -384,43 +384,64 @@ export function EditorWorkspace() {
         })
       }
 
-      const form = new FormData()
-      form.append("file", file)
-      form.append("projectId", project.id)
-      const uploadRes = await fetch("/api/upload", { method: "POST", body: form })
+      const initRes = await fetch("/api/media/uploads/init", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: file.name,
+          mimeType: file.type,
+          sizeBytes: file.size,
+          projectId: project.id,
+        }),
+      })
+      if (!initRes.ok) throw new Error("Unable to initialize upload")
 
-      let storageKey = ""
-      let accessUrl: string | null = null
-      let uploadFileId: string | null = null
+      const initJson = await initRes.json()
+      const uploadPutRes = await fetch(initJson.upload.url, {
+        method: initJson.upload.method,
+        headers: initJson.upload.headers,
+        body: file,
+      })
+      if (!uploadPutRes.ok) throw new Error("Upload transfer failed")
 
-      if (uploadRes.ok) {
-        const uploadJson = await uploadRes.json()
-        uploadFileId = String(uploadJson.file.id)
-        storageKey = uploadJson.file.storageKey
-        accessUrl = uploadJson.access.url
-      } else {
-        const storageForm = new FormData()
-        storageForm.append("action", "upload")
-        storageForm.append("file", file)
-        storageForm.append("folder", `editor/${project.id}`)
-        const storageRes = await fetch("/api/storage", { method: "POST", body: storageForm })
-        if (!storageRes.ok) throw new Error("Upload failed")
-        const storageJson = await storageRes.json()
-        storageKey = storageJson.key
-        accessUrl = storageJson.url
-      }
+      const measuredVideoDuration = await resolveVideoDurationSeconds()
 
+      const finalizeRes = await fetch(`/api/media/uploads/${initJson.asset.id}/finalize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          durationSeconds: measuredVideoDuration,
+        }),
+      })
+      if (!finalizeRes.ok) throw new Error("Unable to finalize upload")
+      const finalizeJson = await finalizeRes.json()
+
+      const sourceVariant = Array.isArray(finalizeJson.variants)
+        ? finalizeJson.variants.find((item: Record<string, unknown>) => item.variant_type === "source")
+        : null
+
+      const storageKey = String(finalizeJson.asset.source_storage_key ?? initJson.upload.storageKey)
       const assetRes = await fetch(`/api/editor/projects/${project.id}/assets`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          source: uploadFileId ? "upload" : "storage",
-          uploadFileId,
+          source: "upload",
+          uploadFileId: initJson.asset.id,
           storageKey,
-          accessUrl,
+          accessUrl: null,
           mimeType: file.type,
           sizeBytes: file.size,
-          metadata: { name: file.name },
+          metadata: {
+            name: file.name,
+            mediaAssetId: finalizeJson.asset.id,
+            pipelineStatus: finalizeJson.asset.status,
+            durationSeconds: finalizeJson.asset.duration_seconds,
+            variants: finalizeJson.variants,
+            timelineMedia: {
+              preferredVariant: sourceVariant?.variant_type ?? "source",
+              adaptiveSet: ["hls_manifest", "dash_manifest"],
+            },
+          },
         }),
       })
       if (!assetRes.ok) throw new Error("Failed to persist asset")
@@ -450,9 +471,11 @@ export function EditorWorkspace() {
           playheadStart === null ? latestSegmentEnd : playheadOverlapsExisting ? latestSegmentEnd : playheadStart
 
         const metadataDuration = isVideoAsset ? resolveDurationFromAssetMetadata(assetJson.asset?.metadata) : null
-        const measuredVideoDuration = metadataDuration ?? (await resolveVideoDurationSeconds())
+        const transcodeDuration = resolveDurationFromAssetMetadata(
+          (assetJson.asset?.metadata as Record<string, unknown> | undefined)?.timelineMedia,
+        )
         const insertionDuration = isVideoAsset
-          ? measuredVideoDuration ?? safeDefaultDurationSeconds
+          ? metadataDuration ?? transcodeDuration ?? safeDefaultDurationSeconds
           : safeDefaultDurationSeconds
         const insertionEnd = insertionStart + insertionDuration
 
@@ -472,7 +495,10 @@ export function EditorWorkspace() {
               segmentType: isVideoAsset ? "video" : "image",
               startSeconds: insertionStart,
               endSeconds: insertionEnd,
-              metadata: {},
+              metadata: {
+                mediaAssetId: (assetJson.asset?.metadata as Record<string, unknown> | undefined)?.mediaAssetId ?? null,
+                timelineMedia: (assetJson.asset?.metadata as Record<string, unknown> | undefined)?.timelineMedia ?? null,
+              },
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             },
