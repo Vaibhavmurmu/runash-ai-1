@@ -758,3 +758,9 @@ Standardized settings action/billing error payloads to include a shared field-ma
 4. Reconciliation parity checks are required before and after rollback to ensure invoice/credit/referral counters remain consistent.
 
 
+
+## 2026-03 Live-stream lifecycle domain introduction (non-payment impact)
+
+- Introduced a dedicated backend live-stream lifecycle domain (`app/api/live-stream/**`, `services/live-stream/**`) with additive schema for session states, provider endpoints, idempotent start/stop commands, and append-only lifecycle events.
+- **Payment/auth contract impact:** none. Existing payment API signatures, field names, and state machines are unchanged.
+- **Risk + rollback:** if streaming lifecycle regressions occur, rollback by reverting `services/live-stream/**`, `app/api/live-stream/**`, and migration `scripts/sql/2026-03-06_create_live_stream_domain_tables.sql`; payment workflows remain unaffected.
