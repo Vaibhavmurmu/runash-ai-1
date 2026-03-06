@@ -55,6 +55,8 @@ export interface EditorTimeline {
   metadata: Record<string, unknown>
   tracks: EditorTrack[]
   segments: EditorSegment[]
+  version: number
+  updatedBy: string | null
   createdAt: string
   updatedAt: string
 }
@@ -82,6 +84,8 @@ export interface EditorProject {
   timelines: EditorTimeline[]
   assets: EditorAsset[]
   renderJobs: EditorRenderJob[]
+  version: number
+  updatedBy: string | null
   createdAt: string
   updatedAt: string
 }

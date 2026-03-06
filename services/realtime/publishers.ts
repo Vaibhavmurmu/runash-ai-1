@@ -55,6 +55,27 @@ export function publishTimelineLockChanged(input: {
   })
 }
 
+
+export function publishTimelineConflict(input: {
+  projectId: string
+  actorUserId: string
+  expectedVersion: number
+  actualVersion: number
+  mutation: string
+  targetType: "timeline" | "track" | "segment"
+  targetId: string | null
+  occurredAt?: string
+}) {
+  realtimeGateway.publish({
+    channel: `editor:${input.projectId}`,
+    type: "timeline.conflict",
+    payload: {
+      ...input,
+      occurredAt: input.occurredAt ?? new Date().toISOString(),
+    },
+  })
+}
+
 export function publishSessionStateChanged(input: {
   sessionId: string
   previousStatus: string | null

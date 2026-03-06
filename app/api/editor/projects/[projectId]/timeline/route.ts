@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
-import { getProjectById, sql, touchProject } from "@/lib/editor/repository"
+import { bumpTimelineVersion, claimProjectVersion, parseExpectedVersion } from "@/lib/editor/versioned-mutations"
+import { getProjectById, sql } from "@/lib/editor/repository"
 import { publishTimelineMutated } from "@/services/realtime/publishers"
 
 export async function GET(request: Request, { params }: { params: { projectId: string } }) {
@@ -11,7 +12,7 @@ export async function GET(request: Request, { params }: { params: { projectId: s
   const project = await getProjectById(auth.userId, projectId)
   if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 })
 
-  return NextResponse.json({ timelines: project.timelines, activeTimelineId: project.activeTimelineId })
+  return NextResponse.json({ timelines: project.timelines, activeTimelineId: project.activeTimelineId, version: project.version })
 }
 
 export async function POST(request: Request, { params }: { params: { projectId: string } }) {
@@ -20,27 +21,32 @@ export async function POST(request: Request, { params }: { params: { projectId: 
   const { projectId } = params
   const body = await request.json().catch(() => ({}))
 
+  const version = parseExpectedVersion(request, body)
+  if ("error" in version) return version.error
+
+  const claim = await claimProjectVersion({
+    projectId,
+    userId: auth.userId,
+    expectedVersion: version.expectedVersion,
+    mutation: "timeline.create",
+    targetType: "timeline",
+  })
+  if (!claim.ok) return claim.response
+
   const [timeline] = await sql`
-    INSERT INTO editor_timelines (project_id, owner_id, name, frame_rate, duration_seconds, metadata)
-    VALUES (${projectId}, ${auth.userId}, ${body.name || "Timeline"}, ${body.frameRate ?? 30}, ${body.durationSeconds ?? 10}, ${JSON.stringify(body.metadata || {})}::jsonb)
+    INSERT INTO editor_timelines (project_id, owner_id, name, frame_rate, duration_seconds, metadata, updated_by)
+    VALUES (${projectId}, ${auth.userId}, ${body.name || "Timeline"}, ${body.frameRate ?? 30}, ${body.durationSeconds ?? 10}, ${JSON.stringify(body.metadata || {})}::jsonb, ${auth.userId})
     RETURNING *
   `
 
   await sql`
     UPDATE editor_projects
-    SET active_timeline_id=COALESCE(${body.activate === false ? null : timeline.id}, active_timeline_id), updated_at=now()
+    SET active_timeline_id=COALESCE(${body.activate === false ? null : timeline.id}, active_timeline_id)
     WHERE id=${projectId} AND owner_id=${auth.userId}
   `
 
-  await touchProject(projectId, auth.userId)
-  publishTimelineMutated({
-    projectId,
-    timelineId: timeline.id,
-    mutation: "created",
-    actorUserId: auth.userId,
-  })
-
-  return NextResponse.json({ timeline }, { status: 201 })
+  publishTimelineMutated({ projectId, timelineId: timeline.id, mutation: "created", actorUserId: auth.userId })
+  return NextResponse.json({ timeline, version: claim.projectVersion }, { status: 201 })
 }
 
 export async function PUT(request: Request, { params }: { params: { projectId: string } }) {
@@ -54,6 +60,19 @@ export async function PUT(request: Request, { params }: { params: { projectId: s
     return NextResponse.json({ error: "timeline.id is required" }, { status: 400 })
   }
 
+  const version = parseExpectedVersion(request, body)
+  if ("error" in version) return version.error
+
+  const claim = await claimProjectVersion({
+    projectId,
+    userId: auth.userId,
+    expectedVersion: version.expectedVersion,
+    mutation: "timeline.replace",
+    targetType: "timeline",
+    targetId: timeline.id,
+  })
+  if (!claim.ok) return claim.response
+
   await sql`
     UPDATE editor_timelines
     SET
@@ -61,6 +80,7 @@ export async function PUT(request: Request, { params }: { params: { projectId: s
       frame_rate=COALESCE(${timeline.frameRate ?? null}, frame_rate),
       duration_seconds=COALESCE(${timeline.durationSeconds ?? null}, duration_seconds),
       metadata=COALESCE(${timeline.metadata ? JSON.stringify(timeline.metadata) : null}::jsonb, metadata),
+      updated_by=${auth.userId},
       updated_at=now()
     WHERE id=${timeline.id} AND project_id=${projectId} AND owner_id=${auth.userId}
   `
@@ -81,17 +101,12 @@ export async function PUT(request: Request, { params }: { params: { projectId: s
     `
   }
 
-  await sql`UPDATE editor_projects SET active_timeline_id=${timeline.id}, updated_at=now() WHERE id=${projectId} AND owner_id=${auth.userId}`
-  await touchProject(projectId, auth.userId)
-  publishTimelineMutated({
-    projectId,
-    timelineId: timeline.id,
-    mutation: "updated",
-    actorUserId: auth.userId,
-  })
+  await bumpTimelineVersion(timeline.id, projectId, auth.userId)
+  await sql`UPDATE editor_projects SET active_timeline_id=${timeline.id} WHERE id=${projectId} AND owner_id=${auth.userId}`
+  publishTimelineMutated({ projectId, timelineId: timeline.id, mutation: "updated", actorUserId: auth.userId })
 
   const project = await getProjectById(auth.userId, projectId)
-  return NextResponse.json({ project })
+  return NextResponse.json({ project, version: claim.projectVersion })
 }
 
 export async function DELETE(request: Request, { params }: { params: { projectId: string } }) {
@@ -101,29 +116,30 @@ export async function DELETE(request: Request, { params }: { params: { projectId
   const { searchParams } = new URL(request.url)
   const timelineId = searchParams.get("timelineId")
 
-  if (!timelineId) {
-    return NextResponse.json({ error: "timelineId is required" }, { status: 400 })
-  }
+  if (!timelineId) return NextResponse.json({ error: "timelineId is required" }, { status: 400 })
+
+  const version = parseExpectedVersion(request, { version: searchParams.get("version") })
+  if ("error" in version) return version.error
+
+  const claim = await claimProjectVersion({
+    projectId,
+    userId: auth.userId,
+    expectedVersion: version.expectedVersion,
+    mutation: "timeline.delete",
+    targetType: "timeline",
+    targetId: timelineId,
+  })
+  if (!claim.ok) return claim.response
 
   const rows = await sql`DELETE FROM editor_timelines WHERE id=${timelineId} AND project_id=${projectId} AND owner_id=${auth.userId} RETURNING id`
-  if (!rows.length) {
-    return NextResponse.json({ error: "Timeline not found" }, { status: 404 })
-  }
+  if (!rows.length) return NextResponse.json({ error: "Timeline not found" }, { status: 404 })
 
   await sql`
     UPDATE editor_projects
-    SET active_timeline_id=(SELECT id FROM editor_timelines WHERE project_id=${projectId} AND owner_id=${auth.userId} ORDER BY created_at LIMIT 1),
-        updated_at=now()
+    SET active_timeline_id=(SELECT id FROM editor_timelines WHERE project_id=${projectId} AND owner_id=${auth.userId} ORDER BY created_at LIMIT 1)
     WHERE id=${projectId} AND owner_id=${auth.userId}
   `
 
-  await touchProject(projectId, auth.userId)
-  publishTimelineMutated({
-    projectId,
-    timelineId,
-    mutation: "deleted",
-    actorUserId: auth.userId,
-  })
-
-  return NextResponse.json({ deleted: true, timelineId })
+  publishTimelineMutated({ projectId, timelineId, mutation: "deleted", actorUserId: auth.userId })
+  return NextResponse.json({ deleted: true, timelineId, version: claim.projectVersion })
 }
