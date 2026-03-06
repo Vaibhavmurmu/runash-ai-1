@@ -74,6 +74,8 @@ const formatToolOutputPreview = (value: unknown) => {
   }
 }
 
+const STREAM_CHECKPOINT_INTERVAL = 48
+
 export async function POST(request: NextRequest) {
   const requestId = resolveRequestId(request)
 
@@ -127,8 +129,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const selection = resolveModelSelection(parsed.data.model, parsed.data.provider)
+
     const userMessage = await createAgentMessage(agentSession.id, "user", sanitizedMessage, "completed", { clientRequestId: parsed.data.clientRequestId })
-    const assistantMessage = await createAgentMessage(agentSession.id, "assistant", "", "queued", { clientRequestId: parsed.data.clientRequestId })
+    const assistantMessage = await createAgentMessage(agentSession.id, "assistant", "", "queued", {
+      clientRequestId: parsed.data.clientRequestId,
+      metadata: {
+        request_id: requestId,
+        provider: selection.provider,
+        model: selection.model,
+        retry_mode: parsed.data.retry?.mode ?? "auto",
+      },
+    })
 
     if (parsed.data.attachments?.length) {
       await createAgentMessageAttachments({
@@ -138,7 +150,6 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const selection = resolveModelSelection(parsed.data.model, parsed.data.provider)
     const encoder = new TextEncoder()
 
     const eventStream = new ReadableStream({
@@ -151,7 +162,15 @@ export async function POST(request: NextRequest) {
 
         try {
           send("final", { type: "meta", status: "queued", sessionId: agentSession.id, requestId })
-          await updateAgentMessage(assistantMessage.id, { status: "streaming" })
+          await updateAgentMessage(assistantMessage.id, {
+            status: "streaming",
+            metadata: {
+              request_id: requestId,
+              provider: selection.provider,
+              model: selection.model,
+              retry_mode: parsed.data.retry?.mode ?? "auto",
+            },
+          })
 
           const toolOutputs: Record<string, unknown> = {}
           const selectedTools = resolveRunAshChatToolSelection(
@@ -388,15 +407,36 @@ export async function POST(request: NextRequest) {
           })
 
           let fullText = ""
+          let streamedTokenCount = 0
           for await (const token of completion.textStream) {
             fullText += token
+            streamedTokenCount += 1
+            if (streamedTokenCount % STREAM_CHECKPOINT_INTERVAL === 0) {
+              await updateAgentMessage(assistantMessage.id, {
+                status: "streaming",
+                content: fullText,
+                metadata: {
+                  request_id: requestId,
+                  provider: completion.provider,
+                  model: completion.model,
+                  retry_mode: parsed.data.retry?.mode ?? "auto",
+                  toolExecutions: [...toolExecutionSummaries.values()],
+                } satisfies AgentMessageMetadata,
+              })
+            }
             send("token", { token, messageId: assistantMessage.id, provider: completion.provider, model: completion.model, requestId })
           }
 
           await updateAgentMessage(assistantMessage.id, {
             status: "completed",
             content: fullText,
-            metadata: { toolExecutions: [...toolExecutionSummaries.values()] } satisfies AgentMessageMetadata,
+            metadata: {
+              request_id: requestId,
+              provider: completion.provider,
+              model: completion.model,
+              retry_mode: parsed.data.retry?.mode ?? "auto",
+              toolExecutions: [...toolExecutionSummaries.values()],
+            } satisfies AgentMessageMetadata,
           })
           send("final", {
             type: "final",
@@ -425,19 +465,30 @@ export async function POST(request: NextRequest) {
             activeSummary.errorMessage = "Unable to complete tool execution"
           }
 
+          const terminalStatus = providerErrorCode === "ABORTED" ? "cancelled" : "failed"
+          const terminalErrorCode =
+            providerErrorCode === "TIMEOUT"
+              ? CHAT_ERROR_CODES.PROVIDER_TIMEOUT
+              : providerErrorCode ?? mapToolErrorToChatErrorCode(activeSummary?.errorCode as string | undefined)
+
           await updateAgentMessage(assistantMessage.id, {
-            status: "failed",
-            metadata: { toolExecutions: [...toolExecutionSummaries.values()] } satisfies AgentMessageMetadata,
+            status: terminalStatus,
+            metadata: {
+              request_id: requestId,
+              provider: selection.provider,
+              model: selection.model,
+              retry_mode: parsed.data.retry?.mode ?? "auto",
+              error_code: terminalErrorCode,
+              toolExecutions: [...toolExecutionSummaries.values()],
+            } satisfies AgentMessageMetadata,
           })
 
 
           send("error", {
             message: "Unable to complete agent turn",
             requestId,
-            code:
-              providerErrorCode === "TIMEOUT"
-                ? CHAT_ERROR_CODES.PROVIDER_TIMEOUT
-                : providerErrorCode ?? mapToolErrorToChatErrorCode(activeSummary?.errorCode as string | undefined),
+            code: terminalErrorCode,
+            status: terminalStatus,
           })
 
           logApiEvent("error", "agents.chat.stream_failed", {

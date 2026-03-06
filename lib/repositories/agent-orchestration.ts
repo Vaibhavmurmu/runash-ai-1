@@ -1,7 +1,7 @@
 import fs from "fs"
 import path from "path"
 
-export type AgentMessageStatus = "queued" | "streaming" | "tool-running" | "completed" | "failed"
+export type AgentMessageStatus = "queued" | "streaming" | "tool-running" | "completed" | "cancelled" | "failed"
 
 export type AgentSessionState = "active" | "waiting_action" | "completed" | "failed"
 
@@ -55,6 +55,11 @@ export type AgentSessionRecord = {
 
 export type AgentMessageMetadata = {
   toolExecutions?: Array<Record<string, unknown>>
+  request_id?: string
+  provider?: string
+  model?: string
+  retry_mode?: "none" | "auto" | "manual"
+  error_code?: string
 }
 
 export type AgentMessageRecord = {

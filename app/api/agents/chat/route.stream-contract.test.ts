@@ -106,3 +106,17 @@ test("chat SSE stream contract encodes error event payload", () => {
   assert.equal(decoded.data?.requestId, "req-err")
   assert.equal(decoded.data?.code, "PROVIDER_TIMEOUT")
 })
+
+test("chat SSE stream contract encodes error terminal status", () => {
+  const encoded = encodeChatStreamEvent("error", {
+    message: "Unable to complete agent turn",
+    requestId: "req-cancelled",
+    code: "ABORTED",
+    status: "cancelled",
+  })
+
+  const decoded = decodeSseEvent(encoded)
+  assert.equal(decoded.event, "error")
+  assert.equal(decoded.data?.status, "cancelled")
+  assert.equal(decoded.data?.code, "ABORTED")
+})
