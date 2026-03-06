@@ -7,9 +7,9 @@ import { createSession, listSessions } from "@/lib/repositories/runash-chat"
 import { handleCreateSession, handleGetSessions } from "./sessions-route-handler"
 async function requireAuthenticatedUserId() {
   const session = await getServerAuthSession()
-  return session?.user?.id ? String(session.user.id) : null
+  const userId = String(session?.user?.id ?? "").trim()
+  return userId || null
 }
-
 
 export async function GET(req: Request) {
   const userId = await requireAuthenticatedUserId()

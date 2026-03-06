@@ -7,9 +7,9 @@ import { createSessionMessage, isSessionOwnedByUser } from "@/lib/repositories/r
 import { handleCreateMessage } from "./messages-route-handler"
 async function requireAuthenticatedUserId() {
   const session = await getServerAuthSession()
-  return session?.user?.id ? String(session.user.id) : null
+  const userId = String(session?.user?.id ?? "").trim()
+  return userId || null
 }
-
 
 export async function POST(request: Request) {
   const userId = await requireAuthenticatedUserId()

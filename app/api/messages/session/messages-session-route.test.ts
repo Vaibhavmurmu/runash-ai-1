@@ -11,8 +11,8 @@ test("GET /api/messages/session/:id enforces ownership when user identity cannot
   })
 
   const payload = await response.json()
-  assert.equal(response.status, 403)
-  assert.equal(payload.error.code, "SESSION_ACCESS_DENIED")
+  assert.equal(response.status, 401)
+  assert.equal(payload.error.code, "AUTH_REQUIRED")
 })
 
 test("GET /api/messages/session/:id enforces ownership on cross-user access", async () => {
