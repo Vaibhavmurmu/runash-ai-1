@@ -405,7 +405,7 @@ export default function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Press Enter to send • Shift+Enter for new line • Esc to close
+          Press Enter to send • Esc to close
         </p>
       </div>
     </aside>

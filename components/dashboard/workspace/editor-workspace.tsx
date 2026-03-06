@@ -84,6 +84,19 @@ function getGenerationValidationErrors(modelId: string, payload: VideoGeneration
   }
 }
 
+function stableSerialize(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableSerialize(entry)).join(",")}]`
+  }
+
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b))
+    return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableSerialize(entry)}`).join(",")}}`
+  }
+
+  return JSON.stringify(value)
+}
+
 export function EditorWorkspace() {
   const { toast } = useToast()
   const { openFromTrigger } = useDashboardModelDialog()
@@ -413,6 +426,7 @@ export function EditorWorkspace() {
       const assetJson = await assetRes.json()
 
       const track = activeTimeline.tracks[0]
+      let nextTimeline: EditorTimeline | null = null
       if (track) {
         const segmentsOnTrack = activeTimeline.segments.filter((segment) => segment.trackId === track.id)
         const latestSegmentEnd = segmentsOnTrack.reduce((latest, segment) => {
@@ -441,7 +455,7 @@ export function EditorWorkspace() {
           : safeDefaultDurationSeconds
         const insertionEnd = insertionStart + insertionDuration
 
-        handleTimelineChange({
+        nextTimeline = {
           ...activeTimeline,
           durationSeconds: Math.max(activeTimeline.durationSeconds, insertionEnd),
           segments: [
@@ -462,10 +476,27 @@ export function EditorWorkspace() {
               updatedAt: new Date().toISOString(),
             },
           ],
-        })
+          updatedAt: new Date().toISOString(),
+        }
       }
 
-      setProject((prev) => (prev ? { ...prev, assets: [assetJson.asset, ...prev.assets] } : prev))
+      setProject((prev) => {
+        if (!prev) return prev
+
+        const timelineToApply = nextTimeline
+          ? prev.timelines.map((timeline) => (timeline.id === nextTimeline.id ? nextTimeline : timeline))
+          : prev.timelines
+
+        return {
+          ...prev,
+          assets: [assetJson.asset, ...prev.assets],
+          timelines: timelineToApply,
+          updatedAt: new Date().toISOString(),
+        }
+      })
+      if (nextTimeline) {
+        setIsDirty(true)
+      }
       toast({ title: "Media uploaded", description: `${file.name} is now available in this project.` })
     } catch {
       toast({ title: "Upload failed", description: "Unable to add media right now.", variant: "destructive" })
@@ -810,7 +841,7 @@ export function EditorWorkspace() {
     const currentMetadata = (project.metadata ?? {}) as Record<string, unknown>
     const metadataConfig = currentMetadata.generationConfig
     const matchesModel = currentMetadata.selectedModel === selectedModel
-    const matchesConfig = JSON.stringify(metadataConfig ?? {}) === JSON.stringify(generationConfig)
+    const matchesConfig = stableSerialize(metadataConfig ?? {}) === stableSerialize(generationConfig)
 
     if (matchesModel && matchesConfig) return
 
