@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/sheet"
 
 import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, OctagonX, MoreHorizontal, FileText, CreditCard, Megaphone, Workflow, ListChecks, Loader2 } from "lucide-react"
-import type { ChatMessage, ChatSession, UserPreferences, QuickAction, ToolExecutionSummary } from "@/types/runash-chat"
+import type { ChatMessage, ChatSession, UserPreferences, QuickAction, ToolExecutionSummary, ToolStreamEvent } from "@/types/runash-chat"
 import ChatMessageComponent from "@/components/chat/chat-message"
 import ChatSidebar from "@/components/chat/chat-sidebar"
 import UserPreferencesDialog from "@/components/chat/user-preferences-dialog"
@@ -111,6 +111,7 @@ export function ChatWorkspace() {
   const firstCompletionTrackedRef = useRef(false)
   const turnCompletionDedupRef = useRef<Set<string>>(new Set())
   const toolExecutionMapRef = useRef<Map<string, string>>(new Map())
+  const toolEventTraceRef = useRef<ToolStreamEvent[]>([])
 
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => {
     if (typeof window === "undefined") {
@@ -242,14 +243,87 @@ export function ChatWorkspace() {
     return parsed.length > 0 ? parsed : undefined
   }
 
+  const coerceToolStreamEvent = (value: unknown): ToolStreamEvent | null => {
+    const record = toRecord(value)
+    if (!record) return null
+
+    const type = record.type
+    const tool = typeof record.tool === "string" ? record.tool : null
+    const executionId = typeof record.executionId === "string" ? record.executionId : null
+    const messageId = typeof record.messageId === "string" ? record.messageId : undefined
+
+    if (!tool || !executionId || (type !== "tool_start" && type !== "tool_result" && type !== "tool_error")) {
+      return null
+    }
+
+    if (type === "tool_start") {
+      if (typeof record.startedAt !== "string") return null
+      return {
+        type,
+        tool,
+        executionId,
+        messageId,
+        startedAt: record.startedAt,
+        timeoutMs: typeof record.timeoutMs === "number" ? record.timeoutMs : undefined,
+        retryCount: typeof record.retryCount === "number" ? record.retryCount : undefined,
+        payload: toRecord(record.payload) ?? undefined,
+      }
+    }
+
+    if (type === "tool_result") {
+      if (typeof record.finishedAt !== "string") return null
+      return {
+        type,
+        tool,
+        executionId,
+        messageId,
+        startedAt: typeof record.startedAt === "string" ? record.startedAt : undefined,
+        finishedAt: record.finishedAt,
+        durationMs: typeof record.durationMs === "number" ? record.durationMs : undefined,
+        fromCache: typeof record.fromCache === "boolean" ? record.fromCache : undefined,
+        attempts: typeof record.attempts === "number" ? record.attempts : undefined,
+        result: toRecord(record.result) ?? undefined,
+      }
+    }
+
+    if (typeof record.finishedAt !== "string" || typeof record.errorCode !== "string" || typeof record.errorMessage !== "string") {
+      return null
+    }
+
+    return {
+      type,
+      tool,
+      executionId,
+      messageId,
+      startedAt: typeof record.startedAt === "string" ? record.startedAt : undefined,
+      finishedAt: record.finishedAt,
+      durationMs: typeof record.durationMs === "number" ? record.durationMs : undefined,
+      errorCode: record.errorCode,
+      errorMessage: record.errorMessage,
+      failureReason: typeof record.failureReason === "string" ? record.failureReason : undefined,
+      attempts: typeof record.attempts === "number" ? record.attempts : undefined,
+      payload: toRecord(record.payload) ?? undefined,
+    }
+  }
+
+  const parseToolEvents = (value: unknown): ToolStreamEvent[] | undefined => {
+    if (!Array.isArray(value)) return undefined
+    const parsed = value.map(coerceToolStreamEvent).filter((entry): entry is ToolStreamEvent => entry !== null)
+    return parsed.length > 0 ? parsed : undefined
+  }
+
   const normalizeMessageMetadata = (value: unknown): ChatMessage["metadata"] | undefined => {
     const record = toRecord(value)
     if (!record) return undefined
 
     const toolExecutions = parseToolExecutionSummaries(record.toolExecutions)
-    if (!toolExecutions) return undefined
+    const toolEvents = parseToolEvents(record.toolEvents)
+    if (!toolExecutions && !toolEvents) return undefined
 
-    return { toolExecutions }
+    return {
+      ...(toolExecutions ? { toolExecutions } : {}),
+      ...(toolEvents ? { toolEvents } : {}),
+    }
   }
 
   const formatToolOutputPreview = (value: unknown): string | undefined => {
@@ -928,6 +1002,7 @@ export function ChatWorkspace() {
 
     const assistantId = `${Date.now()}-assistant`
     toolExecutionMapRef.current = new Map()
+    toolEventTraceRef.current = []
     const clientRequestId = `chat-turn-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
     let activeSessionId: string | null = null
     let activeSessionTitle: string | null = null
@@ -947,11 +1022,27 @@ export function ChatWorkspace() {
 
       const fallbackContent = assistantSnapshot.status === "failed" ? "Sorry, I couldn't complete that request." : "Stopped. You can retry from the composer."
       const finalContent = assistantSnapshot.content.trim() || fallbackContent
-      await persistMessage({
+      const persistedMessageId = await persistMessage({
         sessionId: activeSessionId,
         role: "assistant",
         content: finalContent,
       })
+
+      if (persistedMessageId && toolEventTraceRef.current.length > 0) {
+        await fetch(`/api/messages/${encodeURIComponent(persistedMessageId)}/tool-events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            events: toolEventTraceRef.current.map((event) => ({
+              type: event.type,
+              tool: event.tool,
+              durationMs: "durationMs" in event ? event.durationMs : undefined,
+              payload: event,
+            })),
+          }),
+        })
+      }
+
       assistantPersisted = true
     }
 
@@ -1149,57 +1240,113 @@ export function ChatWorkspace() {
                 ? payload.executionId
                 : createToolExecutionId(toolName)
             toolExecutionMapRef.current.set(toolName, toolExecutionId)
-            const startedAt = new Date().toISOString()
+            const startedAt = typeof payload.startedAt === "string" ? payload.startedAt : new Date().toISOString()
+            const traceEvent: ToolStreamEvent = {
+              type: "tool_start",
+              tool: toolName,
+              executionId: toolExecutionId,
+              messageId: typeof payload.messageId === "string" ? payload.messageId : undefined,
+              startedAt,
+              timeoutMs: typeof payload.timeoutMs === "number" ? payload.timeoutMs : undefined,
+              retryCount: typeof payload.retryCount === "number" ? payload.retryCount : undefined,
+              payload: toRecord(payload.payload) ?? undefined,
+            }
+            toolEventTraceRef.current = [...toolEventTraceRef.current, traceEvent]
 
             setRunDiagnostics((previous) => ({
               ...previous,
-              toolCalls: [
-                ...previous.toolCalls.filter((entry) => entry.tool !== toolName),
-                { tool: toolName, status: "running", failureReason: null },
-              ],
+              toolCalls: [...previous.toolCalls.filter((entry) => entry.tool !== toolName), { tool: toolName, status: "running", failureReason: null }],
             }))
 
             updateAssistantMessage((existing) => ({
               ...existing,
               status: "tool-running",
-              metadata: updateToolExecutionSummary(existing.metadata, {
-                id: toolExecutionId,
-                tool: toolName,
-                status: "running",
-                startedAt,
-                progressLabel: `Running ${toolName.replace(/_/g, " ")}`,
-                timeoutMs: typeof payload.timeoutMs === "number" ? payload.timeoutMs : undefined,
-                retryCount: typeof payload.retryCount === "number" ? payload.retryCount : undefined,
-              }),
+              metadata: {
+                ...updateToolExecutionSummary(existing.metadata, {
+                  id: toolExecutionId,
+                  tool: toolName,
+                  status: "running",
+                  startedAt,
+                  progressLabel: `Running ${toolName.replace(/_/g, " ")}`,
+                  timeoutMs: typeof payload.timeoutMs === "number" ? payload.timeoutMs : undefined,
+                  retryCount: typeof payload.retryCount === "number" ? payload.retryCount : undefined,
+                }),
+                toolEvents: [...(existing.metadata?.toolEvents ?? []), traceEvent],
+              },
             }))
+          }
+
+          if (eventName === "tool_error") {
+            const toolName = typeof payload.tool === "string" ? payload.tool : "tool"
+            const existingId = toolExecutionMapRef.current.get(toolName) ?? createToolExecutionId(toolName)
+            const finishedAt = typeof payload.finishedAt === "string" ? payload.finishedAt : new Date().toISOString()
+            const startedAt = typeof payload.startedAt === "string" ? payload.startedAt : undefined
+            const traceEvent: ToolStreamEvent = {
+              type: "tool_error",
+              tool: toolName,
+              executionId: existingId,
+              messageId: typeof payload.messageId === "string" ? payload.messageId : undefined,
+              startedAt,
+              finishedAt,
+              durationMs: typeof payload.durationMs === "number" ? payload.durationMs : undefined,
+              errorCode: typeof payload.errorCode === "string" ? payload.errorCode : "TOOL_EXECUTION_FAILED",
+              errorMessage: typeof payload.errorMessage === "string" ? payload.errorMessage : "Tool execution failed",
+              failureReason: typeof payload.failureReason === "string" ? payload.failureReason : undefined,
+              attempts: typeof payload.attempts === "number" ? payload.attempts : undefined,
+              payload: toRecord(payload.payload) ?? undefined,
+            }
+            toolEventTraceRef.current = [...toolEventTraceRef.current, traceEvent]
+
+            updateAssistantMessage((existing) => {
+              const previous = existing.metadata?.toolExecutions?.find((entry) => entry.id === existingId)
+              const resolvedStartedAt = startedAt ?? previous?.startedAt ?? finishedAt
+              const durationMs = Math.max(0, new Date(finishedAt).getTime() - new Date(resolvedStartedAt).getTime())
+
+              return {
+                ...existing,
+                metadata: {
+                  ...updateToolExecutionSummary(existing.metadata, {
+                    id: existingId,
+                    tool: toolName,
+                    status: "failed",
+                    startedAt: resolvedStartedAt,
+                    finishedAt,
+                    durationMs,
+                    progressLabel: `${toolName.replace(/_/g, " ")} failed`,
+                    errorCode: traceEvent.errorCode,
+                    errorMessage: traceEvent.errorMessage,
+                    failureReason: traceEvent.failureReason,
+                    attempts: traceEvent.attempts,
+                  }),
+                  toolEvents: [...(existing.metadata?.toolEvents ?? []), traceEvent],
+                },
+              }
+            })
           }
 
           if (eventName === "tool_result") {
             const toolName = typeof payload.tool === "string" ? payload.tool : "tool"
             const existingId = toolExecutionMapRef.current.get(toolName) ?? createToolExecutionId(toolName)
             toolExecutionMapRef.current.set(toolName, existingId)
-            const finishedAt = new Date().toISOString()
-            const toolStatus =
-              typeof payload.result?.status === "string" && payload.result.status === "failed"
-                ? "failed"
-                : payload.result?.queued === true
-                  ? "queued"
-                  : typeof payload.errorCode === "string"
-                    ? "failed"
-                    : "completed"
-            const failureReason =
-              typeof payload.failureReason === "string"
-                ? payload.failureReason
-                : typeof payload.errorCode === "string"
-                  ? payload.errorCode
-                  : null
+            const finishedAt = typeof payload.finishedAt === "string" ? payload.finishedAt : new Date().toISOString()
+            const toolStatus = payload.result?.queued === true ? "queued" : "completed"
+            const traceEvent: ToolStreamEvent = {
+              type: "tool_result",
+              tool: toolName,
+              executionId: existingId,
+              messageId: typeof payload.messageId === "string" ? payload.messageId : undefined,
+              startedAt: typeof payload.startedAt === "string" ? payload.startedAt : undefined,
+              finishedAt,
+              durationMs: typeof payload.durationMs === "number" ? payload.durationMs : undefined,
+              fromCache: payload.fromCache === true,
+              attempts: typeof payload.attempts === "number" ? payload.attempts : undefined,
+              result: toRecord(payload.result) ?? undefined,
+            }
+            toolEventTraceRef.current = [...toolEventTraceRef.current, traceEvent]
 
             setRunDiagnostics((previous) => ({
               ...previous,
-              toolCalls: [
-                ...previous.toolCalls.filter((entry) => entry.tool !== toolName),
-                { tool: toolName, status: toolStatus, failureReason },
-              ],
+              toolCalls: [...previous.toolCalls.filter((entry) => entry.tool !== toolName), { tool: toolName, status: toolStatus, failureReason: null }],
             }))
 
             updateAssistantMessage((existing) => {
@@ -1209,27 +1356,26 @@ export function ChatWorkspace() {
 
               return {
                 ...existing,
-                metadata: updateToolExecutionSummary(existing.metadata, {
-                  id: existingId,
-                  tool: toolName,
-                  status: toolStatus === "queued" ? "completed" : toolStatus,
-                  startedAt,
-                  finishedAt,
-                  durationMs,
-                  progressLabel:
-                    toolStatus === "queued"
-                      ? `${toolName.replace(/_/g, " ")} queued`
-                      : payload.fromCache === true
-                        ? `${toolName.replace(/_/g, " ")} (cache)`
-                        : `${toolName.replace(/_/g, " ")} ${toolStatus === "failed" ? "failed" : "complete"}`,
-                  outputPreview: formatToolOutputPreview(payload.result),
-                  output: toRecord(payload.result) ?? undefined,
-                  errorCode: typeof payload.errorCode === "string" ? payload.errorCode : undefined,
-                  failureReason: failureReason ?? undefined,
-                  timeoutMs: typeof payload.timeoutMs === "number" ? payload.timeoutMs : undefined,
-                  retryCount: typeof payload.retryCount === "number" ? payload.retryCount : undefined,
-                  attempts: typeof payload.attempts === "number" ? payload.attempts : undefined,
-                }),
+                metadata: {
+                  ...updateToolExecutionSummary(existing.metadata, {
+                    id: existingId,
+                    tool: toolName,
+                    status: "completed",
+                    startedAt,
+                    finishedAt,
+                    durationMs,
+                    progressLabel:
+                      toolStatus === "queued"
+                        ? `${toolName.replace(/_/g, " ")} queued`
+                        : payload.fromCache === true
+                          ? `${toolName.replace(/_/g, " ")} (cache)`
+                          : `${toolName.replace(/_/g, " ")} complete`,
+                    outputPreview: formatToolOutputPreview(payload.result),
+                    output: toRecord(payload.result) ?? undefined,
+                    attempts: typeof payload.attempts === "number" ? payload.attempts : undefined,
+                  }),
+                  toolEvents: [...(existing.metadata?.toolEvents ?? []), traceEvent],
+                },
               }
             })
           }

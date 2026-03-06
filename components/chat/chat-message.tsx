@@ -5,7 +5,7 @@ import { memo, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Bot, User, Copy, ThumbsUp, ThumbsDown, Share, Pencil, Trash2, Loader2, Check, AlertCircle, RefreshCw, Wrench, ChevronDown, ChevronRight, Clock3, TriangleAlert } from "lucide-react"
 
-import type { ChatMessage, ToolExecutionSummary } from "@/types/runash-chat"
+import type { ChatMessage, ToolExecutionSummary, ToolStreamEvent } from "@/types/runash-chat"
 
 import AutomationSuggestion from "./automation-suggestion"
 import LinkQuickPayButton from "./link-quick-pay-button"
@@ -198,6 +198,7 @@ function ChatMessageComponent({ message, sessionId, onEditRequest, onRegenerate 
   const canRegenerateNow = capabilities.canRegenerate && message.status !== "streaming" && message.status !== "tool-running"
 
   const toolExecutions = message.metadata?.toolExecutions ?? []
+  const toolEvents = message.metadata?.toolEvents ?? []
 
   const formatToolLabel = (tool: string) =>
     tool
@@ -227,6 +228,17 @@ function ChatMessageComponent({ message, sessionId, onEditRequest, onRegenerate 
     return <span className={`${base} border-zinc-600 bg-zinc-800/80 text-zinc-200`}><Check className="h-2.5 w-2.5" />Done</span>
   }
 
+
+  const renderToolEventBadge = (event: ToolStreamEvent) => {
+    const base = "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium"
+    if (event.type === "tool_error") {
+      return <span className={`${base} border-rose-500/40 bg-rose-500/10 text-rose-300`}><TriangleAlert className="h-2.5 w-2.5" />Failed</span>
+    }
+    if (event.type === "tool_result") {
+      return <span className={`${base} border-emerald-500/40 bg-emerald-500/10 text-emerald-300`}><Check className="h-2.5 w-2.5" />Success</span>
+    }
+    return <span className={`${base} border-zinc-600 bg-zinc-800/80 text-zinc-200`}><Loader2 className="h-2.5 w-2.5 animate-spin" />Started</span>
+  }
   const toolResultSections = [
     { key: "products", label: "Products", content: message.metadata?.products },
     { key: "recipes", label: "Recipes", content: message.metadata?.recipes },
@@ -297,6 +309,33 @@ function ChatMessageComponent({ message, sessionId, onEditRequest, onRegenerate 
                         <div className="border-t border-zinc-800 px-2 py-1.5 text-[11px] text-zinc-300">
                           {tool.errorMessage ? <p className="mb-1 text-rose-300">{tool.errorMessage}</p> : null}
                           {tool.outputPreview ? <p className="line-clamp-3 whitespace-pre-wrap break-all">{tool.outputPreview}</p> : <p className="text-zinc-500">No output captured.</p>}
+                        </div>
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : null}
+            {!isUser && toolEvents.length > 0 ? (
+              <div className="mb-2 space-y-1.5 rounded-md border border-zinc-800 bg-zinc-950/60 p-2">
+                <div className="text-[10px] uppercase tracking-wide text-zinc-400">Tool timeline</div>
+                {toolEvents.map((event, index) => {
+                  const eventId = `${event.executionId}-${event.type}-${index}`
+                  const isExpanded = Boolean(expandedTools[eventId])
+                  return (
+                    <div key={eventId} className="rounded border border-zinc-800/80 bg-zinc-900/70">
+                      <button type="button" className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left" onClick={() => toggleToolExpansion(eventId)}>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 text-[11px] text-zinc-200">
+                            {isExpanded ? <ChevronDown className="h-3 w-3 text-zinc-400" /> : <ChevronRight className="h-3 w-3 text-zinc-400" />}
+                            <span className="truncate font-medium">{formatToolLabel(event.tool)}</span>
+                            {renderToolEventBadge(event)}
+                          </div>
+                        </div>
+                      </button>
+                      {isExpanded ? (
+                        <div className="border-t border-zinc-800 px-2 py-1.5 text-[11px] text-zinc-300">
+                          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify(event, null, 2)}</pre>
                         </div>
                       ) : null}
                     </div>
