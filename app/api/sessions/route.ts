@@ -1,7 +1,5 @@
-import { NextResponse } from "next/server"
-
 import { getServerAuthSession } from "@/lib/auth/session"
-import { CHAT_ERROR_CODES } from "@/lib/chat-contracts"
+import { respondError, resolveRequestId } from "@/lib/api/response"
 import { createSession, listSessions } from "@/lib/repositories/runash-chat"
 
 import { handleCreateSession, handleGetSessions } from "./sessions-route-handler"
@@ -14,7 +12,7 @@ async function requireAuthenticatedUserId() {
 export async function GET(req: Request) {
   const userId = await requireAuthenticatedUserId()
   if (!userId) {
-    return NextResponse.json({ error: "Unauthorized", code: CHAT_ERROR_CODES.AUTH_REQUIRED }, { status: 401 })
+    return respondError(req, { code: "AUTH_REQUIRED", message: "Unauthorized" }, { status: 401, requestId: resolveRequestId(req) })
   }
 
   return handleGetSessions(req, {
@@ -27,7 +25,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const userId = await requireAuthenticatedUserId()
   if (!userId) {
-    return NextResponse.json({ error: "Unauthorized", code: CHAT_ERROR_CODES.AUTH_REQUIRED }, { status: 401 })
+    return respondError(req, { code: "AUTH_REQUIRED", message: "Unauthorized" }, { status: 401, requestId: resolveRequestId(req) })
   }
 
   return handleCreateSession(req, {

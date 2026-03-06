@@ -3,15 +3,14 @@ import { z } from "zod"
 import { getServerAuthSession } from "@/lib/auth/session"
 import { logApiEvent } from "@/lib/api/logging"
 import { respondError, respondSuccess, resolveRequestId } from "@/lib/api/response"
-import { deleteSessionMessage, isSessionOwnedByUser, updateSessionMessage } from "@/lib/repositories/runash-chat"
+import { deleteSessionMessage, getMessageByIdForUser, updateSessionMessage } from "@/lib/repositories/runash-chat"
 
-const updateMessageSchema = z.object({
-  sessionId: z.string().trim().min(1),
-  content: z.string().trim().min(1).max(6000),
+const paramsSchema = z.object({
+  id: z.string().trim().min(1),
 })
 
-const deleteMessageSchema = z.object({
-  sessionId: z.string().trim().min(1),
+const updateMessageSchema = z.object({
+  content: z.string().trim().min(1).max(6000),
 })
 
 type RouteContext = {
@@ -25,17 +24,17 @@ async function getAuthenticatedUserId() {
   return session?.user?.id ? String(session.user.id) : null
 }
 
-function isSessionAccessDeniedError(error: unknown) {
-  return error instanceof Error && error.message === "SESSION_ACCESS_DENIED"
-}
-
-
 export async function PATCH(request: Request, { params }: RouteContext) {
   const requestId = resolveRequestId(request)
   const userId = await getAuthenticatedUserId()
 
   if (!userId) {
     return respondError(request, { code: "AUTH_REQUIRED", message: "Unauthorized" }, { status: 401, requestId })
+  }
+
+  const parsedParams = paramsSchema.safeParse(params)
+  if (!parsedParams.success) {
+    return respondError(request, { code: "MESSAGE_ID_REQUIRED", message: "Message id is required" }, { status: 400, requestId })
   }
 
   try {
@@ -45,21 +44,21 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     if (!parsed.success) {
       return respondError(
         request,
-        { code: "INVALID_REQUEST", message: "sessionId and content are required" },
+        { code: "INVALID_REQUEST", message: "content is required" },
         { status: 400, requestId },
       )
     }
 
-    const isOwned = await isSessionOwnedByUser(parsed.data.sessionId, userId)
-    if (!isOwned) {
-      return respondError(
-        request,
-        { code: "SESSION_ACCESS_DENIED", message: "Forbidden" },
-        { status: 403, requestId },
-      )
+    const target = await getMessageByIdForUser(parsedParams.data.id, userId)
+    if (!target) {
+      return respondError(request, { code: "MESSAGE_NOT_FOUND", message: "Message not found" }, { status: 404, requestId })
     }
 
-    const message = await updateSessionMessage(parsed.data.sessionId, params.id, parsed.data.content, userId)
+    if (target.role !== "user") {
+      return respondError(request, { code: "MESSAGE_EDIT_NOT_ALLOWED", message: "Only user messages can be edited" }, { status: 409, requestId })
+    }
+
+    const message = await updateSessionMessage(target.session_id, parsedParams.data.id, parsed.data.content, userId)
 
     if (!message) {
       return respondError(request, { code: "MESSAGE_NOT_FOUND", message: "Message not found" }, { status: 404, requestId })
@@ -67,10 +66,6 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
     return respondSuccess(request, message, { status: 200, requestId })
   } catch (error) {
-    if (isSessionAccessDeniedError(error)) {
-      return respondError(request, { code: "SESSION_ACCESS_DENIED", message: "Forbidden" }, { status: 403, requestId })
-    }
-
     logApiEvent("error", "messages.update.failed", {
       requestId,
       route: "/api/messages/[id]",
@@ -91,24 +86,18 @@ export async function DELETE(request: Request, { params }: RouteContext) {
     return respondError(request, { code: "AUTH_REQUIRED", message: "Unauthorized" }, { status: 401, requestId })
   }
 
+  const parsedParams = paramsSchema.safeParse(params)
+  if (!parsedParams.success) {
+    return respondError(request, { code: "MESSAGE_ID_REQUIRED", message: "Message id is required" }, { status: 400, requestId })
+  }
+
   try {
-    const payload = await request.json().catch(() => ({}))
-    const parsed = deleteMessageSchema.safeParse(payload)
-
-    if (!parsed.success) {
-      return respondError(request, { code: "INVALID_REQUEST", message: "sessionId is required" }, { status: 400, requestId })
+    const target = await getMessageByIdForUser(parsedParams.data.id, userId)
+    if (!target) {
+      return respondError(request, { code: "MESSAGE_NOT_FOUND", message: "Message not found" }, { status: 404, requestId })
     }
 
-    const isOwned = await isSessionOwnedByUser(parsed.data.sessionId, userId)
-    if (!isOwned) {
-      return respondError(
-        request,
-        { code: "SESSION_ACCESS_DENIED", message: "Forbidden" },
-        { status: 403, requestId },
-      )
-    }
-
-    const deleted = await deleteSessionMessage(parsed.data.sessionId, params.id, userId)
+    const deleted = await deleteSessionMessage(target.session_id, parsedParams.data.id, userId)
 
     if (!deleted) {
       return respondError(request, { code: "MESSAGE_NOT_FOUND", message: "Message not found" }, { status: 404, requestId })
@@ -116,10 +105,6 @@ export async function DELETE(request: Request, { params }: RouteContext) {
 
     return respondSuccess(request, { id: params.id, deleted: true }, { status: 200, requestId })
   } catch (error) {
-    if (isSessionAccessDeniedError(error)) {
-      return respondError(request, { code: "SESSION_ACCESS_DENIED", message: "Forbidden" }, { status: 403, requestId })
-    }
-
     logApiEvent("error", "messages.delete.failed", {
       requestId,
       route: "/api/messages/[id]",
