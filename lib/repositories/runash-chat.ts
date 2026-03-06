@@ -1,12 +1,15 @@
 import fs from "fs"
 import path from "path"
 
+import { sql } from "@/lib/db"
 import {
   createChatSession,
   getChatSessionById,
   getMostRecentChatSession,
   listChatSessions,
+  softDeleteChatSession,
   type ChatSession,
+  updateChatSessionState,
 } from "@/lib/repositories/sessions"
 import {
   createChatSessionMessage,
@@ -22,7 +25,7 @@ const MESSAGES_FILE = path.join(DATA_DIR, "messages.json")
 
 const useDatabaseBackedChatStorage = process.env.RUNASH_CHAT_DB_REPOSITORY_ENABLED === "true"
 
-export type RunashSession = Pick<ChatSession, "id" | "title" | "created_at">
+export type RunashSession = Pick<ChatSession, "id" | "title" | "created_at" | "archived_at"> & { deleted_at?: string | null }
 
 export type RunashSessionMessage = ChatSessionMessage
 
@@ -61,6 +64,8 @@ function mapSession(session: ChatSession): RunashSession {
     id: session.id,
     title: session.title,
     created_at: session.created_at,
+    archived_at: session.archived_at ?? null,
+    deleted_at: session.deleted_at ?? null,
   }
 }
 
@@ -72,7 +77,7 @@ export async function listSessions(userId: string): Promise<RunashSession[]> {
     return sessions.map(mapSession)
   }
 
-  return readJsonFile<RunashSession[]>(SESSIONS_FILE, [])
+  return readJsonFile<RunashSession[]>(SESSIONS_FILE, []).filter((session) => !session.deleted_at)
 }
 
 export async function createSession(title = "Session", userId: string): Promise<RunashSession> {
@@ -88,12 +93,55 @@ export async function createSession(title = "Session", userId: string): Promise<
     id: `s-${Date.now()}`,
     title,
     created_at: new Date().toISOString(),
+    archived_at: null,
+    deleted_at: null,
   }
 
   sessions.unshift(newSession)
   writeJsonFile(SESSIONS_FILE, sessions)
 
   return newSession
+}
+
+export async function updateSession(
+  sessionId: string,
+  updates: { title?: string; archived?: boolean },
+  userId: string,
+): Promise<RunashSession | null> {
+  const normalizedUserId = requireUserId(userId)
+
+  if (useDatabaseBackedChatStorage) {
+    const session = await updateChatSessionState(normalizedUserId, sessionId, updates)
+    return session ? mapSession(session) : null
+  }
+
+  const sessions = readJsonFile<RunashSession[]>(SESSIONS_FILE, [])
+  const matchIndex = sessions.findIndex((session) => String(session.id) === String(sessionId) && !session.deleted_at)
+  if (matchIndex < 0) return null
+
+  sessions[matchIndex] = {
+    ...sessions[matchIndex],
+    ...(updates.title ? { title: updates.title } : {}),
+    ...(typeof updates.archived === "boolean" ? { archived_at: updates.archived ? new Date().toISOString() : null } : {}),
+  }
+
+  writeJsonFile(SESSIONS_FILE, sessions)
+  return sessions[matchIndex]
+}
+
+export async function softDeleteSession(sessionId: string, userId: string): Promise<boolean> {
+  const normalizedUserId = requireUserId(userId)
+
+  if (useDatabaseBackedChatStorage) {
+    return softDeleteChatSession(normalizedUserId, sessionId)
+  }
+
+  const sessions = readJsonFile<RunashSession[]>(SESSIONS_FILE, [])
+  const matchIndex = sessions.findIndex((session) => String(session.id) === String(sessionId) && !session.deleted_at)
+  if (matchIndex < 0) return false
+  sessions[matchIndex] = { ...sessions[matchIndex], deleted_at: new Date().toISOString() }
+  writeJsonFile(SESSIONS_FILE, sessions)
+  return true
 }
 
 export async function getMostRecentSession(userId: string): Promise<RunashSession | null> {
@@ -108,7 +156,7 @@ export async function getMostRecentSession(userId: string): Promise<RunashSessio
   return sessions[0] ?? null
 }
 
-export async function listSessionMessages(sessionId: string, limit: number | undefined, userId: string): Promise<RunashSessionMessage[]> {
+export async function listSessionMessages(sessionId: string, limit: number | undefined, userId: string, cursor?: string): Promise<RunashSessionMessage[]> {
   const normalizedUserId = requireUserId(userId)
 
   if (useDatabaseBackedChatStorage) {
@@ -117,7 +165,7 @@ export async function listSessionMessages(sessionId: string, limit: number | und
       throw new Error("SESSION_ACCESS_DENIED")
     }
 
-    return listMessagesBySession(String(sessionId), limit)
+    return listMessagesBySession(String(sessionId), limit, cursor)
   }
 
   const isOwned = await isSessionOwnedByUser(sessionId, normalizedUserId)
@@ -129,15 +177,14 @@ export async function listSessionMessages(sessionId: string, limit: number | und
   const normalizedSessionId = String(sessionId)
 
   const filtered = messages
-    .filter((message) => String(message.session_id) === normalizedSessionId)
-    .sort((a, b) => {
-      const aTime = a.created_at ? new Date(a.created_at).getTime() : 0
-      const bTime = b.created_at ? new Date(b.created_at).getTime() : 0
-      return bTime - aTime
-    })
+    .filter((message) => String(message.session_id) === normalizedSessionId && !message.deleted_at)
+    .sort((a, b) => Number(b.id) - Number(a.id))
 
-  if (!limit || limit < 1) return filtered
-  return filtered.slice(0, limit)
+  const cursorValue = cursor ? Number(cursor) : null
+  const cursorFiltered = cursorValue ? filtered.filter((message) => Number(message.id) < cursorValue) : filtered
+
+  if (!limit || limit < 1) return cursorFiltered
+  return cursorFiltered.slice(0, limit)
 }
 
 export async function isSessionOwnedByUser(sessionId: string, userId: string): Promise<boolean> {
@@ -152,6 +199,25 @@ export async function isSessionOwnedByUser(sessionId: string, userId: string): P
   return sessions.some((session) => String(session.id) === String(sessionId))
 }
 
+export async function getMessageByIdForUser(messageId: string | number, userId: string): Promise<RunashSessionMessage | null> {
+  const normalizedUserId = requireUserId(userId)
+
+  if (useDatabaseBackedChatStorage) {
+    const rows = await (sql as any).unsafe(
+      `select m.id, m.session_id, m.role, m.content, m.created_at, m.updated_at, m.deleted_at, m.message_type
+       from runash_chat_session_messages m
+       inner join runash_chat_sessions s on s.id = m.session_id
+       where m.id = $1 and s.user_id = $2 and s.deleted_at is null and m.deleted_at is null
+       limit 1`,
+      [messageId, normalizedUserId],
+    )
+
+    return rows?.[0] ?? null
+  }
+
+  const messages = readJsonFile<RunashSessionMessage[]>(MESSAGES_FILE, [])
+  return messages.find((message) => String(message.id) === String(messageId) && !message.deleted_at) ?? null
+}
 
 export async function updateSessionMessage(
   sessionId: string,
@@ -167,7 +233,7 @@ export async function updateSessionMessage(
       throw new Error("SESSION_ACCESS_DENIED")
     }
 
-    return updateChatSessionMessage(sessionId, messageId, content)
+    return updateChatSessionMessage(sessionId, messageId, content, normalizedUserId)
   }
 
   const isOwned = await isSessionOwnedByUser(sessionId, normalizedUserId)
@@ -179,16 +245,17 @@ export async function updateSessionMessage(
   const normalizedSessionId = String(sessionId)
   const normalizedMessageId = String(messageId)
   const matchIndex = messages.findIndex(
-    (message) => String(message.session_id) === normalizedSessionId && String(message.id) === normalizedMessageId,
+    (message) => String(message.session_id) === normalizedSessionId && String(message.id) === normalizedMessageId && !message.deleted_at,
   )
 
-  if (matchIndex < 0) {
+  if (matchIndex < 0 || messages[matchIndex].role !== "user") {
     return null
   }
 
   const updatedMessage: RunashSessionMessage = {
     ...messages[matchIndex],
     content,
+    updated_at: new Date().toISOString(),
   }
 
   messages[matchIndex] = updatedMessage
@@ -206,7 +273,7 @@ export async function deleteSessionMessage(sessionId: string, messageId: string 
       throw new Error("SESSION_ACCESS_DENIED")
     }
 
-    return deleteChatSessionMessage(sessionId, messageId)
+    return deleteChatSessionMessage(sessionId, messageId, normalizedUserId)
   }
 
   const isOwned = await isSessionOwnedByUser(sessionId, normalizedUserId)
@@ -217,17 +284,25 @@ export async function deleteSessionMessage(sessionId: string, messageId: string 
   const messages = readJsonFile<RunashSessionMessage[]>(MESSAGES_FILE, [])
   const normalizedSessionId = String(sessionId)
   const normalizedMessageId = String(messageId)
-  const retained = messages.filter(
-    (message) => !(String(message.session_id) === normalizedSessionId && String(message.id) === normalizedMessageId),
+  const matchIndex = messages.findIndex(
+    (message) => String(message.session_id) === normalizedSessionId && String(message.id) === normalizedMessageId && !message.deleted_at,
   )
 
-  if (retained.length === messages.length) {
+  if (matchIndex < 0) {
     return false
   }
 
-  writeJsonFile(MESSAGES_FILE, retained)
+  messages[matchIndex] = {
+    ...messages[matchIndex],
+    deleted_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    content: "[deleted]",
+  }
+
+  writeJsonFile(MESSAGES_FILE, messages)
   return true
 }
+
 export async function createSessionMessage(
   sessionId: string,
   role: RunashSessionMessage["role"],
@@ -258,6 +333,8 @@ export async function createSessionMessage(
     role,
     content,
     created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    deleted_at: null,
     message_type: messageType,
   }
 
