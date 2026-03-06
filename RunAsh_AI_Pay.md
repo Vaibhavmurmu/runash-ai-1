@@ -776,3 +776,15 @@ Risk + rollback:
 1. **Risk:** over-aggressive timeout values could increase false failures for slower upstream tools.
 2. **Mitigation:** defaults remain conservative and can be tuned per tool via env without contract changes.
 3. **Rollback:** revert relay tool policy/error wrappers in `services/agent-orchestration-service.ts` and remove diagnostics field reads in `app/api/agents/chat/route.ts` + `components/dashboard/workspace/chat-workspace.tsx`.
+
+## 2026-03 Operations observability instrumentation (non-payment contract change)
+
+- Added production operations observability instrumentation for live session lifecycle APIs, generation queue/worker steps, and media ingest/transcode callbacks.
+- Added structured logging with correlation IDs and trace spans to improve incident triage while preserving auth/payment secret redaction.
+- Added operational runbook and dashboard query references in `docs/OPERATIONS_OBSERVABILITY_RUNBOOK.md` and `docs/OPERATIONS_DASHBOARD_QUERIES.md`.
+- **Payment/auth contract impact:** none. No payment API fields, signatures, or flow semantics were changed.
+
+Risk + rollback:
+1. **Risk:** increased log/metric volume may raise observability ingestion cost.
+2. **Mitigation:** logs are structured/sanitized and scoped to operational lifecycle events.
+3. **Rollback:** revert observability-only changes in API/service files and `lib/operations-observability.ts`; no data/schema rollback required.
