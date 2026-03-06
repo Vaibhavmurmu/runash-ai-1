@@ -764,3 +764,15 @@ Standardized settings action/billing error payloads to include a shared field-ma
 - Introduced a dedicated backend live-stream lifecycle domain (`app/api/live-stream/**`, `services/live-stream/**`) with additive schema for session states, provider endpoints, idempotent start/stop commands, and append-only lifecycle events.
 - **Payment/auth contract impact:** none. Existing payment API signatures, field names, and state machines are unchanged.
 - **Risk + rollback:** if streaming lifecycle regressions occur, rollback by reverting `services/live-stream/**`, `app/api/live-stream/**`, and migration `scripts/sql/2026-03-06_create_live_stream_domain_tables.sql`; payment workflows remain unaffected.
+
+## 2026-03 Relay chat tool timeout/retry guardrails + diagnostics telemetry
+
+- Added per-tool execution policies in relay orchestration with bounded timeout/retry defaults and optional per-tool env overrides (`RUNASH_AGENT_TOOL_TIMEOUT_MS_<TOOL>`, `RUNASH_AGENT_TOOL_RETRY_COUNT_<TOOL>`).
+- Tool failures now return explicit machine-readable error codes (`TOOL_TIMEOUT`, `TOOL_MAX_RETRIES_EXCEEDED`, `TOOL_EXECUTION_FAILED`) and propagate failure reason metadata through chat tool execution summaries.
+- `/api/agents/chat` streaming now emits compact tool diagnostics fields (`timeoutMs`, `retryCount`, `attempts`, `failureReason`) and structured non-sensitive telemetry for each tool start/completion/failure event.
+- Dashboard chat UI now surfaces a compact diagnostics panel for request id, provider/model, tool call outcomes, and per-tool failure reasons to improve troubleshooting without exposing payment or auth secrets.
+
+Risk + rollback:
+1. **Risk:** over-aggressive timeout values could increase false failures for slower upstream tools.
+2. **Mitigation:** defaults remain conservative and can be tuned per tool via env without contract changes.
+3. **Rollback:** revert relay tool policy/error wrappers in `services/agent-orchestration-service.ts` and remove diagnostics field reads in `app/api/agents/chat/route.ts` + `components/dashboard/workspace/chat-workspace.tsx`.

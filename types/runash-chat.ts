@@ -28,6 +28,10 @@ export interface ToolExecutionSummary {
   output?: Record<string, unknown>
   errorCode?: string
   errorMessage?: string
+  failureReason?: string
+  timeoutMs?: number
+  retryCount?: number
+  attempts?: number
 }
 
 export interface LinkQuickPayPreview {

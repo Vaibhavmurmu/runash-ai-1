@@ -14,7 +14,12 @@ import {
 } from "@/lib/repositories/agent-orchestration"
 import { RELAY_AGENT_TOOLS } from "@/lib/skills/relay-tool-registry"
 import { AGENT_ROLES } from "@/services/agent-role-orchestration"
-import { AgentOrchestrationService, type SupportedTool } from "@/services/agent-orchestration-service"
+import {
+  AgentOrchestrationService,
+  ToolExecutionError,
+  resolveToolExecutionPolicy,
+  type SupportedTool,
+} from "@/services/agent-orchestration-service"
 import { enqueueToolJob } from "@/services/agent-tool-queue-worker"
 import { AIProviderError, resolveModelSelection, streamModelTextWithFallback } from "@/lib/ai/provider-registry"
 import { buildDefaultToolPayloads, buildToolPlan, resolveRunAshChatToolSelection } from "./chat-request-handler"
@@ -43,6 +48,14 @@ const requestSchema = z.object({
 })
 
 const AGENT_CHAT_ENABLED = process.env.RUNASH_AGENT_CHAT_ENABLED !== "false"
+
+
+const mapToolErrorToChatErrorCode = (errorCode: string | undefined) => {
+  if (errorCode === "TOOL_TIMEOUT") return CHAT_ERROR_CODES.TOOL_TIMEOUT
+  if (errorCode === "TOOL_MAX_RETRIES_EXCEEDED") return CHAT_ERROR_CODES.TOOL_MAX_RETRIES_EXCEEDED
+  if (errorCode === "TOOL_EXECUTION_FAILED") return CHAT_ERROR_CODES.TOOL_EXECUTION_FAILED
+  return CHAT_ERROR_CODES.PROVIDER_TIMEOUT
+}
 
 const formatToolOutputPreview = (value: unknown) => {
   if (value === null || value === undefined) return undefined
@@ -174,36 +187,124 @@ export async function POST(request: NextRequest) {
             }
             const toolExecutionId = `${tool}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
             const startedAt = new Date().toISOString()
+            const toolPolicy = resolveToolExecutionPolicy(tool)
             toolExecutionSummaries.set(toolExecutionId, {
               id: toolExecutionId,
               tool,
               status: "running",
               startedAt,
               progressLabel: `Running ${tool.replace(/_/g, " ")}`,
+              timeoutMs: toolPolicy.timeoutMs,
+              retryCount: toolPolicy.retryCount,
+              attempts: 0,
             })
-            send("tool_start", { tool, messageId: assistantMessage.id, status: "tool-running", executionId: toolExecutionId, startedAt })
+            send("tool_start", {
+              tool,
+              messageId: assistantMessage.id,
+              status: "tool-running",
+              executionId: toolExecutionId,
+              startedAt,
+              timeoutMs: toolPolicy.timeoutMs,
+              retryCount: toolPolicy.retryCount,
+            })
 
             const payload = parsed.data.toolPayloads?.[tool] ?? defaultPayloads?.[tool] ?? { query: sanitizedMessage }
-            const execution = await AgentOrchestrationService.executeToolWithPolicy(tool, payload, {
-              sessionId: agentSession.id,
-              messageId: assistantMessage.id,
-              tenantId: userId,
-              role: parsed.data.agentRole,
-              preferences: parsed.data.preferences,
-            })
+            try {
+              const execution = await AgentOrchestrationService.executeToolWithPolicy(
+                tool,
+                payload,
+                {
+                  sessionId: agentSession.id,
+                  messageId: assistantMessage.id,
+                  tenantId: userId,
+                  role: parsed.data.agentRole,
+                  preferences: parsed.data.preferences,
+                },
+                toolPolicy,
+              )
 
-            toolOutputs[tool] = execution.result
-            const summaryEntry = [...toolExecutionSummaries.values()].reverse().find((entry) => entry.tool === tool && entry.status === "running")
-            const finishedAt = new Date().toISOString()
-            if (summaryEntry) {
-              const startedAt = typeof summaryEntry.startedAt === "string" ? summaryEntry.startedAt : finishedAt
-              summaryEntry.status = "completed"
-              summaryEntry.finishedAt = finishedAt
-              summaryEntry.durationMs = Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime())
-              summaryEntry.progressLabel = execution.fromCache ? `${tool.replace(/_/g, " ")} (cache)` : `${tool.replace(/_/g, " ")} complete`
-              summaryEntry.outputPreview = formatToolOutputPreview(execution.result)
+              toolOutputs[tool] = execution.result
+              const summaryEntry = [...toolExecutionSummaries.values()].reverse().find((entry) => entry.tool === tool && entry.status === "running")
+              const finishedAt = new Date().toISOString()
+              if (summaryEntry) {
+                const startedAt = typeof summaryEntry.startedAt === "string" ? summaryEntry.startedAt : finishedAt
+                summaryEntry.status = "completed"
+                summaryEntry.finishedAt = finishedAt
+                summaryEntry.durationMs = Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime())
+                summaryEntry.progressLabel = execution.fromCache ? `${tool.replace(/_/g, " ")} (cache)` : `${tool.replace(/_/g, " ")} complete`
+                summaryEntry.outputPreview = formatToolOutputPreview(execution.result)
+                summaryEntry.attempts = toolPolicy.retryCount + 1
+              }
+              send("tool_result", {
+                tool,
+                result: execution.result,
+                fromCache: execution.fromCache,
+                executionId: summaryEntry?.id,
+                timeoutMs: toolPolicy.timeoutMs,
+                retryCount: toolPolicy.retryCount,
+              })
+
+              logApiEvent("info", "agents.chat.tool.result", {
+                requestId,
+                route: "/api/agents/chat",
+                method: "POST",
+                userId,
+                details: {
+                  tool,
+                  executionId: summaryEntry?.id,
+                  status: "completed",
+                  timeoutMs: toolPolicy.timeoutMs,
+                  retryCount: toolPolicy.retryCount,
+                  fromCache: execution.fromCache,
+                },
+              })
+            } catch (toolError) {
+              const errorCode = toolError instanceof ToolExecutionError ? toolError.code : "TOOL_EXECUTION_FAILED"
+              const summaryEntry = [...toolExecutionSummaries.values()].reverse().find((entry) => entry.tool === tool && entry.status === "running")
+              const finishedAt = new Date().toISOString()
+              if (summaryEntry) {
+                const startedAt = typeof summaryEntry.startedAt === "string" ? summaryEntry.startedAt : finishedAt
+                summaryEntry.status = "failed"
+                summaryEntry.finishedAt = finishedAt
+                summaryEntry.durationMs = Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime())
+                summaryEntry.progressLabel = `${tool.replace(/_/g, " ")} failed`
+                summaryEntry.errorCode = errorCode
+                summaryEntry.errorMessage = toolError instanceof Error ? toolError.message : "Tool execution failed"
+                summaryEntry.failureReason = errorCode
+                summaryEntry.attempts = toolPolicy.retryCount + 1
+              }
+
+              send("tool_result", {
+                tool,
+                executionId: summaryEntry?.id,
+                fromCache: false,
+                timeoutMs: toolPolicy.timeoutMs,
+                retryCount: toolPolicy.retryCount,
+                errorCode,
+                failureReason: errorCode,
+                result: {
+                  status: "failed",
+                  code: errorCode,
+                },
+              })
+
+              logApiEvent("warn", "agents.chat.tool.result", {
+                requestId,
+                route: "/api/agents/chat",
+                method: "POST",
+                userId,
+                details: {
+                  tool,
+                  executionId: summaryEntry?.id,
+                  status: "failed",
+                  errorCode,
+                  timeoutMs: toolPolicy.timeoutMs,
+                  retryCount: toolPolicy.retryCount,
+                },
+              })
+
+              throw toolError
             }
-            send("tool_result", { tool, result: execution.result, fromCache: execution.fromCache, executionId: summaryEntry?.id })
           }
 
           for (const tool of toolPlan.queued) {
@@ -212,14 +313,18 @@ export async function POST(request: NextRequest) {
             }
             const toolExecutionId = `${tool}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
             const startedAt = new Date().toISOString()
+            const toolPolicy = resolveToolExecutionPolicy(tool)
             toolExecutionSummaries.set(toolExecutionId, {
               id: toolExecutionId,
               tool,
               status: "running",
               startedAt,
               progressLabel: `Queueing ${tool.replace(/_/g, " ")}`,
+              timeoutMs: toolPolicy.timeoutMs,
+              retryCount: toolPolicy.retryCount,
+              attempts: 0,
             })
-            send("tool_start", { tool, messageId: assistantMessage.id, status: "tool-running", executionId: toolExecutionId, startedAt })
+            send("tool_start", { tool, messageId: assistantMessage.id, status: "tool-running", executionId: toolExecutionId, startedAt, timeoutMs: toolPolicy.timeoutMs, retryCount: toolPolicy.retryCount })
             const payload = parsed.data.toolPayloads?.[tool] ?? defaultPayloads?.[tool] ?? { query: sanitizedMessage }
             const jobId = enqueueToolJob({
               tool,
@@ -240,12 +345,29 @@ export async function POST(request: NextRequest) {
               summaryEntry.durationMs = Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime())
               summaryEntry.progressLabel = `${tool.replace(/_/g, " ")} queued`
               summaryEntry.outputPreview = `Queued job ${jobId}`
+              summaryEntry.attempts = 0
             }
             send("tool_result", {
               tool,
               result: { queued: true, jobId },
               fromCache: false,
               executionId: summaryEntry?.id,
+              timeoutMs: toolPolicy.timeoutMs,
+              retryCount: toolPolicy.retryCount,
+              attempts: 0,
+            })
+            logApiEvent("info", "agents.chat.tool.result", {
+              requestId,
+              route: "/api/agents/chat",
+              method: "POST",
+              userId,
+              details: {
+                tool,
+                executionId: summaryEntry?.id,
+                status: "queued",
+                timeoutMs: toolPolicy.timeoutMs,
+                retryCount: toolPolicy.retryCount,
+              },
             })
           }
 
@@ -296,7 +418,9 @@ export async function POST(request: NextRequest) {
             activeSummary.finishedAt = finishedAt
             activeSummary.durationMs = Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime())
             activeSummary.progressLabel = `${String(activeSummary.tool ?? "tool").replace(/_/g, " ")} failed`
-            activeSummary.errorCode = providerErrorCode ?? "PROVIDER_ERROR"
+            activeSummary.errorCode =
+              (error instanceof ToolExecutionError ? error.code : providerErrorCode) ?? "PROVIDER_ERROR"
+            activeSummary.failureReason = activeSummary.errorCode
             activeSummary.errorMessage = "Unable to complete tool execution"
           }
 
@@ -309,7 +433,10 @@ export async function POST(request: NextRequest) {
           send("error", {
             message: "Unable to complete agent turn",
             requestId,
-            code: providerErrorCode === "TIMEOUT" ? CHAT_ERROR_CODES.PROVIDER_TIMEOUT : providerErrorCode,
+            code:
+              providerErrorCode === "TIMEOUT"
+                ? CHAT_ERROR_CODES.PROVIDER_TIMEOUT
+                : providerErrorCode ?? mapToolErrorToChatErrorCode(activeSummary?.errorCode as string | undefined),
           })
 
           logApiEvent("error", "agents.chat.stream_failed", {
