@@ -1,6 +1,6 @@
 "use client"
 
-import { type ChangeEvent, type DragEvent, useEffect, useMemo, useRef, useState } from "react"
+import { type ChangeEvent, type ClipboardEvent, type DragEvent, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ChevronDown, Send, Sparkles, Search, OctagonX, RotateCcw, Image as ImageIcon, RefreshCcw, X, PencilLine } from "lucide-react"
@@ -32,6 +32,7 @@ export type ComposerAttachmentMetadata = {
 export type ComposerAttachmentUploadState = "idle" | "uploading" | "failed" | "uploaded"
 
 export type ComposerAttachmentPreview = {
+  id: string
   metadata: ComposerAttachmentMetadata
   previewUrl: string
   uploadState: ComposerAttachmentUploadState
@@ -58,11 +59,11 @@ type RunAshChatComposerProps = {
   projectOptions?: ProjectCatalogOption[]
   selectedProject?: string
   onSelectedProjectChange?: (projectId: string) => void
-  onAttachFile?: (file: File) => Promise<void> | void
-  attachmentPreview?: ComposerAttachmentPreview | null
+  onAttachFiles?: (files: File[]) => Promise<void> | void
+  attachmentPreviews?: ComposerAttachmentPreview[]
   attachmentError?: string | null
-  onRetryAttachment?: () => void
-  onRemoveAttachment?: () => void
+  onRetryAttachment?: (attachmentId: string) => void
+  onRemoveAttachment?: (attachmentId: string) => void
   showUpgradePrompt?: boolean
   onUpgradeClick?: (location: "composer_inline") => void
 }
@@ -80,6 +81,9 @@ const SOFT_CHARACTER_LIMIT = 1200
 const HARD_CHARACTER_LIMIT = 2000
 const SOFT_TOKEN_LIMIT = 320
 const HARD_TOKEN_LIMIT = 500
+const ATTACHMENT_MAX_COUNT = 4
+const ATTACHMENT_MAX_SIZE_BYTES = 8 * 1024 * 1024
+const ALLOWED_ATTACHMENT_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"]
 
 const SLASH_COMMANDS: SlashCommand[] = [
   {
@@ -131,8 +135,8 @@ export function RunAshChatComposer({
   projectOptions = [],
   selectedProject,
   onSelectedProjectChange,
-  onAttachFile,
-  attachmentPreview,
+  onAttachFiles,
+  attachmentPreviews = [],
   attachmentError,
   onRetryAttachment,
   onRemoveAttachment,
@@ -144,7 +148,8 @@ export function RunAshChatComposer({
   const [composerError, setComposerError] = useState<string | null>(null)
   const [isEnhancing, setIsEnhancing] = useState(false)
   const [showSecondaryControls, setShowSecondaryControls] = useState(false)
-  const [isDragging, setIsDragging] = useState(false)
+  const [dragState, setDragState] = useState<"idle" | "active" | "invalid">("idle")
+  const [attachmentValidationError, setAttachmentValidationError] = useState<string | null>(null)
 
   const [isTouchDevice, setIsTouchDevice] = useState(false)
 
@@ -174,6 +179,52 @@ export function RunAshChatComposer({
     const query = value.toLowerCase()
     return SLASH_COMMANDS.filter((item) => item.command.startsWith(query))
   }, [value])
+
+  function validateAttachmentBatch(files: File[]) {
+    const accepted: File[] = []
+    const issues: string[] = []
+
+    if (attachmentPreviews.length >= ATTACHMENT_MAX_COUNT) {
+      return {
+        accepted,
+        error: `Attachment limit reached (${ATTACHMENT_MAX_COUNT}). Remove one and retry.`,
+      }
+    }
+
+    const availableSlots = ATTACHMENT_MAX_COUNT - attachmentPreviews.length
+    const candidates = files.slice(0, availableSlots)
+    if (files.length > availableSlots) {
+      issues.push(`Only ${availableSlots} more attachment${availableSlots === 1 ? "" : "s"} allowed.`)
+    }
+
+    for (const file of candidates) {
+      if (!ALLOWED_ATTACHMENT_TYPES.includes(file.type)) {
+        issues.push(`${file.name}: unsupported type.`)
+        continue
+      }
+
+      if (file.size > ATTACHMENT_MAX_SIZE_BYTES) {
+        issues.push(`${file.name}: exceeds 8 MB.`)
+        continue
+      }
+
+      accepted.push(file)
+    }
+
+    return {
+      accepted,
+      error: issues.length > 0 ? issues.join(" ") : null,
+    }
+  }
+
+  function queueAttachments(files: File[]) {
+    if (!onAttachFiles || files.length === 0) return
+    const { accepted, error } = validateAttachmentBatch(files)
+    setAttachmentValidationError(error)
+    if (accepted.length > 0) {
+      void onAttachFiles(accepted)
+    }
+  }
 
   async function fetchSuggestions(query: string) {
     if (query.length < PRODUCT_SUGGESTION_MIN_LENGTH || query.startsWith("/")) {
@@ -246,12 +297,12 @@ export function RunAshChatComposer({
       return
     }
 
-    if (attachmentPreview?.uploadState === "failed") {
+    if (attachmentPreviews.some((item) => item.uploadState === "failed")) {
       setComposerError("Fix the image upload issue before sending.")
       return
     }
 
-    if (attachmentPreview?.uploadState === "uploading") {
+    if (attachmentPreviews.some((item) => item.uploadState === "uploading")) {
       setComposerError("Please wait for the image upload to finish.")
       return
     }
@@ -273,29 +324,27 @@ export function RunAshChatComposer({
   }
 
   function handleAttachmentSelect(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    if (!file) return
-    void onAttachFile?.(file)
+    const files = Array.from(event.target.files ?? [])
+    if (files.length === 0) return
+    queueAttachments(files)
     event.target.value = ""
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    if (!onAttachFiles) return
+    const files = Array.from(event.clipboardData.files ?? [])
+    if (files.length === 0) return
+    queueAttachments(files)
   }
 
   function handleDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault()
-    setIsDragging(false)
+    setDragState("idle")
 
-    const file = event.dataTransfer.files?.[0]
-    if (!file || !onAttachFile || isTouchDevice) return
-    void onAttachFile(file)
+    if (!onAttachFiles || isTouchDevice) return
+    const files = Array.from(event.dataTransfer.files ?? [])
+    queueAttachments(files)
   }
-
-  const attachmentStatusMessage =
-    attachmentPreview?.uploadState === "uploading"
-      ? "Uploading image metadata..."
-      : attachmentPreview?.uploadState === "failed"
-        ? attachmentPreview.error || "Upload failed. Please retry."
-        : attachmentPreview?.uploadState === "uploaded"
-          ? "Image ready to send."
-          : null
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -306,8 +355,10 @@ export function RunAshChatComposer({
   const isStreaming = streamState === "sending" || streamState === "streaming"
   const isRetryableFailure = streamState === "failed" || composerHealth === "provider-error" || composerHealth === "network-timeout"
   const hasStatusOrError = composerHealth !== "ready" || Boolean(composerError) || Boolean(attachmentError)
-  const isBusy = isStreaming || streamState === "stopping" || isEnhancing || attachmentPreview?.uploadState === "uploading"
-  const canSend = !disabled && !isBusy && !isHardLimitExceeded && attachmentPreview?.uploadState !== "failed" && Boolean(value.trim())
+  const hasFailedAttachment = attachmentPreviews.some((item) => item.uploadState === "failed")
+  const hasUploadingAttachment = attachmentPreviews.some((item) => item.uploadState === "uploading")
+  const isBusy = isStreaming || streamState === "stopping" || isEnhancing || hasUploadingAttachment
+  const canSend = !disabled && !isBusy && !isHardLimitExceeded && !hasFailedAttachment && Boolean(value.trim())
   const sendButtonLabel =
     streamState === "stopping"
       ? "Stopping..."
@@ -320,13 +371,16 @@ export function RunAshChatComposer({
   return (
     <div className="space-y-2.5">
       <div
-        className={`rounded-2xl border bg-zinc-900/90 p-3 shadow-[0_10px_30px_-24px_rgba(0,0,0,0.9)] transition-colors ${isDragging ? "border-orange-400" : "border-zinc-700/80"}`}
+        className={`rounded-2xl border bg-zinc-900/90 p-3 shadow-[0_10px_30px_-24px_rgba(0,0,0,0.9)] transition-colors ${dragState === "active" ? "border-orange-400 bg-zinc-900" : dragState === "invalid" ? "border-red-500/80 bg-red-950/20" : "border-zinc-700/80"}`}
         onDragOver={(event) => {
           event.preventDefault()
-          if (!onAttachFile || isTouchDevice) return
-          setIsDragging(true)
+          if (!onAttachFiles || isTouchDevice) return
+          const files = Array.from(event.dataTransfer.items ?? []).filter((item) => item.kind === "file")
+          const availableSlots = ATTACHMENT_MAX_COUNT - attachmentPreviews.length
+          const anyInvalid = files.some((item) => item.type.length > 0 && !ALLOWED_ATTACHMENT_TYPES.includes(item.type))
+          setDragState(anyInvalid || files.length > availableSlots ? "invalid" : "active")
         }}
-        onDragLeave={() => setIsDragging(false)}
+        onDragLeave={() => setDragState("idle")}
         onDrop={handleDrop}
       >
         <Textarea
@@ -352,7 +406,7 @@ export function RunAshChatComposer({
               } else if (
                 isRetryableFailure &&
                 onRetry &&
-                !attachmentPreview &&
+                attachmentPreviews.length === 0 &&
                 !isBusy &&
                 !isHardLimitExceeded &&
                 !disabled &&
@@ -362,6 +416,7 @@ export function RunAshChatComposer({
               }
             }
           }}
+          onPaste={handlePaste}
           rows={4}
           placeholder={placeholder}
           className="min-h-[88px] resize-y border-0 bg-transparent px-1 text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-0"
@@ -383,11 +438,12 @@ export function RunAshChatComposer({
               Advanced options
               <ChevronDown className={`ml-1 h-3.5 w-3.5 transition-transform ${showSecondaryControls ? "rotate-180" : ""}`} />
             </Button>
-            {onAttachFile ? (
+            {onAttachFiles ? (
               <>
                 <input
                   ref={attachmentInputRef}
                   type="file"
+                  multiple
                   accept="image/png,image/jpeg,image/webp,image/gif"
                   className="hidden"
                   onChange={handleAttachmentSelect}
@@ -398,7 +454,7 @@ export function RunAshChatComposer({
                   variant="outline"
                   size="sm"
                   onClick={() => attachmentInputRef.current?.click()}
-                  disabled={disabled || isBusy}
+                  disabled={disabled || isBusy || attachmentPreviews.length >= ATTACHMENT_MAX_COUNT}
                   className={SECONDARY_ACTION_BUTTON_CLASS}
                   aria-label="Attach image"
                 >
@@ -469,35 +525,52 @@ export function RunAshChatComposer({
           </div>
         ) : null}
 
-        {attachmentPreview ? (
+        {attachmentPreviews.length > 0 ? (
           <div className={`mt-3 flex flex-wrap items-center rounded-xl border border-zinc-700/80 bg-zinc-950/70 p-2 ${COMPOSER_CONTROL_GROUP_GAP_CLASS}`}>
             <span className="px-1 text-[11px] font-medium uppercase tracking-wide text-zinc-400">Attachment actions:</span>
-            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/70 px-2 py-1.5 text-xs text-zinc-300">
-              <img src={attachmentPreview.previewUrl} alt={attachmentPreview.metadata.name} className="h-9 w-9 rounded-lg object-cover" />
-              <div className="min-w-0">
-                <p className="truncate font-medium text-zinc-100">{attachmentPreview.metadata.name}</p>
-                <p className={attachmentPreview.uploadState === "failed" ? "text-red-300" : "text-zinc-400"}>
-                  {Math.max(1, Math.round(attachmentPreview.metadata.size / 1024))} KB
-                  {attachmentStatusMessage ? ` • ${attachmentStatusMessage}` : ""}
-                </p>
-              </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              {attachmentPreviews.map((attachment) => (
+                <div key={attachment.id} className="flex min-w-0 items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/70 px-2 py-1.5 text-xs text-zinc-300">
+                  <img src={attachment.previewUrl} alt={attachment.metadata.name} className="h-9 w-9 rounded-lg object-cover" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-zinc-100">{attachment.metadata.name}</p>
+                    <p className={attachment.uploadState === "failed" ? "text-red-300" : "text-zinc-400"}>
+                      {Math.max(1, Math.round(attachment.metadata.size / 1024))} KB
+                      {attachment.error ? ` • ${attachment.error}` : ""}
+                    </p>
+                  </div>
+                  <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide ${attachment.uploadState === "failed" ? "border-red-500/70 text-red-300" : attachment.uploadState === "uploading" ? "border-amber-500/70 text-amber-300" : "border-emerald-500/70 text-emerald-300"}`}>
+                    {attachment.uploadState === "failed" ? "Failed" : attachment.uploadState === "uploading" ? "Uploading" : "Ready"}
+                  </span>
+                  {attachment.uploadState === "failed" && onRetryAttachment ? (
+                    <Button type="button" variant="outline" size="sm" className={ATTACHMENT_ACTION_BUTTON_CLASS} onClick={() => onRetryAttachment(attachment.id)}>
+                      <RefreshCcw className="mr-1 h-3.5 w-3.5" /> Retry
+                    </Button>
+                  ) : null}
+                  {onRemoveAttachment ? (
+                    <Button type="button" variant="outline" size="sm" className={ATTACHMENT_ACTION_BUTTON_CLASS} onClick={() => onRemoveAttachment(attachment.id)} disabled={disabled || isBusy}>
+                      <X className="mr-1 h-3.5 w-3.5" /> Remove
+                    </Button>
+                  ) : null}
+                </div>
+              ))}
             </div>
 
-            {attachmentPreview.uploadState === "failed" && onRetryAttachment ? (
-              <Button type="button" variant="outline" size="sm" className={ATTACHMENT_ACTION_BUTTON_CLASS} onClick={onRetryAttachment}>
-                <RefreshCcw className="mr-1 h-3.5 w-3.5" /> Retry
+            {onAttachFiles ? (
+              <Button type="button" variant="outline" size="sm" className={ATTACHMENT_ACTION_BUTTON_CLASS} onClick={() => attachmentInputRef.current?.click()} disabled={disabled || isBusy || attachmentPreviews.length >= ATTACHMENT_MAX_COUNT}>
+                <PencilLine className="mr-1 h-3.5 w-3.5" /> Add more
               </Button>
             ) : null}
-            {onAttachFile ? (
-              <Button type="button" variant="outline" size="sm" className={ATTACHMENT_ACTION_BUTTON_CLASS} onClick={() => attachmentInputRef.current?.click()} disabled={disabled || isBusy}>
-                <PencilLine className="mr-1 h-3.5 w-3.5" /> Replace
-              </Button>
-            ) : null}
-            {onRemoveAttachment ? (
-              <Button type="button" variant="outline" size="sm" className={ATTACHMENT_ACTION_BUTTON_CLASS} onClick={onRemoveAttachment} disabled={disabled || isBusy}>
-                <X className="mr-1 h-3.5 w-3.5" /> Remove
-              </Button>
-            ) : null}
+          </div>
+        ) : null}
+
+        <div className="mt-2 rounded-md border border-zinc-700/70 bg-zinc-950/50 px-2 py-1.5 text-[11px] text-zinc-400">
+          Attach up to {ATTACHMENT_MAX_COUNT} images (PNG/JPG/WEBP/GIF, 8 MB each). Paste screenshots or drag and drop on desktop.
+        </div>
+
+        {attachmentValidationError ? (
+          <div className="mt-2 rounded-md border border-amber-700/60 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
+            {attachmentValidationError} <span className="text-amber-100">Recovery: remove files that exceed limits and retry attach, paste, or drop.</span>
           </div>
         ) : null}
       </div>
@@ -666,7 +739,7 @@ export function RunAshChatComposer({
               Dismiss
             </Button>
           </div>
-        ) : onAttachFile && !hasStatusOrError ? (
+        ) : onAttachFiles && !hasStatusOrError ? (
           <span className="inline-flex items-center gap-1">
             <span className="rounded-full border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-300">Attachment hint</span>
             <ImageIcon className="h-3 w-3" />
