@@ -20,3 +20,14 @@ test("chat workspace exposes resilient session-history states and recovery actio
   assert.match(source, /aria-label=\{`Open recent session \$\{recentSession\.title\}`\}/)
   assert.match(source, /focus-visible:ring-orange-300/)
 })
+
+
+test("chat workspace session hydration guards stale responses and preserves fallback behavior", () => {
+  const source = read("components/dashboard/workspace/chat-workspace.tsx")
+
+  assert.match(source, /const requestId = sessionHydrationRequestRef\.current \+ 1/)
+  assert.match(source, /sessionHydrationRequestRef\.current = requestId/)
+  assert.match(source, /if \(sessionHydrationRequestRef\.current !== requestId\) return/)
+  assert.match(source, /const nextMessages = hydratedMessages\.length > 0 \? hydratedMessages : \[DEFAULT_ASSISTANT_MESSAGE\]/)
+  assert.match(source, /errorMessage: "Could not load this chat\. Please retry\."/)
+})

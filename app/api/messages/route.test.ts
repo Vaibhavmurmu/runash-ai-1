@@ -3,19 +3,25 @@ import test from "node:test"
 
 import { handleCreateMessage } from "./messages-route-handler.ts"
 
-test("POST /api/messages returns 401 when unauthorized", async () => {
-  const response = await handleCreateMessage(new Request("http://localhost/api/messages", { method: "POST", body: JSON.stringify({}) }), {
-    getUserId: async () => null,
-    isSessionOwnedByUser: async () => false,
-    createSessionMessage: async () => ({ id: "", session_id: "", role: "user", content: "" }),
-  })
+test("POST /api/messages enforces ownership when user identity cannot access session", async () => {
+  const response = await handleCreateMessage(
+    new Request("http://localhost/api/messages", {
+      method: "POST",
+      body: JSON.stringify({ sessionId: "s-2", role: "user", content: "hello" }),
+    }),
+    {
+      getUserId: async () => "",
+      isSessionOwnedByUser: async () => false,
+      createSessionMessage: async () => ({ id: "", session_id: "", role: "user", content: "" }),
+    },
+  )
 
   const payload = await response.json()
-  assert.equal(response.status, 401)
-  assert.equal(payload.error.code, "AUTH_REQUIRED")
+  assert.equal(response.status, 403)
+  assert.equal(payload.error.code, "SESSION_ACCESS_DENIED")
 })
 
-test("POST /api/messages denies cross-user session writes", async () => {
+test("POST /api/messages enforces ownership on cross-user session writes", async () => {
   const response = await handleCreateMessage(
     new Request("http://localhost/api/messages", {
       method: "POST",
@@ -29,8 +35,8 @@ test("POST /api/messages denies cross-user session writes", async () => {
   )
 
   const payload = await response.json()
-  assert.equal(response.status, 404)
-  assert.equal(payload.error.code, "SESSION_NOT_FOUND")
+  assert.equal(response.status, 403)
+  assert.equal(payload.error.code, "SESSION_ACCESS_DENIED")
 })
 
 test("POST /api/messages creates message for owned session", async () => {

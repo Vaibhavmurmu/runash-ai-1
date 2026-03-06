@@ -24,6 +24,7 @@ import { enqueueToolJob } from "@/services/agent-tool-queue-worker"
 import { AIProviderError, resolveModelSelection, streamModelTextWithFallback } from "@/lib/ai/provider-registry"
 import { buildDefaultToolPayloads, buildToolPlan, resolveRunAshChatToolSelection } from "./chat-request-handler"
 import { CHAT_ERROR_CODES, chatAttachmentSchema, clientRequestIdSchema, streamRetrySchema } from "@/lib/chat-contracts"
+import { encodeChatStreamEvent } from "./stream-event-contract"
 
 const requestSchema = z.object({
   agentRole: z.enum(AGENT_ROLES).default("broker"),
@@ -143,7 +144,7 @@ export async function POST(request: NextRequest) {
     const eventStream = new ReadableStream({
       async start(controller) {
         const send = (event: string, data: Record<string, unknown>) => {
-          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+          controller.enqueue(encoder.encode(encodeChatStreamEvent(event, data)))
         }
 
         const toolExecutionSummaries = new Map<string, Record<string, unknown>>()
