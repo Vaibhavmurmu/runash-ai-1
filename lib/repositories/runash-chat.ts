@@ -23,7 +23,63 @@ const DATA_DIR = path.join(process.cwd(), "data")
 const SESSIONS_FILE = path.join(DATA_DIR, "sessions.json")
 const MESSAGES_FILE = path.join(DATA_DIR, "messages.json")
 
-const useDatabaseBackedChatStorage = process.env.RUNASH_CHAT_DB_REPOSITORY_ENABLED === "true"
+const LOCAL_DEV_FILE_STORAGE_FLAG = "RUNASH_CHAT_LOCAL_DEV_FILE_STORAGE"
+
+export type RunashChatRepositoryAdapters = {
+  listChatSessions: typeof listChatSessions
+  createChatSession: typeof createChatSession
+  updateChatSessionState: typeof updateChatSessionState
+  softDeleteChatSession: typeof softDeleteChatSession
+  getMostRecentChatSession: typeof getMostRecentChatSession
+  getChatSessionById: typeof getChatSessionById
+  listMessagesBySession: typeof listMessagesBySession
+  createChatSessionMessage: typeof createChatSessionMessage
+  updateChatSessionMessage: typeof updateChatSessionMessage
+  deleteChatSessionMessage: typeof deleteChatSessionMessage
+  getMessageByIdForUser: (messageId: string | number, userId: string) => Promise<RunashSessionMessage | null>
+}
+
+const defaultRepositoryAdapters: RunashChatRepositoryAdapters = {
+  listChatSessions,
+  createChatSession,
+  updateChatSessionState,
+  softDeleteChatSession,
+  getMostRecentChatSession,
+  getChatSessionById,
+  listMessagesBySession,
+  createChatSessionMessage,
+  updateChatSessionMessage,
+  deleteChatSessionMessage,
+  async getMessageByIdForUser(messageId, userId) {
+    const rows = await (sql as any).unsafe(
+      `select m.id, m.session_id, m.role, m.content, m.created_at, m.updated_at, m.deleted_at, m.message_type
+       from runash_chat_session_messages m
+       inner join runash_chat_sessions s on s.id = m.session_id
+       where m.id = $1 and s.user_id = $2 and s.deleted_at is null and m.deleted_at is null
+       limit 1`,
+      [messageId, userId],
+    )
+
+    return rows?.[0] ?? null
+  },
+}
+
+let repositoryAdapters: RunashChatRepositoryAdapters = defaultRepositoryAdapters
+
+function useDatabaseBackedChatStorage() {
+  const localDevFileStorageEnabled = process.env[LOCAL_DEV_FILE_STORAGE_FLAG] === "true"
+  const isProductionRuntime = process.env.NODE_ENV === "production"
+
+  if (localDevFileStorageEnabled && !isProductionRuntime) {
+    return false
+  }
+
+  return true
+}
+
+export function setRunashChatRepositoryAdaptersForTests(adapters: RunashChatRepositoryAdapters | null) {
+  repositoryAdapters = adapters ?? defaultRepositoryAdapters
+}
 
 export type RunashSession = Pick<ChatSession, "id" | "title" | "created_at" | "archived_at"> & { deleted_at?: string | null }
 
@@ -72,8 +128,8 @@ function mapSession(session: ChatSession): RunashSession {
 export async function listSessions(userId: string): Promise<RunashSession[]> {
   const normalizedUserId = requireUserId(userId)
 
-  if (useDatabaseBackedChatStorage) {
-    const sessions = await listChatSessions(normalizedUserId)
+  if (useDatabaseBackedChatStorage()) {
+    const sessions = await repositoryAdapters.listChatSessions(normalizedUserId)
     return sessions.map(mapSession)
   }
 
@@ -83,8 +139,8 @@ export async function listSessions(userId: string): Promise<RunashSession[]> {
 export async function createSession(title = "Session", userId: string): Promise<RunashSession> {
   const normalizedUserId = requireUserId(userId)
 
-  if (useDatabaseBackedChatStorage) {
-    const session = await createChatSession(normalizedUserId, title)
+  if (useDatabaseBackedChatStorage()) {
+    const session = await repositoryAdapters.createChatSession(normalizedUserId, title)
     return mapSession(session)
   }
 
@@ -110,8 +166,8 @@ export async function updateSession(
 ): Promise<RunashSession | null> {
   const normalizedUserId = requireUserId(userId)
 
-  if (useDatabaseBackedChatStorage) {
-    const session = await updateChatSessionState(normalizedUserId, sessionId, updates)
+  if (useDatabaseBackedChatStorage()) {
+    const session = await repositoryAdapters.updateChatSessionState(normalizedUserId, sessionId, updates)
     return session ? mapSession(session) : null
   }
 
@@ -132,8 +188,8 @@ export async function updateSession(
 export async function softDeleteSession(sessionId: string, userId: string): Promise<boolean> {
   const normalizedUserId = requireUserId(userId)
 
-  if (useDatabaseBackedChatStorage) {
-    return softDeleteChatSession(normalizedUserId, sessionId)
+  if (useDatabaseBackedChatStorage()) {
+    return repositoryAdapters.softDeleteChatSession(normalizedUserId, sessionId)
   }
 
   const sessions = readJsonFile<RunashSession[]>(SESSIONS_FILE, [])
@@ -147,8 +203,8 @@ export async function softDeleteSession(sessionId: string, userId: string): Prom
 export async function getMostRecentSession(userId: string): Promise<RunashSession | null> {
   const normalizedUserId = requireUserId(userId)
 
-  if (useDatabaseBackedChatStorage) {
-    const session = await getMostRecentChatSession(normalizedUserId)
+  if (useDatabaseBackedChatStorage()) {
+    const session = await repositoryAdapters.getMostRecentChatSession(normalizedUserId)
     return session ? mapSession(session) : null
   }
 
@@ -159,13 +215,13 @@ export async function getMostRecentSession(userId: string): Promise<RunashSessio
 export async function listSessionMessages(sessionId: string, limit: number | undefined, userId: string, cursor?: string): Promise<RunashSessionMessage[]> {
   const normalizedUserId = requireUserId(userId)
 
-  if (useDatabaseBackedChatStorage) {
-    const ownerSession = await getChatSessionById(normalizedUserId, String(sessionId))
+  if (useDatabaseBackedChatStorage()) {
+    const ownerSession = await repositoryAdapters.getChatSessionById(normalizedUserId, String(sessionId))
     if (!ownerSession) {
       throw new Error("SESSION_ACCESS_DENIED")
     }
 
-    return listMessagesBySession(String(sessionId), limit, cursor)
+    return repositoryAdapters.listMessagesBySession(String(sessionId), limit, cursor)
   }
 
   const isOwned = await isSessionOwnedByUser(sessionId, normalizedUserId)
@@ -190,8 +246,8 @@ export async function listSessionMessages(sessionId: string, limit: number | und
 export async function isSessionOwnedByUser(sessionId: string, userId: string): Promise<boolean> {
   const normalizedUserId = requireUserId(userId)
 
-  if (useDatabaseBackedChatStorage) {
-    const session = await getChatSessionById(normalizedUserId, String(sessionId))
+  if (useDatabaseBackedChatStorage()) {
+    const session = await repositoryAdapters.getChatSessionById(normalizedUserId, String(sessionId))
     return Boolean(session)
   }
 
@@ -202,17 +258,8 @@ export async function isSessionOwnedByUser(sessionId: string, userId: string): P
 export async function getMessageByIdForUser(messageId: string | number, userId: string): Promise<RunashSessionMessage | null> {
   const normalizedUserId = requireUserId(userId)
 
-  if (useDatabaseBackedChatStorage) {
-    const rows = await (sql as any).unsafe(
-      `select m.id, m.session_id, m.role, m.content, m.created_at, m.updated_at, m.deleted_at, m.message_type
-       from runash_chat_session_messages m
-       inner join runash_chat_sessions s on s.id = m.session_id
-       where m.id = $1 and s.user_id = $2 and s.deleted_at is null and m.deleted_at is null
-       limit 1`,
-      [messageId, normalizedUserId],
-    )
-
-    return rows?.[0] ?? null
+  if (useDatabaseBackedChatStorage()) {
+    return repositoryAdapters.getMessageByIdForUser(messageId, normalizedUserId)
   }
 
   const messages = readJsonFile<RunashSessionMessage[]>(MESSAGES_FILE, [])
@@ -227,13 +274,13 @@ export async function updateSessionMessage(
 ): Promise<RunashSessionMessage | null> {
   const normalizedUserId = requireUserId(userId)
 
-  if (useDatabaseBackedChatStorage) {
-    const ownerSession = await getChatSessionById(normalizedUserId, String(sessionId))
+  if (useDatabaseBackedChatStorage()) {
+    const ownerSession = await repositoryAdapters.getChatSessionById(normalizedUserId, String(sessionId))
     if (!ownerSession) {
       throw new Error("SESSION_ACCESS_DENIED")
     }
 
-    return updateChatSessionMessage(sessionId, messageId, content, normalizedUserId)
+    return repositoryAdapters.updateChatSessionMessage(sessionId, messageId, content, normalizedUserId)
   }
 
   const isOwned = await isSessionOwnedByUser(sessionId, normalizedUserId)
@@ -267,13 +314,13 @@ export async function updateSessionMessage(
 export async function deleteSessionMessage(sessionId: string, messageId: string | number, userId: string): Promise<boolean> {
   const normalizedUserId = requireUserId(userId)
 
-  if (useDatabaseBackedChatStorage) {
-    const ownerSession = await getChatSessionById(normalizedUserId, String(sessionId))
+  if (useDatabaseBackedChatStorage()) {
+    const ownerSession = await repositoryAdapters.getChatSessionById(normalizedUserId, String(sessionId))
     if (!ownerSession) {
       throw new Error("SESSION_ACCESS_DENIED")
     }
 
-    return deleteChatSessionMessage(sessionId, messageId, normalizedUserId)
+    return repositoryAdapters.deleteChatSessionMessage(sessionId, messageId, normalizedUserId)
   }
 
   const isOwned = await isSessionOwnedByUser(sessionId, normalizedUserId)
@@ -312,13 +359,13 @@ export async function createSessionMessage(
 ): Promise<RunashSessionMessage> {
   const normalizedUserId = requireUserId(userId)
 
-  if (useDatabaseBackedChatStorage) {
-    const ownerSession = await getChatSessionById(normalizedUserId, String(sessionId))
+  if (useDatabaseBackedChatStorage()) {
+    const ownerSession = await repositoryAdapters.getChatSessionById(normalizedUserId, String(sessionId))
     if (!ownerSession) {
       throw new Error("SESSION_ACCESS_DENIED")
     }
 
-    return createChatSessionMessage(sessionId, role, content, messageType)
+    return repositoryAdapters.createChatSessionMessage(sessionId, role, content, messageType)
   }
 
   const isOwned = await isSessionOwnedByUser(sessionId, normalizedUserId)
