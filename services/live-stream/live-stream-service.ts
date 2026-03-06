@@ -1,5 +1,6 @@
 import { queryMany } from "@/lib/db"
 import { getLiveStreamProvider } from "@/services/live-stream/provider"
+import { publishSessionStateChanged } from "@/services/realtime/publishers"
 import type {
   LiveStreamEndpoint,
   LiveStreamEvent,
@@ -251,6 +252,15 @@ async function transitionSessionStatus(
   }
 
   await appendEvent(session.id, "state_transition", session.status, toStatus, context)
+  publishSessionStateChanged({
+    sessionId: session.id,
+    previousStatus: session.status,
+    status: toStatus,
+    occurredAt: updated.updated_at,
+    actorUserId: context.actorUserId ?? null,
+    reason: context.reason ?? null,
+  })
+
   return updated
 }
 

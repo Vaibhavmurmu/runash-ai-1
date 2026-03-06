@@ -1,4 +1,5 @@
 import type { EditorRenderJob, EditorRenderStatus } from "@/lib/editor/domain"
+import { publishRenderJobUpdated } from "@/services/realtime/publishers"
 
 type RenderJobListener = (event: RenderJobEvent) => void
 
@@ -49,6 +50,15 @@ export function publishRenderJobEvent(job: EditorRenderJob) {
       updatedAt: job.updatedAt,
     },
   }
+
+  publishRenderJobUpdated({
+    projectId: job.projectId,
+    jobId: job.id,
+    status: job.status,
+    progress: event.transition.progress,
+    stage: event.transition.stage,
+    updatedAt: event.transition.updatedAt,
+  })
 
   const byJob = jobListeners.get(key(job.ownerId, job.id))
   byJob?.forEach((listener) => listener(event))

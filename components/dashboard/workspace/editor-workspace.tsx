@@ -125,6 +125,7 @@ export function EditorWorkspace() {
   const generationAbortRef = useRef<AbortController | null>(null)
   const generationRunIdRef = useRef(0)
   const generationStreamRef = useRef<EventSource | null>(null)
+  const realtimeCursorRef = useRef<string | null>(null)
   const projectRef = useRef<EditorProject | null>(null)
   const activeTimelineIdRef = useRef<string | null>(null)
   const isMountedRef = useRef(true)
@@ -704,9 +705,24 @@ export function EditorWorkspace() {
     }
 
     const subscribeToStream = async (jobId: string) => {
+      const handshakeRes = await fetch("/api/realtime/handshake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channels: [`editor:${project.id}`] }),
+        signal: controller.signal,
+      })
+      if (!handshakeRes.ok) {
+        throw new Error("Realtime handshake failed")
+      }
+
+      const handshakeJson = (await handshakeRes.json()) as { token: string }
+
       await new Promise<void>((resolve, reject) => {
-        const url = `/api/editor/render-jobs/stream?projectId=${encodeURIComponent(project.id)}&jobId=${encodeURIComponent(jobId)}`
-        const source = new EventSource(url)
+        const params = new URLSearchParams({ token: handshakeJson.token })
+        if (realtimeCursorRef.current) {
+          params.set("cursor", realtimeCursorRef.current)
+        }
+        const source = new EventSource(`/api/realtime/stream?${params.toString()}`)
         generationStreamRef.current = source
 
         let opened = false
@@ -737,8 +753,21 @@ export function EditorWorkspace() {
           }
 
           try {
-            const parsed = JSON.parse(event.data) as { job?: unknown }
-            const nextJob = normalizeJob(parsed.job)
+            const parsed = JSON.parse(event.data) as { payload?: { jobId?: string; status?: string; updatedAt?: string; progress?: number | null; stage?: string | null } }
+            if (parsed.payload?.jobId !== jobId) return
+            const nextJob = normalizeJob({
+              ...generationJob,
+              id: parsed.payload.jobId,
+              status: parsed.payload.status,
+              projectId: project.id,
+              ownerId: project.ownerId,
+              result: {
+                ...(generationJob?.result ?? {}),
+                progress: parsed.payload.progress ?? null,
+                stage: parsed.payload.stage ?? null,
+              },
+              updatedAt: parsed.payload.updatedAt,
+            })
             if (!nextJob) return
 
             setGenerationJob(nextJob)
@@ -758,11 +787,10 @@ export function EditorWorkspace() {
           }
         }
 
-        source.addEventListener("queued", handlePayload as EventListener)
-        source.addEventListener("processing", handlePayload as EventListener)
-        source.addEventListener("progress", handlePayload as EventListener)
-        source.addEventListener("completed", handlePayload as EventListener)
-        source.addEventListener("failed", handlePayload as EventListener)
+        source.addEventListener("render_job.updated", ((event: MessageEvent<string>) => {
+          realtimeCursorRef.current = event.lastEventId || realtimeCursorRef.current
+          handlePayload(event)
+        }) as EventListener)
 
         source.onerror = () => {
           stopStream()
