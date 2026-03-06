@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/sheet"
 
 import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, OctagonX, MoreHorizontal, FileText, CreditCard, Megaphone, Workflow, ListChecks, Loader2 } from "lucide-react"
-import type { ChatMessage, ChatSession, UserPreferences, QuickAction } from "@/types/runash-chat"
+import type { ChatMessage, ChatSession, UserPreferences, QuickAction, ToolExecutionSummary } from "@/types/runash-chat"
 import ChatMessageComponent from "@/components/chat/chat-message"
 import ChatSidebar from "@/components/chat/chat-sidebar"
 import UserPreferencesDialog from "@/components/chat/user-preferences-dialog"
@@ -103,6 +103,7 @@ export function ChatWorkspace() {
   const sessionHydrationRequestRef = useRef(0)
   const firstCompletionTrackedRef = useRef(false)
   const turnCompletionDedupRef = useRef<Set<string>>(new Set())
+  const toolExecutionMapRef = useRef<Map<string, string>>(new Map())
 
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => {
     if (typeof window === "undefined") {
@@ -190,6 +191,90 @@ export function ChatWorkspace() {
     recentSearches: [],
   })
 
+  const toRecord = (value: unknown): Record<string, unknown> | null => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null
+    return value as Record<string, unknown>
+  }
+
+  const coerceToolExecutionSummary = (value: unknown): ToolExecutionSummary | null => {
+    const record = toRecord(value)
+    if (!record) return null
+
+    const id = typeof record.id === "string" && record.id.length > 0 ? record.id : null
+    const tool = typeof record.tool === "string" && record.tool.length > 0 ? record.tool : null
+    const status = record.status === "running" || record.status === "completed" || record.status === "failed" ? record.status : null
+    const startedAt = typeof record.startedAt === "string" && record.startedAt.length > 0 ? record.startedAt : null
+
+    if (!id || !tool || !status || !startedAt) return null
+
+    const output = toRecord(record.output)
+
+    return {
+      id,
+      tool,
+      status,
+      startedAt,
+      finishedAt: typeof record.finishedAt === "string" ? record.finishedAt : undefined,
+      durationMs: typeof record.durationMs === "number" ? record.durationMs : undefined,
+      progressLabel: typeof record.progressLabel === "string" ? record.progressLabel : undefined,
+      outputPreview: typeof record.outputPreview === "string" ? record.outputPreview : undefined,
+      output: output ?? undefined,
+      errorCode: typeof record.errorCode === "string" ? record.errorCode : undefined,
+      errorMessage: typeof record.errorMessage === "string" ? record.errorMessage : undefined,
+    }
+  }
+
+  const parseToolExecutionSummaries = (value: unknown): ToolExecutionSummary[] | undefined => {
+    if (!Array.isArray(value)) return undefined
+    const parsed = value.map(coerceToolExecutionSummary).filter((entry): entry is ToolExecutionSummary => entry !== null)
+    return parsed.length > 0 ? parsed : undefined
+  }
+
+  const normalizeMessageMetadata = (value: unknown): ChatMessage["metadata"] | undefined => {
+    const record = toRecord(value)
+    if (!record) return undefined
+
+    const toolExecutions = parseToolExecutionSummaries(record.toolExecutions)
+    if (!toolExecutions) return undefined
+
+    return { toolExecutions }
+  }
+
+  const formatToolOutputPreview = (value: unknown): string | undefined => {
+    if (value === null || value === undefined) return undefined
+    if (typeof value === "string") {
+      const trimmed = value.trim()
+      return trimmed.length > 0 ? trimmed.slice(0, 240) : undefined
+    }
+
+    try {
+      const serialized = JSON.stringify(value)
+      if (!serialized || serialized === "{}" || serialized === "[]") return undefined
+      return serialized.slice(0, 240)
+    } catch {
+      return undefined
+    }
+  }
+
+  const updateToolExecutionSummary = (
+    metadata: ChatMessage["metadata"] | undefined,
+    nextSummary: ToolExecutionSummary,
+  ): ChatMessage["metadata"] => {
+    const existingSummaries = metadata?.toolExecutions ?? []
+    const index = existingSummaries.findIndex((entry) => entry.id === nextSummary.id)
+    const toolExecutions =
+      index >= 0
+        ? existingSummaries.map((entry, entryIndex) => (entryIndex === index ? nextSummary : entry))
+        : [...existingSummaries, nextSummary]
+
+    return {
+      ...(metadata ?? {}),
+      toolExecutions,
+    }
+  }
+
+  const createToolExecutionId = (tool: string) => `${tool}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+
   const mapSessionMessageToChatMessage = (message: {
     id?: string | number
     role?: string
@@ -199,6 +284,7 @@ export function ChatWorkspace() {
     status?: string
     message_type?: string
     messageType?: string
+    metadata?: unknown
   }): ChatMessage | null => {
     if ((message.role !== "user" && message.role !== "assistant") || typeof message.content !== "string") {
       return null
@@ -228,6 +314,7 @@ export function ChatWorkspace() {
         message.messageType === "automation"
           ? (message.message_type ?? message.messageType)
           : "text",
+      metadata: normalizeMessageMetadata(message.metadata),
     }
   }
 
@@ -236,6 +323,7 @@ export function ChatWorkspace() {
     timestamp: message.timestamp instanceof Date ? message.timestamp : new Date(message.timestamp),
     type: message.type ?? "text",
     status: message.status ?? "completed",
+    metadata: normalizeMessageMetadata(message.metadata) ?? message.metadata,
   })
 
   const appendLocalMessage = (message: ChatMessage) => {
@@ -281,6 +369,7 @@ export function ChatWorkspace() {
           status: typeof entry.status === "string" ? entry.status : undefined,
           message_type: typeof entry.message_type === "string" ? entry.message_type : undefined,
           messageType: typeof entry.messageType === "string" ? entry.messageType : undefined,
+          metadata: toRecord(entry.metadata),
         }),
       )
       .filter((message): message is ChatMessage => message !== null)
@@ -795,6 +884,7 @@ export function ChatWorkspace() {
     }
 
     const assistantId = `${Date.now()}-assistant`
+    toolExecutionMapRef.current = new Map()
     const clientRequestId = `chat-turn-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
     let activeSessionId: string | null = null
     let activeSessionTitle: string | null = null
@@ -976,7 +1066,56 @@ export function ChatWorkspace() {
           }
 
           if (eventName === "tool_start") {
-            updateAssistantMessage((existing) => ({ ...existing, status: "tool-running" }))
+            const toolName = typeof payload.tool === "string" ? payload.tool : "tool"
+            const toolExecutionId =
+              typeof payload.executionId === "string" && payload.executionId.length > 0
+                ? payload.executionId
+                : createToolExecutionId(toolName)
+            toolExecutionMapRef.current.set(toolName, toolExecutionId)
+            const startedAt = new Date().toISOString()
+
+            updateAssistantMessage((existing) => ({
+              ...existing,
+              status: "tool-running",
+              metadata: updateToolExecutionSummary(existing.metadata, {
+                id: toolExecutionId,
+                tool: toolName,
+                status: "running",
+                startedAt,
+                progressLabel: `Running ${toolName.replace(/_/g, " ")}`,
+              }),
+            }))
+          }
+
+          if (eventName === "tool_result") {
+            const toolName = typeof payload.tool === "string" ? payload.tool : "tool"
+            const existingId = toolExecutionMapRef.current.get(toolName) ?? createToolExecutionId(toolName)
+            toolExecutionMapRef.current.set(toolName, existingId)
+            const finishedAt = new Date().toISOString()
+
+            updateAssistantMessage((existing) => {
+              const previous = existing.metadata?.toolExecutions?.find((entry) => entry.id === existingId)
+              const startedAt = previous?.startedAt ?? finishedAt
+              const durationMs = Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime())
+
+              return {
+                ...existing,
+                metadata: updateToolExecutionSummary(existing.metadata, {
+                  id: existingId,
+                  tool: toolName,
+                  status: "completed",
+                  startedAt,
+                  finishedAt,
+                  durationMs,
+                  progressLabel:
+                    payload.fromCache === true
+                      ? `${toolName.replace(/_/g, " ")} (cache)`
+                      : `${toolName.replace(/_/g, " ")} complete`,
+                  outputPreview: formatToolOutputPreview(payload.result),
+                  output: toRecord(payload.result) ?? undefined,
+                }),
+              }
+            })
           }
 
           if (eventName === "tool_result" && payload.tool === "initiate_link_checkout") {
@@ -1159,13 +1298,37 @@ export function ChatWorkspace() {
           }
 
           if (eventName === "error") {
+            const errorCode = typeof payload.code === "string" ? payload.code : typeof payload.errorCode === "string" ? payload.errorCode : "PROVIDER_ERROR"
             setComposerHealth("provider-error")
             setStreamControllerState("failed")
             setRunDiagnostics((previous) => ({
               ...previous,
-              lastErrorCode: typeof payload.code === "string" ? payload.code : typeof payload.errorCode === "string" ? payload.errorCode : "PROVIDER_ERROR",
+              lastErrorCode: errorCode,
             }))
-            updateAssistantMessage((existing) => ({ ...existing, status: "failed" }))
+            updateAssistantMessage((existing) => {
+              const activeToolSummary = [...(existing.metadata?.toolExecutions ?? [])].reverse().find((entry) => entry.status === "running")
+
+              if (!activeToolSummary) {
+                return { ...existing, status: "failed" }
+              }
+
+              const finishedAt = new Date().toISOString()
+              const durationMs = Math.max(0, new Date(finishedAt).getTime() - new Date(activeToolSummary.startedAt).getTime())
+
+              return {
+                ...existing,
+                status: "failed",
+                metadata: updateToolExecutionSummary(existing.metadata, {
+                  ...activeToolSummary,
+                  status: "failed",
+                  finishedAt,
+                  durationMs,
+                  progressLabel: `${activeToolSummary.tool.replace(/_/g, " ")} failed`,
+                  errorCode,
+                  errorMessage: typeof payload.message === "string" ? payload.message : "Unable to complete tool execution",
+                }),
+              }
+            })
           }
         }
       }

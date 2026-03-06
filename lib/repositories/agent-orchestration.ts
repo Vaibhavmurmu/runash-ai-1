@@ -53,6 +53,10 @@ export type AgentSessionRecord = {
   updated_at: string
 }
 
+export type AgentMessageMetadata = {
+  toolExecutions?: Array<Record<string, unknown>>
+}
+
 export type AgentMessageRecord = {
   id: string
   session_id: string
@@ -60,6 +64,7 @@ export type AgentMessageRecord = {
   content: string
   status: AgentMessageStatus
   client_request_id?: string
+  metadata?: AgentMessageMetadata
   created_at: string
   updated_at: string
 }
@@ -205,7 +210,7 @@ export async function createAgentMessage(
   role: AgentMessageRecord["role"],
   content: string,
   status: AgentMessageStatus,
-  options?: { clientRequestId?: string },
+  options?: { clientRequestId?: string; metadata?: AgentMessageMetadata },
 ) {
   const store = readStore()
   const message: AgentMessageRecord = {
@@ -215,6 +220,7 @@ export async function createAgentMessage(
     content: redactSensitiveText(content),
     status,
     client_request_id: options?.clientRequestId,
+    metadata: options?.metadata,
     created_at: nowIso(),
     updated_at: nowIso(),
   }
@@ -224,13 +230,17 @@ export async function createAgentMessage(
   return message
 }
 
-export async function updateAgentMessage(messageId: string, updates: Partial<Pick<AgentMessageRecord, "status" | "content">>) {
+export async function updateAgentMessage(
+  messageId: string,
+  updates: Partial<Pick<AgentMessageRecord, "status" | "content" | "metadata">>,
+) {
   const store = readStore()
   const message = store.messages.find((entry) => entry.id === messageId)
   if (!message) return null
 
   if (typeof updates.status === "string") message.status = updates.status
   if (typeof updates.content === "string") message.content = redactSensitiveText(updates.content)
+  if (updates.metadata && typeof updates.metadata === "object") message.metadata = updates.metadata
   message.updated_at = nowIso()
 
   writeStore(store)
