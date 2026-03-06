@@ -28,3 +28,22 @@ test("chat composer action buttons expose labels and visible keyboard focus styl
   assert.match(source, /aria-label="Send prompt"/)
   assert.match(source, /focus-visible:ring-orange-300/)
 })
+
+
+test("chat composer exposes attachment retry/remove actions with stable handlers", () => {
+  const source = read("components/chat/runash-chat-composer.tsx")
+
+  assert.match(source, /attachment\.uploadState === "failed" && onRetryAttachment/)
+  assert.match(source, /onClick=\{\(\) => onRetryAttachment\(attachment\.id\)\}/)
+  assert.match(source, /onClick=\{\(\) => onRemoveAttachment\(attachment\.id\)\}/)
+  assert.match(source, /Recovery: remove files that exceed limits and retry attach, paste, or drop\./)
+})
+
+test("chat composer keeps retry and stop controls wired to flow state", () => {
+  const source = read("components/chat/runash-chat-composer.tsx")
+
+  assert.match(source, /isRetryableFailure && onRetry/)
+  assert.match(source, /aria-label="Retry previous request"/)
+  assert.match(source, /aria-label="Stop generating response"/)
+  assert.match(source, /streamState === "sending" \|\| streamState === "streaming"/)
+})

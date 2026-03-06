@@ -3,19 +3,19 @@ import test from "node:test"
 
 import { handleGetSessionMessages } from "./[id]/get-session-messages-handler.ts"
 
-test("GET /api/messages/session/:id returns 401 for unauthorized access", async () => {
+test("GET /api/messages/session/:id enforces ownership when user identity cannot access session", async () => {
   const response = await handleGetSessionMessages(new Request("http://localhost/api/messages/session/s-1?limit=2"), { id: "s-1" }, {
-    getUserId: async () => null,
-    isSessionOwnedByUser: async () => true,
+    getUserId: async () => "",
+    isSessionOwnedByUser: async () => false,
     listSessionMessages: async () => [],
   })
 
   const payload = await response.json()
-  assert.equal(response.status, 401)
-  assert.equal(payload.error.code, "AUTH_REQUIRED")
+  assert.equal(response.status, 403)
+  assert.equal(payload.error.code, "SESSION_ACCESS_DENIED")
 })
 
-test("GET /api/messages/session/:id denies cross-user access", async () => {
+test("GET /api/messages/session/:id enforces ownership on cross-user access", async () => {
   const response = await handleGetSessionMessages(new Request("http://localhost/api/messages/session/s-2?limit=2"), { id: "s-2" }, {
     getUserId: async () => "user-1",
     isSessionOwnedByUser: async () => false,
@@ -23,8 +23,8 @@ test("GET /api/messages/session/:id denies cross-user access", async () => {
   })
 
   const payload = await response.json()
-  assert.equal(response.status, 404)
-  assert.equal(payload.error.code, "SESSION_NOT_FOUND")
+  assert.equal(response.status, 403)
+  assert.equal(payload.error.code, "SESSION_ACCESS_DENIED")
 })
 
 test("GET /api/messages/session/:id happy path returns frontend contract fields", async () => {
