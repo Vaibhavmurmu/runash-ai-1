@@ -1,11 +1,11 @@
 import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
-import { requireEditorUser } from "@/app/api/editor/_lib"
+import { requireEditorOperation } from "@/app/api/editor/_lib"
 import { publishRenderJobEvent } from "@/lib/editor/render-job-events"
 import { sql } from "@/lib/editor/repository"
 
 export async function POST(request: Request, { params }: { params: { jobId: string } }) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "run_generation")
   if ("error" in auth) return auth.error
 
   const [job] = await sql`

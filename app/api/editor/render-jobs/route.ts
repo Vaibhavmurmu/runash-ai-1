@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
 import { z } from "zod"
-import { requireEditorUser } from "@/app/api/editor/_lib"
+import { requireEditorOperation } from "@/app/api/editor/_lib"
 import { compileTimelineToVideoGenerationRequest, TimelineCompilationError } from "@/lib/editor/generation/compile-timeline"
 import { publishRenderJobEvent } from "@/lib/editor/render-job-events"
 import { getProjectById, sql } from "@/lib/editor/repository"
@@ -180,7 +180,7 @@ function enforceRenderInputLimits(payload: Record<string, unknown>) {
 }
 
 export async function GET(request: Request) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "run_generation")
   if ("error" in auth) return auth.error
 
   const { searchParams } = new URL(request.url)
@@ -194,7 +194,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "run_generation")
   if ("error" in auth) return auth.error
 
   const body = await request.json()

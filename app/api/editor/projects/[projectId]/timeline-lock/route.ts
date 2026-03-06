@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server"
-import { requireEditorUser } from "@/app/api/editor/_lib"
+import { requireEditorOperation } from "@/app/api/editor/_lib"
 import { sql, touchProject } from "@/lib/editor/repository"
 import { publishTimelineLockChanged } from "@/services/realtime/publishers"
 
 export async function PUT(request: Request, { params }: { params: { projectId: string } }) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
 
   const body = (await request.json().catch(() => ({}))) as { timelineId?: string; lock?: boolean }

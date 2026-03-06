@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { getServerAuthSession } from "@/lib/auth/session"
+import { requireEditorOperation } from "@/app/api/editor/_lib"
 import { EditorProjectsService } from "@/lib/editor-projects"
 
 const timelineSchema = z.object({
@@ -37,16 +37,16 @@ const updateProjectSchema = z
   })
   .refine((value) => Object.keys(value).length > 0, { message: "At least one field is required" })
 
-export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getServerAuthSession()
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requireEditorOperation(request, "edit_timeline")
+  if ("error" in auth) {
+    return auth.error
   }
 
   const { id } = params
 
   try {
-    const project = await EditorProjectsService.getById(id, session.user.id)
+    const project = await EditorProjectsService.getById(id, auth.userId)
     if (!project) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 })
     }
@@ -58,9 +58,9 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getServerAuthSession()
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const auth = await requireEditorOperation(request, "edit_timeline")
+  if ("error" in auth) {
+    return auth.error
   }
 
   const { id } = params
@@ -72,7 +72,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 
   try {
-    const project = await EditorProjectsService.update(id, session.user.id, parsed.data)
+    const project = await EditorProjectsService.update(id, auth.userId, parsed.data)
     if (!project) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 })
     }
@@ -83,16 +83,16 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 }
 
-export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getServerAuthSession()
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requireEditorOperation(request, "edit_timeline")
+  if ("error" in auth) {
+    return auth.error
   }
 
   const { id } = params
 
   try {
-    const removed = await EditorProjectsService.remove(id, session.user.id)
+    const removed = await EditorProjectsService.remove(id, auth.userId)
     if (!removed) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 })
     }

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
-import { requireEditorUser } from "@/app/api/editor/_lib"
+import { requireEditorOperation } from "@/app/api/editor/_lib"
 import { sql, touchProject } from "@/lib/editor/repository"
 
 export async function GET(request: Request, { params }: { params: { projectId: string; assetId: string } }) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId, assetId } = params
 
@@ -14,7 +14,7 @@ export async function GET(request: Request, { params }: { params: { projectId: s
 }
 
 export async function PATCH(request: Request, { params }: { params: { projectId: string; assetId: string } }) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId, assetId } = params
   const body = await request.json()
@@ -35,7 +35,7 @@ export async function PATCH(request: Request, { params }: { params: { projectId:
 }
 
 export async function DELETE(request: Request, { params }: { params: { projectId: string; assetId: string } }) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId, assetId } = params
 
