@@ -45,14 +45,15 @@ import { getRecommendedProducts, shouldRecommendProducts } from "@/lib/chat-prod
 const UPGRADE_METRICS_KEY = "runash_upgrade_metrics_v2"
 const STARTER_CARD_STATE_KEY = "runash_chat_starter_cards_v1"
 
-const DEFAULT_ASSISTANT_MESSAGE: ChatMessage = {
-  id: "1",
+const createDefaultAssistantMessage = (): ChatMessage => ({
+  id: `assistant-welcome-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   content:
     "Hello! I'm RunAshChat, your AI assistant for organic products, sustainable living, recipes, and retailing automation. How can I help you today?",
   role: "assistant",
   timestamp: new Date(),
   type: "text",
-}
+  status: "completed",
+})
 
 export function ChatWorkspace() {
   type StreamControllerState = "idle" | "sending" | "streaming" | "stopping" | "failed"
@@ -75,7 +76,7 @@ export function ChatWorkspace() {
   const queryLibraryItemTitle = searchParams.get("libraryItemTitle")
   const bootstrapCompletedRef = useRef(false)
   const [bootstrapProjectName, setBootstrapProjectName] = useState<string | null>(null)
-  const [messages, setMessages] = useState<ChatMessage[]>([DEFAULT_ASSISTANT_MESSAGE])
+  const [messages, setMessages] = useState<ChatMessage[]>([createDefaultAssistantMessage()])
   const [inputValue, setInputValue] = useState("")
   const [isTyping, setIsTyping] = useState(false)
   const [streamControllerState, setStreamControllerState] = useState<StreamControllerState>("idle")
@@ -436,13 +437,13 @@ export function ChatWorkspace() {
   }
 
   const fetchSessionMessages = async (sessionId: string) => {
-    const response = await fetch(`/api/messages/session/${encodeURIComponent(sessionId)}?limit=50`, { cache: "no-store" })
+    const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=50`, { cache: "no-store" })
     if (!response.ok) {
       throw new Error("Unable to hydrate session")
     }
 
-    const payload = (await response.json()) as { data?: Array<Record<string, unknown>> }
-    const rawMessages = Array.isArray(payload.data) ? payload.data : []
+    const payload = (await response.json()) as { data?: { items?: Array<Record<string, unknown>> } }
+    const rawMessages = Array.isArray(payload.data?.items) ? payload.data.items : []
 
     return rawMessages
       .map((entry) =>
@@ -505,7 +506,7 @@ export function ChatWorkspace() {
       throw new Error("Unable to create chat session")
     }
 
-    const payload = (await response.json()) as { data?: { id?: string | number; title?: string; created_at?: string } }
+    const payload = (await response.json()) as { data?: { id?: string | number; title?: string; created_at?: string; updated_at?: string } }
     const resolvedSessionId = payload.data?.id
     if (resolvedSessionId === undefined || resolvedSessionId === null) {
       throw new Error("Unable to create chat session")
@@ -516,7 +517,7 @@ export function ChatWorkspace() {
       title: payload.data?.title ?? (titleSeed.trim().slice(0, 80) || "RunAsh Agent Session"),
       messages: [],
       createdAt: new Date(payload.data?.created_at ?? Date.now()),
-      updatedAt: new Date(payload.data?.created_at ?? Date.now()),
+      updatedAt: new Date(payload.data?.updated_at ?? payload.data?.created_at ?? Date.now()),
       context: buildEmptySessionContext(),
     }
 
@@ -741,13 +742,13 @@ export function ChatWorkspace() {
         setSessionsStatus("loading")
         const response = await fetch("/api/sessions", { cache: "no-store" })
         if (!response.ok) throw new Error("Unable to load sessions")
-        const payload = await response.json()
-        const listed = Array.isArray(payload?.data) ? payload.data : []
+        const payload = (await response.json()) as { data?: { items?: Array<Record<string, unknown>> } }
+        const listed = Array.isArray(payload?.data?.items) ? payload.data.items : []
         if (listed.length === 0) {
           setPersistedSessionIds([])
           setChatSessions([])
           setCurrentSession(null)
-          setMessages([DEFAULT_ASSISTANT_MESSAGE])
+          setMessages([createDefaultAssistantMessage()])
           shouldAutoScrollRef.current = true
           setSessionsStatus("ready")
           return
@@ -756,12 +757,12 @@ export function ChatWorkspace() {
         setPersistedSessionIds(listed.map((entry: { id: string }) => String(entry.id)))
 
         setChatSessions((previous) => {
-          return listed.map((entry: { id: string; title?: string; created_at?: string }) => ({
+          return listed.map((entry) => ({
             id: String(entry.id),
-            title: entry.title ?? "Session",
+            title: typeof entry.title === "string" && entry.title.trim().length > 0 ? entry.title : "Session",
             messages: previous.find((session) => session.id === String(entry.id))?.messages ?? [],
-            createdAt: new Date(entry.created_at ?? Date.now()),
-            updatedAt: new Date(entry.created_at ?? Date.now()),
+            createdAt: new Date(typeof entry.created_at === "string" ? entry.created_at : Date.now()),
+            updatedAt: new Date(typeof entry.updated_at === "string" ? entry.updated_at : typeof entry.created_at === "string" ? entry.created_at : Date.now()),
             context: {
               preferences: {
                 dietaryRestrictions: [],
@@ -791,7 +792,7 @@ export function ChatWorkspace() {
     try {
       const hydratedMessages = (await fetchSessionMessages(session.id)).map(normalizeChatMessage)
       if (sessionHydrationRequestRef.current !== requestId) return
-      const nextMessages = hydratedMessages.length > 0 ? hydratedMessages : [DEFAULT_ASSISTANT_MESSAGE]
+      const nextMessages = hydratedMessages.length > 0 ? hydratedMessages : [createDefaultAssistantMessage()]
 
       setMessages(nextMessages)
       setChatSessions((prev) =>
@@ -818,18 +819,35 @@ export function ChatWorkspace() {
 
   const handleNewChatSession = () => {
     setCurrentSession(null)
-    setMessages([DEFAULT_ASSISTANT_MESSAGE])
+    setMessages([createDefaultAssistantMessage()])
     setInputValue("")
     setComposerHealth("ready")
     setStreamControllerState("idle")
   }
 
-  const handleDeleteSession = (sessionId: string) => {
+  const handleDeleteSession = async (sessionId: string) => {
+    const previousSessions = chatSessions
+    const previousPersistedIds = persistedSessionIds
+    const previousCurrentSession = currentSession
+    const previousMessages = messages
+
     setChatSessions((prev) => prev.filter((session) => session.id !== sessionId))
     setPersistedSessionIds((prev) => prev.filter((id) => id !== sessionId))
     if (currentSession?.id === sessionId) {
       setCurrentSession(null)
-      setMessages([DEFAULT_ASSISTANT_MESSAGE])
+      setMessages([createDefaultAssistantMessage()])
+    }
+
+    if (!persistedSessionIds.includes(sessionId)) return
+
+    try {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" })
+      if (!response.ok) throw new Error("session_delete_failed")
+    } catch {
+      setChatSessions(previousSessions)
+      setPersistedSessionIds(previousPersistedIds)
+      setCurrentSession(previousCurrentSession)
+      setMessages(previousMessages)
     }
   }
 
@@ -846,7 +864,7 @@ export function ChatWorkspace() {
     if (!currentSession) return
     if (persistedSessionIds.includes(currentSession.id)) return
     setCurrentSession(null)
-    setMessages([DEFAULT_ASSISTANT_MESSAGE])
+    setMessages([createDefaultAssistantMessage()])
   }, [currentSession, persistedSessionIds])
 
   useEffect(() => {
@@ -1016,35 +1034,6 @@ export function ChatWorkspace() {
     }
 
     let assistantSnapshot = assistantMessage
-    let assistantPersisted = false
-    const finalizeAssistantPersistence = async () => {
-      if (!activeSessionId || assistantPersisted) return
-
-      const fallbackContent = assistantSnapshot.status === "failed" ? "Sorry, I couldn't complete that request." : "Stopped. You can retry from the composer."
-      const finalContent = assistantSnapshot.content.trim() || fallbackContent
-      const persistedMessageId = await persistMessage({
-        sessionId: activeSessionId,
-        role: "assistant",
-        content: finalContent,
-      })
-
-      if (persistedMessageId && toolEventTraceRef.current.length > 0) {
-        await fetch(`/api/messages/${encodeURIComponent(persistedMessageId)}/tool-events`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            events: toolEventTraceRef.current.map((event) => ({
-              type: event.type,
-              tool: event.tool,
-              durationMs: "durationMs" in event ? event.durationMs : undefined,
-              payload: event,
-            })),
-          }),
-        })
-      }
-
-      assistantPersisted = true
-    }
 
     appendLocalMessage(userMessage)
     appendLocalMessage(assistantMessage)
@@ -1074,11 +1063,17 @@ export function ChatWorkspace() {
       const activeSession = await ensureActiveSession(content)
       activeSessionId = activeSession.id
       activeSessionTitle = activeSession.title
-      await persistMessage({
+      const persistedUserMessageId = await persistMessage({
         sessionId: activeSession.id,
         role: "user",
         content,
       })
+
+      if (persistedUserMessageId) {
+        const normalizedUserMessage = normalizeChatMessage({ ...userMessage, id: persistedUserMessageId })
+        setMessages((prev) => prev.map((entry) => (entry.id === userMessage.id ? normalizedUserMessage : entry)))
+        pushMessageToSessionState(activeSession.id, normalizedUserMessage)
+      }
 
       const requestedTools = resolveRequestedToolsForMessage(content)
       const normalizedContent = applyComposerModifiers(content)
@@ -1561,7 +1556,6 @@ export function ChatWorkspace() {
               }
             }
 
-            await finalizeAssistantPersistence()
           }
 
           if (eventName === "error") {
@@ -1620,23 +1614,20 @@ export function ChatWorkspace() {
           status: "completed",
           content: assistantSnapshot.content || "Stopped. You can retry from the composer.",
         }
-        await finalizeAssistantPersistence()
-        setStreamControllerState("idle")
+                setStreamControllerState("idle")
       } else if (isAbortError && timeoutAbort) {
         setComposerHealth("network-timeout")
         setStreamControllerState("failed")
         setRunDiagnostics((previous) => ({ ...previous, lastErrorCode: "NETWORK_TIMEOUT" }))
         assistantSnapshot = { ...assistantSnapshot, status: "failed" }
-        await finalizeAssistantPersistence()
-      } else {
+              } else {
         setComposerHealth((prev) => (prev === "ready" ? "provider-error" : prev))
         setStreamControllerState("failed")
         setRunDiagnostics((previous) => ({ ...previous, lastErrorCode: previous.lastErrorCode || "STREAM_REQUEST_FAILED" }))
         const fallback = buildAssistantResponse(content)
         setMessages((prev) => prev.map((entry) => (entry.id === assistantId ? { ...fallback, id: assistantId } : entry)))
         assistantSnapshot = { ...fallback, id: assistantId, status: "failed" }
-        await finalizeAssistantPersistence()
-      }
+              }
     } finally {
       window.clearTimeout(timeoutId)
       sendAbortRef.current = null
@@ -2059,6 +2050,96 @@ export function ChatWorkspace() {
   const retrySessionList = () => {
     setSessionListRetryToken((prev) => prev + 1)
   }
+  const handleEditMessage = async (messageId: string, nextContent: string) => {
+    const trimmed = nextContent.trim()
+    if (!trimmed) return
+
+    const previousMessages = messages
+    const previousSessions = chatSessions
+    const now = new Date()
+
+    setMessages((prev) => prev.map((entry) => (entry.id === messageId ? { ...entry, content: trimmed, timestamp: now } : entry)))
+    if (currentSession?.id) {
+      setChatSessions((prev) =>
+        prev.map((session) =>
+          session.id === currentSession.id
+            ? {
+                ...session,
+                messages: session.messages.map((entry) => (entry.id === messageId ? { ...entry, content: trimmed, timestamp: now } : entry)),
+                updatedAt: now,
+              }
+            : session,
+        ),
+      )
+    }
+
+    try {
+      const response = await fetch(`/api/messages/${encodeURIComponent(messageId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: trimmed }),
+      })
+      if (!response.ok) throw new Error("message_update_failed")
+    } catch {
+      setMessages(previousMessages)
+      setChatSessions(previousSessions)
+    }
+  }
+
+  const handleDeleteMessage = async (messageId: string) => {
+    const previousMessages = messages
+    const previousSessions = chatSessions
+    const now = new Date()
+
+    setMessages((prev) => prev.filter((entry) => entry.id !== messageId))
+    if (currentSession?.id) {
+      setChatSessions((prev) =>
+        prev.map((session) =>
+          session.id === currentSession.id
+            ? {
+                ...session,
+                messages: session.messages.filter((entry) => entry.id !== messageId),
+                updatedAt: now,
+              }
+            : session,
+        ),
+      )
+    }
+
+    try {
+      const response = await fetch(`/api/messages/${encodeURIComponent(messageId)}`, { method: "DELETE" })
+      if (!response.ok) throw new Error("message_delete_failed")
+    } catch {
+      setMessages(previousMessages)
+      setChatSessions(previousSessions)
+    }
+  }
+
+  const handleRegenerateMessage = async (messageId: string) => {
+    const currentIndex = messages.findIndex((item) => item.id === messageId)
+    const sourcePrompt =
+      currentIndex > 0
+        ? [...messages.slice(0, currentIndex)].reverse().find((item) => item.role === "user")?.content
+        : messages.filter((item) => item.role === "user").at(-1)?.content
+    if (!sourcePrompt) return
+
+    setMessages((prev) => prev.filter((entry) => entry.id !== messageId))
+    if (currentSession?.id) {
+      setChatSessions((prev) =>
+        prev.map((session) =>
+          session.id === currentSession.id
+            ? { ...session, messages: session.messages.filter((entry) => entry.id !== messageId) }
+            : session,
+        ),
+      )
+    }
+
+    if (/^\d+$/.test(String(messageId))) {
+      void fetch(`/api/messages/${encodeURIComponent(messageId)}`, { method: "DELETE" })
+    }
+
+    void handleSendMessage(sourcePrompt)
+  }
   const persistedSessions = useMemo(() => chatSessions.filter((session) => persistedSessionIds.includes(session.id)), [chatSessions, persistedSessionIds])
   const recentSession = currentSession ?? persistedSessions.at(0) ?? null
 
@@ -2327,18 +2408,9 @@ export function ChatWorkspace() {
                       key={message.id}
                       message={message}
                       sessionId={currentSession?.id}
-                      onEditRequest={(messageId, nextContent) => {
-                        setMessages((prev) => prev.map((entry) => (entry.id === messageId ? { ...entry, content: nextContent } : entry)))
-                      }}
-                      onRegenerate={(messageId) => {
-                        const currentIndex = messages.findIndex((item) => item.id === messageId)
-                        const sourcePrompt =
-                          currentIndex > 0
-                            ? [...messages.slice(0, currentIndex)].reverse().find((item) => item.role === "user")?.content
-                            : messages.filter((item) => item.role === "user").at(-1)?.content
-                        if (!sourcePrompt) return
-                        void handleSendMessage(sourcePrompt)
-                      }}
+                      onEditRequest={handleEditMessage}
+                      onDeleteRequest={handleDeleteMessage}
+                      onRegenerate={handleRegenerateMessage}
                     />
                   ))
                 )}

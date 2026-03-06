@@ -18,6 +18,7 @@ interface ChatMessageProps {
   message: ChatMessage
   sessionId?: string
   onEditRequest?: (messageId: string, nextContent: string) => void
+  onDeleteRequest?: (messageId: string) => void
   onRegenerate?: (messageId: string) => void
 }
 
@@ -32,7 +33,7 @@ type MessageActionState = {
 
 const supportsWebShare = typeof navigator !== "undefined" && "share" in navigator
 
-function ChatMessageComponent({ message, sessionId, onEditRequest, onRegenerate }: ChatMessageProps) {
+function ChatMessageComponent({ message, sessionId, onEditRequest, onDeleteRequest, onRegenerate }: ChatMessageProps) {
   const isUser = message.role === "user"
   const [isDeletedLocally, setIsDeletedLocally] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
@@ -178,6 +179,7 @@ function ChatMessageComponent({ message, sessionId, onEditRequest, onRegenerate 
       }
 
       setState((current) => ({ ...current, deleteStatus: "idle" }))
+      onDeleteRequest?.(message.id)
       setIsDeletedLocally(true)
     } catch {
       setState((current) => ({ ...current, deleteStatus: "failed" }))
