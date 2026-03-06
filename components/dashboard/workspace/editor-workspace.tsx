@@ -24,6 +24,7 @@ import {
 } from "@/lib/editor/video-models/registry"
 import { validateVideoGenerationPayload } from "@/lib/editor/video-models/validation"
 import type { VideoGenerationRequest } from "@/lib/editor/video-models/types"
+import { createRenderJobV1, finalizeMediaUploadV1, initMediaUploadV1 } from "@/lib/api/v1-client"
 
 type OnboardingState = {
   editorWelcomeCompletedAt?: string
@@ -272,7 +273,7 @@ export function EditorWorkspace() {
     if (!project || !activeTimeline) return
     setIsSaving(true)
     try {
-      const res = await fetch(`/api/editor/projects/${project.id}/timeline`, {
+      const res = await fetch(`/api/v1/editor/projects/${project.id}/timeline`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ timeline: activeTimeline }),
@@ -384,19 +385,12 @@ export function EditorWorkspace() {
         })
       }
 
-      const initRes = await fetch("/api/media/uploads/init", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileName: file.name,
-          mimeType: file.type,
-          sizeBytes: file.size,
-          projectId: project.id,
-        }),
+      const initJson = await initMediaUploadV1({
+        fileName: file.name,
+        mimeType: file.type,
+        sizeBytes: file.size,
+        projectId: project.id,
       })
-      if (!initRes.ok) throw new Error("Unable to initialize upload")
-
-      const initJson = await initRes.json()
       const uploadPutRes = await fetch(initJson.upload.url, {
         method: initJson.upload.method,
         headers: initJson.upload.headers,
@@ -406,15 +400,9 @@ export function EditorWorkspace() {
 
       const measuredVideoDuration = await resolveVideoDurationSeconds()
 
-      const finalizeRes = await fetch(`/api/media/uploads/${initJson.asset.id}/finalize`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          durationSeconds: measuredVideoDuration,
-        }),
+      const finalizeJson = await finalizeMediaUploadV1(initJson.asset.id, {
+        durationSeconds: measuredVideoDuration ?? undefined,
       })
-      if (!finalizeRes.ok) throw new Error("Unable to finalize upload")
-      const finalizeJson = await finalizeRes.json()
 
       const sourceVariant = Array.isArray(finalizeJson.variants)
         ? finalizeJson.variants.find((item: Record<string, unknown>) => item.variant_type === "source")
@@ -832,11 +820,8 @@ export function EditorWorkspace() {
 
     setIsGeneratingRender(true)
     try {
-      const createRes = await fetch("/api/editor/render-jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
+      const createJson = await createRenderJobV1(
+        {
           projectId: project.id,
           payload: {
             timelineId: activeTimeline.id,
@@ -845,13 +830,10 @@ export function EditorWorkspace() {
             ...generationPayload,
             generationConfig: generationPayload,
           },
-        }),
-      })
-
-      if (!createRes.ok) throw new Error("Failed to queue generation")
+        },
+        controller.signal,
+      )
       if (isStaleOrCancelled()) return
-
-      const createJson = await createRes.json()
       const job = normalizeJob(createJson.job)
       if (!job || isStaleOrCancelled()) return
 

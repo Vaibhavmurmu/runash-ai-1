@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
+import { mediaAssetsQuerySchema } from "@/lib/api/contracts"
 import { sql } from "@/lib/db"
 
 export async function GET(request: NextRequest) {
@@ -7,7 +8,12 @@ export async function GET(request: NextRequest) {
   if ("error" in auth) return auth.error
 
   const url = new URL(request.url)
-  const projectId = url.searchParams.get("projectId")
+  const parsedQuery = mediaAssetsQuerySchema.safeParse({ projectId: url.searchParams.get("projectId") ?? undefined })
+  if (!parsedQuery.success) {
+    return NextResponse.json({ error: "Invalid query", code: "INVALID_REQUEST" }, { status: 400 })
+  }
+
+  const projectId = parsedQuery.data.projectId
 
   const assets = projectId
     ? await sql`

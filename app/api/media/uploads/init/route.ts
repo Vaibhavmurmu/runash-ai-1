@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
+import { formatZodIssues, mediaUploadInitRequestSchema } from "@/lib/api/contracts"
 import { sql } from "@/lib/db"
 import { CloudStorage } from "@/lib/cloud-storage"
 
@@ -15,18 +16,22 @@ export async function POST(request: NextRequest) {
   const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
 
-  const body = await request.json().catch(() => null)
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "Invalid body" }, { status: 400 })
+  const body = await request.json().catch(() => ({}))
+  const parsedBody = mediaUploadInitRequestSchema.safeParse(body)
+  if (!parsedBody.success) {
+    return NextResponse.json(
+      { error: "Invalid body", code: "INVALID_REQUEST", details: { issues: formatZodIssues(parsedBody.error) } },
+      { status: 400 },
+    )
   }
 
-  const mimeType = typeof body.mimeType === "string" ? body.mimeType : "application/octet-stream"
-  const sizeBytes = Number(body.sizeBytes)
-  const originalFileName = typeof body.fileName === "string" ? body.fileName : "media.bin"
-  const projectId = typeof body.projectId === "string" ? body.projectId : null
+  const mimeType = parsedBody.data.mimeType
+  const sizeBytes = Number(parsedBody.data.sizeBytes)
+  const originalFileName = parsedBody.data.fileName
+  const projectId = parsedBody.data.projectId ?? null
 
   if (!Number.isFinite(sizeBytes) || sizeBytes <= 0 || sizeBytes > MAX_UPLOAD_BYTES) {
-    return NextResponse.json({ error: "Invalid sizeBytes" }, { status: 400 })
+    return NextResponse.json({ error: "Invalid sizeBytes", code: "INVALID_REQUEST" }, { status: 400 })
   }
 
   const sanitizedName = originalFileName.replace(/[^a-zA-Z0-9._-]/g, "-")
