@@ -167,10 +167,10 @@ export function ChatWorkspace() {
   }>({ status: "idle", sessionId: null, errorMessage: null })
   const [sessionListRetryToken, setSessionListRetryToken] = useState(0)
 
-  const [attachmentPreview, setAttachmentPreview] = useState<ComposerAttachmentPreview | null>(null)
+  const [attachmentPreviews, setAttachmentPreviews] = useState<ComposerAttachmentPreview[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [hasCompletedFirstMessage, setHasCompletedFirstMessage] = useState(false)
-  const attachmentRetryRef = useRef<File | null>(null)
+  const attachmentRetryRef = useRef<Map<string, File>>(new Map())
 
   const IMAGE_MAX_FILE_SIZE = 8 * 1024 * 1024
   const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"]
@@ -889,17 +889,17 @@ export function ChatWorkspace() {
     const content = messageContent || inputValue.trim()
     if (!content) return
 
-    if (attachmentPreview?.uploadState === "failed") {
+    if (attachmentPreviews.some((item) => item.uploadState === "failed")) {
       setAttachmentError("Fix the image upload issue before sending.")
       return
     }
 
-    if (attachmentPreview?.uploadState === "uploading") {
+    if (attachmentPreviews.some((item) => item.uploadState === "uploading")) {
       setAttachmentError("Please wait for the image upload to finish.")
       return
     }
 
-    const queuedAttachment = attachmentPreview?.uploadState === "uploaded" ? attachmentPreview.metadata : null
+    const queuedAttachments = attachmentPreviews.filter((item) => item.uploadState === "uploaded").map((item) => item.metadata)
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -908,7 +908,7 @@ export function ChatWorkspace() {
       timestamp: new Date(),
       type: "text",
       status: "completed",
-      metadata: queuedAttachment ? { attachments: [queuedAttachment] } : undefined,
+      metadata: queuedAttachments.length > 0 ? { attachments: queuedAttachments } : undefined,
     }
 
     const assistantId = `${Date.now()}-assistant`
@@ -948,10 +948,13 @@ export function ChatWorkspace() {
     setComposerHealth("ready")
     setLastPromptForRetry(content)
     setRunDiagnostics({ requestId: null, provider: "RunAsh AI", model: null, lastErrorCode: null })
-    const attachmentMetadata = queuedAttachment ? [queuedAttachment] : undefined
-    if (attachmentPreview) {
-      URL.revokeObjectURL(attachmentPreview.previewUrl)
-      setAttachmentPreview(null)
+    const attachmentMetadata = queuedAttachments.length > 0 ? queuedAttachments : undefined
+    if (attachmentPreviews.length > 0) {
+      for (const attachment of attachmentPreviews) {
+        URL.revokeObjectURL(attachment.previewUrl)
+      }
+      setAttachmentPreviews([])
+      attachmentRetryRef.current.clear()
       setAttachmentError(null)
     }
 
@@ -1438,7 +1441,7 @@ export function ChatWorkspace() {
     }
   }
 
-  const processImageAttachment = async (file: File) => {
+  const processImageAttachment = async (file: File, attachmentId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`) => {
     if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
       setAttachmentError("Unsupported file type. Please upload PNG, JPG, WEBP, or GIF.")
       return
@@ -1449,18 +1452,19 @@ export function ChatWorkspace() {
       return
     }
 
-    attachmentRetryRef.current = file
+    attachmentRetryRef.current.set(attachmentId, file)
     setAttachmentError(null)
 
     const previewUrl = URL.createObjectURL(file)
-    setAttachmentPreview((existing) => {
-      if (existing) URL.revokeObjectURL(existing.previewUrl)
-      return {
+    setAttachmentPreviews((existing) => [
+      ...existing,
+      {
+        id: attachmentId,
         metadata: { name: file.name, size: file.size, type: file.type },
         previewUrl,
         uploadState: "uploading",
-      }
-    })
+      },
+    ])
 
     const metadataResult = await new Promise<ComposerAttachmentMetadata>((resolve, reject) => {
       const image = new Image()
@@ -1478,45 +1482,74 @@ export function ChatWorkspace() {
     }).catch(() => null)
 
     if (!metadataResult) {
-      setAttachmentPreview((existing) =>
-        existing
-          ? {
-              ...existing,
-              uploadState: "failed",
-              error: "Preview generation failed. Try a different image or retry.",
-            }
-          : null,
+      setAttachmentPreviews((existing) =>
+        existing.map((item) =>
+          item.id === attachmentId
+            ? {
+                ...item,
+                uploadState: "failed",
+                error: "Preview generation failed. Try a different image or retry.",
+              }
+            : item,
+        ),
       )
       return
     }
 
-    setAttachmentPreview((existing) =>
-      existing
-        ? {
-            ...existing,
-            metadata: metadataResult,
-            uploadState: "uploaded",
-            error: undefined,
-          }
-        : null,
+    setAttachmentPreviews((existing) =>
+      existing.map((item) =>
+        item.id === attachmentId
+          ? {
+              ...item,
+              metadata: metadataResult,
+              uploadState: "uploaded",
+              error: undefined,
+            }
+          : item,
+      ),
     )
   }
 
-  const retryAttachment = () => {
-    if (!attachmentRetryRef.current) return
-    void processImageAttachment(attachmentRetryRef.current)
+  const processImageAttachments = async (files: File[]) => {
+    files.forEach((file) => {
+      void processImageAttachment(file)
+    })
   }
 
-  const removeAttachment = () => {
-    setAttachmentPreview((existing) => {
-      if (existing) URL.revokeObjectURL(existing.previewUrl)
-      return null
+  const retryAttachment = (attachmentId: string) => {
+    const retryFile = attachmentRetryRef.current.get(attachmentId)
+    if (!retryFile) return
+
+    setAttachmentPreviews((existing) => {
+      const target = existing.find((item) => item.id === attachmentId)
+      if (target) URL.revokeObjectURL(target.previewUrl)
+      return existing.filter((item) => item.id !== attachmentId)
     })
-    attachmentRetryRef.current = null
+
+    void processImageAttachment(retryFile, attachmentId)
+  }
+
+  const removeAttachment = (attachmentId: string) => {
+    setAttachmentPreviews((existing) => {
+      const target = existing.find((item) => item.id === attachmentId)
+      if (target) URL.revokeObjectURL(target.previewUrl)
+      return existing.filter((item) => item.id !== attachmentId)
+    })
+    attachmentRetryRef.current.delete(attachmentId)
     setAttachmentError(null)
   }
 
  
+
+  useEffect(() => {
+    return () => {
+      for (const attachment of attachmentPreviews) {
+        URL.revokeObjectURL(attachment.previewUrl)
+      }
+      attachmentRetryRef.current.clear()
+    }
+  }, [attachmentPreviews])
+
   const buildAssistantResponse = (userInput: string): ChatMessage => {
     const input = userInput.toLowerCase()
 
@@ -2167,8 +2200,8 @@ export function ChatWorkspace() {
                 modelOptions={modelCatalog}
                 selectedModel={selectedModel}
                 onSelectedModelChange={setSelectedModel}
-                onAttachFile={processImageAttachment}
-                attachmentPreview={attachmentPreview}
+                onAttachFiles={processImageAttachments}
+                attachmentPreviews={attachmentPreviews}
                 attachmentError={attachmentError}
                 onRetryAttachment={retryAttachment}
                 onRemoveAttachment={removeAttachment}
