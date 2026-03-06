@@ -4,6 +4,9 @@ import { useEffect, useState } from "react"
 import { SlidersHorizontal } from "lucide-react"
 import StreamManager from "./stream-manager"
 import ModelSelector from "./model-selector"
+import EditPanel from "./edit-panel"
+import LayersPanel from "./layers-panel"
+import { isRightPanelTabId, type RightPanelTabId } from "./panel-tabs"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,7 +44,7 @@ export default function RightPanel({
 }: RightPanelProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [isNarrowViewport, setIsNarrowViewport] = useState(false)
-  const showStreamManager = activeTab === "stream"
+  const resolvedTab: RightPanelTabId = activeTab && isRightPanelTabId(activeTab) ? activeTab : "generate"
   const model = getVideoModelMetadata(selectedModel)
 
   useEffect(() => {
@@ -52,11 +55,7 @@ export default function RightPanel({
     return () => query.removeEventListener("change", sync)
   }, [])
 
-  const panelContent = showStreamManager ? (
-    <div className="h-full min-h-0">
-      <StreamManager />
-    </div>
-  ) : (
+  const generatePanel = (
     <div className="space-y-5 p-4">
       <ModelSelector selectedModel={selectedModel} onModelChange={onModelChange} />
 
@@ -199,6 +198,19 @@ export default function RightPanel({
       </div>
     </div>
   )
+
+  const tabPanels: Record<RightPanelTabId, JSX.Element> = {
+    generate: generatePanel,
+    edit: <EditPanel />,
+    layers: <LayersPanel />,
+    stream: (
+      <div className="h-full min-h-0">
+        <StreamManager />
+      </div>
+    ),
+  }
+
+  const panelContent = tabPanels[resolvedTab] ?? tabPanels.generate
 
   return (
     <>
