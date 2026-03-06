@@ -104,10 +104,12 @@ const SLASH_COMMANDS: SlashCommand[] = [
   },
 ]
 
+const COMPOSER_CONTROL_HEIGHT_RADIUS_CLASS = "h-9 rounded-xl"
+const COMPOSER_CONTROL_GROUP_GAP_CLASS = "gap-2"
 const SECONDARY_ACTION_BUTTON_CLASS =
-  "h-8 rounded-lg border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+  `${COMPOSER_CONTROL_HEIGHT_RADIUS_CLASS} border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950`
 const ATTACHMENT_ACTION_BUTTON_CLASS =
-  "h-8 rounded-lg border-zinc-600 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+  `${COMPOSER_CONTROL_HEIGHT_RADIUS_CLASS} border-zinc-600 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950`
 
 export function RunAshChatComposer({
   value,
@@ -368,7 +370,7 @@ export function RunAshChatComposer({
         />
 
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div className="flex items-center gap-2">
+          <div className={`flex flex-wrap items-center ${COMPOSER_CONTROL_GROUP_GAP_CLASS}`}>
             <Button
               type="button"
               size="sm"
@@ -405,7 +407,7 @@ export function RunAshChatComposer({
                 </Button>
               </>
             ) : null}
-            <span className="text-zinc-400">Type / for templates • Ctrl/Cmd+Shift+P to polish</span>
+            <span className="basis-full text-zinc-400 sm:basis-auto">Type / for templates • Ctrl/Cmd+Shift+P to polish</span>
           </div>
 
           <div className="flex items-center gap-3 text-zinc-500">
@@ -415,7 +417,7 @@ export function RunAshChatComposer({
         </div>
 
         {showSecondaryControls ? (
-          <div id="composer-secondary-controls" className="mt-2 flex flex-wrap items-center gap-2 border-t border-zinc-800 pt-2 text-xs text-zinc-400">
+          <div id="composer-secondary-controls" className={`mt-2 flex flex-wrap items-center border-t border-zinc-800 pt-2 text-xs text-zinc-400 ${COMPOSER_CONTROL_GROUP_GAP_CLASS}`}>
             {modelOptions.length > 0 && onSelectedModelChange ? (
               <label className="flex items-center gap-1">
                 Model
@@ -468,7 +470,7 @@ export function RunAshChatComposer({
         ) : null}
 
         {attachmentPreview ? (
-          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-zinc-700/80 bg-zinc-950/70 p-2">
+          <div className={`mt-3 flex flex-wrap items-center rounded-xl border border-zinc-700/80 bg-zinc-950/70 p-2 ${COMPOSER_CONTROL_GROUP_GAP_CLASS}`}>
             <span className="px-1 text-[11px] font-medium uppercase tracking-wide text-zinc-400">Attachment actions:</span>
             <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/70 px-2 py-1.5 text-xs text-zinc-300">
               <img src={attachmentPreview.previewUrl} alt={attachmentPreview.metadata.name} className="h-9 w-9 rounded-lg object-cover" />
@@ -501,15 +503,15 @@ export function RunAshChatComposer({
       </div>
 
 
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
+      <div className={`flex flex-wrap items-center justify-between text-xs text-zinc-500 ${COMPOSER_CONTROL_GROUP_GAP_CLASS}`}>
         <span>Enter to send • Shift+Enter newline • Controls are keyboard accessible.</span>
-        <div className="flex items-center gap-2">
+        <div className={`flex flex-wrap items-center ${COMPOSER_CONTROL_GROUP_GAP_CLASS}`}>
           {isRetryableFailure && onRetry ? (
             <Button
               type="button"
               variant="outline"
               onClick={onRetry}
-              className="h-8 rounded-lg border-amber-700 text-amber-200 hover:bg-amber-950"
+              className={`${COMPOSER_CONTROL_HEIGHT_RADIUS_CLASS} border-amber-700 text-amber-200 hover:bg-amber-950`}
               disabled={disabled || isBusy}
               aria-label="Retry previous request"
             >
@@ -521,7 +523,7 @@ export function RunAshChatComposer({
               type="button"
               variant="outline"
               onClick={onStop}
-              className="h-8 rounded-lg border-red-700 text-red-200 hover:bg-red-950"
+              className={`${COMPOSER_CONTROL_HEIGHT_RADIUS_CLASS} border-red-700 text-red-200 hover:bg-red-950`}
               aria-label="Stop generating response"
             >
               <OctagonX className="mr-1 h-4 w-4" /> Stop
@@ -530,7 +532,7 @@ export function RunAshChatComposer({
           <Button
             onClick={() => handleSubmit()}
             disabled={!canSend}
-            className="h-8 rounded-lg bg-orange-500 px-4 font-semibold text-zinc-950 hover:bg-orange-400"
+            className={`${COMPOSER_CONTROL_HEIGHT_RADIUS_CLASS} bg-orange-500 px-4 font-semibold text-zinc-950 hover:bg-orange-400`}
             aria-label="Send prompt"
           >
             <Send className="mr-1 h-4 w-4" />
