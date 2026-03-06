@@ -57,7 +57,8 @@ export function ChatWorkspace() {
   type ComposerHealthState = "ready" | "usage-limit" | "provider-error" | "network-timeout"
   type ResponseTone = "balanced" | "friendly" | "professional"
   type ResponseDetailLevel = "concise" | "normal" | "detailed"
-  type ChatRunDiagnostics = { requestId: string | null; provider: string | null; model: string | null; lastErrorCode: string | null }
+  type ChatRunToolDiagnostic = { tool: string; status: "running" | "completed" | "failed" | "queued"; failureReason?: string | null }
+  type ChatRunDiagnostics = { requestId: string | null; provider: string | null; model: string | null; lastErrorCode: string | null; toolCalls: ChatRunToolDiagnostic[] }
   type ModelCatalogEntry = { id: string; provider: string; label: string }
 
   const { openFromTrigger } = useDashboardModelDialog()
@@ -76,7 +77,7 @@ export function ChatWorkspace() {
   const [lastPromptForRetry, setLastPromptForRetry] = useState<string | null>(null)
   const [selectedTone, setSelectedTone] = useState<ResponseTone>("balanced")
   const [detailLevel, setDetailLevel] = useState<ResponseDetailLevel>("normal")
-  const [runDiagnostics, setRunDiagnostics] = useState<ChatRunDiagnostics>({ requestId: null, provider: null, model: null, lastErrorCode: null })
+  const [runDiagnostics, setRunDiagnostics] = useState<ChatRunDiagnostics>({ requestId: null, provider: null, model: null, lastErrorCode: null, toolCalls: [] })
   const [modelCatalog, setModelCatalog] = useState<ModelCatalogEntry[]>([])
   const [selectedModel, setSelectedModel] = useState("gpt-4o-mini")
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null)
@@ -221,6 +222,10 @@ export function ChatWorkspace() {
       output: output ?? undefined,
       errorCode: typeof record.errorCode === "string" ? record.errorCode : undefined,
       errorMessage: typeof record.errorMessage === "string" ? record.errorMessage : undefined,
+      failureReason: typeof record.failureReason === "string" ? record.failureReason : undefined,
+      timeoutMs: typeof record.timeoutMs === "number" ? record.timeoutMs : undefined,
+      retryCount: typeof record.retryCount === "number" ? record.retryCount : undefined,
+      attempts: typeof record.attempts === "number" ? record.attempts : undefined,
     }
   }
 
@@ -947,7 +952,7 @@ export function ChatWorkspace() {
     setStreamControllerState("sending")
     setComposerHealth("ready")
     setLastPromptForRetry(content)
-    setRunDiagnostics({ requestId: null, provider: "RunAsh AI", model: null, lastErrorCode: null })
+    setRunDiagnostics({ requestId: null, provider: "RunAsh AI", model: null, lastErrorCode: null, toolCalls: [] })
     const attachmentMetadata = queuedAttachments.length > 0 ? queuedAttachments : undefined
     if (attachmentPreviews.length > 0) {
       for (const attachment of attachmentPreviews) {
@@ -1114,6 +1119,7 @@ export function ChatWorkspace() {
               provider: payloadProvider || previous.provider || "RunAsh AI",
               model: payloadModel || previous.model,
               lastErrorCode: previous.lastErrorCode,
+              toolCalls: previous.toolCalls,
             }))
           }
 
@@ -1135,6 +1141,14 @@ export function ChatWorkspace() {
             toolExecutionMapRef.current.set(toolName, toolExecutionId)
             const startedAt = new Date().toISOString()
 
+            setRunDiagnostics((previous) => ({
+              ...previous,
+              toolCalls: [
+                ...previous.toolCalls.filter((entry) => entry.tool !== toolName),
+                { tool: toolName, status: "running", failureReason: null },
+              ],
+            }))
+
             updateAssistantMessage((existing) => ({
               ...existing,
               status: "tool-running",
@@ -1144,6 +1158,8 @@ export function ChatWorkspace() {
                 status: "running",
                 startedAt,
                 progressLabel: `Running ${toolName.replace(/_/g, " ")}`,
+                timeoutMs: typeof payload.timeoutMs === "number" ? payload.timeoutMs : undefined,
+                retryCount: typeof payload.retryCount === "number" ? payload.retryCount : undefined,
               }),
             }))
           }
@@ -1153,6 +1169,28 @@ export function ChatWorkspace() {
             const existingId = toolExecutionMapRef.current.get(toolName) ?? createToolExecutionId(toolName)
             toolExecutionMapRef.current.set(toolName, existingId)
             const finishedAt = new Date().toISOString()
+            const toolStatus =
+              typeof payload.result?.status === "string" && payload.result.status === "failed"
+                ? "failed"
+                : payload.result?.queued === true
+                  ? "queued"
+                  : typeof payload.errorCode === "string"
+                    ? "failed"
+                    : "completed"
+            const failureReason =
+              typeof payload.failureReason === "string"
+                ? payload.failureReason
+                : typeof payload.errorCode === "string"
+                  ? payload.errorCode
+                  : null
+
+            setRunDiagnostics((previous) => ({
+              ...previous,
+              toolCalls: [
+                ...previous.toolCalls.filter((entry) => entry.tool !== toolName),
+                { tool: toolName, status: toolStatus, failureReason },
+              ],
+            }))
 
             updateAssistantMessage((existing) => {
               const previous = existing.metadata?.toolExecutions?.find((entry) => entry.id === existingId)
@@ -1164,16 +1202,23 @@ export function ChatWorkspace() {
                 metadata: updateToolExecutionSummary(existing.metadata, {
                   id: existingId,
                   tool: toolName,
-                  status: "completed",
+                  status: toolStatus === "queued" ? "completed" : toolStatus,
                   startedAt,
                   finishedAt,
                   durationMs,
                   progressLabel:
-                    payload.fromCache === true
-                      ? `${toolName.replace(/_/g, " ")} (cache)`
-                      : `${toolName.replace(/_/g, " ")} complete`,
+                    toolStatus === "queued"
+                      ? `${toolName.replace(/_/g, " ")} queued`
+                      : payload.fromCache === true
+                        ? `${toolName.replace(/_/g, " ")} (cache)`
+                        : `${toolName.replace(/_/g, " ")} ${toolStatus === "failed" ? "failed" : "complete"}`,
                   outputPreview: formatToolOutputPreview(payload.result),
                   output: toRecord(payload.result) ?? undefined,
+                  errorCode: typeof payload.errorCode === "string" ? payload.errorCode : undefined,
+                  failureReason: failureReason ?? undefined,
+                  timeoutMs: typeof payload.timeoutMs === "number" ? payload.timeoutMs : undefined,
+                  retryCount: typeof payload.retryCount === "number" ? payload.retryCount : undefined,
+                  attempts: typeof payload.attempts === "number" ? payload.attempts : undefined,
                 }),
               }
             })
@@ -2212,9 +2257,21 @@ export function ChatWorkspace() {
                 <div className="mt-3 rounded-md border border-zinc-800 bg-zinc-900/60 p-2 text-xs text-zinc-300">
                   <p className="font-medium text-zinc-100">Recent-run diagnostics</p>
                   <p>Request ID: {runDiagnostics.requestId || "n/a"}</p>
-                  <p>Provider: {runDiagnostics.provider || "RunAsh AI"}</p>
-                  <p>Model: {runDiagnostics.model || "n/a"}</p>
+                  <p>Provider/Model: {(runDiagnostics.provider || "RunAsh AI") + " / " + (runDiagnostics.model || "n/a")}</p>
                   {runDiagnostics.lastErrorCode ? <p>Error code: {runDiagnostics.lastErrorCode}</p> : null}
+                  <p className="mt-1 text-zinc-200">Tool calls: {runDiagnostics.toolCalls.length}</p>
+                  {runDiagnostics.toolCalls.length === 0 ? (
+                    <p className="text-zinc-400">none</p>
+                  ) : (
+                    <ul className="space-y-0.5 text-zinc-300">
+                      {runDiagnostics.toolCalls.map((entry) => (
+                        <li key={entry.tool}>
+                          {entry.tool}: {entry.status}
+                          {entry.failureReason ? ` (${entry.failureReason})` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               )}
               <div className="mt-2 flex items-center justify-between text-xs text-zinc-500">
