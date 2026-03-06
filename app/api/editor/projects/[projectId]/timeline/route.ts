@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
 import { getProjectById, sql, touchProject } from "@/lib/editor/repository"
+import { publishTimelineMutated } from "@/services/realtime/publishers"
 
 export async function GET(request: Request, { params }: { params: { projectId: string } }) {
   const auth = await requireEditorUser(request)
@@ -32,6 +33,13 @@ export async function POST(request: Request, { params }: { params: { projectId: 
   `
 
   await touchProject(projectId, auth.userId)
+  publishTimelineMutated({
+    projectId,
+    timelineId: timeline.id,
+    mutation: "created",
+    actorUserId: auth.userId,
+  })
+
   return NextResponse.json({ timeline }, { status: 201 })
 }
 
@@ -75,6 +83,12 @@ export async function PUT(request: Request, { params }: { params: { projectId: s
 
   await sql`UPDATE editor_projects SET active_timeline_id=${timeline.id}, updated_at=now() WHERE id=${projectId} AND owner_id=${auth.userId}`
   await touchProject(projectId, auth.userId)
+  publishTimelineMutated({
+    projectId,
+    timelineId: timeline.id,
+    mutation: "updated",
+    actorUserId: auth.userId,
+  })
 
   const project = await getProjectById(auth.userId, projectId)
   return NextResponse.json({ project })
@@ -104,5 +118,12 @@ export async function DELETE(request: Request, { params }: { params: { projectId
   `
 
   await touchProject(projectId, auth.userId)
+  publishTimelineMutated({
+    projectId,
+    timelineId,
+    mutation: "deleted",
+    actorUserId: auth.userId,
+  })
+
   return NextResponse.json({ deleted: true, timelineId })
 }

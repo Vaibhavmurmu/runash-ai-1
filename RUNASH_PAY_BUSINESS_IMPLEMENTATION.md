@@ -361,3 +361,10 @@ Business controls preserved:
 1. Application rollback is preferred; no payment contract rollback is required.
 2. If DB rollback is required, remove only newly added indexes first, then `organization_id` columns after controlled maintenance window.
 3. Re-run payment authorization smoke checks after rollback before re-enabling rollout flags.
+
+## 2026-03 realtime gateway rollout note (non-payment change)
+
+- Change scope: unified realtime gateway for editor/live-stream channels (`editor:{projectId}`, `stream:{sessionId}`) with typed event schemas and cursor-based resume.
+- Payment/auth impact assessment: no payment field names, checkout contracts, or billing API signatures were modified.
+- Risk + rollback: operational risk limited to editor/live-stream update propagation; rollback by disabling realtime subscriber usage and reverting to prior polling/SSE route.
+- Security posture: realtime handshake uses existing authenticated user/session identity with per-resource authorization; no sensitive payment/auth payloads are logged.
