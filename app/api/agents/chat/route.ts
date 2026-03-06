@@ -83,14 +83,41 @@ const STREAM_CHECKPOINT_INTERVAL = 48
 
 export async function POST(request: NextRequest) {
   const requestId = resolveRequestId(request)
+  const requestStartedAt = Date.now()
+  const route = "/api/agents/chat"
+
+  const logMetric = (name: string, details: Record<string, unknown>, level: "info" | "warn" | "error" = "info") => {
+    logApiEvent(level, `agents.chat.metric.${name}`, {
+      requestId,
+      route,
+      method: "POST",
+      details,
+    })
+  }
 
   if (!AGENT_CHAT_ENABLED) {
+    logMetric("request_end", {
+      status: 404,
+      latencyMs: Date.now() - requestStartedAt,
+      outcome: "disabled",
+    })
     return NextResponse.json({ error: "Agent APIs disabled", requestId }, { status: 404 })
   }
+
+  logMetric("request_start", { status: "started" })
 
   try {
     const session = await getServerAuthSession()
     if (!session?.user?.id) {
+      logMetric("auth_rejection", {
+        reason: "missing_session",
+        status: 401,
+      }, "warn")
+      logMetric("request_end", {
+        status: 401,
+        latencyMs: Date.now() - requestStartedAt,
+        outcome: "rejected",
+      }, "warn")
       return NextResponse.json({ error: "Unauthorized", code: CHAT_ERROR_CODES.AUTH_REQUIRED, requestId }, { status: 401 })
     }
 
@@ -98,11 +125,21 @@ export async function POST(request: NextRequest) {
     await AgentOrchestrationService.runRetentionSweep()
     const throttle = AgentOrchestrationService.enforceAdaptiveThrottle(`agents-chat:${userId}`, 45, 60_000)
     if (!throttle.allowed) {
+      logMetric("request_end", {
+        status: 429,
+        latencyMs: Date.now() - requestStartedAt,
+        outcome: "adaptive_throttled",
+      }, "warn")
       return NextResponse.json({ error: "Adaptive throttle limit exceeded", code: CHAT_ERROR_CODES.RATE_LIMITED, requestId }, { status: 429 })
     }
 
     const rateLimitResult = await rateLimit(request, `agents-chat:${userId}`, 30, 60)
     if (!rateLimitResult.success) {
+      logMetric("request_end", {
+        status: 429,
+        latencyMs: Date.now() - requestStartedAt,
+        outcome: "rate_limited",
+      }, "warn")
       return NextResponse.json({ error: "Rate limit exceeded", code: CHAT_ERROR_CODES.RATE_LIMITED, requestId }, { status: 429 })
     }
 
@@ -110,11 +147,21 @@ export async function POST(request: NextRequest) {
     const parsed = requestSchema.safeParse(body)
     if (!parsed.success) {
       const hasAttachmentIssue = parsed.error.issues.some((issue) => issue.path.includes("attachments"))
+      logMetric("request_end", {
+        status: 400,
+        latencyMs: Date.now() - requestStartedAt,
+        outcome: hasAttachmentIssue ? "invalid_attachment" : "invalid_request",
+      }, "warn")
       return NextResponse.json({ error: hasAttachmentIssue ? "Invalid attachment metadata" : "Invalid request payload", code: hasAttachmentIssue ? CHAT_ERROR_CODES.INVALID_ATTACHMENT : CHAT_ERROR_CODES.INVALID_REQUEST, details: parsed.error.flatten(), requestId }, { status: 400 })
     }
 
     const sanitizedMessage = AgentOrchestrationService.sanitizeUserInput(parsed.data.message)
     if (AgentOrchestrationService.hasPromptInjection(sanitizedMessage)) {
+      logMetric("request_end", {
+        status: 400,
+        latencyMs: Date.now() - requestStartedAt,
+        outcome: "prompt_rejected",
+      }, "warn")
       return NextResponse.json({ error: "Prompt rejected by safety policy", requestId }, { status: 400 })
     }
 
@@ -159,6 +206,11 @@ export async function POST(request: NextRequest) {
 
     const eventStream = new ReadableStream({
       async start(controller) {
+        const streamStartedAt = Date.now()
+        let streamedTokenCount = 0
+        let toolInvocations = 0
+        let toolFailures = 0
+
         const send = (event: string, data: Record<string, unknown>) => {
           if (event === "tool_start") {
             controller.enqueue(encoder.encode(encodeChatStreamEvent(event, normalizeToolStartEventPayload(data))))
@@ -230,6 +282,7 @@ export async function POST(request: NextRequest) {
               continue
             }
             const toolExecutionId = `${tool}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+            toolInvocations += 1
             const startedAt = new Date().toISOString()
             const toolPolicy = resolveToolExecutionPolicy(tool)
             toolExecutionSummaries.set(toolExecutionId, {
@@ -305,6 +358,7 @@ export async function POST(request: NextRequest) {
                 },
               })
             } catch (toolError) {
+              toolFailures += 1
               const errorCode = toolError instanceof ToolExecutionError ? toolError.code : "TOOL_EXECUTION_FAILED"
               const summaryEntry = [...toolExecutionSummaries.values()].reverse().find((entry) => entry.tool === tool && entry.status === "running")
               const finishedAt = new Date().toISOString()
@@ -358,6 +412,7 @@ export async function POST(request: NextRequest) {
               continue
             }
             const toolExecutionId = `${tool}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+            toolInvocations += 1
             const startedAt = new Date().toISOString()
             const toolPolicy = resolveToolExecutionPolicy(tool)
             toolExecutionSummaries.set(toolExecutionId, {
@@ -443,7 +498,6 @@ export async function POST(request: NextRequest) {
           })
 
           let fullText = ""
-          let streamedTokenCount = 0
           for await (const token of completion.textStream) {
             fullText += token
             streamedTokenCount += 1
@@ -536,6 +590,20 @@ export async function POST(request: NextRequest) {
             error,
           })
         } finally {
+          logMetric("stream_summary", {
+            durationMs: Date.now() - streamStartedAt,
+            streamedTokenCount,
+            toolInvocations,
+            toolFailures,
+          })
+          logMetric("request_end", {
+            status: 200,
+            latencyMs: Date.now() - requestStartedAt,
+            streamedTokenCount,
+            toolInvocations,
+            toolFailures,
+            outcome: "streamed",
+          })
           controller.close()
         }
       },
@@ -558,6 +626,12 @@ export async function POST(request: NextRequest) {
       details: {},
       error,
     })
+
+    logMetric("request_end", {
+      status: 500,
+      latencyMs: Date.now() - requestStartedAt,
+      outcome: "failed",
+    }, "error")
 
     return NextResponse.json({ error: "Internal server error", requestId }, { status: 500 })
   }

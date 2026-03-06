@@ -42,11 +42,25 @@ const chatPostSchema = z.object({
 
 export async function POST(request: NextRequest) {
   const requestId = resolveRequestId(request)
+  const route = "/api/chat"
+  const startedAt = Date.now()
+  const logMetric = (name: string, details: Record<string, unknown>, level: "info" | "warn" | "error" = "info") => {
+    logApiEvent(level, `chat.post.metric.${name}`, {
+      requestId,
+      route,
+      method: "POST",
+      details,
+    })
+  }
+
+  logMetric("request_start", { status: "started" })
 
   try {
     const session = await getServerAuthSession()
 
     if (!session?.user?.id) {
+      logMetric("auth_rejection", { reason: "missing_session", status: 401 }, "warn")
+      logMetric("request_end", { status: 401, latencyMs: Date.now() - startedAt, outcome: "rejected" }, "warn")
       return respondError(
         request,
         { code: CHAT_ERROR_CODES.AUTH_REQUIRED, message: "Unauthorized" },
@@ -69,6 +83,7 @@ export async function POST(request: NextRequest) {
         },
       })
 
+      logMetric("request_end", { status: 400, latencyMs: Date.now() - startedAt, outcome: "invalid_request" }, "warn")
       return respondError(
         request,
         { code: CHAT_ERROR_CODES.INVALID_REQUEST, message: "Invalid chat payload", details: validation.error.flatten() },
@@ -92,6 +107,8 @@ export async function POST(request: NextRequest) {
     if (normalizedAttachmentIds.length > 0) {
       const ownedAttachments = await listOwnedChatAttachmentsByIds({ userId: String(session.user.id), attachmentIds: normalizedAttachmentIds })
       if (ownedAttachments.length !== normalizedAttachmentIds.length) {
+        logMetric("ownership_rejection", { reason: "attachment_not_owned", status: 400 }, "warn")
+        logMetric("request_end", { status: 400, latencyMs: Date.now() - startedAt, outcome: "invalid_attachment" }, "warn")
         return respondError(
           request,
           { code: CHAT_ERROR_CODES.INVALID_ATTACHMENT, message: "One or more attachment IDs are invalid" },
@@ -132,13 +149,30 @@ export async function POST(request: NextRequest) {
     })
 
     const encoder = new TextEncoder()
+    const streamStartedAt = Date.now()
+    let streamedTokenCount = 0
     const stream = new ReadableStream({
       async start(controller) {
         try {
           for await (const delta of result.textStream) {
+            streamedTokenCount += 1
             controller.enqueue(encoder.encode(delta))
           }
         } finally {
+          logMetric("stream_summary", {
+            durationMs: Date.now() - streamStartedAt,
+            streamedTokenCount,
+            toolInvocations: toolRouting.requestedTools.length,
+            toolFailures: toolRouting.fallbackTools.length,
+          })
+          logMetric("request_end", {
+            status: 200,
+            latencyMs: Date.now() - startedAt,
+            streamedTokenCount,
+            toolInvocations: toolRouting.requestedTools.length,
+            toolFailures: toolRouting.fallbackTools.length,
+            outcome: "streamed",
+          })
           controller.close()
         }
       },
@@ -175,6 +209,7 @@ export async function POST(request: NextRequest) {
           ? "Selected model does not support this feature. Please choose a text-capable model."
           : error.message
 
+      logMetric("request_end", { status, latencyMs: Date.now() - startedAt, outcome: "provider_error", errorCode: error.code }, "warn")
       return respondError(
         request,
         { code: error.code === "TIMEOUT" ? CHAT_ERROR_CODES.PROVIDER_TIMEOUT : error.code, message },
@@ -190,6 +225,7 @@ export async function POST(request: NextRequest) {
       error,
     })
 
+    logMetric("request_end", { status: 500, latencyMs: Date.now() - startedAt, outcome: "failed" }, "error")
     return respondError(
       request,
       { code: "INTERNAL_ERROR", message: "Internal Server Error" },

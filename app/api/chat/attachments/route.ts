@@ -13,6 +13,8 @@ import {
   createChatAttachmentRecord,
   ensurePendingChatMessageOwnership,
 } from "@/lib/repositories/chat-attachments"
+import { logApiEvent } from "@/lib/api/logging"
+import { resolveRequestId } from "@/lib/api/response"
 
 const requestSchema = z.object({
   sessionId: z.string().trim().min(1),
@@ -41,10 +43,26 @@ function validateTypeAndSize(type: string, size: number) {
 }
 
 export async function POST(request: NextRequest) {
+  const requestId = resolveRequestId(request)
+  const route = "/api/chat/attachments"
+  const startedAt = Date.now()
+  const logMetric = (name: string, details: Record<string, unknown>, level: "info" | "warn" | "error" = "info") => {
+    logApiEvent(level, `chat.attachments.metric.${name}`, {
+      requestId,
+      route,
+      method: "POST",
+      details,
+    })
+  }
+
+  logMetric("request_start", { status: "started" })
+
   const session = await getServerAuthSession()
   const userId = String(session?.user?.id ?? "").trim()
 
   if (!userId) {
+    logMetric("auth_rejection", { reason: "missing_session", status: 401 }, "warn")
+    logMetric("request_end", { status: 401, latencyMs: Date.now() - startedAt, outcome: "rejected" }, "warn")
     return NextResponse.json({ error: "Unauthorized", code: "AUTH_REQUIRED" }, { status: 401 })
   }
 
@@ -59,6 +77,7 @@ export async function POST(request: NextRequest) {
       const file = form.get("file")
 
       if (!sessionId || !(file instanceof File)) {
+        logMetric("request_end", { status: 400, latencyMs: Date.now() - startedAt, outcome: "invalid_request" }, "warn")
         return NextResponse.json({ error: "sessionId and file are required", code: "INVALID_REQUEST" }, { status: 400 })
       }
 
@@ -72,12 +91,14 @@ export async function POST(request: NextRequest) {
 
       const existingCount = await countAttachmentsForMessage(pendingMessage.messageId)
       if (existingCount + 1 > CHAT_ATTACHMENT_LIMIT) {
+        logMetric("request_end", { status: 400, latencyMs: Date.now() - startedAt, outcome: "limit_exceeded" }, "warn")
         return NextResponse.json({ error: "Attachment limit exceeded", code: "INVALID_ATTACHMENT" }, { status: 400 })
       }
 
       const buffer = Buffer.from(await file.arrayBuffer())
       const actualChecksum = computeSha256Hex(buffer)
       if (!expectedChecksum || expectedChecksum !== actualChecksum) {
+        logMetric("request_end", { status: 400, latencyMs: Date.now() - startedAt, outcome: "checksum_mismatch" }, "warn")
         return NextResponse.json({ error: "Attachment checksum mismatch", code: "INVALID_ATTACHMENT" }, { status: 400 })
       }
 
@@ -92,6 +113,7 @@ export async function POST(request: NextRequest) {
         checksum: actualChecksum,
       })
 
+      logMetric("request_end", { status: 200, latencyMs: Date.now() - startedAt, outcome: "uploaded_multipart" })
       return NextResponse.json({
         data: {
           attachment,
@@ -104,16 +126,19 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}))
     const parsed = requestSchema.safeParse(body)
     if (!parsed.success) {
+      logMetric("request_end", { status: 400, latencyMs: Date.now() - startedAt, outcome: "invalid_request" }, "warn")
       return NextResponse.json({ error: "Invalid attachment request", code: "INVALID_REQUEST", details: parsed.error.flatten() }, { status: 400 })
     }
 
     const payload = parsed.data
 
     if (payload.mode === "multipart") {
+      logMetric("request_end", { status: 400, latencyMs: Date.now() - startedAt, outcome: "invalid_mode" }, "warn")
       return NextResponse.json({ error: "Use multipart/form-data with file for multipart mode", code: "INVALID_REQUEST" }, { status: 400 })
     }
 
     if (!payload.type || !payload.size || !payload.name || !payload.checksum) {
+      logMetric("request_end", { status: 400, latencyMs: Date.now() - startedAt, outcome: "missing_signed_fields" }, "warn")
       return NextResponse.json({ error: "name, type, size and checksum are required for signed mode", code: "INVALID_REQUEST" }, { status: 400 })
     }
 
@@ -127,6 +152,7 @@ export async function POST(request: NextRequest) {
 
     const existingCount = await countAttachmentsForMessage(pendingMessage.messageId)
     if (existingCount + 1 > CHAT_ATTACHMENT_LIMIT) {
+      logMetric("request_end", { status: 400, latencyMs: Date.now() - startedAt, outcome: "limit_exceeded" }, "warn")
       return NextResponse.json({ error: "Attachment limit exceeded", code: "INVALID_ATTACHMENT" }, { status: 400 })
     }
 
@@ -142,6 +168,7 @@ export async function POST(request: NextRequest) {
     const expiresInSeconds = 15 * 60
     const uploadUrl = await CloudStorage.getSignedUploadUrl(storageKey, payload.type, expiresInSeconds)
 
+    logMetric("request_end", { status: 200, latencyMs: Date.now() - startedAt, outcome: "signed_url_issued" })
     return NextResponse.json({
       data: {
         attachment,
@@ -161,6 +188,9 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const code = error instanceof Error ? error.message : "INTERNAL_ERROR"
     const status = code === "SESSION_ACCESS_DENIED" ? 403 : code === "PENDING_MESSAGE_NOT_FOUND" ? 404 : 500
+    const outcome = code === "SESSION_ACCESS_DENIED" ? "ownership_rejected" : code === "PENDING_MESSAGE_NOT_FOUND" ? "pending_message_not_found" : "upload_failed"
+    logMetric("upload_failure", { code, status, outcome }, status >= 500 ? "error" : "warn")
+    logMetric("request_end", { status, latencyMs: Date.now() - startedAt, outcome }, status >= 500 ? "error" : "warn")
     return NextResponse.json({ error: "Unable to process attachment upload", code }, { status })
   }
 }
