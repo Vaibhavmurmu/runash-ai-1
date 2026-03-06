@@ -63,7 +63,8 @@ export function ChatWorkspace() {
   type ChatRunDiagnostics = { requestId: string | null; provider: string | null; model: string | null; lastErrorCode: string | null; toolCalls: ChatRunToolDiagnostic[] }
   type ModelCatalogEntry = { id: string; provider: string; label: string }
 
-  const { data: authSession } = useSession()
+  const sessionState = useSession()
+  const authSession = sessionState?.data
   const userScopedStorageKey = useMemo(() => String(authSession?.user?.id ?? "anonymous"), [authSession?.user?.id])
 
   const { openFromTrigger } = useDashboardModelDialog()
