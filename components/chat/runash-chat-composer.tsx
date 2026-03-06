@@ -3,7 +3,7 @@
 import { type ChangeEvent, type DragEvent, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { ChevronDown, Send, Sparkles, Search, OctagonX, RotateCcw, Image as ImageIcon, RefreshCcw, X } from "lucide-react"
+import { ChevronDown, Send, Sparkles, Search, OctagonX, RotateCcw, Image as ImageIcon, RefreshCcw, X, PencilLine } from "lucide-react"
 
 type StreamControllerState = "idle" | "sending" | "streaming" | "stopping" | "failed"
 type ComposerHealthState = "ready" | "usage-limit" | "provider-error" | "network-timeout"
@@ -468,6 +468,7 @@ export function RunAshChatComposer({
 
         {attachmentPreview ? (
           <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-zinc-700/80 bg-zinc-950/70 p-2">
+            <span className="px-1 text-[11px] font-medium uppercase tracking-wide text-zinc-400">Attachment actions:</span>
             <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/70 px-2 py-1.5 text-xs text-zinc-300">
               <img src={attachmentPreview.previewUrl} alt={attachmentPreview.metadata.name} className="h-9 w-9 rounded-lg object-cover" />
               <div className="min-w-0">
@@ -486,7 +487,7 @@ export function RunAshChatComposer({
             ) : null}
             {onAttachFile ? (
               <Button type="button" variant="outline" size="sm" className={ATTACHMENT_ACTION_BUTTON_CLASS} onClick={() => attachmentInputRef.current?.click()} disabled={disabled || isBusy}>
-                Replace
+                <PencilLine className="mr-1 h-3.5 w-3.5" /> Replace
               </Button>
             ) : null}
             {onRemoveAttachment ? (
