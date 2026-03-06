@@ -1,0 +1,34 @@
+import { NextRequest } from "next/server"
+
+import { requireSellerSessionUserId } from "@/app/api/seller/_auth"
+import { respondError, respondSuccess } from "@/lib/api/envelope"
+import { liveStreamService, LiveStreamValidationError } from "@/services/live-stream/live-stream-service"
+
+function readIdempotencyKey(request: NextRequest): string | null {
+  const key = request.headers.get("idempotency-key")?.trim()
+  if (!key) return null
+  return key.slice(0, 255)
+}
+
+export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  try {
+    const actorUserId = await requireSellerSessionUserId(request)
+    if (actorUserId instanceof Response) return actorUserId
+
+    const idempotencyKey = readIdempotencyKey(request)
+    if (!idempotencyKey) {
+      return respondError(request, { code: "MISSING_IDEMPOTENCY_KEY", message: "Idempotency-Key header is required" }, { status: 400 })
+    }
+
+    const { id } = await context.params
+    const result = await liveStreamService.stopSession({ sessionId: id, actorUserId, idempotencyKey })
+
+    return respondSuccess(request, result)
+  } catch (error) {
+    if (error instanceof LiveStreamValidationError) {
+      return respondError(request, { code: "LIVE_STREAM_VALIDATION_FAILED", message: error.message }, { status: error.statusCode })
+    }
+
+    return respondError(request, { code: "LIVE_STREAM_STOP_FAILED", message: "Failed to stop live stream session" }, { status: 500 })
+  }
+}
