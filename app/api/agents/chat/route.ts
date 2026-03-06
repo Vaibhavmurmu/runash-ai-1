@@ -24,7 +24,12 @@ import { enqueueToolJob } from "@/services/agent-tool-queue-worker"
 import { AIProviderError, resolveModelSelection, streamModelTextWithFallback } from "@/lib/ai/provider-registry"
 import { buildDefaultToolPayloads, buildToolPlan, resolveRunAshChatToolSelection } from "./chat-request-handler"
 import { CHAT_ERROR_CODES, chatAttachmentSchema, clientRequestIdSchema, streamRetrySchema } from "@/lib/chat-contracts"
-import { encodeChatStreamEvent } from "./stream-event-contract"
+import {
+  encodeChatStreamEvent,
+  normalizeToolErrorEventPayload,
+  normalizeToolResultEventPayload,
+  normalizeToolStartEventPayload,
+} from "./stream-event-contract"
 
 const requestSchema = z.object({
   agentRole: z.enum(AGENT_ROLES).default("broker"),
@@ -155,6 +160,21 @@ export async function POST(request: NextRequest) {
     const eventStream = new ReadableStream({
       async start(controller) {
         const send = (event: string, data: Record<string, unknown>) => {
+          if (event === "tool_start") {
+            controller.enqueue(encoder.encode(encodeChatStreamEvent(event, normalizeToolStartEventPayload(data))))
+            return
+          }
+
+          if (event === "tool_result") {
+            controller.enqueue(encoder.encode(encodeChatStreamEvent(event, normalizeToolResultEventPayload(data))))
+            return
+          }
+
+          if (event === "tool_error") {
+            controller.enqueue(encoder.encode(encodeChatStreamEvent(event, normalizeToolErrorEventPayload(data))))
+            return
+          }
+
           controller.enqueue(encoder.encode(encodeChatStreamEvent(event, data)))
         }
 
@@ -189,8 +209,12 @@ export async function POST(request: NextRequest) {
             | undefined
 
           if (checkoutValidation?.status === "blocked") {
+            const blockedFinishedAt = new Date().toISOString()
             send("tool_result", {
               tool: "initiate_link_checkout",
+              executionId: `initiate_link_checkout-blocked-${Date.now()}`,
+              messageId: assistantMessage.id,
+              finishedAt: blockedFinishedAt,
               result: {
                 status: "blocked",
                 reason: "missing_checkout_context",
@@ -221,7 +245,6 @@ export async function POST(request: NextRequest) {
             send("tool_start", {
               tool,
               messageId: assistantMessage.id,
-              status: "tool-running",
               executionId: toolExecutionId,
               startedAt,
               timeoutMs: toolPolicy.timeoutMs,
@@ -257,11 +280,14 @@ export async function POST(request: NextRequest) {
               }
               send("tool_result", {
                 tool,
+                executionId: summaryEntry?.id ?? toolExecutionId,
+                messageId: assistantMessage.id,
+                startedAt,
+                finishedAt,
+                durationMs: summaryEntry?.durationMs as number | undefined,
                 result: execution.result,
                 fromCache: execution.fromCache,
-                executionId: summaryEntry?.id,
-                timeoutMs: toolPolicy.timeoutMs,
-                retryCount: toolPolicy.retryCount,
+                attempts: toolPolicy.retryCount + 1,
               })
 
               logApiEvent("info", "agents.chat.tool.result", {
@@ -294,18 +320,18 @@ export async function POST(request: NextRequest) {
                 summaryEntry.attempts = toolPolicy.retryCount + 1
               }
 
-              send("tool_result", {
+              send("tool_error", {
                 tool,
-                executionId: summaryEntry?.id,
-                fromCache: false,
-                timeoutMs: toolPolicy.timeoutMs,
-                retryCount: toolPolicy.retryCount,
+                executionId: summaryEntry?.id ?? toolExecutionId,
+                messageId: assistantMessage.id,
+                startedAt: summaryEntry?.startedAt,
+                finishedAt,
+                durationMs: summaryEntry?.durationMs as number | undefined,
                 errorCode,
+                errorMessage: toolError instanceof Error ? toolError.message : "Tool execution failed",
                 failureReason: errorCode,
-                result: {
-                  status: "failed",
-                  code: errorCode,
-                },
+                attempts: toolPolicy.retryCount + 1,
+                payload,
               })
 
               logApiEvent("warn", "agents.chat.tool.result", {
@@ -344,8 +370,16 @@ export async function POST(request: NextRequest) {
               retryCount: toolPolicy.retryCount,
               attempts: 0,
             })
-            send("tool_start", { tool, messageId: assistantMessage.id, status: "tool-running", executionId: toolExecutionId, startedAt, timeoutMs: toolPolicy.timeoutMs, retryCount: toolPolicy.retryCount })
             const payload = parsed.data.toolPayloads?.[tool] ?? defaultPayloads?.[tool] ?? { query: sanitizedMessage }
+            send("tool_start", {
+              tool,
+              messageId: assistantMessage.id,
+              executionId: toolExecutionId,
+              startedAt,
+              timeoutMs: toolPolicy.timeoutMs,
+              retryCount: toolPolicy.retryCount,
+              payload,
+            })
             const jobId = enqueueToolJob({
               tool,
               payload,
@@ -369,11 +403,13 @@ export async function POST(request: NextRequest) {
             }
             send("tool_result", {
               tool,
+              executionId: summaryEntry?.id ?? toolExecutionId,
+              messageId: assistantMessage.id,
+              startedAt,
+              finishedAt,
+              durationMs: summaryEntry?.durationMs as number | undefined,
               result: { queued: true, jobId },
               fromCache: false,
-              executionId: summaryEntry?.id,
-              timeoutMs: toolPolicy.timeoutMs,
-              retryCount: toolPolicy.retryCount,
               attempts: 0,
             })
             logApiEvent("info", "agents.chat.tool.result", {
