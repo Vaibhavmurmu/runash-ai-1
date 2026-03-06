@@ -1,5 +1,6 @@
 import { sql } from "@/lib/db"
 import type { MediaAssetKind, MediaVariantType } from "@/lib/media/types"
+import { recordOperationMetric, withOperationSpan } from "@/lib/operations-observability"
 
 interface QueueTranscodeInput {
   assetId: string
@@ -71,11 +72,18 @@ export async function queueTranscodePipeline(input: QueueTranscodeInput) {
     includePreview: true,
   }
 
-  const [job] = await sql`
-    INSERT INTO media_transcode_jobs (asset_id, owner_id, pipeline, status, requested_outputs)
-    VALUES (${input.assetId}, ${input.ownerId}, ${input.kind === "video" ? "video-adaptive" : "lightweight"}, 'processing', ${JSON.stringify(requestedOutputs)}::jsonb)
-    RETURNING *
-  `
+  const [job] = await withOperationSpan(
+    "media.transcode.job.create",
+    { attributes: { assetId: input.assetId, ownerId: input.ownerId, kind: input.kind } },
+    async () =>
+      sql`
+        INSERT INTO media_transcode_jobs (asset_id, owner_id, pipeline, status, requested_outputs)
+        VALUES (${input.assetId}, ${input.ownerId}, ${input.kind === "video" ? "video-adaptive" : "lightweight"}, 'processing', ${JSON.stringify(requestedOutputs)}::jsonb)
+        RETURNING *
+      `,
+  )
+  const queueLatencyMs = 0
+  recordOperationMetric("ops.job_queue_latency.ms", queueLatencyMs, { pipeline: "media-transcode", jobId: String(job.id) })
 
   const plan = getVariantPlan(input.kind)
 
@@ -162,6 +170,8 @@ export async function queueTranscodePipeline(input: QueueTranscodeInput) {
     SET status='ready', finalized_at=COALESCE(finalized_at, now()), updated_at=now()
     WHERE id=${input.assetId} AND owner_id=${input.ownerId}
   `
+
+  recordOperationMetric("ops.media_transcode.success", 1, { assetId: input.assetId, jobId: String(job.id), variantCount: plan.length })
 
   return { jobId: job.id, generatedVariants: plan }
 }
