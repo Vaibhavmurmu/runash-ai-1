@@ -350,13 +350,13 @@ export function ChatWorkspace() {
   }
 
   const fetchSessionMessages = async (sessionId: string) => {
-    const response = await fetch(`/api/agents/sessions/${encodeURIComponent(sessionId)}?limit=100`, { cache: "no-store" })
+    const response = await fetch(`/api/messages/session/${encodeURIComponent(sessionId)}?limit=50`, { cache: "no-store" })
     if (!response.ok) {
       throw new Error("Unable to hydrate session")
     }
 
-    const payload = (await response.json()) as { data?: { messages?: Array<Record<string, unknown>> } }
-    const rawMessages = Array.isArray(payload.data?.messages) ? payload.data.messages : []
+    const payload = (await response.json()) as { data?: Array<Record<string, unknown>> }
+    const rawMessages = Array.isArray(payload.data) ? payload.data : []
 
     return rawMessages
       .map((entry) =>
@@ -374,6 +374,34 @@ export function ChatWorkspace() {
       )
       .filter((message): message is ChatMessage => message !== null)
       .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+  }
+
+  const persistMessage = async (input: {
+    sessionId: string
+    role: "user" | "assistant"
+    content: string
+    messageType?: "text" | "product" | "recipe" | "tip" | "automation"
+  }) => {
+    const normalizedContent = input.content.trim()
+    if (!normalizedContent) return null
+
+    const response = await fetch("/api/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: input.sessionId,
+        role: input.role,
+        content: normalizedContent,
+        messageType: input.messageType ?? "text",
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error("message_persist_failed")
+    }
+
+    const payload = (await response.json()) as { data?: { id?: string | number } }
+    return payload.data?.id ? String(payload.data.id) : null
   }
 
   const ensureActiveSession = async (titleSeed: string) => {
@@ -897,6 +925,21 @@ export function ChatWorkspace() {
       status: "queued",
     }
 
+    let assistantSnapshot = assistantMessage
+    let assistantPersisted = false
+    const finalizeAssistantPersistence = async () => {
+      if (!activeSessionId || assistantPersisted) return
+
+      const fallbackContent = assistantSnapshot.status === "failed" ? "Sorry, I couldn't complete that request." : "Stopped. You can retry from the composer."
+      const finalContent = assistantSnapshot.content.trim() || fallbackContent
+      await persistMessage({
+        sessionId: activeSessionId,
+        role: "assistant",
+        content: finalContent,
+      })
+      assistantPersisted = true
+    }
+
     appendLocalMessage(userMessage)
     appendLocalMessage(assistantMessage)
     setInputValue("")
@@ -922,6 +965,11 @@ export function ChatWorkspace() {
       const activeSession = await ensureActiveSession(content)
       activeSessionId = activeSession.id
       activeSessionTitle = activeSession.title
+      await persistMessage({
+        sessionId: activeSession.id,
+        role: "user",
+        content,
+      })
 
       const requestedTools = resolveRequestedToolsForMessage(content)
       const normalizedContent = applyComposerModifiers(content)
@@ -956,25 +1004,34 @@ export function ChatWorkspace() {
         const payload = (await response.json()) as { deduped?: boolean; sessionId?: string; messageId?: string; content?: string; requestId?: string }
         if (payload.deduped) {
           const dedupeKey = payload.sessionId && payload.requestId ? `${payload.sessionId}:${payload.requestId}` : payload.messageId
-          if (dedupeKey && turnCompletionDedupRef.current.has(dedupeKey)) {
-            setStreamControllerState("idle")
-            return
-          }
           if (dedupeKey) {
             turnCompletionDedupRef.current.add(dedupeKey)
           }
-          setMessages((prev) =>
-            prev.map((entry) =>
-              entry.id === assistantId
-                ? {
-                    ...entry,
-                    id: payload.messageId ?? entry.id,
-                    content: payload.content ?? entry.content,
-                    status: "completed",
-                  }
-                : entry,
-            ),
-          )
+
+          setMessages((prev) => prev.filter((entry) => entry.id !== assistantId))
+
+          if (activeSessionId) {
+            try {
+              const hydratedMessages = (await fetchSessionMessages(activeSessionId)).map(normalizeChatMessage)
+              if (hydratedMessages.length > 0) {
+                setMessages(hydratedMessages)
+                setChatSessions((prev) =>
+                  prev.map((item) =>
+                    item.id === activeSessionId
+                      ? {
+                          ...item,
+                          messages: hydratedMessages,
+                          updatedAt: hydratedMessages.at(-1)?.timestamp ?? item.updatedAt,
+                        }
+                      : item,
+                  ),
+                )
+              }
+            } catch {
+              // best-effort hydration for deduped retries
+            }
+          }
+
           setStreamControllerState("idle")
           return
         }
@@ -1002,6 +1059,7 @@ export function ChatWorkspace() {
       let buffer = ""
 
       const updateAssistantMessage = (updater: (existing: ChatMessage) => ChatMessage) => {
+        assistantSnapshot = normalizeChatMessage(updater(assistantSnapshot))
         setMessages((prev) => prev.map((item) => (item.id === assistantId ? updater(item) : item)))
       }
 
@@ -1295,6 +1353,8 @@ export function ChatWorkspace() {
                 trackUpgradeMetric("first_message_completed", "deferred_upgrade_prompt")
               }
             }
+
+            await finalizeAssistantPersistence()
           }
 
           if (eventName === "error") {
@@ -1345,20 +1405,30 @@ export function ChatWorkspace() {
                   status: "completed",
                   content: entry.content || "Stopped. You can retry from the composer.",
                 }
-              : entry,
+            : entry,
           ),
         )
+        assistantSnapshot = {
+          ...assistantSnapshot,
+          status: "completed",
+          content: assistantSnapshot.content || "Stopped. You can retry from the composer.",
+        }
+        await finalizeAssistantPersistence()
         setStreamControllerState("idle")
       } else if (isAbortError && timeoutAbort) {
         setComposerHealth("network-timeout")
         setStreamControllerState("failed")
         setRunDiagnostics((previous) => ({ ...previous, lastErrorCode: "NETWORK_TIMEOUT" }))
+        assistantSnapshot = { ...assistantSnapshot, status: "failed" }
+        await finalizeAssistantPersistence()
       } else {
         setComposerHealth((prev) => (prev === "ready" ? "provider-error" : prev))
         setStreamControllerState("failed")
         setRunDiagnostics((previous) => ({ ...previous, lastErrorCode: previous.lastErrorCode || "STREAM_REQUEST_FAILED" }))
         const fallback = buildAssistantResponse(content)
         setMessages((prev) => prev.map((entry) => (entry.id === assistantId ? { ...fallback, id: assistantId } : entry)))
+        assistantSnapshot = { ...fallback, id: assistantId, status: "failed" }
+        await finalizeAssistantPersistence()
       }
     } finally {
       window.clearTimeout(timeoutId)
