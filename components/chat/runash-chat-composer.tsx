@@ -303,6 +303,7 @@ export function RunAshChatComposer({
   const shouldShowUpgradePrompt = showUpgradePrompt && !upgradePromptDismissed
   const isStreaming = streamState === "sending" || streamState === "streaming"
   const isRetryableFailure = streamState === "failed" || composerHealth === "provider-error" || composerHealth === "network-timeout"
+  const hasStatusOrError = composerHealth !== "ready" || Boolean(composerError) || Boolean(attachmentError)
   const isBusy = isStreaming || streamState === "stopping" || isEnhancing || attachmentPreview?.uploadState === "uploading"
   const canSend = !disabled && !isBusy && !isHardLimitExceeded && attachmentPreview?.uploadState !== "failed" && Boolean(value.trim())
   const sendButtonLabel =
@@ -500,6 +501,44 @@ export function RunAshChatComposer({
       </div>
 
 
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
+        <span>Enter to send • Shift+Enter newline • Controls are keyboard accessible.</span>
+        <div className="flex items-center gap-2">
+          {isRetryableFailure && onRetry ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onRetry}
+              className="h-8 rounded-lg border-amber-700 text-amber-200 hover:bg-amber-950"
+              disabled={disabled || isBusy}
+              aria-label="Retry previous request"
+            >
+              <RotateCcw className="mr-1 h-4 w-4" /> Retry
+            </Button>
+          ) : null}
+          {isStreaming && onStop ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onStop}
+              className="h-8 rounded-lg border-red-700 text-red-200 hover:bg-red-950"
+              aria-label="Stop generating response"
+            >
+              <OctagonX className="mr-1 h-4 w-4" /> Stop
+            </Button>
+          ) : null}
+          <Button
+            onClick={() => handleSubmit()}
+            disabled={!canSend}
+            className="h-8 rounded-lg bg-orange-500 px-4 font-semibold text-zinc-950 hover:bg-orange-400"
+            aria-label="Send prompt"
+          >
+            <Send className="mr-1 h-4 w-4" />
+            {sendButtonLabel}
+          </Button>
+        </div>
+      </div>
+
       {composerHealth !== "ready" ? (
         <div className="rounded-md border border-amber-700/60 bg-amber-950/30 px-3 py-2 text-xs text-amber-100">
           {composerHealth === "usage-limit" ? "Usage limit reached. Wait for your quota window, then retry." : null}
@@ -600,57 +639,9 @@ export function RunAshChatComposer({
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
-        <span>Enter to send • Shift+Enter newline • Controls are keyboard accessible.</span>
-        <div className="flex items-center gap-2">
-          {isRetryableFailure && onRetry ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onRetry}
-              className="h-8 rounded-lg border-amber-700 text-amber-200 hover:bg-amber-950"
-              disabled={disabled || isBusy}
-              aria-label="Retry previous request"
-            >
-              <RotateCcw className="mr-1 h-4 w-4" /> Retry
-            </Button>
-          ) : null}
-          {isStreaming && onStop ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onStop}
-              className="h-8 rounded-lg border-red-700 text-red-200 hover:bg-red-950"
-              aria-label="Stop generating response"
-            >
-              <OctagonX className="mr-1 h-4 w-4" /> Stop
-            </Button>
-          ) : null}
-            <Button
-              onClick={() => handleSubmit()}
-              disabled={!canSend}
-              className="h-8 rounded-lg bg-orange-500 px-4 font-semibold text-zinc-950 hover:bg-orange-400"
-              aria-label="Send prompt"
-            >
-            <Send className="mr-1 h-4 w-4" />
-            {sendButtonLabel}
-          </Button>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/60 px-3 py-2 text-[11px]">
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-          {onAttachFile ? (
-            <span className="inline-flex items-center gap-1 text-zinc-400">
-              <ImageIcon className="h-3 w-3" />
-              {isTouchDevice ? "Tap Attach to upload an image" : "Drag and drop an image, or click Attach"}
-            </span>
-          ) : (
-            <span className="text-zinc-400">Use templates or customize tone from Advanced options.</span>
-          )}
-
-          {shouldShowUpgradePrompt ? (
-            <div className="flex items-center gap-2 text-zinc-300">
+      <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/60 px-3 py-2 text-[11px] text-zinc-400">
+        {shouldShowUpgradePrompt ? (
+          <div className="flex items-center justify-between gap-2 text-zinc-300">
             <span>
               Need higher usage limits?{" "}
               <a
@@ -672,9 +663,16 @@ export function RunAshChatComposer({
             >
               Dismiss
             </Button>
-            </div>
-          ) : null}
-        </div>
+          </div>
+        ) : onAttachFile && !hasStatusOrError ? (
+          <span className="inline-flex items-center gap-1">
+            <span className="rounded-full border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-300">Attachment hint</span>
+            <ImageIcon className="h-3 w-3" />
+            {isTouchDevice ? "Tap Attach to add an image." : "Drag and drop an image, or use Attach."}
+          </span>
+        ) : (
+          <span>Use templates or Advanced options to refine your prompt.</span>
+        )}
       </div>
     </div>
   )
