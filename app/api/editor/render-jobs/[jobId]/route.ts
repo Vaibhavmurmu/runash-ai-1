@@ -46,7 +46,7 @@ export async function PATCH(request: Request, { params }: { params: { jobId: str
         updated_at=now()
       WHERE id=${jobId}
         AND owner_id=${auth.userId}
-        AND status IN ('queued', 'processing')
+        AND status IN ('queued', 'processing', 'retrying')
       RETURNING *
     `
 
