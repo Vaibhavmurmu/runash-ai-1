@@ -3,6 +3,8 @@ import { requireEditorUser } from "@/app/api/editor/_lib"
 import { sql } from "@/lib/db"
 import { CloudStorage } from "@/lib/cloud-storage"
 import { queueTranscodePipeline } from "@/lib/media/transcode-pipeline"
+import { createRequestLogContext, logApiEvent } from "@/lib/api/logging"
+import { recordOperationMetric, resolveCorrelationId, withOperationSpan } from "@/lib/operations-observability"
 
 function readNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value) && value > 0) return value
@@ -15,6 +17,7 @@ function readNumber(value: unknown): number | null {
 }
 
 export async function POST(request: NextRequest, { params }: { params: { assetId: string } }) {
+  const correlationId = resolveCorrelationId(request)
   const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
 
@@ -60,7 +63,11 @@ export async function POST(request: NextRequest, { params }: { params: { assetId
 
   await sql`UPDATE media_assets SET status='processing', updated_at=now() WHERE id=${params.assetId} AND owner_id=${auth.userId}`
 
-  const transcode = await queueTranscodePipeline({
+  const transcode = await withOperationSpan(
+    "media.transcode.queue",
+    { correlationId, attributes: { assetId: params.assetId, ownerId: auth.userId } },
+    async () =>
+      queueTranscodePipeline({
     assetId: params.assetId,
     ownerId: auth.userId,
     projectId: updated.project_id,
@@ -70,6 +77,13 @@ export async function POST(request: NextRequest, { params }: { params: { assetId
     durationSeconds: updated.duration_seconds,
     width: updated.width,
     height: updated.height,
+  }),
+  )
+
+  recordOperationMetric("ops.media_ingest.success", 1, { assetId: params.assetId })
+  logApiEvent("info", "media.upload.finalize.completed", {
+    ...createRequestLogContext(request, { userId: String(auth.userId) }),
+    details: { assetId: params.assetId, transcodeJobId: transcode.jobId, correlationId },
   })
 
   const [resultAsset] = await sql`SELECT * FROM media_assets WHERE id=${params.assetId} AND owner_id=${auth.userId}`
