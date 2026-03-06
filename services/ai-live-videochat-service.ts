@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { getSql } from "@/lib/db/neon"
+import { recordGenerationFailureBucket, withOperationSpan } from "@/lib/operations-observability"
 
 export type LiveChatRole = "seller" | "buyer" | "assistant"
 export type SessionStatus = "active" | "ended"
@@ -38,6 +39,7 @@ type RoutedMediaEvent = {
 type CreateSessionInput = {
   sellerUserId: number
   title?: string
+  correlationId?: string
 }
 
 type JoinSessionInput = {
@@ -84,30 +86,36 @@ export class AiLiveVideoChatService {
     const sql = getSql()
     const sessionId = randomUUID()
 
-    const [created] = await sql/* sql */`
-      INSERT INTO ai_live_chat_sessions (id, seller_user_id, title, status, started_at)
-      VALUES (${sessionId}, ${input.sellerUserId}, ${input.title ?? "Live AI Sales Session"}, 'active', NOW())
-      RETURNING id, seller_user_id, status, title, created_at, started_at, ended_at
-    `
+    return withOperationSpan(
+      "live_chat.session.create",
+      { correlationId: input.correlationId, attributes: { sessionId, sellerUserId: input.sellerUserId } },
+      async () => {
+        const [created] = await sql/* sql */`
+          INSERT INTO ai_live_chat_sessions (id, seller_user_id, title, status, started_at)
+          VALUES (${sessionId}, ${input.sellerUserId}, ${input.title ?? "Live AI Sales Session"}, 'active', NOW())
+          RETURNING id, seller_user_id, status, title, created_at, started_at, ended_at
+        `
 
-    await this.recordEvent({
-      sessionId,
-      actorRole: "seller",
-      actorUserId: input.sellerUserId,
-      eventType: "session_created",
-      payload: { title: created.title },
-      latencyMs: null,
-    })
+        await this.recordEvent({
+          sessionId,
+          actorRole: "seller",
+          actorUserId: input.sellerUserId,
+          eventType: "session_created",
+          payload: { title: created.title },
+          latencyMs: null,
+        })
 
-    return {
-      id: created.id,
-      sellerUserId: Number(created.seller_user_id),
-      status: created.status,
-      title: created.title,
-      createdAt: created.created_at,
-      startedAt: created.started_at,
-      endedAt: created.ended_at,
-    }
+        return {
+          id: created.id,
+          sellerUserId: Number(created.seller_user_id),
+          status: created.status,
+          title: created.title,
+          createdAt: created.created_at,
+          startedAt: created.started_at,
+          endedAt: created.ended_at,
+        }
+      },
+    )
   }
 
   async joinSession(input: JoinSessionInput): Promise<SessionParticipant> {
@@ -278,14 +286,22 @@ export class AiLiveVideoChatService {
     }
 
     try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sessionId: input.sessionId, role: input.role, message: input.message }),
-        signal: AbortSignal.timeout(4500),
-      })
+      const response = await withOperationSpan(
+        "live_chat.provider.generate_reply",
+        { attributes: { sessionId: input.sessionId, role: input.role, provider: "live-chat-endpoint" } },
+        async () =>
+          fetch(endpoint, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ sessionId: input.sessionId, role: input.role, message: input.message }),
+            signal: AbortSignal.timeout(4500),
+          }),
+      )
 
-      if (!response.ok) throw new Error("AI endpoint unavailable")
+      if (!response.ok) {
+        recordGenerationFailureBucket("live-chat-endpoint", `http_${response.status}`, { operation: "assistant_reply" })
+        throw new Error("AI endpoint unavailable")
+      }
 
       const payload = (await response.json()) as { reply?: string }
       const reply = payload.reply?.trim()
@@ -295,7 +311,8 @@ export class AiLiveVideoChatService {
         fallbackUsed: !reply,
         latencyMs: Date.now() - started,
       }
-    } catch {
+    } catch (error) {
+      recordGenerationFailureBucket("live-chat-endpoint", error instanceof Error ? error.name : "unknown", { operation: "assistant_reply" })
       return { reply: fallbackAssistantReply(input.role), fallbackUsed: true, latencyMs: Date.now() - started }
     }
   }

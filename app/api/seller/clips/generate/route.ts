@@ -2,8 +2,11 @@ import { type NextRequest } from "next/server"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { requireSellerSessionUserId } from "@/app/api/seller/_auth"
 import { AIShortclipPipelineService } from "@/services/ai-shortclip-pipeline-service"
+import { createRequestLogContext, logApiEvent } from "@/lib/api/logging"
+import { resolveCorrelationId } from "@/lib/operations-observability"
 
 export async function POST(request: NextRequest) {
+  const correlationId = resolveCorrelationId(request)
   const sellerUserId = await requireSellerSessionUserId(request)
   if (sellerUserId instanceof Response) return sellerUserId
 
@@ -38,8 +41,10 @@ export async function POST(request: NextRequest) {
       reviewRequired: body.reviewRequired,
     })
 
+    logApiEvent("info", "seller.clips.job.created", { ...createRequestLogContext(request, { userId: String(sellerUserId) }), details: { jobId: job.id, correlationId } })
     return respondSuccess(request, { job }, { legacy: { job } })
-  } catch {
+  } catch (error) {
+    logApiEvent("error", "seller.clips.job.create_failed", { ...createRequestLogContext(request, { userId: String(sellerUserId) }), details: { correlationId }, error })
     return respondError(
       request,
       { code: "CLIP_JOB_CREATE_FAILED", message: "Unable to create clip generation job." },

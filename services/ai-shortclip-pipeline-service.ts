@@ -1,5 +1,7 @@
 import { getSql } from "@/lib/db/neon"
 import { EnhancedCloudStorage } from "@/lib/enhanced-cloud-storage"
+import { recordGenerationFailureBucket, recordOperationMetric, withOperationSpan } from "@/lib/operations-observability"
+import { logApiEvent } from "@/lib/api/logging"
 
 export type ClipJobStatus = "queued" | "processing" | "review" | "completed" | "failed" | "published"
 
@@ -68,6 +70,8 @@ export class AIShortclipPipelineService {
       )
       RETURNING id, status, progress, pipeline_stage, created_at
     `
+
+    recordOperationMetric("ops.job_queue_latency.ms", 0, { step: "enqueued", jobId: String(job.id) })
 
     void this.runPipeline({
       jobId: String(job.id),
@@ -244,9 +248,17 @@ export class AIShortclipPipelineService {
     reviewRequired: boolean
     channels: string[]
   }) {
+    const queuedAt = Date.now()
+
     try {
       await this.updateJobStage(input.jobId, { stage: "ingest", progress: 10 })
-      const ingestedSource = await this.ingestSource(input.sellerUserId, input.jobId, input.sourceUploadKey, input.sourceUrl)
+      recordOperationMetric("ops.job_queue_latency.ms", Date.now() - queuedAt, { step: "started", jobId: input.jobId })
+      const ingestedSource = await withOperationSpan(
+        "clip_pipeline.media_ingest",
+        { attributes: { jobId: input.jobId } },
+        async () => this.ingestSource(input.sellerUserId, input.jobId, input.sourceUploadKey, input.sourceUrl),
+      )
+      recordOperationMetric("ops.media_ingest.success", 1, { jobId: input.jobId })
 
       await this.updateJobStage(input.jobId, { stage: "scene_peak_detection", progress: 28 })
       await this.pause(250)
@@ -258,13 +270,18 @@ export class AIShortclipPipelineService {
       })
 
       await this.updateJobStage(input.jobId, { stage: "clip_extraction", progress: 76 })
-      const persistedAssets = await this.persistGeneratedAssets({
-        jobId: input.jobId,
-        sellerUserId: input.sellerUserId,
-        sourceUrl: ingestedSource,
-        clips,
-        reviewRequired: input.reviewRequired,
-      })
+      const persistedAssets = await withOperationSpan(
+        "clip_pipeline.db.persist_assets",
+        { attributes: { jobId: input.jobId, clipCount: clips.length } },
+        async () =>
+          this.persistGeneratedAssets({
+            jobId: input.jobId,
+            sellerUserId: input.sellerUserId,
+            sourceUrl: ingestedSource,
+            clips,
+            reviewRequired: input.reviewRequired,
+          }),
+      )
 
       await this.updateJobStage(input.jobId, { stage: "auto_caption_and_metadata_generation", progress: 94 })
       await this.pause(250)
@@ -280,13 +297,32 @@ export class AIShortclipPipelineService {
             metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify({ generatedAssets: persistedAssets, defaultChannels: input.channels })}::jsonb
         WHERE id = ${input.jobId}::uuid
       `
-    } catch {
+      recordOperationMetric("ops.media_transcode.success", 1, { jobId: input.jobId, generatedAssets: persistedAssets })
+      logApiEvent("info", "seller.clips.pipeline.completed", {
+        requestId: input.jobId,
+        route: "worker:ai-shortclip-pipeline",
+        method: "WORKER",
+        userId: String(input.sellerUserId),
+        details: { jobId: input.jobId, reviewRequired: input.reviewRequired, generatedAssets: persistedAssets },
+      })
+    } catch (error) {
       const sql = getSql()
       await sql/* sql */`
         UPDATE public.clip_jobs
         SET status = 'failed', progress = 100, pipeline_stage = 'failed', error_message = 'Pipeline failed during processing', completed_at = NOW(), updated_at = NOW()
         WHERE id = ${input.jobId}::uuid
       `
+      recordOperationMetric("ops.media_transcode.failed", 1, { jobId: input.jobId })
+      recordOperationMetric("ops.media_ingest.failed", 1, { jobId: input.jobId })
+      recordGenerationFailureBucket("clip-pipeline", error instanceof Error ? error.name : "unknown", { jobId: input.jobId })
+      logApiEvent("error", "seller.clips.pipeline.failed", {
+        requestId: input.jobId,
+        route: "worker:ai-shortclip-pipeline",
+        method: "WORKER",
+        userId: String(input.sellerUserId),
+        details: { jobId: input.jobId },
+        error,
+      })
     }
   }
 

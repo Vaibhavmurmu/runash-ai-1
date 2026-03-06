@@ -330,3 +330,9 @@ We welcome contributions to the RunAsh AI live streaming platform. To contribute
 - [Team Guide](./TEAM_GUIDE.md)
 
 MIT and Apache-2.0.
+
+
+## Operations Observability
+
+- Runbook: `docs/OPERATIONS_OBSERVABILITY_RUNBOOK.md`
+- Dashboard queries/panels: `docs/OPERATIONS_DASHBOARD_QUERIES.md`
