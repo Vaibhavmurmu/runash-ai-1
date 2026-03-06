@@ -333,6 +333,16 @@ export function EditorWorkspace() {
         return null
       }
 
+      const resolveDurationFromAssetMetadata = (metadata: unknown): number | null => {
+        if (!metadata || typeof metadata !== "object") return null
+        const metadataRecord = metadata as Record<string, unknown>
+        return (
+          readNumericMetadataDuration(metadataRecord.durationSeconds) ??
+          readNumericMetadataDuration(metadataRecord.duration) ??
+          readNumericMetadataDuration(metadataRecord.videoDurationSeconds)
+        )
+      }
+
       const resolveVideoDurationSeconds = async (): Promise<number | null> => {
         if (!isVideoAsset || typeof window === "undefined") return null
 
@@ -411,12 +421,20 @@ export function EditorWorkspace() {
         }, 0)
 
         const hasValidPlayhead = Number.isFinite(playbackTime) && playbackTime >= 0
-        const preferredStart = hasValidPlayhead ? playbackTime : latestSegmentEnd
-        const insertionStart = Math.max(0, preferredStart, latestSegmentEnd)
+        const playheadStart = hasValidPlayhead ? Math.max(0, playbackTime) : null
+        const playheadOverlapsExisting =
+          playheadStart !== null &&
+          segmentsOnTrack.some(
+            (segment) =>
+              Number.isFinite(segment.startSeconds) &&
+              Number.isFinite(segment.endSeconds) &&
+              segment.startSeconds < playheadStart &&
+              segment.endSeconds > playheadStart,
+          )
+        const insertionStart =
+          playheadStart === null ? latestSegmentEnd : playheadOverlapsExisting ? latestSegmentEnd : playheadStart
 
-        const metadataDuration = isVideoAsset
-          ? readNumericMetadataDuration(assetJson.asset?.metadata?.durationSeconds)
-          : null
+        const metadataDuration = isVideoAsset ? resolveDurationFromAssetMetadata(assetJson.asset?.metadata) : null
         const measuredVideoDuration = metadataDuration ?? (await resolveVideoDurationSeconds())
         const insertionDuration = isVideoAsset
           ? measuredVideoDuration ?? safeDefaultDurationSeconds
