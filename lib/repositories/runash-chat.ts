@@ -64,22 +64,26 @@ function mapSession(session: ChatSession): RunashSession {
   }
 }
 
-export async function listSessions(userId?: string): Promise<RunashSession[]> {
+export async function listSessions(userId: string): Promise<RunashSession[]> {
+  const normalizedUserId = requireUserId(userId)
+
   if (useDatabaseBackedChatStorage) {
-    const sessions = await listChatSessions(requireUserId(userId))
+    const sessions = await listChatSessions(normalizedUserId)
     return sessions.map(mapSession)
   }
 
   return readJsonFile<RunashSession[]>(SESSIONS_FILE, [])
 }
 
-export async function createSession(title = "Session", userId?: string): Promise<RunashSession> {
+export async function createSession(title = "Session", userId: string): Promise<RunashSession> {
+  const normalizedUserId = requireUserId(userId)
+
   if (useDatabaseBackedChatStorage) {
-    const session = await createChatSession(requireUserId(userId), title)
+    const session = await createChatSession(normalizedUserId, title)
     return mapSession(session)
   }
 
-  const sessions = await listSessions()
+  const sessions = await listSessions(normalizedUserId)
   const newSession: RunashSession = {
     id: `s-${Date.now()}`,
     title,
@@ -92,24 +96,33 @@ export async function createSession(title = "Session", userId?: string): Promise
   return newSession
 }
 
-export async function getMostRecentSession(userId?: string): Promise<RunashSession | null> {
+export async function getMostRecentSession(userId: string): Promise<RunashSession | null> {
+  const normalizedUserId = requireUserId(userId)
+
   if (useDatabaseBackedChatStorage) {
-    const session = await getMostRecentChatSession(requireUserId(userId))
+    const session = await getMostRecentChatSession(normalizedUserId)
     return session ? mapSession(session) : null
   }
 
-  const sessions = await listSessions()
+  const sessions = await listSessions(normalizedUserId)
   return sessions[0] ?? null
 }
 
-export async function listSessionMessages(sessionId: string, limit?: number, userId?: string): Promise<RunashSessionMessage[]> {
+export async function listSessionMessages(sessionId: string, limit: number | undefined, userId: string): Promise<RunashSessionMessage[]> {
+  const normalizedUserId = requireUserId(userId)
+
   if (useDatabaseBackedChatStorage) {
-    const ownerSession = await getChatSessionById(requireUserId(userId), String(sessionId))
+    const ownerSession = await getChatSessionById(normalizedUserId, String(sessionId))
     if (!ownerSession) {
       throw new Error("SESSION_ACCESS_DENIED")
     }
 
     return listMessagesBySession(String(sessionId), limit)
+  }
+
+  const isOwned = await isSessionOwnedByUser(sessionId, normalizedUserId)
+  if (!isOwned) {
+    throw new Error("SESSION_ACCESS_DENIED")
   }
 
   const messages = readJsonFile<RunashSessionMessage[]>(MESSAGES_FILE, [])
@@ -127,13 +140,16 @@ export async function listSessionMessages(sessionId: string, limit?: number, use
   return filtered.slice(0, limit)
 }
 
-export async function isSessionOwnedByUser(sessionId: string, userId?: string): Promise<boolean> {
+export async function isSessionOwnedByUser(sessionId: string, userId: string): Promise<boolean> {
+  const normalizedUserId = requireUserId(userId)
+
   if (useDatabaseBackedChatStorage) {
-    const session = await getChatSessionById(requireUserId(userId), String(sessionId))
+    const session = await getChatSessionById(normalizedUserId, String(sessionId))
     return Boolean(session)
   }
 
-  return true
+  const sessions = await listSessions(normalizedUserId)
+  return sessions.some((session) => String(session.id) === String(sessionId))
 }
 
 
@@ -141,15 +157,22 @@ export async function updateSessionMessage(
   sessionId: string,
   messageId: string | number,
   content: string,
-  userId?: string,
+  userId: string,
 ): Promise<RunashSessionMessage | null> {
+  const normalizedUserId = requireUserId(userId)
+
   if (useDatabaseBackedChatStorage) {
-    const ownerSession = await getChatSessionById(requireUserId(userId), String(sessionId))
+    const ownerSession = await getChatSessionById(normalizedUserId, String(sessionId))
     if (!ownerSession) {
       throw new Error("SESSION_ACCESS_DENIED")
     }
 
     return updateChatSessionMessage(sessionId, messageId, content)
+  }
+
+  const isOwned = await isSessionOwnedByUser(sessionId, normalizedUserId)
+  if (!isOwned) {
+    throw new Error("SESSION_ACCESS_DENIED")
   }
 
   const messages = readJsonFile<RunashSessionMessage[]>(MESSAGES_FILE, [])
@@ -174,14 +197,21 @@ export async function updateSessionMessage(
   return updatedMessage
 }
 
-export async function deleteSessionMessage(sessionId: string, messageId: string | number, userId?: string): Promise<boolean> {
+export async function deleteSessionMessage(sessionId: string, messageId: string | number, userId: string): Promise<boolean> {
+  const normalizedUserId = requireUserId(userId)
+
   if (useDatabaseBackedChatStorage) {
-    const ownerSession = await getChatSessionById(requireUserId(userId), String(sessionId))
+    const ownerSession = await getChatSessionById(normalizedUserId, String(sessionId))
     if (!ownerSession) {
       throw new Error("SESSION_ACCESS_DENIED")
     }
 
     return deleteChatSessionMessage(sessionId, messageId)
+  }
+
+  const isOwned = await isSessionOwnedByUser(sessionId, normalizedUserId)
+  if (!isOwned) {
+    throw new Error("SESSION_ACCESS_DENIED")
   }
 
   const messages = readJsonFile<RunashSessionMessage[]>(MESSAGES_FILE, [])
@@ -203,15 +233,22 @@ export async function createSessionMessage(
   role: RunashSessionMessage["role"],
   content: string,
   messageType: RunashSessionMessage["message_type"] = "text",
-  userId?: string,
+  userId: string,
 ): Promise<RunashSessionMessage> {
+  const normalizedUserId = requireUserId(userId)
+
   if (useDatabaseBackedChatStorage) {
-    const ownerSession = await getChatSessionById(requireUserId(userId), String(sessionId))
+    const ownerSession = await getChatSessionById(normalizedUserId, String(sessionId))
     if (!ownerSession) {
       throw new Error("SESSION_ACCESS_DENIED")
     }
 
     return createChatSessionMessage(sessionId, role, content, messageType)
+  }
+
+  const isOwned = await isSessionOwnedByUser(sessionId, normalizedUserId)
+  if (!isOwned) {
+    throw new Error("SESSION_ACCESS_DENIED")
   }
 
   const messages = readJsonFile<RunashSessionMessage[]>(MESSAGES_FILE, [])
