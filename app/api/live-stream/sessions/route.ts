@@ -1,17 +1,8 @@
 import { NextRequest } from "next/server"
-import { z } from "zod"
-
 import { requireSellerOperation } from "@/app/api/seller/_auth"
+import { formatZodIssues, liveStreamCreateRequestSchema } from "@/lib/api/contracts"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { liveStreamService, LiveStreamValidationError } from "@/services/live-stream/live-stream-service"
-import { LIVE_STREAM_LATENCY_PROFILES } from "@/types/live-stream-domain"
-
-const createSessionSchema = z.object({
-  workspaceId: z.string().trim().max(128).optional(),
-  title: z.string().trim().min(1).max(140).optional(),
-  dvrEnabled: z.boolean().optional(),
-  latencyProfile: z.enum(LIVE_STREAM_LATENCY_PROFILES).optional(),
-})
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,9 +11,17 @@ export async function POST(request: NextRequest) {
     const actorUserId = auth.userId
 
     const body = await request.json().catch(() => ({}))
-    const parsed = createSessionSchema.safeParse(body)
+    const parsed = liveStreamCreateRequestSchema.safeParse(body)
     if (!parsed.success) {
-      return respondError(request, { code: "INVALID_REQUEST", message: "Invalid create session payload" }, { status: 400 })
+      return respondError(
+        request,
+        {
+          code: "INVALID_REQUEST",
+          message: "Invalid create session payload",
+          details: { issues: formatZodIssues(parsed.error) },
+        },
+        { status: 400 },
+      )
     }
 
     const result = await liveStreamService.createDraftSession({

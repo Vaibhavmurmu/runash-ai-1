@@ -850,3 +850,30 @@ When `clientRequestId` is repeated for the same session and a completed assistan
 ```
 
 Attachment metadata is persisted and linked to the originating user message for auditability.
+
+## Contract Versioning & Deprecation Policy (`v1` -> `v2`)
+
+### Versioned endpoint baseline
+Critical editor/live/media contracts are now exposed under `/api/v1/...`.
+
+- Live stream: `/api/v1/live-stream/sessions/*`
+- Editor timeline: `/api/v1/editor/projects/:projectId/timeline`
+- Render jobs: `/api/v1/editor/render-jobs`
+- Media assets/uploads: `/api/v1/media/assets`, `/api/v1/media/uploads/*`
+
+### Compatibility promises for `v1`
+- Request field names and types are treated as stable.
+- Response envelope shape is preserved (`success`, `data`, `error`, `requestId`) where used.
+- Breaking removals or renames do not occur without a new major API version.
+
+### `v2` migration policy
+1. **Additive-first period:** introduce new fields in `v1` as optional whenever possible.
+2. **Deprecation notice window:** publish docs notice before `v2` release; include old/new examples.
+3. **Dual-serve window:** keep `v1` and `v2` running in parallel for at least one release cycle.
+4. **Telemetry gate:** only sunset `v1` after observed production traffic reaches migration target.
+5. **Removal communication:** document final cutoff date and rollback path.
+
+### Consumer guidance
+- New UI integrations should target `/api/v1/...`.
+- Existing `/api/...` non-versioned routes are compatibility aliases where available.
+- Contract tests under `lib/api/contracts.test.ts` must be updated together with any intentional schema changes.

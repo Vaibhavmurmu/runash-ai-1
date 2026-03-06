@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
-import { z } from "zod"
 import { requireEditorOperation } from "@/app/api/editor/_lib"
+import { editorRenderJobCreateRequestSchema, formatZodIssues } from "@/lib/api/contracts"
 import { compileTimelineToVideoGenerationRequest, TimelineCompilationError } from "@/lib/editor/generation/compile-timeline"
 import { publishRenderJobEvent } from "@/lib/editor/render-job-events"
 import { getProjectById, sql } from "@/lib/editor/repository"
@@ -19,11 +19,6 @@ const DEFAULT_ACTIVE_USER_QUOTA = Number(process.env.EDITOR_RENDER_ACTIVE_QUOTA_
 const DEFAULT_ACTIVE_PROJECT_QUOTA = Number(process.env.EDITOR_RENDER_ACTIVE_QUOTA_PROJECT ?? 6)
 const DEFAULT_MAX_DURATION_SECONDS = Number(process.env.EDITOR_RENDER_MAX_DURATION_SECONDS ?? 120)
 const DEFAULT_MAX_RESOLUTION_PIXELS = Number(process.env.EDITOR_RENDER_MAX_RESOLUTION_PIXELS ?? 3686400)
-
-const createRenderJobRequestSchema = z.object({
-  projectId: z.string().trim().min(1).max(120),
-  payload: z.unknown().optional(),
-})
 
 const modelTierOrder = ["standard", "pro", "enterprise"] as const
 type ModelTier = (typeof modelTierOrder)[number]
@@ -198,9 +193,12 @@ export async function POST(request: Request) {
   if ("error" in auth) return auth.error
 
   const body = await request.json()
-  const parsedBody = createRenderJobRequestSchema.safeParse(body)
+  const parsedBody = editorRenderJobCreateRequestSchema.safeParse(body)
   if (!parsedBody.success) {
-    return NextResponse.json({ error: "Invalid request body", issues: parsedBody.error.flatten() }, { status: 400 })
+    return NextResponse.json(
+      { error: "Invalid request body", code: "INVALID_REQUEST", details: { issues: formatZodIssues(parsedBody.error) } },
+      { status: 400 },
+    )
   }
 
   const parsedPayload = validateVideoGenerationPayload(parsedBody.data.payload ?? {})
@@ -208,7 +206,8 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: "Invalid request payload",
-        issues: parsedPayload.error.flatten(),
+        code: "INVALID_REQUEST",
+        details: { issues: formatZodIssues(parsedPayload.error) },
       },
       { status: 400 },
     )

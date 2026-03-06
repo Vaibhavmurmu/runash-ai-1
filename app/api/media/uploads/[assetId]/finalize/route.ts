@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
+import { formatZodIssues, mediaUploadFinalizeRequestSchema } from "@/lib/api/contracts"
 import { sql } from "@/lib/db"
 import { CloudStorage } from "@/lib/cloud-storage"
 import { queueTranscodePipeline } from "@/lib/media/transcode-pipeline"
@@ -22,6 +23,13 @@ export async function POST(request: NextRequest, { params }: { params: { assetId
   if ("error" in auth) return auth.error
 
   const body = await request.json().catch(() => ({}))
+  const parsedBody = mediaUploadFinalizeRequestSchema.safeParse(body)
+  if (!parsedBody.success) {
+    return NextResponse.json(
+      { error: "Invalid body", code: "INVALID_REQUEST", details: { issues: formatZodIssues(parsedBody.error) } },
+      { status: 400 },
+    )
+  }
 
   const [asset] = await sql`
     SELECT *
@@ -30,14 +38,14 @@ export async function POST(request: NextRequest, { params }: { params: { assetId
   `
 
   if (!asset) {
-    return NextResponse.json({ error: "Asset not found" }, { status: 404 })
+    return NextResponse.json({ error: "Asset not found", code: "NOT_FOUND" }, { status: 404 })
   }
 
   const head = await CloudStorage.getObjectMetadata(asset.source_storage_key).catch(() => null)
 
-  const durationSeconds = readNumber(body.durationSeconds)
-  const width = readNumber(body.width)
-  const height = readNumber(body.height)
+  const durationSeconds = readNumber(parsedBody.data.durationSeconds)
+  const width = readNumber(parsedBody.data.width)
+  const height = readNumber(parsedBody.data.height)
 
   const [updated] = await sql`
     UPDATE media_assets
@@ -48,11 +56,11 @@ export async function POST(request: NextRequest, { params }: { params: { assetId
       duration_seconds=COALESCE(${durationSeconds}, duration_seconds),
       width=COALESCE(${width}, width),
       height=COALESCE(${height}, height),
-      codec_video=COALESCE(${typeof body.codecVideo === "string" ? body.codecVideo : null}, codec_video),
-      codec_audio=COALESCE(${typeof body.codecAudio === "string" ? body.codecAudio : null}, codec_audio),
-      frame_rate=COALESCE(${readNumber(body.frameRate)}, frame_rate),
-      channels=COALESCE(${readNumber(body.channels)}, channels),
-      sample_rate=COALESCE(${readNumber(body.sampleRate)}, sample_rate),
+      codec_video=COALESCE(${typeof parsedBody.data.codecVideo === "string" ? parsedBody.data.codecVideo : null}, codec_video),
+      codec_audio=COALESCE(${typeof parsedBody.data.codecAudio === "string" ? parsedBody.data.codecAudio : null}, codec_audio),
+      frame_rate=COALESCE(${readNumber(parsedBody.data.frameRate)}, frame_rate),
+      channels=COALESCE(${readNumber(parsedBody.data.channels)}, channels),
+      sample_rate=COALESCE(${readNumber(parsedBody.data.sampleRate)}, sample_rate),
       uploaded_at=now(),
       finalized_at=now(),
       updated_at=now(),

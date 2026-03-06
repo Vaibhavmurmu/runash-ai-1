@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server"
 import { requireEditorOperation } from "@/app/api/editor/_lib"
+import {
+  editorProjectTimelineCreateRequestSchema,
+  editorProjectTimelineReplaceRequestSchema,
+  formatZodIssues,
+} from "@/lib/api/contracts"
 import { bumpTimelineVersion, claimProjectVersion, parseExpectedVersion } from "@/lib/editor/versioned-mutations"
 import { getProjectById, sql } from "@/lib/editor/repository"
 import { publishTimelineMutated } from "@/services/realtime/publishers"
@@ -20,8 +25,15 @@ export async function POST(request: Request, { params }: { params: { projectId: 
   if ("error" in auth) return auth.error
   const { projectId } = params
   const body = await request.json().catch(() => ({}))
+  const parsedBody = editorProjectTimelineCreateRequestSchema.safeParse(body)
+  if (!parsedBody.success) {
+    return NextResponse.json(
+      { error: "Invalid request body", code: "INVALID_REQUEST", details: { issues: formatZodIssues(parsedBody.error) } },
+      { status: 400 },
+    )
+  }
 
-  const version = parseExpectedVersion(request, body)
+  const version = parseExpectedVersion(request, parsedBody.data)
   if ("error" in version) return version.error
 
   const claim = await claimProjectVersion({
@@ -35,13 +47,13 @@ export async function POST(request: Request, { params }: { params: { projectId: 
 
   const [timeline] = await sql`
     INSERT INTO editor_timelines (project_id, owner_id, name, frame_rate, duration_seconds, metadata, updated_by)
-    VALUES (${projectId}, ${auth.userId}, ${body.name || "Timeline"}, ${body.frameRate ?? 30}, ${body.durationSeconds ?? 10}, ${JSON.stringify(body.metadata || {})}::jsonb, ${auth.userId})
+    VALUES (${projectId}, ${auth.userId}, ${parsedBody.data.name || "Timeline"}, ${parsedBody.data.frameRate ?? 30}, ${parsedBody.data.durationSeconds ?? 10}, ${JSON.stringify(parsedBody.data.metadata || {})}::jsonb, ${auth.userId})
     RETURNING *
   `
 
   await sql`
     UPDATE editor_projects
-    SET active_timeline_id=COALESCE(${body.activate === false ? null : timeline.id}, active_timeline_id)
+    SET active_timeline_id=COALESCE(${parsedBody.data.activate === false ? null : timeline.id}, active_timeline_id)
     WHERE id=${projectId} AND owner_id=${auth.userId}
   `
 
@@ -53,14 +65,18 @@ export async function PUT(request: Request, { params }: { params: { projectId: s
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params
-  const body = await request.json()
-
-  const timeline = body.timeline
-  if (!timeline?.id) {
-    return NextResponse.json({ error: "timeline.id is required" }, { status: 400 })
+  const body = await request.json().catch(() => ({}))
+  const parsedBody = editorProjectTimelineReplaceRequestSchema.safeParse(body)
+  if (!parsedBody.success) {
+    return NextResponse.json(
+      { error: "Invalid request body", code: "INVALID_REQUEST", details: { issues: formatZodIssues(parsedBody.error) } },
+      { status: 400 },
+    )
   }
 
-  const version = parseExpectedVersion(request, body)
+  const timeline = parsedBody.data.timeline
+
+  const version = parseExpectedVersion(request, parsedBody.data)
   if ("error" in version) return version.error
 
   const claim = await claimProjectVersion({
@@ -116,7 +132,7 @@ export async function DELETE(request: Request, { params }: { params: { projectId
   const { searchParams } = new URL(request.url)
   const timelineId = searchParams.get("timelineId")
 
-  if (!timelineId) return NextResponse.json({ error: "timelineId is required" }, { status: 400 })
+  if (!timelineId) return NextResponse.json({ error: "timelineId is required", code: "INVALID_REQUEST" }, { status: 400 })
 
   const version = parseExpectedVersion(request, { version: searchParams.get("version") })
   if ("error" in version) return version.error
@@ -132,7 +148,7 @@ export async function DELETE(request: Request, { params }: { params: { projectId
   if (!claim.ok) return claim.response
 
   const rows = await sql`DELETE FROM editor_timelines WHERE id=${timelineId} AND project_id=${projectId} AND owner_id=${auth.userId} RETURNING id`
-  if (!rows.length) return NextResponse.json({ error: "Timeline not found" }, { status: 404 })
+  if (!rows.length) return NextResponse.json({ error: "Timeline not found", code: "NOT_FOUND" }, { status: 404 })
 
   await sql`
     UPDATE editor_projects
