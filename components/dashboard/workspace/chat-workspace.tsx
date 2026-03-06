@@ -1085,9 +1085,12 @@ export function ChatWorkspace() {
 
       const toolPayloads = undefined
 
+      const outboundRequestId = `${clientRequestId}-req`
+      setRunDiagnostics((previous) => ({ ...previous, requestId: outboundRequestId }))
+
       const response = await fetch("/api/agents/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-request-id": outboundRequestId },
         signal: abortController.signal,
         body: JSON.stringify({
           sessionId: activeSessionId ?? undefined,
