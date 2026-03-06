@@ -25,6 +25,11 @@ async function getAuthenticatedUserId() {
   return session?.user?.id ? String(session.user.id) : null
 }
 
+function isSessionAccessDeniedError(error: unknown) {
+  return error instanceof Error && error.message === "SESSION_ACCESS_DENIED"
+}
+
+
 export async function PATCH(request: Request, { params }: RouteContext) {
   const requestId = resolveRequestId(request)
   const userId = await getAuthenticatedUserId()
@@ -49,8 +54,8 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     if (!isOwned) {
       return respondError(
         request,
-        { code: "SESSION_NOT_FOUND", message: "Session not found" },
-        { status: 404, requestId },
+        { code: "SESSION_ACCESS_DENIED", message: "Forbidden" },
+        { status: 403, requestId },
       )
     }
 
@@ -62,6 +67,10 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
     return respondSuccess(request, message, { status: 200, requestId })
   } catch (error) {
+    if (isSessionAccessDeniedError(error)) {
+      return respondError(request, { code: "SESSION_ACCESS_DENIED", message: "Forbidden" }, { status: 403, requestId })
+    }
+
     logApiEvent("error", "messages.update.failed", {
       requestId,
       route: "/api/messages/[id]",
@@ -94,8 +103,8 @@ export async function DELETE(request: Request, { params }: RouteContext) {
     if (!isOwned) {
       return respondError(
         request,
-        { code: "SESSION_NOT_FOUND", message: "Session not found" },
-        { status: 404, requestId },
+        { code: "SESSION_ACCESS_DENIED", message: "Forbidden" },
+        { status: 403, requestId },
       )
     }
 
@@ -107,6 +116,10 @@ export async function DELETE(request: Request, { params }: RouteContext) {
 
     return respondSuccess(request, { id: params.id, deleted: true }, { status: 200, requestId })
   } catch (error) {
+    if (isSessionAccessDeniedError(error)) {
+      return respondError(request, { code: "SESSION_ACCESS_DENIED", message: "Forbidden" }, { status: 403, requestId })
+    }
+
     logApiEvent("error", "messages.delete.failed", {
       requestId,
       route: "/api/messages/[id]",

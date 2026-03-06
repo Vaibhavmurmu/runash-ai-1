@@ -12,7 +12,7 @@ const createMessageSchema = z.object({
 })
 
 export type MessagesDependencies = {
-  getUserId: () => Promise<string | null>
+  getUserId: () => Promise<string>
   isSessionOwnedByUser: (sessionId: string, userId: string) => Promise<boolean>
   createSessionMessage: (
     sessionId: string,
@@ -23,13 +23,14 @@ export type MessagesDependencies = {
   ) => Promise<Awaited<ReturnType<typeof createSessionMessage>>>
 }
 
+function isSessionAccessDeniedError(error: unknown) {
+  return error instanceof Error && error.message === "SESSION_ACCESS_DENIED"
+}
+
+
 export async function handleCreateMessage(request: Request, dependencies: MessagesDependencies) {
   const requestId = resolveRequestId(request)
   const userId = await dependencies.getUserId()
-
-  if (!userId) {
-    return respondError(request, { code: "AUTH_REQUIRED", message: "Unauthorized" }, { status: 401, requestId })
-  }
 
   try {
     const payload = await request.json().catch(() => ({}))
@@ -47,8 +48,8 @@ export async function handleCreateMessage(request: Request, dependencies: Messag
     if (!isOwned) {
       return respondError(
         request,
-        { code: "SESSION_NOT_FOUND", message: "Session not found" },
-        { status: 404, requestId },
+        { code: "SESSION_ACCESS_DENIED", message: "Forbidden" },
+        { status: 403, requestId },
       )
     }
 
@@ -62,6 +63,10 @@ export async function handleCreateMessage(request: Request, dependencies: Messag
 
     return respondSuccess(request, message, { status: 201, requestId })
   } catch (error) {
+    if (isSessionAccessDeniedError(error)) {
+      return respondError(request, { code: "SESSION_ACCESS_DENIED", message: "Forbidden" }, { status: 403, requestId })
+    }
+
     logApiEvent("error", "messages.create.failed", {
       requestId,
       route: "/api/messages",
