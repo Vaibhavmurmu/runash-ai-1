@@ -1,9 +1,16 @@
 import { randomUUID } from "crypto"
-import { createEditorAsset } from "@/lib/editor/assets"
 import { publishRenderJobEvent } from "@/lib/editor/render-job-events"
 import { sql } from "@/lib/editor/repository"
+import {
+  assertRenderJobTransition,
+  computeRetryBackoffMs,
+  mergeIdempotentCompletion,
+  normalizeProviderOutput,
+  type EditorRenderOrchestrationStatus,
+} from "@/lib/editor/render-orchestration"
 import { CloudStorage } from "@/lib/cloud-storage"
 import { AIProviderError, generateModelTextWithFallback, resolveModelSelection } from "@/lib/ai/provider-registry"
+
 
 type RenderJobRow = {
   id: string
@@ -13,9 +20,12 @@ type RenderJobRow = {
   payload: Record<string, unknown>
   result: Record<string, unknown>
   output_asset_id: string | null
-  status: string
+  status: EditorRenderOrchestrationStatus
   created_at: string
   updated_at: string
+  attempt_count: number
+  max_attempts: number
+  cancellation_token: string | null
 }
 
 interface RenderJobResult {
@@ -30,6 +40,7 @@ interface RenderJobResult {
     mimeType: string
     sizeBytes: number
     storageKey: string
+    checksum?: string
   }
   metadata?: Record<string, unknown>
 }
@@ -74,6 +85,10 @@ const providerPolicyByProvider: Record<string, { timeoutMs: number; retries: num
   },
 }
 
+const providerCircuitState = new Map<string, { failures: number; openUntil: number }>()
+const providerCircuitThreshold = Number(process.env.EDITOR_RENDER_CIRCUIT_BREAKER_THRESHOLD ?? 3)
+const providerCircuitOpenMs = Number(process.env.EDITOR_RENDER_CIRCUIT_BREAKER_WINDOW_MS ?? 20_000)
+
 const defaultModelProviderAdapter: EditorRenderModelProviderAdapter = {
   async render(payload, context) {
     const provider = typeof payload.provider === "string" ? payload.provider : undefined
@@ -81,6 +96,7 @@ const defaultModelProviderAdapter: EditorRenderModelProviderAdapter = {
     const selection = resolveModelSelection(model, provider)
     const prompt = typeof payload.prompt === "string" && payload.prompt.trim().length > 0 ? payload.prompt : "Render editor output"
 
+    const started = Date.now()
     const renderResult = await withTimeout(
       () =>
         generateModelTextWithFallback(selection, {
@@ -91,13 +107,6 @@ const defaultModelProviderAdapter: EditorRenderModelProviderAdapter = {
       context.timeoutMs,
       context.signal,
     )
-
-    logProviderEvent("provider-response", {
-      jobId: context.jobId,
-      provider: renderResult.provider,
-      model: renderResult.model,
-      preview: renderResult.text.slice(0, 120),
-    })
 
     const outputBody = JSON.stringify(
       {
@@ -115,12 +124,12 @@ const defaultModelProviderAdapter: EditorRenderModelProviderAdapter = {
       metadata: {
         provider: selection.provider,
         model: selection.model,
+        latencyMs: Date.now() - started,
+        finishReason: "stop",
       },
     }
   },
 }
-
-const maxAttempts = Number(process.env.EDITOR_RENDER_MAX_ATTEMPTS ?? 3)
 
 function parseResult(value: unknown): RenderJobResult {
   const objectValue = value && typeof value === "object" ? (value as Record<string, unknown>) : {}
@@ -133,6 +142,7 @@ function parseResult(value: unknown): RenderJobResult {
     errorCode: typeof objectValue.errorCode === "string" ? objectValue.errorCode : null,
     progress: typeof objectValue.progress === "number" ? objectValue.progress : 0,
     stage: typeof objectValue.stage === "string" ? objectValue.stage : "queued",
+    output: objectValue.output && typeof objectValue.output === "object" ? (objectValue.output as RenderJobResult["output"]) : undefined,
     metadata: objectValue.metadata && typeof objectValue.metadata === "object" ? (objectValue.metadata as Record<string, unknown>) : undefined,
   }
 }
@@ -164,41 +174,8 @@ function isRetryable(error: unknown): boolean {
     return error.code === "TIMEOUT" || error.code === "QUOTA" || error.code === "UPSTREAM"
   }
 
-  if (error instanceof Error && error.name === "AbortError") return true
-  return error instanceof Error && /timeout|temporar|unavailable|rate limit/i.test(error.message)
-}
-
-function redactSensitiveData(value: unknown): unknown {
-  if (value === null || typeof value === "undefined") return value
-
-  if (typeof value === "string") {
-    return value
-      .replace(/\b(sk|pk|rk)_[a-z0-9]{8,}\b/gi, "[redacted]")
-      .replace(/(api[_-]?key|token|secret|password|authorization)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
-  }
-
-  if (Array.isArray(value)) return value.map((entry) => redactSensitiveData(entry))
-
-  if (typeof value === "object") {
-    const source = value as Record<string, unknown>
-    const output: Record<string, unknown> = {}
-
-    for (const [key, nested] of Object.entries(source)) {
-      if (/api[_-]?key|token|secret|password|authorization|prompt|content|negativeprompt/i.test(key)) {
-        output[key] = "[redacted]"
-      } else {
-        output[key] = redactSensitiveData(nested)
-      }
-    }
-
-    return output
-  }
-
-  return value
-}
-
-function logProviderEvent(event: string, payload: Record<string, unknown>) {
-  console.info(`[editor-render-worker] ${event}`, redactSensitiveData(payload))
+  if (error instanceof Error && error.name === "AbortError") return false
+  return error instanceof Error && /timeout|temporar|unavailable|rate limit|circuit/i.test(error.message)
 }
 
 async function withTimeout<T>(factory: () => Promise<T>, timeoutMs: number, signal: AbortSignal): Promise<T> {
@@ -226,7 +203,6 @@ async function withTimeout<T>(factory: () => Promise<T>, timeoutMs: number, sign
   }
 }
 
-
 function getProviderRequestPayload(payload: Record<string, unknown>): Record<string, unknown> {
   const providerRequest = payload.providerRequest
   if (providerRequest && typeof providerRequest === "object") {
@@ -249,12 +225,35 @@ function resolveProviderPolicy(payload: Record<string, unknown>) {
   }
 }
 
+function isCircuitOpen(provider: string) {
+  const state = providerCircuitState.get(provider)
+  if (!state) return false
+  if (state.openUntil <= Date.now()) {
+    providerCircuitState.delete(provider)
+    return false
+  }
+  return state.failures >= providerCircuitThreshold
+}
+
+function registerProviderOutcome(provider: string, success: boolean) {
+  if (success) {
+    providerCircuitState.delete(provider)
+    return
+  }
+
+  const existing = providerCircuitState.get(provider) ?? { failures: 0, openUntil: 0 }
+  const failures = existing.failures + 1
+  const openUntil = failures >= providerCircuitThreshold ? Date.now() + providerCircuitOpenMs : existing.openUntil
+  providerCircuitState.set(provider, { failures, openUntil })
+}
+
 async function claimNextQueuedJob() {
   const rows = (await sql`
     WITH candidate AS (
       SELECT id
       FROM editor_render_jobs
-      WHERE status = 'queued'
+      WHERE status IN ('queued', 'retrying')
+        AND (next_retry_at IS NULL OR next_retry_at <= now())
       ORDER BY created_at ASC
       LIMIT 1
       FOR UPDATE SKIP LOCKED
@@ -264,102 +263,163 @@ async function claimNextQueuedJob() {
         updated_at = now()
     FROM candidate
     WHERE j.id = candidate.id
-    RETURNING j.id, j.project_id, j.owner_id, j.requested_by, j.payload, j.result, j.output_asset_id, j.status, j.created_at, j.updated_at
+    RETURNING j.*
   `) as RenderJobRow[]
 
   const job = rows[0] ?? null
   if (job) {
-    publishRenderJobEvent({
-      id: job.id,
-      projectId: job.project_id,
-      ownerId: job.owner_id,
-      status: job.status as "processing",
-      requestedBy: job.requested_by,
-      payload: job.payload ?? {},
-      result: job.result ?? {},
-      outputAssetId: job.output_asset_id,
-      createdAt: job.created_at,
-      updatedAt: job.updated_at,
-    })
+    await recordTimeline(job.id, job.owner_id, null, "processing", "worker_claimed", { attemptCount: job.attempt_count })
+    publishRenderJobEvent(mapJob(job))
   }
 
   return job
 }
 
-async function fetchJobStatus(jobId: string): Promise<string | null> {
-  const [row] = (await sql`SELECT status FROM editor_render_jobs WHERE id=${jobId} LIMIT 1`) as Array<{ status: string }>
-  return row?.status ?? null
+function mapJob(row: Record<string, any>) {
+  return {
+    id: String(row.id),
+    projectId: String(row.project_id),
+    ownerId: String(row.owner_id),
+    status: String(row.status) as EditorRenderOrchestrationStatus,
+    requestedBy: typeof row.requested_by === "string" ? row.requested_by : "",
+    payload: row.payload && typeof row.payload === "object" ? (row.payload as Record<string, unknown>) : {},
+    result: row.result && typeof row.result === "object" ? (row.result as Record<string, unknown>) : {},
+    outputAssetId: typeof row.output_asset_id === "string" ? row.output_asset_id : null,
+    createdAt: typeof row.created_at === "string" ? row.created_at : new Date().toISOString(),
+    updatedAt: typeof row.updated_at === "string" ? row.updated_at : new Date().toISOString(),
+  }
+}
+
+async function fetchJobControl(jobId: string): Promise<{ status: string; cancellationToken: string | null } | null> {
+  const [row] = (await sql`
+    SELECT status, cancellation_token
+    FROM editor_render_jobs
+    WHERE id=${jobId}
+    LIMIT 1
+  `) as Array<{ status: string; cancellation_token: string | null }>
+
+  if (!row) return null
+  return { status: row.status, cancellationToken: row.cancellation_token }
+}
+
+async function recordTimeline(
+  jobId: string,
+  ownerId: string,
+  fromStatus: string | null,
+  toStatus: string,
+  eventType: string,
+  payload: Record<string, unknown>,
+) {
+  await sql`
+    INSERT INTO editor_render_job_timeline (job_id, owner_id, from_status, to_status, event_type, event_payload)
+    VALUES (${jobId}, ${ownerId}, ${fromStatus}, ${toStatus}, ${eventType}, ${JSON.stringify(payload)}::jsonb)
+  `
 }
 
 async function saveResult(
-  jobId: string,
-  status: "queued" | "completed" | "failed" | "canceled",
+  job: RenderJobRow,
+  status: EditorRenderOrchestrationStatus,
   result: RenderJobResult,
-  outputAssetId?: string,
-  options?: { allowWhenCanceled?: boolean },
+  options?: { nextRetryAt?: string | null; lastErrorCode?: string | null; providerTrace?: Record<string, unknown> },
 ): Promise<boolean> {
-  const allowWhenCanceled = options?.allowWhenCanceled ?? false
-  const rows = (await sql`
+  const [row] = (await sql`
     UPDATE editor_render_jobs
     SET status=${status},
         result=${JSON.stringify(result)}::jsonb,
-        output_asset_id=COALESCE(${outputAssetId ?? null}, output_asset_id),
+        next_retry_at=${options?.nextRetryAt ?? null},
+        last_error_code=${options?.lastErrorCode ?? null},
+        provider_trace=COALESCE(provider_trace, '{}'::jsonb) || ${JSON.stringify(options?.providerTrace ?? {})}::jsonb,
         updated_at=now()
-    WHERE id=${jobId}
-      AND (${allowWhenCanceled}::boolean = true OR status <> 'canceled')
+    WHERE id=${job.id}
+      AND status <> 'canceled'
     RETURNING *
   `) as Array<Record<string, unknown>>
 
-  const row = rows[0]
   if (!row) return false
-
-  publishRenderJobEvent({
-    id: String(row.id),
-    projectId: String(row.project_id),
-    ownerId: String(row.owner_id),
-    status: String(row.status) as "queued" | "completed" | "failed" | "canceled",
-    requestedBy: typeof row.requested_by === "string" ? row.requested_by : "",
-    payload: row.payload && typeof row.payload === "object" ? (row.payload as Record<string, unknown>) : {},
-    result: row.result && typeof row.result === "object" ? (row.result as Record<string, unknown>) : {},
-    outputAssetId: typeof row.output_asset_id === "string" ? row.output_asset_id : null,
-    createdAt: typeof row.created_at === "string" ? row.created_at : new Date().toISOString(),
-    updatedAt: typeof row.updated_at === "string" ? row.updated_at : new Date().toISOString(),
+  await recordTimeline(job.id, job.owner_id, job.status, String(row.status), "status_transition", {
+    stage: result.stage,
+    progress: result.progress,
+    errorCode: options?.lastErrorCode ?? null,
   })
-
+  publishRenderJobEvent(mapJob(row))
   return true
 }
 
-async function updateJobResult(jobId: string, result: RenderJobResult) {
-  const rows = (await sql`
-    UPDATE editor_render_jobs
-    SET result=${JSON.stringify(result)}::jsonb,
-        updated_at=now()
-    WHERE id=${jobId}
-    RETURNING *
-  `) as Array<Record<string, unknown>>
-
-  const row = rows[0]
-  if (!row) return
-
-  publishRenderJobEvent({
-    id: String(row.id),
-    projectId: String(row.project_id),
-    ownerId: String(row.owner_id),
-    status: String(row.status) as "queued" | "processing" | "completed" | "failed" | "canceled",
-    requestedBy: typeof row.requested_by === "string" ? row.requested_by : "",
-    payload: row.payload && typeof row.payload === "object" ? (row.payload as Record<string, unknown>) : {},
-    result: row.result && typeof row.result === "object" ? (row.result as Record<string, unknown>) : {},
-    outputAssetId: typeof row.output_asset_id === "string" ? row.output_asset_id : null,
-    createdAt: typeof row.created_at === "string" ? row.created_at : new Date().toISOString(),
-    updatedAt: typeof row.updated_at === "string" ? row.updated_at : new Date().toISOString(),
-  })
+async function ensureNotCanceled(job: RenderJobRow, expectedToken: string | null) {
+  const control = await fetchJobControl(job.id)
+  if (!control) throw new DOMException("Missing job", "AbortError")
+  if (control.status === "canceled") throw new DOMException("Canceled", "AbortError")
+  if (expectedToken && control.cancellationToken !== expectedToken) throw new DOMException("Canceled", "AbortError")
 }
 
-async function ensureNotCanceled(jobId: string) {
-  const status = await fetchJobStatus(jobId)
-  if (status === "canceled") {
-    throw new DOMException("Canceled", "AbortError")
+async function persistCompletionAtomically(job: RenderJobRow, renderedOutput: RenderOutput, providerOutput: Record<string, unknown>) {
+  const storageKey = `editor/renders/${job.project_id}/${job.id}/${randomUUID()}.${renderedOutput.fileExtension}`
+  const accessUrl = await CloudStorage.uploadFile(storageKey, renderedOutput.buffer, renderedOutput.mimeType)
+
+  const completionOutput = {
+    mimeType: renderedOutput.mimeType,
+    sizeBytes: renderedOutput.buffer.byteLength,
+    storageKey,
+    checksum: `${renderedOutput.buffer.byteLength}:${renderedOutput.mimeType}`,
   }
+
+  await sql`BEGIN`
+  try {
+    const [asset] = await sql`
+      INSERT INTO editor_assets (project_id, owner_id, source, upload_file_id, storage_key, access_url, mime_type, size_bytes, metadata)
+      VALUES (
+        ${job.project_id},
+        ${job.owner_id},
+        'storage',
+        null,
+        ${storageKey},
+        ${accessUrl},
+        ${renderedOutput.mimeType},
+        ${renderedOutput.buffer.byteLength},
+        ${JSON.stringify({ renderJobId: job.id, ...providerOutput })}::jsonb
+      )
+      RETURNING *
+    `
+
+    const [updatedJob] = await sql`
+      UPDATE editor_render_jobs
+      SET status='completed',
+          output_asset_id=${asset.id},
+          provider_output=${JSON.stringify(providerOutput)}::jsonb,
+          output_publication=${JSON.stringify({ assetId: asset.id, storageKey, publishedAt: new Date().toISOString() })}::jsonb,
+          updated_at=now()
+      WHERE id=${job.id}
+      RETURNING *
+    `
+
+    await sql`COMMIT`
+
+    return { updatedJob, asset, completionOutput }
+  } catch (error) {
+    await sql`ROLLBACK`
+    throw error
+  }
+}
+
+async function recordDeadLetter(job: RenderJobRow, errorCode: string, errorMessage: string) {
+  await sql`
+    INSERT INTO editor_render_job_dead_letters (job_id, owner_id, project_id, failure_code, failure_message, snapshot, updated_at)
+    VALUES (
+      ${job.id},
+      ${job.owner_id},
+      ${job.project_id},
+      ${errorCode},
+      ${errorMessage},
+      ${JSON.stringify({ payload: job.payload, result: job.result, attemptCount: job.attempt_count })}::jsonb,
+      now()
+    )
+    ON CONFLICT (job_id)
+    DO UPDATE SET
+      failure_code=EXCLUDED.failure_code,
+      failure_message=EXCLUDED.failure_message,
+      snapshot=EXCLUDED.snapshot,
+      updated_at=now()
+  `
 }
 
 async function runWithProviderRetries(
@@ -370,27 +430,14 @@ async function runWithProviderRetries(
   let lastError: unknown
 
   for (let attempt = 0; attempt <= policy.retryLimit; attempt += 1) {
+    if (isCircuitOpen(policy.provider)) {
+      lastError = new Error(`Provider circuit open for ${policy.provider}`)
+      break
+    }
+
     const controller = new AbortController()
-    const cancellationInterval = setInterval(() => {
-      void fetchJobStatus(job.id).then((status) => {
-        if (status === "canceled") {
-          controller.abort()
-        }
-      })
-    }, 500)
-
     try {
-      await ensureNotCanceled(job.id)
-
-      logProviderEvent("provider-request", {
-        jobId: job.id,
-        provider: policy.provider,
-        model: policy.model,
-        attempt: attempt + 1,
-        timeoutMs: policy.timeoutMs,
-        payload: job.payload,
-      })
-
+      await ensureNotCanceled(job, job.cancellation_token)
       return await adapter.render(job.payload ?? {}, {
         signal: controller.signal,
         timeoutMs: policy.timeoutMs,
@@ -401,11 +448,11 @@ async function runWithProviderRetries(
       })
     } catch (error) {
       lastError = error
+      registerProviderOutcome(policy.provider, false)
       if (!isRetryable(error) || attempt >= policy.retryLimit) {
         throw error
       }
-    } finally {
-      clearInterval(cancellationInterval)
+      await new Promise((resolve) => setTimeout(resolve, computeRetryBackoffMs(attempt + 1)))
     }
   }
 
@@ -418,7 +465,7 @@ export async function processNextEditorRenderJob(adapter: EditorRenderModelProvi
 
   const nowIso = new Date().toISOString()
   const previousResult = parseResult(job.result)
-  const attemptCount = previousResult.attemptCount + 1
+  const attemptCount = (job.attempt_count ?? previousResult.attemptCount) + 1
 
   const processingResult: RenderJobResult = {
     ...previousResult,
@@ -431,120 +478,106 @@ export async function processNextEditorRenderJob(adapter: EditorRenderModelProvi
     stage: "processing",
   }
 
-  await updateJobResult(job.id, processingResult)
+  await sql`UPDATE editor_render_jobs SET attempt_count=${attemptCount}, result=${JSON.stringify(processingResult)}::jsonb, updated_at=now() WHERE id=${job.id}`
 
   try {
-    await ensureNotCanceled(job.id)
-
-    const preparingResult: RenderJobResult = {
-      ...processingResult,
-      progress: 35,
-      stage: "Rendering frames",
-    }
-    await updateJobResult(job.id, preparingResult)
-
     const providerRequestPayload = getProviderRequestPayload(job.payload ?? {})
     const providerPolicy = resolveProviderPolicy(providerRequestPayload)
     const renderedOutput = await runWithProviderRetries({ ...job, payload: providerRequestPayload }, adapter, providerPolicy)
-    await ensureNotCanceled(job.id)
+    registerProviderOutcome(providerPolicy.provider, true)
+    await ensureNotCanceled(job, job.cancellation_token)
 
-    const storageKey = `editor/renders/${job.project_id}/${job.id}/${randomUUID()}.${renderedOutput.fileExtension}`
+    const providerOutput = normalizeProviderOutput({
+      ...(renderedOutput.metadata ?? {}),
+      provider: providerPolicy.provider,
+      model: providerPolicy.model,
+    })
 
-    const uploadingResult: RenderJobResult = {
-      ...preparingResult,
-      progress: 75,
-      stage: "Uploading output",
-    }
-    await updateJobResult(job.id, uploadingResult)
-
-    const accessUrl = await CloudStorage.uploadFile(storageKey, renderedOutput.buffer, renderedOutput.mimeType)
-    await ensureNotCanceled(job.id)
-
-    const asset = await createEditorAsset({
-      projectId: job.project_id,
-      ownerId: job.owner_id,
-      source: "storage",
-      storageKey,
-      accessUrl,
-      mimeType: renderedOutput.mimeType,
-      sizeBytes: renderedOutput.buffer.byteLength,
+    const persisted = await persistCompletionAtomically(job, renderedOutput, providerOutput)
+    const completedResult = mergeIdempotentCompletion(previousResult, {
+      ...processingResult,
+      finishedAt: new Date().toISOString(),
+      progress: 100,
+      stage: "completed",
+      output: persisted.completionOutput,
       metadata: {
-        renderJobId: job.id,
-        ...(renderedOutput.metadata ?? {}),
+        ...(processingResult.metadata ?? {}),
+        providerOutput,
       },
     })
 
-    const completedResult: RenderJobResult = {
-      ...uploadingResult,
-      finishedAt: new Date().toISOString(),
-      lastError: null,
-      errorCode: null,
-      progress: 100,
-      stage: "completed",
-      output: {
-        mimeType: renderedOutput.mimeType,
-        sizeBytes: renderedOutput.buffer.byteLength,
-        storageKey,
-      },
-    }
+    await sql`UPDATE editor_render_jobs SET result=${JSON.stringify(completedResult)}::jsonb, updated_at=now() WHERE id=${job.id}`
+    await recordTimeline(job.id, job.owner_id, "processing", "completed", "asset_published", {
+      outputAssetId: persisted.asset.id,
+      storageKey: persisted.completionOutput.storageKey,
+    })
+    publishRenderJobEvent(mapJob(persisted.updatedJob))
 
-    await ensureNotCanceled(job.id)
-    const completedSave = await saveResult(job.id, "completed", completedResult, asset.id)
-    if (!completedSave) {
-      return { jobId: job.id, status: "canceled" as const }
-    }
-
-    return { jobId: job.id, status: "completed" as const, outputAssetId: asset.id }
+    return { jobId: job.id, status: "completed" as const, outputAssetId: persisted.asset.id }
   } catch (error) {
-    const status = await fetchJobStatus(job.id)
-    if (status === "canceled") {
+    const publicError = sanitizePublicError(error)
+    const errorCode = stableErrorCode(error)
+
+    if (errorCode === "EDITOR_RENDER_CANCELED") {
       const canceledResult: RenderJobResult = {
         ...processingResult,
         finishedAt: new Date().toISOString(),
         progress: 100,
         stage: "canceled",
         lastError: null,
-        errorCode: "EDITOR_RENDER_CANCELED",
+        errorCode,
       }
-
-      await saveResult(job.id, "canceled", canceledResult, undefined, { allowWhenCanceled: true })
+      await sql`UPDATE editor_render_jobs SET status='canceled', canceled_at=now(), result=${JSON.stringify(canceledResult)}::jsonb, updated_at=now() WHERE id=${job.id}`
+      await recordTimeline(job.id, job.owner_id, "processing", "canceled", "canceled", { errorCode })
       return { jobId: job.id, status: "canceled" as const }
     }
 
-    const publicError = sanitizePublicError(error)
-    const errorCode = stableErrorCode(error)
-    const nextStatus = attemptCount < maxAttempts ? "queued" : "failed"
-    const failedResult: RenderJobResult = {
-      ...processingResult,
-      finishedAt: nextStatus === "failed" ? new Date().toISOString() : null,
-      lastError: publicError,
-      errorCode,
-      progress: nextStatus === "failed" ? 100 : 0,
-      stage: nextStatus === "failed" ? "failed" : "queued",
-      metadata: {
-        ...(processingResult.metadata ?? {}),
-        retry: {
-          maxAttempts,
-          attemptCount,
-          willRetry: nextStatus === "queued",
+    const maxAttempts = Number(job.max_attempts ?? Number(process.env.EDITOR_RENDER_MAX_ATTEMPTS ?? 3))
+    const willRetry = attemptCount < maxAttempts
+    if (willRetry) {
+      assertRenderJobTransition("processing", "retrying")
+      const delayMs = computeRetryBackoffMs(attemptCount)
+      const retryAt = new Date(Date.now() + delayMs).toISOString()
+      const retryingResult: RenderJobResult = {
+        ...processingResult,
+        stage: "retrying",
+        progress: 0,
+        lastError: publicError,
+        errorCode,
+        metadata: {
+          ...(processingResult.metadata ?? {}),
+          retry: { attemptCount, maxAttempts, retryAt, delayMs },
         },
-      },
+      }
+      await saveResult(job, "retrying", retryingResult, {
+        nextRetryAt: retryAt,
+        lastErrorCode: errorCode,
+        providerTrace: { lastFailureAt: new Date().toISOString(), errorCode },
+      })
+      return { jobId: job.id, status: "retrying" as const, error: publicError, errorCode }
     }
 
-    logProviderEvent("provider-failure", {
-      jobId: job.id,
-      code: errorCode,
-      message: publicError,
-      nextStatus,
-    })
+    const failedResult: RenderJobResult = {
+      ...processingResult,
+      finishedAt: new Date().toISOString(),
+      stage: "failed",
+      progress: 100,
+      lastError: publicError,
+      errorCode,
+    }
 
-    await saveResult(job.id, nextStatus, failedResult)
-    return { jobId: job.id, status: nextStatus, error: publicError, errorCode }
+    await saveResult(job, "failed", failedResult, {
+      nextRetryAt: null,
+      lastErrorCode: errorCode,
+      providerTrace: { terminalFailureAt: new Date().toISOString(), errorCode },
+    })
+    await recordDeadLetter(job, errorCode, publicError)
+    return { jobId: job.id, status: "failed" as const, error: publicError, errorCode }
   }
 }
 
 export async function processEditorRenderQueue(limit = 5, adapter: EditorRenderModelProviderAdapter = defaultModelProviderAdapter) {
-  const outcomes: Array<{ jobId: string; status: "completed" | "queued" | "failed" | "canceled"; outputAssetId?: string; error?: string }> = []
+  const outcomes: Array<{ jobId: string; status: "completed" | "retrying" | "failed" | "canceled"; outputAssetId?: string; error?: string }> = []
 
   for (let index = 0; index < limit; index += 1) {
     const outcome = await processNextEditorRenderJob(adapter)
