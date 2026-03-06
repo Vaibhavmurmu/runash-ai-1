@@ -20,10 +20,15 @@ const sessionQuerySchema = z.object({
 })
 
 export type SessionMessagesDependencies = {
-  getUserId: () => Promise<string | null>
+  getUserId: () => Promise<string>
   isSessionOwnedByUser: (sessionId: string, userId: string) => Promise<boolean>
   listSessionMessages: (sessionId: string, limit: number, userId: string) => Promise<RunashSessionMessage[]>
 }
+
+function isSessionAccessDeniedError(error: unknown) {
+  return error instanceof Error && error.message === "SESSION_ACCESS_DENIED"
+}
+
 
 export async function handleGetSessionMessages(
   request: Request,
@@ -34,16 +39,6 @@ export async function handleGetSessionMessages(
 
   try {
     const userId = await dependencies.getUserId()
-    if (!userId) {
-      return respondError(
-        request,
-        {
-          code: "AUTH_REQUIRED",
-          message: "Unauthorized",
-        } satisfies ApiError,
-        { status: 401, requestId },
-      )
-    }
 
     const parsedParams = sessionParamsSchema.safeParse(params)
     if (!parsedParams.success) {
@@ -88,10 +83,10 @@ export async function handleGetSessionMessages(
       return respondError(
         request,
         {
-          code: "SESSION_NOT_FOUND",
-          message: "Session not found",
+          code: "SESSION_ACCESS_DENIED",
+          message: "Forbidden",
         } satisfies ApiError,
-        { status: 404, requestId },
+        { status: 403, requestId },
       )
     }
 
@@ -106,6 +101,17 @@ export async function handleGetSessionMessages(
 
     return respondSuccess(request, messages, { requestId })
   } catch (error) {
+    if (isSessionAccessDeniedError(error)) {
+      return respondError(
+        request,
+        {
+          code: "SESSION_ACCESS_DENIED",
+          message: "Forbidden",
+        } satisfies ApiError,
+        { status: 403, requestId },
+      )
+    }
+
     logApiEvent("error", "session.messages.fetch_failed", {
       requestId,
       route: "/api/messages/session/[id]",

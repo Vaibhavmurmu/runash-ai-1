@@ -9,7 +9,7 @@ const createSessionSchema = z.object({
 })
 
 export type SessionsDependencies = {
-  getUserId: () => Promise<string | null>
+  getUserId: () => Promise<string>
   listSessions: (userId: string) => Promise<Awaited<ReturnType<typeof listSessions>>>
   createSession: (title: string, userId: string) => Promise<Awaited<ReturnType<typeof createSession>>>
 }
@@ -17,10 +17,6 @@ export type SessionsDependencies = {
 export async function handleGetSessions(req: Request, dependencies: SessionsDependencies) {
   const requestId = resolveRequestId(req)
   const userId = await dependencies.getUserId()
-
-  if (!userId) {
-    return respondError(req, { code: "AUTH_REQUIRED", message: "Unauthorized" }, { status: 401, requestId })
-  }
 
   try {
     const sessions = await dependencies.listSessions(userId)
@@ -51,10 +47,6 @@ export async function handleGetSessions(req: Request, dependencies: SessionsDepe
 export async function handleCreateSession(req: Request, dependencies: SessionsDependencies) {
   const requestId = resolveRequestId(req)
   const userId = await dependencies.getUserId()
-
-  if (!userId) {
-    return respondError(req, { code: "AUTH_REQUIRED", message: "Unauthorized" }, { status: 401, requestId })
-  }
 
   try {
     const body = await req.json().catch(() => ({}))

@@ -5,14 +5,17 @@ import { CHAT_ERROR_CODES } from "@/lib/chat-contracts"
 import { createSessionMessage, isSessionOwnedByUser } from "@/lib/repositories/runash-chat"
 
 import { handleCreateMessage } from "./messages-route-handler"
+async function requireAuthenticatedUserId() {
+  const session = await getServerAuthSession()
+  return session?.user?.id ? String(session.user.id) : null
+}
+
 
 export async function POST(request: Request) {
-  const session = await getServerAuthSession()
-  if (!session?.user?.id) {
+  const userId = await requireAuthenticatedUserId()
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized", code: CHAT_ERROR_CODES.AUTH_REQUIRED }, { status: 401 })
   }
-
-  const userId = String(session.user.id)
 
   return handleCreateMessage(request, {
     getUserId: async () => userId,

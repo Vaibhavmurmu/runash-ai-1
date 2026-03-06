@@ -106,7 +106,7 @@ export async function listSessionMessages(sessionId: string, limit?: number, use
   if (useDatabaseBackedChatStorage) {
     const ownerSession = await getChatSessionById(requireUserId(userId), String(sessionId))
     if (!ownerSession) {
-      return []
+      throw new Error("SESSION_ACCESS_DENIED")
     }
 
     return listMessagesBySession(String(sessionId), limit)
@@ -146,7 +146,7 @@ export async function updateSessionMessage(
   if (useDatabaseBackedChatStorage) {
     const ownerSession = await getChatSessionById(requireUserId(userId), String(sessionId))
     if (!ownerSession) {
-      return null
+      throw new Error("SESSION_ACCESS_DENIED")
     }
 
     return updateChatSessionMessage(sessionId, messageId, content)
@@ -178,7 +178,7 @@ export async function deleteSessionMessage(sessionId: string, messageId: string 
   if (useDatabaseBackedChatStorage) {
     const ownerSession = await getChatSessionById(requireUserId(userId), String(sessionId))
     if (!ownerSession) {
-      return false
+      throw new Error("SESSION_ACCESS_DENIED")
     }
 
     return deleteChatSessionMessage(sessionId, messageId)
