@@ -757,14 +757,23 @@ Example update payload:
 Applicable to `POST /api/chat`, `POST /api/agents/chat`, and `POST /api/mobile/chat`:
 
 - `clientRequestId` (string, optional): idempotency key supplied by client. If repeated, server returns previously accepted message/result when available.
-- `attachments` (array, optional): metadata-only references, max 3-4 items depending on endpoint.
-  - `name` (required)
-  - `type` (required)
-  - `size` (required, positive, max 8MB)
-  - `url`, `checksum`, `width`, `height`, `id` (optional)
+- `attachments` (array, optional legacy path): metadata-only references used by existing mobile/agent callers.
+- `attachmentIds` (array, optional): uploaded attachment IDs (UUID strings) owned by the current user.
+- `sessionId` + `pendingMessageId` (optional on `POST /api/chat`): binds uploaded `chat_attachments` records to a pre-created pending user message that gets finalized on send.
 - `retry` (object, optional for streaming endpoints):
   - `mode`: `none | auto | manual`
   - `maxAttempts`: `0..3`
+
+### Chat attachment upload + serving
+
+- `POST /api/chat/attachments`
+  - Accepts JSON (`mode: "signed"`) to mint a signed upload URL, or `multipart/form-data` (`file` field) for direct upload.
+  - Validates MIME type, max size (8MB), per-message attachment count (max 4), and SHA-256 checksum.
+  - Persists metadata in `chat_attachments` and ties records to a pending `chat_messages` row.
+- `GET /api/chat/attachments/:attachmentId?mode=signed|proxy`
+  - Enforces ownership by joining `chat_attachments -> chat_messages -> chat_sessions`.
+  - `mode=signed` returns short-lived signed download URL metadata.
+  - `mode=proxy` streams through a protected proxy response.
 
 ### Canonical error codes
 

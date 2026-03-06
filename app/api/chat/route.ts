@@ -13,6 +13,7 @@ import {
 } from "@/lib/ai/provider-registry"
 import { routeToolsToMcp } from "@/lib/runash-chat/tooling"
 import { CHAT_ERROR_CODES, chatAttachmentSchema, clientRequestIdSchema, streamRetrySchema } from "@/lib/chat-contracts"
+import { listOwnedChatAttachmentsByIds, markPendingMessageAsCompleted } from "@/lib/repositories/chat-attachments"
 
 export const maxDuration = 30
 
@@ -33,6 +34,9 @@ const chatPostSchema = z.object({
   model: z.string().trim().min(1).optional(),
   clientRequestId: clientRequestIdSchema.optional(),
   attachments: z.array(chatAttachmentSchema).max(4).optional(),
+  attachmentIds: z.array(z.string().trim().min(1)).max(4).optional(),
+  sessionId: z.string().trim().min(1).optional(),
+  pendingMessageId: z.string().trim().min(1).optional(),
   retry: streamRetrySchema.optional(),
 })
 
@@ -72,7 +76,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { messages, context, provider, model, attachments, retry } = validation.data
+    const { messages, context, provider, model, attachments, attachmentIds, sessionId, pendingMessageId, retry } = validation.data
     const latestMessage = messages.at(-1)
 
     let systemPrompt = `You are RunAsh AI, a helpful assistant for the RunAsh platform. You help users with live streaming, grocery shopping, and platform features.`
@@ -83,6 +87,29 @@ export async function POST(request: NextRequest) {
       systemPrompt += ` You specialize in helping users with live streaming setup, technical issues, content creation tips, and platform features. You can assist with streaming software, hardware recommendations, and audience engagement strategies.`
     }
 
+
+    const normalizedAttachmentIds = Array.from(new Set((attachmentIds ?? []).map((value) => value.trim()).filter(Boolean)))
+    if (normalizedAttachmentIds.length > 0) {
+      const ownedAttachments = await listOwnedChatAttachmentsByIds({ userId: String(session.user.id), attachmentIds: normalizedAttachmentIds })
+      if (ownedAttachments.length !== normalizedAttachmentIds.length) {
+        return respondError(
+          request,
+          { code: CHAT_ERROR_CODES.INVALID_ATTACHMENT, message: "One or more attachment IDs are invalid" },
+          { status: 400, legacy: { error: "Invalid attachment IDs" }, requestId },
+        )
+      }
+
+      if (sessionId && pendingMessageId) {
+        const latestContent = typeof latestMessage?.content === "string" ? latestMessage.content : JSON.stringify(latestMessage?.content ?? "")
+        await markPendingMessageAsCompleted({
+          userId: String(session.user.id),
+          sessionId,
+          messageId: pendingMessageId,
+          content: latestContent,
+          metadata: { attachment_ids: normalizedAttachmentIds },
+        })
+      }
+    }
     const normalizedMessages = messages.map((message) => ({
       role: message.role,
       content: typeof message.content === "string" ? message.content : JSON.stringify(message.content),
@@ -129,7 +156,7 @@ export async function POST(request: NextRequest) {
         model: result.model,
         requestedTools: toolRouting.requestedTools,
         fallbackTools: toolRouting.fallbackTools,
-        attachmentCount: attachments?.length ?? 0,
+        attachmentCount: normalizedAttachmentIds.length || attachments?.length || 0,
         retryMode: retry?.mode ?? "auto",
       },
     })
