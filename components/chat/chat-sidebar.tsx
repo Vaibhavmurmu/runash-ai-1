@@ -139,7 +139,7 @@ export default function ChatSidebar({
                   >
                     <div className="flex items-center gap-2 text-sm font-medium">
                       <SquarePen className="h-4 w-4" />
-                      Open Editor
+                      Connect tools: Editor
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {activeProjectName ? <Badge variant="secondary">Project: {activeProjectName}</Badge> : null}
@@ -155,7 +155,7 @@ export default function ChatSidebar({
                   >
                     <div className="flex items-center gap-2 text-sm font-medium">
                       <RadioTower className="h-4 w-4" />
-                      Open Streaming Studio
+                      Connect tools: Streaming Studio
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {streamId ? <Badge variant="secondary">Stream available</Badge> : <Badge variant="outline">No active stream</Badge>}
@@ -171,7 +171,7 @@ export default function ChatSidebar({
                   >
                     <div className="flex items-center gap-2 text-sm font-medium">
                       <Search className="h-4 w-4" />
-                      Open Library
+                      Connect tools: Library
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {selectedLibraryItemTitle ? <Badge variant="secondary">Selected: {selectedLibraryItemTitle}</Badge> : <Badge variant="outline">Browse items</Badge>}
@@ -183,19 +183,19 @@ export default function ChatSidebar({
 
             {persistedSessions.length === 0 ? (
               <div className="rounded-lg border border-dashed p-4 text-sm">
-                <p className="font-medium">No chat history yet</p>
+                <p className="font-medium">No chats yet</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  You don&apos;t have any saved sessions yet. Start a new chat or use a suggested starter.
+                  You don&apos;t have any saved sessions yet. Create new chat, try starter prompts, or connect tools.
                 </p>
                 <div className="mt-3 grid gap-2">
                   <Button size="sm" onClick={handleNewChat}>
-                    <Plus className="mr-1 h-4 w-4" /> New chat
+                    <Plus className="mr-1 h-4 w-4" /> Create new chat
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => onSuggestedPrompts?.()}>
-                    Suggested starters
+                    Try starter prompts
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => onImportContext?.()}>
-                    Import context
+                    Connect tools
                   </Button>
                 </div>
               </div>
