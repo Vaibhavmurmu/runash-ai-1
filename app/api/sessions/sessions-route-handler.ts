@@ -2,15 +2,51 @@ import { z } from "zod"
 
 import { logApiEvent } from "@/lib/api/logging"
 import { respondError, respondSuccess, resolveRequestId } from "@/lib/api/response"
-import { createSession, listSessions } from "@/lib/repositories/runash-chat"
+import {
+  createSession,
+  listSessions,
+  type RunashSession,
+  type RunashSessionListCursor,
+} from "@/lib/repositories/runash-chat"
 
 const createSessionSchema = z.object({
   title: z.string().trim().min(1).max(120).optional(),
 })
 
+const querySchema = z.object({
+  cursor: z.string().trim().optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  q: z.string().trim().max(120).optional(),
+})
+
+function decodeCursor(cursor: string | undefined): RunashSessionListCursor | null {
+  if (!cursor) return null
+
+  try {
+    const decoded = JSON.parse(Buffer.from(cursor, "base64url").toString("utf-8")) as { updatedAt?: string; id?: string }
+    if (!decoded?.updatedAt || !decoded?.id) {
+      return null
+    }
+
+    return {
+      updatedAt: String(decoded.updatedAt),
+      id: String(decoded.id),
+    }
+  } catch {
+    return null
+  }
+}
+
+function encodeCursor(session: RunashSession): string {
+  return Buffer.from(JSON.stringify({ updatedAt: session.updated_at, id: session.id }), "utf-8").toString("base64url")
+}
+
 export type SessionsDependencies = {
   getUserId: () => Promise<string>
-  listSessions: (userId: string) => Promise<Awaited<ReturnType<typeof listSessions>>>
+  listSessions: (
+    userId: string,
+    options?: { limit?: number; cursor?: RunashSessionListCursor | null; query?: string },
+  ) => Promise<Awaited<ReturnType<typeof listSessions>>>
   createSession: (title: string, userId: string) => Promise<Awaited<ReturnType<typeof createSession>>>
 }
 
@@ -24,17 +60,38 @@ export async function handleGetSessions(req: Request, dependencies: SessionsDepe
   }
 
   try {
-    const sessions = await dependencies.listSessions(userId)
+    const url = new URL(req.url)
+    const parsedQuery = querySchema.safeParse({
+      cursor: url.searchParams.get("cursor") ?? undefined,
+      limit: url.searchParams.get("limit") ?? 20,
+      q: url.searchParams.get("q") ?? undefined,
+    })
+
+    if (!parsedQuery.success) {
+      return respondError(req, { code: "INVALID_REQUEST", message: "Invalid cursor, limit, or q" }, { status: 400, requestId })
+    }
+
+    const parsedCursor = decodeCursor(parsedQuery.data.cursor)
+    if (parsedQuery.data.cursor && !parsedCursor) {
+      return respondError(req, { code: "INVALID_REQUEST", message: "Invalid cursor, limit, or q" }, { status: 400, requestId })
+    }
+
+    const sessions = await dependencies.listSessions(userId, {
+      cursor: parsedCursor,
+      limit: parsedQuery.data.limit,
+      query: parsedQuery.data.q,
+    })
+    const nextCursor = sessions.length === parsedQuery.data.limit ? encodeCursor(sessions[sessions.length - 1]) : null
 
     logApiEvent("info", "sessions.list.success", {
       requestId,
       route: "/api/sessions",
       method: "GET",
       userId,
-      details: { resultCount: sessions.length },
+      details: { resultCount: sessions.length, limit: parsedQuery.data.limit, hasQuery: Boolean(parsedQuery.data.q) },
     })
 
-    return respondSuccess(req, sessions, { requestId })
+    return respondSuccess(req, { items: sessions, nextCursor }, { requestId })
   } catch (error) {
     logApiEvent("error", "sessions.list.failed", {
       requestId,
