@@ -11,6 +11,11 @@ export type ChatSessionMessage = {
   message_type?: "text" | "product" | "recipe" | "tip" | "automation"
 }
 
+export type MessageListCursor = {
+  createdAt: string
+  id: string
+}
+
 async function runInTransaction<T>(operation: () => Promise<T>): Promise<T> {
   await (sql as any).unsafe("BEGIN")
   try {
@@ -49,20 +54,22 @@ export async function createChatSessionMessage(
 export async function listMessagesBySession(
   sessionId: string,
   limit?: number,
-  cursor?: string | number | null,
+  cursor?: MessageListCursor | null,
 ): Promise<ChatSessionMessage[]> {
   const hasLimit = typeof limit === "number" && Number.isFinite(limit) && limit > 0
 
   try {
     const params: Array<string | number> = [sessionId]
-    const cursorClause = cursor ? ` and id < $${params.push(cursor)}` : ""
+    const cursorClause = cursor
+      ? ` and (created_at > $${params.push(String(cursor.createdAt))} or (created_at = $${params.push(String(cursor.createdAt))} and id > $${params.push(Number(cursor.id))}))`
+      : ""
     const limitClause = hasLimit ? ` limit $${params.push(Math.floor(limit as number))}` : ""
 
     return await queryMany<ChatSessionMessage>(
       `select id, session_id, role, content, created_at, updated_at, deleted_at, message_type
        from runash_chat_session_messages
        where session_id=$1 and deleted_at is null${cursorClause}
-       order by id desc${limitClause}`,
+       order by created_at asc, id asc${limitClause}`,
       params,
     )
   } catch {

@@ -9,6 +9,7 @@ import {
   listChatSessions,
   softDeleteChatSession,
   type ChatSession,
+  type SessionListCursor,
   updateChatSessionState,
 } from "@/lib/repositories/sessions"
 import {
@@ -16,6 +17,7 @@ import {
   deleteChatSessionMessage,
   listMessagesBySession,
   type ChatSessionMessage,
+  type MessageListCursor,
   updateChatSessionMessage,
 } from "@/lib/repositories/session-messages"
 
@@ -81,7 +83,11 @@ export function setRunashChatRepositoryAdaptersForTests(adapters: RunashChatRepo
   repositoryAdapters = adapters ?? defaultRepositoryAdapters
 }
 
-export type RunashSession = Pick<ChatSession, "id" | "title" | "created_at" | "archived_at"> & { deleted_at?: string | null }
+export type RunashSession = Pick<ChatSession, "id" | "title" | "created_at" | "updated_at" | "archived_at"> & { deleted_at?: string | null }
+
+export type RunashSessionListCursor = SessionListCursor
+
+export type RunashSessionMessageListCursor = MessageListCursor
 
 export type RunashSessionMessage = ChatSessionMessage
 
@@ -120,20 +126,44 @@ function mapSession(session: ChatSession): RunashSession {
     id: session.id,
     title: session.title,
     created_at: session.created_at,
+    updated_at: session.updated_at,
     archived_at: session.archived_at ?? null,
     deleted_at: session.deleted_at ?? null,
   }
 }
 
-export async function listSessions(userId: string): Promise<RunashSession[]> {
+export async function listSessions(
+  userId: string,
+  options?: { limit?: number; cursor?: RunashSessionListCursor | null; query?: string },
+): Promise<RunashSession[]> {
   const normalizedUserId = requireUserId(userId)
 
   if (useDatabaseBackedChatStorage()) {
-    const sessions = await repositoryAdapters.listChatSessions(normalizedUserId)
+    const sessions = await repositoryAdapters.listChatSessions(normalizedUserId, options)
     return sessions.map(mapSession)
   }
 
-  return readJsonFile<RunashSession[]>(SESSIONS_FILE, []).filter((session) => !session.deleted_at)
+  const sessions = readJsonFile<RunashSession[]>(SESSIONS_FILE, []).filter((session) => !session.deleted_at)
+  const query = options?.query?.trim().toLowerCase()
+  const filteredByQuery = query ? sessions.filter((session) => session.title.toLowerCase().includes(query)) : sessions
+  const ordered = filteredByQuery.sort((a, b) => {
+    const byUpdated = String(b.updated_at ?? "").localeCompare(String(a.updated_at ?? ""))
+    if (byUpdated !== 0) return byUpdated
+    return String(b.id).localeCompare(String(a.id))
+  })
+
+  if (options?.cursor?.updatedAt && options?.cursor?.id) {
+    const cursorUpdatedAt = String(options.cursor.updatedAt)
+    const cursorId = String(options.cursor.id)
+    const cursorFiltered = ordered.filter((session) => {
+      if (String(session.updated_at) < cursorUpdatedAt) return true
+      if (String(session.updated_at) > cursorUpdatedAt) return false
+      return String(session.id) < cursorId
+    })
+    return typeof options?.limit === "number" && options.limit > 0 ? cursorFiltered.slice(0, options.limit) : cursorFiltered
+  }
+
+  return typeof options?.limit === "number" && options.limit > 0 ? ordered.slice(0, options.limit) : ordered
 }
 
 export async function createSession(title = "Session", userId: string): Promise<RunashSession> {
@@ -145,10 +175,12 @@ export async function createSession(title = "Session", userId: string): Promise<
   }
 
   const sessions = await listSessions(normalizedUserId)
+  const nowIso = new Date().toISOString()
   const newSession: RunashSession = {
     id: `s-${Date.now()}`,
     title,
-    created_at: new Date().toISOString(),
+    created_at: nowIso,
+    updated_at: nowIso,
     archived_at: null,
     deleted_at: null,
   }
@@ -179,6 +211,7 @@ export async function updateSession(
     ...sessions[matchIndex],
     ...(updates.title ? { title: updates.title } : {}),
     ...(typeof updates.archived === "boolean" ? { archived_at: updates.archived ? new Date().toISOString() : null } : {}),
+    updated_at: new Date().toISOString(),
   }
 
   writeJsonFile(SESSIONS_FILE, sessions)
@@ -212,7 +245,12 @@ export async function getMostRecentSession(userId: string): Promise<RunashSessio
   return sessions[0] ?? null
 }
 
-export async function listSessionMessages(sessionId: string, limit: number | undefined, userId: string, cursor?: string): Promise<RunashSessionMessage[]> {
+export async function listSessionMessages(
+  sessionId: string,
+  limit: number | undefined,
+  userId: string,
+  cursor?: RunashSessionMessageListCursor | null,
+): Promise<RunashSessionMessage[]> {
   const normalizedUserId = requireUserId(userId)
 
   if (useDatabaseBackedChatStorage()) {
@@ -234,10 +272,22 @@ export async function listSessionMessages(sessionId: string, limit: number | und
 
   const filtered = messages
     .filter((message) => String(message.session_id) === normalizedSessionId && !message.deleted_at)
-    .sort((a, b) => Number(b.id) - Number(a.id))
+    .sort((a, b) => {
+      const byCreated = String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""))
+      if (byCreated !== 0) return byCreated
+      return String(a.id).localeCompare(String(b.id))
+    })
 
-  const cursorValue = cursor ? Number(cursor) : null
-  const cursorFiltered = cursorValue ? filtered.filter((message) => Number(message.id) < cursorValue) : filtered
+  const cursorCreatedAt = cursor?.createdAt ? String(cursor.createdAt) : null
+  const cursorId = cursor?.id ? String(cursor.id) : null
+  const cursorFiltered = cursorCreatedAt && cursorId
+    ? filtered.filter((message) => {
+        const createdAt = String(message.created_at ?? "")
+        if (createdAt > cursorCreatedAt) return true
+        if (createdAt < cursorCreatedAt) return false
+        return String(message.id) > cursorId
+      })
+    : filtered
 
   if (!limit || limit < 1) return cursorFiltered
   return cursorFiltered.slice(0, limit)
@@ -385,7 +435,7 @@ export async function createSessionMessage(
     message_type: messageType,
   }
 
-  messages.unshift(newMessage)
+  messages.push(newMessage)
   writeJsonFile(MESSAGES_FILE, messages)
 
   return newMessage

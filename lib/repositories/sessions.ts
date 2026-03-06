@@ -10,27 +10,43 @@ export type ChatSession = {
   deleted_at?: string | null
 }
 
-export async function listChatSessions(userId: string, limit?: number): Promise<ChatSession[]> {
-  const hasLimit = typeof limit === "number" && Number.isFinite(limit) && limit > 0
+export type SessionListCursor = {
+  updatedAt: string
+  id: string
+}
+
+type ListChatSessionsOptions = {
+  limit?: number
+  cursor?: SessionListCursor | null
+  query?: string
+}
+
+export async function listChatSessions(userId: string, options?: number | ListChatSessionsOptions): Promise<ChatSession[]> {
+  const resolvedOptions = typeof options === "number" ? { limit: options } : options ?? {}
+  const hasLimit = typeof resolvedOptions.limit === "number" && Number.isFinite(resolvedOptions.limit) && resolvedOptions.limit > 0
+  const hasQuery = typeof resolvedOptions.query === "string" && resolvedOptions.query.trim().length > 0
+  const hasCursor = Boolean(resolvedOptions.cursor?.updatedAt && resolvedOptions.cursor?.id)
 
   try {
-    if (hasLimit) {
-      return await queryMany<ChatSession>(
-        `select id, user_id, title, created_at, updated_at, archived_at, deleted_at
-         from runash_chat_sessions
-         where user_id=$1 and deleted_at is null
-         order by updated_at desc, created_at desc
-         limit $2`,
-        [userId, Math.floor(limit as number)],
-      )
+    const params: Array<string | number> = [userId]
+    const clauses = ["user_id=$1", "deleted_at is null"]
+
+    if (hasQuery) {
+      clauses.push(`title ilike $${params.push(`%${resolvedOptions.query?.trim()}%`)}`)
     }
+
+    if (hasCursor) {
+      clauses.push(`(updated_at < $${params.push(String(resolvedOptions.cursor?.updatedAt))} or (updated_at = $${params.push(String(resolvedOptions.cursor?.updatedAt))} and id < $${params.push(String(resolvedOptions.cursor?.id))}))`)
+    }
+
+    const limitClause = hasLimit ? ` limit $${params.push(Math.floor(resolvedOptions.limit as number))}` : ""
 
     return await queryMany<ChatSession>(
       `select id, user_id, title, created_at, updated_at, archived_at, deleted_at
        from runash_chat_sessions
-       where user_id=$1 and deleted_at is null
-       order by updated_at desc, created_at desc`,
-      [userId],
+       where ${clauses.join(" and ")}
+       order by updated_at desc, id desc${limitClause}`,
+      params,
     )
   } catch {
     return []
@@ -52,7 +68,7 @@ export async function getMostRecentChatSession(userId: string): Promise<ChatSess
     select id, user_id, title, created_at, updated_at, archived_at, deleted_at
     from runash_chat_sessions
     where user_id=${userId} and deleted_at is null
-    order by updated_at desc, created_at desc
+    order by updated_at desc, id desc
     limit 1
   `)
 }
