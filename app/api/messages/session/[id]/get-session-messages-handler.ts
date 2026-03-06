@@ -38,7 +38,17 @@ export async function handleGetSessionMessages(
   const requestId = resolveRequestId(request)
 
   try {
-    const userId = await dependencies.getUserId()
+    const userId = String(await dependencies.getUserId()).trim()
+    if (!userId) {
+      return respondError(
+        request,
+        {
+          code: "AUTH_REQUIRED",
+          message: "Unauthorized",
+        } satisfies ApiError,
+        { status: 401, requestId },
+      )
+    }
 
     const parsedParams = sessionParamsSchema.safeParse(params)
     if (!parsedParams.success) {
