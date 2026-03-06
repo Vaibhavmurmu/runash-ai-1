@@ -102,6 +102,8 @@ export async function getProjectById(ownerId: string, projectId: string): Promis
     metadata: asRecord(row.metadata),
     tracks: tracksByTimeline.get(row.id) || [],
     segments: segmentsByTimeline.get(row.id) || [],
+    version: Number(row.version ?? 0),
+    updatedBy: row.updated_by ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }))
@@ -116,6 +118,8 @@ export async function getProjectById(ownerId: string, projectId: string): Promis
     timelines,
     assets: assetsRows.map(mapAsset),
     renderJobs: renderRows.map(mapRenderJob),
+    version: Number(project.version ?? 0),
+    updatedBy: project.updated_by ?? null,
     createdAt: project.created_at,
     updatedAt: project.updated_at,
   }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
-import { sql, touchProject } from "@/lib/editor/repository"
+import { bumpTimelineVersion, claimProjectVersion, parseExpectedVersion } from "@/lib/editor/versioned-mutations"
+import { sql } from "@/lib/editor/repository"
 
 export async function GET(request: Request, { params }: { params: { projectId: string } }) {
   const auth = await requireEditorUser(request)
@@ -22,12 +23,24 @@ export async function POST(request: Request, { params }: { params: { projectId: 
   const { projectId } = params
   const body = await request.json()
 
+  const version = parseExpectedVersion(request, body)
+  if ("error" in version) return version.error
+
+  const claim = await claimProjectVersion({
+    projectId,
+    userId: auth.userId,
+    expectedVersion: version.expectedVersion,
+    mutation: "track.create",
+    targetType: "track",
+  })
+  if (!claim.ok) return claim.response
+
   const [track] = await sql`
     INSERT INTO editor_tracks (timeline_id, project_id, owner_id, label, order_index, track_type, metadata)
     VALUES (${body.timelineId}, ${projectId}, ${auth.userId}, ${body.label || "Track"}, ${body.orderIndex || 0}, ${body.trackType || "video"}, ${JSON.stringify(body.metadata || {})}::jsonb)
     RETURNING *
   `
 
-  await touchProject(projectId, auth.userId)
-  return NextResponse.json({ track }, { status: 201 })
+  await bumpTimelineVersion(body.timelineId, projectId, auth.userId)
+  return NextResponse.json({ track, version: claim.projectVersion }, { status: 201 })
 }
