@@ -1458,7 +1458,7 @@ export function ChatWorkspace() {
       id: "campaign-brief",
       title: "Create campaign brief",
       description: "Define goals, audience, channels, and KPIs for a launch.",
-      actionLabel: "Draft brief",
+      actionLabel: "Run starter task",
       icon: Megaphone,
       prompt: "Create a campaign brief for a new sustainable skincare launch with goals, audience, channels, and KPIs.",
     },
@@ -1466,7 +1466,7 @@ export function ChatWorkspace() {
       id: "product-description",
       title: "Write product description",
       description: "Generate benefits-first copy with ingredients and CTA.",
-      actionLabel: "Generate copy",
+      actionLabel: "Run starter task",
       icon: FileText,
       prompt: "Write a product description for an organic snack bundle with key benefits, ingredients, and CTA.",
     },
@@ -1474,7 +1474,7 @@ export function ChatWorkspace() {
       id: "summarize-meeting",
       title: "Summarize meeting",
       description: "Extract decisions, next steps, owners, and due dates.",
-      actionLabel: "Summarize notes",
+      actionLabel: "Run starter task",
       icon: ListChecks,
       prompt: "Summarize this meeting into decisions, action items, owners, and due dates.",
     },
@@ -1482,7 +1482,7 @@ export function ChatWorkspace() {
       id: "automation-plan",
       title: "Plan an automation",
       description: "Map triggers, approvals, and reporting for your workflow.",
-      actionLabel: "Build workflow",
+      actionLabel: "Run starter task",
       icon: Workflow,
       prompt: "Draft an automation workflow for inventory alerts, reorder approvals, and weekly reporting.",
     },
@@ -1490,7 +1490,7 @@ export function ChatWorkspace() {
       id: "social-posts",
       title: "Generate social posts",
       description: "Create campaign-ready post ideas in your brand voice.",
-      actionLabel: "Create posts",
+      actionLabel: "Run starter task",
       icon: Sparkles,
       prompt: "Generate 5 social post ideas for an eco-friendly product campaign in a friendly brand tone.",
     },
@@ -1858,11 +1858,11 @@ export function ChatWorkspace() {
 
             {showComposerEmptyState ? (
               <div className="border-t border-zinc-800 p-2.5 sm:p-3">
-                <div className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 sm:space-y-4 sm:p-4">
-                  <div className="space-y-1.5 text-center">
-                    <p className="text-lg font-semibold tracking-tight text-zinc-100 sm:text-xl">What should RunAshChat help you with next?</p>
-                    <p className="text-xs text-zinc-400 sm:text-sm">
-                      Start with a prompt, upload a screenshot, or choose a task below.
+                <div className="space-y-3.5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 sm:space-y-4 sm:p-4">
+                  <div className="space-y-2 text-center">
+                    <p className="text-lg font-semibold tracking-tight text-zinc-100 sm:text-xl">Start your next task in one step.</p>
+                    <p className="text-xs leading-relaxed text-zinc-400 sm:text-sm">
+                      Start a prompt in the composer, upload a screenshot, or run a starter task below.
                     </p>
                   </div>
 
@@ -1896,7 +1896,7 @@ export function ChatWorkspace() {
                         <p className="text-xs text-zinc-400">No saved sessions yet. Start a new chat or use a suggested starter.</p>
                         <div className="flex flex-wrap gap-2">
                           <Button type="button" size="sm" variant="outline" onClick={handleNewChatSession}>
-                            New chat
+                            Start new chat
                           </Button>
                           <Button
                             type="button"
@@ -1905,7 +1905,7 @@ export function ChatWorkspace() {
                             className="text-zinc-300 hover:text-zinc-100"
                             onClick={() => handleSendMessage(starterPromptCards[0]?.prompt ?? "")}
                           >
-                            Suggested starters
+                            Run starter task
                           </Button>
                         </div>
                       </div>
