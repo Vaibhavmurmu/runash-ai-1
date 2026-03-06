@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
@@ -42,6 +43,7 @@ import { resolveRequestedToolsForMessage } from "@/lib/runash-chat/tooling"
 import { getRecommendedProducts, shouldRecommendProducts } from "@/lib/chat-product-recommendations"
 
 const UPGRADE_METRICS_KEY = "runash_upgrade_metrics_v2"
+const STARTER_CARD_STATE_KEY = "runash_chat_starter_cards_v1"
 
 const DEFAULT_ASSISTANT_MESSAGE: ChatMessage = {
   id: "1",
@@ -60,6 +62,9 @@ export function ChatWorkspace() {
   type ChatRunToolDiagnostic = { tool: string; status: "running" | "completed" | "failed" | "queued"; failureReason?: string | null }
   type ChatRunDiagnostics = { requestId: string | null; provider: string | null; model: string | null; lastErrorCode: string | null; toolCalls: ChatRunToolDiagnostic[] }
   type ModelCatalogEntry = { id: string; provider: string; label: string }
+
+  const { data: authSession } = useSession()
+  const userScopedStorageKey = useMemo(() => String(authSession?.user?.id ?? "anonymous"), [authSession?.user?.id])
 
   const { openFromTrigger } = useDashboardModelDialog()
   const searchParams = useSearchParams()
@@ -179,6 +184,7 @@ export function ChatWorkspace() {
 
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([])
   const [persistedSessionIds, setPersistedSessionIds] = useState<string[]>([])
+  const [dismissedStarterCardIds, setDismissedStarterCardIds] = useState<string[]>([])
 
   const buildEmptySessionContext = () => ({
     preferences: {
@@ -425,8 +431,13 @@ export function ChatWorkspace() {
     }
 
     const payload = (await response.json()) as { data?: { id?: string | number; title?: string; created_at?: string } }
+    const resolvedSessionId = payload.data?.id
+    if (resolvedSessionId === undefined || resolvedSessionId === null) {
+      throw new Error("Unable to create chat session")
+    }
+
     const newSession: ChatSession = {
-      id: String(payload.data?.id ?? `session-${Date.now()}`),
+      id: String(resolvedSessionId),
       title: payload.data?.title ?? (titleSeed.trim().slice(0, 80) || "RunAsh Agent Session"),
       messages: [],
       createdAt: new Date(payload.data?.created_at ?? Date.now()),
@@ -436,9 +447,7 @@ export function ChatWorkspace() {
 
     setCurrentSession(newSession)
     setChatSessions((prev) => [newSession, ...prev.filter((session) => session.id !== newSession.id)])
-    if (payload.data?.id !== undefined && payload.data?.id !== null) {
-      setPersistedSessionIds((prev) => (prev.includes(newSession.id) ? prev : [newSession.id, ...prev]))
-    }
+    setPersistedSessionIds((prev) => (prev.includes(newSession.id) ? prev : [newSession.id, ...prev]))
     return newSession
   }
 
@@ -1807,6 +1816,69 @@ export function ChatWorkspace() {
     },
   ]
 
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(STARTER_CARD_STATE_KEY)
+      const parsed = raw ? (JSON.parse(raw) as Record<string, string[]>) : {}
+      const userDismissedCards = Array.isArray(parsed[userScopedStorageKey]) ? parsed[userScopedStorageKey] : []
+      setDismissedStarterCardIds(userDismissedCards)
+    } catch {
+      setDismissedStarterCardIds([])
+    }
+  }, [userScopedStorageKey])
+
+  const persistDismissedStarterCardIds = useCallback(
+    (cardIds: string[]) => {
+      try {
+        const raw = window.localStorage.getItem(STARTER_CARD_STATE_KEY)
+        const parsed = raw ? (JSON.parse(raw) as Record<string, string[]>) : {}
+        parsed[userScopedStorageKey] = cardIds
+        window.localStorage.setItem(STARTER_CARD_STATE_KEY, JSON.stringify(parsed))
+      } catch {
+        return
+      }
+    },
+    [userScopedStorageKey],
+  )
+
+  const trackStarterAction = useCallback(
+    (entry: { cardId: string; action: "run" | "dismiss" | "restore" }) => {
+      const key = `${UPGRADE_METRICS_KEY}:${userScopedStorageKey}:starter-actions`
+      try {
+        const raw = window.localStorage.getItem(key)
+        const parsed = raw ? (JSON.parse(raw) as Array<{ cardId: string; action: string; at: string }>) : []
+        const next = [...parsed, { cardId: entry.cardId, action: entry.action, at: new Date().toISOString() }]
+        window.localStorage.setItem(key, JSON.stringify(next.slice(-120)))
+      } catch {
+        return
+      }
+    },
+    [userScopedStorageKey],
+  )
+
+  const visibleStarterPromptCards = useMemo(
+    () => starterPromptCards.filter((card) => !dismissedStarterCardIds.includes(card.id)),
+    [dismissedStarterCardIds, starterPromptCards],
+  )
+
+  const dismissStarterCard = useCallback(
+    (cardId: string) => {
+      setDismissedStarterCardIds((prev) => {
+        const next = prev.includes(cardId) ? prev : [...prev, cardId]
+        persistDismissedStarterCardIds(next)
+        return next
+      })
+      trackStarterAction({ cardId, action: "dismiss" })
+    },
+    [persistDismissedStarterCardIds, trackStarterAction],
+  )
+
+  const restoreStarterCards = useCallback(() => {
+    setDismissedStarterCardIds([])
+    persistDismissedStarterCardIds([])
+    trackStarterAction({ cardId: "all", action: "restore" })
+  }, [persistDismissedStarterCardIds, trackStarterAction])
+
   const hasUserMessage = messages.some((message) => message.role === "user")
   const showComposerEmptyState = !hasUserMessage && streamControllerState === "idle"
 
@@ -2179,16 +2251,28 @@ export function ChatWorkspace() {
 
                   <SuggestionCardGrid
                     title="Starter prompts"
-                    items={starterPromptCards.map((item) => ({
+                    items={visibleStarterPromptCards.map((item) => ({
                       id: item.id,
                       title: item.title,
                       description: item.description,
                       actionLabel: item.actionLabel,
                       icon: item.icon,
-                      onAction: () => handleSendMessage(item.prompt),
+                      onAction: () => {
+                        trackStarterAction({ cardId: item.id, action: "run" })
+                        handleSendMessage(item.prompt)
+                      },
+                      onDismiss: () => dismissStarterCard(item.id),
                     }))}
                     emptyMessage="Starter prompts are unavailable right now."
                   />
+
+                  {dismissedStarterCardIds.length > 0 ? (
+                    <div className="flex justify-end">
+                      <Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-zinc-400 hover:text-zinc-100" onClick={restoreStarterCards}>
+                        Restore starter prompts
+                      </Button>
+                    </div>
+                  ) : null}
 
                   <div className="rounded-md border border-zinc-800 bg-zinc-900/60 p-2">
                     <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Recent project/session</p>
@@ -2204,19 +2288,24 @@ export function ChatWorkspace() {
                       </button>
                     ) : (
                       <div className="mt-1.5 space-y-2">
-                        <p className="text-xs text-zinc-400">No saved sessions yet. Start a new chat or use a suggested starter.</p>
+                        <p className="text-xs text-zinc-400">No chats yet. Create new chat, try starter prompts, or connect tools from the left panel.</p>
                         <div className="flex flex-wrap gap-2">
                           <Button type="button" size="sm" variant="outline" onClick={handleNewChatSession}>
-                            Start new chat
+                            Create new chat
                           </Button>
                           <Button
                             type="button"
                             size="sm"
                             variant="ghost"
                             className="text-zinc-300 hover:text-zinc-100"
-                            onClick={() => handleSendMessage(starterPromptCards[0]?.prompt ?? "")}
+                            onClick={() => {
+                              const starterPrompt = visibleStarterPromptCards[0]?.prompt
+                              if (!starterPrompt) return
+                              trackStarterAction({ cardId: visibleStarterPromptCards[0].id, action: "run" })
+                              handleSendMessage(starterPrompt)
+                            }}
                           >
-                            Run starter task
+                            Try starter prompts
                           </Button>
                         </div>
                       </div>
