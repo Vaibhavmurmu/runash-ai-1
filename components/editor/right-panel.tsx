@@ -9,7 +9,7 @@ import type { VideoGenerationRequest } from "@/lib/editor/video-models/types"
 import type { EditorProject, EditorSegment, EditorTimeline } from "@/lib/editor/domain"
 import GeneratePanel from "./panels/generate-panel"
 import EditPanel, { DEFAULT_EDIT_PANEL_STATE, type EditPanelState } from "./panels/edit-panel"
-import LayersPanel, { DEFAULT_LAYERS_PANEL_STATE, type LayerItem } from "./panels/layers-panel"
+import LayersPanel from "./panels/layers-panel"
 import StreamPanel from "./panels/stream-panel"
 import { EditorPanelContextProvider } from "./panels/editor-panel-context"
 
@@ -22,6 +22,7 @@ interface RightPanelProps {
   activeTab?: string
   project?: EditorProject | null
   activeTimeline?: EditorTimeline
+  onTimelineChange: (timeline: EditorTimeline) => void
   selectedSegment?: EditorSegment
   playheadSeconds?: number
 }
@@ -40,7 +41,6 @@ export function resolveRightPanelTab(activeTab?: string): RightPanelTabId {
 
 export interface TabPanelState {
   edit: EditPanelState
-  layers: LayerItem[]
 }
 
 export function updateTabPanelState<K extends keyof TabPanelState>(
@@ -56,7 +56,6 @@ export function updateTabPanelState<K extends keyof TabPanelState>(
 
 const DEFAULT_TAB_PANEL_STATE: TabPanelState = {
   edit: DEFAULT_EDIT_PANEL_STATE,
-  layers: DEFAULT_LAYERS_PANEL_STATE,
 }
 
 export function renderPanelByTab(
@@ -74,10 +73,7 @@ export function renderPanelByTab(
       />
     ),
     layers: () => (
-      <LayersPanel
-        layers={tabPanelState.layers}
-        onLayersChange={(next) => setTabPanelState((prev) => updateTabPanelState(prev, "layers", next))}
-      />
+      <LayersPanel />
     ),
     stream: () => <StreamPanel />,
   }
@@ -94,6 +90,7 @@ export default function RightPanel({
   activeTab,
   project,
   activeTimeline,
+  onTimelineChange,
   selectedSegment,
   playheadSeconds = 0,
 }: RightPanelProps) {
@@ -127,6 +124,7 @@ export default function RightPanel({
       value={{
         project,
         activeTimeline,
+        onTimelineChange,
         selectedSegment,
         playheadSeconds,
       }}

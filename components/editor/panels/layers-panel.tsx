@@ -1,6 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
+import type { EditorTimeline, EditorTrack } from "@/lib/editor/domain"
 import { useEditorPanelContext } from "./editor-panel-context"
 
 export interface LayerItem {
@@ -10,19 +11,75 @@ export interface LayerItem {
   visible: boolean
 }
 
-export interface LayersPanelProps {
-  layers: LayerItem[]
-  onLayersChange: (nextLayers: LayerItem[]) => void
+function readVisibleFlag(metadata: Record<string, unknown> | undefined): boolean {
+  if (!metadata) return true
+  return metadata.visible !== false
 }
 
-export const DEFAULT_LAYERS_PANEL_STATE: LayerItem[] = [
-  { id: "layer-video", name: "Video base", group: "Primary", visible: true },
-  { id: "layer-text", name: "Title overlay", group: "Overlays", visible: true },
-  { id: "layer-audio", name: "Music bed", group: "Audio", visible: false },
-]
+function sortedTracks(tracks: EditorTrack[]): EditorTrack[] {
+  return [...tracks].sort((a, b) => a.orderIndex - b.orderIndex)
+}
 
-export default function LayersPanel({ layers, onLayersChange }: LayersPanelProps) {
-  const { activeTimeline, project } = useEditorPanelContext()
+export function deriveLayerItemsFromTimeline(timeline?: EditorTimeline): LayerItem[] {
+  if (!timeline) return []
+
+  return sortedTracks(timeline.tracks).map((track) => {
+    const segmentsOnTrack = timeline.segments.filter((segment) => segment.trackId === track.id)
+    const isTrackVisible = readVisibleFlag(track.metadata)
+    const areSegmentsVisible = segmentsOnTrack.every((segment) => readVisibleFlag(segment.metadata))
+
+    return {
+      id: track.id,
+      name: track.label,
+      group: track.trackType,
+      visible: isTrackVisible && areSegmentsVisible,
+    }
+  })
+}
+
+export function toggleLayerVisibility(timeline: EditorTimeline, trackId: string): EditorTimeline {
+  const track = timeline.tracks.find((item) => item.id === trackId)
+  if (!track) return timeline
+
+  const segmentsOnTrack = timeline.segments.filter((segment) => segment.trackId === trackId)
+  const currentlyVisible = readVisibleFlag(track.metadata) && segmentsOnTrack.every((segment) => readVisibleFlag(segment.metadata))
+  const nextVisible = !currentlyVisible
+
+  return {
+    ...timeline,
+    tracks: timeline.tracks.map((item) =>
+      item.id === trackId ? { ...item, metadata: { ...item.metadata, visible: nextVisible } } : item,
+    ),
+    segments: timeline.segments.map((segment) =>
+      segment.trackId === trackId ? { ...segment, metadata: { ...segment.metadata, visible: nextVisible } } : segment,
+    ),
+  }
+}
+
+export function moveLayer(timeline: EditorTimeline, trackId: string, direction: "up" | "down"): EditorTimeline {
+  const ordered = sortedTracks(timeline.tracks)
+  const currentIndex = ordered.findIndex((track) => track.id === trackId)
+  if (currentIndex === -1) return timeline
+
+  const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1
+  if (targetIndex < 0 || targetIndex >= ordered.length) return timeline
+
+  const nextOrdered = [...ordered]
+  const temp = nextOrdered[targetIndex]
+  nextOrdered[targetIndex] = nextOrdered[currentIndex]
+  nextOrdered[currentIndex] = temp
+
+  const normalized = nextOrdered.map((track, index) => ({ ...track, orderIndex: index }))
+
+  return {
+    ...timeline,
+    tracks: normalized,
+  }
+}
+
+export default function LayersPanel() {
+  const { activeTimeline, project, onTimelineChange } = useEditorPanelContext()
+  const layers = deriveLayerItemsFromTimeline(activeTimeline)
 
   return (
     <div className="space-y-5 p-4">
@@ -48,23 +105,21 @@ export default function LayersPanel({ layers, onLayersChange }: LayersPanelProps
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() =>
-                  onLayersChange(layers.map((item) => (item.id === layer.id ? { ...item, visible: !item.visible } : item)))
-                }
+                disabled={!activeTimeline}
+                onClick={() => {
+                  if (!activeTimeline) return
+                  onTimelineChange(toggleLayerVisibility(activeTimeline, layer.id))
+                }}
               >
                 Toggle
               </Button>
               <Button
                 size="sm"
                 variant="outline"
-                disabled={index === 0}
+                disabled={!activeTimeline || index === 0}
                 onClick={() => {
-                  if (index === 0) return
-                  const next = [...layers]
-                  const temp = next[index - 1]
-                  next[index - 1] = next[index]
-                  next[index] = temp
-                  onLayersChange(next)
+                  if (!activeTimeline) return
+                  onTimelineChange(moveLayer(activeTimeline, layer.id, "up"))
                 }}
               >
                 Move up
@@ -72,14 +127,10 @@ export default function LayersPanel({ layers, onLayersChange }: LayersPanelProps
               <Button
                 size="sm"
                 variant="outline"
-                disabled={index === layers.length - 1}
+                disabled={!activeTimeline || index === layers.length - 1}
                 onClick={() => {
-                  if (index === layers.length - 1) return
-                  const next = [...layers]
-                  const temp = next[index + 1]
-                  next[index + 1] = next[index]
-                  next[index] = temp
-                  onLayersChange(next)
+                  if (!activeTimeline) return
+                  onTimelineChange(moveLayer(activeTimeline, layer.id, "down"))
                 }}
               >
                 Move down

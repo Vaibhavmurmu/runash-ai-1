@@ -2,7 +2,59 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { resolveRightPanelTab, updateTabPanelState } from "@/components/editor/right-panel"
 import { DEFAULT_EDIT_PANEL_STATE } from "@/components/editor/panels/edit-panel"
-import { DEFAULT_LAYERS_PANEL_STATE } from "@/components/editor/panels/layers-panel"
+import { deriveLayerItemsFromTimeline, moveLayer, toggleLayerVisibility } from "@/components/editor/panels/layers-panel"
+import type { EditorSegment, EditorTimeline, EditorTrack } from "@/lib/editor/domain"
+
+function makeTrack(partial: Partial<EditorTrack>): EditorTrack {
+  return {
+    id: partial.id ?? "track",
+    timelineId: partial.timelineId ?? "timeline-1",
+    projectId: partial.projectId ?? "project-1",
+    ownerId: partial.ownerId ?? "owner-1",
+    label: partial.label ?? "Track",
+    orderIndex: partial.orderIndex ?? 0,
+    trackType: partial.trackType ?? "video",
+    metadata: partial.metadata ?? {},
+    createdAt: partial.createdAt ?? "2026-01-01T00:00:00.000Z",
+    updatedAt: partial.updatedAt ?? "2026-01-01T00:00:00.000Z",
+  }
+}
+
+function makeSegment(partial: Partial<EditorSegment>): EditorSegment {
+  return {
+    id: partial.id ?? "segment",
+    projectId: partial.projectId ?? "project-1",
+    timelineId: partial.timelineId ?? "timeline-1",
+    ownerId: partial.ownerId ?? "owner-1",
+    trackId: partial.trackId ?? "track-1",
+    assetId: partial.assetId ?? null,
+    label: partial.label ?? "Segment",
+    segmentType: partial.segmentType ?? "video",
+    startSeconds: partial.startSeconds ?? 0,
+    endSeconds: partial.endSeconds ?? 3,
+    metadata: partial.metadata ?? {},
+    createdAt: partial.createdAt ?? "2026-01-01T00:00:00.000Z",
+    updatedAt: partial.updatedAt ?? "2026-01-01T00:00:00.000Z",
+  }
+}
+
+function makeTimeline(partial?: Partial<EditorTimeline>): EditorTimeline {
+  return {
+    id: partial?.id ?? "timeline-1",
+    projectId: partial?.projectId ?? "project-1",
+    ownerId: partial?.ownerId ?? "owner-1",
+    name: partial?.name ?? "Main timeline",
+    frameRate: partial?.frameRate ?? 30,
+    durationSeconds: partial?.durationSeconds ?? 12,
+    metadata: partial?.metadata ?? {},
+    tracks: partial?.tracks ?? [],
+    segments: partial?.segments ?? [],
+    version: partial?.version ?? 1,
+    updatedBy: partial?.updatedBy ?? null,
+    createdAt: partial?.createdAt ?? "2026-01-01T00:00:00.000Z",
+    updatedAt: partial?.updatedAt ?? "2026-01-01T00:00:00.000Z",
+  }
+}
 
 test("resolveRightPanelTab falls back to generate for unknown ids", () => {
   assert.equal(resolveRightPanelTab("generate"), "generate")
@@ -14,7 +66,6 @@ test("resolveRightPanelTab falls back to generate for unknown ids", () => {
 test("tab panel state is retained while switching tabs", () => {
   const initial = {
     edit: DEFAULT_EDIT_PANEL_STATE,
-    layers: DEFAULT_LAYERS_PANEL_STATE,
   }
 
   const editUpdated = updateTabPanelState(initial, "edit", {
@@ -23,12 +74,53 @@ test("tab panel state is retained while switching tabs", () => {
     trackVolume: "73",
   })
 
-  const layersUpdated = updateTabPanelState(editUpdated, "layers", [
-    ...editUpdated.layers.slice(1),
-    editUpdated.layers[0],
-  ])
+  assert.equal(editUpdated.edit.trimStart, "2.5")
+  assert.equal(editUpdated.edit.trackVolume, "73")
+})
 
-  assert.equal(layersUpdated.edit.trimStart, "2.5")
-  assert.equal(layersUpdated.edit.trackVolume, "73")
-  assert.equal(layersUpdated.layers[0].id, "layer-text")
+test("deriveLayerItemsFromTimeline and toggleLayerVisibility reflect track + segment visibility", () => {
+  const timeline = makeTimeline({
+    tracks: [
+      makeTrack({ id: "track-2", label: "Text", orderIndex: 1, trackType: "overlay" }),
+      makeTrack({ id: "track-1", label: "Base", orderIndex: 0, trackType: "primary" }),
+    ],
+    segments: [
+      makeSegment({ id: "segment-1", trackId: "track-1", metadata: { visible: true } }),
+      makeSegment({ id: "segment-2", trackId: "track-2", metadata: { visible: false } }),
+    ],
+  })
+
+  const derived = deriveLayerItemsFromTimeline(timeline)
+  assert.deepEqual(
+    derived.map((item) => ({ id: item.id, visible: item.visible })),
+    [
+      { id: "track-1", visible: true },
+      { id: "track-2", visible: false },
+    ],
+  )
+
+  const toggled = toggleLayerVisibility(timeline, "track-2")
+  assert.equal(toggled.tracks.find((track) => track.id === "track-2")?.metadata.visible, true)
+  assert.equal(toggled.segments.find((segment) => segment.id === "segment-2")?.metadata.visible, true)
+})
+
+test("moveLayer updates array order and orderIndex consistently", () => {
+  const timeline = makeTimeline({
+    tracks: [
+      makeTrack({ id: "track-1", orderIndex: 0, label: "A" }),
+      makeTrack({ id: "track-2", orderIndex: 1, label: "B" }),
+      makeTrack({ id: "track-3", orderIndex: 2, label: "C" }),
+    ],
+  })
+
+  const moved = moveLayer(timeline, "track-2", "up")
+
+  assert.deepEqual(
+    moved.tracks.map((track) => ({ id: track.id, orderIndex: track.orderIndex })),
+    [
+      { id: "track-2", orderIndex: 0 },
+      { id: "track-1", orderIndex: 1 },
+      { id: "track-3", orderIndex: 2 },
+    ],
+  )
 })
