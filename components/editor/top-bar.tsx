@@ -1,9 +1,10 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { Circle, Settings, Share2, Cloud, Webcam, Users, Loader2, MoreHorizontal, Sparkles } from "lucide-react"
+import { Circle, Settings, Share2, Cloud, Webcam, Users, Loader2, MoreHorizontal, Sparkles, HelpCircle } from "lucide-react"
 import InputTools from "./input-tools"
 import SettingsPanel from "./settings-panel"
+import Link from "next/link"
 import { useState } from "react"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -72,6 +73,13 @@ export default function TopBar({ isRecording, onRecordingToggle, onOpenCollabora
                 Collaborate
               </Button>
 
+              <Button asChild variant="outline" size="sm" className="gap-2 bg-transparent" aria-label="Open editor guide">
+                <Link href="/editor/docs">
+                  <HelpCircle className="w-4 h-4" />
+                  Help
+                </Link>
+              </Button>
+
               <Button variant="outline" size="sm" className="gap-2 bg-transparent" aria-label="Share project">
                 <Share2 className="w-4 h-4" />
                 Share
@@ -93,6 +101,12 @@ export default function TopBar({ isRecording, onRecordingToggle, onOpenCollabora
               <DropdownMenuItem onClick={onOpenCollaboration}>
                 <Users className="w-4 h-4" />
                 Collaborate
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/editor/docs">
+                  <HelpCircle className="w-4 h-4" />
+                  Editor guide
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuItem>
                 <Share2 className="w-4 h-4" />
