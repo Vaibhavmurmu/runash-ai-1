@@ -98,14 +98,6 @@ import {
   SuggestionCardGrid,
   type SuggestionCardItem,
 } from "@/components/chat/shared-chat-primitives";
-import {
-  CreditsBalanceControl,
-  FeedbackDialog,
-  OnboardingDialog,
-  RedeemCodeDialog,
-  ReferDialog,
-  UpgradeDialog,
-} from "./components/feature-dialogs";
 
 type ChatPreviewMessage = {
   id: string | number;
@@ -5571,95 +5563,811 @@ ${instructionStarter}`
         </DialogContent>
       </Dialog>
 
-      <OnboardingDialog
+      <Dialog
         open={isOnboardingOpen}
         onOpenChange={handleOnboardingOpenChange}
-        dialogClassName={`${overlayLayerClassNames.dialog} w-[min(92vw,32rem)] max-w-[32rem] overflow-hidden border-zinc-800 bg-zinc-950 p-0 text-zinc-100 motion-reduce:duration-0`}
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          focusOverlayTrigger();
-        }}
-        currentSlide={currentOnboardingSlide}
-        stepIndex={onboardingStep}
-        steps={onboardingSlides}
-        onStepSelect={setOnboardingStep}
-        onNext={handleOnboardingNext}
-        isLastStep={isLastOnboardingStep}
-      />
+        modal
+      >
+        <DialogContent
+          className={`${overlayLayerClassNames.dialog} w-[min(92vw,32rem)] max-w-[32rem] overflow-hidden border-zinc-800 bg-zinc-950 p-0 text-zinc-100 motion-reduce:duration-0`}
+          aria-label="RunAsh chat updates"
+          onEscapeKeyDown={() => handleOnboardingOpenChange(false)}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            focusOverlayTrigger();
+          }}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-3 top-3 z-10 h-8 w-8 rounded-full text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+            onClick={() => handleOnboardingOpenChange(false)}
+            aria-label="Close updates dialog"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+          <div className="max-h-[min(88vh,42rem)] overflow-y-auto rounded-lg">
+            <div className="h-44 bg-gradient-to-br from-cyan-500/30 via-blue-500/20 to-zinc-900 p-4 sm:p-6">
+              <div
+                className="flex h-full items-center justify-center rounded-lg border border-white/10 bg-black/20 text-6xl transition-transform duration-300 motion-reduce:transition-none"
+                key={currentOnboardingSlide.title}
+              >
+                <span
+                  role="img"
+                  aria-label={currentOnboardingSlide.media.label}
+                >
+                  {currentOnboardingSlide.media.value}
+                </span>
+              </div>
+            </div>
 
-      <FeedbackDialog
-        open={isFeedbackOpen}
-        onOpenChange={handleFeedbackOpenChange}
-        dialogClassName={`${overlayLayerClassNames.dialog} w-[min(92vw,520px)] max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-[520px]`}
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          focusOverlayTrigger();
-        }}
-        isSubmitting={isSubmittingFeedback}
-        feedbackText={feedbackText}
-        feedbackRating={feedbackRating}
-        feedbackRatingOptions={feedbackRatingOptions}
-        onFeedbackTextChange={setFeedbackText}
-        onFeedbackRatingChange={setFeedbackRating}
-        onSubmit={handleFeedbackSubmit}
-      />
+            <div className="space-y-5 p-4 sm:p-6">
+              <DialogHeader className="space-y-2 text-left">
+                <p className="text-xs font-medium uppercase tracking-wide text-cyan-300">
+                  Step {onboardingStep + 1} of {onboardingSlides.length}
+                </p>
+                <DialogTitle>{currentOnboardingSlide.title}</DialogTitle>
+                <DialogDescription className="text-zinc-300">
+                  {currentOnboardingSlide.description}
+                </DialogDescription>
+              </DialogHeader>
 
-      <ReferDialog
-        open={isReferOpen}
-        onOpenChange={handleReferDialogOpenChange}
-        dialogClassName={`${overlayLayerClassNames.dialog} w-[min(94vw,44rem)] max-h-[90vh] overflow-hidden border-zinc-800 bg-zinc-950 p-0 text-zinc-100 sm:max-w-[44rem]`}
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          focusOverlayTrigger();
-        }}
-        referralUiData={referralUiData}
-        referralProgressPercent={referralProgressPercent}
-        isReferralLoading={isReferralLoading}
-        referralLoadError={referralLoadError}
-        isCopyingLink={isCopyingLink}
-        onCopyLink={handleCopyReferralLink}
-        onRunNumbers={() => router.push("/pricing?tab=roi")}
-      />
+              <div className="flex items-center justify-between gap-3">
+                <div
+                  className="flex items-center gap-2"
+                  aria-label="Onboarding progress"
+                  role="group"
+                >
+                  {onboardingSlides.map((slide, index) => (
+                    <button
+                      key={slide.title}
+                      type="button"
+                      onClick={() => setOnboardingStep(index)}
+                      className={`h-2.5 w-2.5 rounded-full transition-colors duration-200 motion-reduce:transition-none ${
+                        index === onboardingStep
+                          ? "bg-cyan-400"
+                          : "bg-zinc-600 hover:bg-zinc-500"
+                      }`}
+                      aria-label={`Go to onboarding step ${index + 1}`}
+                      aria-current={
+                        index === onboardingStep ? "step" : undefined
+                      }
+                    />
+                  ))}
+                </div>
 
-      <UpgradeDialog
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="text-zinc-300 hover:bg-zinc-900"
+                    onClick={() => handleOnboardingOpenChange(false)}
+                  >
+                    Dismiss
+                  </Button>
+                  <Button
+                    className="bg-cyan-600 text-white hover:bg-cyan-500"
+                    onClick={handleOnboardingNext}
+                  >
+                    {isLastOnboardingStep ? "Get started" : "Next"}
+                    {!isLastOnboardingStep ? (
+                      <ArrowRight className="ml-1 h-4 w-4" />
+                    ) : null}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isFeedbackOpen} onOpenChange={handleFeedbackOpenChange}>
+        <DialogContent
+          className={`${overlayLayerClassNames.dialog} w-[min(92vw,520px)] max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-[520px]`}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            focusOverlayTrigger();
+          }}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-3 top-3 h-8 w-8 rounded-full text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+            onClick={() => handleFeedbackOpenChange(false)}
+            aria-label="Close feedback dialog"
+            disabled={isSubmittingFeedback}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle>Give feedback</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Tell us what worked well and what we can improve in your RunAsh
+              Chat experience.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form
+            onSubmit={handleFeedbackSubmit}
+            className="space-y-4"
+            aria-label="Feedback form"
+          >
+            <div className="space-y-2">
+              <label
+                htmlFor="feedback-text"
+                className="text-sm font-medium text-zinc-200"
+              >
+                Your feedback
+              </label>
+              <Textarea
+                id="feedback-text"
+                value={feedbackText}
+                onChange={(event) => setFeedbackText(event.target.value)}
+                placeholder="Share your feedback"
+                rows={5}
+                className="border-zinc-700 bg-zinc-900 text-zinc-100 placeholder:text-zinc-500"
+                disabled={isSubmittingFeedback}
+                onKeyDown={(event) => {
+                  if (
+                    (event.metaKey || event.ctrlKey) &&
+                    event.key === "Enter"
+                  ) {
+                    event.preventDefault();
+                    event.currentTarget.form?.requestSubmit();
+                  }
+                }}
+                required
+              />
+            </div>
+
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium text-zinc-200">
+                Quick reaction (optional)
+              </legend>
+              <div
+                className="flex items-center gap-2"
+                role="radiogroup"
+                aria-label="Select feedback sentiment"
+              >
+                {feedbackRatingOptions.map(({ value, label, Icon }) => {
+                  const isSelected = feedbackRating === value;
+                  return (
+                    <Button
+                      key={value}
+                      type="button"
+                      variant="outline"
+                      onClick={() => setFeedbackRating(value)}
+                      aria-pressed={isSelected}
+                      className={`h-10 border-zinc-700 px-3 text-zinc-200 hover:bg-zinc-900 ${isSelected ? "border-zinc-500 bg-zinc-900" : ""}`}
+                      disabled={isSubmittingFeedback}
+                    >
+                      <Icon className="mr-2 h-4 w-4" aria-hidden="true" />
+                      {label}
+                    </Button>
+                  );
+                })}
+              </div>
+            </fieldset>
+
+            <DialogFooter className="gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleFeedbackOpenChange(false)}
+                disabled={isSubmittingFeedback}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmittingFeedback || !feedbackText.trim()}
+              >
+                {isSubmittingFeedback ? "Submitting…" : "Submit"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isSettingsOpen}
+        onOpenChange={handleSettingsDialogOpenChange}
+      >
+        <DialogContent
+          className={`${overlayLayerClassNames.settingsDialog} w-[min(96vw,840px)] overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 p-0 text-zinc-100 shadow-2xl shadow-black/40 sm:max-w-[840px]`}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            focusOverlayTrigger();
+          }}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute left-3 top-3 h-8 w-8 rounded-full text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+            onClick={() => handleSettingsDialogOpenChange(false)}
+            aria-label="Close settings dialog"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+
+          <DialogHeader className="sr-only">
+            <DialogTitle>Settings</DialogTitle>
+            <DialogDescription>
+              Manage workspace settings from categorized controls.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid max-h-[82dvh] grid-cols-1 sm:grid-cols-[248px_minmax(0,1fr)]">
+            <aside className="border-b border-zinc-800 bg-zinc-900/40 sm:border-b-0 sm:border-r sm:bg-zinc-900/25">
+              <div className="hidden border-b border-zinc-800 px-4 py-4 sm:block">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-400">
+                  Settings
+                </h2>
+              </div>
+              <ScrollArea className="w-full sm:h-[calc(82dvh-57px)]">
+                <nav
+                  aria-label="Settings sections"
+                  role="tablist"
+                  className="flex min-w-max gap-1 p-2 sm:block sm:min-w-0 sm:space-y-1"
+                >
+                  {settingsSections.map((section, index) => {
+                    const isActive = activeSettingsSection === section;
+                    return (
+                      <button
+                        key={section}
+                        ref={(element) => {
+                          settingsSectionButtonRefs.current[index] = element;
+                        }}
+                        type="button"
+                        onClick={() => setActiveSettingsSection(section)}
+                        onKeyDown={(event) =>
+                          handleSettingsSectionKeyDown(event, index)
+                        }
+                        role="tab"
+                        aria-selected={isActive}
+                        tabIndex={isActive ? 0 : -1}
+                        className={`flex shrink-0 items-center rounded-lg border px-3 py-2 text-left text-sm transition-colors sm:w-full ${
+                          isActive
+                            ? "border-zinc-700 bg-zinc-800 text-zinc-50"
+                            : "border-transparent text-zinc-400 hover:border-zinc-800 hover:bg-zinc-900 hover:text-zinc-200"
+                        }`}
+                      >
+                        {section}
+                      </button>
+                    );
+                  })}
+                </nav>
+              </ScrollArea>
+            </aside>
+
+            <section className="flex min-h-[320px] flex-col bg-zinc-950">
+              <div className="px-5 pb-4 pt-4 sm:px-6 sm:pt-6">
+                <h3 className="text-lg font-semibold text-zinc-100 sm:text-xl">
+                  {activeSettingsSection}
+                </h3>
+              </div>
+              <div className="border-b border-zinc-800" />
+              <div className="flex-1 space-y-4 px-5 py-5 text-sm text-zinc-400 sm:px-6">
+                {activeSettingsSection === "General" ? (
+                  <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/30">
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 border-b border-zinc-800 px-4 py-3">
+                      <span className="text-zinc-200">Appearance</span>
+                      <Select
+                        value={generalSettings.appearance}
+                        onValueChange={updateGeneralSettingsAppearance}
+                      >
+                        <SelectTrigger className="h-8 w-full border-zinc-700 bg-zinc-900 text-zinc-100">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="system">System</SelectItem>
+                          <SelectItem value="light">Light</SelectItem>
+                          <SelectItem value="dark">Dark</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 border-b border-zinc-800 px-4 py-3">
+                      <span className="text-zinc-200">Accent color</span>
+                      <Select
+                        value={generalSettings.accentColor}
+                        onValueChange={updateGeneralSettingsAccentColor}
+                      >
+                        <SelectTrigger className="h-8 w-full border-zinc-700 bg-zinc-900 text-zinc-100">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="violet">Violet</SelectItem>
+                          <SelectItem value="blue">Blue</SelectItem>
+                          <SelectItem value="emerald">Emerald</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 border-b border-zinc-800 px-4 py-3">
+                      <span className="text-zinc-200">Language</span>
+                      <Select
+                        value={generalSettings.language}
+                        onValueChange={updateGeneralSettingsLanguage}
+                      >
+                        <SelectTrigger className="h-8 w-full border-zinc-700 bg-zinc-900 text-zinc-100">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="en">English</SelectItem>
+                          <SelectItem value="es">Español</SelectItem>
+                          <SelectItem value="fr">Français</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-start gap-4 border-b border-zinc-800 px-4 py-3">
+                      <div className="space-y-1">
+                        <p className="text-zinc-200">Spoken language</p>
+                        <p className="text-xs text-zinc-500">
+                          Controls transcription and voice response language
+                          defaults.
+                        </p>
+                      </div>
+                      <Select
+                        value={generalSettings.spokenLanguage}
+                        onValueChange={updateGeneralSettingsSpokenLanguage}
+                      >
+                        <SelectTrigger className="h-8 w-full border-zinc-700 bg-zinc-900 text-zinc-100">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="en-US">English (US)</SelectItem>
+                          <SelectItem value="en-IN">English (India)</SelectItem>
+                          <SelectItem value="es-ES">Spanish</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 border-b border-zinc-800 px-4 py-3">
+                      <span className="text-zinc-200">Voice</span>
+                      <div className="flex items-center justify-end gap-2">
+                        <Select
+                          value={generalSettings.voice}
+                          onValueChange={updateGeneralSettingsVoice}
+                        >
+                          <SelectTrigger className="h-8 w-[132px] border-zinc-700 bg-zinc-900 text-zinc-100">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="alloy">Alloy</SelectItem>
+                            <SelectItem value="verse">Verse</SelectItem>
+                            <SelectItem value="willow">Willow</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          className="h-8 w-8 border-zinc-700 bg-zinc-900"
+                          aria-label="Play selected voice sample"
+                          disabled
+                        >
+                          <Play className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-start gap-4 border-b border-zinc-800 px-4 py-3">
+                      <div className="space-y-1">
+                        <p className="text-zinc-200">Separate Voice</p>
+                        <p className="text-xs text-zinc-500">
+                          Use a distinct voice profile for generated speech
+                          output.
+                        </p>
+                      </div>
+                      <div className="flex justify-end">
+                        <Switch
+                          checked={generalSettings.separateVoiceEnabled}
+                          onCheckedChange={(checked) =>
+                            setGeneralSettings((prev) => ({
+                              ...prev,
+                              separateVoiceEnabled: checked,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 border-b border-zinc-800 px-4 py-3">
+                      <span className="text-zinc-200">
+                        Show additional models
+                      </span>
+                      <div className="flex justify-end">
+                        <Switch
+                          checked={generalSettings.showAdditionalModels}
+                          onCheckedChange={(checked) =>
+                            setGeneralSettings((prev) => ({
+                              ...prev,
+                              showAdditionalModels: checked,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 border-b border-zinc-800 px-4 py-3">
+                      <div className="space-y-1">
+                        <p className="text-zinc-200">Prompt suggestions</p>
+                        <p className="text-xs text-zinc-500">
+                          Restore dismissed suggestion cards beneath the chat
+                          composer.
+                        </p>
+                      </div>
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 border-zinc-700 bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
+                          onClick={handleResetPromptSuggestionCards}
+                          disabled={dismissedPromptSuggestionCardIds.length === 0}
+                        >
+                          Show again
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-4 px-4 py-3">
+                      <div className="space-y-1">
+                        <p className="text-zinc-200">Task starter module</p>
+                        <p className="text-xs text-zinc-500">
+                          Reopen the onboarding block with quick links and
+                          starter cards.
+                        </p>
+                      </div>
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 border-zinc-700 bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
+                          onClick={handleReopenGetStarted}
+                          disabled={isGetStartedVisible}
+                        >
+                          Show module
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p>
+                      Use this section to review and update your{" "}
+                      {activeSettingsSection.toLowerCase()} settings.
+                    </p>
+                    <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-4 text-zinc-300">
+                      Additional controls for{" "}
+                      <span className="font-medium text-zinc-100">
+                        {activeSettingsSection}
+                      </span>{" "}
+                      will appear here.
+                    </div>
+                  </>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-fit"
+                  onClick={() => router.push("/settings")}
+                >
+                  Open full settings page
+                </Button>
+              </div>
+            </section>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isReferOpen} onOpenChange={handleReferDialogOpenChange}>
+        <DialogContent
+          className={`${overlayLayerClassNames.dialog} w-[min(94vw,34rem)] max-h-[90dvh] overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-950 text-zinc-100 shadow-2xl shadow-black/40 sm:max-w-xl`}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            focusOverlayTrigger();
+          }}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-3 top-3 h-8 w-8 rounded-full text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+            onClick={() => handleReferDialogOpenChange(false)}
+            aria-label="Close refer dialog"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+
+          <DialogHeader className="space-y-2 border-b border-zinc-800/80 px-6 pb-4 pt-6 text-left">
+            <DialogTitle className="flex items-center gap-2 text-zinc-100">
+              <Sparkles
+                className="h-5 w-5 text-emerald-400"
+                aria-hidden="true"
+              />
+              {referralUiData.headline}
+            </DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Share your referral link and unlock monthly credits for every
+              verified signup.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-0 overflow-y-auto px-6 py-4">
+            <section className="space-y-3 rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-4">
+              <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-zinc-400">
+                <span>Monthly progress</span>
+                <span>
+                  {referralUiData.progressValue} / {referralUiData.rewardCap}{" "}
+                  invites
+                </span>
+              </div>
+              <div
+                className="h-2.5 overflow-hidden rounded-full border border-zinc-700/70 bg-zinc-900"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={referralUiData.rewardCap}
+                aria-valuenow={referralUiData.progressValue}
+              >
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-emerald-400 to-cyan-400"
+                  style={{ width: `${referralProgressPercent}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[11px] uppercase tracking-wide text-zinc-500">
+                <span>Start · 0 invites</span>
+                <span>Goal · {referralUiData.rewardCap} invites</span>
+              </div>
+            </section>
+
+            <section className="space-y-3 border-t border-zinc-800/80 py-4">
+              <p className="text-sm font-medium text-zinc-200">Referral link</p>
+              {isReferralLoading ? (
+                <p className="text-xs text-zinc-500">Refreshing referral link…</p>
+              ) : null}
+              {referralLoadError ? (
+                <p className="text-xs text-amber-300">{referralLoadError}</p>
+              ) : null}
+              <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
+                <code className="flex-1 truncate rounded bg-zinc-950 px-3 py-2 text-xs text-zinc-300">
+                  {referralUiData.referralLink}
+                </code>
+                <Button
+                  type="button"
+                  className="h-10 px-4"
+                  onClick={handleCopyReferralLink}
+                  disabled={isCopyingLink || isReferralLoading}
+                >
+                  {isCopyingLink ? (
+                    <>
+                      <Check className="mr-2 h-4 w-4" aria-hidden="true" />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="mr-2 h-4 w-4" aria-hidden="true" />
+                      Copy
+                    </>
+                  )}
+                </Button>
+              </div>
+            </section>
+
+            <section className="space-y-2 border-t border-zinc-800/80 py-4">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+                <p className="text-sm font-medium text-zinc-200">
+                  How it works
+                </p>
+                <ul className="list-disc space-y-1 pl-5 text-sm text-zinc-400">
+                  {referralUiData.steps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ul>
+              </div>
+            </section>
+          </div>
+
+          <DialogFooter className="gap-2 border-t border-zinc-800/80 px-6 py-4 sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 px-4"
+              onClick={() => handleReferDialogOpenChange(false)}
+            >
+              Maybe later
+            </Button>
+            <Button
+              type="button"
+              className="h-10 px-4"
+              onClick={() => router.push("/pricing?tab=roi")}
+            >
+              Run the numbers
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={isUpgradeModalOpen}
         onOpenChange={handleUpgradeModalOpenChange}
-        dialogClassName={`${overlayLayerClassNames.dialog} w-[min(94vw,48rem)] max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-2xl`}
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          focusOverlayTrigger();
-        }}
-        plans={upgradePlans}
-        selectedPlanId={selectedPlan}
-        onSelectPlan={setSelectedPlan}
-        selectedUpgradePlan={selectedUpgradePlan}
-        formatPlanPriceLabel={formatPlanPriceLabel}
-        isPlanActionLoading={isPlanActionLoading}
-        onPlanCtaClick={handlePlanCtaClick}
-        onViewPricing={() => router.push("/pricing")}
-      />
+      >
+        <DialogContent
+          className={`${overlayLayerClassNames.dialog} w-[min(94vw,48rem)] max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-2xl`}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            focusOverlayTrigger();
+          }}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-3 top-3 h-8 w-8 rounded-full text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+            onClick={() => handleUpgradeModalOpenChange(false)}
+            aria-label="Close upgrade dialog"
+          >
+            <X className="h-4 w-4" />
+          </Button>
 
-      <RedeemCodeDialog
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle>Explore More Plans</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Pick a plan to preview pricing and key benefits for your current
+              stage.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div
+              className="grid grid-cols-2 gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-1 sm:grid-cols-5"
+              role="tablist"
+              aria-label="Select plan tier"
+            >
+              {upgradePlans.map((plan) => {
+                const isSelected = selectedPlan === plan.id;
+                return (
+                  <Button
+                    key={plan.id}
+                    type="button"
+                    variant={isSelected ? "default" : "ghost"}
+                    className={`h-9 px-2 text-xs sm:text-sm ${isSelected ? "bg-zinc-100 text-zinc-950 hover:bg-zinc-200" : "text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"}`}
+                    onClick={() => setSelectedPlan(plan.id)}
+                    role="tab"
+                    aria-selected={isSelected}
+                  >
+                    {plan.label}
+                  </Button>
+                );
+              })}
+            </div>
+
+            <Card className="border-zinc-800 bg-zinc-900/60 p-5">
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-zinc-400">
+                    {selectedUpgradePlan.label} plan
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-zinc-100">
+                    {formatPlanPriceLabel(selectedUpgradePlan)}
+                  </p>
+                </div>
+                <p className="text-sm text-zinc-300">
+                  {selectedUpgradePlan.description}
+                </p>
+                <ul className="space-y-2">
+                  {selectedUpgradePlan.features.map((feature) => (
+                    <li
+                      key={feature}
+                      className="flex items-center gap-2 text-sm text-zinc-200"
+                    >
+                      <span
+                        className="h-1.5 w-1.5 rounded-full bg-cyan-300"
+                        aria-hidden="true"
+                      />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  type="button"
+                  className="w-full sm:w-auto"
+                  onClick={handlePlanCtaClick}
+                  disabled={isPlanActionLoading}
+                >
+                  {isPlanActionLoading
+                    ? "Opening…"
+                    : selectedUpgradePlan.ctaLabel}
+                </Button>
+              </div>
+            </Card>
+          </div>
+
+          <DialogFooter className="sm:justify-between">
+            <button
+              type="button"
+              className="text-sm text-cyan-300 underline-offset-4 hover:underline"
+              onClick={() => router.push("/pricing")}
+            >
+              See full plan comparison on pricing page
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={isRedeemDialogOpen}
         onOpenChange={handleRedeemDialogOpenChange}
-        dialogClassName={`${overlayLayerClassNames.dialog} w-[92vw] max-w-sm border-zinc-800 bg-zinc-950 text-zinc-100`}
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          focusOverlayTrigger();
-        }}
-        inputId={redeemCodeInputId}
-        redeemCodeInput={redeemCodeInput}
-        redeemCodeError={redeemCodeError}
-        isRedeemingCode={isRedeemingCode}
-        onInputChange={(value) => {
-          const sanitizedValue = sanitizeRedeemCode(value);
-          setRedeemCodeInput(sanitizedValue);
-          if (redeemCodeError) {
-            setRedeemCodeError(null);
-          }
-        }}
-        onSubmit={handleRedeemCodeSubmit}
-      />
+      >
+        <DialogContent
+          className={`${overlayLayerClassNames.dialog} w-[92vw] max-w-sm border-zinc-800 bg-zinc-950 text-zinc-100`}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            focusOverlayTrigger();
+          }}
+        >
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle>Redeem Credit Code</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Enter your code to apply credits in billing.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form className="space-y-3" onSubmit={handleRedeemCodeSubmit}>
+            <div className="space-y-1.5">
+              <label
+                htmlFor={redeemCodeInputId}
+                className="text-xs font-medium uppercase tracking-wide text-zinc-300"
+              >
+                Code
+              </label>
+              <Input
+                id={redeemCodeInputId}
+                value={redeemCodeInput}
+                onChange={(event) => {
+                  const sanitizedValue = sanitizeRedeemCode(event.target.value);
+                  setRedeemCodeInput(sanitizedValue);
+                  if (redeemCodeError) {
+                    setRedeemCodeError(null);
+                  }
+                }}
+                placeholder="RUNASH-2026"
+                autoComplete="off"
+                maxLength={32}
+                className="border-zinc-700 bg-zinc-900 text-zinc-100 placeholder:text-zinc-500"
+              />
+              {redeemCodeError ? (
+                <p className="text-xs text-rose-300">{redeemCodeError}</p>
+              ) : null}
+            </div>
+
+            <DialogFooter className="gap-2 sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleRedeemDialogOpenChange(false)}
+                disabled={isRedeemingCode}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="bg-cyan-600 text-zinc-950 hover:bg-cyan-500"
+                disabled={isRedeemingCode}
+              >
+                {isRedeemingCode ? "Redeeming..." : "Submit"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <div
         className={`mx-auto flex w-full max-w-[1400px] gap-4 px-3 py-3 ${chatPositionPreference === "right" ? "lg:flex-row-reverse" : "lg:flex-row"}`}
@@ -6104,48 +6812,121 @@ ${instructionStarter}`
                     )}
                   </div>
 
-                  <CreditsBalanceControl
-                    isCreditsOpen={isCreditsOpen}
-                    creditsBalanceLabel={creditsBalanceLabel}
-                    creditsPanelId={creditsPanelId}
-                    popoverOverlayClassName={popoverOverlayClassName}
-                    isCreditsLoading={isCreditsLoading}
-                    creditsLoadError={creditsLoadError}
-                    creditSummaryRows={creditSummaryRows}
-                    creditMetrics={creditMetrics}
-                    formatCreditValue={formatCreditValue}
-                    triggerRef={creditsTriggerRef}
-                    panelRef={creditsPanelRef}
-                    onToggle={(trigger) => {
-                      if (isCreditsOpen) {
-                        closeCreditsPanel(true);
-                        return;
-                      }
+                  <div className="relative hidden md:block">
+                    {isCreditsOpen && (
+                      <button
+                        type="button"
+                        aria-label="Close credit balance panel"
+                        className="fixed inset-0 z-40 hidden bg-black/40 md:block"
+                        onClick={() => closeCreditsPanel(true)}
+                      />
+                    )}
 
-                      if (isAuthenticated) {
-                        setCreditsLoadError(null);
-                        void loadCreditsBalance().catch((error) => {
-                          setCreditsLoadError("Unable to refresh credits right now.");
-                          handleServiceError(
-                            "Credits unavailable",
-                            "We could not refresh your credits balance.",
-                            error,
-                          );
+                    <Button
+                      ref={creditsTriggerRef}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 rounded-full border-zinc-700 bg-zinc-950 px-2.5 text-xs font-medium text-zinc-100 hover:bg-zinc-900"
+                      onClick={(event) => {
+                        if (isCreditsOpen) {
+                          closeCreditsPanel(true);
+                          return;
+                        }
+
+                        if (isAuthenticated) {
+                          setCreditsLoadError(null);
+                          void loadCreditsBalance().catch((error) => {
+                            setCreditsLoadError("Unable to refresh credits right now.");
+                            handleServiceError(
+                              "Credits unavailable",
+                              "We could not refresh your credits balance.",
+                              error,
+                            );
+                          });
+                        }
+                        trackAnalyticsEvent("credits.refresh", {
+                          source: "credits-panel",
                         });
-                      }
+                        openModal("credits", event.currentTarget);
+                      }}
+                      aria-label="View credit balance details"
+                      aria-expanded={isCreditsOpen}
+                      aria-controls={creditsPanelId}
+                    >
+                      <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
+                      <span>{creditsBalanceLabel}</span>
+                    </Button>
 
-                      trackAnalyticsEvent("credits.refresh", {
-                        source: "credits-panel",
-                      });
-                      openModal("credits", trigger);
-                    }}
-                    onClose={closeCreditsPanel}
-                    onOpenRedeem={openRedeemCodeDialog}
-                    onBuyCredits={() => {
-                      closeCreditsPanel(false);
-                      router.push("/pricing?intent=credits");
-                    }}
-                  />
+                    {isCreditsOpen && (
+                      <div
+                        ref={creditsPanelRef}
+                        id={creditsPanelId}
+                        role="dialog"
+                        aria-label="Credit balance"
+                        className={`${popoverOverlayClassName} absolute right-0 top-full mt-2.5 w-72 rounded-xl border border-zinc-800 bg-zinc-950/95 p-3 text-sm text-zinc-100 shadow-2xl shadow-black/40 backdrop-blur`}
+                      >
+                        <div className="mb-2 flex items-center justify-between">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                            Credit Balance
+                          </p>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                            onClick={() => closeCreditsPanel(true)}
+                            aria-label="Close credit balance panel"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        {isCreditsLoading ? (
+                          <p className="mb-2 text-xs text-zinc-500">Refreshing credits…</p>
+                        ) : null}
+                        {creditsLoadError ? (
+                          <p className="mb-2 text-xs text-amber-300">{creditsLoadError}</p>
+                        ) : null}
+                        <div className="space-y-1.5">
+                          {creditSummaryRows.map((row) => (
+                            <div
+                              key={row.key}
+                              className="flex items-center justify-between rounded-md bg-zinc-900/80 px-2 py-1.5"
+                            >
+                              <span className="text-zinc-300">{row.label}</span>
+                              <span className="font-medium text-zinc-100">
+                                {formatCreditValue(creditMetrics[row.key])}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 border-zinc-700 bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
+                            onClick={(event) =>
+                              openRedeemCodeDialog(event.currentTarget)
+                            }
+                          >
+                            Redeem Code
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-8 bg-cyan-600 text-zinc-950 hover:bg-cyan-500"
+                            onClick={() => {
+                              closeCreditsPanel(false);
+                              router.push("/pricing?intent=credits");
+                            }}
+                          >
+                            Buy Credits
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   <TooltipProvider delayDuration={150}>
                     <div className="flex items-center gap-1 md:hidden">
