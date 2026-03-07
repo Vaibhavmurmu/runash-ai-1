@@ -1,6 +1,7 @@
+import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
-import { z } from "zod"
-import { requireEditorUser } from "@/app/api/editor/_lib"
+import { requireEditorOperation } from "@/app/api/editor/_lib"
+import { editorRenderJobCreateRequestSchema, formatZodIssues } from "@/lib/api/contracts"
 import { compileTimelineToVideoGenerationRequest, TimelineCompilationError } from "@/lib/editor/generation/compile-timeline"
 import { publishRenderJobEvent } from "@/lib/editor/render-job-events"
 import { getProjectById, sql } from "@/lib/editor/repository"
@@ -18,11 +19,6 @@ const DEFAULT_ACTIVE_USER_QUOTA = Number(process.env.EDITOR_RENDER_ACTIVE_QUOTA_
 const DEFAULT_ACTIVE_PROJECT_QUOTA = Number(process.env.EDITOR_RENDER_ACTIVE_QUOTA_PROJECT ?? 6)
 const DEFAULT_MAX_DURATION_SECONDS = Number(process.env.EDITOR_RENDER_MAX_DURATION_SECONDS ?? 120)
 const DEFAULT_MAX_RESOLUTION_PIXELS = Number(process.env.EDITOR_RENDER_MAX_RESOLUTION_PIXELS ?? 3686400)
-
-const createRenderJobRequestSchema = z.object({
-  projectId: z.string().trim().min(1).max(120),
-  payload: z.unknown().optional(),
-})
 
 const modelTierOrder = ["standard", "pro", "enterprise"] as const
 type ModelTier = (typeof modelTierOrder)[number]
@@ -98,12 +94,12 @@ async function enforceRenderQuotas(ownerId: string, projectId: string) {
     SELECT
       COUNT(*) FILTER (
         WHERE owner_id=${ownerId}
-          AND status IN ('queued', 'processing')
+          AND status IN ('queued', 'processing', 'retrying')
       )::int AS user_active_count,
       COUNT(*) FILTER (
         WHERE owner_id=${ownerId}
           AND project_id=${projectId}
-          AND status IN ('queued', 'processing')
+          AND status IN ('queued', 'processing', 'retrying')
       )::int AS project_active_count
     FROM editor_render_jobs
   `
@@ -179,7 +175,7 @@ function enforceRenderInputLimits(payload: Record<string, unknown>) {
 }
 
 export async function GET(request: Request) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "run_generation")
   if ("error" in auth) return auth.error
 
   const { searchParams } = new URL(request.url)
@@ -193,13 +189,16 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "run_generation")
   if ("error" in auth) return auth.error
 
   const body = await request.json()
-  const parsedBody = createRenderJobRequestSchema.safeParse(body)
+  const parsedBody = editorRenderJobCreateRequestSchema.safeParse(body)
   if (!parsedBody.success) {
-    return NextResponse.json({ error: "Invalid request body", issues: parsedBody.error.flatten() }, { status: 400 })
+    return NextResponse.json(
+      { error: "Invalid request body", code: "INVALID_REQUEST", details: { issues: formatZodIssues(parsedBody.error) } },
+      { status: 400 },
+    )
   }
 
   const parsedPayload = validateVideoGenerationPayload(parsedBody.data.payload ?? {})
@@ -207,7 +206,8 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: "Invalid request payload",
-        issues: parsedPayload.error.flatten(),
+        code: "INVALID_REQUEST",
+        details: { issues: formatZodIssues(parsedPayload.error) },
       },
       { status: 400 },
     )
@@ -291,8 +291,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unsupported modelId", code: "VIDEO_MODEL_UNSUPPORTED" }, { status: 400 })
   }
 
+  const maxAttempts = Number(process.env.EDITOR_RENDER_MAX_ATTEMPTS ?? 3)
   const [job] = await sql`
-    INSERT INTO editor_render_jobs (project_id, owner_id, requested_by, status, payload, result, output_asset_id)
+    INSERT INTO editor_render_jobs (
+      project_id,
+      owner_id,
+      requested_by,
+      status,
+      payload,
+      result,
+      output_asset_id,
+      attempt_count,
+      max_attempts,
+      cancellation_token,
+      provider_trace
+    )
     VALUES (
       ${parsedBody.data.projectId},
       ${auth.userId},
@@ -318,15 +331,24 @@ export async function POST(request: Request) {
             summary: compilation.summary,
           },
           policy: {
-            maxAttempts: Number(process.env.EDITOR_RENDER_MAX_ATTEMPTS ?? 3),
+            maxAttempts,
             providerTimeoutMs: Number(process.env.EDITOR_RENDER_PROVIDER_TIMEOUT_MS ?? 20000),
             providerRetries: Number(process.env.EDITOR_RENDER_PROVIDER_RETRIES ?? 2),
           },
         },
       })}::jsonb,
-      null
+      null,
+      0,
+      ${maxAttempts},
+      ${randomUUID()},
+      ${JSON.stringify({ provider: executionOutput.progress.provider, model: effectivePayload.modelId })}::jsonb
     )
     RETURNING *
+  `
+
+  await sql`
+    INSERT INTO editor_render_job_timeline (job_id, owner_id, from_status, to_status, event_type, event_payload)
+    VALUES (${job.id}, ${auth.userId}, null, 'queued', 'job_created', ${JSON.stringify({ modelId: effectivePayload.modelId })}::jsonb)
   `
 
   publishRenderJobEvent({

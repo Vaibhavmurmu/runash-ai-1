@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
-import { requireEditorUser } from "@/app/api/editor/_lib"
+import { requireEditorOperation } from "@/app/api/editor/_lib"
 import { getProjectById, sql } from "@/lib/editor/repository"
 
 export async function GET(request: Request, { params }: { params: { projectId: string } }) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params
 
@@ -16,7 +16,7 @@ export async function GET(request: Request, { params }: { params: { projectId: s
 }
 
 export async function PATCH(request: Request, { params }: { params: { projectId: string } }) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params
 
@@ -42,7 +42,7 @@ export async function PATCH(request: Request, { params }: { params: { projectId:
 }
 
 export async function DELETE(request: Request, { params }: { params: { projectId: string } }) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params
 

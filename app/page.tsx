@@ -16,6 +16,7 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { NewsletterSignup } from "@/components/newsletter-signup"
 import { LanguageSelector } from "@/components/language-selector"
 import { CountrySelector } from "@/components/country-selector"
+import { FooterBrand } from "@/components/branding/footer-brand"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
@@ -413,7 +414,7 @@ export default function Home() {
           <div className="grid grid-cols-1 lg:grid-cols-6 gap-8 mb-8">
             {/* Company Info */}
             <div className="lg:col-span-2">
-              <h3 className="font-bold text-xl mb-4 text-gray-900 dark:text-white">RunAsh AI</h3>
+              <FooterBrand className="mb-4" labelClassName="text-xl font-bold text-gray-900 dark:text-white" />
               <p className="text-gray-600 dark:text-gray-400 mb-4">
                Runash Digital Innovation Technologies Private Limited.
               </p>
@@ -543,6 +544,14 @@ export default function Home() {
                     className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
                   >
                     Documentation 
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/brand"
+                    className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
+                  >
+                    Brand Assets
                   </a>
                 </li>
               </ul>

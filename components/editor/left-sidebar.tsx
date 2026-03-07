@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { Sparkles, Video, MessageSquare, Radio, Layers, PanelLeft, ChevronRight } from "lucide-react"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { Button } from "@/components/ui/button"
+import { RIGHT_PANEL_TABS } from "./panel-tabs"
 import {
   Sheet,
   SheetContent,
@@ -25,13 +26,20 @@ export default function LeftSidebar({ activeTab, onTabChange, isChatOpen, onChat
   const [isMobileToolsOpen, setIsMobileToolsOpen] = useState(false)
 
   const tools = useMemo(
-    () => [
-      { id: "generate", label: "Generate", icon: Sparkles, desc: "AI video generation" },
-      { id: "edit", label: "Edit", icon: Video, desc: "Video editing tools" },
-      { id: "chat", label: "Chat", icon: MessageSquare, desc: "Talk to AI" },
-      { id: "stream", label: "Stream", icon: Radio, desc: "Live streaming" },
-      { id: "layers", label: "Layers", icon: Layers, desc: "Layer management" },
-    ],
+    () => {
+      const tabLabelById = RIGHT_PANEL_TABS.reduce<Record<string, string>>((labels, tab) => {
+        labels[tab.id] = tab.label
+        return labels
+      }, {})
+
+      return [
+        { id: "generate", label: tabLabelById.generate, icon: Sparkles, desc: "AI video generation" },
+        { id: "edit", label: tabLabelById.edit, icon: Video, desc: "Video editing tools" },
+        { id: "chat", label: "Chat", icon: MessageSquare, desc: "Talk to AI" },
+        { id: "stream", label: tabLabelById.stream, icon: Radio, desc: "Live streaming" },
+        { id: "layers", label: tabLabelById.layers, icon: Layers, desc: "Layer management" },
+      ]
+    },
     [],
   )
 

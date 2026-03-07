@@ -81,3 +81,33 @@ export interface PasswordReset {
 export interface EmailVerification {
   token: string
 }
+
+export type LiveEditorOperation =
+  | "create_stream"
+  | "start_stream"
+  | "stop_stream"
+  | "edit_timeline"
+  | "run_generation"
+  | "manage_collaborators"
+
+export type LiveEditorPermissionMatrix = Record<LiveEditorOperation, string[]>
+
+export type PolicyDecision =
+  | { allowed: true }
+  | {
+      allowed: false
+      status: number
+      code: string
+      message: string
+      details?: Record<string, unknown>
+    }
+
+export type TenantQuotaSnapshot = {
+  tenantId: string
+  concurrentLiveSessions: number
+  generationJobsWindow: number
+  storageBytes: number
+  egressBytes: number
+}
+
+export type TenantQuotaDecision = PolicyDecision

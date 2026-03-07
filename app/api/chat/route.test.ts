@@ -122,3 +122,24 @@ test("GET /api/chat rejects malformed query params and missing stream id", async
   assert.equal(malformedPaginationResponse.status, 400)
   assert.equal(malformedPaginationPayload.error.code, "INVALID_PAGINATION")
 })
+
+test("GET /api/chat normalizes empty cursor and returns null next cursor for empty results", async () => {
+  let capturedQuery: Record<string, unknown> | null = null
+
+  const response = await handleGetChat(new Request(`${BASE_REQUEST_URL}?streamId=stream-1&cursor=`) as any, {
+    getSessionUserId: async () => "user-1",
+    getChatMessages: async (query) => {
+      capturedQuery = query as unknown as Record<string, unknown>
+      return [] as any
+    },
+    respondError: asErrorResponse,
+    respondSuccess: asSuccessResponse,
+  })
+
+  const payload = await response.json()
+  assert.equal(response.status, 200)
+  assert.equal(capturedQuery?.cursor, null)
+  assert.equal(payload.data.pagination.cursor, null)
+  assert.equal(payload.data.pagination.nextCursor, null)
+  assert.equal(payload.data.pagination.hasMore, false)
+})

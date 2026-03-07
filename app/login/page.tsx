@@ -25,6 +25,7 @@ import { OTPForm } from "@/components/auth/otp-form"
 import { PasskeyLoginForm } from "@/components/auth/passkey-form"
 import { SSOLogin } from "@/components/auth/sso-login"
 import { formatLoginMethodLabel, getLastLoginMethod, setLastLoginMethod, type LoginMethod } from "@/lib/auth/last-login-method"
+import { FooterBrand } from "@/components/branding/footer-brand"
 
 export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
@@ -103,7 +104,7 @@ export default function LoginPage() {
       <header className="relative z-10 w-full py-6 px-6 flex justify-between items-center">
         <Link href="/home" className="flex items-center group">
           <div className="relative mr-3 h-10 w-10 overflow-hidden rounded-xl bg-gradient-to-br from-white to-yellow-50 dark:from-white dark:to-gray-50 shadow-lg group-hover:shadow-xl transition-all duration-300">
-            <Image src="/RunAsh Logo.png" alt="RunAsh Logo" fill className="object-contain p-1" sizes="40px" />
+            <Image src="/logo.png" alt="RunAsh logo" fill className="object-contain p-1" sizes="40px" />
           </div>
           <span className="text-2xl font-bold bg-gradient-to-r from-orange-500 via-amber-400 to-yellow-300 bg-clip-text text-transparent">RunAsh</span>
         </Link>
@@ -240,7 +241,10 @@ export default function LoginPage() {
       <footer className="relative z-10 py-8">
         <div className="container mx-auto px-6">
           <div className="flex flex-col md:flex-row justify-between items-center">
-            <p className="text-sm text-slate-500 dark:text-white/45">© {new Date().getFullYear()} RunAsh AI. All rights reserved.</p>
+            <div className="flex items-center gap-3">
+              <FooterBrand />
+              <p className="text-sm text-slate-500 dark:text-white/45">© {new Date().getFullYear()} RunAsh AI. All rights reserved.</p>
+            </div>
             <div className="flex items-center gap-6 mt-4 md:mt-0">
               <Link href="/support" className="text-sm text-slate-500 dark:text-white/45 hover:text-orange-500 dark:hover:text-white">Help Center</Link>
               <Link href="/terms" className="text-sm text-slate-500 dark:text-white/45 hover:text-orange-500 dark:hover:text-white">Terms</Link>

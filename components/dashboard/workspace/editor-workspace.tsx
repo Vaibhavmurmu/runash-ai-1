@@ -24,6 +24,7 @@ import {
 } from "@/lib/editor/video-models/registry"
 import { validateVideoGenerationPayload } from "@/lib/editor/video-models/validation"
 import type { VideoGenerationRequest } from "@/lib/editor/video-models/types"
+import { createRenderJobV1, finalizeMediaUploadV1, initMediaUploadV1 } from "@/lib/api/v1-client"
 
 type OnboardingState = {
   editorWelcomeCompletedAt?: string
@@ -84,6 +85,19 @@ function getGenerationValidationErrors(modelId: string, payload: VideoGeneration
   }
 }
 
+function stableSerialize(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableSerialize(entry)).join(",")}]`
+  }
+
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b))
+    return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableSerialize(entry)}`).join(",")}}`
+  }
+
+  return JSON.stringify(value)
+}
+
 export function EditorWorkspace() {
   const { toast } = useToast()
   const { openFromTrigger } = useDashboardModelDialog()
@@ -112,6 +126,7 @@ export function EditorWorkspace() {
   const generationAbortRef = useRef<AbortController | null>(null)
   const generationRunIdRef = useRef(0)
   const generationStreamRef = useRef<EventSource | null>(null)
+  const realtimeCursorRef = useRef<string | null>(null)
   const projectRef = useRef<EditorProject | null>(null)
   const activeTimelineIdRef = useRef<string | null>(null)
   const isMountedRef = useRef(true)
@@ -123,6 +138,11 @@ export function EditorWorkspace() {
     if (!project) return undefined
     return project.timelines.find((timeline) => timeline.id === project.activeTimelineId) ?? project.timelines[0]
   }, [project])
+
+  const selectedSegment = useMemo(() => {
+    if (!activeTimeline) return undefined
+    return activeTimeline.segments.find((segment) => playbackTime >= segment.startSeconds && playbackTime <= segment.endSeconds)
+  }, [activeTimeline, playbackTime])
 
   const persistOnboardingState = async (next: OnboardingState) => {
     setIsUpdatingOnboarding(true)
@@ -258,7 +278,7 @@ export function EditorWorkspace() {
     if (!project || !activeTimeline) return
     setIsSaving(true)
     try {
-      const res = await fetch(`/api/editor/projects/${project.id}/timeline`, {
+      const res = await fetch(`/api/v1/editor/projects/${project.id}/timeline`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ timeline: activeTimeline }),
@@ -315,52 +335,146 @@ export function EditorWorkspace() {
     if (!project || !activeTimeline) return
     setUploadInProgress(true)
     try {
-      const form = new FormData()
-      form.append("file", file)
-      form.append("projectId", project.id)
-      const uploadRes = await fetch("/api/upload", { method: "POST", body: form })
+      const isVideoAsset = file.type.startsWith("video")
+      const safeDefaultDurationSeconds = 3
 
-      let storageKey = ""
-      let accessUrl: string | null = null
-      let uploadFileId: string | null = null
+      const readNumericMetadataDuration = (value: unknown): number | null => {
+        if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+          return value
+        }
 
-      if (uploadRes.ok) {
-        const uploadJson = await uploadRes.json()
-        uploadFileId = String(uploadJson.file.id)
-        storageKey = uploadJson.file.storageKey
-        accessUrl = uploadJson.access.url
-      } else {
-        const storageForm = new FormData()
-        storageForm.append("action", "upload")
-        storageForm.append("file", file)
-        storageForm.append("folder", `editor/${project.id}`)
-        const storageRes = await fetch("/api/storage", { method: "POST", body: storageForm })
-        if (!storageRes.ok) throw new Error("Upload failed")
-        const storageJson = await storageRes.json()
-        storageKey = storageJson.key
-        accessUrl = storageJson.url
+        if (typeof value === "string") {
+          const parsed = Number(value)
+          if (Number.isFinite(parsed) && parsed > 0) {
+            return parsed
+          }
+        }
+
+        return null
       }
 
+      const resolveDurationFromAssetMetadata = (metadata: unknown): number | null => {
+        if (!metadata || typeof metadata !== "object") return null
+        const metadataRecord = metadata as Record<string, unknown>
+        return (
+          readNumericMetadataDuration(metadataRecord.durationSeconds) ??
+          readNumericMetadataDuration(metadataRecord.duration) ??
+          readNumericMetadataDuration(metadataRecord.videoDurationSeconds)
+        )
+      }
+
+      const resolveVideoDurationSeconds = async (): Promise<number | null> => {
+        if (!isVideoAsset || typeof window === "undefined") return null
+
+        return new Promise<number | null>((resolve) => {
+          const objectUrl = URL.createObjectURL(file)
+          const video = document.createElement("video")
+
+          const cleanup = () => {
+            URL.revokeObjectURL(objectUrl)
+            video.removeAttribute("src")
+            video.load()
+          }
+
+          video.preload = "metadata"
+          video.onloadedmetadata = () => {
+            const candidate = video.duration
+            cleanup()
+            resolve(Number.isFinite(candidate) && candidate > 0 ? candidate : null)
+          }
+          video.onerror = () => {
+            cleanup()
+            resolve(null)
+          }
+          video.src = objectUrl
+        })
+      }
+
+      const initJson = await initMediaUploadV1({
+        fileName: file.name,
+        mimeType: file.type,
+        sizeBytes: file.size,
+        projectId: project.id,
+      })
+      const uploadPutRes = await fetch(initJson.upload.url, {
+        method: initJson.upload.method,
+        headers: initJson.upload.headers,
+        body: file,
+      })
+      if (!uploadPutRes.ok) throw new Error("Upload transfer failed")
+
+      const measuredVideoDuration = await resolveVideoDurationSeconds()
+
+      const finalizeJson = await finalizeMediaUploadV1(initJson.asset.id, {
+        durationSeconds: measuredVideoDuration ?? undefined,
+      })
+
+      const sourceVariant = Array.isArray(finalizeJson.variants)
+        ? finalizeJson.variants.find((item: Record<string, unknown>) => item.variant_type === "source")
+        : null
+
+      const storageKey = String(finalizeJson.asset.source_storage_key ?? initJson.upload.storageKey)
       const assetRes = await fetch(`/api/editor/projects/${project.id}/assets`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          source: uploadFileId ? "upload" : "storage",
-          uploadFileId,
+          source: "upload",
+          uploadFileId: initJson.asset.id,
           storageKey,
-          accessUrl,
+          accessUrl: null,
           mimeType: file.type,
           sizeBytes: file.size,
-          metadata: { name: file.name },
+          metadata: {
+            name: file.name,
+            mediaAssetId: finalizeJson.asset.id,
+            pipelineStatus: finalizeJson.asset.status,
+            durationSeconds: finalizeJson.asset.duration_seconds,
+            variants: finalizeJson.variants,
+            timelineMedia: {
+              preferredVariant: sourceVariant?.variant_type ?? "source",
+              adaptiveSet: ["hls_manifest", "dash_manifest"],
+            },
+          },
         }),
       })
       if (!assetRes.ok) throw new Error("Failed to persist asset")
       const assetJson = await assetRes.json()
 
       const track = activeTimeline.tracks[0]
+      let nextTimeline: EditorTimeline | null = null
       if (track) {
-        handleTimelineChange({
+        const segmentsOnTrack = activeTimeline.segments.filter((segment) => segment.trackId === track.id)
+        const latestSegmentEnd = segmentsOnTrack.reduce((latest, segment) => {
+          const safeEnd = Number.isFinite(segment.endSeconds) ? Math.max(0, segment.endSeconds) : 0
+          return Math.max(latest, safeEnd)
+        }, 0)
+
+        const hasValidPlayhead = Number.isFinite(playbackTime) && playbackTime >= 0
+        const playheadStart = hasValidPlayhead ? Math.max(0, playbackTime) : null
+        const playheadOverlapsExisting =
+          playheadStart !== null &&
+          segmentsOnTrack.some(
+            (segment) =>
+              Number.isFinite(segment.startSeconds) &&
+              Number.isFinite(segment.endSeconds) &&
+              segment.startSeconds < playheadStart &&
+              segment.endSeconds > playheadStart,
+          )
+        const insertionStart =
+          playheadStart === null ? latestSegmentEnd : playheadOverlapsExisting ? latestSegmentEnd : playheadStart
+
+        const metadataDuration = isVideoAsset ? resolveDurationFromAssetMetadata(assetJson.asset?.metadata) : null
+        const transcodeDuration = resolveDurationFromAssetMetadata(
+          (assetJson.asset?.metadata as Record<string, unknown> | undefined)?.timelineMedia,
+        )
+        const insertionDuration = isVideoAsset
+          ? metadataDuration ?? transcodeDuration ?? safeDefaultDurationSeconds
+          : safeDefaultDurationSeconds
+        const insertionEnd = insertionStart + insertionDuration
+
+        nextTimeline = {
           ...activeTimeline,
+          durationSeconds: Math.max(activeTimeline.durationSeconds, insertionEnd),
           segments: [
             ...activeTimeline.segments,
             {
@@ -371,18 +485,38 @@ export function EditorWorkspace() {
               trackId: track.id,
               assetId: assetJson.asset.id,
               label: file.name,
-              segmentType: file.type.startsWith("video") ? "video" : "image",
-              startSeconds: 0,
-              endSeconds: 3,
-              metadata: {},
+              segmentType: isVideoAsset ? "video" : "image",
+              startSeconds: insertionStart,
+              endSeconds: insertionEnd,
+              metadata: {
+                mediaAssetId: (assetJson.asset?.metadata as Record<string, unknown> | undefined)?.mediaAssetId ?? null,
+                timelineMedia: (assetJson.asset?.metadata as Record<string, unknown> | undefined)?.timelineMedia ?? null,
+              },
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             },
           ],
-        })
+          updatedAt: new Date().toISOString(),
+        }
       }
 
-      setProject((prev) => (prev ? { ...prev, assets: [assetJson.asset, ...prev.assets] } : prev))
+      setProject((prev) => {
+        if (!prev) return prev
+
+        const timelineToApply = nextTimeline
+          ? prev.timelines.map((timeline) => (timeline.id === nextTimeline.id ? nextTimeline : timeline))
+          : prev.timelines
+
+        return {
+          ...prev,
+          assets: [assetJson.asset, ...prev.assets],
+          timelines: timelineToApply,
+          updatedAt: new Date().toISOString(),
+        }
+      })
+      if (nextTimeline) {
+        setIsDirty(true)
+      }
       toast({ title: "Media uploaded", description: `${file.name} is now available in this project.` })
     } catch {
       toast({ title: "Upload failed", description: "Unable to add media right now.", variant: "destructive" })
@@ -590,9 +724,24 @@ export function EditorWorkspace() {
     }
 
     const subscribeToStream = async (jobId: string) => {
+      const handshakeRes = await fetch("/api/realtime/handshake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channels: [`editor:${project.id}`] }),
+        signal: controller.signal,
+      })
+      if (!handshakeRes.ok) {
+        throw new Error("Realtime handshake failed")
+      }
+
+      const handshakeJson = (await handshakeRes.json()) as { token: string }
+
       await new Promise<void>((resolve, reject) => {
-        const url = `/api/editor/render-jobs/stream?projectId=${encodeURIComponent(project.id)}&jobId=${encodeURIComponent(jobId)}`
-        const source = new EventSource(url)
+        const params = new URLSearchParams({ token: handshakeJson.token })
+        if (realtimeCursorRef.current) {
+          params.set("cursor", realtimeCursorRef.current)
+        }
+        const source = new EventSource(`/api/realtime/stream?${params.toString()}`)
         generationStreamRef.current = source
 
         let opened = false
@@ -623,8 +772,21 @@ export function EditorWorkspace() {
           }
 
           try {
-            const parsed = JSON.parse(event.data) as { job?: unknown }
-            const nextJob = normalizeJob(parsed.job)
+            const parsed = JSON.parse(event.data) as { payload?: { jobId?: string; status?: string; updatedAt?: string; progress?: number | null; stage?: string | null } }
+            if (parsed.payload?.jobId !== jobId) return
+            const nextJob = normalizeJob({
+              ...generationJob,
+              id: parsed.payload.jobId,
+              status: parsed.payload.status,
+              projectId: project.id,
+              ownerId: project.ownerId,
+              result: {
+                ...(generationJob?.result ?? {}),
+                progress: parsed.payload.progress ?? null,
+                stage: parsed.payload.stage ?? null,
+              },
+              updatedAt: parsed.payload.updatedAt,
+            })
             if (!nextJob) return
 
             setGenerationJob(nextJob)
@@ -644,11 +806,10 @@ export function EditorWorkspace() {
           }
         }
 
-        source.addEventListener("queued", handlePayload as EventListener)
-        source.addEventListener("processing", handlePayload as EventListener)
-        source.addEventListener("progress", handlePayload as EventListener)
-        source.addEventListener("completed", handlePayload as EventListener)
-        source.addEventListener("failed", handlePayload as EventListener)
+        source.addEventListener("render_job.updated", ((event: MessageEvent<string>) => {
+          realtimeCursorRef.current = event.lastEventId || realtimeCursorRef.current
+          handlePayload(event)
+        }) as EventListener)
 
         source.onerror = () => {
           stopStream()
@@ -664,11 +825,8 @@ export function EditorWorkspace() {
 
     setIsGeneratingRender(true)
     try {
-      const createRes = await fetch("/api/editor/render-jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
+      const createJson = await createRenderJobV1(
+        {
           projectId: project.id,
           payload: {
             timelineId: activeTimeline.id,
@@ -677,13 +835,10 @@ export function EditorWorkspace() {
             ...generationPayload,
             generationConfig: generationPayload,
           },
-        }),
-      })
-
-      if (!createRes.ok) throw new Error("Failed to queue generation")
+        },
+        controller.signal,
+      )
       if (isStaleOrCancelled()) return
-
-      const createJson = await createRes.json()
       const job = normalizeJob(createJson.job)
       if (!job || isStaleOrCancelled()) return
 
@@ -727,7 +882,7 @@ export function EditorWorkspace() {
     const currentMetadata = (project.metadata ?? {}) as Record<string, unknown>
     const metadataConfig = currentMetadata.generationConfig
     const matchesModel = currentMetadata.selectedModel === selectedModel
-    const matchesConfig = JSON.stringify(metadataConfig ?? {}) === JSON.stringify(generationConfig)
+    const matchesConfig = stableSerialize(metadataConfig ?? {}) === stableSerialize(generationConfig)
 
     if (matchesModel && matchesConfig) return
 
@@ -829,6 +984,10 @@ export function EditorWorkspace() {
             validationErrors={generationValidationErrors}
             onGenerationConfigChange={handleGenerationConfigChange}
             activeTab={activeTab}
+            project={project}
+            activeTimeline={activeTimeline}
+            selectedSegment={selectedSegment}
+            playheadSeconds={playbackTime}
           />
           {isMobile ? (
             <Sheet open={isChatOpen} onOpenChange={setIsChatOpen}>

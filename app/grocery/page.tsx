@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -238,8 +239,8 @@ function GroceryStoreContent() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-3">
-                <div className="rounded-lg bg-gradient-to-r from-green-600 to-emerald-500 p-2">
-                  <LeafIcon className="h-6 w-6 text-white" />
+                <div className="relative h-10 w-10 overflow-hidden rounded-lg border border-green-200/80 bg-white p-1 dark:border-green-600/40 dark:bg-slate-950/80">
+                  <Image src="/logo.png" alt="RunAsh logo" fill sizes="40px" className="object-contain" priority={false} />
                 </div>
                 <div>
                   <h1 className="text-xl font-bold bg-gradient-to-r from-green-600 to-emerald-500 text-transparent bg-clip-text">

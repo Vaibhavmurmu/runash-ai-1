@@ -1,15 +1,17 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react"
 import { SlidersHorizontal } from "lucide-react"
-import StreamManager from "./stream-manager"
-import ModelSelector from "./model-selector"
+import { isRightPanelTabId, type RightPanelTabId } from "./panel-tabs"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import type { VideoGenerationRequest } from "@/lib/editor/video-models/types"
-import { getVideoModelMetadata } from "@/lib/editor/video-models/registry"
+import type { EditorProject, EditorSegment, EditorTimeline } from "@/lib/editor/domain"
+import GeneratePanel from "./panels/generate-panel"
+import EditPanel, { DEFAULT_EDIT_PANEL_STATE, type EditPanelState } from "./panels/edit-panel"
+import LayersPanel, { DEFAULT_LAYERS_PANEL_STATE, type LayerItem } from "./panels/layers-panel"
+import StreamPanel from "./panels/stream-panel"
+import { EditorPanelContextProvider } from "./panels/editor-panel-context"
 
 interface RightPanelProps {
   selectedModel: string
@@ -18,17 +20,69 @@ interface RightPanelProps {
   validationErrors: Record<string, string>
   onGenerationConfigChange: (config: VideoGenerationRequest) => void
   activeTab?: string
+  project?: EditorProject | null
+  activeTimeline?: EditorTimeline
+  selectedSegment?: EditorSegment
+  playheadSeconds?: number
 }
 
-function FieldError({ message }: { message?: string }) {
-  if (!message) return null
-  return <p className="text-xs text-destructive">{message}</p>
+interface SharedPanelProps {
+  selectedModel: string
+  onModelChange: (model: string) => void
+  generationConfig: VideoGenerationRequest
+  validationErrors: Record<string, string>
+  onGenerationConfigChange: (config: VideoGenerationRequest) => void
 }
 
-function parseOptionalInteger(value: string): number | undefined {
-  if (value.trim().length === 0) return undefined
-  const parsed = Number(value)
-  return Number.isInteger(parsed) ? parsed : undefined
+export function resolveRightPanelTab(activeTab?: string): RightPanelTabId {
+  return activeTab && isRightPanelTabId(activeTab) ? activeTab : "generate"
+}
+
+export interface TabPanelState {
+  edit: EditPanelState
+  layers: LayerItem[]
+}
+
+export function updateTabPanelState<K extends keyof TabPanelState>(
+  state: TabPanelState,
+  tabId: K,
+  value: TabPanelState[K],
+): TabPanelState {
+  return {
+    ...state,
+    [tabId]: value,
+  }
+}
+
+const DEFAULT_TAB_PANEL_STATE: TabPanelState = {
+  edit: DEFAULT_EDIT_PANEL_STATE,
+  layers: DEFAULT_LAYERS_PANEL_STATE,
+}
+
+export function renderPanelByTab(
+  tabId: RightPanelTabId,
+  sharedPanelProps: SharedPanelProps,
+  tabPanelState: TabPanelState,
+  setTabPanelState: Dispatch<SetStateAction<TabPanelState>>,
+): JSX.Element {
+  const panelMap: Record<RightPanelTabId, () => JSX.Element> = {
+    generate: () => <GeneratePanel {...sharedPanelProps} />,
+    edit: () => (
+      <EditPanel
+        state={tabPanelState.edit}
+        onStateChange={(next) => setTabPanelState((prev) => updateTabPanelState(prev, "edit", next))}
+      />
+    ),
+    layers: () => (
+      <LayersPanel
+        layers={tabPanelState.layers}
+        onLayersChange={(next) => setTabPanelState((prev) => updateTabPanelState(prev, "layers", next))}
+      />
+    ),
+    stream: () => <StreamPanel />,
+  }
+
+  return panelMap[tabId]()
 }
 
 export default function RightPanel({
@@ -38,11 +92,16 @@ export default function RightPanel({
   validationErrors,
   onGenerationConfigChange,
   activeTab,
+  project,
+  activeTimeline,
+  selectedSegment,
+  playheadSeconds = 0,
 }: RightPanelProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [isNarrowViewport, setIsNarrowViewport] = useState(false)
-  const showStreamManager = activeTab === "stream"
-  const model = getVideoModelMetadata(selectedModel)
+  const [tabPanelState, setTabPanelState] = useState<TabPanelState>(DEFAULT_TAB_PANEL_STATE)
+
+  const resolvedTab = resolveRightPanelTab(activeTab)
 
   useEffect(() => {
     const query = window.matchMedia("(max-width: 1023px)")
@@ -52,164 +111,40 @@ export default function RightPanel({
     return () => query.removeEventListener("change", sync)
   }, [])
 
-  const panelContent = showStreamManager ? (
-    <div className="h-full min-h-0">
-      <StreamManager />
-    </div>
-  ) : (
-    <div className="space-y-5 p-4">
-      <ModelSelector selectedModel={selectedModel} onModelChange={onModelChange} />
+  const sharedPanelProps = useMemo(
+    () => ({
+      selectedModel,
+      onModelChange,
+      generationConfig,
+      validationErrors,
+      onGenerationConfigChange,
+    }),
+    [selectedModel, onModelChange, generationConfig, validationErrors, onGenerationConfigChange],
+  )
 
-      <div className="space-y-4 rounded-lg border border-border p-4">
-        <div>
-          <h3 className="text-sm font-semibold">Generation config</h3>
-          <p className="text-xs text-muted-foreground mt-1">{model.description}</p>
-        </div>
-
-        <div className="space-y-2">
-          <label htmlFor="gen-prompt" className="text-xs font-medium text-muted-foreground">Prompt</label>
-          <Textarea
-            id="gen-prompt"
-            value={String(generationConfig.prompt ?? "")}
-            onChange={(event) => onGenerationConfigChange({ ...generationConfig, prompt: event.target.value })}
-            placeholder="Describe the video you want to generate"
-          />
-          <FieldError message={validationErrors.prompt} />
-        </div>
-
-        <div className="space-y-2">
-          <label htmlFor="gen-negative-prompt" className="text-xs font-medium text-muted-foreground">Negative prompt</label>
-          <Textarea
-            id="gen-negative-prompt"
-            value={String(generationConfig.negativePrompt ?? "")}
-            onChange={(event) => onGenerationConfigChange({ ...generationConfig, negativePrompt: event.target.value })}
-            placeholder="Things you want to avoid"
-          />
-          <FieldError message={validationErrors.negativePrompt} />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <label htmlFor="gen-aspect" className="text-xs font-medium text-muted-foreground">Aspect ratio</label>
-            <select
-              id="gen-aspect"
-              className="w-full px-3 py-2 rounded-md border border-border bg-background text-sm"
-              value={String(generationConfig.aspectRatio ?? "")}
-              onChange={(event) => onGenerationConfigChange({ ...generationConfig, aspectRatio: event.target.value })}
-            >
-              {model.supportedAspectRatios.map((aspectRatio) => (
-                <option key={aspectRatio} value={aspectRatio}>
-                  {aspectRatio}
-                </option>
-              ))}
-            </select>
-            <FieldError message={validationErrors.aspectRatio} />
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="gen-resolution" className="text-xs font-medium text-muted-foreground">Resolution</label>
-            <select
-              id="gen-resolution"
-              className="w-full px-3 py-2 rounded-md border border-border bg-background text-sm"
-              value={String(generationConfig.resolution ?? "")}
-              onChange={(event) => onGenerationConfigChange({ ...generationConfig, resolution: event.target.value })}
-            >
-              {model.supportedResolutions.map((resolution) => (
-                <option key={resolution} value={resolution}>
-                  {resolution}
-                </option>
-              ))}
-            </select>
-            <FieldError message={validationErrors.resolution} />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <label htmlFor="gen-fps" className="text-xs font-medium text-muted-foreground">FPS</label>
-            <Input
-              id="gen-fps"
-              type="number"
-              min={model.fpsRange.min}
-              max={model.fpsRange.max}
-              value={String(generationConfig.fps ?? "")}
-              onChange={(event) => onGenerationConfigChange({ ...generationConfig, fps: parseOptionalInteger(event.target.value) })}
-            />
-            <FieldError message={validationErrors.fps} />
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="gen-duration-preset" className="text-xs font-medium text-muted-foreground">Duration</label>
-            <select
-              id="gen-duration-preset"
-              className="w-full px-3 py-2 rounded-md border border-border bg-background text-sm"
-              value={String(generationConfig.durationPreset ?? "")}
-              onChange={(event) => {
-                const selectedPreset = model.durationPresetOptions.find((entry) => entry.id === event.target.value)
-                onGenerationConfigChange({
-                  ...generationConfig,
-                  durationPreset: event.target.value,
-                  durationSeconds: selectedPreset?.seconds ?? generationConfig.durationSeconds,
-                })
-              }}
-            >
-              {model.durationPresetOptions.map((preset) => (
-                <option key={preset.id} value={preset.id}>
-                  {preset.label}
-                </option>
-              ))}
-            </select>
-            <FieldError message={validationErrors.durationPreset} />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <label htmlFor="gen-seed" className="text-xs font-medium text-muted-foreground">Seed</label>
-            <Input
-              id="gen-seed"
-              type="number"
-              min={0}
-              step={1}
-              value={String(generationConfig.seed ?? "")}
-              onChange={(event) => onGenerationConfigChange({ ...generationConfig, seed: parseOptionalInteger(event.target.value) })}
-            />
-            <FieldError message={validationErrors.seed} />
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="gen-quality-mode" className="text-xs font-medium text-muted-foreground">Quality mode</label>
-            <select
-              id="gen-quality-mode"
-              className="w-full px-3 py-2 rounded-md border border-border bg-background text-sm"
-              value={String(generationConfig.qualityMode ?? "")}
-              onChange={(event) =>
-                onGenerationConfigChange({
-                  ...generationConfig,
-                  qualityMode: event.target.value === "speed" ? "speed" : "quality",
-                })
-              }
-            >
-              <option value="quality">Quality</option>
-              <option value="speed">Speed</option>
-            </select>
-            <FieldError message={validationErrors.qualityMode} />
-          </div>
-        </div>
-      </div>
-    </div>
+  const panelContent = (
+    <EditorPanelContextProvider
+      value={{
+        project,
+        activeTimeline,
+        selectedSegment,
+        playheadSeconds,
+      }}
+    >
+      {renderPanelByTab(resolvedTab, sharedPanelProps, tabPanelState, setTabPanelState)}
+    </EditorPanelContextProvider>
   )
 
   return (
     <>
-      <aside className="hidden lg:block w-80 xl:w-96 2xl:w-[28rem] bg-card border-l border-border overflow-y-auto">{panelContent}</aside>
+      <aside className="hidden w-80 overflow-y-auto border-l border-border bg-card lg:block xl:w-96 2xl:w-[28rem]">{panelContent}</aside>
 
       {isNarrowViewport && (
         <div className="fixed bottom-36 right-4 z-30">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <Button size="icon" className="h-12 w-12 rounded-full shadow-lg" aria-label="Open model and settings panel">
-                <SlidersHorizontal className="w-5 h-5" />
+                <SlidersHorizontal className="h-5 w-5" />
               </Button>
             </SheetTrigger>
             <SheetContent side="right" className="w-[92vw] max-w-md p-0">

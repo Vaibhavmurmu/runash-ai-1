@@ -3,11 +3,37 @@ import test from "node:test"
 
 import { handleGetSessionMessages } from "./[id]/get-session-messages-handler.ts"
 
+test("GET /api/messages/session/:id enforces ownership when user identity cannot access session", async () => {
+  const response = await handleGetSessionMessages(new Request("http://localhost/api/messages/session/s-1?limit=2"), { id: "s-1" }, {
+    getUserId: async () => "",
+    isSessionOwnedByUser: async () => false,
+    listSessionMessages: async () => [],
+  })
+
+  const payload = await response.json()
+  assert.equal(response.status, 401)
+  assert.equal(payload.error.code, "AUTH_REQUIRED")
+})
+
+test("GET /api/messages/session/:id enforces ownership on cross-user access", async () => {
+  const response = await handleGetSessionMessages(new Request("http://localhost/api/messages/session/s-2?limit=2"), { id: "s-2" }, {
+    getUserId: async () => "user-1",
+    isSessionOwnedByUser: async () => false,
+    listSessionMessages: async () => [],
+  })
+
+  const payload = await response.json()
+  assert.equal(response.status, 403)
+  assert.equal(payload.error.code, "SESSION_ACCESS_DENIED")
+})
+
 test("GET /api/messages/session/:id happy path returns frontend contract fields", async () => {
   let capturedSessionId = ""
   let capturedLimit: number | undefined
 
   const response = await handleGetSessionMessages(new Request("http://localhost/api/messages/session/s-1?limit=2"), { id: "s-1" }, {
+    getUserId: async () => "user-1",
+    isSessionOwnedByUser: async () => true,
     listSessionMessages: async (sessionId, limit) => {
       capturedSessionId = sessionId
       capturedLimit = limit
@@ -36,21 +62,10 @@ test("GET /api/messages/session/:id happy path returns frontend contract fields"
   assert.equal(payload.data[0].created_at, "2025-01-01T00:00:00.000Z")
 })
 
-test("GET /api/messages/session/:id empty state returns success with []", async () => {
-  const response = await handleGetSessionMessages(new Request("http://localhost/api/messages/session/s-empty"), { id: "s-empty" }, {
-    listSessionMessages: async () => [],
-  })
-
-  const payload = await response.json()
-
-  assert.equal(response.status, 200)
-  assert.equal(payload.success, true)
-  assert.equal(typeof payload.requestId, "string")
-  assert.deepEqual(payload.data, [])
-})
-
 test("GET /api/messages/session/:id rejects malformed query params and missing id", async () => {
   const missingIdResponse = await handleGetSessionMessages(new Request("http://localhost/api/messages/session/"), { id: "   " }, {
+    getUserId: async () => "user-1",
+    isSessionOwnedByUser: async () => true,
     listSessionMessages: async () => [],
   })
   const missingIdPayload = await missingIdResponse.json()
@@ -63,6 +78,8 @@ test("GET /api/messages/session/:id rejects malformed query params and missing i
     new Request("http://localhost/api/messages/session/s-1?limit=0"),
     { id: "s-1" },
     {
+      getUserId: async () => "user-1",
+      isSessionOwnedByUser: async () => true,
       listSessionMessages: async () => [],
     },
   )

@@ -537,6 +537,14 @@ export default function CareersPage() {
                 </li>
                 <li>
                   <a
+                    href="/brand"
+                    className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
+                  >
+                    Brand Assets
+                  </a>
+                </li>
+                <li>
+                  <a
                     href="/help"
                     className="text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 transition-colors"
                   >

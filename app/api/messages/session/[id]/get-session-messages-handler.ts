@@ -20,8 +20,15 @@ const sessionQuerySchema = z.object({
 })
 
 export type SessionMessagesDependencies = {
-  listSessionMessages: (sessionId: string, limit?: number) => Promise<RunashSessionMessage[]>
+  getUserId: () => Promise<string>
+  isSessionOwnedByUser: (sessionId: string, userId: string) => Promise<boolean>
+  listSessionMessages: (sessionId: string, limit: number, userId: string) => Promise<RunashSessionMessage[]>
 }
+
+function isSessionAccessDeniedError(error: unknown) {
+  return error instanceof Error && error.message === "SESSION_ACCESS_DENIED"
+}
+
 
 export async function handleGetSessionMessages(
   request: Request,
@@ -31,6 +38,18 @@ export async function handleGetSessionMessages(
   const requestId = resolveRequestId(request)
 
   try {
+    const userId = String(await dependencies.getUserId()).trim()
+    if (!userId) {
+      return respondError(
+        request,
+        {
+          code: "AUTH_REQUIRED",
+          message: "Unauthorized",
+        } satisfies ApiError,
+        { status: 401, requestId },
+      )
+    }
+
     const parsedParams = sessionParamsSchema.safeParse(params)
     if (!parsedParams.success) {
       logApiEvent("warn", "session.messages.validation_failed", {
@@ -69,7 +88,19 @@ export async function handleGetSessionMessages(
     const { id: sessionId } = parsedParams.data
     const { limit } = parsedQuery.data
 
-    const messages = await dependencies.listSessionMessages(sessionId, limit)
+    const isOwned = await dependencies.isSessionOwnedByUser(sessionId, userId)
+    if (!isOwned) {
+      return respondError(
+        request,
+        {
+          code: "SESSION_ACCESS_DENIED",
+          message: "Forbidden",
+        } satisfies ApiError,
+        { status: 403, requestId },
+      )
+    }
+
+    const messages = await dependencies.listSessionMessages(sessionId, limit, userId)
 
     logApiEvent("info", "session.messages.fetch_success", {
       requestId,
@@ -80,6 +111,17 @@ export async function handleGetSessionMessages(
 
     return respondSuccess(request, messages, { requestId })
   } catch (error) {
+    if (isSessionAccessDeniedError(error)) {
+      return respondError(
+        request,
+        {
+          code: "SESSION_ACCESS_DENIED",
+          message: "Forbidden",
+        } satisfies ApiError,
+        { status: 403, requestId },
+      )
+    }
+
     logApiEvent("error", "session.messages.fetch_failed", {
       requestId,
       route: "/api/messages/session/[id]",

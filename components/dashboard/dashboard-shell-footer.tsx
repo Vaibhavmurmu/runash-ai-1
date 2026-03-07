@@ -1,8 +1,10 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { BookOpenText, CircleHelp, Gavel, Lock, Server } from "lucide-react"
+
+import { FooterBrand } from "@/components/branding/footer-brand"
 
 const FOOTER_LINKS = [
   { label: "Status", href: "/status", icon: Server },
@@ -18,7 +20,11 @@ function formatLastSync(date: Date) {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 }
 
-export function DashboardFooter() {
+type DashboardFooterProps = {
+  logo?: ReactNode
+}
+
+export function DashboardFooter({ logo }: DashboardFooterProps) {
   const [lastSync, setLastSync] = useState(() => formatLastSync(new Date()))
 
   useEffect(() => {
@@ -29,6 +35,14 @@ export function DashboardFooter() {
   }, [])
 
   const year = useMemo(() => new Date().getFullYear(), [])
+
+  const footerLogo =
+    logo ?? (
+      <FooterBrand
+        className="gap-2"
+        labelClassName="text-xs font-semibold uppercase tracking-[0.08em] text-foreground"
+      />
+    )
 
   return (
     <footer className="sticky bottom-0 z-20 border-t border-border/70 bg-card/85 px-4 py-4 text-xs text-muted-foreground backdrop-blur-xl supports-[backdrop-filter]:bg-card/70 md:static md:px-6 md:py-5 dark:bg-card/60">
@@ -67,7 +81,10 @@ export function DashboardFooter() {
         </nav>
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3 text-[11px]">
-          <p>© {year} RunAsh.AI</p>
+          <div className="flex items-center gap-3">
+            {footerLogo}
+            <p>© {year} RunAsh.AI</p>
+          </div>
           <p>{APP_VERSION}</p>
         </div>
       </div>

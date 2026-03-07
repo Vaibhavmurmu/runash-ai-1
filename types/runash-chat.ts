@@ -12,7 +12,68 @@ export interface ChatMessage {
     automationSuggestions?: AutomationSuggestion[]
     searchResults?: SearchResult[]
     linkQuickPay?: LinkQuickPayPreview
+    toolExecutions?: ToolExecutionSummary[]
+    toolEvents?: ToolStreamEvent[]
   }
+}
+
+export type ToolStreamEvent = ToolStartEvent | ToolResultEvent | ToolErrorEvent
+
+export interface ToolStartEvent {
+  type: "tool_start"
+  tool: string
+  executionId: string
+  messageId?: string
+  startedAt: string
+  timeoutMs?: number
+  retryCount?: number
+  payload?: Record<string, unknown>
+}
+
+export interface ToolResultEvent {
+  type: "tool_result"
+  tool: string
+  executionId: string
+  messageId?: string
+  startedAt?: string
+  finishedAt: string
+  durationMs?: number
+  fromCache?: boolean
+  attempts?: number
+  result?: Record<string, unknown>
+}
+
+export interface ToolErrorEvent {
+  type: "tool_error"
+  tool: string
+  executionId: string
+  messageId?: string
+  startedAt?: string
+  finishedAt: string
+  durationMs?: number
+  errorCode: string
+  errorMessage: string
+  failureReason?: string
+  attempts?: number
+  payload?: Record<string, unknown>
+}
+
+export interface ToolExecutionSummary {
+  id: string
+  tool: string
+  status: "running" | "completed" | "failed"
+  startedAt: string
+  finishedAt?: string
+  durationMs?: number
+  progressLabel?: string
+  outputPreview?: string
+  output?: Record<string, unknown>
+  errorCode?: string
+  errorMessage?: string
+  failureReason?: string
+  timeoutMs?: number
+  retryCount?: number
+  attempts?: number
 }
 
 export interface LinkQuickPayPreview {
