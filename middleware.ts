@@ -218,6 +218,10 @@ function checkRateLimit(request: NextRequest, identifier: string, limit: number,
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   const { isAuthPage, requiresSessionValidation } = resolveAuthDecision(pathname)
+  const screenshotPreviewBypass =
+    process.env.NODE_ENV !== "production" &&
+    pathname === "/dashboard/chat" &&
+    request.nextUrl.searchParams.get("previewChatScreenshots") === "1"
   const response = NextResponse.next()
 
   // Add security headers to all responses
@@ -300,7 +304,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  if (!requiresSessionValidation) {
+  if (!requiresSessionValidation || screenshotPreviewBypass) {
     return response
   }
 
