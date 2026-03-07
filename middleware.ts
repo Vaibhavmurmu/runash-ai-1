@@ -110,6 +110,11 @@ const publicRoutes = [
   "/workflow",
   "/workflow-kit",
   "/workflows",
+  "/dashboard",
+  "/dashboard/chat",
+  "/runash-chat",
+  "/seller/dashboard",
+  
 ] as const
 
 const publicApiRouteMatchers = [
