@@ -44,6 +44,7 @@ import { getRecommendedProducts, shouldRecommendProducts } from "@/lib/chat-prod
 
 const UPGRADE_METRICS_KEY = "runash_upgrade_metrics_v2"
 const STARTER_CARD_STATE_KEY = "runash_chat_starter_cards_v1"
+const CHAT_BANNER_COLLAPSED_STATE_KEY = "runash_chat_banner_collapsed_v1"
 
 const createDefaultAssistantMessage = (): ChatMessage => ({
   id: `assistant-welcome-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -188,6 +189,7 @@ export function ChatWorkspace() {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([])
   const [persistedSessionIds, setPersistedSessionIds] = useState<string[]>([])
   const [dismissedStarterCardIds, setDismissedStarterCardIds] = useState<string[]>([])
+  const [isChatBannerDismissed, setIsChatBannerDismissed] = useState(false)
 
   const buildEmptySessionContext = () => ({
     preferences: {
@@ -527,27 +529,33 @@ export function ChatWorkspace() {
     return newSession
   }
 
+  const openModelDialog = useCallback(
+    (trigger: string) => {
+      openFromTrigger(
+        {
+          triggerSource: "chat",
+          mode: "configure",
+          model: {
+            modelId: "runash-chat-router",
+            provider: "RunAsh AI",
+            displayName: "RunAsh Chat Optimizer",
+          },
+          payload: { prompt: "Optimize this chat workflow for quality, latency, and cost." },
+        },
+        trigger,
+      )
+    },
+    [openFromTrigger],
+  )
+
   const quickActions: QuickAction[] = useMemo(
     () =>
       buildRunAshChatQuickActions({
         onPrompt: (prompt) => handleQuickAction(prompt),
         onSearch: (prompt) => handleQuickAction(prompt, "search"),
-        openModelConfigurator: (trigger) =>
-          openFromTrigger(
-            {
-              triggerSource: "chat",
-              mode: "configure",
-              model: {
-                modelId: "runash-chat-router",
-                provider: "RunAsh AI",
-                displayName: "RunAsh Chat Optimizer",
-              },
-              payload: { prompt: "Optimize this chat workflow for quality, latency, and cost." },
-            },
-            trigger,
-          ),
+        openModelConfigurator: (trigger) => openModelDialog(trigger),
       }),
-    [openFromTrigger],
+    [openModelDialog],
   )
 
   const scrollMessagesToBottom = (behavior: ScrollBehavior = "auto") => {
@@ -1968,6 +1976,40 @@ export function ChatWorkspace() {
     }
   }, [userScopedStorageKey])
 
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(CHAT_BANNER_COLLAPSED_STATE_KEY)
+      const parsed = raw ? (JSON.parse(raw) as Record<string, boolean>) : {}
+      setIsChatBannerDismissed(Boolean(parsed[userScopedStorageKey]))
+    } catch {
+      setIsChatBannerDismissed(false)
+    }
+  }, [userScopedStorageKey])
+
+  const persistBannerDismissedState = useCallback(
+    (dismissed: boolean) => {
+      try {
+        const raw = window.localStorage.getItem(CHAT_BANNER_COLLAPSED_STATE_KEY)
+        const parsed = raw ? (JSON.parse(raw) as Record<string, boolean>) : {}
+        parsed[userScopedStorageKey] = dismissed
+        window.localStorage.setItem(CHAT_BANNER_COLLAPSED_STATE_KEY, JSON.stringify(parsed))
+      } catch {
+        return
+      }
+    },
+    [userScopedStorageKey],
+  )
+
+  const dismissChatBanner = useCallback(() => {
+    setIsChatBannerDismissed(true)
+    persistBannerDismissedState(true)
+  }, [persistBannerDismissedState])
+
+  const restoreChatBanner = useCallback(() => {
+    setIsChatBannerDismissed(false)
+    persistBannerDismissedState(false)
+  }, [persistBannerDismissedState])
+
   const persistDismissedStarterCardIds = useCallback(
     (cardIds: string[]) => {
       try {
@@ -2209,10 +2251,13 @@ export function ChatWorkspace() {
     <ChatPageFrame>
       <div className="flex min-h-[100dvh] min-h-0 flex-1 flex-col">
         <div className="sticky top-0 z-50 mb-3 space-y-2.5 sm:mb-4 sm:space-y-3">
-          <ChatInfoBanner
-            badge="New"
-            message="Unified chat shell is now active with consistent actions and prompt patterns."
-          />
+          {!isChatBannerDismissed ? (
+            <ChatInfoBanner
+              badge="New"
+              message="Unified chat shell is now active with consistent actions and prompt patterns."
+              onDismiss={dismissChatBanner}
+            />
+          ) : null}
           <ChatShellHeader
             title="RunAshChat"
             subtitle="AI Assistant"
@@ -2306,6 +2351,11 @@ export function ChatWorkspace() {
                               <Sparkles className="h-3.5 w-3.5" />
                               {rightDrawerOpen ? "Hide tools" : "Show tools"}
                             </ActionPill>
+                            {isChatBannerDismissed ? (
+                              <ActionPill onClick={restoreChatBanner} className="h-8 gap-1.5 px-3" aria-label="Restore info banner">
+                                Restore banner
+                              </ActionPill>
+                            ) : null}
                             <CartDrawer />
                           </div>
                         </div>
@@ -2370,6 +2420,11 @@ export function ChatWorkspace() {
                     <Sparkles className="mr-1.5 h-3.5 w-3.5" />
                     {rightDrawerOpen ? "Hide Tools" : "Show Tools"}
                   </ActionPill>
+                  {isChatBannerDismissed ? (
+                    <ActionPill onClick={restoreChatBanner} aria-label="Restore info banner">
+                      Restore banner
+                    </ActionPill>
+                  ) : null}
                   <ActionPill
                     onClick={() => setVoiceEnabled(!voiceEnabled)}
                     className={voiceEnabled ? "bg-green-950 text-green-300" : ""}
@@ -2543,11 +2598,18 @@ export function ChatWorkspace() {
                     emptyMessage="Starter prompts are unavailable right now."
                   />
 
-                  {dismissedStarterCardIds.length > 0 ? (
-                    <div className="flex justify-end">
-                      <Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-zinc-400 hover:text-zinc-100" onClick={restoreStarterCards}>
-                        Restore starter prompts
-                      </Button>
+                  {dismissedStarterCardIds.length > 0 || isChatBannerDismissed ? (
+                    <div className="flex justify-end gap-2">
+                      {isChatBannerDismissed ? (
+                        <Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-zinc-400 hover:text-zinc-100" onClick={restoreChatBanner}>
+                          Restore banner
+                        </Button>
+                      ) : null}
+                      {dismissedStarterCardIds.length > 0 ? (
+                        <Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-zinc-400 hover:text-zinc-100" onClick={restoreStarterCards}>
+                          Restore starter prompts
+                        </Button>
+                      ) : null}
                     </div>
                   ) : null}
 
@@ -2602,6 +2664,23 @@ export function ChatWorkspace() {
 
 
             <div className="sticky bottom-0 border-t border-zinc-800 bg-[#050607]/95 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] shadow-[0_-18px_40px_-30px_rgba(0,0,0,0.9)] backdrop-blur supports-[backdrop-filter]:bg-[#050607]/90 sm:p-4 sm:pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+              <div className="mb-3 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Model Dialog</p>
+                    <p className="text-xs text-zinc-300">Configure model routing for this chat before your next prompt.</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="border-zinc-700 bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
+                    onClick={() => openModelDialog("chat-workspace-surface")}
+                  >
+                    Open Model Dialog
+                  </Button>
+                </div>
+              </div>
 
               <RunAshChatComposer
                 value={inputValue}
