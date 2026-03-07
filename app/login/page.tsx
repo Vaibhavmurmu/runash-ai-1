@@ -74,7 +74,7 @@ export default function LoginPage() {
         markLoginTime()
         const session = await getAuthSession()
         if (session?.user) {
-          router.push("/dashboard")
+          router.push("/dashboard/chat")
         }
       }
     } catch {
@@ -89,7 +89,7 @@ export default function LoginPage() {
     try {
       setLastLoginMethod(provider === "google" || provider === "github" ? provider : "unknown")
       markLoginTime()
-      await signIn(provider, { callbackUrl: "/dashboard" })
+      await signIn(provider, { callbackUrl: "/dashboard/chat" })
     } catch {
       setError("Failed to sign in with " + provider)
     } finally {
@@ -179,7 +179,7 @@ export default function LoginPage() {
                 {error ? <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>{error}</AlertDescription></Alert> : null}
                 {lastLoginMethod !== "unknown" ? <Alert className="border-orange-200 dark:border-white/15 bg-orange-50 dark:bg-white/5"><AlertDescription>Last login method: {formatLoginMethodLabel(lastLoginMethod)}</AlertDescription></Alert> : null}
 
-                <GoogleOneTap callbackUrl="/dashboard" />
+                <GoogleOneTap callbackUrl="/dashboard/chat" />
 
                 <div className="space-y-3">
                   <Button onClick={() => handleOAuthSignIn("google")} variant="outline" className="w-full h-12 border-orange-200 dark:border-white/15 bg-white dark:bg-white/5 hover:bg-orange-50 dark:hover:bg-white/10" disabled={isLoading}><Mail className="mr-3 h-5 w-5 text-red-500" />Continue with Google</Button>

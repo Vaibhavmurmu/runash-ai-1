@@ -77,7 +77,7 @@ export function RegisterForm() {
 
   const handleOAuthSignIn = async (provider: string) => {
     try {
-      await signIn(provider, { callbackUrl: "/dashboard" })
+      await signIn(provider, { callbackUrl: "/dashboard/chat" })
     } catch (error) {
       toast({
         title: "Error",

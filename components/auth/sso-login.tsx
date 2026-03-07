@@ -66,7 +66,7 @@ export function SSOLogin({ onEmailCheck }: SSOLoginProps) {
   }
 
   const handleSSOLogin = (provider: string) => {
-    signIn(provider, { callbackUrl: "/dashboard" })
+    signIn(provider, { callbackUrl: "/dashboard/chat" })
   }
 
   if (ssoInfo?.hasSSO) {

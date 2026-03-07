@@ -39,7 +39,7 @@ export default function MagicLinkPage() {
 
           // Redirect to dashboard or home page after 2 seconds
           setTimeout(() => {
-            router.push("/dashboard")
+            router.push("/dashboard/chat")
           }, 2000)
         } else {
           setStatus("error")

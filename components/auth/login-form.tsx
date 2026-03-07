@@ -66,7 +66,7 @@ export function LoginForm() {
         description: `Signed in as ${session?.user?.name || formData.email}`,
       })
 
-      router.push("/dashboard")
+      router.push("/dashboard/chat")
       router.refresh()
     } catch (error) {
       setError("An error occurred. Please try again.")
@@ -78,7 +78,7 @@ export function LoginForm() {
   const handleOAuthSignIn = async (provider: string) => {
     try {
       setLastLoginMethod(provider === "google" || provider === "github" ? provider : "unknown")
-      await signIn(provider, { callbackUrl: "/dashboard" })
+      await signIn(provider, { callbackUrl: "/dashboard/chat" })
     } catch (error) {
       toast({
         title: "Error",
@@ -112,7 +112,7 @@ export function LoginForm() {
             />
           ) : null}
 
-          <GoogleOneTap callbackUrl="/dashboard" />
+          <GoogleOneTap callbackUrl="/dashboard/chat" />
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">

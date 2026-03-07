@@ -2254,13 +2254,13 @@ export function ChatWorkspace() {
           {!isChatBannerDismissed ? (
             <ChatInfoBanner
               badge="New"
-              message="Unified chat shell is now active with consistent actions and prompt patterns."
+              message="RunAshChat is live with studio-aware AI chat, commerce workflows, and real-time creator tooling."
               onDismiss={dismissChatBanner}
             />
           ) : null}
           <ChatShellHeader
             title="RunAshChat"
-            subtitle="AI Assistant"
+            subtitle="Live Commerce + Studio Copilot"
             icon={<Bot className="h-5 w-5" />}
             primaryAction={
               <ActionPill onClick={handleNewChatSession} className="h-8 gap-1.5 px-3" aria-label="Start a new chat">
