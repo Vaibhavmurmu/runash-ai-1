@@ -139,6 +139,11 @@ export function EditorWorkspace() {
     return project.timelines.find((timeline) => timeline.id === project.activeTimelineId) ?? project.timelines[0]
   }, [project])
 
+  const selectedSegment = useMemo(() => {
+    if (!activeTimeline) return undefined
+    return activeTimeline.segments.find((segment) => playbackTime >= segment.startSeconds && playbackTime <= segment.endSeconds)
+  }, [activeTimeline, playbackTime])
+
   const persistOnboardingState = async (next: OnboardingState) => {
     setIsUpdatingOnboarding(true)
     try {
@@ -979,6 +984,10 @@ export function EditorWorkspace() {
             validationErrors={generationValidationErrors}
             onGenerationConfigChange={handleGenerationConfigChange}
             activeTab={activeTab}
+            project={project}
+            activeTimeline={activeTimeline}
+            selectedSegment={selectedSegment}
+            playheadSeconds={playbackTime}
           />
           {isMobile ? (
             <Sheet open={isChatOpen} onOpenChange={setIsChatOpen}>
