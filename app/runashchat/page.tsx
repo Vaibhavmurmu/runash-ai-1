@@ -212,6 +212,12 @@ export default function RunAshChatLandingPage() {
               >
                 {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100"
+                >
+                RunAsh Pro <ChevronDown className="h-3 w-3" />
+               </button>
               <Link href="/login" className={`rounded-full px-3 py-1.5 text-sm ${isDark ? "text-white/80 hover:bg-white/10" : "text-zinc-700 hover:bg-zinc-100"}`}>
                 Log in
               </Link>
