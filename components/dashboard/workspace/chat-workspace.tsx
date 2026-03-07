@@ -2463,11 +2463,11 @@ export function ChatWorkspace() {
 
             {showComposerEmptyState ? (
               <div className="border-t border-zinc-800 p-2.5 sm:p-3">
-                <div className="space-y-3.5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 sm:space-y-4 sm:p-4">
-                  <div className="space-y-2 text-center">
-                    <p className="text-lg font-semibold tracking-tight text-zinc-100 sm:text-xl">Start your next task in one step.</p>
+                <div className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 sm:space-y-3.5 sm:p-4">
+                  <div className="space-y-1.5 text-center">
+                    <p className="text-base font-semibold tracking-tight text-zinc-100 sm:text-lg">Start faster with one clear action.</p>
                     <p className="text-xs leading-relaxed text-zinc-400 sm:text-sm">
-                      Start a prompt in the composer, upload a screenshot, or run a starter task below.
+                      Start a prompt, upload a screenshot, or run a starter task.
                     </p>
                   </div>
 
@@ -2510,10 +2510,18 @@ export function ChatWorkspace() {
                       </button>
                     ) : (
                       <div className="mt-1.5 space-y-2">
-                        <p className="text-xs text-zinc-400">No chats yet. Create new chat, try starter prompts, or connect tools from the left panel.</p>
+                        <p className="text-xs text-zinc-400">No chats yet. Start a prompt, upload a screenshot, or run a starter task.</p>
                         <div className="flex flex-wrap gap-2">
                           <Button type="button" size="sm" variant="outline" onClick={handleNewChatSession}>
-                            Create new chat
+                            Start prompt
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => document.getElementById("runash-chat-composer-attachment-input")?.click()}
+                          >
+                            Upload screenshot
                           </Button>
                           <Button
                             type="button"
@@ -2527,7 +2535,7 @@ export function ChatWorkspace() {
                               handleSendMessage(starterPrompt)
                             }}
                           >
-                            Try starter prompts
+                            Run starter task
                           </Button>
                         </div>
                       </div>

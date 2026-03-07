@@ -450,6 +450,7 @@ export function RunAshChatComposer({
             {onAttachFiles ? (
               <>
                 <input
+                  id="runash-chat-composer-attachment-input"
                   ref={attachmentInputRef}
                   type="file"
                   multiple
