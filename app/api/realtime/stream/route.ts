@@ -2,6 +2,7 @@ import { realtimeGateway } from "@/services/realtime/gateway"
 import { verifyRealtimeToken } from "@/services/realtime/auth"
 import { publishCollaboratorPresence } from "@/services/realtime/publishers"
 import type { RealtimeChannel, RealtimeEvent } from "@/services/realtime/types"
+import { appendProjectActivity, getProjectOwnerId, touchCollaboratorPresence } from "@/lib/editor/collaboration-repository"
 
 const encoder = new TextEncoder()
 
@@ -12,6 +13,24 @@ function frame(event: string, data: unknown, id?: string) {
 
 function channelProjectId(channel: RealtimeChannel): string | null {
   return channel.startsWith("editor:") ? channel.slice("editor:".length) : null
+}
+
+async function recordPresence(projectId: string, userId: string, state: "join" | "leave") {
+  const ownerId = await getProjectOwnerId(projectId)
+  if (!ownerId) return
+
+  await touchCollaboratorPresence({ projectId, ownerId, userId, state })
+  await appendProjectActivity({
+    projectId,
+    ownerId,
+    actorUserId: userId,
+    actorName: "Collaborator",
+    action: state === "join" ? "joined the session" : "left the session",
+    activityType: "collaboration",
+    details: {
+      state,
+    },
+  })
 }
 
 export async function GET(request: Request) {
@@ -47,6 +66,7 @@ export async function GET(request: Request) {
         unsubscribers.forEach((fn) => fn())
         for (const projectId of presenceProjects) {
           publishCollaboratorPresence({ projectId, userId: session.userId, state: "leave" })
+          void recordPresence(projectId, session.userId, "leave")
         }
         try {
           controller.close()
@@ -74,6 +94,7 @@ export async function GET(request: Request) {
         if (projectId) {
           presenceProjects.add(projectId)
           publishCollaboratorPresence({ projectId, userId: session.userId, state: "join" })
+          void recordPresence(projectId, session.userId, "join")
         }
       }
 
