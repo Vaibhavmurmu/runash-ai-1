@@ -41,9 +41,6 @@ const quickActions = [
   { label: "Search", icon: Sparkles },
   { label: "Shopping", icon: ShoppingBag },
   { label: "Create Video", icon: Clapperboard },
-  { label: "Product Pinning", icon: ShoppingBag },
-  { label: "Live Talk", icon: Bot },
-  
 ]
 
 const previewPrompts = [
@@ -281,8 +278,9 @@ export default function RunAshChatLandingPage() {
                   </button>
                 </div>
               </div>
-              
-              <div className="mt-8 grid gap-4 sm:grid-cols-2">
+            </div>
+
+            <div className="mt-8 grid gap-4 sm:grid-cols-2">
               {productCards.map((item) => (
                 <article
                   key={item.title}
@@ -293,10 +291,6 @@ export default function RunAshChatLandingPage() {
                 </article>
               ))}
             </div>
-              
-            </div>
-
-            
 
             <div className={`mt-8 rounded-2xl border p-5 sm:p-6 ${isDark ? "border-white/10 bg-gradient-to-r from-orange-500/15 to-amber-400/10" : "border-orange-100 bg-gradient-to-r from-orange-100 to-amber-50"}`}>
               <p className="text-sm font-medium">Prompt previews</p>
@@ -342,11 +336,11 @@ export default function RunAshChatLandingPage() {
         
               
             <div className={`mt-8 rounded-2xl border p-5 sm:p-6 ${isDark ? "border-white/10 bg-gradient-to-r from-orange-500/15 to-amber-400/10" : "border-orange-100 bg-gradient-to-r from-orange-100 to-amber-50"}`}>
-                <div className="rounded-xl bg-white/95 p-4 dark:bg-[#0a0c11]/85 sm:p-5">
+                <div className="rounded-xl bg-white/15 p-4 dark:bg-white/15 sm:p-5">
                   <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
                     <div>
                       <p className="text-lg font-semibold">RunAsh AI Live Studio</p>
-                      <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                      <p className="text-sm text-black dark:text-white">
                         One place for live video generation, studio automation, agentic selling, and custom editor workflows.
                       </p>
                     </div>
