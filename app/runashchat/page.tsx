@@ -30,34 +30,36 @@ const sidebarItems = [
   { label: "AI Editor", icon: Sparkles },
 ]
 
-const quickActions = [
-  { label: "Attach", icon: Upload },
-  { label: "Search", icon: Sparkles },
-  { label: "Shopping", icon: ShoppingBag },
-  { label: "Create Video", icon: Clapperboard },
+const inputActions = [
+  { label: "Live Studio", icon: Video },
+  { label: "Product Pinning", icon: ShoppingBag },
+  { label: "Real-time Avatar Talk", icon: Bot },
+  { label: "AI Video Generator", icon: Clapperboard },
+  { label: "AI Commerce Editor", icon: Sparkles },
+  { label: "Upload Assets", icon: Upload },
 ]
 
-const previewPrompts = [
-  "Build a live-selling flow for skincare bundle launch with host script + CTA overlays.",
-  "Generate a 45-second product teaser video with orange gradient brand transitions.",
-  "Create a studio checklist for agentic live commerce with inventory sync and moderation.",
+const categories = [
+  "RunAsh AI Launch Templates",
+  "RunAsh AI Product Stories",
+  "RunAsh AI Realtime Hosts",
 ]
 
-const productCards = [
+const templates = [
   {
-    title: "RunAsh AI Studio",
+    title: "RunAsh AI Live Studio",
     body: "Scene composer, AI teleprompter, dynamic product overlays, and live control room in one interface.",
   },
   {
-    title: "Realtime Talk Engine",
+    title: "RunAsh AI Avatar Talk",
     body: "Natural voice conversations for product Q&A, objections, and multilingual audience engagement.",
   },
   {
-    title: "Commerce Copilot",
+    title: "RunAsh AI Commerce Copilot",
     body: "Automated offer timing, stock nudges, checkout prompts, and shopping intent routing.",
   },
   {
-    title: "Live Video Generation",
+    title: "RunAsh AI Video Generator",
     body: "Generate promotional clips, hooks, and in-stream creative variants while staying on-brand.",
   },
 ]
@@ -191,10 +193,28 @@ export default function RunAshChatLandingPage() {
           <section className="mx-auto w-full max-w-5xl px-4 pb-10 pt-12 sm:px-6">
             <div className="text-center">
               <Tag isDark={isDark}>Agentic live commerce • AI studio • realtime video</Tag>
-              <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-5xl">Where should we begin?</h1>
+              <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-5xl">RunAsh AI Live Commerce Command Center</h1>
               <p className={`mx-auto mt-4 max-w-2xl text-sm sm:text-base ${isDark ? "text-white/70" : "text-zinc-600"}`}>
-                Build a modern livestream shopping experience with AI hosts, live selling automation, realtime talking agents, and a custom RunAsh editor.
+                Plan your next shopping show with RunAsh AI by launching a studio, pinning products in real time, and generating conversion-ready video creative.
               </p>
+            </div>
+
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              <Link href="/stream" className="rounded-full bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2 text-sm font-medium text-white shadow-sm">
+                Launch RunAsh AI Studio
+              </Link>
+              <Link
+                href="/ecommerce/dashboard"
+                className={`rounded-full border px-4 py-2 text-sm font-medium ${isDark ? "border-white/15 text-white hover:bg-white/10" : "border-zinc-300 text-zinc-700 hover:bg-zinc-100"}`}
+              >
+                Setup Shopping Session
+              </Link>
+              <Link
+                href="/ai-editor"
+                className={`rounded-full border px-4 py-2 text-sm font-medium ${isDark ? "border-white/15 text-white hover:bg-white/10" : "border-zinc-300 text-zinc-700 hover:bg-zinc-100"}`}
+              >
+                Open RunAsh AI Editor
+              </Link>
             </div>
 
             <div className={`mx-auto mt-8 max-w-3xl rounded-3xl border p-3 sm:p-4 ${isDark ? "border-white/10 bg-white/[0.03]" : "border-zinc-200 bg-white/90 shadow-lg shadow-orange-100/40"}`}>
@@ -202,11 +222,11 @@ export default function RunAshChatLandingPage() {
                 href="/dashboard/chat"
                 className={`flex min-h-14 items-center rounded-2xl px-3 text-left text-sm sm:text-base ${isDark ? "bg-black/30 text-white/65" : "bg-zinc-50 text-zinc-500"}`}
               >
-                Preview prompt: Create a high-converting live-selling stream for tomorrow&apos;s launch.
+                Prompt RunAsh AI: Build tonight&apos;s live commerce session with product pinning moments, host cues, and checkout-first CTAs.
               </Link>
               <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap gap-2">
-                  {quickActions.map(({ label, icon: Icon }) => (
+                  {inputActions.map(({ label, icon: Icon }) => (
                     <Tag key={label} isDark={isDark}>
                       <span className="inline-flex items-center gap-1.5">
                         <Icon className="h-3.5 w-3.5" />
@@ -235,8 +255,17 @@ export default function RunAshChatLandingPage() {
               </div>
             </div>
 
+            <p className="mt-8 text-sm font-medium">RunAsh AI categories</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {categories.map((category) => (
+                <Tag key={category} isDark={isDark}>
+                  {category}
+                </Tag>
+              ))}
+            </div>
+
             <div className="mt-8 grid gap-4 sm:grid-cols-2">
-              {productCards.map((item) => (
+              {templates.map((item) => (
                 <article
                   key={item.title}
                   className={`rounded-2xl border p-5 ${isDark ? "border-white/10 bg-white/[0.03]" : "border-zinc-200 bg-white/90"}`}
@@ -248,9 +277,13 @@ export default function RunAshChatLandingPage() {
             </div>
 
             <div className={`mt-8 rounded-2xl border p-5 sm:p-6 ${isDark ? "border-white/10 bg-gradient-to-r from-orange-500/15 to-amber-400/10" : "border-orange-100 bg-gradient-to-r from-orange-100 to-amber-50"}`}>
-              <p className="text-sm font-medium">Prompt previews</p>
+              <p className="text-sm font-medium">RunAsh AI prompt previews</p>
               <div className="mt-3 space-y-2">
-                {previewPrompts.map((prompt) => (
+                {[
+                  "Launch a RunAsh AI studio flow for a flash sale with timed product pinning and avatar-led FAQ responses.",
+                  "Generate a 30-second RunAsh AI teaser that transitions from product demo to one-click checkout CTA.",
+                  "Create a RunAsh AI shopping session playbook with moderator actions, inventory alerts, and closing scripts.",
+                ].map((prompt) => (
                   <p key={prompt} className={`rounded-xl px-3 py-2 text-sm ${isDark ? "bg-black/30 text-white/80" : "bg-white text-zinc-700"}`}>
                     {prompt}
                   </p>
