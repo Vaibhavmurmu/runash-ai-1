@@ -68,20 +68,26 @@ const productCards = [
   },
   {
     title: "Agentic Live Commerce",
-    description: "Launch AI-powered live selling sessions with auto product highlights and script suggestions.",
+    body: "Launch AI-powered live selling sessions with auto product highlights and script suggestions.",
   },
   {
     title: "Real-time Stream Generation",
-    description: "Generate vertical or landscape live stream scenes in seconds with instant scene transitions.",
+    body: "Generate vertical or landscape live stream scenes in seconds with instant scene transitions.",
   },
   {
     title: "Custom AI Studio",
-    description: "Compose cameras, overlays, and talking avatars from a single clean RunAsh control surface.",
+    body: "Compose cameras, overlays, and talking avatars from a single clean RunAsh control surface.",
   },
   {
     title: "Shopping + Chat Automation",
-    description: "Convert comments into cart-ready offers with smart responses, pricing hooks, and follow-up prompts.",
+    body: "Convert comments into cart-ready offers with smart responses, pricing hooks, and follow-up prompts.",
   },
+]
+
+const categories = [
+  "RunAsh AI Launch Templates",
+  "RunAsh AI Product Stories",
+  "RunAsh AI Realtime Hosts",
 ]
 
 function Tag({ children, isDark }: { children: ReactNode; isDark: boolean }) {
@@ -123,6 +129,17 @@ function SidebarContent({ collapsed, isDark }: { collapsed: boolean; isDark: boo
         ))}
       </nav>
 
+      
+       <div className="mt-auto p-3">
+        {!collapsed ? (
+          <div className={`mt-auto rounded-2xl border p-4 ${isDark ? "border-white/10 bg-white/5" : "border-zinc-200 bg-white"}`}>
+          <p className={`text-sm font-medium ${isDark ? "text-white" : "text-zinc-900"}`}>Upgrade Studio</p>
+          <p className={`mt-1 text-xs ${isDark ? "text-white/70" : "text-zinc-600"}`}>
+            Unlock multi-stream control, AI hosts, and premium commerce automations.
+          </p>
+          </div>
+        ) : null}
+      </div>
       {!collapsed ? (
         <div className={`mt-auto rounded-2xl border p-4 ${isDark ? "border-white/10 bg-white/5" : "border-zinc-200 bg-white"}`}>
           <p className={`text-sm font-medium ${isDark ? "text-white" : "text-zinc-900"}`}>Go live faster</p>
@@ -130,7 +147,7 @@ function SidebarContent({ collapsed, isDark }: { collapsed: boolean; isDark: boo
             Sign in to save studio presets, product bundles, and AI host voices.
           </p>
           <div className="mt-3 flex gap-2">
-            <Link href="/login" className={`rounded-md px-2 py-1 text-xs ${isDark ? "bg-white/10 text-white" : "bg-zinc-100 text-zinc-700"}`}>
+            <Link href="/login" className={`rounded-md pUnlock multi-stream control, AI hosts, and premium commerce automations.x-2 py-1 text-xs ${isDark ? "bg-white/10 text-white" : "bg-zinc-100 text-zinc-700"}`}>
               Log in
             </Link>
             <Link href="/signup" className="rounded-md bg-gradient-to-r from-orange-500 to-amber-500 px-2 py-1 text-xs text-white">
@@ -201,6 +218,12 @@ export default function RunAshChatLandingPage() {
               >
                 {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white px-3 py-1.5 text-xs text-zinc-700 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100"
+                >
+                RunAsh Pro <ChevronDown className="h-3 w-3" />
+               </button>
               <Link href="/login" className={`rounded-full px-3 py-1.5 text-sm ${isDark ? "text-white/80 hover:bg-white/10" : "text-zinc-700 hover:bg-zinc-100"}`}>
                 Log in
               </Link>
@@ -282,7 +305,49 @@ export default function RunAshChatLandingPage() {
                 Open RunAshChat Studio <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
+            
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              <Link href="/stream" className="rounded-full bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2 text-sm font-medium text-white shadow-sm">
+                Launch RunAsh AI Studio
+              </Link>
+              <Link
+                href="/ecommerce/dashboard"
+                className={`rounded-full border px-4 py-2 text-sm font-medium ${isDark ? "border-white/15 text-white hover:bg-white/10" : "border-zinc-300 text-zinc-700 hover:bg-zinc-100"}`}
+              >
+                Setup Shopping Session
+              </Link>
+              <Link
+                href="/ai-editor"
+                className={`rounded-full border px-4 py-2 text-sm font-medium ${isDark ? "border-white/15 text-white hover:bg-white/10" : "border-zinc-300 text-zinc-700 hover:bg-zinc-100"}`}
+              >
+                Open RunAsh AI Editor
+              </Link>
+            </div>
+            
+            <p className="mt-8 text-sm font-medium">RunAsh AI categories</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {categories.map((category) => (
+                <Tag key={category} isDark={isDark}>
+                  {category}
+                </Tag>
+              ))}
+            </div>
           </section>
+        
+              
+            <div className={`mt-8 rounded-2xl border p-5 sm:p-6 ${isDark ? "border-white/10 bg-gradient-to-r from-orange-500/15 to-amber-400/10" : "border-orange-100 bg-gradient-to-r from-orange-100 to-amber-50"}`}>
+                <div className="rounded-xl bg-white/15 p-4 dark:bg-white/15 sm:p-5">
+                  <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+                    <div>
+                      <p className="text-lg font-semibold">RunAsh AI Live Studio</p>
+                      <p className="text-sm text-black dark:text-white">
+                        One place for live video generation, studio automation, agentic selling, and custom editor workflows.
+                      </p>
+                    </div>
+                    <Image src="/RunAshChat.png" alt="RunAsh AI preview" width={120} height={40} className="h-10 w-auto rounded-md" />
+                  </div>
+                </div>
+              </div>
         </div>
       </div>
 
