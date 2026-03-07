@@ -97,6 +97,17 @@ export const appSchemaTables = {
     table: "waitlist_entries",
     fields: ["id", "email", "name", "company", "use_case", "created_at"],
   },
+  communityEvents: {
+    table: "community_events",
+    fields: ["id", "title", "description", "starts_at", "location", "created_at", "updated_at"],
+    indexes: ["idx_community_events_starts_at"],
+  },
+  communityEventRegistrations: {
+    table: "community_event_registrations",
+    fields: ["id", "event_id", "user_id", "created_at", "updated_at"],
+    indexes: ["idx_community_event_registrations_event", "idx_community_event_registrations_user"],
+    uniqueConstraints: ["event_id,user_id"],
+  },
   accountingChartOfAccounts: {
     table: "accounting_chart_of_accounts",
     fields: ["id", "code", "name", "account_type", "currency", "balance", "is_active", "created_at", "updated_at"],
