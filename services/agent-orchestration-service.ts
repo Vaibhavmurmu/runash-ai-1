@@ -51,6 +51,30 @@ export type ToolExecutionResult = {
   fromCache: boolean
 }
 
+export type ToolExecutionPolicy = {
+  timeoutMs: number
+  retryCount: number
+}
+
+export type ToolExecutionErrorCode = "TOOL_TIMEOUT" | "TOOL_MAX_RETRIES_EXCEEDED" | "TOOL_EXECUTION_FAILED"
+
+export class ToolExecutionError extends Error {
+  code: ToolExecutionErrorCode
+  tool: SupportedTool
+  retryable: boolean
+
+  constructor(input: { code: ToolExecutionErrorCode; tool: SupportedTool; message: string; retryable: boolean; cause?: unknown }) {
+    super(input.message)
+    this.name = "ToolExecutionError"
+    this.code = input.code
+    this.tool = input.tool
+    this.retryable = input.retryable
+    if (input.cause !== undefined) {
+      this.cause = input.cause
+    }
+  }
+}
+
 export type ProtocolOrchestrationInput = {
   intentId: string
   actionType: string
@@ -71,6 +95,13 @@ export type ProtocolOrchestrationResult = {
 
 const TOOL_TIMEOUT_MS = Number(process.env.RUNASH_AGENT_TOOL_TIMEOUT_MS ?? "7000")
 const TOOL_RETRY_COUNT = Number(process.env.RUNASH_AGENT_TOOL_RETRY_COUNT ?? "2")
+const TOOL_POLICY_OVERRIDES: Partial<Record<SupportedTool, ToolExecutionPolicy>> = {
+  web_search: { timeoutMs: 6_000, retryCount: 1 },
+  catalog_lookup: { timeoutMs: 6_000, retryCount: 1 },
+  initiate_link_checkout: { timeoutMs: 10_000, retryCount: 2 },
+  submit_counter_offer: { timeoutMs: 8_000, retryCount: 1 },
+  broker_settle_deal: { timeoutMs: 8_000, retryCount: 1 },
+}
 const catalogCache = new Map<string, { expiresAt: number; value: Record<string, unknown> }>()
 const userThrottles = new Map<string, { count: number; windowStart: number }>()
 
@@ -96,6 +127,38 @@ async function runWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promis
         reject(error)
       })
   })
+}
+
+function readToolPolicyOverride(tool: SupportedTool): Partial<ToolExecutionPolicy> {
+  const envPrefix = tool.toUpperCase()
+  const timeout = Number(process.env[`RUNASH_AGENT_TOOL_TIMEOUT_MS_${envPrefix}`])
+  const retry = Number(process.env[`RUNASH_AGENT_TOOL_RETRY_COUNT_${envPrefix}`])
+
+  return {
+    ...(Number.isFinite(timeout) && timeout > 0 ? { timeoutMs: Math.round(timeout) } : {}),
+    ...(Number.isFinite(retry) && retry >= 0 ? { retryCount: Math.round(retry) } : {}),
+  }
+}
+
+export function resolveToolExecutionPolicy(tool: SupportedTool, override?: Partial<ToolExecutionPolicy>): ToolExecutionPolicy {
+  const merged = {
+    timeoutMs: TOOL_TIMEOUT_MS,
+    retryCount: TOOL_RETRY_COUNT,
+    ...(TOOL_POLICY_OVERRIDES[tool] ?? {}),
+    ...readToolPolicyOverride(tool),
+    ...(override ?? {}),
+  }
+
+  return {
+    timeoutMs: Math.max(250, Math.round(merged.timeoutMs)),
+    retryCount: Math.max(0, Math.round(merged.retryCount)),
+  }
+}
+
+function resolveToolErrorCode(error: unknown): ToolExecutionErrorCode {
+  if (error instanceof ToolExecutionError) return error.code
+  if (error instanceof Error && error.message.startsWith("tool_timeout_")) return "TOOL_TIMEOUT"
+  return "TOOL_EXECUTION_FAILED"
 }
 
 
@@ -713,15 +776,26 @@ export async function executeToolWithPolicy(
   tool: SupportedTool,
   payload: Record<string, unknown>,
   context: ToolExecutionContext,
+  policyOverride?: Partial<ToolExecutionPolicy>,
 ): Promise<ToolExecutionResult> {
   const cacheKey = getToolCacheKey(tool, payload)
   const now = Date.now()
   const correlationId = context.correlationId ?? `${context.sessionId}:${context.messageId}`
 
+  const policy = resolveToolExecutionPolicy(tool, policyOverride)
+
   logApiEvent("info", "relay.tool.execution.started", {
     route: "relay/tool",
     requestId: correlationId,
-    details: { tool, sessionId: context.sessionId, messageId: context.messageId, tenantId: context.tenantId, correlationId },
+    details: {
+      tool,
+      sessionId: context.sessionId,
+      messageId: context.messageId,
+      tenantId: context.tenantId,
+      correlationId,
+      timeoutMs: policy.timeoutMs,
+      retryCount: policy.retryCount,
+    },
   })
 
   if (tool === "catalog_lookup") {
@@ -746,7 +820,7 @@ export async function executeToolWithPolicy(
 
   const role = context.role ?? "broker"
   const preferences = clampRolePreferences(context.preferences)
-  const policy = resolveRolePolicy(role)
+  const rolePolicy = resolveRolePolicy(role)
   const execMap: Record<SupportedTool, () => Promise<Record<string, unknown>>> = {
     catalog_lookup: async () => {
       const execution = await executeRoleConditionedTool({ role, tool: "catalog_lookup", args: payload })
@@ -789,9 +863,9 @@ export async function executeToolWithPolicy(
 
   let lastError: unknown
 
-  for (let attempt = 0; attempt <= TOOL_RETRY_COUNT; attempt += 1) {
+  for (let attempt = 0; attempt <= policy.retryCount; attempt += 1) {
     try {
-      const result = await runWithTimeout(execMap[tool](), TOOL_TIMEOUT_MS)
+      const result = await runWithTimeout(execMap[tool](), policy.timeoutMs)
       await createToolResult(lineage.id, result)
       await completeToolCallLineage(lineage.id, "completed")
       const roleActivity =
@@ -805,8 +879,8 @@ export async function executeToolWithPolicy(
         agentRole: role,
         toolName: tool,
         decisionStatus: roleActivity?.status === "blocked" ? "blocked" : "completed",
-        objectiveWeights: policy.objectiveWeights,
-        guardrails: policy.guardrails,
+        objectiveWeights: rolePolicy.objectiveWeights,
+        guardrails: rolePolicy.guardrails,
         preferences,
         outcome: result,
       })
@@ -822,17 +896,50 @@ export async function executeToolWithPolicy(
       })
       return { tool, result, fromCache: false }
     } catch (error) {
-      lastError = error
-      if (attempt < TOOL_RETRY_COUNT) {
+      const wrappedError =
+        resolveToolErrorCode(error) === "TOOL_TIMEOUT"
+          ? new ToolExecutionError({
+              code: "TOOL_TIMEOUT",
+              tool,
+              message: `Tool ${tool} timed out after ${policy.timeoutMs}ms`,
+              retryable: true,
+              cause: error,
+            })
+          : error
+      lastError = wrappedError
+      if (attempt < policy.retryCount) {
         logApiEvent("warn", "relay.tool.execution.retry", {
           route: "relay/tool",
           requestId: correlationId,
-          details: { tool, correlationId, attempt, role },
+          details: {
+            tool,
+            correlationId,
+            attempt,
+            role,
+            retryCount: policy.retryCount,
+            timeoutMs: policy.timeoutMs,
+            errorCode: resolveToolErrorCode(wrappedError),
+          },
         })
         await wait(120 * (attempt + 1))
       }
     }
   }
+
+  const errorCode =
+    policy.retryCount > 0 && resolveToolErrorCode(lastError) !== "TOOL_TIMEOUT"
+      ? "TOOL_MAX_RETRIES_EXCEEDED"
+      : resolveToolErrorCode(lastError)
+  const terminalError =
+    lastError instanceof ToolExecutionError
+      ? lastError
+      : new ToolExecutionError({
+          code: errorCode,
+          tool,
+          message: errorCode === "TOOL_TIMEOUT" ? `Tool ${tool} timed out` : `Tool ${tool} execution failed`,
+          retryable: false,
+          cause: lastError,
+        })
 
   await completeToolCallLineage(lineage.id, "failed")
   await createAgentRoleDecision({
@@ -842,18 +949,24 @@ export async function executeToolWithPolicy(
     agentRole: role,
     toolName: tool,
     decisionStatus: "failed",
-    objectiveWeights: policy.objectiveWeights,
-    guardrails: policy.guardrails,
+    objectiveWeights: rolePolicy.objectiveWeights,
+    guardrails: rolePolicy.guardrails,
     preferences,
-    outcome: { error: lastError instanceof Error ? lastError.message : "tool_execution_failed" },
+    outcome: { error: terminalError.message, errorCode: terminalError.code },
   })
   logApiEvent("error", "relay.tool.execution.failed", {
     route: "relay/tool",
     requestId: correlationId,
-    error: lastError,
-    details: { tool, correlationId },
+    error: terminalError,
+    details: {
+      tool,
+      correlationId,
+      errorCode: terminalError.code,
+      timeoutMs: policy.timeoutMs,
+      retryCount: policy.retryCount,
+    },
   })
-  throw lastError instanceof Error ? lastError : new Error("tool_execution_failed")
+  throw terminalError
 }
 
 export const AgentOrchestrationService = {
@@ -863,6 +976,7 @@ export const AgentOrchestrationService = {
   orchestrateProtocolRelease,
   orchestrateNetworkQualityAutomation,
   executeToolWithPolicy,
+  resolveToolExecutionPolicy,
   enforceAdaptiveThrottle,
   runRetentionSweep: pruneExpiredAgentRecords,
 }

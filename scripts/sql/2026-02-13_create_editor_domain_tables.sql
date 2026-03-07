@@ -6,6 +6,8 @@ create table if not exists editor_projects (
   status text not null default 'draft',
   metadata jsonb not null default '{}'::jsonb,
   active_timeline_id uuid,
+  version bigint not null default 0,
+  updated_by uuid references users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -18,6 +20,8 @@ create table if not exists editor_timelines (
   frame_rate numeric(6,2) not null default 30,
   duration_seconds numeric(10,2) not null default 0,
   metadata jsonb not null default '{}'::jsonb,
+  version bigint not null default 0,
+  updated_by uuid references users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -37,6 +41,8 @@ create table if not exists editor_tracks (
   order_index integer not null default 0,
   track_type text not null default 'video',
   metadata jsonb not null default '{}'::jsonb,
+  version bigint not null default 0,
+  updated_by uuid references users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -52,6 +58,8 @@ create table if not exists editor_assets (
   mime_type text not null,
   size_bytes bigint not null default 0,
   metadata jsonb not null default '{}'::jsonb,
+  version bigint not null default 0,
+  updated_by uuid references users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -68,6 +76,8 @@ create table if not exists editor_segments (
   start_seconds numeric(10,3) not null,
   end_seconds numeric(10,3) not null,
   metadata jsonb not null default '{}'::jsonb,
+  version bigint not null default 0,
+  updated_by uuid references users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

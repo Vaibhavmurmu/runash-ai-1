@@ -361,7 +361,16 @@ export default function MainCanvas({
               </>
             )}
           </Button>
-          <Button variant="outline" size="icon" className="gap-2 bg-transparent" title="Upload Media" onClick={() => document.getElementById("editor-media-upload")?.click()} disabled={uploadInProgress}>
+          <Button
+            variant="outline"
+            size="icon"
+            type="button"
+            className="gap-2 bg-transparent"
+            title="Upload Media"
+            aria-label="Upload media"
+            onClick={() => document.getElementById("editor-media-upload")?.click()}
+            disabled={uploadInProgress}
+          >
             <Upload className="w-4 h-4" />
           </Button>
           <input
@@ -372,14 +381,31 @@ export default function MainCanvas({
             onChange={(event) => {
               const file = event.target.files?.[0]
               if (file && onUploadMedia) {
-                onUploadMedia(file)
+                void onUploadMedia(file)
               }
+              event.currentTarget.value = ""
             }}
           />
-          <Button variant="outline" size="icon" className="gap-2 bg-transparent" title="Add Segment" onClick={handleAddSegment}>
+          <Button
+            variant="outline"
+            size="icon"
+            type="button"
+            className="gap-2 bg-transparent"
+            title="Add Segment"
+            aria-label="Add segment"
+            onClick={handleAddSegment}
+          >
             <PlusSquare className="w-4 h-4" />
           </Button>
-          <Button variant="outline" size="icon" className="gap-2 bg-transparent" title="Advanced Controls" onClick={() => setShowAdvancedControls(!showAdvancedControls)}>
+          <Button
+            variant="outline"
+            size="icon"
+            type="button"
+            className="gap-2 bg-transparent"
+            title="Advanced Controls"
+            aria-label={showAdvancedControls ? "Hide advanced controls" : "Show advanced controls"}
+            onClick={() => setShowAdvancedControls(!showAdvancedControls)}
+          >
             <Settings2 className="w-4 h-4" />
           </Button>
         </div>

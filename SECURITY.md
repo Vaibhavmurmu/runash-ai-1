@@ -292,3 +292,9 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
 - Auth session/user linkage foreign keys are enforced in script-driven environments to reduce orphaned identity/session rows.
 - New migration remains additive and backward compatible: legacy rows without tenant assignment remain readable while being progressively backfilled.
 - Logging posture is unchanged: no sensitive auth/payment material is introduced in migration or runtime telemetry.
+
+## 2026-03 live/editor privileged operation auditing
+
+- Added centralized live/editor authorization policy module with explicit operation matrix (`create/start/stop stream`, `edit_timeline`, `run_generation`, `manage_collaborators`).
+- Live/editor mutation routes now enforce tenant-scoped permission + quota checks and return structured denial codes (`AUTHZ_PERMISSION_DENIED`, `TENANT_QUOTA_*`).
+- Privileged operation audits are recorded with sanitized metadata only (tenant ID, role, operation, outcome, denial code) and no secrets/tokens/media credentials.

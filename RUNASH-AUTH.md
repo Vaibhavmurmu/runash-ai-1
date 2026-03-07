@@ -795,3 +795,9 @@ Use this destructive path only when the application rollback cannot restore serv
 2. Validate backfill: compare non-null `organization_id` counts in `auth_session_registry` and `auth_trusted_devices` against users with non-null `sso_organization_id`.
 3. Validate contract compatibility: run `GET /api/auth/sessions`, `DELETE /api/auth/sessions`, and settings security device/session endpoints.
 4. Rollback: this migration is additive; rollback should be application-level first. For emergency DB rollback, drop only the new indexes/columns after traffic pause.
+
+## 2026-03 live/editor centralized policy enforcement
+
+- Added centralized live/editor authorization policy module with explicit operation matrix (`create/start/stop stream`, `edit_timeline`, `run_generation`, `manage_collaborators`).
+- Live/editor mutation routes now enforce tenant-scoped permission + quota checks and return structured denial codes (`AUTHZ_PERMISSION_DENIED`, `TENANT_QUOTA_*`).
+- Privileged operation audits are recorded with sanitized metadata only (tenant ID, role, operation, outcome, denial code) and no secrets/tokens/media credentials.

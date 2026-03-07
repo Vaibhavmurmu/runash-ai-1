@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
-import { requireEditorUser } from "@/app/api/editor/_lib"
-import { sql, touchProject } from "@/lib/editor/repository"
+import { requireEditorOperation } from "@/app/api/editor/_lib"
+import { bumpTimelineVersion, claimProjectVersion, parseExpectedVersion } from "@/lib/editor/versioned-mutations"
+import { sql } from "@/lib/editor/repository"
 
 export async function GET(request: Request, { params }: { params: { projectId: string } }) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params
   const { searchParams } = new URL(request.url)
@@ -17,10 +18,22 @@ export async function GET(request: Request, { params }: { params: { projectId: s
 }
 
 export async function POST(request: Request, { params }: { params: { projectId: string } }) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params
   const body = await request.json()
+
+  const version = parseExpectedVersion(request, body)
+  if ("error" in version) return version.error
+
+  const claim = await claimProjectVersion({
+    projectId,
+    userId: auth.userId,
+    expectedVersion: version.expectedVersion,
+    mutation: "segment.create",
+    targetType: "segment",
+  })
+  if (!claim.ok) return claim.response
 
   const [segment] = await sql`
     INSERT INTO editor_segments (timeline_id, project_id, owner_id, track_id, asset_id, label, segment_type, start_seconds, end_seconds, metadata)
@@ -39,6 +52,6 @@ export async function POST(request: Request, { params }: { params: { projectId: 
     RETURNING *
   `
 
-  await touchProject(projectId, auth.userId)
-  return NextResponse.json({ segment }, { status: 201 })
+  await bumpTimelineVersion(body.timelineId, projectId, auth.userId)
+  return NextResponse.json({ segment, version: claim.projectVersion }, { status: 201 })
 }

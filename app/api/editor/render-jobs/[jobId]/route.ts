@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { requireEditorUser } from "@/app/api/editor/_lib"
+import { requireEditorOperation } from "@/app/api/editor/_lib"
 import { publishRenderJobEvent } from "@/lib/editor/render-job-events"
 import { sql } from "@/lib/editor/repository"
 
@@ -8,7 +8,7 @@ function asObject(value: unknown): Record<string, unknown> {
 }
 
 export async function GET(request: Request, { params }: { params: { jobId: string } }) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "run_generation")
   if ("error" in auth) return auth.error
   const { jobId } = params
 
@@ -19,7 +19,7 @@ export async function GET(request: Request, { params }: { params: { jobId: strin
 }
 
 export async function PATCH(request: Request, { params }: { params: { jobId: string } }) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "run_generation")
   if ("error" in auth) return auth.error
   const { jobId } = params
   const body = await request.json()
@@ -46,7 +46,7 @@ export async function PATCH(request: Request, { params }: { params: { jobId: str
         updated_at=now()
       WHERE id=${jobId}
         AND owner_id=${auth.userId}
-        AND status IN ('queued', 'processing')
+        AND status IN ('queued', 'processing', 'retrying')
       RETURNING *
     `
 

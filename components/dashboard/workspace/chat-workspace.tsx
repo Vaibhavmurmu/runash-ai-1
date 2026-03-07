@@ -2,8 +2,9 @@
 
 import type React from "react"
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
@@ -16,8 +17,8 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 
-import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, OctagonX, MoreHorizontal, FileText, CreditCard, Megaphone, Workflow, ListChecks } from "lucide-react"
-import type { ChatMessage, ChatSession, UserPreferences, QuickAction } from "@/types/runash-chat"
+import { Sparkles, Leaf, Settings, History, Bot, Mic, Search, OctagonX, MoreHorizontal, FileText, CreditCard, Megaphone, Workflow, ListChecks, Loader2 } from "lucide-react"
+import type { ChatMessage, ChatSession, UserPreferences, QuickAction, ToolExecutionSummary, ToolStreamEvent } from "@/types/runash-chat"
 import ChatMessageComponent from "@/components/chat/chat-message"
 import ChatSidebar from "@/components/chat/chat-sidebar"
 import UserPreferencesDialog from "@/components/chat/user-preferences-dialog"
@@ -42,14 +43,30 @@ import { resolveRequestedToolsForMessage } from "@/lib/runash-chat/tooling"
 import { getRecommendedProducts, shouldRecommendProducts } from "@/lib/chat-product-recommendations"
 
 const UPGRADE_METRICS_KEY = "runash_upgrade_metrics_v2"
+const STARTER_CARD_STATE_KEY = "runash_chat_starter_cards_v1"
+
+const createDefaultAssistantMessage = (): ChatMessage => ({
+  id: `assistant-welcome-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  content:
+    "Hello! I'm RunAshChat, your AI assistant for organic products, sustainable living, recipes, and retailing automation. How can I help you today?",
+  role: "assistant",
+  timestamp: new Date(),
+  type: "text",
+  status: "completed",
+})
 
 export function ChatWorkspace() {
   type StreamControllerState = "idle" | "sending" | "streaming" | "stopping" | "failed"
   type ComposerHealthState = "ready" | "usage-limit" | "provider-error" | "network-timeout"
   type ResponseTone = "balanced" | "friendly" | "professional"
   type ResponseDetailLevel = "concise" | "normal" | "detailed"
-  type ChatRunDiagnostics = { requestId: string | null; provider: string | null; model: string | null; lastErrorCode: string | null }
+  type ChatRunToolDiagnostic = { tool: string; status: "running" | "completed" | "failed" | "queued"; failureReason?: string | null }
+  type ChatRunDiagnostics = { requestId: string | null; provider: string | null; model: string | null; lastErrorCode: string | null; toolCalls: ChatRunToolDiagnostic[] }
   type ModelCatalogEntry = { id: string; provider: string; label: string }
+
+  const sessionState = useSession()
+  const authSession = sessionState?.data
+  const userScopedStorageKey = useMemo(() => String(authSession?.user?.id ?? "anonymous"), [authSession?.user?.id])
 
   const { openFromTrigger } = useDashboardModelDialog()
   const searchParams = useSearchParams()
@@ -59,16 +76,7 @@ export function ChatWorkspace() {
   const queryLibraryItemTitle = searchParams.get("libraryItemTitle")
   const bootstrapCompletedRef = useRef(false)
   const [bootstrapProjectName, setBootstrapProjectName] = useState<string | null>(null)
-  const defaultAssistantMessage: ChatMessage = {
-    id: "1",
-    content:
-      "Hello! I'm RunAshChat, your AI assistant for organic products, sustainable living, recipes, and retailing automation. How can I help you today?",
-    role: "assistant",
-    timestamp: new Date(),
-    type: "text",
-  }
-
-  const [messages, setMessages] = useState<ChatMessage[]>([defaultAssistantMessage])
+  const [messages, setMessages] = useState<ChatMessage[]>([createDefaultAssistantMessage()])
   const [inputValue, setInputValue] = useState("")
   const [isTyping, setIsTyping] = useState(false)
   const [streamControllerState, setStreamControllerState] = useState<StreamControllerState>("idle")
@@ -76,7 +84,7 @@ export function ChatWorkspace() {
   const [lastPromptForRetry, setLastPromptForRetry] = useState<string | null>(null)
   const [selectedTone, setSelectedTone] = useState<ResponseTone>("balanced")
   const [detailLevel, setDetailLevel] = useState<ResponseDetailLevel>("normal")
-  const [runDiagnostics, setRunDiagnostics] = useState<ChatRunDiagnostics>({ requestId: null, provider: null, model: null, lastErrorCode: null })
+  const [runDiagnostics, setRunDiagnostics] = useState<ChatRunDiagnostics>({ requestId: null, provider: null, model: null, lastErrorCode: null, toolCalls: [] })
   const [modelCatalog, setModelCatalog] = useState<ModelCatalogEntry[]>([])
   const [selectedModel, setSelectedModel] = useState("gpt-4o-mini")
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null)
@@ -96,8 +104,15 @@ export function ChatWorkspace() {
     return storedState === "true"
   })
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null)
+  const scrollViewportRef = useRef<HTMLDivElement | null>(null)
+  const shouldAutoScrollRef = useRef(true)
   const sendAbortRef = useRef<AbortController | null>(null)
+  const sessionHydrationRequestRef = useRef(0)
   const firstCompletionTrackedRef = useRef(false)
+  const turnCompletionDedupRef = useRef<Set<string>>(new Set())
+  const toolExecutionMapRef = useRef<Map<string, string>>(new Map())
+  const toolEventTraceRef = useRef<ToolStreamEvent[]>([])
 
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => {
     if (typeof window === "undefined") {
@@ -154,118 +169,363 @@ export function ChatWorkspace() {
   const [voiceEnabled, setVoiceEnabled] = useState(false)
   const [voiceTranscriptHistory, setVoiceTranscriptHistory] = useState<string[]>([])
   const [sessionsStatus, setSessionsStatus] = useState<"loading" | "ready" | "error">("loading")
+  const [sessionOpenState, setSessionOpenState] = useState<{
+    status: "idle" | "loading" | "error"
+    sessionId: string | null
+    errorMessage: string | null
+  }>({ status: "idle", sessionId: null, errorMessage: null })
+  const [sessionListRetryToken, setSessionListRetryToken] = useState(0)
 
-  const [attachmentPreview, setAttachmentPreview] = useState<ComposerAttachmentPreview | null>(null)
+  const [attachmentPreviews, setAttachmentPreviews] = useState<ComposerAttachmentPreview[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [hasCompletedFirstMessage, setHasCompletedFirstMessage] = useState(false)
-  const attachmentRetryRef = useRef<File | null>(null)
+  const attachmentRetryRef = useRef<Map<string, File>>(new Map())
 
   const IMAGE_MAX_FILE_SIZE = 8 * 1024 * 1024
   const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"]
 
 
-  const [chatSessions, setChatSessions] = useState<ChatSession[]>([
-    {
-      id: "1",
-      title: "Organic Breakfast Ideas",
-      messages: [
-        {
-          id: "s1-1",
-          content: "Can you suggest a few organic vegan breakfast ideas under $20?",
-          role: "user",
-          timestamp: new Date(Date.now() - 86400000),
-          type: "text",
-        },
-        {
-          id: "s1-2",
-          content: "Absolutely — try overnight oats, tofu scramble wraps, and fruit-chia parfaits.",
-          role: "assistant",
-          timestamp: new Date(Date.now() - 86300000),
-          type: "text",
-        },
-      ],
-      createdAt: new Date(Date.now() - 86400000),
-      updatedAt: new Date(Date.now() - 86400000),
-      context: {
-        preferences: {
-          dietaryRestrictions: ["vegan"],
-          sustainabilityPriority: "high",
-          budgetRange: [0, 50],
-          preferredCategories: ["fruits-vegetables"],
-          cookingSkillLevel: "beginner",
-        },
-        currentCart: [],
-        recentSearches: ["organic oats", "plant milk"],
-      },
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([])
+  const [persistedSessionIds, setPersistedSessionIds] = useState<string[]>([])
+  const [dismissedStarterCardIds, setDismissedStarterCardIds] = useState<string[]>([])
+
+  const buildEmptySessionContext = () => ({
+    preferences: {
+      dietaryRestrictions: [],
+      sustainabilityPriority: "medium" as const,
+      budgetRange: [0, 100] as [number, number],
+      preferredCategories: [],
+      cookingSkillLevel: "intermediate" as const,
     },
-    {
-      id: "2",
-      title: "Store Automation Setup",
-      messages: [
-        {
-          id: "s2-1",
-          content: "How do I automate low-stock alerts for my store?",
-          role: "user",
-          timestamp: new Date(Date.now() - 172800000),
-          type: "text",
-        },
-        {
-          id: "s2-2",
-          content: "Set reorder thresholds per SKU and trigger notifications when inventory drops below limits.",
-          role: "assistant",
-          timestamp: new Date(Date.now() - 172700000),
-          type: "text",
-        },
-      ],
-      createdAt: new Date(Date.now() - 172800000),
-      updatedAt: new Date(Date.now() - 172800000),
-      context: {
-        preferences: {
-          dietaryRestrictions: [],
-          sustainabilityPriority: "medium",
-          budgetRange: [0, 1000],
-          preferredCategories: [],
-          cookingSkillLevel: "intermediate",
-          businessType: "retail",
-        },
-        currentCart: [],
-        recentSearches: ["inventory management", "POS system"],
-      },
-    },
-    {
-      id: "3",
-      title: "Sustainable Living Tips",
-      messages: [
-        {
-          id: "s3-1",
-          content: "What are easy ways to reduce daily household waste?",
-          role: "user",
-          timestamp: new Date(Date.now() - 259200000),
-          type: "text",
-        },
-        {
-          id: "s3-2",
-          content: "Start with reusable bags, meal planning, and composting food scraps.",
-          role: "assistant",
-          timestamp: new Date(Date.now() - 259100000),
-          type: "text",
-        },
-      ],
-      createdAt: new Date(Date.now() - 259200000),
-      updatedAt: new Date(Date.now() - 259200000),
-      context: {
-        preferences: {
-          dietaryRestrictions: [],
-          sustainabilityPriority: "high",
-          budgetRange: [0, 100],
-          preferredCategories: [],
-          cookingSkillLevel: "advanced",
-        },
-        currentCart: [],
-        recentSearches: ["zero waste", "renewable energy"],
-      },
-    },
-  ])
+    currentCart: [],
+    recentSearches: [],
+  })
+
+  const toRecord = (value: unknown): Record<string, unknown> | null => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null
+    return value as Record<string, unknown>
+  }
+
+  const coerceToolExecutionSummary = (value: unknown): ToolExecutionSummary | null => {
+    const record = toRecord(value)
+    if (!record) return null
+
+    const id = typeof record.id === "string" && record.id.length > 0 ? record.id : null
+    const tool = typeof record.tool === "string" && record.tool.length > 0 ? record.tool : null
+    const status = record.status === "running" || record.status === "completed" || record.status === "failed" ? record.status : null
+    const startedAt = typeof record.startedAt === "string" && record.startedAt.length > 0 ? record.startedAt : null
+
+    if (!id || !tool || !status || !startedAt) return null
+
+    const output = toRecord(record.output)
+
+    return {
+      id,
+      tool,
+      status,
+      startedAt,
+      finishedAt: typeof record.finishedAt === "string" ? record.finishedAt : undefined,
+      durationMs: typeof record.durationMs === "number" ? record.durationMs : undefined,
+      progressLabel: typeof record.progressLabel === "string" ? record.progressLabel : undefined,
+      outputPreview: typeof record.outputPreview === "string" ? record.outputPreview : undefined,
+      output: output ?? undefined,
+      errorCode: typeof record.errorCode === "string" ? record.errorCode : undefined,
+      errorMessage: typeof record.errorMessage === "string" ? record.errorMessage : undefined,
+      failureReason: typeof record.failureReason === "string" ? record.failureReason : undefined,
+      timeoutMs: typeof record.timeoutMs === "number" ? record.timeoutMs : undefined,
+      retryCount: typeof record.retryCount === "number" ? record.retryCount : undefined,
+      attempts: typeof record.attempts === "number" ? record.attempts : undefined,
+    }
+  }
+
+  const parseToolExecutionSummaries = (value: unknown): ToolExecutionSummary[] | undefined => {
+    if (!Array.isArray(value)) return undefined
+    const parsed = value.map(coerceToolExecutionSummary).filter((entry): entry is ToolExecutionSummary => entry !== null)
+    return parsed.length > 0 ? parsed : undefined
+  }
+
+  const coerceToolStreamEvent = (value: unknown): ToolStreamEvent | null => {
+    const record = toRecord(value)
+    if (!record) return null
+
+    const type = record.type
+    const tool = typeof record.tool === "string" ? record.tool : null
+    const executionId = typeof record.executionId === "string" ? record.executionId : null
+    const messageId = typeof record.messageId === "string" ? record.messageId : undefined
+
+    if (!tool || !executionId || (type !== "tool_start" && type !== "tool_result" && type !== "tool_error")) {
+      return null
+    }
+
+    if (type === "tool_start") {
+      if (typeof record.startedAt !== "string") return null
+      return {
+        type,
+        tool,
+        executionId,
+        messageId,
+        startedAt: record.startedAt,
+        timeoutMs: typeof record.timeoutMs === "number" ? record.timeoutMs : undefined,
+        retryCount: typeof record.retryCount === "number" ? record.retryCount : undefined,
+        payload: toRecord(record.payload) ?? undefined,
+      }
+    }
+
+    if (type === "tool_result") {
+      if (typeof record.finishedAt !== "string") return null
+      return {
+        type,
+        tool,
+        executionId,
+        messageId,
+        startedAt: typeof record.startedAt === "string" ? record.startedAt : undefined,
+        finishedAt: record.finishedAt,
+        durationMs: typeof record.durationMs === "number" ? record.durationMs : undefined,
+        fromCache: typeof record.fromCache === "boolean" ? record.fromCache : undefined,
+        attempts: typeof record.attempts === "number" ? record.attempts : undefined,
+        result: toRecord(record.result) ?? undefined,
+      }
+    }
+
+    if (typeof record.finishedAt !== "string" || typeof record.errorCode !== "string" || typeof record.errorMessage !== "string") {
+      return null
+    }
+
+    return {
+      type,
+      tool,
+      executionId,
+      messageId,
+      startedAt: typeof record.startedAt === "string" ? record.startedAt : undefined,
+      finishedAt: record.finishedAt,
+      durationMs: typeof record.durationMs === "number" ? record.durationMs : undefined,
+      errorCode: record.errorCode,
+      errorMessage: record.errorMessage,
+      failureReason: typeof record.failureReason === "string" ? record.failureReason : undefined,
+      attempts: typeof record.attempts === "number" ? record.attempts : undefined,
+      payload: toRecord(record.payload) ?? undefined,
+    }
+  }
+
+  const parseToolEvents = (value: unknown): ToolStreamEvent[] | undefined => {
+    if (!Array.isArray(value)) return undefined
+    const parsed = value.map(coerceToolStreamEvent).filter((entry): entry is ToolStreamEvent => entry !== null)
+    return parsed.length > 0 ? parsed : undefined
+  }
+
+  const normalizeMessageMetadata = (value: unknown): ChatMessage["metadata"] | undefined => {
+    const record = toRecord(value)
+    if (!record) return undefined
+
+    const toolExecutions = parseToolExecutionSummaries(record.toolExecutions)
+    const toolEvents = parseToolEvents(record.toolEvents)
+    if (!toolExecutions && !toolEvents) return undefined
+
+    return {
+      ...(toolExecutions ? { toolExecutions } : {}),
+      ...(toolEvents ? { toolEvents } : {}),
+    }
+  }
+
+  const formatToolOutputPreview = (value: unknown): string | undefined => {
+    if (value === null || value === undefined) return undefined
+    if (typeof value === "string") {
+      const trimmed = value.trim()
+      return trimmed.length > 0 ? trimmed.slice(0, 240) : undefined
+    }
+
+    try {
+      const serialized = JSON.stringify(value)
+      if (!serialized || serialized === "{}" || serialized === "[]") return undefined
+      return serialized.slice(0, 240)
+    } catch {
+      return undefined
+    }
+  }
+
+  const updateToolExecutionSummary = (
+    metadata: ChatMessage["metadata"] | undefined,
+    nextSummary: ToolExecutionSummary,
+  ): ChatMessage["metadata"] => {
+    const existingSummaries = metadata?.toolExecutions ?? []
+    const index = existingSummaries.findIndex((entry) => entry.id === nextSummary.id)
+    const toolExecutions =
+      index >= 0
+        ? existingSummaries.map((entry, entryIndex) => (entryIndex === index ? nextSummary : entry))
+        : [...existingSummaries, nextSummary]
+
+    return {
+      ...(metadata ?? {}),
+      toolExecutions,
+    }
+  }
+
+  const createToolExecutionId = (tool: string) => `${tool}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+
+  const mapSessionMessageToChatMessage = (message: {
+    id?: string | number
+    role?: string
+    content?: string
+    created_at?: string
+    createdAt?: string
+    status?: string
+    message_type?: string
+    messageType?: string
+    metadata?: unknown
+  }): ChatMessage | null => {
+    if ((message.role !== "user" && message.role !== "assistant") || typeof message.content !== "string") {
+      return null
+    }
+
+    return {
+      id: String(message.id ?? `${Date.now()}-${Math.random()}`),
+      role: message.role,
+      content: message.content,
+      timestamp: new Date(message.created_at ?? message.createdAt ?? Date.now()),
+      status:
+        message.status === "queued" ||
+        message.status === "streaming" ||
+        message.status === "tool-running" ||
+        message.status === "completed" ||
+        message.status === "failed"
+          ? message.status
+          : "completed",
+      type:
+        message.message_type === "product" ||
+        message.message_type === "recipe" ||
+        message.message_type === "tip" ||
+        message.message_type === "automation" ||
+        message.messageType === "product" ||
+        message.messageType === "recipe" ||
+        message.messageType === "tip" ||
+        message.messageType === "automation"
+          ? (message.message_type ?? message.messageType)
+          : "text",
+      metadata: normalizeMessageMetadata(message.metadata),
+    }
+  }
+
+  const normalizeChatMessage = (message: ChatMessage): ChatMessage => ({
+    ...message,
+    timestamp: message.timestamp instanceof Date ? message.timestamp : new Date(message.timestamp),
+    type: message.type ?? "text",
+    status: message.status ?? "completed",
+    metadata: normalizeMessageMetadata(message.metadata) ?? message.metadata,
+  })
+
+  const appendLocalMessage = (message: ChatMessage) => {
+    const normalizedMessage = normalizeChatMessage(message)
+    setMessages((prev) => [...prev, normalizedMessage])
+    if (currentSession?.id) {
+      pushMessageToSessionState(currentSession.id, normalizedMessage)
+    }
+    return normalizedMessage
+  }
+
+  const pushMessageToSessionState = (sessionId: string, message: ChatMessage) => {
+    setChatSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              messages: [...session.messages.filter((entry) => entry.id !== message.id), message],
+              updatedAt: message.timestamp,
+            }
+          : session,
+      ),
+    )
+  }
+
+  const fetchSessionMessages = async (sessionId: string) => {
+    const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=50`, { cache: "no-store" })
+    if (!response.ok) {
+      throw new Error("Unable to hydrate session")
+    }
+
+    const payload = (await response.json()) as { data?: { items?: Array<Record<string, unknown>> } }
+    const rawMessages = Array.isArray(payload.data?.items) ? payload.data.items : []
+
+    return rawMessages
+      .map((entry) =>
+        mapSessionMessageToChatMessage({
+          id: typeof entry.id === "string" || typeof entry.id === "number" ? entry.id : undefined,
+          role: typeof entry.role === "string" ? entry.role : undefined,
+          content: typeof entry.content === "string" ? entry.content : undefined,
+          created_at: typeof entry.created_at === "string" ? entry.created_at : undefined,
+          createdAt: typeof entry.createdAt === "string" ? entry.createdAt : undefined,
+          status: typeof entry.status === "string" ? entry.status : undefined,
+          message_type: typeof entry.message_type === "string" ? entry.message_type : undefined,
+          messageType: typeof entry.messageType === "string" ? entry.messageType : undefined,
+          metadata: toRecord(entry.metadata),
+        }),
+      )
+      .filter((message): message is ChatMessage => message !== null)
+      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+  }
+
+  const persistMessage = async (input: {
+    sessionId: string
+    role: "user" | "assistant"
+    content: string
+    messageType?: "text" | "product" | "recipe" | "tip" | "automation"
+  }) => {
+    const normalizedContent = input.content.trim()
+    if (!normalizedContent) return null
+
+    const response = await fetch("/api/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: input.sessionId,
+        role: input.role,
+        content: normalizedContent,
+        messageType: input.messageType ?? "text",
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error("message_persist_failed")
+    }
+
+    const payload = (await response.json()) as { data?: { id?: string | number } }
+    return payload.data?.id ? String(payload.data.id) : null
+  }
+
+  const ensureActiveSession = async (titleSeed: string) => {
+    if (currentSession) {
+      return currentSession
+    }
+
+    const response = await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: titleSeed.trim().slice(0, 80) || "RunAsh Agent Session" }),
+    })
+
+    if (!response.ok) {
+      throw new Error("Unable to create chat session")
+    }
+
+    const payload = (await response.json()) as { data?: { id?: string | number; title?: string; created_at?: string; updated_at?: string } }
+    const resolvedSessionId = payload.data?.id
+    if (resolvedSessionId === undefined || resolvedSessionId === null) {
+      throw new Error("Unable to create chat session")
+    }
+
+    const newSession: ChatSession = {
+      id: String(resolvedSessionId),
+      title: payload.data?.title ?? (titleSeed.trim().slice(0, 80) || "RunAsh Agent Session"),
+      messages: [],
+      createdAt: new Date(payload.data?.created_at ?? Date.now()),
+      updatedAt: new Date(payload.data?.updated_at ?? payload.data?.created_at ?? Date.now()),
+      context: buildEmptySessionContext(),
+    }
+
+    setCurrentSession(newSession)
+    setChatSessions((prev) => [newSession, ...prev.filter((session) => session.id !== newSession.id)])
+    setPersistedSessionIds((prev) => (prev.includes(newSession.id) ? prev : [newSession.id, ...prev]))
+    return newSession
+  }
 
   const quickActions: QuickAction[] = useMemo(
     () =>
@@ -290,9 +550,46 @@ export function ChatWorkspace() {
     [openFromTrigger],
   )
 
+  const scrollMessagesToBottom = (behavior: ScrollBehavior = "auto") => {
+    const viewport =
+      scrollViewportRef.current ??
+      (scrollAreaRef.current?.querySelector("[data-radix-scroll-area-viewport]") as HTMLDivElement | null)
+
+    if (viewport) {
+      scrollViewportRef.current = viewport
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior })
+      shouldAutoScrollRef.current = true
+      return
+    }
+
+    messagesEndRef.current?.scrollIntoView({ behavior, block: "end" })
+    shouldAutoScrollRef.current = true
+  }
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+    const viewport = scrollAreaRef.current?.querySelector("[data-radix-scroll-area-viewport]") as HTMLDivElement | null
+    if (!viewport) return
+
+    scrollViewportRef.current = viewport
+    const handleViewportScroll = () => {
+      const distanceFromBottom = viewport.scrollHeight - (viewport.scrollTop + viewport.clientHeight)
+      shouldAutoScrollRef.current = distanceFromBottom < 72
+    }
+
+    handleViewportScroll()
+    viewport.addEventListener("scroll", handleViewportScroll, { passive: true })
+    return () => {
+      viewport.removeEventListener("scroll", handleViewportScroll)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!shouldAutoScrollRef.current && streamControllerState !== "streaming") {
+      return
+    }
+
+    scrollMessagesToBottom(streamControllerState === "streaming" ? "auto" : "smooth")
+  }, [messages, streamControllerState])
 
   useEffect(() => {
     let active = true
@@ -365,6 +662,33 @@ export function ChatWorkspace() {
   }, [leftDrawerOpen, rightDrawerOpen])
 
   useEffect(() => {
+    if (isDesktop) return
+    if (leftDrawerOpen && rightDrawerOpen) {
+      setRightDrawerOpen(false)
+    }
+  }, [isDesktop, leftDrawerOpen, rightDrawerOpen])
+
+  const toggleLeftDrawer = useCallback(() => {
+    setLeftDrawerOpen((prev) => {
+      const next = !prev
+      if (!isDesktop && next) {
+        setRightDrawerOpen(false)
+      }
+      return next
+    })
+  }, [isDesktop])
+
+  const toggleRightDrawer = useCallback(() => {
+    setRightDrawerOpen((prev) => {
+      const next = !prev
+      if (!isDesktop && next) {
+        setLeftDrawerOpen(false)
+      }
+      return next
+    })
+  }, [isDesktop])
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       const isEditable =
@@ -374,13 +698,13 @@ export function ChatWorkspace() {
 
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "[") {
         event.preventDefault()
-        setLeftDrawerOpen((prev) => !prev)
+        toggleLeftDrawer()
         return
       }
 
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "]") {
         event.preventDefault()
-        setRightDrawerOpen((prev) => !prev)
+        toggleRightDrawer()
         return
       }
 
@@ -388,12 +712,12 @@ export function ChatWorkspace() {
 
       if (event.key === "ArrowLeft") {
         event.preventDefault()
-        setLeftDrawerOpen((prev) => !prev)
+        toggleLeftDrawer()
       }
 
       if (event.key === "ArrowRight") {
         event.preventDefault()
-        setRightDrawerOpen((prev) => !prev)
+        toggleRightDrawer()
       }
     }
 
@@ -401,7 +725,7 @@ export function ChatWorkspace() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown)
     }
-  }, [])
+  }, [toggleLeftDrawer, toggleRightDrawer])
 
   useEffect(() => {
  
@@ -413,27 +737,32 @@ export function ChatWorkspace() {
   }, [userPreferences])
 
   useEffect(() => {
-
-
     ;(async () => {
       try {
         setSessionsStatus("loading")
-        const response = await fetch("/api/sessions")
+        const response = await fetch("/api/sessions", { cache: "no-store" })
         if (!response.ok) throw new Error("Unable to load sessions")
-        const payload = await response.json()
-        const listed = Array.isArray(payload?.data) ? payload.data : []
+        const payload = (await response.json()) as { data?: { items?: Array<Record<string, unknown>> } }
+        const listed = Array.isArray(payload?.data?.items) ? payload.data.items : []
         if (listed.length === 0) {
+          setPersistedSessionIds([])
+          setChatSessions([])
+          setCurrentSession(null)
+          setMessages([createDefaultAssistantMessage()])
+          shouldAutoScrollRef.current = true
           setSessionsStatus("ready")
           return
         }
 
+        setPersistedSessionIds(listed.map((entry: { id: string }) => String(entry.id)))
+
         setChatSessions((previous) => {
-          const mapped = listed.map((entry: { id: string; title?: string; created_at?: string }) => ({
+          return listed.map((entry) => ({
             id: String(entry.id),
-            title: entry.title ?? "Session",
-            messages: [],
-            createdAt: new Date(entry.created_at ?? Date.now()),
-            updatedAt: new Date(entry.created_at ?? Date.now()),
+            title: typeof entry.title === "string" && entry.title.trim().length > 0 ? entry.title : "Session",
+            messages: previous.find((session) => session.id === String(entry.id))?.messages ?? [],
+            createdAt: new Date(typeof entry.created_at === "string" ? entry.created_at : Date.now()),
+            updatedAt: new Date(typeof entry.updated_at === "string" ? entry.updated_at : typeof entry.created_at === "string" ? entry.created_at : Date.now()),
             context: {
               preferences: {
                 dietaryRestrictions: [],
@@ -446,35 +775,79 @@ export function ChatWorkspace() {
               recentSearches: [],
             },
           }))
-
-          return [...mapped, ...previous.filter((session) => !mapped.some((item) => item.id === session.id))]
         })
         setSessionsStatus("ready")
       } catch {
         setSessionsStatus("error")
-        // keep local fallback sessions when api is unavailable
       }
     })()
-  }, [])
+  }, [sessionListRetryToken])
 
-  const loadSession = (session: ChatSession) => {
+  const loadSession = async (session: ChatSession) => {
+    const requestId = sessionHydrationRequestRef.current + 1
+    sessionHydrationRequestRef.current = requestId
     setCurrentSession(session)
-    setMessages(session.messages.length > 0 ? session.messages : [defaultAssistantMessage])
+    setSessionOpenState({ status: "loading", sessionId: session.id, errorMessage: null })
+
+    try {
+      const hydratedMessages = (await fetchSessionMessages(session.id)).map(normalizeChatMessage)
+      if (sessionHydrationRequestRef.current !== requestId) return
+      const nextMessages = hydratedMessages.length > 0 ? hydratedMessages : [createDefaultAssistantMessage()]
+
+      setMessages(nextMessages)
+      setChatSessions((prev) =>
+        prev.map((item) =>
+          item.id === session.id
+            ? {
+                ...item,
+                messages: hydratedMessages,
+                updatedAt: hydratedMessages.at(-1)?.timestamp ?? item.updatedAt,
+              }
+            : item,
+        ),
+      )
+      setSessionOpenState({ status: "idle", sessionId: null, errorMessage: null })
+    } catch {
+      if (sessionHydrationRequestRef.current !== requestId) return
+      setSessionOpenState({
+        status: "error",
+        sessionId: session.id,
+        errorMessage: "Could not load this chat. Please retry.",
+      })
+    }
   }
 
   const handleNewChatSession = () => {
     setCurrentSession(null)
-    setMessages([defaultAssistantMessage])
+    setMessages([createDefaultAssistantMessage()])
     setInputValue("")
     setComposerHealth("ready")
     setStreamControllerState("idle")
   }
 
-  const handleDeleteSession = (sessionId: string) => {
+  const handleDeleteSession = async (sessionId: string) => {
+    const previousSessions = chatSessions
+    const previousPersistedIds = persistedSessionIds
+    const previousCurrentSession = currentSession
+    const previousMessages = messages
+
     setChatSessions((prev) => prev.filter((session) => session.id !== sessionId))
+    setPersistedSessionIds((prev) => prev.filter((id) => id !== sessionId))
     if (currentSession?.id === sessionId) {
       setCurrentSession(null)
-      setMessages([defaultAssistantMessage])
+      setMessages([createDefaultAssistantMessage()])
+    }
+
+    if (!persistedSessionIds.includes(sessionId)) return
+
+    try {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" })
+      if (!response.ok) throw new Error("session_delete_failed")
+    } catch {
+      setChatSessions(previousSessions)
+      setPersistedSessionIds(previousPersistedIds)
+      setCurrentSession(previousCurrentSession)
+      setMessages(previousMessages)
     }
   }
 
@@ -484,8 +857,15 @@ export function ChatWorkspace() {
     const matchedSession = chatSessions.find((session) => session.id === querySessionId)
     if (!matchedSession) return
 
-    loadSession(matchedSession)
+    void loadSession(matchedSession)
   }, [querySessionId, chatSessions])
+
+  useEffect(() => {
+    if (!currentSession) return
+    if (persistedSessionIds.includes(currentSession.id)) return
+    setCurrentSession(null)
+    setMessages([createDefaultAssistantMessage()])
+  }, [currentSession, persistedSessionIds])
 
   useEffect(() => {
     if (bootstrapCompletedRef.current) return
@@ -568,38 +948,38 @@ export function ChatWorkspace() {
         status: "completed",
       }
 
-      setMessages((prev) => [...prev, userMessage])
+      appendLocalMessage(userMessage)
       setIsTyping(true)
 
       try {
+        await ensureActiveSession(message)
+
         const response = await fetch(`/api/web-search?query=${encodeURIComponent(message)}`)
         const payload = await response.json()
         const searchResults = Array.isArray(payload?.data?.results) ? payload.data.results : []
+        const searchSummary: ChatMessage = {
+          id: `${Date.now()}-search-assistant`,
+          content: "Here are top product search results from EXA/MCP-compatible providers.",
+          role: "assistant",
+          timestamp: new Date(),
+          type: "text",
+          status: "completed",
+          metadata: { searchResults },
+        }
 
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `${Date.now()}-search-assistant`,
-            content: "Here are top product search results from EXA/MCP-compatible providers.",
-            role: "assistant",
-            timestamp: new Date(),
-            type: "text",
-            status: "completed",
-            metadata: { searchResults },
-          },
-        ])
+        appendLocalMessage(searchSummary)
+
       } catch {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `${Date.now()}-search-error`,
-            content: "Web search is unavailable right now. Please try again in a moment.",
-            role: "assistant",
-            timestamp: new Date(),
-            type: "text",
-            status: "failed",
-          },
-        ])
+        const unavailableMessage: ChatMessage = {
+          id: `${Date.now()}-search-error`,
+          content: "Web search is unavailable right now. Please try again in a moment.",
+          role: "assistant",
+          timestamp: new Date(),
+          type: "text",
+          status: "failed",
+        }
+
+        appendLocalMessage(unavailableMessage)
       } finally {
         setIsTyping(false)
       }
@@ -616,17 +996,17 @@ export function ChatWorkspace() {
     const content = messageContent || inputValue.trim()
     if (!content) return
 
-    if (attachmentPreview?.uploadState === "failed") {
+    if (attachmentPreviews.some((item) => item.uploadState === "failed")) {
       setAttachmentError("Fix the image upload issue before sending.")
       return
     }
 
-    if (attachmentPreview?.uploadState === "uploading") {
+    if (attachmentPreviews.some((item) => item.uploadState === "uploading")) {
       setAttachmentError("Please wait for the image upload to finish.")
       return
     }
 
-    const queuedAttachment = attachmentPreview?.uploadState === "uploaded" ? attachmentPreview.metadata : null
+    const queuedAttachments = attachmentPreviews.filter((item) => item.uploadState === "uploaded").map((item) => item.metadata)
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -635,10 +1015,15 @@ export function ChatWorkspace() {
       timestamp: new Date(),
       type: "text",
       status: "completed",
-      metadata: queuedAttachment ? { attachments: [queuedAttachment] } : undefined,
+      metadata: queuedAttachments.length > 0 ? { attachments: queuedAttachments } : undefined,
     }
 
     const assistantId = `${Date.now()}-assistant`
+    toolExecutionMapRef.current = new Map()
+    toolEventTraceRef.current = []
+    const clientRequestId = `chat-turn-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    let activeSessionId: string | null = null
+    let activeSessionTitle: string | null = null
     const assistantMessage: ChatMessage = {
       id: assistantId,
       content: "",
@@ -648,17 +1033,23 @@ export function ChatWorkspace() {
       status: "queued",
     }
 
-    setMessages((prev) => [...prev, userMessage, assistantMessage])
+    let assistantSnapshot = assistantMessage
+
+    appendLocalMessage(userMessage)
+    appendLocalMessage(assistantMessage)
     setInputValue("")
     setIsTyping(true)
     setStreamControllerState("sending")
     setComposerHealth("ready")
     setLastPromptForRetry(content)
-    setRunDiagnostics({ requestId: null, provider: "RunAsh AI", model: null, lastErrorCode: null })
-    const attachmentMetadata = queuedAttachment ? [queuedAttachment] : undefined
-    if (attachmentPreview) {
-      URL.revokeObjectURL(attachmentPreview.previewUrl)
-      setAttachmentPreview(null)
+    setRunDiagnostics({ requestId: null, provider: "RunAsh AI", model: null, lastErrorCode: null, toolCalls: [] })
+    const attachmentMetadata = queuedAttachments.length > 0 ? queuedAttachments : undefined
+    if (attachmentPreviews.length > 0) {
+      for (const attachment of attachmentPreviews) {
+        URL.revokeObjectURL(attachment.previewUrl)
+      }
+      setAttachmentPreviews([])
+      attachmentRetryRef.current.clear()
       setAttachmentError(null)
     }
 
@@ -669,24 +1060,43 @@ export function ChatWorkspace() {
     }, 45000)
 
     try {
+      const activeSession = await ensureActiveSession(content)
+      activeSessionId = activeSession.id
+      activeSessionTitle = activeSession.title
+      const persistedUserMessageId = await persistMessage({
+        sessionId: activeSession.id,
+        role: "user",
+        content,
+      })
+
+      if (persistedUserMessageId) {
+        const normalizedUserMessage = normalizeChatMessage({ ...userMessage, id: persistedUserMessageId })
+        setMessages((prev) => prev.map((entry) => (entry.id === userMessage.id ? normalizedUserMessage : entry)))
+        pushMessageToSessionState(activeSession.id, normalizedUserMessage)
+      }
+
       const requestedTools = resolveRequestedToolsForMessage(content)
       const normalizedContent = applyComposerModifiers(content)
 
       const toolPayloads = undefined
 
+      const outboundRequestId = `${clientRequestId}-req`
+      setRunDiagnostics((previous) => ({ ...previous, requestId: outboundRequestId }))
+
       const response = await fetch("/api/agents/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-request-id": outboundRequestId },
         signal: abortController.signal,
         body: JSON.stringify({
-          sessionId: currentSession?.id ?? querySessionId ?? undefined,
-          title: currentSession?.title ?? "RunAsh Agent Session",
+          sessionId: activeSessionId ?? undefined,
+          title: activeSessionTitle ?? "RunAsh Agent Session",
           message: normalizedContent,
           model: selectedModel,
           provider: modelCatalog.find((entry) => entry.id === selectedModel)?.provider,
           tools: requestedTools,
           toolPayloads,
           attachments: attachmentMetadata,
+          clientRequestId,
         }),
       })
 
@@ -695,6 +1105,44 @@ export function ChatWorkspace() {
         requestId: response.headers.get("x-request-id") || previous.requestId,
         provider: response.headers.get("x-provider") || previous.provider || "RunAsh AI",
       }))
+
+      const responseContentType = response.headers.get("content-type") ?? ""
+      if (response.ok && responseContentType.includes("application/json")) {
+        const payload = (await response.json()) as { deduped?: boolean; sessionId?: string; messageId?: string; content?: string; requestId?: string }
+        if (payload.deduped) {
+          const dedupeKey = payload.sessionId && payload.requestId ? `${payload.sessionId}:${payload.requestId}` : payload.messageId
+          if (dedupeKey) {
+            turnCompletionDedupRef.current.add(dedupeKey)
+          }
+
+          setMessages((prev) => prev.filter((entry) => entry.id !== assistantId))
+
+          if (activeSessionId) {
+            try {
+              const hydratedMessages = (await fetchSessionMessages(activeSessionId)).map(normalizeChatMessage)
+              if (hydratedMessages.length > 0) {
+                setMessages(hydratedMessages)
+                setChatSessions((prev) =>
+                  prev.map((item) =>
+                    item.id === activeSessionId
+                      ? {
+                          ...item,
+                          messages: hydratedMessages,
+                          updatedAt: hydratedMessages.at(-1)?.timestamp ?? item.updatedAt,
+                        }
+                      : item,
+                  ),
+                )
+              }
+            } catch {
+              // best-effort hydration for deduped retries
+            }
+          }
+
+          setStreamControllerState("idle")
+          return
+        }
+      }
 
       if (response.status === 429) {
         setComposerHealth("usage-limit")
@@ -718,6 +1166,7 @@ export function ChatWorkspace() {
       let buffer = ""
 
       const updateAssistantMessage = (updater: (existing: ChatMessage) => ChatMessage) => {
+        assistantSnapshot = normalizeChatMessage(updater(assistantSnapshot))
         setMessages((prev) => prev.map((item) => (item.id === assistantId ? updater(item) : item)))
       }
 
@@ -769,6 +1218,7 @@ export function ChatWorkspace() {
               provider: payloadProvider || previous.provider || "RunAsh AI",
               model: payloadModel || previous.model,
               lastErrorCode: previous.lastErrorCode,
+              toolCalls: previous.toolCalls,
             }))
           }
 
@@ -782,7 +1232,150 @@ export function ChatWorkspace() {
           }
 
           if (eventName === "tool_start") {
-            updateAssistantMessage((existing) => ({ ...existing, status: "tool-running" }))
+            const toolName = typeof payload.tool === "string" ? payload.tool : "tool"
+            const toolExecutionId =
+              typeof payload.executionId === "string" && payload.executionId.length > 0
+                ? payload.executionId
+                : createToolExecutionId(toolName)
+            toolExecutionMapRef.current.set(toolName, toolExecutionId)
+            const startedAt = typeof payload.startedAt === "string" ? payload.startedAt : new Date().toISOString()
+            const traceEvent: ToolStreamEvent = {
+              type: "tool_start",
+              tool: toolName,
+              executionId: toolExecutionId,
+              messageId: typeof payload.messageId === "string" ? payload.messageId : undefined,
+              startedAt,
+              timeoutMs: typeof payload.timeoutMs === "number" ? payload.timeoutMs : undefined,
+              retryCount: typeof payload.retryCount === "number" ? payload.retryCount : undefined,
+              payload: toRecord(payload.payload) ?? undefined,
+            }
+            toolEventTraceRef.current = [...toolEventTraceRef.current, traceEvent]
+
+            setRunDiagnostics((previous) => ({
+              ...previous,
+              toolCalls: [...previous.toolCalls.filter((entry) => entry.tool !== toolName), { tool: toolName, status: "running", failureReason: null }],
+            }))
+
+            updateAssistantMessage((existing) => ({
+              ...existing,
+              status: "tool-running",
+              metadata: {
+                ...updateToolExecutionSummary(existing.metadata, {
+                  id: toolExecutionId,
+                  tool: toolName,
+                  status: "running",
+                  startedAt,
+                  progressLabel: `Running ${toolName.replace(/_/g, " ")}`,
+                  timeoutMs: typeof payload.timeoutMs === "number" ? payload.timeoutMs : undefined,
+                  retryCount: typeof payload.retryCount === "number" ? payload.retryCount : undefined,
+                }),
+                toolEvents: [...(existing.metadata?.toolEvents ?? []), traceEvent],
+              },
+            }))
+          }
+
+          if (eventName === "tool_error") {
+            const toolName = typeof payload.tool === "string" ? payload.tool : "tool"
+            const existingId = toolExecutionMapRef.current.get(toolName) ?? createToolExecutionId(toolName)
+            const finishedAt = typeof payload.finishedAt === "string" ? payload.finishedAt : new Date().toISOString()
+            const startedAt = typeof payload.startedAt === "string" ? payload.startedAt : undefined
+            const traceEvent: ToolStreamEvent = {
+              type: "tool_error",
+              tool: toolName,
+              executionId: existingId,
+              messageId: typeof payload.messageId === "string" ? payload.messageId : undefined,
+              startedAt,
+              finishedAt,
+              durationMs: typeof payload.durationMs === "number" ? payload.durationMs : undefined,
+              errorCode: typeof payload.errorCode === "string" ? payload.errorCode : "TOOL_EXECUTION_FAILED",
+              errorMessage: typeof payload.errorMessage === "string" ? payload.errorMessage : "Tool execution failed",
+              failureReason: typeof payload.failureReason === "string" ? payload.failureReason : undefined,
+              attempts: typeof payload.attempts === "number" ? payload.attempts : undefined,
+              payload: toRecord(payload.payload) ?? undefined,
+            }
+            toolEventTraceRef.current = [...toolEventTraceRef.current, traceEvent]
+
+            updateAssistantMessage((existing) => {
+              const previous = existing.metadata?.toolExecutions?.find((entry) => entry.id === existingId)
+              const resolvedStartedAt = startedAt ?? previous?.startedAt ?? finishedAt
+              const durationMs = Math.max(0, new Date(finishedAt).getTime() - new Date(resolvedStartedAt).getTime())
+
+              return {
+                ...existing,
+                metadata: {
+                  ...updateToolExecutionSummary(existing.metadata, {
+                    id: existingId,
+                    tool: toolName,
+                    status: "failed",
+                    startedAt: resolvedStartedAt,
+                    finishedAt,
+                    durationMs,
+                    progressLabel: `${toolName.replace(/_/g, " ")} failed`,
+                    errorCode: traceEvent.errorCode,
+                    errorMessage: traceEvent.errorMessage,
+                    failureReason: traceEvent.failureReason,
+                    attempts: traceEvent.attempts,
+                  }),
+                  toolEvents: [...(existing.metadata?.toolEvents ?? []), traceEvent],
+                },
+              }
+            })
+          }
+
+          if (eventName === "tool_result") {
+            const toolName = typeof payload.tool === "string" ? payload.tool : "tool"
+            const existingId = toolExecutionMapRef.current.get(toolName) ?? createToolExecutionId(toolName)
+            toolExecutionMapRef.current.set(toolName, existingId)
+            const finishedAt = typeof payload.finishedAt === "string" ? payload.finishedAt : new Date().toISOString()
+            const toolStatus = payload.result?.queued === true ? "queued" : "completed"
+            const traceEvent: ToolStreamEvent = {
+              type: "tool_result",
+              tool: toolName,
+              executionId: existingId,
+              messageId: typeof payload.messageId === "string" ? payload.messageId : undefined,
+              startedAt: typeof payload.startedAt === "string" ? payload.startedAt : undefined,
+              finishedAt,
+              durationMs: typeof payload.durationMs === "number" ? payload.durationMs : undefined,
+              fromCache: payload.fromCache === true,
+              attempts: typeof payload.attempts === "number" ? payload.attempts : undefined,
+              result: toRecord(payload.result) ?? undefined,
+            }
+            toolEventTraceRef.current = [...toolEventTraceRef.current, traceEvent]
+
+            setRunDiagnostics((previous) => ({
+              ...previous,
+              toolCalls: [...previous.toolCalls.filter((entry) => entry.tool !== toolName), { tool: toolName, status: toolStatus, failureReason: null }],
+            }))
+
+            updateAssistantMessage((existing) => {
+              const previous = existing.metadata?.toolExecutions?.find((entry) => entry.id === existingId)
+              const startedAt = previous?.startedAt ?? finishedAt
+              const durationMs = Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime())
+
+              return {
+                ...existing,
+                metadata: {
+                  ...updateToolExecutionSummary(existing.metadata, {
+                    id: existingId,
+                    tool: toolName,
+                    status: "completed",
+                    startedAt,
+                    finishedAt,
+                    durationMs,
+                    progressLabel:
+                      toolStatus === "queued"
+                        ? `${toolName.replace(/_/g, " ")} queued`
+                        : payload.fromCache === true
+                          ? `${toolName.replace(/_/g, " ")} (cache)`
+                          : `${toolName.replace(/_/g, " ")} complete`,
+                    outputPreview: formatToolOutputPreview(payload.result),
+                    output: toRecord(payload.result) ?? undefined,
+                    attempts: typeof payload.attempts === "number" ? payload.attempts : undefined,
+                  }),
+                  toolEvents: [...(existing.metadata?.toolEvents ?? []), traceEvent],
+                },
+              }
+            })
           }
 
           if (eventName === "tool_result" && payload.tool === "initiate_link_checkout") {
@@ -935,11 +1528,25 @@ export function ChatWorkspace() {
           }
 
           if (eventName === "final") {
+            const finalSessionId = typeof payload.sessionId === "string" ? payload.sessionId : activeSessionId
+            const finalRequestId = typeof payload.requestId === "string" ? payload.requestId : payloadRequestId
+            const finalMessageId = typeof payload.messageId === "string" ? payload.messageId : null
+            const dedupeKey = finalSessionId && finalRequestId ? `${finalSessionId}:${finalRequestId}` : finalMessageId
+
+            if (dedupeKey && turnCompletionDedupRef.current.has(dedupeKey)) {
+              continue
+            }
+
             updateAssistantMessage((existing) => ({
               ...existing,
+              id: finalMessageId ?? existing.id,
               status: payload.status === "completed" ? "completed" : existing.status,
               content: typeof payload.content === "string" && payload.content.length > 0 ? payload.content : existing.content,
             }))
+
+            if (dedupeKey) {
+              turnCompletionDedupRef.current.add(dedupeKey)
+            }
 
             if (payload.status === "completed") {
               setHasCompletedFirstMessage(true)
@@ -948,16 +1555,41 @@ export function ChatWorkspace() {
                 trackUpgradeMetric("first_message_completed", "deferred_upgrade_prompt")
               }
             }
+
           }
 
           if (eventName === "error") {
+            const errorCode = typeof payload.code === "string" ? payload.code : typeof payload.errorCode === "string" ? payload.errorCode : "PROVIDER_ERROR"
             setComposerHealth("provider-error")
             setStreamControllerState("failed")
             setRunDiagnostics((previous) => ({
               ...previous,
-              lastErrorCode: typeof payload.code === "string" ? payload.code : typeof payload.errorCode === "string" ? payload.errorCode : "PROVIDER_ERROR",
+              lastErrorCode: errorCode,
             }))
-            updateAssistantMessage((existing) => ({ ...existing, status: "failed" }))
+            updateAssistantMessage((existing) => {
+              const activeToolSummary = [...(existing.metadata?.toolExecutions ?? [])].reverse().find((entry) => entry.status === "running")
+
+              if (!activeToolSummary) {
+                return { ...existing, status: "failed" }
+              }
+
+              const finishedAt = new Date().toISOString()
+              const durationMs = Math.max(0, new Date(finishedAt).getTime() - new Date(activeToolSummary.startedAt).getTime())
+
+              return {
+                ...existing,
+                status: "failed",
+                metadata: updateToolExecutionSummary(existing.metadata, {
+                  ...activeToolSummary,
+                  status: "failed",
+                  finishedAt,
+                  durationMs,
+                  progressLabel: `${activeToolSummary.tool.replace(/_/g, " ")} failed`,
+                  errorCode,
+                  errorMessage: typeof payload.message === "string" ? payload.message : "Unable to complete tool execution",
+                }),
+              }
+            })
           }
         }
       }
@@ -974,21 +1606,28 @@ export function ChatWorkspace() {
                   status: "completed",
                   content: entry.content || "Stopped. You can retry from the composer.",
                 }
-              : entry,
+            : entry,
           ),
         )
-        setStreamControllerState("idle")
+        assistantSnapshot = {
+          ...assistantSnapshot,
+          status: "completed",
+          content: assistantSnapshot.content || "Stopped. You can retry from the composer.",
+        }
+                setStreamControllerState("idle")
       } else if (isAbortError && timeoutAbort) {
         setComposerHealth("network-timeout")
         setStreamControllerState("failed")
         setRunDiagnostics((previous) => ({ ...previous, lastErrorCode: "NETWORK_TIMEOUT" }))
-      } else {
+        assistantSnapshot = { ...assistantSnapshot, status: "failed" }
+              } else {
         setComposerHealth((prev) => (prev === "ready" ? "provider-error" : prev))
         setStreamControllerState("failed")
         setRunDiagnostics((previous) => ({ ...previous, lastErrorCode: previous.lastErrorCode || "STREAM_REQUEST_FAILED" }))
         const fallback = buildAssistantResponse(content)
         setMessages((prev) => prev.map((entry) => (entry.id === assistantId ? { ...fallback, id: assistantId } : entry)))
-      }
+        assistantSnapshot = { ...fallback, id: assistantId, status: "failed" }
+              }
     } finally {
       window.clearTimeout(timeoutId)
       sendAbortRef.current = null
@@ -997,7 +1636,7 @@ export function ChatWorkspace() {
     }
   }
 
-  const processImageAttachment = async (file: File) => {
+  const processImageAttachment = async (file: File, attachmentId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`) => {
     if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
       setAttachmentError("Unsupported file type. Please upload PNG, JPG, WEBP, or GIF.")
       return
@@ -1008,18 +1647,19 @@ export function ChatWorkspace() {
       return
     }
 
-    attachmentRetryRef.current = file
+    attachmentRetryRef.current.set(attachmentId, file)
     setAttachmentError(null)
 
     const previewUrl = URL.createObjectURL(file)
-    setAttachmentPreview((existing) => {
-      if (existing) URL.revokeObjectURL(existing.previewUrl)
-      return {
+    setAttachmentPreviews((existing) => [
+      ...existing,
+      {
+        id: attachmentId,
         metadata: { name: file.name, size: file.size, type: file.type },
         previewUrl,
         uploadState: "uploading",
-      }
-    })
+      },
+    ])
 
     const metadataResult = await new Promise<ComposerAttachmentMetadata>((resolve, reject) => {
       const image = new Image()
@@ -1037,45 +1677,74 @@ export function ChatWorkspace() {
     }).catch(() => null)
 
     if (!metadataResult) {
-      setAttachmentPreview((existing) =>
-        existing
-          ? {
-              ...existing,
-              uploadState: "failed",
-              error: "Preview generation failed. Try a different image or retry.",
-            }
-          : null,
+      setAttachmentPreviews((existing) =>
+        existing.map((item) =>
+          item.id === attachmentId
+            ? {
+                ...item,
+                uploadState: "failed",
+                error: "Preview generation failed. Try a different image or retry.",
+              }
+            : item,
+        ),
       )
       return
     }
 
-    setAttachmentPreview((existing) =>
-      existing
-        ? {
-            ...existing,
-            metadata: metadataResult,
-            uploadState: "uploaded",
-            error: undefined,
-          }
-        : null,
+    setAttachmentPreviews((existing) =>
+      existing.map((item) =>
+        item.id === attachmentId
+          ? {
+              ...item,
+              metadata: metadataResult,
+              uploadState: "uploaded",
+              error: undefined,
+            }
+          : item,
+      ),
     )
   }
 
-  const retryAttachment = () => {
-    if (!attachmentRetryRef.current) return
-    void processImageAttachment(attachmentRetryRef.current)
+  const processImageAttachments = async (files: File[]) => {
+    files.forEach((file) => {
+      void processImageAttachment(file)
+    })
   }
 
-  const removeAttachment = () => {
-    setAttachmentPreview((existing) => {
-      if (existing) URL.revokeObjectURL(existing.previewUrl)
-      return null
+  const retryAttachment = (attachmentId: string) => {
+    const retryFile = attachmentRetryRef.current.get(attachmentId)
+    if (!retryFile) return
+
+    setAttachmentPreviews((existing) => {
+      const target = existing.find((item) => item.id === attachmentId)
+      if (target) URL.revokeObjectURL(target.previewUrl)
+      return existing.filter((item) => item.id !== attachmentId)
     })
-    attachmentRetryRef.current = null
+
+    void processImageAttachment(retryFile, attachmentId)
+  }
+
+  const removeAttachment = (attachmentId: string) => {
+    setAttachmentPreviews((existing) => {
+      const target = existing.find((item) => item.id === attachmentId)
+      if (target) URL.revokeObjectURL(target.previewUrl)
+      return existing.filter((item) => item.id !== attachmentId)
+    })
+    attachmentRetryRef.current.delete(attachmentId)
     setAttachmentError(null)
   }
 
  
+
+  useEffect(() => {
+    return () => {
+      for (const attachment of attachmentPreviews) {
+        URL.revokeObjectURL(attachment.previewUrl)
+      }
+      attachmentRetryRef.current.clear()
+    }
+  }, [attachmentPreviews])
+
   const buildAssistantResponse = (userInput: string): ChatMessage => {
     const input = userInput.toLowerCase()
 
@@ -1250,7 +1919,7 @@ export function ChatWorkspace() {
       id: "campaign-brief",
       title: "Create campaign brief",
       description: "Define goals, audience, channels, and KPIs for a launch.",
-      actionLabel: "Draft brief",
+      actionLabel: "Run starter task",
       icon: Megaphone,
       prompt: "Create a campaign brief for a new sustainable skincare launch with goals, audience, channels, and KPIs.",
     },
@@ -1258,7 +1927,7 @@ export function ChatWorkspace() {
       id: "product-description",
       title: "Write product description",
       description: "Generate benefits-first copy with ingredients and CTA.",
-      actionLabel: "Generate copy",
+      actionLabel: "Run starter task",
       icon: FileText,
       prompt: "Write a product description for an organic snack bundle with key benefits, ingredients, and CTA.",
     },
@@ -1266,7 +1935,7 @@ export function ChatWorkspace() {
       id: "summarize-meeting",
       title: "Summarize meeting",
       description: "Extract decisions, next steps, owners, and due dates.",
-      actionLabel: "Summarize notes",
+      actionLabel: "Run starter task",
       icon: ListChecks,
       prompt: "Summarize this meeting into decisions, action items, owners, and due dates.",
     },
@@ -1274,7 +1943,7 @@ export function ChatWorkspace() {
       id: "automation-plan",
       title: "Plan an automation",
       description: "Map triggers, approvals, and reporting for your workflow.",
-      actionLabel: "Build workflow",
+      actionLabel: "Run starter task",
       icon: Workflow,
       prompt: "Draft an automation workflow for inventory alerts, reorder approvals, and weekly reporting.",
     },
@@ -1282,11 +1951,74 @@ export function ChatWorkspace() {
       id: "social-posts",
       title: "Generate social posts",
       description: "Create campaign-ready post ideas in your brand voice.",
-      actionLabel: "Create posts",
+      actionLabel: "Run starter task",
       icon: Sparkles,
       prompt: "Generate 5 social post ideas for an eco-friendly product campaign in a friendly brand tone.",
     },
   ]
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(STARTER_CARD_STATE_KEY)
+      const parsed = raw ? (JSON.parse(raw) as Record<string, string[]>) : {}
+      const userDismissedCards = Array.isArray(parsed[userScopedStorageKey]) ? parsed[userScopedStorageKey] : []
+      setDismissedStarterCardIds(userDismissedCards)
+    } catch {
+      setDismissedStarterCardIds([])
+    }
+  }, [userScopedStorageKey])
+
+  const persistDismissedStarterCardIds = useCallback(
+    (cardIds: string[]) => {
+      try {
+        const raw = window.localStorage.getItem(STARTER_CARD_STATE_KEY)
+        const parsed = raw ? (JSON.parse(raw) as Record<string, string[]>) : {}
+        parsed[userScopedStorageKey] = cardIds
+        window.localStorage.setItem(STARTER_CARD_STATE_KEY, JSON.stringify(parsed))
+      } catch {
+        return
+      }
+    },
+    [userScopedStorageKey],
+  )
+
+  const trackStarterAction = useCallback(
+    (entry: { cardId: string; action: "run" | "dismiss" | "restore" }) => {
+      const key = `${UPGRADE_METRICS_KEY}:${userScopedStorageKey}:starter-actions`
+      try {
+        const raw = window.localStorage.getItem(key)
+        const parsed = raw ? (JSON.parse(raw) as Array<{ cardId: string; action: string; at: string }>) : []
+        const next = [...parsed, { cardId: entry.cardId, action: entry.action, at: new Date().toISOString() }]
+        window.localStorage.setItem(key, JSON.stringify(next.slice(-120)))
+      } catch {
+        return
+      }
+    },
+    [userScopedStorageKey],
+  )
+
+  const visibleStarterPromptCards = useMemo(
+    () => starterPromptCards.filter((card) => !dismissedStarterCardIds.includes(card.id)),
+    [dismissedStarterCardIds, starterPromptCards],
+  )
+
+  const dismissStarterCard = useCallback(
+    (cardId: string) => {
+      setDismissedStarterCardIds((prev) => {
+        const next = prev.includes(cardId) ? prev : [...prev, cardId]
+        persistDismissedStarterCardIds(next)
+        return next
+      })
+      trackStarterAction({ cardId, action: "dismiss" })
+    },
+    [persistDismissedStarterCardIds, trackStarterAction],
+  )
+
+  const restoreStarterCards = useCallback(() => {
+    setDismissedStarterCardIds([])
+    persistDismissedStarterCardIds([])
+    trackStarterAction({ cardId: "all", action: "restore" })
+  }, [persistDismissedStarterCardIds, trackStarterAction])
 
   const hasUserMessage = messages.some((message) => message.role === "user")
   const showComposerEmptyState = !hasUserMessage && streamControllerState === "idle"
@@ -1308,7 +2040,108 @@ export function ChatWorkspace() {
   const handleUpgradeClick = (location: "composer_inline" | "header_account") => {
     trackUpgradeMetric("upgrade_click", location)
   }
-  const recentSession = currentSession ?? chatSessions.at(0) ?? null
+
+  const retrySessionOpen = () => {
+    if (!sessionOpenState.sessionId) return
+    const target = chatSessions.find((session) => session.id === sessionOpenState.sessionId)
+    if (!target) return
+    void loadSession(target)
+  }
+  const retrySessionList = () => {
+    setSessionListRetryToken((prev) => prev + 1)
+  }
+  const handleEditMessage = async (messageId: string, nextContent: string) => {
+    const trimmed = nextContent.trim()
+    if (!trimmed) return
+
+    const previousMessages = messages
+    const previousSessions = chatSessions
+    const now = new Date()
+
+    setMessages((prev) => prev.map((entry) => (entry.id === messageId ? { ...entry, content: trimmed, timestamp: now } : entry)))
+    if (currentSession?.id) {
+      setChatSessions((prev) =>
+        prev.map((session) =>
+          session.id === currentSession.id
+            ? {
+                ...session,
+                messages: session.messages.map((entry) => (entry.id === messageId ? { ...entry, content: trimmed, timestamp: now } : entry)),
+                updatedAt: now,
+              }
+            : session,
+        ),
+      )
+    }
+
+    try {
+      const response = await fetch(`/api/messages/${encodeURIComponent(messageId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: trimmed }),
+      })
+      if (!response.ok) throw new Error("message_update_failed")
+    } catch {
+      setMessages(previousMessages)
+      setChatSessions(previousSessions)
+    }
+  }
+
+  const handleDeleteMessage = async (messageId: string) => {
+    const previousMessages = messages
+    const previousSessions = chatSessions
+    const now = new Date()
+
+    setMessages((prev) => prev.filter((entry) => entry.id !== messageId))
+    if (currentSession?.id) {
+      setChatSessions((prev) =>
+        prev.map((session) =>
+          session.id === currentSession.id
+            ? {
+                ...session,
+                messages: session.messages.filter((entry) => entry.id !== messageId),
+                updatedAt: now,
+              }
+            : session,
+        ),
+      )
+    }
+
+    try {
+      const response = await fetch(`/api/messages/${encodeURIComponent(messageId)}`, { method: "DELETE" })
+      if (!response.ok) throw new Error("message_delete_failed")
+    } catch {
+      setMessages(previousMessages)
+      setChatSessions(previousSessions)
+    }
+  }
+
+  const handleRegenerateMessage = async (messageId: string) => {
+    const currentIndex = messages.findIndex((item) => item.id === messageId)
+    const sourcePrompt =
+      currentIndex > 0
+        ? [...messages.slice(0, currentIndex)].reverse().find((item) => item.role === "user")?.content
+        : messages.filter((item) => item.role === "user").at(-1)?.content
+    if (!sourcePrompt) return
+
+    setMessages((prev) => prev.filter((entry) => entry.id !== messageId))
+    if (currentSession?.id) {
+      setChatSessions((prev) =>
+        prev.map((session) =>
+          session.id === currentSession.id
+            ? { ...session, messages: session.messages.filter((entry) => entry.id !== messageId) }
+            : session,
+        ),
+      )
+    }
+
+    if (/^\d+$/.test(String(messageId))) {
+      void fetch(`/api/messages/${encodeURIComponent(messageId)}`, { method: "DELETE" })
+    }
+
+    void handleSendMessage(sourcePrompt)
+  }
+  const persistedSessions = useMemo(() => chatSessions.filter((session) => persistedSessionIds.includes(session.id)), [chatSessions, persistedSessionIds])
+  const recentSession = currentSession ?? persistedSessions.at(0) ?? null
 
   const leftDrawer = (
     <div className="space-y-2">
@@ -1321,19 +2154,29 @@ export function ChatWorkspace() {
         />
       ) : null}
       {sessionsStatus === "error" ? (
-        <ChatDataState
-          state="error"
-          loadingMessage=""
-          emptyMessage=""
-          errorMessage="Unable to sync session history. Showing local sessions."
-        />
+        <div className="space-y-2">
+          <ChatDataState
+            state="error"
+            loadingMessage=""
+            emptyMessage=""
+            errorMessage="Unable to sync session history. Please retry in a moment."
+          />
+          <Button size="sm" variant="outline" onClick={retrySessionList}>
+            Retry history sync
+          </Button>
+        </div>
       ) : null}
       <ChatSidebar
         sessions={chatSessions}
         onSessionSelect={loadSession}
         currentSession={currentSession}
         onNewChat={handleNewChatSession}
+        onSuggestedPrompts={handleNewChatSession}
+        onImportContext={() => {
+          window.location.href = "/dashboard/library"
+        }}
         onDeleteSession={handleDeleteSession}
+        persistedSessionIds={persistedSessionIds}
         streamId={queryStreamId}
         activeProjectName={queryProjectName ?? bootstrapProjectName ?? currentSession?.title ?? null}
         selectedLibraryItemTitle={queryLibraryItemTitle}
@@ -1378,7 +2221,7 @@ export function ChatWorkspace() {
               <>
                 <div className="flex items-center gap-1.5 sm:gap-2 lg:hidden">
                   <ActionPill
-                    onClick={() => setLeftDrawerOpen((prev) => !prev)}
+                    onClick={toggleLeftDrawer}
                     aria-pressed={leftDrawerOpen}
                     aria-label={leftDrawerOpen ? "Hide history" : "Show history"}
                     className="h-8 w-8 px-0"
@@ -1424,7 +2267,7 @@ export function ChatWorkspace() {
                               {voiceEnabled ? "Voice On" : "Voice Off"}
                             </ActionPill>
                             <ActionPill
-                              onClick={() => setRightDrawerOpen((prev) => !prev)}
+                              onClick={toggleRightDrawer}
                               aria-pressed={rightDrawerOpen}
                               aria-label={rightDrawerOpen ? "Hide tools" : "Show tools"}
                               className="h-8 gap-1.5 px-3"
@@ -1464,11 +2307,11 @@ export function ChatWorkspace() {
                       Upgrade
                     </a>
                   </ActionPill>
-                  <ActionPill onClick={() => setLeftDrawerOpen((prev) => !prev)} aria-pressed={leftDrawerOpen}>
+                  <ActionPill onClick={toggleLeftDrawer} aria-pressed={leftDrawerOpen}>
                     <History className="mr-1.5 h-3.5 w-3.5" />
                     {leftDrawerOpen ? "Hide History" : "Show History"}
                   </ActionPill>
-                  <ActionPill onClick={() => setRightDrawerOpen((prev) => !prev)} aria-pressed={rightDrawerOpen}>
+                  <ActionPill onClick={toggleRightDrawer} aria-pressed={rightDrawerOpen}>
                     <Sparkles className="mr-1.5 h-3.5 w-3.5" />
                     {rightDrawerOpen ? "Hide Tools" : "Show Tools"}
                   </ActionPill>
@@ -1509,7 +2352,7 @@ export function ChatWorkspace() {
                 aria-label="Close session history"
                 onClick={() => setLeftDrawerOpen(false)}
               />
-              <aside className="fixed left-0 top-0 bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] z-50 w-[85vw] max-w-sm overflow-y-auto border-r border-zinc-800 bg-zinc-950 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] lg:hidden">
+              <aside className="fixed left-0 top-0 bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] z-50 w-[92vw] max-w-sm overflow-y-auto border-r border-zinc-800 bg-zinc-950 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:w-[85vw] lg:hidden">
                 {leftDrawer}
               </aside>
             </>
@@ -1523,7 +2366,7 @@ export function ChatWorkspace() {
                 aria-label="Close utilities panel"
                 onClick={() => setRightDrawerOpen(false)}
               />
-              <aside className="fixed right-0 top-0 bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] z-50 w-[85vw] max-w-sm overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] lg:hidden">
+              <aside className="fixed right-0 top-0 bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] z-50 w-[92vw] max-w-sm overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:w-[85vw] lg:hidden">
                 {rightDrawer}
               </aside>
             </>
@@ -1538,16 +2381,39 @@ export function ChatWorkspace() {
             ) : null}
 
 
-            <div className="hidden border-b border-zinc-800 px-3 py-2 text-xs text-zinc-400 lg:block sm:px-4">
-              <span>Shortcuts: Ctrl/Cmd+[ history • Ctrl/Cmd+] tools • Alt+←/→ toggle drawers.</span>
-            </div>
-
-
-            <ScrollArea className="min-h-0 flex-1 p-3 sm:p-4">
+            <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1 p-3 sm:p-4">
               <div className="space-y-4">
-                {messages.map((message) => (
-                  <ChatMessageComponent key={message.id} message={message} sessionId={currentSession?.id} />
-                ))}
+                {sessionOpenState.status === "loading" ? (
+                  <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 text-zinc-300" aria-live="polite">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading conversation…
+                    </div>
+                    <div className="space-y-2">
+                      <div className="h-4 w-4/5 animate-pulse rounded bg-zinc-800" />
+                      <div className="h-4 w-2/3 animate-pulse rounded bg-zinc-800" />
+                      <div className="h-4 w-3/4 animate-pulse rounded bg-zinc-800" />
+                    </div>
+                  </div>
+                ) : sessionOpenState.status === "error" ? (
+                  <div className="rounded-lg border border-red-900/50 bg-red-950/20 p-4 text-sm text-red-100">
+                    <p>{sessionOpenState.errorMessage ?? "Unable to open this chat."}</p>
+                    <Button type="button" size="sm" variant="outline" className="mt-3" onClick={retrySessionOpen}>
+                      Retry opening chat
+                    </Button>
+                  </div>
+                ) : (
+                  messages.map((message) => (
+                    <ChatMessageComponent
+                      key={message.id}
+                      message={message}
+                      sessionId={currentSession?.id}
+                      onEditRequest={handleEditMessage}
+                      onDeleteRequest={handleDeleteMessage}
+                      onRegenerate={handleRegenerateMessage}
+                    />
+                  ))
+                )}
 
                 {(isTyping || streamControllerState === "sending" || streamControllerState === "streaming") && (
                   <div className="flex items-center space-x-2 text-zinc-400" aria-live="polite">
@@ -1597,26 +2463,38 @@ export function ChatWorkspace() {
 
             {showComposerEmptyState ? (
               <div className="border-t border-zinc-800 p-2.5 sm:p-3">
-                <div className="space-y-2.5 rounded-lg border border-zinc-800 bg-zinc-950/40 p-2.5 sm:space-y-3 sm:p-3">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-zinc-100">What do you want to create?</p>
-                    <p className="text-xs text-zinc-400">
-                      Create faster content, automate repeat work, and summarize complex tasks in seconds.
+                <div className="space-y-3.5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 sm:space-y-4 sm:p-4">
+                  <div className="space-y-2 text-center">
+                    <p className="text-lg font-semibold tracking-tight text-zinc-100 sm:text-xl">Start your next task in one step.</p>
+                    <p className="text-xs leading-relaxed text-zinc-400 sm:text-sm">
+                      Start a prompt in the composer, upload a screenshot, or run a starter task below.
                     </p>
                   </div>
 
                   <SuggestionCardGrid
                     title="Starter prompts"
-                    items={starterPromptCards.map((item) => ({
+                    items={visibleStarterPromptCards.map((item) => ({
                       id: item.id,
                       title: item.title,
                       description: item.description,
                       actionLabel: item.actionLabel,
                       icon: item.icon,
-                      onAction: () => handleSendMessage(item.prompt),
+                      onAction: () => {
+                        trackStarterAction({ cardId: item.id, action: "run" })
+                        handleSendMessage(item.prompt)
+                      },
+                      onDismiss: () => dismissStarterCard(item.id),
                     }))}
                     emptyMessage="Starter prompts are unavailable right now."
                   />
+
+                  {dismissedStarterCardIds.length > 0 ? (
+                    <div className="flex justify-end">
+                      <Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-zinc-400 hover:text-zinc-100" onClick={restoreStarterCards}>
+                        Restore starter prompts
+                      </Button>
+                    </div>
+                  ) : null}
 
                   <div className="rounded-md border border-zinc-800 bg-zinc-900/60 p-2">
                     <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Recent project/session</p>
@@ -1624,13 +2502,35 @@ export function ChatWorkspace() {
                       <button
                         type="button"
                         onClick={() => loadSession(recentSession)}
-                        className="mt-1.5 w-full rounded-md border border-transparent px-2 py-1.5 text-left text-xs text-zinc-200 transition hover:border-zinc-700 hover:bg-zinc-800/80"
+                        className="mt-1.5 w-full rounded-md border border-transparent px-2 py-1.5 text-left text-xs text-zinc-200 transition hover:border-zinc-700 hover:bg-zinc-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"
+                        aria-label={`Open recent session ${recentSession.title}`}
                       >
                         <span className="block font-medium text-zinc-100">{recentSession.title}</span>
                         <span className="block text-zinc-400">Continue where you left off.</span>
                       </button>
                     ) : (
-                      <p className="mt-1.5 text-xs text-zinc-400">No recent sessions yet. Start with a prompt chip above.</p>
+                      <div className="mt-1.5 space-y-2">
+                        <p className="text-xs text-zinc-400">No chats yet. Create new chat, try starter prompts, or connect tools from the left panel.</p>
+                        <div className="flex flex-wrap gap-2">
+                          <Button type="button" size="sm" variant="outline" onClick={handleNewChatSession}>
+                            Create new chat
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="text-zinc-300 hover:text-zinc-100"
+                            onClick={() => {
+                              const starterPrompt = visibleStarterPromptCards[0]?.prompt
+                              if (!starterPrompt) return
+                              trackStarterAction({ cardId: visibleStarterPromptCards[0].id, action: "run" })
+                              handleSendMessage(starterPrompt)
+                            }}
+                          >
+                            Try starter prompts
+                          </Button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1638,13 +2538,13 @@ export function ChatWorkspace() {
             ) : null}
 
 
-            <div className="sticky bottom-0 border-t border-zinc-800 bg-[#050607]/95 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur supports-[backdrop-filter]:bg-[#050607]/90 sm:p-4 sm:pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+            <div className="sticky bottom-0 border-t border-zinc-800 bg-[#050607]/95 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] shadow-[0_-18px_40px_-30px_rgba(0,0,0,0.9)] backdrop-blur supports-[backdrop-filter]:bg-[#050607]/90 sm:p-4 sm:pb-[calc(env(safe-area-inset-bottom)+1rem)]">
 
               <RunAshChatComposer
                 value={inputValue}
                 onChange={setInputValue}
                 onSend={handleSendMessage}
-                disabled={streamControllerState === "sending" || streamControllerState === "streaming" || streamControllerState === "stopping"}
+                disabled={streamControllerState === "sending" || streamControllerState === "streaming" || streamControllerState === "stopping" || sessionOpenState.status === "loading"}
                 streamState={streamControllerState}
                 composerHealth={composerHealth}
                 onRetry={retryLastPrompt}
@@ -1656,8 +2556,8 @@ export function ChatWorkspace() {
                 modelOptions={modelCatalog}
                 selectedModel={selectedModel}
                 onSelectedModelChange={setSelectedModel}
-                onAttachFile={processImageAttachment}
-                attachmentPreview={attachmentPreview}
+                onAttachFiles={processImageAttachments}
+                attachmentPreviews={attachmentPreviews}
                 attachmentError={attachmentError}
                 onRetryAttachment={retryAttachment}
                 onRemoveAttachment={removeAttachment}
@@ -1668,9 +2568,21 @@ export function ChatWorkspace() {
                 <div className="mt-3 rounded-md border border-zinc-800 bg-zinc-900/60 p-2 text-xs text-zinc-300">
                   <p className="font-medium text-zinc-100">Recent-run diagnostics</p>
                   <p>Request ID: {runDiagnostics.requestId || "n/a"}</p>
-                  <p>Provider: {runDiagnostics.provider || "RunAsh AI"}</p>
-                  <p>Model: {runDiagnostics.model || "n/a"}</p>
+                  <p>Provider/Model: {(runDiagnostics.provider || "RunAsh AI") + " / " + (runDiagnostics.model || "n/a")}</p>
                   {runDiagnostics.lastErrorCode ? <p>Error code: {runDiagnostics.lastErrorCode}</p> : null}
+                  <p className="mt-1 text-zinc-200">Tool calls: {runDiagnostics.toolCalls.length}</p>
+                  {runDiagnostics.toolCalls.length === 0 ? (
+                    <p className="text-zinc-400">none</p>
+                  ) : (
+                    <ul className="space-y-0.5 text-zinc-300">
+                      {runDiagnostics.toolCalls.map((entry) => (
+                        <li key={entry.tool}>
+                          {entry.tool}: {entry.status}
+                          {entry.failureReason ? ` (${entry.failureReason})` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               )}
               <div className="mt-2 flex items-center justify-between text-xs text-zinc-500">

@@ -361,3 +361,19 @@ Business controls preserved:
 1. Application rollback is preferred; no payment contract rollback is required.
 2. If DB rollback is required, remove only newly added indexes first, then `organization_id` columns after controlled maintenance window.
 3. Re-run payment authorization smoke checks after rollback before re-enabling rollout flags.
+
+## 2026-03 realtime gateway rollout note (non-payment change)
+
+- Change scope: unified realtime gateway for editor/live-stream channels (`editor:{projectId}`, `stream:{sessionId}`) with typed event schemas and cursor-based resume.
+- Payment/auth impact assessment: no payment field names, checkout contracts, or billing API signatures were modified.
+- Risk + rollback: operational risk limited to editor/live-stream update propagation; rollback by disabling realtime subscriber usage and reverting to prior polling/SSE route.
+- Security posture: realtime handshake uses existing authenticated user/session identity with per-resource authorization; no sensitive payment/auth payloads are logged.
+
+## 2026-03 editor render orchestration pipeline upgrade (non-payment contract change)
+
+- Scope: introduced resilient render orchestration state machine in `services/editor` with explicit statuses (`queued|processing|retrying|completed|failed|canceled`), persisted attempt counters, provider traces, cancellation tokens, and retry scheduling metadata.
+- Added dead-letter persistence for terminal render failures plus admin replay endpoint to requeue failed jobs.
+- Added API coverage for user-initiated cancel, retry, and timeline/history retrieval for render jobs.
+- Data integrity update: completion now persists normalized provider output + output-publication metadata with transactional job/asset updates to reduce split-brain writes.
+- Payment/auth impact: none; no payment contract or auth API signature changed.
+- Risk + rollback: moderate operational risk in queue worker behavior. Rollback by reverting `services/editor/render-worker.ts`, new render-job APIs, and migration `scripts/sql/2026-03-06_editor_render_job_orchestration.sql`; existing queued jobs continue under prior worker semantics after rollback.

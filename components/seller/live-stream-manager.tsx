@@ -22,6 +22,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { format } from "date-fns"
 import useSWR from "swr"
 import { useToast } from "@/hooks/use-toast"
+import { createLiveStreamSessionV1 } from "@/lib/api/v1-client"
 import {
   Video,
   Plus,
@@ -113,19 +114,10 @@ export function LiveStreamManager() {
         return
       }
       setIsSubmitting(true)
-      const when = new Date(`${format(selectedDate, "yyyy-MM-dd")}T${time}:00`)
-      const res = await fetch("/api/streams", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          title,
-          description,
-          category: category || "general",
-          platform: "runash",
-          scheduled_for: when.toISOString(),
-        }),
+      await createLiveStreamSessionV1({
+        title,
+        workspaceId: category || "general",
       })
-      if (!res.ok) throw new Error("Failed to schedule stream")
       await mutate()
       setIsCreateDialogOpen(false)
       setTitle("")
