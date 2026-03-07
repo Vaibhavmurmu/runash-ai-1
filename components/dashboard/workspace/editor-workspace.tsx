@@ -1014,7 +1014,12 @@ export function EditorWorkspace() {
           onExportMetadata={handleExportMetadata}
           isProjectMutationBusy={isProjectMutationBusy || isLoading || isCreatingProject}
         />
-        <CollaborationPanel isOpen={isCollaborationOpen} onClose={() => setIsCollaborationOpen(false)} />
+        <CollaborationPanel
+          isOpen={isCollaborationOpen}
+          onClose={() => setIsCollaborationOpen(false)}
+          projectId={project?.id ?? null}
+          currentUser={project ? { id: project.ownerId, name: "You" } : null}
+        />
       </EditorLayout>
     </>
   )
