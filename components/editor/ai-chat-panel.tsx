@@ -1,96 +1,100 @@
-"use client"
+"use client";
 
-import { useEffect, useRef, useState } from "react"
-import { Copy, Loader, Send, Sparkles, Trash2, X } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { useEffect, useRef, useState } from "react";
+import { Copy, Loader, Send, Sparkles, Trash2, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface Message {
-  id: string
-  role: "user" | "assistant"
-  content: string
-  timestamp: Date
-  isLoading?: boolean
-  correlationId?: string
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+  isLoading?: boolean;
+  correlationId?: string;
 }
 
 interface AIChatPanelProps {
-  isOpen: boolean
-  onClose?: () => void
+  isOpen: boolean;
+  onClose?: () => void;
 }
 
 type StreamEventPayload = {
-  type?: "start" | "token" | "done" | "error"
-  correlationId?: string
-  delta?: string
-  message?: string
-}
+  type?: "start" | "token" | "done" | "error";
+  correlationId?: string;
+  delta?: string;
+  message?: string;
+};
 
 export default function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
       role: "assistant",
-      content: "Hi! I'm your AI assistant. How can I help you with your video today?",
+      content:
+        "Hi! I'm your AI assistant. How can I help you with your video today?",
       timestamp: new Date(Date.now() - 5000),
     },
-  ])
-  const [input, setInput] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  ]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollIntoView({ behavior: "smooth" })
+      scrollRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages])
+  }, [messages]);
 
   useEffect(() => {
-    if (!isOpen) return
-    inputRef.current?.focus()
+    if (!isOpen) return;
+    inputRef.current?.focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        onClose?.()
+        onClose?.();
       }
-    }
+    };
 
-    window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
-  }, [isOpen, onClose])
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, onClose]);
 
-  const parseStreamChunk = (chunk: string, onEvent: (payload: StreamEventPayload) => void) => {
-    const events = chunk.split("\n\n")
+  const parseStreamChunk = (
+    chunk: string,
+    onEvent: (payload: StreamEventPayload) => void,
+  ) => {
+    const events = chunk.split("\n\n");
 
     for (const eventBlock of events) {
       if (!eventBlock.trim()) {
-        continue
+        continue;
       }
 
       const dataLine = eventBlock
         .split("\n")
         .find((line) => line.startsWith("data:"))
-        ?.replace(/^data:\s?/, "")
+        ?.replace(/^data:\s?/, "");
 
       if (!dataLine) {
-        continue
+        continue;
       }
 
       try {
-        const payload = JSON.parse(dataLine) as StreamEventPayload
-        onEvent(payload)
+        const payload = JSON.parse(dataLine) as StreamEventPayload;
+        onEvent(payload);
       } catch {
         // Ignore malformed event payloads to keep stream resilient.
       }
     }
-  }
+  };
 
   const handleSendMessage = async () => {
-    const content = input.trim()
-    if (!content || isLoading) return
+    const content = input.trim();
+    if (!content || isLoading) return;
 
-    const correlationId = crypto.randomUUID()
+    const correlationId = crypto.randomUUID();
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -98,9 +102,9 @@ export default function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
       content,
       timestamp: new Date(),
       correlationId,
-    }
+    };
 
-    const assistantMessageId = `${Date.now() + 1}`
+    const assistantMessageId = `${Date.now() + 1}`;
 
     setMessages((prev) => [
       ...prev,
@@ -113,16 +117,16 @@ export default function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
         isLoading: true,
         correlationId,
       },
-    ])
+    ]);
 
-    setInput("")
-    setIsLoading(true)
+    setInput("");
+    setIsLoading(true);
 
     try {
       const conversation = [...messages, userMessage].map((message) => ({
         role: message.role,
         content: message.content,
-      }))
+      }));
 
       const response = await fetch("/api/v1/agents/chat", {
         method: "POST",
@@ -135,45 +139,48 @@ export default function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
           context: "streaming",
           tools: ["contentSearch"],
         }),
-      })
+      });
 
       if (!response.ok || !response.body) {
-        const fallback = "I ran into an issue while contacting the assistant. Please try again."
+        const fallback =
+          "I ran into an issue while contacting the assistant. Please try again.";
         setMessages((prev) =>
           prev.map((message) =>
-            message.id === assistantMessageId ? { ...message, content: fallback, isLoading: false } : message,
+            message.id === assistantMessageId
+              ? { ...message, content: fallback, isLoading: false }
+              : message,
           ),
-        )
-        return
+        );
+        return;
       }
 
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ""
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
 
       while (true) {
-        const { done, value } = await reader.read()
+        const { done, value } = await reader.read();
 
         if (done) {
-          break
+          break;
         }
 
-        buffer += decoder.decode(value, { stream: true })
-        const completeBlocks = buffer.split("\n\n")
-        buffer = completeBlocks.pop() || ""
+        buffer += decoder.decode(value, { stream: true });
+        const completeBlocks = buffer.split("\n\n");
+        buffer = completeBlocks.pop() || "";
 
         parseStreamChunk(completeBlocks.join("\n\n"), (payload) => {
           setMessages((prev) =>
             prev.map((message) => {
               if (message.id !== assistantMessageId) {
-                return message
+                return message;
               }
 
               if (payload.type === "start") {
                 return {
                   ...message,
                   correlationId: payload.correlationId || message.correlationId,
-                }
+                };
               }
 
               if (payload.type === "token") {
@@ -181,7 +188,7 @@ export default function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
                   ...message,
                   content: `${message.content}${payload.delta || ""}`,
                   isLoading: false,
-                }
+                };
               }
 
               if (payload.type === "done") {
@@ -189,21 +196,23 @@ export default function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
                   ...message,
                   isLoading: false,
                   correlationId: payload.correlationId || message.correlationId,
-                }
+                };
               }
 
               if (payload.type === "error") {
                 return {
                   ...message,
-                  content: payload.message || "The assistant could not complete this response.",
+                  content:
+                    payload.message ||
+                    "The assistant could not complete this response.",
                   isLoading: false,
-                }
+                };
               }
 
-              return message
+              return message;
             }),
-          )
-        })
+          );
+        });
       }
 
       if (buffer.trim()) {
@@ -214,14 +223,16 @@ export default function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
                 message.id === assistantMessageId
                   ? {
                       ...message,
-                      content: payload.message || "The assistant could not complete this response.",
+                      content:
+                        payload.message ||
+                        "The assistant could not complete this response.",
                       isLoading: false,
                     }
                   : message,
               ),
-            )
+            );
           }
-        })
+        });
       }
     } catch {
       setMessages((prev) =>
@@ -229,20 +240,21 @@ export default function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
           message.id === assistantMessageId
             ? {
                 ...message,
-                content: "I ran into a network error while replying. Please retry.",
+                content:
+                  "I ran into a network error while replying. Please retry.",
                 isLoading: false,
               }
             : message,
         ),
-      )
+      );
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleCopyMessage = (content: string) => {
-    navigator.clipboard.writeText(content)
-  }
+    navigator.clipboard.writeText(content);
+  };
 
   const handleClearChat = () => {
     setMessages([
@@ -252,10 +264,12 @@ export default function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
         content: "Chat cleared. How can I help you?",
         timestamp: new Date(),
       },
-    ])
-  }
+    ]);
+  };
 
-  if (!isOpen) return null
+  if (!isOpen) {
+    return null;
+  }
 
   return (
     <aside
@@ -271,10 +285,22 @@ export default function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
           <h3 className="font-semibold text-foreground">AI Assistant</h3>
         </div>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={handleClearChat} title="Clear chat" aria-label="Clear chat history">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleClearChat}
+            title="Clear chat"
+            aria-label="Clear chat history"
+          >
             <Trash2 className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={onClose} title="Close chat" aria-label="Close chat panel">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            title="Close chat"
+            aria-label="Close chat panel"
+          >
             <X className="w-4 h-4" />
           </Button>
         </div>
@@ -286,7 +312,11 @@ export default function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
             <div
               key={message.id}
               className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-              ref={message.id === messages[messages.length - 1].id ? scrollRef : null}
+              ref={
+                message.id === messages[messages.length - 1].id
+                  ? scrollRef
+                  : null
+              }
             >
               <div
                 className={`max-w-xs rounded-lg px-4 py-2 text-sm ${
@@ -301,7 +331,9 @@ export default function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
                     <span>AI is thinking...</span>
                   </div>
                 ) : (
-                  <p className="leading-relaxed text-balance">{message.content}</p>
+                  <p className="leading-relaxed text-balance">
+                    {message.content}
+                  </p>
                 )}
                 <div className="flex items-center justify-between mt-2 gap-2">
                   <span className="text-xs opacity-70">
@@ -322,7 +354,9 @@ export default function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
                   )}
                 </div>
                 {message.correlationId && message.role === "assistant" && (
-                  <p className="mt-1 text-[10px] text-muted-foreground">Turn ID: {message.correlationId}</p>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Turn ID: {message.correlationId}
+                  </p>
                 )}
               </div>
             </div>
@@ -333,7 +367,9 @@ export default function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
               <div className="bg-muted rounded-lg rounded-bl-none px-4 py-2 border border-border">
                 <div className="flex items-center gap-2">
                   <Loader className="w-4 h-4 animate-spin text-primary" />
-                  <span className="text-sm text-muted-foreground">Streaming response...</span>
+                  <span className="text-sm text-muted-foreground">
+                    Streaming response...
+                  </span>
                 </div>
               </div>
             </div>
@@ -350,20 +386,28 @@ export default function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault()
-                void handleSendMessage()
+                e.preventDefault();
+                void handleSendMessage();
               }
             }}
             placeholder="Ask me anything..."
             aria-label="Message input"
             className="flex-1 px-3 py-2 rounded-lg border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           />
-          <Button onClick={() => void handleSendMessage()} disabled={!input.trim() || isLoading} size="sm" className="gap-2" aria-label="Send message">
+          <Button
+            onClick={() => void handleSendMessage()}
+            disabled={!input.trim() || isLoading}
+            size="sm"
+            className="gap-2"
+            aria-label="Send message"
+          >
             <Send className="w-4 h-4" />
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground">Press Enter to send • Shift+Enter for new line • Esc to close</p>
+        <p className="text-xs text-muted-foreground">
+          Press Enter to send • Esc to close
+        </p>
       </div>
     </aside>
-  )
+  );
 }

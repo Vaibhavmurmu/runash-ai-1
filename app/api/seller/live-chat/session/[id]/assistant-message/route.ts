@@ -3,6 +3,8 @@ import { z } from "zod"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { requireSellerSessionUserId } from "@/app/api/seller/_auth"
 import { AiLiveVideoChatService } from "@/services/ai-live-videochat-service"
+import { createRequestLogContext, logApiEvent } from "@/lib/api/logging"
+import { resolveCorrelationId } from "@/lib/operations-observability"
 
 const assistantMessageSchema = z.object({
   role: z.enum(["seller", "buyer"]).default("seller"),
@@ -10,6 +12,8 @@ const assistantMessageSchema = z.object({
 })
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const correlationId = resolveCorrelationId(request)
+
   try {
     const userId = await requireSellerSessionUserId(request)
     if (userId instanceof Response) return userId
@@ -30,6 +34,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     })
 
     if (result.blocked) {
+      logApiEvent("warn", "seller.live_chat.assistant_message.blocked", {
+        ...createRequestLogContext(request, { userId: String(userId) }),
+        details: { sessionId: params.id, role: parsed.data.role, correlationId },
+      })
       return respondError(
         request,
         { code: "MESSAGE_BLOCKED", message: result.reason ?? "Message blocked", details: { reply: result.reply } },
@@ -37,8 +45,18 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       )
     }
 
+    logApiEvent("info", "seller.live_chat.assistant_message.completed", {
+      ...createRequestLogContext(request, { userId: String(userId) }),
+      details: { sessionId: params.id, role: parsed.data.role, fallbackUsed: result.fallbackUsed, correlationId },
+    })
+
     return respondSuccess(request, { reply: result.reply, fallbackUsed: result.fallbackUsed })
-  } catch {
+  } catch (error) {
+    logApiEvent("error", "seller.live_chat.assistant_message.failed", {
+      ...createRequestLogContext(request),
+      details: { sessionId: params.id, correlationId },
+      error,
+    })
     return respondError(request, { code: "ASSISTANT_MESSAGE_FAILED", message: "Failed to process assistant message" }, { status: 500 })
   }
 }

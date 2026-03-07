@@ -24,14 +24,17 @@
 - [ ] Desktop (`1366x768` or equivalent) pass.
 - [ ] Edge-case overflow/zoom behavior validated.
 
-### 4) Lint / type / build / test gates
+### 4) PR Testing
+
+> Report only exact `package.json` commands: `npm run lint`, `npm run build`, and `npm test` (when applicable).
+> Replace all placeholders with factual outcomes only: **Pass**, **Fail**, or **Blocked**.
+> If a command is blocked by environment/dependency issues, include the exact blocker and a concrete follow-up action.
 
 | Gate | Command | Outcome | Notes |
 | --- | --- | --- | --- |
-| Lint | `npm run lint` | ✅/⚠️/❌ | |
-| Type check | `npx tsc --noEmit` | ✅/⚠️/❌ | |
-| Build | `npm run build` | ✅/⚠️/❌ | |
-| Tests | `npm run test` | ✅/⚠️/❌ | |
+| Lint | `npm run lint` | Pass / Fail / Blocked | |
+| Build | `npm run build` | Pass / Fail / Blocked | |
+| Tests (if used) | `npm test` | Pass / Fail / Blocked / N/A | |
 
 ### 5) API contract verification
 
@@ -53,15 +56,19 @@
 
 ## Validation Commands (Executed)
 
-<!-- Copy the exact command output summary here so release confidence is auditable. -->
+<!-- Copy exact output summaries from executed package.json commands only (`npm run lint`, `npm run build`, `npm test` when applicable). Remove unverified claims. If a command fails/blocks, include the concrete reason and follow-up action. -->
 
 | Command | Outcome | Output summary |
 | --- | --- | --- |
-| `npm run lint` | ✅/⚠️/❌ | |
-| `npx tsc --noEmit` | ✅/⚠️/❌ | |
-| `npm run build` | ✅/⚠️/❌ | |
-| `npm run test` | ✅/⚠️/❌ | |
-| `npm run openapi:auth:check` | ✅/⚠️/❌ | |
+| `npm run lint` | Pass / Fail / Blocked | |
+| `npm run build` | Pass / Fail / Blocked | |
+| `npm test` | Pass / Fail / Blocked / N/A | |
+
+**Follow-up actions for blocked checks (required when any check is Blocked)**
+
+- [ ] Lint blocker documented with owner + target date.
+- [ ] Build blocker documented with owner + target date.
+- [ ] Test blocker documented with owner + target date (if applicable).
 
 ## Checklist
 

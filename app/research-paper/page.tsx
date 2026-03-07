@@ -3,7 +3,7 @@ import { SimplePage } from "@/components/marketing/simple-page"
 
 export const metadata: Metadata = {
   title: "Research Papers | RunAsh",
-  description: "Read RunAsh research papers, briefs, and implementation notes.",
+  description: "Browse RunAsh research papers, safety notes, and implementation briefs.",
 }
 
 export default function Page() {
@@ -17,7 +17,7 @@ export default function Page() {
         { title: "Safety Notes", description: "Summaries explaining safeguards, testing, and rollout practices." },
         { title: "Implementation Briefs", description: "Practical architecture notes to help teams execute quickly." },
       ]}
-      ctaLabel="View research overview"
+      ctaLabel="Explore the Research Overview"
       ctaHref="/research-overview"
     />
   )

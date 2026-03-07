@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
-import { requireEditorUser } from "@/app/api/editor/_lib"
+import { requireEditorOperation } from "@/app/api/editor/_lib"
 import { getProjectById, sql } from "@/lib/editor/repository"
 
 export async function POST(request: Request, { params }: { params: { projectId: string } }) {
-  const auth = await requireEditorUser(request)
+  const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params
   const body = await request.json().catch(() => ({}))

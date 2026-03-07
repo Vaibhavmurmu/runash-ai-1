@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -15,11 +15,14 @@ interface ChatSidebarProps {
   onSessionSelect: (session: ChatSession) => void
   currentSession: ChatSession | null
   onNewChat?: () => void
+  onSuggestedPrompts?: () => void
+  onImportContext?: () => void
   onDeleteSession?: (sessionId: string) => void
   streamId?: string | null
   activeProjectName?: string | null
   selectedLibraryItemTitle?: string | null
   onNavigateToWorkspaceTool?: () => void
+  persistedSessionIds?: string[]
 }
 
 export default function ChatSidebar({
@@ -27,78 +30,27 @@ export default function ChatSidebar({
   onSessionSelect,
   currentSession,
   onNewChat,
+  onSuggestedPrompts,
+  onImportContext,
   onDeleteSession,
   streamId,
   activeProjectName,
   selectedLibraryItemTitle,
   onNavigateToWorkspaceTool,
+  persistedSessionIds,
 }: ChatSidebarProps) {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState("")
   const [workspaceToolsOpen, setWorkspaceToolsOpen] = useState(true)
 
-  const fallbackSessions: ChatSession[] = [
-    {
-      id: "1",
-      title: "Organic Breakfast Ideas",
-      messages: [],
-      createdAt: new Date(Date.now() - 86400000),
-      updatedAt: new Date(Date.now() - 86400000),
-      context: {
-        preferences: {
-          dietaryRestrictions: ["vegan"],
-          sustainabilityPriority: "high",
-          budgetRange: [0, 50],
-          preferredCategories: ["fruits-vegetables"],
-          cookingSkillLevel: "beginner",
-        },
-        currentCart: [],
-        recentSearches: ["organic oats", "plant milk"],
-      },
-    },
-    {
-      id: "2",
-      title: "Store Automation Setup",
-      messages: [],
-      createdAt: new Date(Date.now() - 172800000),
-      updatedAt: new Date(Date.now() - 172800000),
-      context: {
-        preferences: {
-          dietaryRestrictions: [],
-          sustainabilityPriority: "medium",
-          budgetRange: [0, 1000],
-          preferredCategories: [],
-          cookingSkillLevel: "intermediate",
-          businessType: "retail",
-        },
-        currentCart: [],
-        recentSearches: ["inventory management", "POS system"],
-      },
-    },
-    {
-      id: "3",
-      title: "Sustainable Living Tips",
-      messages: [],
-      createdAt: new Date(Date.now() - 259200000),
-      updatedAt: new Date(Date.now() - 259200000),
-      context: {
-        preferences: {
-          dietaryRestrictions: [],
-          sustainabilityPriority: "high",
-          budgetRange: [0, 100],
-          preferredCategories: [],
-          cookingSkillLevel: "advanced",
-        },
-        currentCart: [],
-        recentSearches: ["zero waste", "renewable energy"],
-      },
-    },
-  ]
-
-  const availableSessions = sessions.length > 0 ? sessions : fallbackSessions
-  const filteredSessions = availableSessions.filter((session) =>
-    session.title.toLowerCase().includes(searchQuery.toLowerCase()),
+  const persistedSessionIdSet = useMemo(() => new Set(persistedSessionIds ?? []), [persistedSessionIds])
+  const persistedSessions = useMemo(() => sessions.filter((session) => persistedSessionIdSet.has(session.id)), [persistedSessionIdSet, sessions])
+  const normalizedQuery = searchQuery.trim().toLowerCase()
+  const filteredSessions = useMemo(
+    () => (normalizedQuery ? persistedSessions.filter((session) => session.title.toLowerCase().includes(normalizedQuery)) : persistedSessions),
+    [normalizedQuery, persistedSessions],
   )
+  const isSearching = normalizedQuery.length > 0
 
   const handleNewChat = () => {
     onNewChat?.()
@@ -187,7 +139,7 @@ export default function ChatSidebar({
                   >
                     <div className="flex items-center gap-2 text-sm font-medium">
                       <SquarePen className="h-4 w-4" />
-                      Open Editor
+                      Connect tools: Editor
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {activeProjectName ? <Badge variant="secondary">Project: {activeProjectName}</Badge> : null}
@@ -203,7 +155,7 @@ export default function ChatSidebar({
                   >
                     <div className="flex items-center gap-2 text-sm font-medium">
                       <RadioTower className="h-4 w-4" />
-                      Open Streaming Studio
+                      Connect tools: Streaming Studio
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {streamId ? <Badge variant="secondary">Stream available</Badge> : <Badge variant="outline">No active stream</Badge>}
@@ -219,7 +171,7 @@ export default function ChatSidebar({
                   >
                     <div className="flex items-center gap-2 text-sm font-medium">
                       <Search className="h-4 w-4" />
-                      Open Library
+                      Connect tools: Library
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {selectedLibraryItemTitle ? <Badge variant="secondary">Selected: {selectedLibraryItemTitle}</Badge> : <Badge variant="outline">Browse items</Badge>}
@@ -228,6 +180,36 @@ export default function ChatSidebar({
                 </div>
               ) : null}
             </section>
+
+            {persistedSessions.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-4 text-sm">
+                <p className="font-medium">No chats yet</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  You don&apos;t have any saved sessions yet. Create new chat, try starter prompts, or connect tools.
+                </p>
+                <div className="mt-3 grid gap-2">
+                  <Button size="sm" onClick={handleNewChat}>
+                    <Plus className="mr-1 h-4 w-4" /> Create new chat
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => onSuggestedPrompts?.()}>
+                    Try starter prompts
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => onImportContext?.()}>
+                    Connect tools
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {persistedSessions.length > 0 && filteredSessions.length === 0 && isSearching ? (
+              <div className="rounded-lg border border-dashed p-4 text-sm">
+                <p className="font-medium">No results</p>
+                <p className="mt-1 text-xs text-muted-foreground">No saved sessions match “{searchQuery.trim()}”. Try a different title or start a new chat.</p>
+                <Button size="sm" variant="outline" className="mt-3" onClick={handleNewChat}>
+                  <Plus className="mr-1 h-4 w-4" /> New chat
+                </Button>
+              </div>
+            ) : null}
 
             {filteredSessions.map((session) => (
               <div

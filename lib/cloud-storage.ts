@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3"
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 
 const s3Client = new S3Client({
@@ -31,6 +31,25 @@ export class CloudStorage {
     })
 
     return await getSignedUrl(s3Client, command, { expiresIn })
+  }
+
+  static async getSignedUploadUrl(key: string, contentType: string, expiresIn = 900): Promise<string> {
+    const command = new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+      ContentType: contentType,
+    })
+
+    return await getSignedUrl(s3Client, command, { expiresIn })
+  }
+
+  static async getObjectMetadata(key: string) {
+    const command = new HeadObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+    })
+
+    return await s3Client.send(command)
   }
 
   static async deleteFile(key: string): Promise<void> {

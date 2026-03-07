@@ -1,6 +1,15 @@
 import { neon } from "@neondatabase/serverless"
 
-const sql = neon(process.env.DATABASE_URL!)
+function getSqlClient() {
+  const connectionString = process.env.DATABASE_URL
+  if (!connectionString) {
+    throw new Error("Auth analytics database is not configured")
+  }
+
+  return neon(connectionString)
+}
+
+const runQuery = (...args: Parameters<ReturnType<typeof neon>>) => getSqlClient()(...args)
 
 export interface AuthAnalyticsData {
   loginAttempts: {
@@ -79,7 +88,7 @@ export class AuthAnalytics {
       WHERE event_type = 'login' 
       AND created_at BETWEEN $1 AND $2
     `
-    const loginAttempts = await sql(loginAttemptsQuery, [start, end])
+    const loginAttempts = await runQuery(loginAttemptsQuery, [start, end])
     const loginData = loginAttempts[0]
     const successRate = loginData.total > 0 ? (loginData.successful / loginData.total) * 100 : 0
 
@@ -95,7 +104,7 @@ export class AuthAnalytics {
       GROUP BY method
       ORDER BY count DESC
     `
-    const authMethodsData = await sql(authMethodsQuery, [start, end])
+    const authMethodsData = await runQuery(authMethodsQuery, [start, end])
     const totalSuccessfulLogins = authMethodsData.reduce((sum: number, row: any) => sum + Number.parseInt(row.count), 0)
     const authMethods = authMethodsData.map((row: any) => ({
       method: row.method,
@@ -115,7 +124,7 @@ export class AuthAnalytics {
       GROUP BY DATE(created_at)
       ORDER BY date
     `
-    const userActivity = await sql(activityQuery, [start, end])
+    const userActivity = await runQuery(activityQuery, [start, end])
 
     // Get security events
     const securityQuery = `
@@ -132,7 +141,7 @@ export class AuthAnalytics {
       AND created_at BETWEEN $1 AND $2
       GROUP BY event_type
     `
-    const securityEvents = await sql(securityQuery, [start, end])
+    const securityEvents = await runQuery(securityQuery, [start, end])
 
     // Get geographic data (mock for now - would need IP geolocation)
     const geographicData = [
@@ -159,7 +168,7 @@ export class AuthAnalytics {
       AND created_at BETWEEN $1 AND $2
       GROUP BY device
     `
-    const deviceData = await sql(deviceQuery, [start, end])
+    const deviceData = await runQuery(deviceQuery, [start, end])
     const totalDeviceLogins = deviceData.reduce((sum: number, row: any) => sum + Number.parseInt(row.count), 0)
     const deviceDataWithPercentage = deviceData.map((row: any) => ({
       device: row.device,
@@ -173,14 +182,14 @@ export class AuthAnalytics {
       FROM user_sessions 
       WHERE expires_at > NOW()
     `
-    const activeUsers = await sql(activeUsersQuery)
+    const activeUsers = await runQuery(activeUsersQuery)
 
     const currentSessionsQuery = `
       SELECT COUNT(*) as current_sessions
       FROM user_sessions 
       WHERE expires_at > NOW()
     `
-    const currentSessions = await sql(currentSessionsQuery)
+    const currentSessions = await runQuery(currentSessionsQuery)
 
     return {
       loginAttempts: {
@@ -220,7 +229,7 @@ export class AuthAnalytics {
       ORDER BY ae.created_at DESC
       LIMIT $1
     `
-    return await sql(query, [limit])
+    return await runQuery(query, [limit])
   }
 
   static async getSecurityAlerts(resolved = false): Promise<SecurityAlert[]> {
@@ -231,7 +240,7 @@ export class AuthAnalytics {
       ORDER BY created_at DESC
       LIMIT 100
     `
-    return await sql(query, [resolved])
+    return await runQuery(query, [resolved])
   }
 
   static async logAuthEvent(
@@ -242,7 +251,7 @@ export class AuthAnalytics {
     userAgent: string,
     details: any = {},
   ): Promise<void> {
-    await sql(
+    await runQuery(
       `
       INSERT INTO auth_events (user_id, event_type, success, ip_address, user_agent, details, created_at)
       VALUES ($1, $2, $3, $4, $5, $6, NOW())
@@ -258,7 +267,7 @@ export class AuthAnalytics {
     userId: number | null = null,
     ipAddress = "",
   ): Promise<void> {
-    await sql(
+    await runQuery(
       `
       INSERT INTO security_alerts (type, severity, message, user_id, ip_address, resolved, created_at)
       VALUES ($1, $2, $3, $4, $5, false, NOW())
@@ -280,6 +289,6 @@ export class AuthAnalytics {
       GROUP BY DATE(created_at)
       ORDER BY date
     `
-    return await sql(query)
+    return await runQuery(query)
   }
 }

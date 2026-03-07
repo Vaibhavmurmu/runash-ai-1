@@ -954,6 +954,41 @@ export function EnhancedStreamingStudio() {
                 <TabsContent value="multihost" className="flex-1 p-0 m-0">
                   <MultiHostManager isStreaming={isStreaming} currentUserId="current-user-id" />
                 </TabsContent>
+
+                <TabsContent value="engagement" className="flex-1 p-3 m-0 space-y-4 overflow-y-auto">
+                  <Card>
+                    <CardHeader className="p-3 pb-2">
+                      <CardTitle className="text-sm">Engagement Overview</CardTitle>
+                    </CardHeader>
+                    <CardContent className="grid gap-2 p-3 pt-0 sm:grid-cols-2">
+                      <div className="rounded-md border p-2">
+                        <p className="text-xs text-muted-foreground">Viewers</p>
+                        <p className="text-lg font-semibold">{realtimeStats.viewers.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-md border p-2">
+                        <p className="text-xs text-muted-foreground">Likes</p>
+                        <p className="text-lg font-semibold">{realtimeStats.likes.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-md border p-2">
+                        <p className="text-xs text-muted-foreground">Comments</p>
+                        <p className="text-lg font-semibold">{realtimeStats.comments.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-md border p-2">
+                        <p className="text-xs text-muted-foreground">Shares</p>
+                        <p className="text-lg font-semibold">{realtimeStats.shares.toLocaleString()}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="p-3 pb-2">
+                      <CardTitle className="text-sm">Live Polls & Q&A</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-3 pt-0">
+                      <PollQuizManager streamId={studioStreamId} isHost={true} />
+                    </CardContent>
+                  </Card>
+                </TabsContent>
               </Tabs>
             </div>
           )}

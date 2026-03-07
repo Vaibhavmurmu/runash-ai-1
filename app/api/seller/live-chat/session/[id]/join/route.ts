@@ -3,6 +3,8 @@ import { z } from "zod"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { requireSellerSessionUserId } from "@/app/api/seller/_auth"
 import { AiLiveVideoChatService } from "@/services/ai-live-videochat-service"
+import { createRequestLogContext, logApiEvent } from "@/lib/api/logging"
+import { resolveCorrelationId } from "@/lib/operations-observability"
 
 const joinSchema = z.object({
   role: z.enum(["seller", "buyer", "assistant"]).default("seller"),
@@ -17,6 +19,8 @@ const joinSchema = z.object({
 })
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const correlationId = resolveCorrelationId(request)
+
   try {
     const userId = await requireSellerSessionUserId(request)
     if (userId instanceof Response) return userId
@@ -29,6 +33,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     const service = AiLiveVideoChatService.getInstance()
+    const startedAt = Date.now()
     const participant = await service.joinSession({
       sessionId: params.id,
       role: parsed.data.role,
@@ -47,8 +52,18 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       })
     }
 
+    logApiEvent("info", "seller.live_chat.session.joined", {
+      ...createRequestLogContext(request, { userId: String(userId) }),
+      details: { sessionId: params.id, role: parsed.data.role, correlationId, latencyMs: Date.now() - startedAt },
+    })
+
     return respondSuccess(request, { participant, recentEvents: service.getRecentRoutedEvents(params.id).slice(-20) })
-  } catch {
+  } catch (error) {
+    logApiEvent("error", "seller.live_chat.session.join_failed", {
+      ...createRequestLogContext(request),
+      details: { sessionId: params.id, correlationId },
+      error,
+    })
     return respondError(request, { code: "LIVE_CHAT_JOIN_FAILED", message: "Failed to join live chat session" }, { status: 500 })
   }
 }
