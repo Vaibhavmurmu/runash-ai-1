@@ -57,6 +57,12 @@ test("privileged chat and live routes are no longer treated as public", () => {
   assert.equal(resolveAuthDecision("/live").requiresSessionValidation, true)
 })
 
+test("newly listed public pages skip session validation", () => {
+  assert.equal(resolveAuthDecision("/workflow").requiresSessionValidation, false)
+  assert.equal(resolveAuthDecision("/research").requiresSessionValidation, false)
+  assert.equal(resolveAuthDecision("/mobile-ios").requiresSessionValidation, false)
+})
+
 
 test("auth permission and claims APIs require authenticated sessions", () => {
   assert.equal(resolveAuthDecision("/api/auth/permissions").requiresSessionValidation, true)
