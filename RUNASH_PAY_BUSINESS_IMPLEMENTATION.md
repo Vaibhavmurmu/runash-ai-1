@@ -35,6 +35,13 @@ This document is limited to payment/business implementation policy. Generic cont
 - Risk + rollback: low-to-medium operational risk (queue behavior changes). Rollback by reverting editor render job API/worker patch if cancellation or queue throughput regressions appear.
 - Security posture: provider request/response operational logs are redacted to prevent sensitive token/prompt leakage in shared logs.
 
+## 2026-03 live-stream provider reliability note (payment-contract safe)
+
+- Change scope: live-stream provider abstraction in `services/live-stream/*` now supports real backend provisioning/stopping with persisted provider session metadata for reconciliation.
+- Payment/auth impact assessment: no payment API field names, payment webhook schemas, or auth/payment signatures were changed.
+- Risk + rollback: operational risk is isolated to live-stream session start/stop. Rollback by restoring prior live-stream provider implementation and disabling real provider selection env settings.
+- Security posture: provider request/response logs are structured and explicitly redact credentials/tokens/secrets.
+
 ## Compatibility, risk, and rollback
 
 - Backward compatibility is mandatory for payment routes unless a versioned migration is explicitly introduced.

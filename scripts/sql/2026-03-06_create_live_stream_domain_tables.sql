@@ -35,6 +35,7 @@ create table if not exists live_stream_endpoints (
   id uuid primary key default gen_random_uuid(),
   session_id uuid not null references live_stream_sessions(id) on delete cascade,
   provider text not null,
+  provider_session_id text not null,
   ingest_url text not null,
   ingest_token_masked text not null,
   token_expires_at timestamptz,
