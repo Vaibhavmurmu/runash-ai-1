@@ -19,15 +19,21 @@ import {
   Upload,
   Video,
   X,
+  ChevronDown,
+  Search,
+  Waves,
 } from "lucide-react"
 
 type ThemeMode = "light" | "dark"
 
 const sidebarItems = [
+  { label: "Live Talk", icon: Waves },
+  { label: "AI Editor", icon: Sparkles },
   { label: "Live Studio", icon: Video },
+  { label: "Live Selling", icon: ShoppingBag },
   { label: "Shopping Flows", icon: ShoppingBag },
   { label: "Agentic Co-Host", icon: Bot },
-  { label: "AI Editor", icon: Sparkles },
+  { label: "Video Generator", icon: Video },
 ]
 
 const quickActions = [
@@ -59,6 +65,22 @@ const productCards = [
   {
     title: "Live Video Generation",
     body: "Generate promotional clips, hooks, and in-stream creative variants while staying on-brand.",
+  },
+  {
+    title: "Agentic Live Commerce",
+    description: "Launch AI-powered live selling sessions with auto product highlights and script suggestions.",
+  },
+  {
+    title: "Real-time Stream Generation",
+    description: "Generate vertical or landscape live stream scenes in seconds with instant scene transitions.",
+  },
+  {
+    title: "Custom AI Studio",
+    description: "Compose cameras, overlays, and talking avatars from a single clean RunAsh control surface.",
+  },
+  {
+    title: "Shopping + Chat Automation",
+    description: "Convert comments into cart-ready offers with smart responses, pricing hooks, and follow-up prompts.",
   },
 ]
 
@@ -167,7 +189,7 @@ export default function RunAshChatLandingPage() {
               >
                 <Menu className="h-4 w-4" />
               </button>
-              <p className="text-sm font-semibold tracking-wide">RunAsh AI Live Commerce</p>
+              <p className="text-sm font-semibold tracking-wide">RunAsh AI </p>
             </div>
 
             <div className="flex items-center gap-2">
