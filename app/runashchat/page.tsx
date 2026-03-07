@@ -41,6 +41,10 @@ const quickActions = [
   { label: "Search", icon: Sparkles },
   { label: "Shopping", icon: ShoppingBag },
   { label: "Create Video", icon: Clapperboard },
+  { label: "Product Pinning", icon: ShoppingBag },
+  { label: "Real-time Avatar Talk", icon: Bot },
+  { label: "AI Commerce Editor", icon: Sparkles },
+  { label: "Upload Assets", icon: Upload },
 ]
 
 const previewPrompts = [
@@ -82,6 +86,12 @@ const productCards = [
     title: "Shopping + Chat Automation",
     body: "Convert comments into cart-ready offers with smart responses, pricing hooks, and follow-up prompts.",
   },
+]
+
+const categories = [
+  "RunAsh AI Launch Templates",
+  "RunAsh AI Product Stories",
+  "RunAsh AI Realtime Hosts",
 ]
 
 function Tag({ children, isDark }: { children: ReactNode; isDark: boolean }) {
@@ -299,7 +309,35 @@ export default function RunAshChatLandingPage() {
                 Open RunAshChat Studio <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
+            
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              <Link href="/stream" className="rounded-full bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2 text-sm font-medium text-white shadow-sm">
+                Launch RunAsh AI Studio
+              </Link>
+              <Link
+                href="/ecommerce/dashboard"
+                className={`rounded-full border px-4 py-2 text-sm font-medium ${isDark ? "border-white/15 text-white hover:bg-white/10" : "border-zinc-300 text-zinc-700 hover:bg-zinc-100"}`}
+              >
+                Setup Shopping Session
+              </Link>
+              <Link
+                href="/ai-editor"
+                className={`rounded-full border px-4 py-2 text-sm font-medium ${isDark ? "border-white/15 text-white hover:bg-white/10" : "border-zinc-300 text-zinc-700 hover:bg-zinc-100"}`}
+              >
+                Open RunAsh AI Editor
+              </Link>
+            </div>
+            
+            <p className="mt-8 text-sm font-medium">RunAsh AI categories</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {categories.map((category) => (
+                <Tag key={category} isDark={isDark}>
+                  {category}
+                </Tag>
+              ))}
+            </div>
           </section>
+        
           <div className="mt-8 rounded-2xl border border-zinc-200 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-400 p-1 shadow-md dark:border-orange-400/20">
                 <div className="rounded-xl bg-white/95 p-4 dark:bg-[#0a0c11]/85 sm:p-5">
                   <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
