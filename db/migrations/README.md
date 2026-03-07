@@ -18,6 +18,8 @@ Current status:
 - `0007_normalized_chat_tables.sql` provisions normalized `chat_sessions`, `chat_messages`, `chat_attachments`, and `chat_tool_events` tables with lifecycle/metadata fields plus query indexes.
 
 
+- `0009_community_event_registrations.sql` provisions `community_events` and `community_event_registrations` with duplicate-safe `(event_id, user_id)` registration constraints and lookup indexes.
+
 Operational guidance:
 1. Keep production-safe migration SQL reviewed and idempotent where practical.
 2. When enabling generated Drizzle migrations in CI, add the migration journal metadata in this directory and keep the baseline SQL immutable after release tags.
