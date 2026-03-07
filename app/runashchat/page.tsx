@@ -42,9 +42,8 @@ const quickActions = [
   { label: "Shopping", icon: ShoppingBag },
   { label: "Create Video", icon: Clapperboard },
   { label: "Product Pinning", icon: ShoppingBag },
-  { label: "Real-time Avatar Talk", icon: Bot },
-  { label: "AI Commerce Editor", icon: Sparkles },
-  { label: "Upload Assets", icon: Upload },
+  { label: "Live Talk", icon: Bot },
+  
 ]
 
 const previewPrompts = [
@@ -136,11 +135,11 @@ function SidebarContent({ collapsed, isDark }: { collapsed: boolean; isDark: boo
       
        <div className="mt-auto p-3">
         {!collapsed ? (
-          <div className="rounded-xl border border-zinc-200 bg-gradient-to-br from-white to-orange-50 p-3 dark:border-white/10 dark:from-white/5 dark:to-orange-500/10">
-            <p className="text-xs font-medium text-zinc-900 dark:text-white">Upgrade Studio</p>
-            <p className="mt-1 text-[11px] text-zinc-600 dark:text-zinc-300">
-              Unlock multi-stream control, AI hosts, and premium commerce automations.
-            </p>
+          <div className={`mt-auto rounded-2xl border p-4 ${isDark ? "border-white/10 bg-white/5" : "border-zinc-200 bg-white"}`}>
+          <p className={`text-sm font-medium ${isDark ? "text-white" : "text-zinc-900"}`}>Upgrade Studio</p>
+          <p className={`mt-1 text-xs ${isDark ? "text-white/70" : "text-zinc-600"}`}>
+            Unlock multi-stream control, AI hosts, and premium commerce automations.
+          </p>
           </div>
         ) : null}
       </div>
@@ -151,7 +150,7 @@ function SidebarContent({ collapsed, isDark }: { collapsed: boolean; isDark: boo
             Sign in to save studio presets, product bundles, and AI host voices.
           </p>
           <div className="mt-3 flex gap-2">
-            <Link href="/login" className={`rounded-md px-2 py-1 text-xs ${isDark ? "bg-white/10 text-white" : "bg-zinc-100 text-zinc-700"}`}>
+            <Link href="/login" className={`rounded-md pUnlock multi-stream control, AI hosts, and premium commerce automations.x-2 py-1 text-xs ${isDark ? "bg-white/10 text-white" : "bg-zinc-100 text-zinc-700"}`}>
               Log in
             </Link>
             <Link href="/signup" className="rounded-md bg-gradient-to-r from-orange-500 to-amber-500 px-2 py-1 text-xs text-white">
@@ -282,9 +281,8 @@ export default function RunAshChatLandingPage() {
                   </button>
                 </div>
               </div>
-            </div>
-
-            <div className="mt-8 grid gap-4 sm:grid-cols-2">
+              
+              <div className="mt-8 grid gap-4 sm:grid-cols-2">
               {productCards.map((item) => (
                 <article
                   key={item.title}
@@ -295,6 +293,10 @@ export default function RunAshChatLandingPage() {
                 </article>
               ))}
             </div>
+              
+            </div>
+
+            
 
             <div className={`mt-8 rounded-2xl border p-5 sm:p-6 ${isDark ? "border-white/10 bg-gradient-to-r from-orange-500/15 to-amber-400/10" : "border-orange-100 bg-gradient-to-r from-orange-100 to-amber-50"}`}>
               <p className="text-sm font-medium">Prompt previews</p>
@@ -338,7 +340,8 @@ export default function RunAshChatLandingPage() {
             </div>
           </section>
         
-          <div className="mt-8 rounded-2xl border border-zinc-200 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-400 p-1 shadow-md dark:border-orange-400/20">
+              
+            <div className={`mt-8 rounded-2xl border p-5 sm:p-6 ${isDark ? "border-white/10 bg-gradient-to-r from-orange-500/15 to-amber-400/10" : "border-orange-100 bg-gradient-to-r from-orange-100 to-amber-50"}`}>
                 <div className="rounded-xl bg-white/95 p-4 dark:bg-[#0a0c11]/85 sm:p-5">
                   <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
                     <div>
