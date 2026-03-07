@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { requireEditorOperation } from "@/app/api/editor/_lib"
+import { buildInvalidRequestError, editorAssetCreateRequestSchema } from "@/lib/api/contracts"
 import { createEditorAsset } from "@/lib/editor/assets"
 import { sql } from "@/lib/editor/repository"
 
@@ -16,18 +17,23 @@ export async function POST(request: Request, { params }: { params: { projectId: 
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params
-  const body = await request.json()
+  const body = await request.json().catch(() => ({}))
+
+  const parsedBody = editorAssetCreateRequestSchema.safeParse(body)
+  if (!parsedBody.success) {
+    return NextResponse.json(buildInvalidRequestError(parsedBody.error), { status: 400 })
+  }
 
   const asset = await createEditorAsset({
     projectId,
     ownerId: auth.userId,
-    source: body.source,
-    uploadFileId: body.uploadFileId ?? null,
-    storageKey: body.storageKey,
-    accessUrl: body.accessUrl ?? null,
-    mimeType: body.mimeType,
-    sizeBytes: body.sizeBytes,
-    metadata: body.metadata,
+    source: parsedBody.data.source,
+    uploadFileId: parsedBody.data.uploadFileId ?? null,
+    storageKey: parsedBody.data.storageKey,
+    accessUrl: parsedBody.data.accessUrl ?? null,
+    mimeType: parsedBody.data.mimeType,
+    sizeBytes: parsedBody.data.sizeBytes,
+    metadata: parsedBody.data.metadata,
   })
 
   return NextResponse.json({ asset }, { status: 201 })

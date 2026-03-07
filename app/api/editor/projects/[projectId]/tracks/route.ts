@@ -1,7 +1,18 @@
 import { NextResponse } from "next/server"
+import { z } from "zod"
 import { requireEditorOperation } from "@/app/api/editor/_lib"
+import { buildInvalidRequestError } from "@/lib/api/contracts"
 import { bumpTimelineVersion, claimProjectVersion, parseExpectedVersion } from "@/lib/editor/versioned-mutations"
 import { sql } from "@/lib/editor/repository"
+
+const createEditorTrackSchema = z.object({
+  timelineId: z.string().trim().min(1).max(120),
+  label: z.string().trim().min(1).max(120).optional(),
+  orderIndex: z.number().int().nonnegative().optional(),
+  trackType: z.string().trim().min(1).max(64).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  version: z.union([z.number().int().nonnegative(), z.string().trim().min(1)]).optional(),
+})
 
 export async function GET(request: Request, { params }: { params: { projectId: string } }) {
   const auth = await requireEditorOperation(request, "edit_timeline")
@@ -21,9 +32,14 @@ export async function POST(request: Request, { params }: { params: { projectId: 
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params
-  const body = await request.json()
+  const body = await request.json().catch(() => ({}))
 
-  const version = parseExpectedVersion(request, body)
+  const parsedBody = createEditorTrackSchema.safeParse(body)
+  if (!parsedBody.success) {
+    return NextResponse.json(buildInvalidRequestError(parsedBody.error), { status: 400 })
+  }
+
+  const version = parseExpectedVersion(request, parsedBody.data)
   if ("error" in version) return version.error
 
   const claim = await claimProjectVersion({
@@ -37,10 +53,18 @@ export async function POST(request: Request, { params }: { params: { projectId: 
 
   const [track] = await sql`
     INSERT INTO editor_tracks (timeline_id, project_id, owner_id, label, order_index, track_type, metadata)
-    VALUES (${body.timelineId}, ${projectId}, ${auth.userId}, ${body.label || "Track"}, ${body.orderIndex || 0}, ${body.trackType || "video"}, ${JSON.stringify(body.metadata || {})}::jsonb)
+    VALUES (
+      ${parsedBody.data.timelineId},
+      ${projectId},
+      ${auth.userId},
+      ${parsedBody.data.label || "Track"},
+      ${parsedBody.data.orderIndex || 0},
+      ${parsedBody.data.trackType || "video"},
+      ${JSON.stringify(parsedBody.data.metadata || {})}::jsonb
+    )
     RETURNING *
   `
 
-  await bumpTimelineVersion(body.timelineId, projectId, auth.userId)
+  await bumpTimelineVersion(parsedBody.data.timelineId, projectId, auth.userId)
   return NextResponse.json({ track, version: claim.projectVersion }, { status: 201 })
 }

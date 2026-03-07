@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server"
+import { z } from "zod"
 import { requireEditorOperation } from "@/app/api/editor/_lib"
+import { buildInvalidRequestError } from "@/lib/api/contracts"
 import { publishRenderJobEvent } from "@/lib/editor/render-job-events"
 import { sql } from "@/lib/editor/repository"
+
+const updateRenderJobSchema = z.object({
+  status: z.literal("canceled").optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+})
 
 function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {}
@@ -22,9 +29,15 @@ export async function PATCH(request: Request, { params }: { params: { jobId: str
   const auth = await requireEditorOperation(request, "run_generation")
   if ("error" in auth) return auth.error
   const { jobId } = params
-  const body = await request.json()
-  const metadata = asObject(body?.metadata)
-  const shouldCancel = body?.status === "canceled"
+  const body = await request.json().catch(() => ({}))
+
+  const parsedBody = updateRenderJobSchema.safeParse(body)
+  if (!parsedBody.success) {
+    return NextResponse.json(buildInvalidRequestError(parsedBody.error), { status: 400 })
+  }
+
+  const metadata = asObject(parsedBody.data.metadata)
+  const shouldCancel = parsedBody.data.status === "canceled"
 
   if (shouldCancel) {
     const [job] = await sql`

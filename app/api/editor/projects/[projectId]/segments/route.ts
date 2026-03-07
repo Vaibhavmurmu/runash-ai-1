@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { requireEditorOperation } from "@/app/api/editor/_lib"
+import { buildInvalidRequestError, editorSegmentCreateRequestSchema } from "@/lib/api/contracts"
 import { bumpTimelineVersion, claimProjectVersion, parseExpectedVersion } from "@/lib/editor/versioned-mutations"
 import { sql } from "@/lib/editor/repository"
 
@@ -21,9 +22,14 @@ export async function POST(request: Request, { params }: { params: { projectId: 
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params
-  const body = await request.json()
+  const body = await request.json().catch(() => ({}))
 
-  const version = parseExpectedVersion(request, body)
+  const parsedBody = editorSegmentCreateRequestSchema.safeParse(body)
+  if (!parsedBody.success) {
+    return NextResponse.json(buildInvalidRequestError(parsedBody.error), { status: 400 })
+  }
+
+  const version = parseExpectedVersion(request, parsedBody.data)
   if ("error" in version) return version.error
 
   const claim = await claimProjectVersion({
@@ -38,20 +44,20 @@ export async function POST(request: Request, { params }: { params: { projectId: 
   const [segment] = await sql`
     INSERT INTO editor_segments (timeline_id, project_id, owner_id, track_id, asset_id, label, segment_type, start_seconds, end_seconds, metadata)
     VALUES (
-      ${body.timelineId},
+      ${parsedBody.data.timelineId},
       ${projectId},
       ${auth.userId},
-      ${body.trackId},
-      ${body.assetId ?? null},
-      ${body.label || "Segment"},
-      ${body.segmentType || "clip"},
-      ${body.startSeconds || 0},
-      ${body.endSeconds || 1},
-      ${JSON.stringify(body.metadata || {})}::jsonb
+      ${parsedBody.data.trackId},
+      ${parsedBody.data.assetId ?? null},
+      ${parsedBody.data.label || "Segment"},
+      ${parsedBody.data.segmentType || "clip"},
+      ${parsedBody.data.startSeconds || 0},
+      ${parsedBody.data.endSeconds || 1},
+      ${JSON.stringify(parsedBody.data.metadata || {})}::jsonb
     )
     RETURNING *
   `
 
-  await bumpTimelineVersion(body.timelineId, projectId, auth.userId)
+  await bumpTimelineVersion(parsedBody.data.timelineId, projectId, auth.userId)
   return NextResponse.json({ segment, version: claim.projectVersion }, { status: 201 })
 }

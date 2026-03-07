@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
 import { requireEditorOperation } from "@/app/api/editor/_lib"
-import { editorRenderJobCreateRequestSchema, formatZodIssues } from "@/lib/api/contracts"
+import { buildInvalidRequestError, editorRenderJobCreateRequestSchema, formatZodIssues } from "@/lib/api/contracts"
 import { compileTimelineToVideoGenerationRequest, TimelineCompilationError } from "@/lib/editor/generation/compile-timeline"
 import { publishRenderJobEvent } from "@/lib/editor/render-job-events"
 import { getProjectById, sql } from "@/lib/editor/repository"
@@ -192,11 +192,11 @@ export async function POST(request: Request) {
   const auth = await requireEditorOperation(request, "run_generation")
   if ("error" in auth) return auth.error
 
-  const body = await request.json()
+  const body = await request.json().catch(() => ({}))
   const parsedBody = editorRenderJobCreateRequestSchema.safeParse(body)
   if (!parsedBody.success) {
     return NextResponse.json(
-      { error: "Invalid request body", code: "INVALID_REQUEST", details: { issues: formatZodIssues(parsedBody.error) } },
+      buildInvalidRequestError(parsedBody.error),
       { status: 400 },
     )
   }
