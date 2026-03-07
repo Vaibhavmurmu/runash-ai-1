@@ -68,6 +68,7 @@ const publicApiRouteMatchers = [
 
 const adminOnlyRoutePrefixes = ["/admin", "/ecommerce/admin", "/api/admin"] as const
 const sellerOnlyRoutePrefixes = ["/seller", "/seller-dashboard", "/api/seller", "/api/v1/seller"] as const
+const sellerOnlyRouteExactPaths = ["/dashboard/seller-studio"] as const
 const authenticatedRoutePrefixes = ["/dashboard", "/settings", "/api/settings", "/api/billing", "/api/upload"] as const
 
 function pathMatchesPrefixes(pathname: string, prefixes: readonly string[]): boolean {
@@ -79,7 +80,7 @@ export function resolveRouteAccessRequirement(pathname: string): AccessRequireme
     return { requiresSession: true, requiredRoles: ["admin", "super_admin"] }
   }
 
-  if (pathMatchesPrefixes(pathname, sellerOnlyRoutePrefixes)) {
+  if (pathMatchesPrefixes(pathname, sellerOnlyRoutePrefixes) || sellerOnlyRouteExactPaths.includes(pathname)) {
     return { requiresSession: true, requiredRoles: ["seller", "admin", "super_admin"] }
   }
 

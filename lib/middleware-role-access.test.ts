@@ -28,6 +28,16 @@ test("seller dashboard routes enforce seller-capable roles", () => {
   assert.equal(evaluateRoleAccess("/seller/dashboard", { isAuthenticated: true, role: "seller" }).status, "allowed")
 })
 
+test("seller studio dashboard route rejects non-seller roles", () => {
+  const requirement = resolveRouteAccessRequirement("/dashboard/seller-studio")
+
+  assert.equal(requirement.requiresSession, true)
+  assert.deepEqual(requirement.requiredRoles, ["seller", "admin", "super_admin"])
+
+  assert.equal(evaluateRoleAccess("/dashboard/seller-studio", { isAuthenticated: true, role: "user" }).status, "forbidden")
+  assert.equal(evaluateRoleAccess("/dashboard/seller-studio", { isAuthenticated: true, role: "seller" }).status, "allowed")
+})
+
 test("ecommerce admin routes enforce admin-capable roles", () => {
   const requirement = resolveRouteAccessRequirement("/ecommerce/admin")
 
