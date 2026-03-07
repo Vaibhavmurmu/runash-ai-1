@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Clock, Play, Search, Star, User } from "lucide-react"
@@ -18,6 +19,8 @@ const TutorialCard = ({
   thumbnail,
   category,
   featured = false,
+  href,
+  isExternal = false,
 }: {
   title: string
   description: string
@@ -27,6 +30,8 @@ const TutorialCard = ({
   thumbnail: string
   category: string
   featured?: boolean
+  href?: string
+  isExternal?: boolean
 }) => {
   return (
     <Card
@@ -78,10 +83,22 @@ const TutorialCard = ({
             <span>{author}</span>
           </div>
           <Button
+            asChild={Boolean(href)}
             size="sm"
+            disabled={!href}
             className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white"
           >
-            Watch Now
+            {href ? (
+              isExternal ? (
+                <a href={href} target="_blank" rel="noopener noreferrer">
+                  Watch Now
+                </a>
+              ) : (
+                <Link href={href}>Watch Now</Link>
+              )
+            ) : (
+              <span>Coming soon</span>
+            )}
           </Button>
         </div>
       </CardContent>
@@ -91,6 +108,10 @@ const TutorialCard = ({
 
 export default function TutorialsPage() {
   const [searchQuery, setSearchQuery] = useState("")
+  const featuredTutorialCta = {
+    href: "https://docs.runash.in/tutorials",
+    isExternal: true,
+  }
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-white">
@@ -190,8 +211,24 @@ export default function TutorialsPage() {
                         </div>
                         <Badge variant="default">Beginner</Badge>
                       </div>
-                      <Button className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white">
-                        Watch Tutorial <Play className="ml-2 h-4 w-4" />
+                      <Button
+                        asChild={Boolean(featuredTutorialCta.href)}
+                        disabled={!featuredTutorialCta.href}
+                        className="bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 dark:from-orange-500 dark:to-yellow-500 dark:hover:from-orange-600 dark:hover:to-yellow-600 text-white"
+                      >
+                        {featuredTutorialCta.href ? (
+                          featuredTutorialCta.isExternal ? (
+                            <a href={featuredTutorialCta.href} target="_blank" rel="noopener noreferrer">
+                              Watch Tutorial <Play className="ml-2 h-4 w-4" />
+                            </a>
+                          ) : (
+                            <Link href={featuredTutorialCta.href}>
+                              Watch Tutorial <Play className="ml-2 h-4 w-4" />
+                            </Link>
+                          )
+                        ) : (
+                          <span>Coming soon</span>
+                        )}
                       </Button>
                     </div>
                   </div>
@@ -209,6 +246,8 @@ export default function TutorialsPage() {
                       author="Alex Chen"
                       thumbnail="/placeholder.svg?height=300&width=400"
                       category="AI Features"
+                      href="https://docs.runash.in/tutorials"
+                      isExternal={true}
                     />
                     <TutorialCard
                       title="Multi-Platform Streaming Setup"
@@ -218,6 +257,8 @@ export default function TutorialsPage() {
                       author="Michael Rodriguez"
                       thumbnail="/placeholder.svg?height=300&width=400"
                       category="Streaming"
+                      href="https://docs.runash.in/tutorials"
+                      isExternal={true}
                     />
                     <TutorialCard
                       title="Custom Virtual Backgrounds"
@@ -227,6 +268,8 @@ export default function TutorialsPage() {
                       author="Emma Wilson"
                       thumbnail="/placeholder.svg?height=300&width=400"
                       category="AI Features"
+                      href="https://docs.runash.in/tutorials"
+                      isExternal={true}
                     />
                     <TutorialCard
                       title="Advanced Chat Moderation"
@@ -270,6 +313,8 @@ export default function TutorialsPage() {
                     thumbnail="/placeholder.svg?height=300&width=400"
                     category="Getting Started"
                     featured={true}
+                    href="https://docs.runash.in/tutorials"
+                    isExternal={true}
                   />
                   <TutorialCard
                     title="Your First AI-Enhanced Stream"
@@ -279,6 +324,8 @@ export default function TutorialsPage() {
                     author="Alex Chen"
                     thumbnail="/placeholder.svg?height=300&width=400"
                     category="Getting Started"
+                    href="https://docs.runash.in/tutorials"
+                    isExternal={true}
                   />
                 </div>
               </TabsContent>
@@ -293,6 +340,8 @@ export default function TutorialsPage() {
                     author="Alex Chen"
                     thumbnail="/placeholder.svg?height=300&width=400"
                     category="AI Features"
+                    href="https://docs.runash.in/tutorials"
+                    isExternal={true}
                   />
                   <TutorialCard
                     title="Custom Virtual Backgrounds"
@@ -302,6 +351,8 @@ export default function TutorialsPage() {
                     author="Emma Wilson"
                     thumbnail="/placeholder.svg?height=300&width=400"
                     category="AI Features"
+                    href="https://docs.runash.in/tutorials"
+                    isExternal={true}
                   />
                 </div>
               </TabsContent>
@@ -316,6 +367,8 @@ export default function TutorialsPage() {
                     author="Michael Rodriguez"
                     thumbnail="/placeholder.svg?height=300&width=400"
                     category="Streaming"
+                    href="https://docs.runash.in/tutorials"
+                    isExternal={true}
                   />
                 </div>
               </TabsContent>
