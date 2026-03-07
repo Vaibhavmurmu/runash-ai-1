@@ -109,11 +109,12 @@ const SLASH_COMMANDS: SlashCommand[] = [
 ]
 
 const COMPOSER_CONTROL_HEIGHT_RADIUS_CLASS = "h-9 rounded-xl"
-const COMPOSER_CONTROL_GROUP_GAP_CLASS = "gap-2"
+const COMPOSER_CONTROL_GROUP_GAP_CLASS = "gap-1.5 sm:gap-2"
+const COMPOSER_BUTTON_PADDING_CLASS = "px-3 sm:px-3.5"
 const SECONDARY_ACTION_BUTTON_CLASS =
-  `${COMPOSER_CONTROL_HEIGHT_RADIUS_CLASS} border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950`
+  `${COMPOSER_CONTROL_HEIGHT_RADIUS_CLASS} ${COMPOSER_BUTTON_PADDING_CLASS} whitespace-nowrap border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950`
 const ATTACHMENT_ACTION_BUTTON_CLASS =
-  `${COMPOSER_CONTROL_HEIGHT_RADIUS_CLASS} border-zinc-600 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950`
+  `${COMPOSER_CONTROL_HEIGHT_RADIUS_CLASS} ${COMPOSER_BUTTON_PADDING_CLASS} whitespace-nowrap border-zinc-600 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950`
 
 export function RunAshChatComposer({
   value,
@@ -538,7 +539,7 @@ export function RunAshChatComposer({
             <span className="px-1 text-[11px] font-medium uppercase tracking-wide text-zinc-400">Attachment actions:</span>
             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
               {attachmentPreviews.map((attachment) => (
-                <div key={attachment.id} className="flex min-w-0 items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/70 px-2 py-1.5 text-xs text-zinc-300">
+                <div key={attachment.id} className="flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/70 px-2 py-1.5 text-xs text-zinc-300 sm:flex-nowrap">
                   <img src={attachment.previewUrl} alt={attachment.metadata.name} className="h-9 w-9 rounded-lg object-cover" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium text-zinc-100">{attachment.metadata.name}</p>
@@ -547,19 +548,21 @@ export function RunAshChatComposer({
                       {attachment.error ? ` • ${attachment.error}` : ""}
                     </p>
                   </div>
-                  <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide ${attachment.uploadState === "failed" ? "border-red-500/70 text-red-300" : attachment.uploadState === "uploading" ? "border-amber-500/70 text-amber-300" : "border-emerald-500/70 text-emerald-300"}`}>
-                    {attachment.uploadState === "failed" ? "Failed" : attachment.uploadState === "uploading" ? "Uploading" : "Ready"}
-                  </span>
-                  {attachment.uploadState === "failed" && onRetryAttachment ? (
-                    <Button type="button" variant="outline" size="sm" className={ATTACHMENT_ACTION_BUTTON_CLASS} onClick={() => onRetryAttachment(attachment.id)}>
-                      <RefreshCcw className="mr-1 h-3.5 w-3.5" /> Retry
-                    </Button>
-                  ) : null}
-                  {onRemoveAttachment ? (
-                    <Button type="button" variant="outline" size="sm" className={ATTACHMENT_ACTION_BUTTON_CLASS} onClick={() => onRemoveAttachment(attachment.id)} disabled={disabled || isBusy}>
-                      <X className="mr-1 h-3.5 w-3.5" /> Remove
-                    </Button>
-                  ) : null}
+                  <div className={`ml-auto flex w-full flex-wrap items-center justify-end ${COMPOSER_CONTROL_GROUP_GAP_CLASS} sm:w-auto sm:flex-nowrap`}>
+                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide ${attachment.uploadState === "failed" ? "border-red-500/70 text-red-300" : attachment.uploadState === "uploading" ? "border-amber-500/70 text-amber-300" : "border-emerald-500/70 text-emerald-300"}`}>
+                      {attachment.uploadState === "failed" ? "Failed" : attachment.uploadState === "uploading" ? "Uploading" : "Ready"}
+                    </span>
+                    {attachment.uploadState === "failed" && onRetryAttachment ? (
+                      <Button type="button" variant="outline" size="sm" className={`${ATTACHMENT_ACTION_BUTTON_CLASS} shrink-0`} onClick={() => onRetryAttachment(attachment.id)}>
+                        <RefreshCcw className="mr-1 h-3.5 w-3.5" /> Retry
+                      </Button>
+                    ) : null}
+                    {onRemoveAttachment ? (
+                      <Button type="button" variant="outline" size="sm" className={`${ATTACHMENT_ACTION_BUTTON_CLASS} shrink-0`} onClick={() => onRemoveAttachment(attachment.id)} disabled={disabled || isBusy}>
+                        <X className="mr-1 h-3.5 w-3.5" /> Remove
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               ))}
             </div>
@@ -582,17 +585,17 @@ export function RunAshChatComposer({
 
       <div className={`flex flex-wrap items-center justify-between text-xs text-zinc-500 ${COMPOSER_CONTROL_GROUP_GAP_CLASS}`}>
         <span>Enter to send • Shift+Enter newline • Controls are keyboard accessible.</span>
-        <div className={`flex flex-wrap items-center ${COMPOSER_CONTROL_GROUP_GAP_CLASS}`}>
+        <div className={`flex w-full flex-wrap items-center justify-end sm:w-auto ${COMPOSER_CONTROL_GROUP_GAP_CLASS}`}>
           {isRetryableFailure && onRetry ? (
             <Button
               type="button"
               variant="outline"
               onClick={onRetry}
-              className={`${COMPOSER_CONTROL_HEIGHT_RADIUS_CLASS} border-amber-700 text-amber-200 hover:bg-amber-950`}
+              className={`${COMPOSER_CONTROL_HEIGHT_RADIUS_CLASS} ${COMPOSER_BUTTON_PADDING_CLASS} border-amber-700 text-amber-200 hover:bg-amber-950`}
               disabled={disabled || isBusy}
               aria-label="Retry previous request"
             >
-              <RotateCcw className="mr-1 h-4 w-4" /> Retry
+              <RotateCcw className="mr-1 h-3.5 w-3.5" /> Retry
             </Button>
           ) : null}
           {isStreaming && onStop ? (
@@ -600,19 +603,19 @@ export function RunAshChatComposer({
               type="button"
               variant="outline"
               onClick={onStop}
-              className={`${COMPOSER_CONTROL_HEIGHT_RADIUS_CLASS} border-red-700 text-red-200 hover:bg-red-950`}
+              className={`${COMPOSER_CONTROL_HEIGHT_RADIUS_CLASS} ${COMPOSER_BUTTON_PADDING_CLASS} border-red-700 text-red-200 hover:bg-red-950`}
               aria-label="Stop generating response"
             >
-              <OctagonX className="mr-1 h-4 w-4" /> Stop
+              <OctagonX className="mr-1 h-3.5 w-3.5" /> Stop
             </Button>
           ) : null}
           <Button
             onClick={() => handleSubmit()}
             disabled={!canSend}
-            className={`${COMPOSER_CONTROL_HEIGHT_RADIUS_CLASS} bg-orange-500 px-4 font-semibold text-zinc-950 hover:bg-orange-400`}
+            className={`${COMPOSER_CONTROL_HEIGHT_RADIUS_CLASS} ${COMPOSER_BUTTON_PADDING_CLASS} bg-orange-500 font-semibold text-zinc-950 hover:bg-orange-400`}
             aria-label="Send prompt"
           >
-            <Send className="mr-1 h-4 w-4" />
+            <Send className="mr-1 h-3.5 w-3.5" />
             {sendButtonLabel}
           </Button>
         </div>
@@ -756,4 +759,3 @@ export function RunAshChatComposer({
     </div>
   )
 }
-
