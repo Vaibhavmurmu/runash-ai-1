@@ -68,19 +68,19 @@ const productCards = [
   },
   {
     title: "Agentic Live Commerce",
-    description: "Launch AI-powered live selling sessions with auto product highlights and script suggestions.",
+    body: "Launch AI-powered live selling sessions with auto product highlights and script suggestions.",
   },
   {
     title: "Real-time Stream Generation",
-    description: "Generate vertical or landscape live stream scenes in seconds with instant scene transitions.",
+    body: "Generate vertical or landscape live stream scenes in seconds with instant scene transitions.",
   },
   {
     title: "Custom AI Studio",
-    description: "Compose cameras, overlays, and talking avatars from a single clean RunAsh control surface.",
+    body: "Compose cameras, overlays, and talking avatars from a single clean RunAsh control surface.",
   },
   {
     title: "Shopping + Chat Automation",
-    description: "Convert comments into cart-ready offers with smart responses, pricing hooks, and follow-up prompts.",
+    body: "Convert comments into cart-ready offers with smart responses, pricing hooks, and follow-up prompts.",
   },
 ]
 
@@ -123,6 +123,17 @@ function SidebarContent({ collapsed, isDark }: { collapsed: boolean; isDark: boo
         ))}
       </nav>
 
+      
+       <div className="mt-auto p-3">
+        {!collapsed ? (
+          <div className="rounded-xl border border-zinc-200 bg-gradient-to-br from-white to-orange-50 p-3 dark:border-white/10 dark:from-white/5 dark:to-orange-500/10">
+            <p className="text-xs font-medium text-zinc-900 dark:text-white">Upgrade Studio</p>
+            <p className="mt-1 text-[11px] text-zinc-600 dark:text-zinc-300">
+              Unlock multi-stream control, AI hosts, and premium commerce automations.
+            </p>
+          </div>
+        ) : null}
+      </div>
       {!collapsed ? (
         <div className={`mt-auto rounded-2xl border p-4 ${isDark ? "border-white/10 bg-white/5" : "border-zinc-200 bg-white"}`}>
           <p className={`text-sm font-medium ${isDark ? "text-white" : "text-zinc-900"}`}>Go live faster</p>
