@@ -71,7 +71,7 @@ export default function PayBillPage({ params }: { params: { id: string } }) {
       try {
         const { error } = await BillClient.payBill({
           userId: user?.id || 'anonymous',
-          userBillId: params.id,
+          userBillId: bill?.id,
           billAmount: Number.parseFloat(amount),
           convenienceFee: 2.5,
           paymentMethod: "UPI",

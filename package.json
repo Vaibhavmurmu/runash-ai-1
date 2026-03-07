@@ -5,7 +5,9 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev",
-    "lint": "next lint",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix",
+    "type-check": "tsc --noEmit",
     "setup:skills": "node scripts/setup-skills.mjs",
     "start": "next start",
     "lint:security-logs": "node scripts/check-sensitive-logging.mjs",
@@ -13,7 +15,8 @@
     "openapi:auth:check": "npm run openapi:auth:generate && git diff --exit-code docs/openapi/auth.openapi.json",
     "lint:payment-getways-imports": "node scripts/check-payment-getways-imports.mjs",
     "test": "node --loader ./scripts/node-ts-loader.mjs --test $(find app lib -name '*.test.ts' -print)",
-    "test:auth": "node --loader ./scripts/node-ts-loader.mjs --test lib/auth-helpers.get-session-check.test.ts"
+    "test:auth": "node --loader ./scripts/node-ts-loader.mjs --test lib/auth-helpers.get-session-check.test.ts",
+    "test:watch": "node --loader ./scripts/node-ts-loader.mjs --test --watch $(find app lib -name '*.test.ts' -print)"
   },
   "dependencies": {
     "@ai-sdk/openai": "3.0.28",
