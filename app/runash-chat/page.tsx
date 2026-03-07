@@ -1,5 +1,7 @@
-import { permanentRedirect } from "next/navigation"
+import { createChatPageMetadata, SharedChatPageShell } from "../dashboard/chat/_shared-chat-page"
+
+export const metadata = createChatPageMetadata("/dashboard/chat")
 
 export default function RunAshChatLegacyPage() {
-  permanentRedirect("/dashboard/chat")
+  return <SharedChatPageShell />
 }
