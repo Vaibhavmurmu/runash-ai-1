@@ -26,13 +26,15 @@
 
 ### 4) PR Testing
 
-> Use only exact commands defined in `package.json` for outcomes (`npm run lint`, `npm run build`, `npm test` when applicable). Do not report `yarn`/`pnpm` command results in place of these rows.
+> Report only exact `package.json` commands: `npm run lint`, `npm run build`, and `npm test` (when applicable).
+> Replace all placeholders with factual outcomes only: **Pass**, **Fail**, or **Blocked**.
+> If a command is blocked by environment/dependency issues, include the exact blocker and a concrete follow-up action.
 
 | Gate | Command | Outcome | Notes |
 | --- | --- | --- | --- |
-| Lint | `npm run lint` | ✅/⚠️/❌ | |
-| Build | `npm run build` | ✅/⚠️/❌ | |
-| Tests (if used) | `npm test` | ✅/⚠️/❌ | |
+| Lint | `npm run lint` | Pass / Fail / Blocked | |
+| Build | `npm run build` | Pass / Fail / Blocked | |
+| Tests (if used) | `npm test` | Pass / Fail / Blocked / N/A | |
 
 ### 5) API contract verification
 
@@ -54,13 +56,19 @@
 
 ## Validation Commands (Executed)
 
-<!-- Copy exact output summaries from executed package.json commands only (`npm run lint`, `npm run build`, `npm test` when applicable). If a command fails or is blocked, document the concrete reason and add a follow-up action instead of marking success. -->
+<!-- Copy exact output summaries from executed package.json commands only (`npm run lint`, `npm run build`, `npm test` when applicable). Remove unverified claims. If a command fails/blocks, include the concrete reason and follow-up action. -->
 
 | Command | Outcome | Output summary |
 | --- | --- | --- |
-| `npm run lint` | ✅/⚠️/❌ | |
-| `npm run build` | ✅/⚠️/❌ | |
-| `npm test` | ✅/⚠️/❌ | |
+| `npm run lint` | Pass / Fail / Blocked | |
+| `npm run build` | Pass / Fail / Blocked | |
+| `npm test` | Pass / Fail / Blocked / N/A | |
+
+**Follow-up actions for blocked checks (required when any check is Blocked)**
+
+- [ ] Lint blocker documented with owner + target date.
+- [ ] Build blocker documented with owner + target date.
+- [ ] Test blocker documented with owner + target date (if applicable).
 
 ## Checklist
 
