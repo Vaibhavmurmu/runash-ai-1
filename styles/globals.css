@@ -159,6 +159,20 @@ body {
     --brand-border: 30 90% 84%;
     --brand-ring: 24.6 95% 53.1%;
 
+    --runash-primary: 24.6 95% 53.1%;
+    --runash-primary-strong: 23 90% 46%;
+    --runash-primary-soft: 28 100% 94%;
+    --runash-gradient-start: 24.6 95% 53.1%;
+    --runash-gradient-mid: 36 96% 56%;
+    --runash-gradient-end: 45 100% 64%;
+    --runash-text-strong: 24 10% 11%;
+    --runash-text-muted: 24 6% 40%;
+    --runash-surface-1: 0 0% 100%;
+    --runash-surface-2: 32 100% 97%;
+    --runash-surface-3: 30 35% 94%;
+    --runash-border: 28 43% 86%;
+    --runash-ring: 24.6 95% 53.1%;
+
     --success: 145 63% 42%;
     --success-foreground: 0 0% 100%;
     --success-surface: 142 76% 95%;
@@ -216,6 +230,20 @@ body {
     --brand-border: 23 46% 30%;
     --brand-ring: 42 95% 61%;
 
+    --runash-primary: 25 95% 61%;
+    --runash-primary-strong: 22 100% 66%;
+    --runash-primary-soft: 20 32% 20%;
+    --runash-gradient-start: 24 95% 59%;
+    --runash-gradient-mid: 34 98% 62%;
+    --runash-gradient-end: 46 100% 67%;
+    --runash-text-strong: 38 25% 96%;
+    --runash-text-muted: 34 18% 74%;
+    --runash-surface-1: 18 18% 8%;
+    --runash-surface-2: 22 20% 12%;
+    --runash-surface-3: 25 19% 16%;
+    --runash-border: 22 20% 24%;
+    --runash-ring: 36 98% 62%;
+
     --success: 145 65% 58%;
     --success-foreground: 145 80% 10%;
     --success-surface: 145 35% 18%;
@@ -257,6 +285,19 @@ body {
     --color-chart-3: var(--chart-3);
     --color-chart-4: var(--chart-4);
     --color-chart-5: var(--chart-5);
+    --color-runash-primary: var(--runash-primary);
+    --color-runash-primary-strong: var(--runash-primary-strong);
+    --color-runash-primary-soft: var(--runash-primary-soft);
+    --color-runash-gradient-start: var(--runash-gradient-start);
+    --color-runash-gradient-mid: var(--runash-gradient-mid);
+    --color-runash-gradient-end: var(--runash-gradient-end);
+    --color-runash-text-strong: var(--runash-text-strong);
+    --color-runash-text-muted: var(--runash-text-muted);
+    --color-runash-surface-1: var(--runash-surface-1);
+    --color-runash-surface-2: var(--runash-surface-2);
+    --color-runash-surface-3: var(--runash-surface-3);
+    --color-runash-border: var(--runash-border);
+    --color-runash-ring: var(--runash-ring);
     --radius-sm: calc(var(--radius) - 4px);
     --radius-md: calc(var(--radius) - 2px);
     --radius-lg: var(--radius);

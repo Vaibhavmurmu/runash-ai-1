@@ -71,6 +71,21 @@ const config: Config = {
           ring: "hsl(var(--brand-ring))",
           foreground: "hsl(var(--brand-foreground))",
         },
+        runash: {
+          primary: "hsl(var(--runash-primary))",
+          "primary-strong": "hsl(var(--runash-primary-strong))",
+          "primary-soft": "hsl(var(--runash-primary-soft))",
+          "gradient-start": "hsl(var(--runash-gradient-start))",
+          "gradient-mid": "hsl(var(--runash-gradient-mid))",
+          "gradient-end": "hsl(var(--runash-gradient-end))",
+          "text-strong": "hsl(var(--runash-text-strong))",
+          "text-muted": "hsl(var(--runash-text-muted))",
+          "surface-1": "hsl(var(--runash-surface-1))",
+          "surface-2": "hsl(var(--runash-surface-2))",
+          "surface-3": "hsl(var(--runash-surface-3))",
+          border: "hsl(var(--runash-border))",
+          ring: "hsl(var(--runash-ring))",
+        },
         success: {
           DEFAULT: "hsl(var(--success))",
           foreground: "hsl(var(--success-foreground))",
@@ -97,6 +112,10 @@ const config: Config = {
           "linear-gradient(120deg, hsl(var(--brand-start)), hsl(var(--brand-middle)), hsl(var(--brand-end)))",
         "brand-gradient-soft":
           "linear-gradient(135deg, hsl(var(--brand-start) / 0.22), hsl(var(--brand-middle) / 0.16), hsl(var(--brand-end) / 0.1))",
+        "runash-orange-gradient":
+          "linear-gradient(120deg, hsl(var(--runash-gradient-start)), hsl(var(--runash-gradient-mid)), hsl(var(--runash-gradient-end)))",
+        "runash-orange-gradient-soft":
+          "linear-gradient(135deg, hsl(var(--runash-gradient-start) / 0.2), hsl(var(--runash-gradient-mid) / 0.14), hsl(var(--runash-gradient-end) / 0.08))",
       },
       borderRadius: {
         lg: "var(--radius)",
