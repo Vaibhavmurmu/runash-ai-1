@@ -986,6 +986,7 @@ export function EditorWorkspace() {
             activeTab={activeTab}
             project={project}
             activeTimeline={activeTimeline}
+            onTimelineChange={handleTimelineChange}
             selectedSegment={selectedSegment}
             playheadSeconds={playbackTime}
           />

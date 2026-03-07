@@ -6,6 +6,7 @@ import type { EditorProject, EditorSegment, EditorTimeline } from "@/lib/editor/
 export interface EditorPanelContextValue {
   project?: EditorProject | null
   activeTimeline?: EditorTimeline
+  onTimelineChange: (timeline: EditorTimeline) => void
   selectedSegment?: EditorSegment
   playheadSeconds: number
 }
