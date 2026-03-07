@@ -354,11 +354,19 @@ export function RunAshChatComposer({
   const shouldShowUpgradePrompt = showUpgradePrompt && !upgradePromptDismissed
   const isStreaming = streamState === "sending" || streamState === "streaming"
   const isRetryableFailure = streamState === "failed" || composerHealth === "provider-error" || composerHealth === "network-timeout"
-  const hasStatusOrError = composerHealth !== "ready" || Boolean(composerError) || Boolean(attachmentError)
+  const hasPrimaryError = Boolean(composerError) || Boolean(attachmentError) || Boolean(attachmentValidationError)
   const hasFailedAttachment = attachmentPreviews.some((item) => item.uploadState === "failed")
   const hasUploadingAttachment = attachmentPreviews.some((item) => item.uploadState === "uploading")
   const isBusy = isStreaming || streamState === "stopping" || isEnhancing || hasUploadingAttachment
   const canSend = !disabled && !isBusy && !isHardLimitExceeded && !hasFailedAttachment && Boolean(value.trim())
+  const showInlineUpgradePrompt = shouldShowUpgradePrompt && composerHealth === "ready" && !hasPrimaryError && !isRetryableFailure
+  const footerHelperCopy = isRetryableFailure
+    ? "Request interrupted. Use Retry to continue from where it stopped."
+    : onAttachFiles
+      ? isTouchDevice
+        ? `Attach up to ${ATTACHMENT_MAX_COUNT} images (PNG/JPG/WEBP/GIF, 8 MB each). Tap Attach to upload.`
+        : `Attach up to ${ATTACHMENT_MAX_COUNT} images (PNG/JPG/WEBP/GIF, 8 MB each). Drag/drop, paste, or use Attach.`
+      : "Use templates or Advanced options to refine your prompt."
   const sendButtonLabel =
     streamState === "stopping"
       ? "Stopping..."
@@ -564,10 +572,6 @@ export function RunAshChatComposer({
           </div>
         ) : null}
 
-        <div className="mt-2 rounded-md border border-zinc-700/70 bg-zinc-950/50 px-2 py-1.5 text-[11px] text-zinc-400">
-          Attach up to {ATTACHMENT_MAX_COUNT} images (PNG/JPG/WEBP/GIF, 8 MB each). Paste screenshots or drag and drop on desktop.
-        </div>
-
         {attachmentValidationError ? (
           <div className="mt-2 rounded-md border border-amber-700/60 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
             {attachmentValidationError} <span className="text-amber-100">Recovery: remove files that exceed limits and retry attach, paste, or drop.</span>
@@ -715,7 +719,7 @@ export function RunAshChatComposer({
       ) : null}
 
       <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/60 px-3 py-2 text-[11px] text-zinc-400">
-        {shouldShowUpgradePrompt ? (
+        {showInlineUpgradePrompt ? (
           <div className="flex items-center justify-between gap-2 text-zinc-300">
             <span>
               Need higher usage limits?{" "}
@@ -739,16 +743,17 @@ export function RunAshChatComposer({
               Dismiss
             </Button>
           </div>
-        ) : onAttachFiles && !hasStatusOrError ? (
+        ) : onAttachFiles ? (
           <span className="inline-flex items-center gap-1">
             <span className="rounded-full border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-300">Attachment hint</span>
             <ImageIcon className="h-3 w-3" />
-            {isTouchDevice ? "Tap Attach to add an image." : "Drag and drop an image, or use Attach."}
+            {footerHelperCopy}
           </span>
         ) : (
-          <span>Use templates or Advanced options to refine your prompt.</span>
+          <span>{footerHelperCopy}</span>
         )}
       </div>
     </div>
   )
 }
+
