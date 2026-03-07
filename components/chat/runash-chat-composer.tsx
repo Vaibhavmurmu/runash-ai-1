@@ -728,7 +728,7 @@ export function RunAshChatComposer({
             <span>
               Need higher usage limits?{" "}
               <a
-                href="/upgrade"
+                href="/dashboard/upgrade"
                 className="text-amber-300 underline underline-offset-2"
                 onClick={() => onUpgradeClick?.("composer_inline")}
               >

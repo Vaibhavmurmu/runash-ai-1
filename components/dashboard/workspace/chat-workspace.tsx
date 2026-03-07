@@ -2024,7 +2024,7 @@ export function ChatWorkspace() {
   const showComposerEmptyState = !hasUserMessage && streamControllerState === "idle"
 
 
-  const trackUpgradeMetric = (eventName: "upgrade_click" | "first_message_completed", location: string) => {
+  const trackUpgradeMetric = (eventName: "upgrade_click" | "first_message_completed" | "utility_click", location: string) => {
     if (typeof window === "undefined") return
     try {
       const raw = window.localStorage.getItem(UPGRADE_METRICS_KEY)
@@ -2039,6 +2039,13 @@ export function ChatWorkspace() {
 
   const handleUpgradeClick = (location: "composer_inline" | "header_account") => {
     trackUpgradeMetric("upgrade_click", location)
+  }
+
+  const handleUtilityClick = (
+    location: "header_mobile" | "header_desktop",
+    destination: "feedback" | "refer" | "credits" | "onboarding",
+  ) => {
+    trackUpgradeMetric("utility_click", `${location}:${destination}`)
   }
 
   const retrySessionOpen = () => {
@@ -2252,9 +2259,33 @@ export function ChatWorkspace() {
                               Preferences
                             </ActionPill>
                             <ActionPill asChild className="h-8 gap-1.5 px-3">
-                              <a href="/upgrade" onClick={() => handleUpgradeClick("header_account")}>
+                              <a href="/dashboard/upgrade" onClick={() => handleUpgradeClick("header_account")}>
                                 <CreditCard className="h-3.5 w-3.5" />
                                 Upgrade
+                              </a>
+                            </ActionPill>
+                            <ActionPill asChild className="h-8 gap-1.5 px-3">
+                              <a href="/dashboard/feedback" onClick={() => handleUtilityClick("header_mobile", "feedback")}>
+                                <FileText className="h-3.5 w-3.5" />
+                                Feedback
+                              </a>
+                            </ActionPill>
+                            <ActionPill asChild className="h-8 gap-1.5 px-3">
+                              <a href="/dashboard/refer" onClick={() => handleUtilityClick("header_mobile", "refer")}>
+                                <Megaphone className="h-3.5 w-3.5" />
+                                Refer
+                              </a>
+                            </ActionPill>
+                            <ActionPill asChild className="h-8 gap-1.5 px-3">
+                              <a href="/settings/credits" onClick={() => handleUtilityClick("header_mobile", "credits")}>
+                                <CreditCard className="h-3.5 w-3.5" />
+                                Credits
+                              </a>
+                            </ActionPill>
+                            <ActionPill asChild className="h-8 gap-1.5 px-3">
+                              <a href="/dashboard/onboarding" onClick={() => handleUtilityClick("header_mobile", "onboarding")}>
+                                <ListChecks className="h-3.5 w-3.5" />
+                                Onboarding
                               </a>
                             </ActionPill>
                             <ActionPill
@@ -2302,9 +2333,33 @@ export function ChatWorkspace() {
                     Preferences
                   </ActionPill>
                   <ActionPill asChild>
-                    <a href="/upgrade" onClick={() => handleUpgradeClick("header_account")}>
+                    <a href="/dashboard/upgrade" onClick={() => handleUpgradeClick("header_account")}>
                       <CreditCard className="mr-1.5 h-3.5 w-3.5" />
                       Upgrade
+                    </a>
+                  </ActionPill>
+                  <ActionPill asChild>
+                    <a href="/dashboard/feedback" onClick={() => handleUtilityClick("header_desktop", "feedback")}>
+                      <FileText className="mr-1.5 h-3.5 w-3.5" />
+                      Feedback
+                    </a>
+                  </ActionPill>
+                  <ActionPill asChild>
+                    <a href="/dashboard/refer" onClick={() => handleUtilityClick("header_desktop", "refer")}>
+                      <Megaphone className="mr-1.5 h-3.5 w-3.5" />
+                      Refer
+                    </a>
+                  </ActionPill>
+                  <ActionPill asChild>
+                    <a href="/settings/credits" onClick={() => handleUtilityClick("header_desktop", "credits")}>
+                      <CreditCard className="mr-1.5 h-3.5 w-3.5" />
+                      Credits
+                    </a>
+                  </ActionPill>
+                  <ActionPill asChild>
+                    <a href="/dashboard/onboarding" onClick={() => handleUtilityClick("header_desktop", "onboarding")}>
+                      <ListChecks className="mr-1.5 h-3.5 w-3.5" />
+                      Onboarding
                     </a>
                   </ActionPill>
                   <ActionPill onClick={toggleLeftDrawer} aria-pressed={leftDrawerOpen}>
