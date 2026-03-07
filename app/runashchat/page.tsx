@@ -214,7 +214,7 @@ export default function RunAshChatLandingPage() {
               </button>
               <button
                 type="button"
-                className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100"
+                className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white px-3 py-1.5 text-xs text-zinc-700 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100"
                 >
                 RunAsh Pro <ChevronDown className="h-3 w-3" />
                </button>
@@ -300,6 +300,19 @@ export default function RunAshChatLandingPage() {
               </Link>
             </div>
           </section>
+          <div className="mt-8 rounded-2xl border border-zinc-200 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-400 p-1 shadow-md dark:border-orange-400/20">
+                <div className="rounded-xl bg-white/95 p-4 dark:bg-[#0a0c11]/85 sm:p-5">
+                  <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+                    <div>
+                      <p className="text-lg font-semibold">RunAsh AI Live Studio</p>
+                      <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                        One place for live video generation, studio automation, agentic selling, and custom editor workflows.
+                      </p>
+                    </div>
+                    <Image src="/RunAshChat.png" alt="RunAsh AI preview" width={120} height={40} className="h-10 w-auto rounded-md" />
+                  </div>
+                </div>
+              </div>
         </div>
       </div>
 
