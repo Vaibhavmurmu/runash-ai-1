@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server"
+import { z } from "zod"
 import { requireEditorOperation } from "@/app/api/editor/_lib"
+import { buildInvalidRequestError } from "@/lib/api/contracts"
 import { sql, touchProject } from "@/lib/editor/repository"
+
+const updateEditorAssetSchema = z.object({
+  accessUrl: z.string().trim().url().max(2048).nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+})
 
 export async function GET(request: Request, { params }: { params: { projectId: string; assetId: string } }) {
   const auth = await requireEditorOperation(request, "edit_timeline")
@@ -17,13 +24,18 @@ export async function PATCH(request: Request, { params }: { params: { projectId:
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId, assetId } = params
-  const body = await request.json()
+  const body = await request.json().catch(() => ({}))
+
+  const parsedBody = updateEditorAssetSchema.safeParse(body)
+  if (!parsedBody.success) {
+    return NextResponse.json(buildInvalidRequestError(parsedBody.error), { status: 400 })
+  }
 
   const [asset] = await sql`
     UPDATE editor_assets
     SET
-      access_url=COALESCE(${body.accessUrl ?? null}, access_url),
-      metadata=COALESCE(${body.metadata ? JSON.stringify(body.metadata) : null}::jsonb, metadata),
+      access_url=COALESCE(${parsedBody.data.accessUrl ?? null}, access_url),
+      metadata=COALESCE(${parsedBody.data.metadata ? JSON.stringify(parsedBody.data.metadata) : null}::jsonb, metadata),
       updated_at=now()
     WHERE id=${assetId} AND project_id=${projectId} AND owner_id=${auth.userId}
     RETURNING *

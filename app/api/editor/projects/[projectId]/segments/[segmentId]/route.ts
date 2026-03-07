@@ -1,7 +1,20 @@
 import { NextResponse } from "next/server"
+import { z } from "zod"
 import { requireEditorOperation } from "@/app/api/editor/_lib"
+import { buildInvalidRequestError } from "@/lib/api/contracts"
 import { bumpTimelineVersion, claimProjectVersion, parseExpectedVersion } from "@/lib/editor/versioned-mutations"
 import { sql } from "@/lib/editor/repository"
+
+const updateEditorSegmentSchema = z.object({
+  trackId: z.string().trim().min(1).max(120).optional(),
+  assetId: z.string().trim().min(1).max(120).nullable().optional(),
+  label: z.string().trim().min(1).max(120).optional(),
+  segmentType: z.string().trim().min(1).max(64).optional(),
+  startSeconds: z.number().nonnegative().optional(),
+  endSeconds: z.number().nonnegative().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  version: z.union([z.number().int().nonnegative(), z.string().trim().min(1)]).optional(),
+})
 
 export async function GET(request: Request, { params }: { params: { projectId: string; segmentId: string } }) {
   const auth = await requireEditorOperation(request, "edit_timeline")
@@ -18,9 +31,14 @@ export async function PATCH(request: Request, { params }: { params: { projectId:
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId, segmentId } = params
-  const body = await request.json()
+  const body = await request.json().catch(() => ({}))
 
-  const version = parseExpectedVersion(request, body)
+  const parsedBody = updateEditorSegmentSchema.safeParse(body)
+  if (!parsedBody.success) {
+    return NextResponse.json(buildInvalidRequestError(parsedBody.error), { status: 400 })
+  }
+
+  const version = parseExpectedVersion(request, parsedBody.data)
   if ("error" in version) return version.error
 
   const claim = await claimProjectVersion({
@@ -36,13 +54,13 @@ export async function PATCH(request: Request, { params }: { params: { projectId:
   const [segment] = await sql`
     UPDATE editor_segments
     SET
-      track_id=COALESCE(${body.trackId ?? null}, track_id),
-      asset_id=COALESCE(${body.assetId ?? null}, asset_id),
-      label=COALESCE(${body.label ?? null}, label),
-      segment_type=COALESCE(${body.segmentType ?? null}, segment_type),
-      start_seconds=COALESCE(${body.startSeconds ?? null}, start_seconds),
-      end_seconds=COALESCE(${body.endSeconds ?? null}, end_seconds),
-      metadata=COALESCE(${body.metadata ? JSON.stringify(body.metadata) : null}::jsonb, metadata),
+      track_id=COALESCE(${parsedBody.data.trackId ?? null}, track_id),
+      asset_id=COALESCE(${parsedBody.data.assetId ?? null}, asset_id),
+      label=COALESCE(${parsedBody.data.label ?? null}, label),
+      segment_type=COALESCE(${parsedBody.data.segmentType ?? null}, segment_type),
+      start_seconds=COALESCE(${parsedBody.data.startSeconds ?? null}, start_seconds),
+      end_seconds=COALESCE(${parsedBody.data.endSeconds ?? null}, end_seconds),
+      metadata=COALESCE(${parsedBody.data.metadata ? JSON.stringify(parsedBody.data.metadata) : null}::jsonb, metadata),
       updated_at=now()
     WHERE id=${segmentId} AND project_id=${projectId} AND owner_id=${auth.userId}
     RETURNING *
