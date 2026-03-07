@@ -2,9 +2,9 @@
 
 import type React from "react"
 
-import { useState, useEffect, useMemo, useRef, useCallback } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback, useContext } from "react"
 import { useSearchParams } from "next/navigation"
-import { useSession } from "next-auth/react"
+import { SessionContext } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
@@ -64,8 +64,8 @@ export function ChatWorkspace() {
   type ChatRunDiagnostics = { requestId: string | null; provider: string | null; model: string | null; lastErrorCode: string | null; toolCalls: ChatRunToolDiagnostic[] }
   type ModelCatalogEntry = { id: string; provider: string; label: string }
 
-  const sessionState = useSession()
-  const authSession = sessionState?.data
+  const sessionContext = useContext(SessionContext)
+  const authSession = sessionContext?.data
   const userScopedStorageKey = useMemo(() => String(authSession?.user?.id ?? "anonymous"), [authSession?.user?.id])
 
   const { openFromTrigger } = useDashboardModelDialog()
