@@ -45,7 +45,6 @@ const publicRoutes = [
   "/models",
   "/company",
   "/waitlist",
-  "/runashchat",
 ] as const
 
 const publicApiRouteMatchers = [
