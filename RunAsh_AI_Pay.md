@@ -339,6 +339,21 @@ Risks + rollback:
 
 ## Link Checkout Reliability + Audit Controls
 
+## 2026-03 QR service encoding/decoding hardening (Scan & Pay)
+
+- `lib/services/qr-service.tsx` now uses the production QR encoder (`qrcode`) for `generateQR`, replacing the placeholder SVG mock output with real scannable QR payload images.
+- `scanQR` now uses `BarcodeDetector`-based decoding from camera/image compatible sources and enforces deterministic error codes:
+  - `UNREADABLE_QR_INPUT`
+  - `QR_CODE_NOT_FOUND`
+  - `QR_SCANNER_NOT_SUPPORTED`
+  - `INVALID_QR_PAYLOAD`
+- Existing UPI parser helpers remain backward compatible; decoded UPI payloads are now validated to require a payee address before returning scan success.
+
+Risks + rollback:
+1. **Risk:** browsers/environments without `BarcodeDetector` support will return `QR_SCANNER_NOT_SUPPORTED`. **Mitigation:** surface deterministic UX fallback and keep manual UPI entry available.
+2. **Risk:** malformed UPI payloads that previously passed as opaque text now fail with `INVALID_QR_PAYLOAD`. **Mitigation:** validation is limited to mandatory UPI payee address only to avoid over-rejection.
+3. **Rollback:** revert `lib/services/qr-service.tsx` to prior mock scan/generate implementation if runtime compatibility issues arise; API signatures remain unchanged.
+
 - Link checkout now enforces validator threshold controls for HITL and MFA before provider session creation.
 - Wallet default payment method updates and subscription lifecycle transitions are treated as high-risk payment actions and require HITL + MFA.
 - Risk engine decisioning includes geo mismatch review, risk-score review/block thresholds, and block-signal deny rules with explicit reason codes.
