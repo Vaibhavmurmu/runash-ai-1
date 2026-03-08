@@ -42,6 +42,18 @@ function toActivityPayload(record: Awaited<ReturnType<typeof listProjectActivity
   }
 }
 
+function toInvitePayload(record: Awaited<ReturnType<typeof listProjectInvites>>[number]) {
+  return {
+    id: record.id,
+    email: record.email,
+    role: record.role,
+    status: record.status,
+    expiresAt: record.expires_at,
+    createdAt: record.created_at,
+    inviteLink: `/editor/invite/${record.token}`,
+  }
+}
+
 export async function GET(request: Request, { params }: { params: { projectId: string } }) {
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
