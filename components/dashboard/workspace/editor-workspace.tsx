@@ -149,6 +149,20 @@ export function EditorWorkspace() {
     return activeTimeline.segments.find((segment) => playbackTime >= segment.startSeconds && playbackTime <= segment.endSeconds)
   }, [activeTimeline, playbackTime])
 
+  const activeSegmentLock = useMemo(() => {
+    if (!selectedSegment?.lockOwnerUserId) return null
+    const expiresAt = selectedSegment.lockExpiresAt ? new Date(selectedSegment.lockExpiresAt).getTime() : null
+    if (expiresAt !== null && expiresAt <= Date.now()) return null
+    const lockedByOther = selectedSegment.lockOwnerUserId !== project?.ownerId
+    return {
+      lockedByOther,
+      ownerUserId: selectedSegment.lockOwnerUserId,
+      expiresAt: selectedSegment.lockExpiresAt ?? null,
+    }
+  }, [selectedSegment, project?.ownerId])
+
+  const isEditingLockedByCollaborator = Boolean(activeSegmentLock?.lockedByOther)
+
   const persistOnboardingState = async (next: OnboardingState) => {
     setIsUpdatingOnboarding(true)
     try {
@@ -294,7 +308,7 @@ export function EditorWorkspace() {
 
       const metaRes = await fetch(`/api/editor/projects/${project.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "If-Match": String(project.version ?? 0) },
         body: JSON.stringify({
           metadata: {
             ...json.project?.metadata,
@@ -304,14 +318,22 @@ export function EditorWorkspace() {
         }),
       })
 
+      if (metaRes.status === 409) {
+        const conflict = await metaRes.json()
+        if (conflict.latest) {
+          setProject(conflict.latest)
+        }
+        throw new Error("Version conflict")
+      }
       if (!metaRes.ok) throw new Error("Failed to save project metadata")
       const metaJson = await metaRes.json()
 
       setProject(metaJson.project)
       setIsDirty(false)
       toast({ title: "Project saved" })
-    } catch {
-      toast({ title: "Save failed", description: "Your changes were not saved.", variant: "destructive" })
+    } catch (error) {
+      const description = error instanceof Error && error.message === "Version conflict" ? "A collaborator updated this project. Latest changes were loaded." : "Your changes were not saved."
+      toast({ title: "Save failed", description, variant: "destructive" })
     } finally {
       setIsSaving(false)
     }
@@ -396,7 +418,7 @@ export function EditorWorkspace() {
       const storageKey = String(finalizeJson.asset.source_storage_key ?? initJson.upload.storageKey)
       const assetRes = await fetch(`/api/editor/projects/${project.id}/assets`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "If-Match": String(project.version ?? 0) },
         body: JSON.stringify({
           source: "upload",
           uploadFileId: initJson.asset.id,
@@ -514,7 +536,8 @@ export function EditorWorkspace() {
     try {
       const res = await fetch(`/api/editor/projects/${project.id}/duplicate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "If-Match": String(project.version ?? 0) },
+        body: JSON.stringify({ version: project.version ?? 0 }),
       })
       if (!res.ok) throw new Error("Duplicate failed")
       const json = await res.json()
@@ -534,7 +557,7 @@ export function EditorWorkspace() {
     const deletedId = project.id
     setProject(null)
     try {
-      const res = await fetch(`/api/editor/projects/${deletedId}`, { method: "DELETE" })
+      const res = await fetch(`/api/editor/projects/${deletedId}?version=${project.version ?? 0}`, { method: "DELETE" })
       if (!res.ok) throw new Error("Delete failed")
       toast({ title: "Project deleted" })
       await loadProject()
@@ -922,6 +945,7 @@ export function EditorWorkspace() {
           onOpenCollaboration={() => setIsCollaborationOpen(true)}
           onSave={saveProject}
           isSaving={isSaving}
+          editingLockedReason={isEditingLockedByCollaborator ? "Segment is locked by another collaborator" : undefined}
           onOpenModelDialog={(trigger) =>
             openFromTrigger(
               {
@@ -938,6 +962,11 @@ export function EditorWorkspace() {
             )
           }
         />
+        {isEditingLockedByCollaborator && (
+          <div className="mx-4 mt-3 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">
+            Segment is currently locked by another collaborator. Editing controls are temporarily disabled.
+          </div>
+        )}
         <div className="flex flex-1 overflow-hidden bg-background pb-24 md:pb-0">
           <LeftSidebar activeTab={activeTab} onTabChange={setActiveTab} isChatOpen={isChatOpen} onChatToggle={setIsChatOpen} />
           <MainCanvas
@@ -959,6 +988,8 @@ export function EditorWorkspace() {
             generationStatus={generationStatus}
             generationProgress={generationProgress}
             generationStage={generationStage}
+            isReadOnly={isEditingLockedByCollaborator}
+            readOnlyReason={isEditingLockedByCollaborator ? "Segment is locked by another collaborator." : undefined}
           />
           <RightPanel
             selectedModel={selectedModel}

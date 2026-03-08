@@ -2,7 +2,8 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { requireEditorOperation } from "@/app/api/editor/_lib"
 import { buildInvalidRequestError } from "@/lib/api/contracts"
-import { sql, touchProject } from "@/lib/editor/repository"
+import { sql } from "@/lib/editor/repository"
+import { claimProjectVersion, parseExpectedVersion } from "@/lib/editor/versioned-mutations"
 
 const updateEditorAssetSchema = z.object({
   accessUrl: z.string().trim().url().max(2048).nullable().optional(),
@@ -31,6 +32,19 @@ export async function PATCH(request: Request, { params }: { params: { projectId:
     return NextResponse.json(buildInvalidRequestError(parsedBody.error), { status: 400 })
   }
 
+  const version = parseExpectedVersion(request, parsedBody.data)
+  if ("error" in version) return version.error
+
+  const claim = await claimProjectVersion({
+    projectId,
+    userId: auth.userId,
+    expectedVersion: version.expectedVersion,
+    mutation: "asset.update",
+    targetType: "asset",
+    targetId: assetId,
+  })
+  if (!claim.ok) return claim.response
+
   const [asset] = await sql`
     UPDATE editor_assets
     SET
@@ -42,18 +56,30 @@ export async function PATCH(request: Request, { params }: { params: { projectId:
   `
 
   if (!asset) return NextResponse.json({ error: "Asset not found" }, { status: 404 })
-  await touchProject(projectId, auth.userId)
-  return NextResponse.json({ asset })
+  return NextResponse.json({ asset, version: claim.projectVersion })
 }
 
 export async function DELETE(request: Request, { params }: { params: { projectId: string; assetId: string } }) {
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId, assetId } = params
+  const { searchParams } = new URL(request.url)
+
+  const version = parseExpectedVersion(request, { version: searchParams.get("version") })
+  if ("error" in version) return version.error
+
+  const claim = await claimProjectVersion({
+    projectId,
+    userId: auth.userId,
+    expectedVersion: version.expectedVersion,
+    mutation: "asset.delete",
+    targetType: "asset",
+    targetId: assetId,
+  })
+  if (!claim.ok) return claim.response
 
   const rows = await sql`DELETE FROM editor_assets WHERE id=${assetId} AND project_id=${projectId} AND owner_id=${auth.userId} RETURNING id`
   if (!rows.length) return NextResponse.json({ error: "Asset not found" }, { status: 404 })
 
-  await touchProject(projectId, auth.userId)
-  return NextResponse.json({ deleted: true, assetId })
+  return NextResponse.json({ deleted: true, assetId, version: claim.projectVersion })
 }

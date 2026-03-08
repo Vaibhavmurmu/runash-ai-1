@@ -28,6 +28,7 @@ export interface EditorProject {
   timeline: EditorTimeline
   settings: Record<string, unknown>
   metadata: Record<string, unknown>
+  version: number
   createdAt: string
   updatedAt: string
 }

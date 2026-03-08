@@ -16,9 +16,10 @@ interface TopBarProps {
   onSave?: () => Promise<void> | void
   isSaving?: boolean
   onOpenModelDialog?: (trigger?: HTMLElement | null) => void
+  editingLockedReason?: string
 }
 
-export default function TopBar({ isRecording, onRecordingToggle, onOpenCollaboration, onSave, isSaving = false, onOpenModelDialog }: TopBarProps) {
+export default function TopBar({ isRecording, onRecordingToggle, onOpenCollaboration, onSave, isSaving = false, onOpenModelDialog, editingLockedReason }: TopBarProps) {
   const [inputToolsOpen, setInputToolsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const isMobile = useIsMobile()
@@ -37,6 +38,7 @@ export default function TopBar({ isRecording, onRecordingToggle, onOpenCollabora
             size="sm"
             className="gap-2 bg-transparent"
             onClick={() => setInputToolsOpen(true)}
+            disabled={Boolean(editingLockedReason)}
             aria-label="Open input tools"
             aria-haspopup="dialog"
             aria-expanded={inputToolsOpen}
@@ -45,7 +47,7 @@ export default function TopBar({ isRecording, onRecordingToggle, onOpenCollabora
             <span className="hidden md:inline">Inputs</span>
           </Button>
 
-          <Button variant="outline" size="sm" className="gap-2 bg-transparent" onClick={(event) => onOpenModelDialog?.(event.currentTarget)}>
+          <Button variant="outline" size="sm" className="gap-2 bg-transparent" onClick={(event) => onOpenModelDialog?.(event.currentTarget)} disabled={Boolean(editingLockedReason)}>
             <Sparkles className="w-4 h-4" />
             <span className="hidden md:inline">Model</span>
           </Button>
@@ -55,6 +57,7 @@ export default function TopBar({ isRecording, onRecordingToggle, onOpenCollabora
             size="sm"
             className="gap-2"
             onClick={() => onRecordingToggle(!isRecording)}
+            disabled={Boolean(editingLockedReason)}
             aria-label={isRecording ? "Stop recording" : "Start recording"}
           >
             <Circle className="w-2 h-2 fill-current" />
@@ -63,7 +66,7 @@ export default function TopBar({ isRecording, onRecordingToggle, onOpenCollabora
 
           {!isMobile && (
             <>
-              <Button variant="outline" size="sm" className="gap-2 bg-transparent" onClick={onSave} disabled={isSaving} aria-label="Save project">
+              <Button variant="outline" size="sm" className="gap-2 bg-transparent" onClick={onSave} disabled={isSaving || Boolean(editingLockedReason)} aria-label="Save project">
                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}
                 Save
               </Button>
@@ -94,7 +97,7 @@ export default function TopBar({ isRecording, onRecordingToggle, onOpenCollabora
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => void onSave?.()}>
+              <DropdownMenuItem onClick={() => void onSave?.()} disabled={Boolean(editingLockedReason)}>
                 <Cloud className="w-4 h-4" />
                 Save
               </DropdownMenuItem>

@@ -1,16 +1,30 @@
 import { NextResponse } from "next/server"
 import { requireEditorOperation } from "@/app/api/editor/_lib"
 import { sql, touchProject } from "@/lib/editor/repository"
+import { claimProjectVersion, parseExpectedVersion } from "@/lib/editor/versioned-mutations"
 import { publishTimelineLockChanged } from "@/services/realtime/publishers"
 
 export async function PUT(request: Request, { params }: { params: { projectId: string } }) {
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
 
-  const body = (await request.json().catch(() => ({}))) as { timelineId?: string; lock?: boolean }
+  const body = (await request.json().catch(() => ({}))) as { timelineId?: string; lock?: boolean; version?: number | string }
   if (!body.timelineId) {
     return NextResponse.json({ error: "timelineId is required" }, { status: 400 })
   }
+
+  const version = parseExpectedVersion(request, body as Record<string, unknown>)
+  if ("error" in version) return version.error
+
+  const claim = await claimProjectVersion({
+    projectId: params.projectId,
+    userId: auth.userId,
+    expectedVersion: version.expectedVersion,
+    mutation: body.lock === false ? "timeline.unlock" : "timeline.lock",
+    targetType: "timeline",
+    targetId: body.timelineId,
+  })
+  if (!claim.ok) return claim.response
 
   const [row] = await sql<{ metadata: Record<string, unknown> | null }>`
     SELECT metadata
@@ -46,5 +60,5 @@ export async function PUT(request: Request, { params }: { params: { projectId: s
     revision: nextRevision,
   })
 
-  return NextResponse.json({ timelineId: body.timelineId, lockOwnerUserId, revision: nextRevision })
+  return NextResponse.json({ timelineId: body.timelineId, lockOwnerUserId, revision: nextRevision, version: claim.projectVersion })
 }

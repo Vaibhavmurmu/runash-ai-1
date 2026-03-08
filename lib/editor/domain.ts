@@ -12,6 +12,10 @@ export interface EditorAsset {
   mimeType: string
   sizeBytes: number
   metadata: Record<string, unknown>
+  lockOwnerUserId?: string | null
+  lockExpiresAt?: string | null
+  lockAcquiredAt?: string | null
+  lockUpdatedAt?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -28,6 +32,10 @@ export interface EditorSegment {
   startSeconds: number
   endSeconds: number
   metadata: Record<string, unknown>
+  lockOwnerUserId?: string | null
+  lockExpiresAt?: string | null
+  lockAcquiredAt?: string | null
+  lockUpdatedAt?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -41,6 +49,10 @@ export interface EditorTrack {
   orderIndex: number
   trackType: string
   metadata: Record<string, unknown>
+  lockOwnerUserId?: string | null
+  lockExpiresAt?: string | null
+  lockAcquiredAt?: string | null
+  lockUpdatedAt?: string | null
   createdAt: string
   updatedAt: string
 }
