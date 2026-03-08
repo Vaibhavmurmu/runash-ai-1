@@ -11,6 +11,7 @@ type EditorProjectRow = {
   timeline: EditorProject["timeline"]
   settings: Record<string, unknown>
   metadata: Record<string, unknown>
+  version: number
   created_at: string
   updated_at: string
 }
@@ -32,6 +33,7 @@ function toEditorProject(row: EditorProjectRow): EditorProject {
     timeline: row.timeline,
     settings: row.settings ?? {},
     metadata: row.metadata ?? {},
+    version: Number(row.version ?? 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -98,7 +100,8 @@ export class EditorProjectsService {
         selected_model = ${updates.selectedModel ?? existing.selectedModel},
         timeline = ${JSON.stringify(updates.timeline ?? existing.timeline)},
         settings = ${JSON.stringify(updates.settings ?? existing.settings)},
-        metadata = ${JSON.stringify(updates.metadata ?? existing.metadata)}
+        metadata = ${JSON.stringify(updates.metadata ?? existing.metadata)},
+        version = COALESCE(version, 0) + 1
       WHERE id = ${projectId} AND user_id = ${userId}
       RETURNING *
     `
