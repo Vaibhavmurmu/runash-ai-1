@@ -32,6 +32,7 @@ import {
 import { toast } from "sonner"
 import { WidgetLibrary } from "@/components/analytics/custom/widget-library"
 import { WidgetRenderer } from "@/components/analytics/custom/widget-renderer"
+import { useWidgetAnalytics } from "@/lib/hooks/use-widget-analytics"
 import { DashboardTemplates } from "@/components/analytics/custom/dashboard-templates"
 import { WidgetConfigDialog } from "@/components/analytics/custom/widget-config-dialog"
 import type { Dashboard, DashboardWidget } from "@/types/custom-dashboard"
@@ -51,6 +52,11 @@ import {
 } from "lucide-react"
 
 const DRAFT_STORAGE_KEY = "custom-dashboard-draft"
+
+function WidgetRendererWithData({ widget, isEditMode }: { widget: DashboardWidget; isEditMode: boolean }) {
+  const { series, isLoading, error } = useWidgetAnalytics(widget)
+  return <WidgetRenderer widget={widget} isEditMode={isEditMode} series={series} isLoading={isLoading} fetchError={error} />
+}
 
 const createDefaultDashboard = (): Dashboard => ({
   id: "",
@@ -462,7 +468,7 @@ export default function CustomDashboardBuilder() {
                         </DropdownMenu>
                       </div>
                     )}
-                    <WidgetRenderer widget={widget} isEditMode={isEditMode} />
+                    <WidgetRendererWithData widget={widget} isEditMode={isEditMode} />
                   </Card>
                 </div>
               ))}
