@@ -1,8 +1,9 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { resolveRightPanelTab, updateTabPanelState } from "@/components/editor/right-panel"
+import { renderPanelByTab, resolveRightPanelTab, updateTabPanelState } from "@/components/editor/right-panel"
 import { DEFAULT_EDIT_PANEL_STATE } from "@/components/editor/panels/edit-panel"
 import { deriveLayerItemsFromTimeline, moveLayer, toggleLayerVisibility } from "@/components/editor/panels/layers-panel"
+import { RIGHT_PANEL_TABS } from "@/components/editor/panel-tabs"
 import type { EditorSegment, EditorTimeline, EditorTrack } from "@/lib/editor/domain"
 
 function makeTrack(partial: Partial<EditorTrack>): EditorTrack {
@@ -123,4 +124,43 @@ test("moveLayer updates array order and orderIndex consistently", () => {
       { id: "track-3", orderIndex: 2 },
     ],
   )
+})
+
+
+test("renderPanelByTab falls back to GeneratePanel for unknown tab ids", () => {
+  const panel = renderPanelByTab(
+    "unknown-tab",
+    {
+      selectedModel: "wan-2.1",
+      onModelChange: () => undefined,
+      generationConfig: {
+        modelId: "wan-2.1",
+        prompt: "",
+        negativePrompt: "",
+        durationPreset: "8s",
+        durationSeconds: 8,
+        aspectRatio: "16:9",
+        resolution: "1280x720",
+        fps: 24,
+        qualityMode: "quality",
+        seed: 0,
+      },
+      validationErrors: {},
+      onGenerationConfigChange: () => undefined,
+    },
+    { edit: DEFAULT_EDIT_PANEL_STATE },
+    () => undefined,
+  )
+
+  assert.equal(typeof panel.type, "function")
+  assert.equal((panel.type as { name?: string }).name, "GeneratePanel")
+})
+
+test("RIGHT_PANEL_TABS ids and labels remain route-aligned", () => {
+  assert.deepEqual(RIGHT_PANEL_TABS, [
+    { id: "generate", label: "Generate" },
+    { id: "edit", label: "Edit" },
+    { id: "layers", label: "Layers" },
+    { id: "stream", label: "Stream" },
+  ])
 })
