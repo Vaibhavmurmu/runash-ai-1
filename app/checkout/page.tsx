@@ -8,10 +8,13 @@ import {
   ArrowLeft as ArrowLeftIcon,
   BadgeCheck,
   Building2,
+  ChevronDown,
+  CircleCheck,
   CreditCard,
   Leaf,
   Lock,
   QrCode,
+  Smartphone,
   ShieldCheck,
   ShoppingCart,
   WalletCards,
@@ -268,7 +271,7 @@ export default function CheckoutPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-orange-50 dark:from-gray-950 dark:to-gray-900">
-      <div className="container mx-auto px-4 py-8">
+      <div className="mx-auto w-full max-w-5xl px-4 py-8 lg:py-10">
         <div className="mb-6">
           <Link href="/chat">
             <Button variant="ghost" className="mb-4">
@@ -293,7 +296,18 @@ export default function CheckoutPage() {
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-8">
+        <div className="mb-6 rounded-2xl border border-gray-200 bg-white/80 p-5 shadow-sm backdrop-blur-sm dark:border-gray-700 dark:bg-gray-900/70">
+          <p className="text-center text-sm text-gray-600">Subscribe to RunAsh Pro Commerce Suite</p>
+          <p className="mt-1 text-center text-4xl font-semibold">₹{finalTotal.toFixed(2)}</p>
+          <p className="text-center text-sm text-gray-500">Then renews at standard monthly plan pricing.</p>
+          <div className="mt-4 flex justify-center">
+            <Button type="button" variant="outline" className="rounded-full text-xs">
+              View details <ChevronDown className="ml-1 h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr]">
           <div className="space-y-6">
             <Card>
               <CardHeader>
@@ -356,14 +370,14 @@ export default function CheckoutPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-3 gap-2 rounded-lg bg-muted/40 p-1">
-                  <Button type="button" variant={paymentMethod === "card" ? "default" : "ghost"} onClick={() => setPaymentMethod("card")} className="justify-start">
+                <div className="grid grid-cols-3 gap-2 rounded-lg border bg-muted/20 p-1.5">
+                  <Button type="button" variant={paymentMethod === "card" ? "default" : "ghost"} onClick={() => setPaymentMethod("card")} className="justify-start rounded-md">
                     <WalletCards className="h-4 w-4 mr-1" /> Card
                   </Button>
-                  <Button type="button" variant={paymentMethod === "upi" ? "default" : "ghost"} onClick={() => setPaymentMethod("upi")} className="justify-start">
+                  <Button type="button" variant={paymentMethod === "upi" ? "default" : "ghost"} onClick={() => setPaymentMethod("upi")} className="justify-start rounded-md">
                     <QrCode className="h-4 w-4 mr-1" /> UPI
                   </Button>
-                  <Button type="button" variant={paymentMethod === "bank" ? "default" : "ghost"} onClick={() => setPaymentMethod("bank")} className="justify-start">
+                  <Button type="button" variant={paymentMethod === "bank" ? "default" : "ghost"} onClick={() => setPaymentMethod("bank")} className="justify-start rounded-md">
                     <Building2 className="h-4 w-4 mr-1" /> Bank
                   </Button>
                 </div>
@@ -396,14 +410,16 @@ export default function CheckoutPage() {
                 )}
 
                 {paymentMethod === "upi" && (
-                  <div className="space-y-3 rounded-lg border border-dashed p-4 bg-muted/20">
+                  <div className="space-y-4 rounded-lg border border-dashed p-4 bg-muted/20">
                     <div>
                       <Label htmlFor="upiId">UPI ID</Label>
                       <Input id="upiId" placeholder="name@upi" value={formData.upiId} onChange={(e) => handleInputChange("upiId", e.target.value)} />
                       {errors.upiId && <p className="text-xs text-red-500 mt-1">{errors.upiId}</p>}
                     </div>
-                    <p className="font-medium flex items-center gap-2"><QrCode className="h-4 w-4" /> QR / App handoff</p>
-                    <p className="text-sm text-gray-600">After placing the order, we will show a secure UPI app handoff or QR authorization prompt.</p>
+                    <div className="rounded-md bg-white p-3 shadow-sm dark:bg-gray-900">
+                      <p className="font-medium flex items-center gap-2"><Smartphone className="h-4 w-4" /> Authorize payment with your app</p>
+                      <p className="mt-1 text-sm text-gray-600">After placing the order, choose GPay/PhonePe/Paytm or scan a QR code for secure authorization.</p>
+                    </div>
                   </div>
                 )}
 
@@ -545,7 +561,7 @@ export default function CheckoutPage() {
                 </div>
 
                 <form onSubmit={handleSubmit}>
-                  <Button type="submit" disabled={processing} className="w-full bg-gradient-to-r from-orange-600 to-yellow-500 hover:from-orange-700 hover:to-yellow-600 text-white">
+                  <Button type="submit" disabled={processing} className="h-12 w-full bg-emerald-600 text-base text-white hover:bg-emerald-700">
                     {processing ? "Processing..." : `Complete Order - $${finalTotal.toFixed(2)}`}
                   </Button>
                 </form>
@@ -560,7 +576,7 @@ export default function CheckoutPage() {
                 />
 
                 <div className="text-xs text-gray-600 leading-5 border rounded-md p-3 bg-muted/20">
-                  <p className="font-medium mb-1">All transactions are secure and encrypted.</p>
+                  <p className="mb-1 flex items-center gap-1 font-medium"><CircleCheck className="h-3.5 w-3.5 text-green-600" /> All transactions are secure and encrypted.</p>
                   <p>RunAsh uses industry-standard security to protect your information. We never store your full card details.</p>
                 </div>
               </CardContent>
