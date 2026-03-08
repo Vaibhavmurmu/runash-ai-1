@@ -13,12 +13,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 import { useCart } from "@/contexts/cart-context"
-import { CreditCard, Landmark, Truck, ShieldCheck } from "lucide-react"
+import { CreditCard, Landmark, ShieldCheck, Truck } from "lucide-react"
+import type { CheckoutOrderDTO } from "@/lib/types/checkout-order"
+import { submitCheckout } from "@/lib/checkout/submit-checkout"
 
 export default function CheckoutForm() {
   const router = useRouter()
   const { toast } = useToast()
-  const { clearCart } = useCart()
+  const { state, clearCart } = useCart()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [step, setStep] = useState<"shipping" | "payment" | "review">("shipping")
 
@@ -102,22 +104,55 @@ export default function CheckoutForm() {
     setIsSubmitting(true)
 
     try {
-      // In a real app, this would be an API call to process the order
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      const order: CheckoutOrderDTO = {
+        customer: {
+          email: shippingInfo.email,
+          firstName: shippingInfo.firstName,
+          lastName: shippingInfo.lastName,
+          phone: shippingInfo.phone,
+          address: shippingInfo.address,
+          city: shippingInfo.city,
+          state: shippingInfo.state,
+          zipCode: shippingInfo.zipCode,
+        },
+        payment: {
+          method: paymentMethod === "upi" ? "upi" : "card",
+          cardNumber:
+            paymentMethod === "credit-card" && cardInfo.cardNumber
+              ? `**** **** **** ${cardInfo.cardNumber.slice(-4)}`
+              : undefined,
+          nameOnCard: paymentMethod === "credit-card" ? cardInfo.cardName : undefined,
+          saveForFastCheckout: cardInfo.saveCard,
+        },
+        items: state.cart.items.map((item) => ({
+          product_id: item.product.id,
+          name: item.product.name,
+          quantity: item.quantity,
+          price: item.selectedVariant?.price ?? item.product.price,
+          selectedVariant: item.selectedVariant,
+          product: {
+            id: item.product.id,
+            stripePriceId: (item.product as { stripePriceId?: string }).stripePriceId,
+          },
+        })),
+        totals: state.totals,
+      }
 
-      // Clear cart and redirect to success page
+      const submission = await submitCheckout(order)
+
       clearCart()
 
       toast({
         title: "Order placed successfully!",
-        description: "Thank you for your purchase.",
+        description: "Redirecting to secure payment.",
       })
 
-      router.push("/checkout/success")
+      router.push(submission.redirectUrl)
     } catch (error) {
+      const message = error instanceof Error ? error.message : "There was a problem processing your order. Please try again."
       toast({
         title: "Error placing order",
-        description: "There was a problem processing your order. Please try again.",
+        description: message,
         variant: "destructive",
       })
     } finally {

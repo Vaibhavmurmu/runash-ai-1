@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -15,11 +15,12 @@ import CartSummary from "@/components/cart/cart-summary"
 import SustainabilityMetrics from "@/components/cart/sustainability-metrics"
 import Link from "next/link"
 import type { CheckoutOrderDTO } from "@/lib/types/checkout-order"
+import { submitCheckout } from "@/lib/checkout/submit-checkout"
 
 export default function CheckoutPage() {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
-  const { state } = useCart()
+  const { state, clearCart } = useCart()
   const { cart, totals } = state
 
   const [formData, setFormData] = useState({
@@ -50,15 +51,24 @@ export default function CheckoutPage() {
   useEffect(() => {
     setMounted(true)
 
-    // Try to prefill with saved profile data (if any)
     try {
-      const saved = typeof window !== "undefined" ? localStorage.getItem("userProfile") : null
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        setFormData((prev) => ({ ...prev, ...parsed }))
-      }
-    } catch (e) {
-      // ignore
+      const saved = typeof window !== "undefined" ? localStorage.getItem("checkoutProfileDraft") : null
+      if (!saved) return
+
+      const parsed = JSON.parse(saved) as Partial<typeof formData>
+      setFormData((prev) => ({
+        ...prev,
+        email: typeof parsed.email === "string" ? parsed.email : prev.email,
+        firstName: typeof parsed.firstName === "string" ? parsed.firstName : prev.firstName,
+        lastName: typeof parsed.lastName === "string" ? parsed.lastName : prev.lastName,
+        address: typeof parsed.address === "string" ? parsed.address : prev.address,
+        city: typeof parsed.city === "string" ? parsed.city : prev.city,
+        state: typeof parsed.state === "string" ? parsed.state : prev.state,
+        zipCode: typeof parsed.zipCode === "string" ? parsed.zipCode : prev.zipCode,
+        nameOnCard: typeof parsed.nameOnCard === "string" ? parsed.nameOnCard : prev.nameOnCard,
+      }))
+    } catch {
+      // ignore parse/storage errors
     }
   }, [])
 
@@ -67,31 +77,8 @@ export default function CheckoutPage() {
     setErrors((prev) => ({ ...prev, [field]: "" }))
   }
 
-  const validate = () => {
-    const newErrors: Record<string, string> = {}
-    if (!formData.email) newErrors.email = "Email is required"
-    if (!formData.firstName) newErrors.firstName = "First name is required"
-    if (!formData.lastName) newErrors.lastName = "Last name is required"
-    if (!formData.address) newErrors.address = "Address is required"
-    if (!formData.city) newErrors.city = "City is required"
-    if (!formData.zipCode) newErrors.zipCode = "ZIP code is required"
-    if (paymentMethod === "card") {
-      if (!formData.cardNumber) newErrors.cardNumber = "Card number is required"
-      if (!formData.expiryDate) newErrors.expiryDate = "Expiry date is required"
-      if (!formData.cvv) newErrors.cvv = "CVV is required"
-    }
-    if (!acceptTerms) newErrors.acceptTerms = "Please accept terms to continue"
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    // Validate form
-    if (!validate()) return
-
-    // Build order payload from real data (cart + form)
-    const order: CheckoutOrderDTO = {
+  const orderPayload = useMemo<CheckoutOrderDTO>(
+    () => ({
       id: `order_${Date.now()}`,
       createdAt: new Date().toISOString(),
       customer: {
@@ -122,24 +109,66 @@ export default function CheckoutPage() {
         },
       })),
       totals,
-    }
+    }),
+    [buyAsBusiness, cart.items, formData, paymentMethod, saveForFastCheckout, totals],
+  )
 
-    // Persist pending order so the payment page can pick it up
-    try {
-      sessionStorage.setItem("pendingOrder", JSON.stringify(order))
-    } catch (err) {
-      console.error("Failed to save pending order:", err)
+  const validate = () => {
+    const newErrors: Record<string, string> = {}
+    if (!formData.email) newErrors.email = "Email is required"
+    if (!formData.firstName) newErrors.firstName = "First name is required"
+    if (!formData.lastName) newErrors.lastName = "Last name is required"
+    if (!formData.address) newErrors.address = "Address is required"
+    if (!formData.city) newErrors.city = "City is required"
+    if (!formData.zipCode) newErrors.zipCode = "ZIP code is required"
+    if (paymentMethod === "card") {
+      if (!formData.cardNumber) newErrors.cardNumber = "Card number is required"
+      if (!formData.expiryDate) newErrors.expiryDate = "Expiry date is required"
+      if (!formData.cvv) newErrors.cvv = "CVV is required"
     }
+    if (!acceptTerms) newErrors.acceptTerms = "Please accept terms to continue"
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
 
-    // Show confirmation dialog (add dialog UI design)
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!validate()) return
+
     setShowConfirmDialog(true)
   }
 
-  const proceedToPayment = () => {
+  const proceedToPayment = async () => {
     setProcessing(true)
-    // Here you could call an API to create an order on the backend and get a payment session.
-    // For now we navigate to the payment page and the payment page should read `pendingOrder` from sessionStorage.
-    router.push("/payment/runash-pay")
+    setErrors((prev) => ({ ...prev, form: "" }))
+
+    try {
+      if (saveForFastCheckout && typeof window !== "undefined") {
+        localStorage.setItem(
+          "checkoutProfileDraft",
+          JSON.stringify({
+            email: formData.email,
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            address: formData.address,
+            city: formData.city,
+            state: formData.state,
+            zipCode: formData.zipCode,
+            nameOnCard: formData.nameOnCard,
+          }),
+        )
+      }
+
+      const submission = await submitCheckout(orderPayload)
+      clearCart()
+      router.push(submission.redirectUrl)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to start secure payment session"
+      setErrors((prev) => ({ ...prev, form: message }))
+      setShowConfirmDialog(false)
+    } finally {
+      setProcessing(false)
+    }
   }
 
   // Show loading state during hydration
@@ -456,6 +485,8 @@ export default function CheckoutPage() {
                 <Separator />
 
                 <CartSummary totals={totals} />
+
+                {errors.form && <p className="text-sm text-red-600">{errors.form}</p>}
 
                 <form onSubmit={handleSubmit}>
                   <Button

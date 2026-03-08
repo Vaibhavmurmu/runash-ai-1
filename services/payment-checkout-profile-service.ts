@@ -139,6 +139,19 @@ export interface CheckoutAttemptResultRecord {
   createdAt: string
 }
 
+export interface CheckoutSessionRecord {
+  id: string
+  checkoutLinkId: string
+  customerId: string
+  paymentMethodRefId: string | null
+  methodType: string | null
+  deviceContext: Record<string, unknown>
+  browserContext: Record<string, unknown>
+  status: CheckoutSessionStatus
+  createdAt: string
+  updatedAt: string
+}
+
 export interface CheckoutAnalyticsSnapshot {
   totalAttempts: number
   completedAttempts: number
@@ -1204,6 +1217,106 @@ function mapCheckoutAttemptResult(row: any): CheckoutAttemptResultRecord {
     occurredAt: row.occurredAt,
     createdAt: row.createdAt,
   }
+}
+
+function mapCheckoutSession(row: any): CheckoutSessionRecord {
+  return {
+    id: row.id,
+    checkoutLinkId: row.checkoutLinkId,
+    customerId: row.customerId,
+    paymentMethodRefId: row.paymentMethodRefId,
+    methodType: row.methodType,
+    deviceContext: row.deviceContext ?? {},
+    browserContext: row.browserContext ?? {},
+    status: row.status,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }
+}
+
+export async function createCheckoutSessionRecord(input: {
+  checkoutLinkId: string
+  customerId: string
+  paymentMethodRefId?: string | null
+  methodType?: string | null
+  deviceContext?: Record<string, unknown>
+  browserContext?: Record<string, unknown>
+  status?: CheckoutSessionStatus
+}) {
+  await ensureTables()
+
+  const row = await queryOne<any>(
+    `
+      INSERT INTO checkout_sessions (
+        id,
+        checkout_link_id,
+        customer_id,
+        payment_method_ref_id,
+        method_type,
+        device_context,
+        browser_context,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8)
+      RETURNING
+        id,
+        checkout_link_id AS "checkoutLinkId",
+        customer_id AS "customerId",
+        payment_method_ref_id AS "paymentMethodRefId",
+        method_type AS "methodType",
+        device_context AS "deviceContext",
+        browser_context AS "browserContext",
+        status,
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+    `,
+    [
+      nowId("chk_sess"),
+      input.checkoutLinkId,
+      input.customerId,
+      input.paymentMethodRefId ?? null,
+      input.methodType ?? null,
+      JSON.stringify(input.deviceContext ?? {}),
+      JSON.stringify(input.browserContext ?? {}),
+      input.status ?? "created",
+    ],
+  )
+
+  if (!row) throw new Error("Failed to create checkout session")
+  return mapCheckoutSession(row)
+}
+
+export async function updateCheckoutSessionStatus(input: {
+  checkoutSessionId: string
+  customerId: string
+  status: CheckoutSessionStatus
+}) {
+  await ensureTables()
+
+  const row = await queryOne<any>(
+    `
+      UPDATE checkout_sessions
+      SET status = $3,
+          updated_at = NOW()
+      WHERE id = $1
+        AND customer_id = $2
+      RETURNING
+        id,
+        checkout_link_id AS "checkoutLinkId",
+        customer_id AS "customerId",
+        payment_method_ref_id AS "paymentMethodRefId",
+        method_type AS "methodType",
+        device_context AS "deviceContext",
+        browser_context AS "browserContext",
+        status,
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+    `,
+    [input.checkoutSessionId, input.customerId, input.status],
+  )
+
+  if (!row) throw new Error("Checkout session not found")
+  return mapCheckoutSession(row)
 }
 
 export async function recordCheckoutAttemptResult(input: {

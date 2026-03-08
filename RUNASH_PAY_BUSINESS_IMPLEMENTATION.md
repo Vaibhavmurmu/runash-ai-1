@@ -422,3 +422,10 @@ Business controls preserved:
 - **Primary risk:** production or staging environments without Stripe secrets will receive immediate Link/webhook failures.
 - **Mitigation:** enforce secret checks in deployment readiness and validate via lint/build/tests before release.
 - **Rollback path:** revert the strict-enforcement commit and redeploy, then restore secrets and re-apply once configuration parity is confirmed.
+
+## 2026-03 checkout submission reliability hardening
+
+- Checkout submission for both storefront UI paths now uses server-side orchestration (`/api/checkout/submit`) instead of client-only delay/storage transitions.
+- The server flow creates orders via `/api/orders`, then creates provider-backed payment sessions via `/api/checkout/session`, and records checkout session + attempt metadata in `checkout_sessions` and `checkout_attempt_results` for audit/reconciliation continuity.
+- Security and data-handling posture: browser state keeps only non-sensitive checkout draft fields; card/CVV/payment secrets are not written to client storage.
+- Failure handling and rollback behavior: payment-session creation failures persist failed attempt records, mark checkout session as failed, and transition the created order to failed status to avoid orphaned pending checkout state.
