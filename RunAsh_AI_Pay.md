@@ -840,3 +840,13 @@ Risk + rollback:
   1. UX-only flow risk: modal sequencing or required consent validation could block submit if labels/selectors regress.
   2. No backend contract risk since changes are presentational/client-state only.
 - Rollback: revert `app/checkout/page.tsx` and redeploy; no payment data migration and no API/schema rollback required.
+
+## 2026-03 Link provider strict configuration + webhook secret hardening
+
+- Removed Link mock-success behavior when Stripe credentials are missing; Link session creation, verification polling, and link-save now return typed `LINK_PROVIDER_UNAVAILABLE` errors with user-safe messaging.
+- Link save now uses provider-native Stripe token + payment method attachment flow and returns real Stripe payment method IDs (no local pseudo `pm_link_*` identifiers).
+- Billing webhook handling now requires `STRIPE_SECRET_KEY`/`STRIPE_API_KEY` and no longer uses placeholder key fallback; webhook requests fail fast with `500` if secrets are missing.
+- Structured payment logs now use request correlation IDs and avoid logging sensitive card/auth values.
+- Risk + rollback:
+  - **Risk:** environments missing Stripe secrets will hard-fail Link save/session and webhook processing until secrets are configured.
+  - **Rollback:** temporarily revert `lib/services/link-provider-service.ts` and `app/api/billing/webhook/_shared.ts` to previous behavior, then redeploy while restoring provider credentials.

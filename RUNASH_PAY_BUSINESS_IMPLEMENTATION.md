@@ -408,3 +408,17 @@ Business controls preserved:
 - `npm run lint`
 - `npm run build`
 - `node --loader ./scripts/node-ts-loader.mjs --test lib/services/link-provider-service.test.ts lib/services/upi-service.test.ts lib/otp.test.ts`
+
+## 2026-03 Link provider config enforcement and webhook credential fail-fast
+
+### Payment-impacting behavior update
+
+- Link provider operations now enforce strict Stripe credential presence (`STRIPE_SECRET_KEY` or `STRIPE_API_KEY`) and map missing-config paths to `LINK_PROVIDER_UNAVAILABLE` instead of mock success.
+- Link save path now performs Stripe-native tokenization + payment method creation/attachment, preserving existing API contract fields while eliminating local pseudo payment-method IDs.
+- Billing webhook shared handler removed placeholder Stripe key fallback and now rejects requests when Stripe secret key configuration is missing.
+
+### Operational risk and rollback notes
+
+- **Primary risk:** production or staging environments without Stripe secrets will receive immediate Link/webhook failures.
+- **Mitigation:** enforce secret checks in deployment readiness and validate via lint/build/tests before release.
+- **Rollback path:** revert the strict-enforcement commit and redeploy, then restore secrets and re-apply once configuration parity is confirmed.
