@@ -422,3 +422,9 @@ Business controls preserved:
 - **Primary risk:** production or staging environments without Stripe secrets will receive immediate Link/webhook failures.
 - **Mitigation:** enforce secret checks in deployment readiness and validate via lint/build/tests before release.
 - **Rollback path:** revert the strict-enforcement commit and redeploy, then restore secrets and re-apply once configuration parity is confirmed.
+
+## 2026-03 Conversion reliability note
+
+- Service hardening update: `services/conversion-service.ts` moved from simulated conversions to durable job orchestration with persisted lifecycle, cancellation/retry, idempotency keys, and artifact persistence.
+- Payment/auth contract impact: **none** (no payment field/API changes).
+- Rollback: revert conversion service changes; no payment schema rollback required.
