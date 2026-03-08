@@ -810,3 +810,14 @@ Risk + rollback:
 - Latest successful provider rates are persisted with upsert semantics in `exchange_rates` and kept in in-memory cache for stale-while-revalidate reads when the upstream provider is unavailable.
 - Currency pairs that cannot be resolved are returned in `unavailableCurrencies`; clients must block conversions for those pairs rather than falling back to `1` or hardcoded rates.
 - Rollback: revert to previous hook/service behavior only if provider and DB path is unavailable; keep the API contract stable (`rates`, `supportedCurrencies`, `unavailableCurrencies`, `stale`, `tooOld`) during rollback.
+
+## 2026-03 checkout consent + renewal authorization UX hardening (no contract changes)
+
+- Checkout (`/checkout`) now requires explicit recurring/subscription renewal authorization before allowing final order submission.
+- Added optional "save my info for faster checkout" control that stores non-sensitive profile details for checkout autofill authorization continuity.
+- Added clear Terms and Privacy links near final submit action plus inline helper text for payment security and renewal management guidance aligned with subscription/billing portal routes.
+- Accessibility hardening: validation messaging now includes `aria-describedby`, field-level `aria-invalid`, and `role=alert` for error announcements.
+- Backward compatibility: no payment API field names, checkout payload signatures, webhook contracts, or auth/payment token formats were changed.
+- Risks + rollback:
+  1. UX friction risk from mandatory consent gating can reduce completion rate if copy is unclear.
+  2. Rollback by reverting `app/checkout/page.tsx` consent + helper-text changes; no migration or API contract rollback required.

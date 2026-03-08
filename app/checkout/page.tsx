@@ -37,6 +37,8 @@ export default function CheckoutPage() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [processing, setProcessing] = useState(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [subscriptionConsent, setSubscriptionConsent] = useState(false)
+  const [saveCheckoutInfo, setSaveCheckoutInfo] = useState(false)
 
   // Ensure component is mounted before accessing cart
   useEffect(() => {
@@ -70,9 +72,28 @@ export default function CheckoutPage() {
     if (!formData.cardNumber) newErrors.cardNumber = "Card number is required"
     if (!formData.expiryDate) newErrors.expiryDate = "Expiry date is required"
     if (!formData.cvv) newErrors.cvv = "CVV is required"
+    if (!subscriptionConsent) {
+      newErrors.subscriptionConsent = "You must authorize recurring renewals to continue"
+    }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
+
+  const requiredFields = [
+    formData.email,
+    formData.firstName,
+    formData.lastName,
+    formData.address,
+    formData.city,
+    formData.state,
+    formData.zipCode,
+    formData.cardNumber,
+    formData.expiryDate,
+    formData.cvv,
+    formData.nameOnCard,
+  ]
+  const isFormComplete = requiredFields.every((field) => field.trim().length > 0)
+  const canSubmit = isFormComplete && subscriptionConsent && !processing
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -102,6 +123,21 @@ export default function CheckoutPage() {
 
     // Persist pending order so the payment page can pick it up
     try {
+      if (saveCheckoutInfo) {
+        localStorage.setItem(
+          "userProfile",
+          JSON.stringify({
+            email: formData.email,
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            address: formData.address,
+            city: formData.city,
+            state: formData.state,
+            zipCode: formData.zipCode,
+            nameOnCard: formData.nameOnCard,
+          }),
+        )
+      }
       sessionStorage.setItem("pendingOrder", JSON.stringify(order))
     } catch (err) {
       console.error("Failed to save pending order:", err)
@@ -191,9 +227,15 @@ export default function CheckoutPage() {
                     value={formData.email}
                     onChange={(e) => handleInputChange("email", e.target.value)}
                     placeholder="your@email.com"
+                    aria-invalid={Boolean(errors.email)}
+                    aria-describedby={errors.email ? "email-error" : undefined}
                     required
                   />
-                  {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email}</p>}
+                  {errors.email && (
+                    <p id="email-error" role="alert" className="text-xs text-red-500 mt-1">
+                      {errors.email}
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -210,9 +252,15 @@ export default function CheckoutPage() {
                       id="firstName"
                       value={formData.firstName}
                       onChange={(e) => handleInputChange("firstName", e.target.value)}
+                      aria-invalid={Boolean(errors.firstName)}
+                      aria-describedby={errors.firstName ? "firstName-error" : undefined}
                       required
                     />
-                    {errors.firstName && <p className="text-xs text-red-500 mt-1">{errors.firstName}</p>}
+                    {errors.firstName && (
+                      <p id="firstName-error" role="alert" className="text-xs text-red-500 mt-1">
+                        {errors.firstName}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor="lastName">Last Name</Label>
@@ -220,9 +268,15 @@ export default function CheckoutPage() {
                       id="lastName"
                       value={formData.lastName}
                       onChange={(e) => handleInputChange("lastName", e.target.value)}
+                      aria-invalid={Boolean(errors.lastName)}
+                      aria-describedby={errors.lastName ? "lastName-error" : undefined}
                       required
                     />
-                    {errors.lastName && <p className="text-xs text-red-500 mt-1">{errors.lastName}</p>}
+                    {errors.lastName && (
+                      <p id="lastName-error" role="alert" className="text-xs text-red-500 mt-1">
+                        {errors.lastName}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div>
@@ -232,9 +286,15 @@ export default function CheckoutPage() {
                     value={formData.address}
                     onChange={(e) => handleInputChange("address", e.target.value)}
                     placeholder="123 Main Street"
+                    aria-invalid={Boolean(errors.address)}
+                    aria-describedby={errors.address ? "address-error" : undefined}
                     required
                   />
-                  {errors.address && <p className="text-xs text-red-500 mt-1">{errors.address}</p>}
+                  {errors.address && (
+                    <p id="address-error" role="alert" className="text-xs text-red-500 mt-1">
+                      {errors.address}
+                    </p>
+                  )}
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                   <div>
@@ -243,9 +303,15 @@ export default function CheckoutPage() {
                       id="city"
                       value={formData.city}
                       onChange={(e) => handleInputChange("city", e.target.value)}
+                      aria-invalid={Boolean(errors.city)}
+                      aria-describedby={errors.city ? "city-error" : undefined}
                       required
                     />
-                    {errors.city && <p className="text-xs text-red-500 mt-1">{errors.city}</p>}
+                    {errors.city && (
+                      <p id="city-error" role="alert" className="text-xs text-red-500 mt-1">
+                        {errors.city}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor="state">State</Label>
@@ -264,9 +330,15 @@ export default function CheckoutPage() {
                       value={formData.zipCode}
                       onChange={(e) => handleInputChange("zipCode", e.target.value)}
                       placeholder="12345"
+                      aria-invalid={Boolean(errors.zipCode)}
+                      aria-describedby={errors.zipCode ? "zipCode-error" : undefined}
                       required
                     />
-                    {errors.zipCode && <p className="text-xs text-red-500 mt-1">{errors.zipCode}</p>}
+                    {errors.zipCode && (
+                      <p id="zipCode-error" role="alert" className="text-xs text-red-500 mt-1">
+                        {errors.zipCode}
+                      </p>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -288,9 +360,15 @@ export default function CheckoutPage() {
                     value={formData.cardNumber}
                     onChange={(e) => handleInputChange("cardNumber", e.target.value)}
                     placeholder="1234 5678 9012 3456"
+                    aria-describedby={`payment-security-note${errors.cardNumber ? " cardNumber-error" : ""}`}
+                    aria-invalid={Boolean(errors.cardNumber)}
                     required
                   />
-                  {errors.cardNumber && <p className="text-xs text-red-500 mt-1">{errors.cardNumber}</p>}
+                  {errors.cardNumber && (
+                    <p id="cardNumber-error" role="alert" className="text-xs text-red-500 mt-1">
+                      {errors.cardNumber}
+                    </p>
+                  )}
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                   <div className="col-span-2">
@@ -300,9 +378,15 @@ export default function CheckoutPage() {
                       value={formData.expiryDate}
                       onChange={(e) => handleInputChange("expiryDate", e.target.value)}
                       placeholder="MM/YY"
+                      aria-invalid={Boolean(errors.expiryDate)}
+                      aria-describedby={errors.expiryDate ? "expiryDate-error" : undefined}
                       required
                     />
-                    {errors.expiryDate && <p className="text-xs text-red-500 mt-1">{errors.expiryDate}</p>}
+                    {errors.expiryDate && (
+                      <p id="expiryDate-error" role="alert" className="text-xs text-red-500 mt-1">
+                        {errors.expiryDate}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor="cvv">CVV</Label>
@@ -311,9 +395,15 @@ export default function CheckoutPage() {
                       value={formData.cvv}
                       onChange={(e) => handleInputChange("cvv", e.target.value)}
                       placeholder="123"
+                      aria-invalid={Boolean(errors.cvv)}
+                      aria-describedby={errors.cvv ? "cvv-error" : undefined}
                       required
                     />
-                    {errors.cvv && <p className="text-xs text-red-500 mt-1">{errors.cvv}</p>}
+                    {errors.cvv && (
+                      <p id="cvv-error" role="alert" className="text-xs text-red-500 mt-1">
+                        {errors.cvv}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div>
@@ -323,9 +413,13 @@ export default function CheckoutPage() {
                     value={formData.nameOnCard}
                     onChange={(e) => handleInputChange("nameOnCard", e.target.value)}
                     placeholder="John Doe"
+                    aria-describedby="payment-security-note"
                     required
                   />
                 </div>
+                <p id="payment-security-note" className="text-xs text-gray-600">
+                  Your billing profile and shipping profile are retained securely and reused only for checkout autofill authorization.
+                </p>
               </CardContent>
             </Card>
           </div>
@@ -375,10 +469,54 @@ export default function CheckoutPage() {
 
                 <CartSummary totals={totals} />
 
-                <form onSubmit={handleSubmit}>
+                <form onSubmit={handleSubmit} className="space-y-3">
+                  <div className="rounded-md border p-3 space-y-3 bg-white/80 dark:bg-gray-900/60">
+                    <label className="flex items-start gap-2 text-sm" htmlFor="subscription-consent">
+                      <input
+                        id="subscription-consent"
+                        type="checkbox"
+                        checked={subscriptionConsent}
+                        onChange={(event) => {
+                          const checked = event.target.checked
+                          setSubscriptionConsent(checked)
+                          setErrors((prev) => ({ ...prev, subscriptionConsent: "" }))
+                        }}
+                        aria-invalid={Boolean(errors.subscriptionConsent)}
+                        aria-describedby={errors.subscriptionConsent ? "subscription-consent-error subscription-renewal-note" : "subscription-renewal-note"}
+                        className="mt-0.5"
+                      />
+                      <span>
+                        I authorize recurring subscription renewals and accept RunAsh billing terms for managed subscription state.
+                      </span>
+                    </label>
+                    <p id="subscription-renewal-note" className="text-xs text-gray-600">
+                      Renewal authorization can be managed later in the Subscriptions and Billing Portal routes.
+                    </p>
+                    {errors.subscriptionConsent && (
+                      <p id="subscription-consent-error" role="alert" className="text-xs text-red-500">
+                        {errors.subscriptionConsent}
+                      </p>
+                    )}
+
+                    <label className="flex items-start gap-2 text-sm" htmlFor="save-checkout-info">
+                      <input
+                        id="save-checkout-info"
+                        type="checkbox"
+                        checked={saveCheckoutInfo}
+                        onChange={(event) => setSaveCheckoutInfo(event.target.checked)}
+                        className="mt-0.5"
+                      />
+                      <span>Save my info for faster checkout.</span>
+                    </label>
+                  </div>
+
+                  <p className="text-xs text-gray-600">
+                    By placing your order, you agree to our <Link href="/terms" className="underline">Terms</Link> and <Link href="/privacy" className="underline">Privacy Policy</Link>.
+                  </p>
+
                   <Button
                     type="submit"
-                    disabled={processing}
+                    disabled={!canSubmit}
                     className="w-full bg-gradient-to-r from-orange-600 to-yellow-500 hover:from-orange-700 hover:to-yellow-600 text-white"
                   >
                     {processing ? "Processing..." : `Complete Order - $${totals.total.toFixed(2)}`}
