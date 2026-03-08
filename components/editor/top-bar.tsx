@@ -76,7 +76,7 @@ export default function TopBar({ isRecording, onRecordingToggle, onOpenCollabora
               <Button asChild variant="outline" size="sm" className="gap-2 bg-transparent" aria-label="Open editor guide">
                 <Link href="/editor/docs">
                   <HelpCircle className="w-4 h-4" />
-                  Help
+                  Help/Docs
                 </Link>
               </Button>
 
@@ -105,7 +105,7 @@ export default function TopBar({ isRecording, onRecordingToggle, onOpenCollabora
               <DropdownMenuItem asChild>
                 <Link href="/editor/docs">
                   <HelpCircle className="w-4 h-4" />
-                  Editor guide
+                  Help/Docs
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem>
