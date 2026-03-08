@@ -3,6 +3,14 @@
 Last updated: 2026-02
 
 
+
+## SMS OTP provider delivery hardening update (2026-03)
+
+- OTP SMS dispatch now resolves through a dedicated provider client (`lib/sms-provider-client.ts`) with environment-driven timeout/retry controls and normalized delivery results (`sent`/`queued`/`failed`).
+- Legacy mock-provider success fallback has been removed from runtime selection; unconfigured or mock-selected providers now return explicit delivery failure so auth flows never report false-positive OTP sends.
+- Auth phone-OTP start/resend paths now persist non-sensitive provider outcome metadata in security audit events (provider/state/request/message ids), while keeping phone identifiers hashed and excluding OTP payloads from logs.
+- Rate-limit and challenge lockout semantics are unchanged; only SMS delivery execution and outage/failure handling behavior were updated.
+
 ## Middleware/admin authorization hardening update (2026-02)
 
 - Middleware public API matching now allowlists only explicit unauthenticated auth endpoints instead of treating the full `/api/auth/**` tree as public.
