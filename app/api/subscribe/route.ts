@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server"
-import {
-  normalizeNewsletterEmail,
-  upsertNewsletterSubscription,
-  type UpsertNewsletterSubscriptionResult,
-} from "@/lib/repositories/newsletter-subscriptions"
 
-const SUBSCRIBE_SOURCE = "api/subscribe"
+import {
+  normalizeSubscriptionEmail,
+  upsertSubscription,
+  type UpsertSubscriptionResult,
+} from "@/lib/repositories/subscriptions"
+
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const RATE_LIMIT_WINDOW_MS = 60_000
 const MAX_REQUESTS_PER_IP = 10
@@ -19,7 +19,7 @@ type RateLimitState = {
 type RateLimitMap = Map<string, RateLimitState>
 
 type SubscribeDependencies = {
-  upsert: (input: { email: string; source: string; consentedAt: string }) => Promise<UpsertNewsletterSubscriptionResult>
+  upsert: (input: { email: string; metadata: Record<string, unknown> }) => Promise<UpsertSubscriptionResult>
   now: () => number
   ipLimits: RateLimitMap
   emailLimits: RateLimitMap
@@ -29,7 +29,7 @@ const ipLimits: RateLimitMap = new Map()
 const emailLimits: RateLimitMap = new Map()
 
 const defaultDependencies: SubscribeDependencies = {
-  upsert: upsertNewsletterSubscription,
+  upsert: upsertSubscription,
   now: () => Date.now(),
   ipLimits,
   emailLimits,
@@ -65,7 +65,7 @@ function isSafeEmail(email: string): boolean {
 
 export async function handleSubscribePostRequest(request: Request, deps: SubscribeDependencies = defaultDependencies) {
   const body = await request.json().catch(() => null)
-  const email = normalizeNewsletterEmail(body?.email)
+  const email = normalizeSubscriptionEmail(body?.email)
 
   if (!isSafeEmail(email)) {
     return NextResponse.json({ ok: false, email: null, alreadySubscribed: false, error: "invalid_email" }, { status: 400 })
@@ -84,8 +84,12 @@ export async function handleSubscribePostRequest(request: Request, deps: Subscri
   try {
     const result = await deps.upsert({
       email,
-      source: SUBSCRIBE_SOURCE,
-      consentedAt: new Date(now).toISOString(),
+      metadata: {
+        source: "api/subscribe",
+        consentedAt: new Date(now).toISOString(),
+        ip,
+        userAgent: request.headers.get("user-agent"),
+      },
     })
 
     return NextResponse.json(
