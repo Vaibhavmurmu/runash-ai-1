@@ -810,3 +810,11 @@ Risk + rollback:
 - Latest successful provider rates are persisted with upsert semantics in `exchange_rates` and kept in in-memory cache for stale-while-revalidate reads when the upstream provider is unavailable.
 - Currency pairs that cannot be resolved are returned in `unavailableCurrencies`; clients must block conversions for those pairs rather than falling back to `1` or hardcoded rates.
 - Rollback: revert to previous hook/service behavior only if provider and DB path is unavailable; keep the API contract stable (`rates`, `supportedCurrencies`, `unavailableCurrencies`, `stale`, `tooOld`) during rollback.
+
+## 2026-03 Checkout PAN/CVV state hardening + embedded Stripe handoff
+
+- Checkout UI (`/checkout`) no longer captures card number, expiry, or CVV in React component state, native form inputs, browser storage, or pending-order payloads.
+- Payment method collection is delegated to a dedicated checkout payment-method section component that initializes Stripe-hosted embedded checkout elements using a server-issued client secret.
+- `POST /api/v1/billing/checkout` now accepts optional `requestClientSecret` (additive, backward-compatible) to support embedded checkout handoff while preserving the existing hosted redirect URL response fields.
+- **Impacted payment/auth flows identified:** web checkout handoff flow (`/checkout` -> `/api/v1/billing/checkout`), customer profile persistence for return URLs, billing validator gate.
+- **Risk + rollback:** medium UI integration risk if embedded checkout initialization fails in environment/misconfigured publishable key; rollback by reverting `app/checkout/page.tsx` and `components/payment/checkout-payment-methods.tsx`, while leaving API additive field as no-op-compatible or reverting the optional field addition in `app/api/v1/billing/checkout/route.ts`.

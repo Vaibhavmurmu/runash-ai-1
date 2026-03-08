@@ -29,6 +29,7 @@ const createCheckoutSchema = z
     returnUrlFailed: z.string().url().optional(),
     humanConfirmed: z.boolean().optional(),
     mfaVerified: z.boolean().optional(),
+    requestClientSecret: z.boolean().optional(),
     product_tax_code: z.enum(["physical_goods", "digital_services", "professional_services"]).optional(),
     billing_address: z
       .object({
@@ -74,6 +75,7 @@ export async function POST(request: NextRequest) {
       billing_address,
       humanConfirmed,
       mfaVerified,
+      requestClientSecret,
     } = validation.data
 
     if (!process.env.STRIPE_SECRET_KEY) {
@@ -191,10 +193,8 @@ export async function POST(request: NextRequest) {
       status: "failed",
     })
 
-    const session = await stripe.checkout.sessions.create({
+    const sessionPayload: Parameters<typeof stripe.checkout.sessions.create>[0] = {
       mode,
-      success_url: stripeSuccessUrl,
-      cancel_url: stripeCancelUrl,
       customer: identity.user.stripe_customer_id || undefined,
       customer_email: sessionUser.email || undefined,
       line_items: [{ price: priceId, quantity: 1 }],
@@ -216,7 +216,17 @@ export async function POST(request: NextRequest) {
         edgeRouting,
         routingContextMetadata,
       ),
-    })
+    }
+
+    if (requestClientSecret) {
+      sessionPayload.ui_mode = "embedded"
+      sessionPayload.return_url = normalizedReturnSuccess
+    } else {
+      sessionPayload.success_url = stripeSuccessUrl
+      sessionPayload.cancel_url = stripeCancelUrl
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionPayload)
 
     await persistTaxComputation({
       sourceType: "checkout",
@@ -304,6 +314,7 @@ export async function POST(request: NextRequest) {
     return respondSuccess(request, {
       url: session.url,
       redirectUrl: session.url,
+      clientSecret: session.client_secret,
       returnUrlSuccess: finalizedReturnUrlSuccess,
       returnUrlPending: finalizedReturnUrlPending,
       returnUrlFailed: finalizedReturnUrlFailed,

@@ -2,20 +2,19 @@
 
 import type React from "react"
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import { ArrowLeft, CreditCard, Lock, Leaf, ShoppingCart } from "lucide-react"
+import { ArrowLeft, Lock, Leaf, ShoppingCart } from "lucide-react"
 import { useCart } from "@/contexts/cart-context"
 import CartSummary from "@/components/cart/cart-summary"
 import SustainabilityMetrics from "@/components/cart/sustainability-metrics"
 import Link from "next/link"
+import { CheckoutPaymentMethods } from "@/components/payment/checkout-payment-methods"
 
 export default function CheckoutPage() {
-  const router = useRouter()
   const [mounted, setMounted] = useState(false)
   const { state } = useCart()
   const { cart, totals } = state
@@ -28,14 +27,13 @@ export default function CheckoutPage() {
     city: "",
     state: "",
     zipCode: "",
-    cardNumber: "",
-    expiryDate: "",
-    cvv: "",
-    nameOnCard: "",
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [processing, setProcessing] = useState(false)
+  const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null)
+  const [checkoutRedirectUrl, setCheckoutRedirectUrl] = useState<string | null>(null)
+  const [checkoutError, setCheckoutError] = useState<string>("")
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
 
   // Ensure component is mounted before accessing cart
@@ -47,7 +45,16 @@ export default function CheckoutPage() {
       const saved = typeof window !== "undefined" ? localStorage.getItem("userProfile") : null
       if (saved) {
         const parsed = JSON.parse(saved)
-        setFormData((prev) => ({ ...prev, ...parsed }))
+        setFormData((prev) => ({
+          ...prev,
+          email: typeof parsed.email === "string" ? parsed.email : prev.email,
+          firstName: typeof parsed.firstName === "string" ? parsed.firstName : prev.firstName,
+          lastName: typeof parsed.lastName === "string" ? parsed.lastName : prev.lastName,
+          address: typeof parsed.address === "string" ? parsed.address : prev.address,
+          city: typeof parsed.city === "string" ? parsed.city : prev.city,
+          state: typeof parsed.state === "string" ? parsed.state : prev.state,
+          zipCode: typeof parsed.zipCode === "string" ? parsed.zipCode : prev.zipCode,
+        }))
       }
     } catch (e) {
       // ignore
@@ -67,9 +74,6 @@ export default function CheckoutPage() {
     if (!formData.address) newErrors.address = "Address is required"
     if (!formData.city) newErrors.city = "City is required"
     if (!formData.zipCode) newErrors.zipCode = "ZIP code is required"
-    if (!formData.cardNumber) newErrors.cardNumber = "Card number is required"
-    if (!formData.expiryDate) newErrors.expiryDate = "Expiry date is required"
-    if (!formData.cvv) newErrors.cvv = "CVV is required"
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -92,10 +96,6 @@ export default function CheckoutPage() {
         state: formData.state,
         zipCode: formData.zipCode,
       },
-      payment: {
-        cardNumber: formData.cardNumber ? `**** **** **** ${formData.cardNumber.slice(-4)}` : "",
-        nameOnCard: formData.nameOnCard,
-      },
       items: cart.items,
       totals,
     }
@@ -111,11 +111,60 @@ export default function CheckoutPage() {
     setShowConfirmDialog(true)
   }
 
-  const proceedToPayment = () => {
+  const proceedToPayment = async () => {
     setProcessing(true)
-    // Here you could call an API to create an order on the backend and get a payment session.
-    // For now we navigate to the payment page and the payment page should read `pendingOrder` from sessionStorage.
-    router.push("/payment/runash-pay")
+    setCheckoutError("")
+
+    try {
+      if (!process.env.NEXT_PUBLIC_STRIPE_CHECKOUT_PRICE_ID) {
+        throw new Error("Checkout price is not configured")
+      }
+
+      const fallbackSuccess = `${window.location.origin}/payment-redirect/return?status=success`
+      const fallbackCancel = `${window.location.origin}/payment-redirect/return?status=failed`
+      const response = await fetch("/api/v1/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          priceId: process.env.NEXT_PUBLIC_STRIPE_CHECKOUT_PRICE_ID,
+          mode: "payment",
+          success_url: fallbackSuccess,
+          cancel_url: fallbackCancel,
+          returnUrlSuccess: fallbackSuccess,
+          returnUrlFailed: fallbackCancel,
+          returnUrlPending: `${window.location.origin}/payment-redirect/return?status=pending`,
+          requestClientSecret: true,
+          billing_address: {
+            country: "US",
+            state: formData.state,
+            city: formData.city,
+            postal_code: formData.zipCode,
+          },
+        }),
+      })
+
+      const payload = await response.json()
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error?.message || "Unable to initialize checkout")
+      }
+
+      const data = payload.data || {}
+      setCheckoutClientSecret(data.clientSecret || null)
+      setCheckoutRedirectUrl(data.redirectUrl || data.url || null)
+
+      if (!data.clientSecret && (data.redirectUrl || data.url)) {
+        window.location.href = data.redirectUrl || data.url
+        return
+      }
+
+      if (!data.clientSecret && !data.redirectUrl && !data.url) {
+        throw new Error("Checkout session did not return a usable handoff target")
+      }
+    } catch (error) {
+      setCheckoutError(error instanceof Error ? error.message : "Unable to initialize checkout")
+    } finally {
+      setProcessing(false)
+    }
   }
 
   // Show loading state during hydration
@@ -272,62 +321,14 @@ export default function CheckoutPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <CreditCard className="h-5 w-5" />
-                  <span>Payment Information</span>
-                  <Lock className="h-4 w-4 text-green-600" />
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="cardNumber">Card Number</Label>
-                  <Input
-                    id="cardNumber"
-                    value={formData.cardNumber}
-                    onChange={(e) => handleInputChange("cardNumber", e.target.value)}
-                    placeholder="1234 5678 9012 3456"
-                    required
-                  />
-                  {errors.cardNumber && <p className="text-xs text-red-500 mt-1">{errors.cardNumber}</p>}
-                </div>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="col-span-2">
-                    <Label htmlFor="expiryDate">Expiry Date</Label>
-                    <Input
-                      id="expiryDate"
-                      value={formData.expiryDate}
-                      onChange={(e) => handleInputChange("expiryDate", e.target.value)}
-                      placeholder="MM/YY"
-                      required
-                    />
-                    {errors.expiryDate && <p className="text-xs text-red-500 mt-1">{errors.expiryDate}</p>}
-                  </div>
-                  <div>
-                    <Label htmlFor="cvv">CVV</Label>
-                    <Input
-                      id="cvv"
-                      value={formData.cvv}
-                      onChange={(e) => handleInputChange("cvv", e.target.value)}
-                      placeholder="123"
-                      required
-                    />
-                    {errors.cvv && <p className="text-xs text-red-500 mt-1">{errors.cvv}</p>}
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="nameOnCard">Name on Card</Label>
-                  <Input
-                    id="nameOnCard"
-                    value={formData.nameOnCard}
-                    onChange={(e) => handleInputChange("nameOnCard", e.target.value)}
-                    placeholder="John Doe"
-                    required
-                  />
-                </div>
-              </CardContent>
-            </Card>
+            <CheckoutPaymentMethods
+              clientSecret={checkoutClientSecret}
+              checkoutUrl={checkoutRedirectUrl}
+              loading={processing}
+              disabled={showConfirmDialog}
+              errorMessage={checkoutError}
+              onInitializeCheckout={proceedToPayment}
+            />
           </div>
 
           {/* Order Summary */}
@@ -431,7 +432,7 @@ export default function CheckoutPage() {
                 <Button variant="ghost" onClick={() => setShowConfirmDialog(false)}>
                   Edit
                 </Button>
-                <Button onClick={proceedToPayment}>
+                <Button onClick={() => void proceedToPayment()}>
                   {processing ? "Please wait..." : "Proceed to Payment"}
                 </Button>
               </div>
