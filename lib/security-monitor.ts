@@ -3,6 +3,60 @@ import { AuthLogger } from "./auth-logger"
 
 const sql = neon(process.env.DATABASE_URL!)
 
+const GEO_CACHE_RETENTION_DAYS = 90
+
+async function upsertThreatIpGeoCache(start: string, end: string): Promise<void> {
+  await sql(
+    `
+      INSERT INTO auth_ip_geo_cache (
+        ip_address,
+        country_code,
+        country_name,
+        region_name,
+        source,
+        last_enriched_at,
+        expires_at,
+        created_at,
+        updated_at
+      )
+      SELECT
+        st.source_ip,
+        COALESCE(NULLIF(st.metadata->'geo'->>'countryCode', ''), 'ZZ') as country_code,
+        COALESCE(NULLIF(st.metadata->'geo'->>'country', ''), 'Unknown') as country_name,
+        NULLIF(st.metadata->'geo'->>'region', '') as region_name,
+        CASE WHEN st.metadata ? 'geo' THEN 'threat_payload' ELSE 'pending_lookup' END as source,
+        NOW(),
+        NOW() + ($3::text || ' days')::interval,
+        NOW(),
+        NOW()
+      FROM security_threats st
+      LEFT JOIN auth_ip_geo_cache geo ON geo.ip_address = st.source_ip
+      WHERE st.first_detected BETWEEN $1 AND $2
+        AND st.source_ip IS NOT NULL
+        AND (
+          geo.ip_address IS NULL
+          OR geo.expires_at <= NOW()
+          OR (st.metadata ? 'geo' AND geo.source <> 'threat_payload')
+        )
+      GROUP BY st.source_ip, country_code, country_name, region_name, source
+      ON CONFLICT (ip_address) DO UPDATE
+      SET
+        country_code = COALESCE(EXCLUDED.country_code, auth_ip_geo_cache.country_code),
+        country_name = COALESCE(EXCLUDED.country_name, auth_ip_geo_cache.country_name),
+        region_name = COALESCE(EXCLUDED.region_name, auth_ip_geo_cache.region_name),
+        source = CASE
+          WHEN EXCLUDED.source = 'threat_payload' THEN EXCLUDED.source
+          ELSE auth_ip_geo_cache.source
+        END,
+        last_enriched_at = NOW(),
+        expires_at = NOW() + ($3::text || ' days')::interval,
+        updated_at = NOW()
+    `,
+    [start, end, GEO_CACHE_RETENTION_DAYS],
+  )
+}
+
+
 export interface SecurityThreat {
   id: number
   threat_type: string
@@ -74,6 +128,8 @@ export class SecurityMonitor {
 
   static async getSecurityMetrics(dateRange: { start: string; end: string }): Promise<SecurityMetrics> {
     const { start, end } = dateRange
+
+    await upsertThreatIpGeoCache(start, end)
 
     // Active and resolved threats
     const threatCounts = await sql(
@@ -151,14 +207,45 @@ export class SecurityMonitor {
       [start, end],
     )
 
-    // Geographic threats (mock data for now)
-    const geographicThreats = [
-      { country: "Russia", threats: 45, risk_score: 8.2 },
-      { country: "China", threats: 38, risk_score: 7.8 },
-      { country: "North Korea", threats: 12, risk_score: 9.1 },
-      { country: "Iran", threats: 8, risk_score: 8.5 },
-      { country: "Unknown", threats: 23, risk_score: 6.4 },
-    ]
+    const geographicThreatsQuery = `
+      WITH geo_source AS (
+        SELECT country_name, threats, avg_risk_score
+        FROM mv_security_geographic_threat_daily
+        WHERE date BETWEEN DATE($1) AND DATE($2)
+
+        UNION ALL
+
+        SELECT
+          COALESCE(geo.country_name, 'Unknown') as country_name,
+          COUNT(*) as threats,
+          AVG(st.risk_score)::numeric as avg_risk_score
+        FROM security_threats st
+        LEFT JOIN auth_ip_geo_cache geo
+          ON geo.ip_address = st.source_ip
+          AND geo.expires_at > NOW()
+        WHERE st.first_detected BETWEEN $1 AND $2
+          AND NOT EXISTS (
+            SELECT 1
+            FROM mv_security_geographic_threat_daily mv
+            WHERE mv.date BETWEEN DATE($1) AND DATE($2)
+          )
+        GROUP BY COALESCE(geo.country_name, 'Unknown')
+      )
+      SELECT
+        country_name as country,
+        SUM(threats) as threats,
+        AVG(avg_risk_score)::numeric as risk_score
+      FROM geo_source
+      GROUP BY country_name
+      ORDER BY threats DESC
+      LIMIT 10
+    `
+    const geographicThreatRows = await sql(geographicThreatsQuery, [start, end])
+    const geographicThreats = geographicThreatRows.map((row: any) => ({
+      country: row.country,
+      threats: Number.parseInt(row.threats),
+      risk_score: Number.parseFloat(row.risk_score || 0),
+    }))
 
     return {
       activeThreats: Number.parseInt(threatCounts[0]?.active_threats || 0),
