@@ -129,9 +129,6 @@ export default function CollaborationPanel({ isOpen, onClose, projectId, current
       const payload = (await response.json()) as CollaborationApiPayload
       setCollaborators(normalizeCollaborators(payload.collaborators))
       setActivityLog(normalizeActivity(payload.activity))
-      if (payload.activityVisible === false) {
-        setSettings((previous) => ({ ...previous, showActivityLog: false }))
-      }
 
       const settingsResponse = await fetch(`/api/editor/projects/${encodeURIComponent(projectId)}/collaboration/settings`, {
         method: "GET",
