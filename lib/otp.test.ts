@@ -1,7 +1,8 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { createSMSOTPWithClient, createTwilioSmsProvider } from "./otp"
+import { createSMSOTPWithClient } from "./otp"
+import { createTwilioSmsProvider } from "./sms-provider-client"
 
 type SQLCall = { text: string; values: unknown[] }
 
@@ -189,7 +190,7 @@ test("createSMSOTPWithClient fails when SMS provider is unconfigured in producti
   )
 })
 
-test("createSMSOTPWithClient supports explicit development mock provider only with dedicated flag", async () => {
+test("createSMSOTPWithClient rejects mock provider so test env does not emit false success", async () => {
   const { sqlClient } = createSqlMock()
 
   await withEnv(
@@ -206,8 +207,62 @@ test("createSMSOTPWithClient supports explicit development mock provider only wi
         checkRateLimit: async () => ({ allowed: true, attemptsLeft: 4 }),
       })
 
-      assert.equal(response.success, true)
-      assert.equal(response.expiresIn, 300)
+      assert.equal(response.success, false)
+      assert.equal(response.message, "Failed to send SMS OTP")
+    },
+  )
+})
+
+
+test("createSMSOTPWithClient keeps rate-limit short-circuit behavior unchanged", async () => {
+  const { sqlClient, calls } = createSqlMock()
+  let providerCalled = false
+
+  const response = await createSMSOTPWithClient(sqlClient, "+15550005555", "2fa_login", {
+    checkRateLimit: async () => ({ allowed: false, attemptsLeft: 0, blockedUntil: new Date("2099-01-01T00:00:00Z") }),
+    deliverSmsOtp: async () => {
+      providerCalled = true
+      return {
+        success: true,
+        state: "sent",
+        provider: "twilio",
+      }
+    },
+  })
+
+  assert.equal(response.success, false)
+  assert.equal(providerCalled, false)
+  assert.equal(calls.length, 0)
+})
+
+test("createTwilioSmsProvider returns failure for outage/network exception without false success", async () => {
+  await withEnv(
+    {
+      TWILIO_ACCOUNT_SID: "AC123",
+      TWILIO_AUTH_TOKEN: "token",
+      TWILIO_PHONE_NUMBER: "+15551234567",
+      OTP_SMS_PROVIDER_MAX_RETRIES: "2",
+      OTP_SMS_PROVIDER_BACKOFF_BASE_MS: "0",
+      OTP_SMS_PROVIDER_TIMEOUT_MS: "10",
+    },
+    async () => {
+      let attempts = 0
+      const provider = createTwilioSmsProvider(async () => {
+        attempts += 1
+        throw new Error("network down")
+      })
+
+      const result = await provider.sendOtp({
+        phoneNumber: "+15557654321",
+        code: "123456",
+        purpose: "login",
+        requestId: "req-outage",
+      })
+
+      assert.equal(attempts, 2)
+      assert.equal(result.success, false)
+      assert.equal(result.state, "failed")
+      assert.equal(result.errorCode, "provider_network_error")
     },
   )
 })

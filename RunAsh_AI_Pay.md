@@ -13,6 +13,13 @@ This document is payment-domain specific. For contributor workflow/process polic
 
 ## Current payment reliability notes (2026-02)
 
+## 2026-03 auth SMS OTP provider reliability note (payment-adjacent auth hardening)
+
+- Updated auth SMS OTP delivery to use environment-configured provider retries/timeouts and explicit outage failures; no payment API fields, checkout contract signatures, or webhook schemas were changed.
+- Payment-adjacent auth posture is improved by preventing false OTP-send success responses during provider outages, reducing risk of ambiguous sign-in/step-up states before payment actions.
+- Risk + rollback: low-to-medium auth runtime risk (SMS delivery path only). Roll back by reverting `lib/sms-provider-client.ts`, `lib/otp.ts`, and `lib/auth/plugins/phone-otp.ts` together to restore previous OTP delivery wiring.
+
+
 - RunAsh Chat payment-adjacent actions route through existing settings action APIs:
   - `POST /api/settings/actions/credits-balance`
   - `POST /api/settings/actions/refer-earn`

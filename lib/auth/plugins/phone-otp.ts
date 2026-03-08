@@ -1,7 +1,8 @@
-import { createHash, randomInt, timingSafeEqual } from "node:crypto"
+import { createHash, randomInt, randomUUID, timingSafeEqual } from "node:crypto"
 import { type NextRequest, NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 import { recordSecurityAuditEvent } from "@/lib/security-audit-events"
+import { getSmsOtpProvider, type SmsDeliveryResult } from "@/lib/sms-provider-client"
 
 const phoneRegex = /^\+[1-9]\d{1,14}$/
 const OTP_LENGTH = 6
@@ -149,28 +150,14 @@ async function verifyCaptchaHook(payload: { token?: string; phoneNumber: string;
   }
 }
 
-async function dispatchSmsOtp(phoneNumber: string, code: string, purpose: OtpPurpose) {
-  const hookUrl = process.env.PHONE_OTP_SMS_HOOK_URL
-  if (!hookUrl) {
-    return true
-  }
-
-  try {
-    const response = await fetch(hookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        phoneNumber,
-        code,
-        purpose,
-        message: `Your RunAsh verification code is ${code}. It expires in 5 minutes.`,
-      }),
-    })
-
-    return response.ok
-  } catch {
-    return false
-  }
+async function dispatchSmsOtp(phoneNumber: string, code: string, purpose: OtpPurpose): Promise<SmsDeliveryResult> {
+  const provider = getSmsOtpProvider()
+  return provider.sendOtp({
+    phoneNumber,
+    code,
+    purpose,
+    requestId: randomUUID(),
+  })
 }
 
 async function createOrRotateChallenge(input: { phoneNumber: string; purpose: OtpPurpose; ipAddress: string; userAgent: string }) {
@@ -309,8 +296,17 @@ export async function startPhoneOtp(request: NextRequest) {
     userAgent,
   })
 
-  const sent = await dispatchSmsOtp(body.phoneNumber, challenge.otpCode, body.purpose)
-  if (!sent) {
+  const delivery = await dispatchSmsOtp(body.phoneNumber, challenge.otpCode, body.purpose)
+  if (!delivery.success) {
+    await writeAuditEvent(request, "auth.login.failed", {
+      reason: "phone_otp_delivery_failed",
+      challengeId: challenge.challengeId,
+      provider: delivery.provider,
+      deliveryState: delivery.state,
+      retryCount: delivery.retryCount ?? 0,
+      errorCode: delivery.errorCode ?? "unknown",
+      identifierHash: hashIdentifier(body.phoneNumber),
+    })
     return NextResponse.json({ success: false, message: "Failed to send OTP" }, { status: 502 })
   }
 
@@ -319,6 +315,10 @@ export async function startPhoneOtp(request: NextRequest) {
     purpose: body.purpose,
     challengeId: challenge.challengeId,
     identifierHash: hashIdentifier(body.phoneNumber),
+    provider: delivery.provider,
+    deliveryState: delivery.state,
+    providerMessageId: delivery.providerMessageId ?? null,
+    providerRequestId: delivery.providerRequestId ?? null,
   })
 
   return NextResponse.json({
@@ -439,11 +439,31 @@ export async function resendPhoneOtp(request: NextRequest) {
   const ipAddress = normalizeIp(request)
   const userAgent = request.headers.get("user-agent") ?? "unknown"
   const rotated = await createOrRotateChallenge({ phoneNumber: body.phoneNumber, purpose: body.purpose, ipAddress, userAgent })
-  const sent = await dispatchSmsOtp(body.phoneNumber, rotated.otpCode, body.purpose)
+  const delivery = await dispatchSmsOtp(body.phoneNumber, rotated.otpCode, body.purpose)
 
-  if (!sent) {
+  if (!delivery.success) {
+    await writeAuditEvent(request, "auth.login.failed", {
+      reason: "phone_otp_resend_delivery_failed",
+      challengeId: rotated.challengeId,
+      provider: delivery.provider,
+      deliveryState: delivery.state,
+      retryCount: delivery.retryCount ?? 0,
+      errorCode: delivery.errorCode ?? "unknown",
+      identifierHash: hashIdentifier(body.phoneNumber),
+    })
     return NextResponse.json({ success: false, message: "Failed to resend OTP" }, { status: 502 })
   }
+
+  await writeAuditEvent(request, "auth.login.attempt", {
+    event: "phone_otp_resent",
+    challengeId: rotated.challengeId,
+    purpose: body.purpose,
+    identifierHash: hashIdentifier(body.phoneNumber),
+    provider: delivery.provider,
+    deliveryState: delivery.state,
+    providerMessageId: delivery.providerMessageId ?? null,
+    providerRequestId: delivery.providerRequestId ?? null,
+  })
 
   return NextResponse.json({ success: true, message: "OTP resent", cooldownSeconds: RESEND_COOLDOWN_SECONDS, challengeId: rotated.challengeId })
 }
