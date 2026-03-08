@@ -5,6 +5,7 @@ import { requireEditingEnabled } from "@/app/api/editor/projects/_permissions"
 import { buildInvalidRequestError } from "@/lib/api/contracts"
 import { bumpTimelineVersion, claimProjectVersion, parseExpectedVersion } from "@/lib/editor/versioned-mutations"
 import { sql } from "@/lib/editor/repository"
+import { ensureSegmentEditable } from "@/lib/editor/segment-locks"
 
 const updateEditorSegmentSchema = z.object({
   trackId: z.string().trim().min(1).max(120).optional(),
@@ -40,6 +41,9 @@ export async function PATCH(request: Request, { params }: { params: { projectId:
   if (!parsedBody.success) {
     return NextResponse.json(buildInvalidRequestError(parsedBody.error), { status: 400 })
   }
+
+  const lockGuard = await ensureSegmentEditable({ projectId, segmentId, userId: auth.userId })
+  if (lockGuard) return lockGuard
 
   const version = parseExpectedVersion(request, parsedBody.data)
   if ("error" in version) return version.error
@@ -81,6 +85,9 @@ export async function DELETE(request: Request, { params }: { params: { projectId
   const editingGuard = await requireEditingEnabled(projectId, auth.userId)
   if (editingGuard) return editingGuard
   const { searchParams } = new URL(request.url)
+
+  const lockGuard = await ensureSegmentEditable({ projectId, segmentId, userId: auth.userId })
+  if (lockGuard) return lockGuard
 
   const version = parseExpectedVersion(request, { version: searchParams.get("version") })
   if ("error" in version) return version.error

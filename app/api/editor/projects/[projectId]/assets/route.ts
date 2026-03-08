@@ -3,6 +3,7 @@ import { requireEditorOperation } from "@/app/api/editor/_lib"
 import { requireEditingEnabled } from "@/app/api/editor/projects/_permissions"
 import { buildInvalidRequestError, editorAssetCreateRequestSchema } from "@/lib/api/contracts"
 import { createEditorAsset } from "@/lib/editor/assets"
+import { claimProjectVersion, parseExpectedVersion } from "@/lib/editor/versioned-mutations"
 import { sql } from "@/lib/editor/repository"
 
 export async function GET(request: Request, { params }: { params: { projectId: string } }) {
@@ -27,6 +28,18 @@ export async function POST(request: Request, { params }: { params: { projectId: 
     return NextResponse.json(buildInvalidRequestError(parsedBody.error), { status: 400 })
   }
 
+  const version = parseExpectedVersion(request, parsedBody.success ? parsedBody.data : {})
+  if ("error" in version) return version.error
+
+  const claim = await claimProjectVersion({
+    projectId,
+    userId: auth.userId,
+    expectedVersion: version.expectedVersion,
+    mutation: "asset.create",
+    targetType: "asset",
+  })
+  if (!claim.ok) return claim.response
+
   const asset = await createEditorAsset({
     projectId,
     ownerId: auth.userId,
@@ -39,5 +52,5 @@ export async function POST(request: Request, { params }: { params: { projectId: 
     metadata: parsedBody.data.metadata,
   })
 
-  return NextResponse.json({ asset }, { status: 201 })
+  return NextResponse.json({ asset, version: claim.projectVersion }, { status: 201 })
 }

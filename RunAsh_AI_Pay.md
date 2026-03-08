@@ -364,6 +364,21 @@ Risks + rollback:
 
 ## Link Checkout Reliability + Audit Controls
 
+## 2026-03 QR service encoding/decoding hardening (Scan & Pay)
+
+- `lib/services/qr-service.tsx` now uses the production QR encoder (`qrcode`) for `generateQR`, replacing the placeholder SVG mock output with real scannable QR payload images.
+- `scanQR` now uses `BarcodeDetector`-based decoding from camera/image compatible sources and enforces deterministic error codes:
+  - `UNREADABLE_QR_INPUT`
+  - `QR_CODE_NOT_FOUND`
+  - `QR_SCANNER_NOT_SUPPORTED`
+  - `INVALID_QR_PAYLOAD`
+- Existing UPI parser helpers remain backward compatible; decoded UPI payloads are now validated to require a payee address before returning scan success.
+
+Risks + rollback:
+1. **Risk:** browsers/environments without `BarcodeDetector` support will return `QR_SCANNER_NOT_SUPPORTED`. **Mitigation:** surface deterministic UX fallback and keep manual UPI entry available.
+2. **Risk:** malformed UPI payloads that previously passed as opaque text now fail with `INVALID_QR_PAYLOAD`. **Mitigation:** validation is limited to mandatory UPI payee address only to avoid over-rejection.
+3. **Rollback:** revert `lib/services/qr-service.tsx` to prior mock scan/generate implementation if runtime compatibility issues arise; API signatures remain unchanged.
+
 - Link checkout now enforces validator threshold controls for HITL and MFA before provider session creation.
 - Wallet default payment method updates and subscription lifecycle transitions are treated as high-risk payment actions and require HITL + MFA.
 - Risk engine decisioning includes geo mismatch review, risk-score review/block thresholds, and block-signal deny rules with explicit reason codes.
@@ -820,3 +835,20 @@ Risk + rollback:
 - Latest successful provider rates are persisted with upsert semantics in `exchange_rates` and kept in in-memory cache for stale-while-revalidate reads when the upstream provider is unavailable.
 - Currency pairs that cannot be resolved are returned in `unavailableCurrencies`; clients must block conversions for those pairs rather than falling back to `1` or hardcoded rates.
 - Rollback: revert to previous hook/service behavior only if provider and DB path is unavailable; keep the API contract stable (`rates`, `supportedCurrencies`, `unavailableCurrencies`, `stale`, `tooOld`) during rollback.
+
+## 2026-03 checkout UX enhancement for card/UPI/business fields (no payment contract changes)
+
+- Updated `app/checkout/page.tsx` to align the checkout surface with the target flow by adding:
+  - payment method toggle (`Card` / `UPI`),
+  - save-for-faster-checkout consent,
+  - business purchase toggle with business name + GSTIN inputs,
+  - terms acceptance gate before order submission,
+  - UPI app selection modal and action-success confirmation modal.
+- Backward compatibility: no API request/response field names, webhook payloads, or payment route signatures were changed.
+- Impacted payment/auth flows identified:
+  - Checkout UI capture on `/checkout` before redirect to `/payment/runash-pay`.
+  - Session/local storage handoff via `pendingOrder` and existing cart state (`runash-cart`).
+- Risks:
+  1. UX-only flow risk: modal sequencing or required consent validation could block submit if labels/selectors regress.
+  2. No backend contract risk since changes are presentational/client-state only.
+- Rollback: revert `app/checkout/page.tsx` and redeploy; no payment data migration and no API/schema rollback required.
