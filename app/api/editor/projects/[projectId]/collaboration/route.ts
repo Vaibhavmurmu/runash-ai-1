@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { requireEditorOperation } from "@/app/api/editor/_lib"
+import { requireActivityVisible } from "@/app/api/editor/projects/_permissions"
 import {
   appendProjectActivity,
   inviteProjectCollaborator,
   listProjectActivity,
   listProjectCollaborators,
+  listProjectInvites,
 } from "@/lib/editor/collaboration-repository"
 import { getProjectById } from "@/lib/editor/repository"
 
@@ -40,6 +42,18 @@ function toActivityPayload(record: Awaited<ReturnType<typeof listProjectActivity
   }
 }
 
+function toInvitePayload(record: Awaited<ReturnType<typeof listProjectInvites>>[number]) {
+  return {
+    id: record.id,
+    email: record.email,
+    role: record.role,
+    status: record.status,
+    expiresAt: record.expires_at,
+    createdAt: record.created_at,
+    inviteLink: `/editor/invite/${record.token}`,
+  }
+}
+
 export async function GET(request: Request, { params }: { params: { projectId: string } }) {
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
@@ -50,9 +64,12 @@ export async function GET(request: Request, { params }: { params: { projectId: s
     return NextResponse.json({ error: "Project not found" }, { status: 404 })
   }
 
-  const [members, activity] = await Promise.all([
+  const activityGuard = await requireActivityVisible(projectId, auth.userId)
+
+  const [members, activity, pendingInvites] = await Promise.all([
     listProjectCollaborators(projectId, auth.userId),
-    listProjectActivity(projectId, auth.userId, 100),
+    activityGuard ? Promise.resolve([]) : listProjectActivity(projectId, auth.userId, 100),
+    listProjectInvites(projectId, auth.userId),
   ])
 
   const projectOwner = {
@@ -71,6 +88,8 @@ export async function GET(request: Request, { params }: { params: { projectId: s
   return NextResponse.json({
     collaborators: [projectOwner, ...members.map((entry) => toCollaboratorPayload(entry, auth.userId))],
     activity: activity.map(toActivityPayload),
+    activityVisible: !activityGuard,
+    pendingInvites: pendingInvites.map(toInvitePayload),
     currentUser: {
       id: auth.userId,
       name: "You",

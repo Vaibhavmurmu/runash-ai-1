@@ -15,7 +15,9 @@ export default function InputTools({ isOpen, onClose }: InputToolsProps) {
   const [activeTab, setActiveTab] = useState("webcam")
   const [webcamActive, setWebcamActive] = useState(false)
   const [screenShareActive, setScreenShareActive] = useState(false)
-  const [webPreviewUrl, setWebPreviewUrl] = useState("https://example.com")
+  const [webPreviewInput, setWebPreviewInput] = useState("")
+  const [webPreviewUrl, setWebPreviewUrl] = useState<string | null>(null)
+  const [webPreviewError, setWebPreviewError] = useState<string | null>(null)
   const [isMuted, setIsMuted] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -70,6 +72,32 @@ export default function InputTools({ isOpen, onClose }: InputToolsProps) {
       tracks.forEach((track) => track.stop())
       setScreenShareActive(false)
     }
+  }
+
+  const normalizeWebUrl = (value: string): string | null => {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+
+    try {
+      const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+      const parsed = new URL(withProtocol)
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null
+      return parsed.toString()
+    } catch {
+      return null
+    }
+  }
+
+  const handleLoadWebPreview = () => {
+    const nextUrl = normalizeWebUrl(webPreviewInput)
+    if (!nextUrl) {
+      setWebPreviewError("Enter a valid http/https URL.")
+      return
+    }
+
+    setWebPreviewError(null)
+    setWebPreviewInput(nextUrl)
+    setWebPreviewUrl(nextUrl)
   }
 
   // Cleanup on unmount
@@ -246,37 +274,43 @@ export default function InputTools({ isOpen, onClose }: InputToolsProps) {
               <div className="flex gap-2">
                 <input
                   type="url"
-                  value={webPreviewUrl}
-                  onChange={(e) => setWebPreviewUrl(e.target.value)}
+                  value={webPreviewInput}
+                  onChange={(e) => setWebPreviewInput(e.target.value)}
                   placeholder="https://example.com"
                   className="flex-1 px-3 py-2 rounded-lg border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                 />
-                <Button size="sm" className="gap-2">
+                <Button size="sm" className="gap-2" onClick={handleLoadWebPreview}>
                   <Play className="w-4 h-4" />
                   Load
                 </Button>
               </div>
+              {webPreviewError && <p className="text-xs text-destructive">{webPreviewError}</p>}
             </div>
 
             {/* Web preview iframe */}
             <div className="border border-border rounded-lg overflow-hidden bg-white">
-              <iframe
-                ref={iframeRef}
-                src={webPreviewUrl}
-                className="w-full h-96 border-none"
-                title="Web Preview"
-                sandbox="allow-same-origin allow-scripts allow-popups allow-presentation"
-              />
+              {webPreviewUrl ? (
+                <iframe
+                  ref={iframeRef}
+                  src={webPreviewUrl}
+                  className="w-full h-96 border-none"
+                  title="Web Preview"
+                  sandbox="allow-same-origin allow-scripts allow-popups allow-presentation"
+                />
+              ) : (
+                <div className="w-full h-96 flex items-center justify-center text-sm text-muted-foreground">Load a URL to start preview.</div>
+              )}
             </div>
 
             {/* Preview controls */}
             <div className="flex gap-2">
               <Button
                 onClick={() => {
-                  if (iframeRef.current) {
+                  if (iframeRef.current && webPreviewUrl) {
                     iframeRef.current.src = webPreviewUrl
                   }
                 }}
+                disabled={!webPreviewUrl}
                 className="flex-1 gap-2 bg-gradient-to-r from-primary to-accent"
               >
                 <Play className="w-4 h-4" />
@@ -285,7 +319,12 @@ export default function InputTools({ isOpen, onClose }: InputToolsProps) {
               <Button
                 variant="outline"
                 className="gap-2 bg-transparent"
-                onClick={() => window.open(webPreviewUrl, "_blank")}
+                onClick={() => {
+                  if (webPreviewUrl) {
+                    window.open(webPreviewUrl, "_blank")
+                  }
+                }}
+                disabled={!webPreviewUrl}
               >
                 <Maximize2 className="w-4 h-4" />
                 Open Full Page
