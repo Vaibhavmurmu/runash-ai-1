@@ -1,5 +1,9 @@
-import { permanentRedirect } from "next/navigation"
+import type { Metadata } from "next"
+import { RunAshChatMainInterface } from "@/components/dashboard/workspace/runash-chat-main-interface"
+import { createChatPageMetadata } from "../chat/_shared-chat-page"
 
-export default function DashboardRunAshChatLegacyPage() {
-  permanentRedirect("/dashboard/chat")
+export const metadata: Metadata = createChatPageMetadata("/dashboard/runash-chat")
+
+export default function DashboardRunAshChatPage() {
+  return <RunAshChatMainInterface />
 }
