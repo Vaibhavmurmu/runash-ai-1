@@ -384,3 +384,20 @@ Business controls preserved:
 - Data integrity update: completion now persists normalized provider output + output-publication metadata with transactional job/asset updates to reduce split-brain writes.
 - Payment/auth impact: none; no payment contract or auth API signature changed.
 - Risk + rollback: moderate operational risk in queue worker behavior. Rollback by reverting `services/editor/render-worker.ts`, new render-job APIs, and migration `scripts/sql/2026-03-06_editor_render_job_orchestration.sql`; existing queued jobs continue under prior worker semantics after rollback.
+
+## 2026-03 checkout method + GST capture enhancement
+
+### Impacted payment/auth flows
+- Checkout UI now supports explicit `card | upi` payment-method selection and forwards this as additive payload metadata to `POST /api/v1/billing/checkout`.
+- Checkout business purchase mode captures GST invoicing fields (`business_name`, `gst_number`, `tax_jurisdiction`) under additive `business_tax` payload shape.
+- Existing required checkout fields and API signatures remain backward compatible; new fields are optional and ignored by older clients.
+
+### Compatibility + security
+- Preserved existing checkout contract field names (`priceId`, `mode`, `success_url`, `cancel_url`, `billing_address`) without renaming/version break.
+- Added optional schema support on billing checkout route for `payment_method` and `business_tax` only.
+- Sensitive GST identifiers are not emitted into audit logs/accounting metadata; only business-purchase boolean + jurisdiction classification are captured for routing/accounting observability.
+
+### Risk / rollback
+- **Risk:** Misconfigured price ID or unavailable billing route can fail direct checkout-session bootstrap from checkout UI.
+- **Mitigation:** UI falls back to existing payment workspace routing when checkout session creation fails.
+- **Rollback:** Revert checkout-page direct billing call path and schema additions in `app/api/v1/billing/checkout/route.ts`; legacy payment workspace flow remains intact.

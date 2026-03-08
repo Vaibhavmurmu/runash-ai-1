@@ -29,7 +29,16 @@ const createCheckoutSchema = z
     returnUrlFailed: z.string().url().optional(),
     humanConfirmed: z.boolean().optional(),
     mfaVerified: z.boolean().optional(),
+    payment_method: z.enum(["card", "upi"]).optional(),
     product_tax_code: z.enum(["physical_goods", "digital_services", "professional_services"]).optional(),
+    business_tax: z
+      .object({
+        is_business_purchase: z.boolean().optional(),
+        business_name: z.string().min(1).max(120).optional(),
+        gst_number: z.string().min(1).max(32).optional(),
+        tax_jurisdiction: z.string().min(1).max(80).optional(),
+      })
+      .optional(),
     billing_address: z
       .object({
         country: z.string().min(2).max(2).optional(),
@@ -70,8 +79,10 @@ export async function POST(request: NextRequest) {
       returnUrlSuccess,
       returnUrlPending,
       returnUrlFailed,
+      payment_method,
       product_tax_code,
       billing_address,
+      business_tax,
       humanConfirmed,
       mfaVerified,
     } = validation.data
@@ -211,6 +222,9 @@ export async function POST(request: NextRequest) {
             tax_total_amount: String(taxComputation.totalTaxAmount),
             product_tax_code: product_tax_code ?? "digital_services",
             validator_decision: JSON.stringify(validatorDecision),
+            payment_method: payment_method ?? "card",
+            business_purchase: business_tax?.is_business_purchase ? "true" : "false",
+            tax_jurisdiction: business_tax?.tax_jurisdiction ?? "",
           },
         }),
         edgeRouting,
@@ -281,6 +295,9 @@ export async function POST(request: NextRequest) {
         metadata: {
           mode,
           source: "app.api.v1.billing.checkout",
+          payment_method: payment_method ?? "card",
+          business_purchase: Boolean(business_tax?.is_business_purchase),
+          tax_jurisdiction: business_tax?.tax_jurisdiction ?? null,
         },
       },
     })

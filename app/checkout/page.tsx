@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,8 +14,12 @@ import CartSummary from "@/components/cart/cart-summary"
 import SustainabilityMetrics from "@/components/cart/sustainability-metrics"
 import Link from "next/link"
 
+type PaymentMethod = "card" | "upi"
+type UpiFlowStatus = "pending" | "confirm"
+
 export default function CheckoutPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [mounted, setMounted] = useState(false)
   const { state } = useCart()
   const { cart, totals } = state
@@ -32,11 +36,19 @@ export default function CheckoutPage() {
     expiryDate: "",
     cvv: "",
     nameOnCard: "",
+    upiVpa: "",
+    businessName: "",
+    gstNumber: "",
+    taxJurisdiction: "",
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [processing, setProcessing] = useState(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [checkoutError, setCheckoutError] = useState("")
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card")
+  const [upiFlowStatus, setUpiFlowStatus] = useState<UpiFlowStatus>("pending")
+  const [isBusinessPurchase, setIsBusinessPurchase] = useState(false)
 
   // Ensure component is mounted before accessing cart
   useEffect(() => {
@@ -67,9 +79,19 @@ export default function CheckoutPage() {
     if (!formData.address) newErrors.address = "Address is required"
     if (!formData.city) newErrors.city = "City is required"
     if (!formData.zipCode) newErrors.zipCode = "ZIP code is required"
-    if (!formData.cardNumber) newErrors.cardNumber = "Card number is required"
-    if (!formData.expiryDate) newErrors.expiryDate = "Expiry date is required"
-    if (!formData.cvv) newErrors.cvv = "CVV is required"
+    if (paymentMethod === "card") {
+      if (!formData.cardNumber) newErrors.cardNumber = "Card number is required"
+      if (!formData.expiryDate) newErrors.expiryDate = "Expiry date is required"
+      if (!formData.cvv) newErrors.cvv = "CVV is required"
+    }
+    if (paymentMethod === "upi" && !formData.upiVpa) {
+      newErrors.upiVpa = "UPI ID is required"
+    }
+    if (isBusinessPurchase) {
+      if (!formData.businessName) newErrors.businessName = "Business name is required"
+      if (!formData.gstNumber) newErrors.gstNumber = "GST number is required"
+      if (!formData.taxJurisdiction) newErrors.taxJurisdiction = "Tax jurisdiction is required"
+    }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -109,12 +131,58 @@ export default function CheckoutPage() {
 
     // Show confirmation dialog (add dialog UI design)
     setShowConfirmDialog(true)
+    setCheckoutError("")
   }
 
-  const proceedToPayment = () => {
+  const proceedToPayment = async () => {
     setProcessing(true)
-    // Here you could call an API to create an order on the backend and get a payment session.
-    // For now we navigate to the payment page and the payment page should read `pendingOrder` from sessionStorage.
+    setCheckoutError("")
+
+    const configuredPriceId = searchParams?.get("priceId") || process.env.NEXT_PUBLIC_DEFAULT_CHECKOUT_PRICE_ID || ""
+    const origin = typeof window !== "undefined" ? window.location.origin : ""
+
+    if (configuredPriceId && origin) {
+      try {
+        const checkoutPayload = {
+          priceId: configuredPriceId,
+          mode: "payment" as const,
+          success_url: `${origin}/payment/status/success`,
+          cancel_url: `${origin}/payment/status/error`,
+          payment_method: paymentMethod,
+          billing_address: {
+            country: "IN",
+            state: formData.state,
+            city: formData.city,
+            postal_code: formData.zipCode,
+          },
+          business_tax: {
+            is_business_purchase: isBusinessPurchase,
+            business_name: isBusinessPurchase ? formData.businessName : undefined,
+            gst_number: isBusinessPurchase ? formData.gstNumber : undefined,
+            tax_jurisdiction: isBusinessPurchase ? formData.taxJurisdiction : undefined,
+          },
+        }
+
+        const response = await fetch("/api/v1/billing/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(checkoutPayload),
+        })
+
+        const payload = await response.json().catch(() => null)
+        const redirectUrl = payload?.data?.redirectUrl || payload?.data?.url
+
+        if (response.ok && redirectUrl) {
+          window.location.href = redirectUrl
+          return
+        }
+
+        setCheckoutError(payload?.error?.message || "Unable to create billing checkout session. Redirecting to payment workspace.")
+      } catch {
+        setCheckoutError("Unable to create billing checkout session. Redirecting to payment workspace.")
+      }
+    }
+
     router.push("/payment/runash-pay")
   }
 
@@ -274,6 +342,62 @@ export default function CheckoutPage() {
 
             <Card>
               <CardHeader>
+                <CardTitle>Purchase Type</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <p className="font-medium">Business purchase</p>
+                    <p className="text-xs text-gray-600">Enable GST invoice details for compliant tax reporting.</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant={isBusinessPurchase ? "default" : "outline"}
+                    onClick={() => setIsBusinessPurchase((prev) => !prev)}
+                  >
+                    {isBusinessPurchase ? "Enabled" : "Enable"}
+                  </Button>
+                </div>
+
+                {isBusinessPurchase && (
+                  <div className="space-y-4 rounded-lg border border-orange-200 bg-orange-50/40 p-4">
+                    <div>
+                      <Label htmlFor="businessName">Business Name</Label>
+                      <Input
+                        id="businessName"
+                        value={formData.businessName}
+                        onChange={(e) => handleInputChange("businessName", e.target.value)}
+                        placeholder="RunAsh Foods Pvt Ltd"
+                      />
+                      {errors.businessName && <p className="text-xs text-red-500 mt-1">{errors.businessName}</p>}
+                    </div>
+                    <div>
+                      <Label htmlFor="gstNumber">GST Number</Label>
+                      <Input
+                        id="gstNumber"
+                        value={formData.gstNumber}
+                        onChange={(e) => handleInputChange("gstNumber", e.target.value.toUpperCase())}
+                        placeholder="29ABCDE1234F1Z5"
+                      />
+                      {errors.gstNumber && <p className="text-xs text-red-500 mt-1">{errors.gstNumber}</p>}
+                    </div>
+                    <div>
+                      <Label htmlFor="taxJurisdiction">Tax Jurisdiction</Label>
+                      <Input
+                        id="taxJurisdiction"
+                        value={formData.taxJurisdiction}
+                        onChange={(e) => handleInputChange("taxJurisdiction", e.target.value)}
+                        placeholder="Karnataka, IN"
+                      />
+                      {errors.taxJurisdiction && <p className="text-xs text-red-500 mt-1">{errors.taxJurisdiction}</p>}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
                   <CreditCard className="h-5 w-5" />
                   <span>Payment Information</span>
@@ -281,51 +405,114 @@ export default function CheckoutPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="cardNumber">Card Number</Label>
-                  <Input
-                    id="cardNumber"
-                    value={formData.cardNumber}
-                    onChange={(e) => handleInputChange("cardNumber", e.target.value)}
-                    placeholder="1234 5678 9012 3456"
-                    required
-                  />
-                  {errors.cardNumber && <p className="text-xs text-red-500 mt-1">{errors.cardNumber}</p>}
+                <div className="grid grid-cols-2 gap-3">
+                  <Button
+                    type="button"
+                    variant={paymentMethod === "card" ? "default" : "outline"}
+                    onClick={() => {
+                      setPaymentMethod("card")
+                      setErrors((prev) => ({ ...prev, upiVpa: "" }))
+                    }}
+                  >
+                    Card
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={paymentMethod === "upi" ? "default" : "outline"}
+                    onClick={() => {
+                      setPaymentMethod("upi")
+                      setUpiFlowStatus("pending")
+                      setErrors((prev) => ({ ...prev, cardNumber: "", expiryDate: "", cvv: "" }))
+                    }}
+                  >
+                    UPI
+                  </Button>
                 </div>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="col-span-2">
-                    <Label htmlFor="expiryDate">Expiry Date</Label>
-                    <Input
-                      id="expiryDate"
-                      value={formData.expiryDate}
-                      onChange={(e) => handleInputChange("expiryDate", e.target.value)}
-                      placeholder="MM/YY"
-                      required
-                    />
-                    {errors.expiryDate && <p className="text-xs text-red-500 mt-1">{errors.expiryDate}</p>}
+
+                {paymentMethod === "card" ? (
+                  <>
+                    <div>
+                      <Label htmlFor="cardNumber">Card Number</Label>
+                      <Input
+                        id="cardNumber"
+                        value={formData.cardNumber}
+                        onChange={(e) => handleInputChange("cardNumber", e.target.value)}
+                        placeholder="1234 5678 9012 3456"
+                        required
+                      />
+                      {errors.cardNumber && <p className="text-xs text-red-500 mt-1">{errors.cardNumber}</p>}
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="col-span-2">
+                        <Label htmlFor="expiryDate">Expiry Date</Label>
+                        <Input
+                          id="expiryDate"
+                          value={formData.expiryDate}
+                          onChange={(e) => handleInputChange("expiryDate", e.target.value)}
+                          placeholder="MM/YY"
+                          required
+                        />
+                        {errors.expiryDate && <p className="text-xs text-red-500 mt-1">{errors.expiryDate}</p>}
+                      </div>
+                      <div>
+                        <Label htmlFor="cvv">CVV</Label>
+                        <Input
+                          id="cvv"
+                          value={formData.cvv}
+                          onChange={(e) => handleInputChange("cvv", e.target.value)}
+                          placeholder="123"
+                          required
+                        />
+                        {errors.cvv && <p className="text-xs text-red-500 mt-1">{errors.cvv}</p>}
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="nameOnCard">Name on Card</Label>
+                      <Input
+                        id="nameOnCard"
+                        value={formData.nameOnCard}
+                        onChange={(e) => handleInputChange("nameOnCard", e.target.value)}
+                        placeholder="John Doe"
+                        required
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-4 rounded-lg border border-emerald-200 bg-emerald-50/40 p-4">
+                    <div>
+                      <Label htmlFor="upiVpa">UPI ID</Label>
+                      <Input
+                        id="upiVpa"
+                        value={formData.upiVpa}
+                        onChange={(e) => handleInputChange("upiVpa", e.target.value)}
+                        placeholder="name@bank"
+                        required
+                      />
+                      {errors.upiVpa && <p className="text-xs text-red-500 mt-1">{errors.upiVpa}</p>}
+                    </div>
+                    <div className="text-sm space-y-1 text-gray-700">
+                      <p className="font-medium">UPI flow guidance</p>
+                      <p>1. Use your UPI app and approve the collect request or scan QR from the next screen.</p>
+                      <p>2. Return here and confirm once payment is marked successful in your app.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant={upiFlowStatus === "pending" ? "default" : "outline"}
+                        onClick={() => setUpiFlowStatus("pending")}
+                      >
+                        Pending app/QR handoff
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={upiFlowStatus === "confirm" ? "default" : "outline"}
+                        onClick={() => setUpiFlowStatus("confirm")}
+                      >
+                        Confirm in app
+                      </Button>
+                    </div>
                   </div>
-                  <div>
-                    <Label htmlFor="cvv">CVV</Label>
-                    <Input
-                      id="cvv"
-                      value={formData.cvv}
-                      onChange={(e) => handleInputChange("cvv", e.target.value)}
-                      placeholder="123"
-                      required
-                    />
-                    {errors.cvv && <p className="text-xs text-red-500 mt-1">{errors.cvv}</p>}
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="nameOnCard">Name on Card</Label>
-                  <Input
-                    id="nameOnCard"
-                    value={formData.nameOnCard}
-                    onChange={(e) => handleInputChange("nameOnCard", e.target.value)}
-                    placeholder="John Doe"
-                    required
-                  />
-                </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -384,6 +571,8 @@ export default function CheckoutPage() {
                     {processing ? "Processing..." : `Complete Order - $${totals.total.toFixed(2)}`}
                   </Button>
                 </form>
+
+                {checkoutError ? <p className="text-xs text-amber-700">{checkoutError}</p> : null}
 
                 <div className="flex items-center justify-center space-x-4 text-xs text-gray-600">
                   <div className="flex items-center space-x-1">
