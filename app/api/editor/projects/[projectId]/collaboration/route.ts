@@ -66,10 +66,9 @@ export async function GET(request: Request, { params }: { params: { projectId: s
 
   const activityGuard = await requireActivityVisible(projectId, auth.userId)
 
-  const [members, activity, pendingInvites] = await Promise.all([
+  const [members, activity] = await Promise.all([
     listProjectCollaborators(projectId, auth.userId),
     activityGuard ? Promise.resolve([]) : listProjectActivity(projectId, auth.userId, 100),
-    listProjectInvites(projectId, auth.userId),
   ])
 
   const projectOwner = {
@@ -89,7 +88,6 @@ export async function GET(request: Request, { params }: { params: { projectId: s
     collaborators: [projectOwner, ...members.map((entry) => toCollaboratorPayload(entry, auth.userId))],
     activity: activity.map(toActivityPayload),
     activityVisible: !activityGuard,
-    pendingInvites: pendingInvites.map(toInvitePayload),
     currentUser: {
       id: auth.userId,
       name: "You",

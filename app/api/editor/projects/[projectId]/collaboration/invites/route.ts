@@ -10,26 +10,6 @@ const createInviteSchema = z.object({
   expiresInHours: z.number().int().min(1).max(24 * 14).optional(),
 })
 
-function toInvitePayload(invite: {
-  id: string
-  email: string
-  role: "editor" | "viewer"
-  status: "pending" | "accepted" | "revoked" | "expired"
-  expires_at: string
-  created_at: string
-  token: string
-}) {
-  return {
-    id: invite.id,
-    email: invite.email,
-    role: invite.role,
-    status: invite.status,
-    expiresAt: invite.expires_at,
-    createdAt: invite.created_at,
-    inviteLink: `/editor/invite/${invite.token}`,
-  }
-}
-
 export async function GET(request: Request, { params }: { params: { projectId: string } }) {
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
@@ -41,7 +21,7 @@ export async function GET(request: Request, { params }: { params: { projectId: s
   }
 
   const invites = await listProjectInvites(projectId, auth.userId)
-  return NextResponse.json({ invites: invites.map(toInvitePayload) })
+  return NextResponse.json({ invites })
 }
 
 export async function POST(request: Request, { params }: { params: { projectId: string } }) {
@@ -70,11 +50,8 @@ export async function POST(request: Request, { params }: { params: { projectId: 
     expiresInHours: parsed.data.expiresInHours,
   })
 
-  return NextResponse.json(
-    {
-      invite: toInvitePayload(invite),
-      inviteLink: `/editor/invite/${invite.token}`,
-    },
-    { status: 201 },
-  )
+  return NextResponse.json({
+    invite,
+    inviteLink: `/editor/invite/${invite.token}`,
+  }, { status: 201 })
 }
