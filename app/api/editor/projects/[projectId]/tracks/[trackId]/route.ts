@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { requireEditorOperation } from "@/app/api/editor/_lib"
+import { requireEditingEnabled } from "@/app/api/editor/projects/_permissions"
 import { buildInvalidRequestError } from "@/lib/api/contracts"
 import { bumpTimelineVersion, claimProjectVersion, parseExpectedVersion } from "@/lib/editor/versioned-mutations"
 import { sql } from "@/lib/editor/repository"
@@ -28,6 +29,8 @@ export async function PATCH(request: Request, { params }: { params: { projectId:
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId, trackId } = params
+  const editingGuard = await requireEditingEnabled(projectId, auth.userId)
+  if (editingGuard) return editingGuard
   const body = await request.json().catch(() => ({}))
 
   const parsedBody = updateEditorTrackSchema.safeParse(body)
@@ -68,6 +71,8 @@ export async function DELETE(request: Request, { params }: { params: { projectId
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId, trackId } = params
+  const editingGuard = await requireEditingEnabled(projectId, auth.userId)
+  if (editingGuard) return editingGuard
   const { searchParams } = new URL(request.url)
 
   const version = parseExpectedVersion(request, { version: searchParams.get("version") })
