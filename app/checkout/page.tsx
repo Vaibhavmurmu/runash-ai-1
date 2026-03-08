@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import { ArrowLeft, CreditCard, Lock, Leaf, ShoppingCart } from "lucide-react"
+import { ArrowLeft, CreditCard, Lock, Leaf, ShoppingCart, BadgeCheck, WalletCards, QrCode, ShieldCheck } from "lucide-react"
 import { useCart } from "@/contexts/cart-context"
 import CartSummary from "@/components/cart/cart-summary"
 import SustainabilityMetrics from "@/components/cart/sustainability-metrics"
@@ -32,11 +32,18 @@ export default function CheckoutPage() {
     expiryDate: "",
     cvv: "",
     nameOnCard: "",
+    phone: "",
+    gstin: "",
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [processing, setProcessing] = useState(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "upi">("card")
+  const [couponCode, setCouponCode] = useState("")
+  const [saveInfo, setSaveInfo] = useState(true)
+  const [isBusinessPurchase, setIsBusinessPurchase] = useState(false)
+  const [acceptTerms, setAcceptTerms] = useState(false)
 
   // Ensure component is mounted before accessing cart
   useEffect(() => {
@@ -67,12 +74,19 @@ export default function CheckoutPage() {
     if (!formData.address) newErrors.address = "Address is required"
     if (!formData.city) newErrors.city = "City is required"
     if (!formData.zipCode) newErrors.zipCode = "ZIP code is required"
-    if (!formData.cardNumber) newErrors.cardNumber = "Card number is required"
-    if (!formData.expiryDate) newErrors.expiryDate = "Expiry date is required"
-    if (!formData.cvv) newErrors.cvv = "CVV is required"
+    if (paymentMethod === "card") {
+      if (!formData.cardNumber) newErrors.cardNumber = "Card number is required"
+      if (!formData.expiryDate) newErrors.expiryDate = "Expiry date is required"
+      if (!formData.cvv) newErrors.cvv = "CVV is required"
+    }
+    if (isBusinessPurchase && !formData.gstin) newErrors.gstin = "GSTIN is required for business invoices"
+    if (!acceptTerms) newErrors.terms = "Please accept the terms to continue"
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
+
+  const discount = couponCode.trim().toUpperCase() === "RUNASH10" ? totals.subtotal * 0.1 : 0
+  const finalTotal = Math.max(totals.total - discount, 0)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -93,11 +107,21 @@ export default function CheckoutPage() {
         zipCode: formData.zipCode,
       },
       payment: {
+        method: paymentMethod,
         cardNumber: formData.cardNumber ? `**** **** **** ${formData.cardNumber.slice(-4)}` : "",
         nameOnCard: formData.nameOnCard,
+        saveInfo,
+      },
+      compliance: {
+        isBusinessPurchase,
+        gstin: formData.gstin,
       },
       items: cart.items,
-      totals,
+      totals: {
+        ...totals,
+        discount,
+        total: finalTotal,
+      },
     }
 
     // Persist pending order so the payment page can pick it up
@@ -173,6 +197,14 @@ export default function CheckoutPage() {
           </Link>
           <h1 className="text-3xl font-bold">Checkout</h1>
           <p className="text-gray-600 mt-2">Complete your sustainable shopping experience</p>
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-gray-600">
+            <span className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2.5 py-1 text-green-700">
+              <ShieldCheck className="h-3.5 w-3.5" /> Encrypted checkout
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-blue-700">
+              <BadgeCheck className="h-3.5 w-3.5" /> PCI-ready payment flow
+            </span>
+          </div>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-8">
@@ -281,6 +313,27 @@ export default function CheckoutPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="rounded-lg border p-1 grid grid-cols-2 gap-1 bg-muted/40">
+                  <Button
+                    type="button"
+                    variant={paymentMethod === "card" ? "default" : "ghost"}
+                    className="justify-start"
+                    onClick={() => setPaymentMethod("card")}
+                  >
+                    <WalletCards className="h-4 w-4 mr-1" /> Card
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={paymentMethod === "upi" ? "default" : "ghost"}
+                    className="justify-start"
+                    onClick={() => setPaymentMethod("upi")}
+                  >
+                    <QrCode className="h-4 w-4 mr-1" /> UPI / QR
+                  </Button>
+                </div>
+
+                {paymentMethod === "card" ? (
+                  <>
                 <div>
                   <Label htmlFor="cardNumber">Card Number</Label>
                   <Input
@@ -316,6 +369,15 @@ export default function CheckoutPage() {
                     {errors.cvv && <p className="text-xs text-red-500 mt-1">{errors.cvv}</p>}
                   </div>
                 </div>
+                  </>
+                ) : (
+                  <div className="rounded-lg border border-dashed p-4 bg-muted/20">
+                    <p className="font-medium">Pay with your UPI app</p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      After placing the order, we will open a secure app chooser for UPI authorization.
+                    </p>
+                  </div>
+                )}
                 <div>
                   <Label htmlFor="nameOnCard">Name on Card</Label>
                   <Input
@@ -326,6 +388,57 @@ export default function CheckoutPage() {
                     required
                   />
                 </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    id="saveInfo"
+                    type="checkbox"
+                    checked={saveInfo}
+                    onChange={(e) => setSaveInfo(e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  <Label htmlFor="saveInfo" className="text-sm font-normal">
+                    Save my information for faster checkout
+                  </Label>
+                </div>
+
+                {saveInfo && (
+                  <div>
+                    <Label htmlFor="phone">Phone Number</Label>
+                    <Input
+                      id="phone"
+                      value={formData.phone}
+                      onChange={(e) => handleInputChange("phone", e.target.value)}
+                      placeholder="+91 98765 43210"
+                    />
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <input
+                    id="businessPurchase"
+                    type="checkbox"
+                    checked={isBusinessPurchase}
+                    onChange={(e) => setIsBusinessPurchase(e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  <Label htmlFor="businessPurchase" className="text-sm font-normal">
+                    I'm purchasing as a business
+                  </Label>
+                </div>
+
+                {isBusinessPurchase && (
+                  <div>
+                    <Label htmlFor="gstin">GSTIN</Label>
+                    <Input
+                      id="gstin"
+                      value={formData.gstin}
+                      onChange={(e) => handleInputChange("gstin", e.target.value)}
+                      placeholder="22AAAAA0000A1Z5"
+                    />
+                    {errors.gstin && <p className="text-xs text-red-500 mt-1">{errors.gstin}</p>}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -373,7 +486,46 @@ export default function CheckoutPage() {
 
                 <Separator />
 
+                <div className="space-y-2">
+                  <Label htmlFor="couponCode">Coupon code</Label>
+                  <Input
+                    id="couponCode"
+                    placeholder="Enter code (try RUNASH10)"
+                    value={couponCode}
+                    onChange={(e) => setCouponCode(e.target.value)}
+                  />
+                  {discount > 0 && <p className="text-xs text-green-700">Coupon applied: -${discount.toFixed(2)}</p>}
+                </div>
+
                 <CartSummary totals={totals} />
+
+                {discount > 0 && (
+                  <div className="flex justify-between text-sm text-green-700">
+                    <span>Discount</span>
+                    <span>- ${discount.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-base font-semibold">
+                  <span>Payable now</span>
+                  <span>${finalTotal.toFixed(2)}</span>
+                </div>
+
+                <div className="flex items-start gap-2 text-xs text-gray-600">
+                  <input
+                    id="acceptTerms"
+                    type="checkbox"
+                    checked={acceptTerms}
+                    onChange={(e) => {
+                      setAcceptTerms(e.target.checked)
+                      if (e.target.checked) setErrors((prev) => ({ ...prev, terms: "" }))
+                    }}
+                    className="mt-0.5 h-4 w-4"
+                  />
+                  <Label htmlFor="acceptTerms" className="font-normal leading-5">
+                    I authorize recurring billing based on my selected plan and agree to the Terms & Privacy Policy.
+                  </Label>
+                </div>
+                {errors.terms && <p className="text-xs text-red-500 -mt-2">{errors.terms}</p>}
 
                 <form onSubmit={handleSubmit}>
                   <Button
@@ -381,7 +533,7 @@ export default function CheckoutPage() {
                     disabled={processing}
                     className="w-full bg-gradient-to-r from-orange-600 to-yellow-500 hover:from-orange-700 hover:to-yellow-600 text-white"
                   >
-                    {processing ? "Processing..." : `Complete Order - $${totals.total.toFixed(2)}`}
+                    {processing ? "Processing..." : `Complete Order - $${finalTotal.toFixed(2)}`}
                   </Button>
                 </form>
 
@@ -423,7 +575,7 @@ export default function CheckoutPage() {
                 </div>
                 <div className="flex justify-between font-medium">
                   <span>Total</span>
-                  <span>${totals.total.toFixed(2)}</span>
+                  <span>${finalTotal.toFixed(2)}</span>
                 </div>
               </div>
 
