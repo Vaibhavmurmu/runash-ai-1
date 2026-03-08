@@ -15,6 +15,10 @@ function mapTrack(row: Record<string, any>): EditorTrack {
     orderIndex: row.order_index,
     trackType: row.track_type,
     metadata: asRecord(row.metadata),
+    lockOwnerUserId: row.lock_owner_user_id ?? null,
+    lockExpiresAt: row.lock_expires_at ?? null,
+    lockAcquiredAt: row.lock_acquired_at ?? null,
+    lockUpdatedAt: row.lock_updated_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -33,6 +37,10 @@ function mapSegment(row: Record<string, any>): EditorSegment {
     startSeconds: Number(row.start_seconds),
     endSeconds: Number(row.end_seconds),
     metadata: asRecord(row.metadata),
+    lockOwnerUserId: row.lock_owner_user_id ?? null,
+    lockExpiresAt: row.lock_expires_at ?? null,
+    lockAcquiredAt: row.lock_acquired_at ?? null,
+    lockUpdatedAt: row.lock_updated_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -50,6 +58,10 @@ function mapAsset(row: Record<string, any>): EditorAsset {
     mimeType: row.mime_type,
     sizeBytes: row.size_bytes,
     metadata: asRecord(row.metadata),
+    lockOwnerUserId: row.lock_owner_user_id ?? null,
+    lockExpiresAt: row.lock_expires_at ?? null,
+    lockAcquiredAt: row.lock_acquired_at ?? null,
+    lockUpdatedAt: row.lock_updated_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }

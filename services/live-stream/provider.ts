@@ -23,7 +23,7 @@ export interface LiveStreamProvider {
   stop(input: { sessionId: string; providerSessionId: string }): Promise<void>
 }
 
-class LiveStreamProviderError extends Error {
+export class LiveStreamProviderError extends Error {
   readonly code: "PROVIDER_REQUEST_FAILED" | "PROVIDER_CONFIGURATION_ERROR" | "PROVIDER_UNAVAILABLE"
 
   constructor(message: string, code: LiveStreamProviderError["code"], options?: { cause?: unknown }) {
@@ -38,6 +38,20 @@ class LiveStreamProviderError extends Error {
 
 const MUX_API_BASE = "https://api.mux.com/video/v1"
 
+type ProviderName = "mux" | "mock"
+type ProviderEnv = NodeJS.ProcessEnv | Record<string, string | undefined>
+
+type MuxCredentials = {
+  tokenId: string
+  tokenSecret: string
+}
+
+type ProviderErrorMapping = {
+  code: string
+  status: number
+  reason: string
+}
+
 type MuxCreateLiveStreamResponse = {
   data?: {
     id?: string
@@ -45,12 +59,6 @@ type MuxCreateLiveStreamResponse = {
     created_at?: string
     playback_ids?: Array<{ id?: string; policy?: string }>
   }
-}
-
-function parseIntegerEnv(name: string, defaultValue: number): number {
-  const parsed = Number.parseInt(process.env[name] ?? "", 10)
-  if (!Number.isFinite(parsed) || parsed < 0) return defaultValue
-  return parsed
 }
 
 function wait(ms: number): Promise<void> {
@@ -69,9 +77,9 @@ function isRetryableStatus(status: number): boolean {
   return status === 408 || status === 429 || status >= 500
 }
 
-function createMuxAuthHeader(): string {
-  const tokenId = process.env.MUX_TOKEN_ID?.trim()
-  const tokenSecret = process.env.MUX_TOKEN_SECRET?.trim()
+function readMuxCredentials(env: ProviderEnv): MuxCredentials {
+  const tokenId = env.MUX_TOKEN_ID?.trim()
+  const tokenSecret = env.MUX_TOKEN_SECRET?.trim()
 
   if (!tokenId || !tokenSecret) {
     throw new LiveStreamProviderError(
@@ -79,6 +87,12 @@ function createMuxAuthHeader(): string {
       "PROVIDER_CONFIGURATION_ERROR",
     )
   }
+
+  return { tokenId, tokenSecret }
+}
+
+function createMuxAuthHeader(credentials: MuxCredentials): string {
+  const { tokenId, tokenSecret } = credentials
 
   return `Basic ${Buffer.from(`${tokenId}:${tokenSecret}`).toString("base64")}`
 }
@@ -89,21 +103,25 @@ async function requestMux<T>(input: {
   body?: Record<string, unknown>
   operation: "provision" | "stop"
   sessionId: string
+  env: ProviderEnv
+  fetchImpl?: typeof fetch
 }): Promise<T> {
-  const retryCount = parseIntegerEnv("RUNASH_LIVE_STREAM_PROVIDER_RETRY_COUNT", 2)
-  const timeoutMs = parseIntegerEnv("RUNASH_LIVE_STREAM_PROVIDER_TIMEOUT_MS", 8000)
+  const retryCount = parseIntegerEnvFromEnv(input.env, "RUNASH_LIVE_STREAM_PROVIDER_RETRY_COUNT", 2)
+  const timeoutMs = parseIntegerEnvFromEnv(input.env, "RUNASH_LIVE_STREAM_PROVIDER_TIMEOUT_MS", 8000)
   const maxAttempts = retryCount + 1
+  const credentials = readMuxCredentials(input.env)
+  const fetchImpl = input.fetchImpl ?? fetch
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
     try {
-      const response = await fetch(`${MUX_API_BASE}${input.path}`, {
+      const response = await fetchImpl(`${MUX_API_BASE}${input.path}`, {
         method: input.method ?? "POST",
         headers: {
           "content-type": "application/json",
-          authorization: createMuxAuthHeader(),
+          authorization: createMuxAuthHeader(credentials),
         },
         body: input.body ? JSON.stringify(input.body) : undefined,
         signal: controller.signal,
@@ -169,11 +187,18 @@ async function requestMux<T>(input: {
 }
 
 class MuxLiveStreamProvider implements LiveStreamProvider {
+  constructor(
+    private readonly env: ProviderEnv,
+    private readonly fetchImpl?: typeof fetch,
+  ) {}
+
   async provision(input: ProvisionLiveStreamInput): Promise<ProvisionLiveStreamResult> {
     const response = await requestMux<MuxCreateLiveStreamResponse>({
       path: "/live-streams",
       operation: "provision",
       sessionId: input.sessionId,
+      env: this.env,
+      fetchImpl: this.fetchImpl,
       body: {
         playback_policy: ["public"],
         new_asset_settings: {
@@ -213,6 +238,8 @@ class MuxLiveStreamProvider implements LiveStreamProvider {
       method: "POST",
       operation: "stop",
       sessionId: input.sessionId,
+      env: this.env,
+      fetchImpl: this.fetchImpl,
     })
   }
 }
@@ -242,28 +269,70 @@ class MockLiveStreamProvider implements LiveStreamProvider {
   }
 }
 
-let singletonProvider: LiveStreamProvider | null = null
+function parseIntegerEnvFromEnv(env: ProviderEnv, name: string, defaultValue: number): number {
+  const parsed = Number.parseInt(env[name] ?? "", 10)
+  if (!Number.isFinite(parsed) || parsed < 0) return defaultValue
+  return parsed
+}
 
-export function getLiveStreamProvider(): LiveStreamProvider {
-  if (!singletonProvider) {
-    const configuredProvider = process.env.RUNASH_LIVE_STREAM_PROVIDER?.trim().toLowerCase() ?? ""
+function isMockModeEnabled(env: ProviderEnv): boolean {
+  return env.RUNASH_LIVE_STREAM_ENABLE_MOCK === "1" || env.RUNASH_LIVE_STREAM_ALLOW_MOCK === "1"
+}
 
-    if (configuredProvider === "mux") {
-      singletonProvider = new MuxLiveStreamProvider()
-      return singletonProvider
-    }
+function isLocalDevEnvironment(env: ProviderEnv): boolean {
+  const nodeEnv = env.NODE_ENV?.toLowerCase()
+  return nodeEnv === "development" || nodeEnv === "test" || nodeEnv === "local"
+}
 
-    const allowMockInNonProd = process.env.RUNASH_LIVE_STREAM_ALLOW_MOCK === "1" || process.env.NODE_ENV !== "production"
-    if ((configuredProvider === "mock" || configuredProvider === "") && allowMockInNonProd) {
-      singletonProvider = new MockLiveStreamProvider()
-      return singletonProvider
-    }
+function readConfiguredProvider(env: ProviderEnv): ProviderName {
+  const configuredProvider = env.RUNASH_LIVE_STREAM_PROVIDER?.trim().toLowerCase() ?? ""
 
-    throw new LiveStreamProviderError(
-      "No valid live stream provider is configured. Set RUNASH_LIVE_STREAM_PROVIDER to a real backend (e.g. mux).",
-      "PROVIDER_CONFIGURATION_ERROR",
-    )
+  if (configuredProvider === "mux") return "mux"
+  if (configuredProvider === "mock") return "mock"
+
+  throw new LiveStreamProviderError(
+    "No valid live stream provider is configured. Set RUNASH_LIVE_STREAM_PROVIDER to a supported backend (e.g. mux).",
+    "PROVIDER_CONFIGURATION_ERROR",
+  )
+}
+
+export function createLiveStreamProvider(options?: {
+  env?: ProviderEnv
+  fetchImpl?: typeof fetch
+}): LiveStreamProvider {
+  const env = options?.env ?? process.env
+  const provider = readConfiguredProvider(env)
+
+  if (provider === "mux") {
+    return new MuxLiveStreamProvider(env, options?.fetchImpl)
   }
 
-  return singletonProvider
+  if (provider === "mock" && isMockModeEnabled(env) && isLocalDevEnvironment(env)) {
+    return new MockLiveStreamProvider()
+  }
+
+  throw new LiveStreamProviderError(
+    "Mock live stream provider is only allowed in local/dev mode with RUNASH_LIVE_STREAM_ENABLE_MOCK=1.",
+    "PROVIDER_CONFIGURATION_ERROR",
+  )
+}
+
+export function mapLiveStreamProviderError(error: unknown): ProviderErrorMapping {
+  if (error instanceof LiveStreamProviderError) {
+    if (error.code === "PROVIDER_UNAVAILABLE") {
+      return { code: error.code, status: 503, reason: "Live stream provider unavailable" }
+    }
+
+    if (error.code === "PROVIDER_REQUEST_FAILED") {
+      return { code: error.code, status: 502, reason: "Live stream provider request failed" }
+    }
+
+    return { code: error.code, status: 500, reason: "Live stream provider configuration error" }
+  }
+
+  return { code: "PROVIDER_UNKNOWN", status: 500, reason: "Live stream provider integration failure" }
+}
+
+export function getLiveStreamProvider(): LiveStreamProvider {
+  return createLiveStreamProvider({ env: process.env })
 }

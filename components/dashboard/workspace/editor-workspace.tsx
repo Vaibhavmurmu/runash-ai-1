@@ -25,6 +25,11 @@ import {
 import { validateVideoGenerationPayload } from "@/lib/editor/video-models/validation"
 import type { VideoGenerationRequest } from "@/lib/editor/video-models/types"
 import { createRenderJobV1, finalizeMediaUploadV1, initMediaUploadV1 } from "@/lib/api/v1-client"
+import {
+  readOverlapModeEnabled,
+  resolveMediaInsertionDuration,
+  resolveMediaInsertionPlacement,
+} from "@/lib/editor/media-insertion"
 
 type OnboardingState = {
   editorWelcomeCompletedAt?: string
@@ -143,6 +148,20 @@ export function EditorWorkspace() {
     if (!activeTimeline) return undefined
     return activeTimeline.segments.find((segment) => playbackTime >= segment.startSeconds && playbackTime <= segment.endSeconds)
   }, [activeTimeline, playbackTime])
+
+  const activeSegmentLock = useMemo(() => {
+    if (!selectedSegment?.lockOwnerUserId) return null
+    const expiresAt = selectedSegment.lockExpiresAt ? new Date(selectedSegment.lockExpiresAt).getTime() : null
+    if (expiresAt !== null && expiresAt <= Date.now()) return null
+    const lockedByOther = selectedSegment.lockOwnerUserId !== project?.ownerId
+    return {
+      lockedByOther,
+      ownerUserId: selectedSegment.lockOwnerUserId,
+      expiresAt: selectedSegment.lockExpiresAt ?? null,
+    }
+  }, [selectedSegment, project?.ownerId])
+
+  const isEditingLockedByCollaborator = Boolean(activeSegmentLock?.lockedByOther)
 
   const persistOnboardingState = async (next: OnboardingState) => {
     setIsUpdatingOnboarding(true)
@@ -289,7 +308,7 @@ export function EditorWorkspace() {
 
       const metaRes = await fetch(`/api/editor/projects/${project.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "If-Match": String(project.version ?? 0) },
         body: JSON.stringify({
           metadata: {
             ...json.project?.metadata,
@@ -299,14 +318,22 @@ export function EditorWorkspace() {
         }),
       })
 
+      if (metaRes.status === 409) {
+        const conflict = await metaRes.json()
+        if (conflict.latest) {
+          setProject(conflict.latest)
+        }
+        throw new Error("Version conflict")
+      }
       if (!metaRes.ok) throw new Error("Failed to save project metadata")
       const metaJson = await metaRes.json()
 
       setProject(metaJson.project)
       setIsDirty(false)
       toast({ title: "Project saved" })
-    } catch {
-      toast({ title: "Save failed", description: "Your changes were not saved.", variant: "destructive" })
+    } catch (error) {
+      const description = error instanceof Error && error.message === "Version conflict" ? "A collaborator updated this project. Latest changes were loaded." : "Your changes were not saved."
+      toast({ title: "Save failed", description, variant: "destructive" })
     } finally {
       setIsSaving(false)
     }
@@ -336,32 +363,7 @@ export function EditorWorkspace() {
     setUploadInProgress(true)
     try {
       const isVideoAsset = file.type.startsWith("video")
-      const safeDefaultDurationSeconds = 3
-
-      const readNumericMetadataDuration = (value: unknown): number | null => {
-        if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-          return value
-        }
-
-        if (typeof value === "string") {
-          const parsed = Number(value)
-          if (Number.isFinite(parsed) && parsed > 0) {
-            return parsed
-          }
-        }
-
-        return null
-      }
-
-      const resolveDurationFromAssetMetadata = (metadata: unknown): number | null => {
-        if (!metadata || typeof metadata !== "object") return null
-        const metadataRecord = metadata as Record<string, unknown>
-        return (
-          readNumericMetadataDuration(metadataRecord.durationSeconds) ??
-          readNumericMetadataDuration(metadataRecord.duration) ??
-          readNumericMetadataDuration(metadataRecord.videoDurationSeconds)
-        )
-      }
+      const uploadStartedAt = new Date().toISOString()
 
       const resolveVideoDurationSeconds = async (): Promise<number | null> => {
         if (!isVideoAsset || typeof window === "undefined") return null
@@ -416,7 +418,7 @@ export function EditorWorkspace() {
       const storageKey = String(finalizeJson.asset.source_storage_key ?? initJson.upload.storageKey)
       const assetRes = await fetch(`/api/editor/projects/${project.id}/assets`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "If-Match": String(project.version ?? 0) },
         body: JSON.stringify({
           source: "upload",
           uploadFileId: initJson.asset.id,
@@ -439,42 +441,39 @@ export function EditorWorkspace() {
       })
       if (!assetRes.ok) throw new Error("Failed to persist asset")
       const assetJson = await assetRes.json()
+      const uploadCompletedAt = new Date().toISOString()
 
       const track = activeTimeline.tracks[0]
       let nextTimeline: EditorTimeline | null = null
       if (track) {
-        const segmentsOnTrack = activeTimeline.segments.filter((segment) => segment.trackId === track.id)
-        const latestSegmentEnd = segmentsOnTrack.reduce((latest, segment) => {
-          const safeEnd = Number.isFinite(segment.endSeconds) ? Math.max(0, segment.endSeconds) : 0
-          return Math.max(latest, safeEnd)
-        }, 0)
+        const mediaMetadata = assetJson.asset?.metadata as Record<string, unknown> | undefined
+        const timelineMediaMetadata = mediaMetadata?.timelineMedia as Record<string, unknown> | undefined
+        const { durationSeconds: insertionDuration, durationStrategy } = resolveMediaInsertionDuration({
+          isVideoAsset,
+          metadataDurations: [
+            measuredVideoDuration,
+            assetJson.asset?.durationSeconds,
+            assetJson.asset?.duration_seconds,
+            mediaMetadata?.durationSeconds,
+            mediaMetadata?.duration,
+            mediaMetadata?.videoDurationSeconds,
+            timelineMediaMetadata?.durationSeconds,
+            timelineMediaMetadata?.duration,
+            timelineMediaMetadata?.videoDurationSeconds,
+          ],
+        })
 
-        const hasValidPlayhead = Number.isFinite(playbackTime) && playbackTime >= 0
-        const playheadStart = hasValidPlayhead ? Math.max(0, playbackTime) : null
-        const playheadOverlapsExisting =
-          playheadStart !== null &&
-          segmentsOnTrack.some(
-            (segment) =>
-              Number.isFinite(segment.startSeconds) &&
-              Number.isFinite(segment.endSeconds) &&
-              segment.startSeconds < playheadStart &&
-              segment.endSeconds > playheadStart,
-          )
-        const insertionStart =
-          playheadStart === null ? latestSegmentEnd : playheadOverlapsExisting ? latestSegmentEnd : playheadStart
-
-        const metadataDuration = isVideoAsset ? resolveDurationFromAssetMetadata(assetJson.asset?.metadata) : null
-        const transcodeDuration = resolveDurationFromAssetMetadata(
-          (assetJson.asset?.metadata as Record<string, unknown> | undefined)?.timelineMedia,
-        )
-        const insertionDuration = isVideoAsset
-          ? metadataDuration ?? transcodeDuration ?? safeDefaultDurationSeconds
-          : safeDefaultDurationSeconds
-        const insertionEnd = insertionStart + insertionDuration
+        const { insertionStartSeconds, insertionEndSeconds, insertionSource } = resolveMediaInsertionPlacement({
+          segments: activeTimeline.segments,
+          trackId: track.id,
+          durationSeconds: insertionDuration,
+          playheadSeconds: Number.isFinite(playbackTime) ? playbackTime : null,
+          allowOverlaps: readOverlapModeEnabled(track.metadata) || readOverlapModeEnabled(activeTimeline.metadata),
+        })
 
         nextTimeline = {
           ...activeTimeline,
-          durationSeconds: Math.max(activeTimeline.durationSeconds, insertionEnd),
+          durationSeconds: Math.max(activeTimeline.durationSeconds, insertionEndSeconds),
           segments: [
             ...activeTimeline.segments,
             {
@@ -486,11 +485,17 @@ export function EditorWorkspace() {
               assetId: assetJson.asset.id,
               label: file.name,
               segmentType: isVideoAsset ? "video" : "image",
-              startSeconds: insertionStart,
-              endSeconds: insertionEnd,
+              startSeconds: insertionStartSeconds,
+              endSeconds: insertionEndSeconds,
               metadata: {
-                mediaAssetId: (assetJson.asset?.metadata as Record<string, unknown> | undefined)?.mediaAssetId ?? null,
-                timelineMedia: (assetJson.asset?.metadata as Record<string, unknown> | undefined)?.timelineMedia ?? null,
+                mediaAssetId: mediaMetadata?.mediaAssetId ?? null,
+                timelineMedia: mediaMetadata?.timelineMedia ?? null,
+                insertion: {
+                  source: insertionSource,
+                  durationStrategy,
+                  requestedAt: uploadStartedAt,
+                  insertedAt: uploadCompletedAt,
+                },
               },
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -531,7 +536,8 @@ export function EditorWorkspace() {
     try {
       const res = await fetch(`/api/editor/projects/${project.id}/duplicate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "If-Match": String(project.version ?? 0) },
+        body: JSON.stringify({ version: project.version ?? 0 }),
       })
       if (!res.ok) throw new Error("Duplicate failed")
       const json = await res.json()
@@ -551,7 +557,7 @@ export function EditorWorkspace() {
     const deletedId = project.id
     setProject(null)
     try {
-      const res = await fetch(`/api/editor/projects/${deletedId}`, { method: "DELETE" })
+      const res = await fetch(`/api/editor/projects/${deletedId}?version=${project.version ?? 0}`, { method: "DELETE" })
       if (!res.ok) throw new Error("Delete failed")
       toast({ title: "Project deleted" })
       await loadProject()
@@ -939,6 +945,7 @@ export function EditorWorkspace() {
           onOpenCollaboration={() => setIsCollaborationOpen(true)}
           onSave={saveProject}
           isSaving={isSaving}
+          editingLockedReason={isEditingLockedByCollaborator ? "Segment is locked by another collaborator" : undefined}
           onOpenModelDialog={(trigger) =>
             openFromTrigger(
               {
@@ -955,6 +962,11 @@ export function EditorWorkspace() {
             )
           }
         />
+        {isEditingLockedByCollaborator && (
+          <div className="mx-4 mt-3 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">
+            Segment is currently locked by another collaborator. Editing controls are temporarily disabled.
+          </div>
+        )}
         <div className="flex flex-1 overflow-hidden bg-background pb-24 md:pb-0">
           <LeftSidebar activeTab={activeTab} onTabChange={setActiveTab} isChatOpen={isChatOpen} onChatToggle={setIsChatOpen} />
           <MainCanvas
@@ -976,6 +988,8 @@ export function EditorWorkspace() {
             generationStatus={generationStatus}
             generationProgress={generationProgress}
             generationStage={generationStage}
+            isReadOnly={isEditingLockedByCollaborator}
+            readOnlyReason={isEditingLockedByCollaborator ? "Segment is locked by another collaborator." : undefined}
           />
           <RightPanel
             selectedModel={selectedModel}

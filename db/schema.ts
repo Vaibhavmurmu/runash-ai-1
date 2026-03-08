@@ -114,6 +114,12 @@ export const appSchemaTables = {
     indexes: ["idx_email_subscriptions_email_ci_unique", "idx_email_subscriptions_status_created"],
     uniqueConstraints: ["LOWER(email)"],
   },
+  newsletterSubscriptions: {
+    table: "newsletter_subscriptions",
+    fields: ["id", "email", "status", "source", "consented_at", "created_at", "updated_at"],
+    indexes: ["idx_newsletter_subscriptions_email_ci_unique", "idx_newsletter_subscriptions_status_created"],
+    uniqueConstraints: ["LOWER(email)"],
+  },
   communityEvents: {
     table: "community_events",
     fields: ["id", "title", "description", "starts_at", "location", "created_at", "updated_at"],
@@ -121,7 +127,7 @@ export const appSchemaTables = {
   },
   communityEventRegistrations: {
     table: "community_event_registrations",
-    fields: ["id", "event_id", "user_id", "created_at", "updated_at"],
+    fields: ["id", "event_id", "user_id", "status", "created_at", "updated_at"],
     indexes: ["idx_community_event_registrations_event", "idx_community_event_registrations_user"],
     uniqueConstraints: ["event_id,user_id"],
   },

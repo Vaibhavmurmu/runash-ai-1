@@ -1,37 +1,24 @@
-import * as crypto from "crypto"
 import { type NextRequest, NextResponse } from "next/server"
 import { getServerAuthSession } from "@/lib/auth/session"
+import { signTurnCredentials } from "@/lib/turn-credentials"
 
 import { rateLimit } from "@/lib/rate-limit"
 
-const TURN_CREDENTIAL_TTL_SECONDS = 10 * 60 // 10 minutes for browser sessions
-const TURN_SERVER_SECRET = process.env.TURN_SERVER_SECRET
-const TURN_SERVER_URLS = (process.env.TURN_SERVER_URLS || process.env.NEXT_PUBLIC_TURN_SERVER_URL || "")
-  .split(",")
-  .map((url) => url.trim())
-  .filter(Boolean)
+const TURN_SESSION_COOKIE_CANDIDATES = ["better-auth.session_token", "__Secure-better-auth.session_token", "next-auth.session-token"]
 
 export async function GET(request: NextRequest) {
   try {
-    if (!TURN_SERVER_SECRET) {
-      console.error("TURN credential issue blocked: TURN_SERVER_SECRET is not configured")
-      return NextResponse.json({ error: "TURN server is not configured" }, { status: 500 })
-    }
-
-    if (TURN_SERVER_URLS.length === 0) {
-      console.error("TURN credential issue blocked: TURN server URL is not configured")
-      return NextResponse.json({ error: "TURN server URL is not configured" }, { status: 500 })
-    }
-
     const session = await getServerAuthSession()
     const userId = session?.user?.id
 
     if (!userId) {
+      console.warn("TURN credentials denied", { tags: ["turn_auth_failure", "auth_required"] })
       return NextResponse.json({ error: "Authentication required" }, { status: 401 })
     }
 
     const rateLimitResult = await rateLimit(request, `turn-credentials:${userId}`, 20, 300)
     if (!rateLimitResult.success) {
+      console.warn("TURN credentials denied", { tags: ["turn_auth_failure", "rate_limited"] })
       return NextResponse.json(
         {
           error: "Too many TURN credential requests. Please try again later.",
@@ -41,36 +28,26 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const issuedAt = Math.floor(Date.now() / 1000)
-    const expiresAt = issuedAt + TURN_CREDENTIAL_TTL_SECONDS
-    const username = `${expiresAt}:${userId}`
-
-    const hmac = crypto.createHmac("sha1", TURN_SERVER_SECRET)
-    hmac.update(username)
-    const credential = hmac.digest("base64")
+    const sessionId = TURN_SESSION_COOKIE_CANDIDATES.map((name) => request.cookies.get(name)?.value).find(Boolean)
+    const signedCredentials = signTurnCredentials(userId, sessionId)
 
     console.info("TURN credentials issued", {
-      userId,
-      issuedAt,
-      expiresAt,
+      tags: ["turn_credentials_issued"],
+      ttl: signedCredentials.ttl,
     })
 
-    return NextResponse.json({
-      iceServers: [
-        {
-          urls: TURN_SERVER_URLS,
-          username,
-          credential,
-        },
-      ],
-      username,
-      credential,
-      ttl: TURN_CREDENTIAL_TTL_SECONDS,
-      issuedAt,
-      expiresAt,
-    })
+    return NextResponse.json(signedCredentials)
   } catch (error) {
-    console.error("Error generating TURN credentials:", error)
+    const reason = error instanceof Error ? error.message : "unknown"
+    console.error("Error generating TURN credentials", {
+      tags: ["turn_auth_failure", "turn_credentials_generation_error"],
+      reason,
+    })
+
+    if (reason === "turn_secret_not_configured" || reason === "turn_urls_not_configured") {
+      return NextResponse.json({ error: "TURN server is not configured" }, { status: 500 })
+    }
+
     return NextResponse.json({ error: "Failed to generate TURN credentials" }, { status: 500 })
   }
 }

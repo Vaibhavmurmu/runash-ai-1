@@ -79,7 +79,7 @@ export async function claimProjectVersion(input: {
   userId: string
   expectedVersion: number
   mutation: string
-  targetType: "timeline" | "track" | "segment"
+  targetType: "timeline" | "track" | "segment" | "asset" | "project"
   targetId?: string | null
 }, deps: ClaimDeps = {}) {
   const sqlClient = deps.sqlClient ?? sql

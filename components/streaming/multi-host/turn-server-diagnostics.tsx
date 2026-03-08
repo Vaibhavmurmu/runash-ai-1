@@ -14,6 +14,30 @@ interface TurnTestResult {
   success: boolean
   latency: number | null
   error?: string
+  failureType?: "auth" | "connectivity"
+  telemetryTags?: string[]
+}
+
+interface TurnCredentialApiResponse {
+  iceServers: RTCIceServer[]
+  ttl: number
+  issuedAt: number
+  expiresAt: number
+}
+
+const TURN_AUTH_FAILURE_TAG = "turn_auth_failure"
+const TURN_CONNECTIVITY_FAILURE_TAG = "turn_connectivity_failure"
+
+function emitDiagnosticsTelemetry(event: string, tags: string[], metadata: Record<string, unknown>) {
+  console.info("TURN diagnostics telemetry", {
+    event,
+    tags,
+    metadata,
+  })
+}
+
+function getServerLabel(serverUrl: string) {
+  return serverUrl.replace(/^turns?:/i, "").split("?")[0]
 }
 
 export function TurnServerDiagnostics() {
@@ -35,21 +59,59 @@ export function TurnServerDiagnostics() {
 
     const newResults: TurnTestResult[] = []
 
+    let turnIceServer: RTCIceServer
+    try {
+      turnIceServer = await fetchTurnCredentials()
+    } catch (error) {
+      const failureMessage = getCredentialFailureMessage(error)
+      const authFailureResult: TurnTestResult[] = testServers.map((server) => ({
+        server: server.url,
+        protocol: server.protocol,
+        success: false,
+        latency: null,
+        failureType: "auth",
+        telemetryTags: [TURN_AUTH_FAILURE_TAG],
+        error: failureMessage,
+      }))
+
+      setResults(authFailureResult)
+      setProgress(100)
+      setIsRunning(false)
+
+      emitDiagnosticsTelemetry("turn_credentials_fetch_failed", [TURN_AUTH_FAILURE_TAG], {
+        reason: failureMessage,
+        serverCount: testServers.length,
+      })
+
+      toast({
+        title: "TURN Credentials Unavailable",
+        description: "Could not fetch secure TURN credentials. Please sign in again or retry shortly.",
+        variant: "destructive",
+      })
+
+      return
+    }
+
     for (let i = 0; i < testServers.length; i++) {
       const server = testServers[i]
       setProgress(Math.round((i / testServers.length) * 100))
 
       try {
-        const result = await testTurnServer(server.url, server.protocol)
+        const result = await testTurnServer(turnIceServer, server.url, server.protocol)
         newResults.push(result)
       } catch (error) {
-        console.error(`Error testing TURN server ${server.url}:`, error)
+        emitDiagnosticsTelemetry("turn_connectivity_test_unhandled_error", [TURN_CONNECTIVITY_FAILURE_TAG], {
+          protocol: server.protocol,
+          message: error instanceof Error ? error.message : "unknown",
+        })
         newResults.push({
           server: server.url,
           protocol: server.protocol,
           success: false,
           latency: null,
-          error: error instanceof Error ? error.message : "Unknown error",
+          failureType: "connectivity",
+          telemetryTags: [TURN_CONNECTIVITY_FAILURE_TAG],
+          error: "TURN connectivity test failed unexpectedly",
         })
       }
 
@@ -81,20 +143,66 @@ export function TurnServerDiagnostics() {
     }
   }
 
-  const testTurnServer = async (serverUrl: string, protocol: string): Promise<TurnTestResult> => {
+  const fetchTurnCredentials = async (): Promise<RTCIceServer> => {
+    const response = await fetch("/api/turn-credentials", {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    })
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error("auth_required")
+      }
+
+      if (response.status === 429) {
+        throw new Error("rate_limited")
+      }
+
+      throw new Error("credential_request_failed")
+    }
+
+    const payload = (await response.json()) as TurnCredentialApiResponse
+    const relayTurnServer = payload.iceServers.find((server) => {
+      const urls = Array.isArray(server.urls) ? server.urls : [server.urls]
+      return urls.some((url) => url.startsWith("turn:"))
+    })
+
+    if (!relayTurnServer?.username || !relayTurnServer?.credential) {
+      throw new Error("credential_payload_invalid")
+    }
+
+    return relayTurnServer
+  }
+
+  const getCredentialFailureMessage = (error: unknown) => {
+    if (error instanceof Error) {
+      if (error.message === "auth_required") {
+        return "Authentication required to fetch TURN credentials"
+      }
+      if (error.message === "rate_limited") {
+        return "TURN credential request is temporarily rate-limited"
+      }
+    }
+
+    return "Secure TURN credentials are unavailable"
+  }
+
+  const testTurnServer = async (
+    turnServer: RTCIceServer,
+    serverUrl: string,
+    protocol: string,
+  ): Promise<TurnTestResult> => {
     return new Promise((resolve, reject) => {
       try {
-        // In a real implementation, you would use your TURN credentials API
-        // For this demo, we'll use dummy credentials
-        const username = "dummy"
-        const credential = "dummy"
-
         const pc = new RTCPeerConnection({
           iceServers: [
             {
               urls: serverUrl,
-              username,
-              credential,
+              username: turnServer.username,
+              credential: turnServer.credential,
             },
           ],
           iceTransportPolicy: "relay", // Force TURN usage
@@ -132,7 +240,14 @@ export function TurnServerDiagnostics() {
               protocol,
               success: false,
               latency: null,
-              error: event.errorText || "ICE candidate error",
+              failureType: "connectivity",
+              telemetryTags: [TURN_CONNECTIVITY_FAILURE_TAG],
+              error: "TURN server connectivity failed",
+            })
+
+            emitDiagnosticsTelemetry("turn_connectivity_test_failed", [TURN_CONNECTIVITY_FAILURE_TAG], {
+              protocol,
+              errorCode: typeof event.errorCode === "number" ? event.errorCode : "unknown",
             })
           }
         }
@@ -146,7 +261,14 @@ export function TurnServerDiagnostics() {
               protocol,
               success: false,
               latency: null,
+              failureType: "connectivity",
+              telemetryTags: [TURN_CONNECTIVITY_FAILURE_TAG],
               error: "Timeout waiting for relay candidate",
+            })
+
+            emitDiagnosticsTelemetry("turn_connectivity_test_timeout", [TURN_CONNECTIVITY_FAILURE_TAG], {
+              protocol,
+              timeoutMs: 5000,
             })
           }
         }, 5000)
@@ -228,7 +350,7 @@ export function TurnServerDiagnostics() {
                     )}
 
                     <div>
-                      <div className="text-sm font-medium">{new URL(result.server).hostname}</div>
+                      <div className="text-sm font-medium">{getServerLabel(result.server)}</div>
                       <div className="text-xs text-muted-foreground flex items-center gap-2">
                         <Badge variant="outline" className="text-xs h-5 px-1">
                           {result.protocol}

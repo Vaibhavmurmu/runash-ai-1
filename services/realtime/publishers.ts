@@ -62,7 +62,7 @@ export function publishTimelineConflict(input: {
   expectedVersion: number
   actualVersion: number
   mutation: string
-  targetType: "timeline" | "track" | "segment"
+  targetType: "timeline" | "track" | "segment" | "asset" | "project"
   targetId: string | null
   occurredAt?: string
 }) {
