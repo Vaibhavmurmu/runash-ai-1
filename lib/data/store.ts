@@ -7,6 +7,10 @@ const uid = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`
 
 const nowISO = () => new Date().toISOString()
+const DEMO_SEED_STORE_ENABLED = process.env.NODE_ENV !== "production" && process.env.RUNASH_ENABLE_DEMO_SEED_STORE === "true"
+
+export const isDemoSeedStoreEnabled = () => DEMO_SEED_STORE_ENABLED
+
 const daysAgo = (n: number) => {
   const d = new Date()
   d.setDate(d.getDate() - n)
@@ -16,7 +20,7 @@ const daysAgo = (n: number) => {
 // Seed a single local user for demo purposes
 export const LOCAL_USER_ID = "local-user-1"
 
-export const profiles = [
+export const profiles = DEMO_SEED_STORE_ENABLED ? [
   {
     id: LOCAL_USER_ID,
     email: "ram@runash.ai",
@@ -26,10 +30,10 @@ export const profiles = [
     created_at: nowISO(),
     updated_at: nowISO(),
   },
-]
+ ] : []
 
 // Products
-export const products: Product[] = [
+export const products: Product[] = DEMO_SEED_STORE_ENABLED ? [
   {
     id: uid(),
     user_id: LOCAL_USER_ID,
@@ -120,10 +124,10 @@ export const products: Product[] = [
     created_at: nowISO(),
     updated_at: nowISO(),
   },
-]
+ ] : []
 
 // Streams
-export const streams: Stream[] = [
+export const streams: Stream[] = DEMO_SEED_STORE_ENABLED ? [
   {
     id: uid(),
     user_id: LOCAL_USER_ID,
@@ -184,10 +188,10 @@ export const streams: Stream[] = [
     created_at: nowISO(),
     updated_at: nowISO(),
   },
-]
+ ] : []
 
 // Stream metrics (last 7 days for first stream)
-export const streamMetrics: StreamMetric[] = Array.from({ length: 7 }).map((_, i) => ({
+export const streamMetrics: StreamMetric[] = DEMO_SEED_STORE_ENABLED ? Array.from({ length: 7 }).map((_, i) => ({
   id: uid(),
   stream_id: streams[0].id,
   timestamp: new Date(Date.now() - (6 - i) * 24 * 60 * 60 * 1000).toISOString(),
@@ -197,10 +201,10 @@ export const streamMetrics: StreamMetric[] = Array.from({ length: 7 }).map((_, i
   chat_messages: Math.floor(50 + Math.random() * 200),
   new_followers: Math.floor(10 + Math.random() * 50),
   product_clicks: Math.floor(20 + Math.random() * 100),
-}))
+})) : []
 
 // Agents
-export const aiAgents: AIAgent[] = [
+export const aiAgents: AIAgent[] = DEMO_SEED_STORE_ENABLED ? [
   {
     id: uid(),
     user_id: LOCAL_USER_ID,
@@ -229,10 +233,10 @@ export const aiAgents: AIAgent[] = [
     created_at: nowISO(),
     updated_at: nowISO(),
   },
-]
+ ] : []
 
 // Analytics daily (last 7 days)
-export const analyticsDaily: AnalyticsDaily[] = Array.from({ length: 7 }).map((_, i) => {
+export const analyticsDaily: AnalyticsDaily[] = DEMO_SEED_STORE_ENABLED ? Array.from({ length: 7 }).map((_, i) => {
   const d = daysAgo(7 - i)
   const date = d.toISOString().split("T")[0]
   const total_streams = Math.floor(1 + Math.random() * 3)
@@ -253,7 +257,7 @@ export const analyticsDaily: AnalyticsDaily[] = Array.from({ length: 7 }).map((_
     top_product_id: products[0]?.id ?? null,
     created_at: nowISO(),
   }
-})
+}) : []
 
 // Simple CRUD helpers
 
