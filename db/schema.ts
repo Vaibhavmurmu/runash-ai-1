@@ -219,6 +219,33 @@ export const appSchemaTables = {
       "completed_at",
     ],
   },
+  templates: {
+    table: "templates",
+    fields: [
+      "id",
+      "name",
+      "description",
+      "category",
+      "thumbnail_url",
+      "variables",
+      "html",
+      "css",
+      "javascript",
+      "is_premium",
+      "tags",
+      "owner_user_id",
+      "workspace_id",
+      "access_level",
+      "author_name",
+      "created_at",
+      "updated_at",
+    ],
+    indexes: ["idx_templates_access_level", "idx_templates_owner_user_id", "idx_templates_workspace_id"],
+  },
+  templateUsageCounters: {
+    table: "template_usage_counters",
+    fields: ["template_id", "download_count", "view_count", "usage_count", "rating", "rating_count", "updated_at"],
+  },
   mediaAssets: {
     table: "media_assets",
     fields: [
