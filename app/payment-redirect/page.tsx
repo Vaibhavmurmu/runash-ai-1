@@ -26,6 +26,7 @@ export default function PaymentRedirectPage() {
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
   const orderIdParam = searchParams?.get("order_id") || null
+  const priceIdParam = searchParams?.get("price_id") || searchParams?.get("priceId") || null
 
   useEffect(() => {
     let cancelled = false
@@ -60,13 +61,29 @@ export default function PaymentRedirectPage() {
           throw new Error("Failed to obtain an order id")
         }
 
+        const pendingOrder = typeof window !== "undefined" ? sessionStorage.getItem("pendingOrder") : null
+        const parsedPendingOrder = pendingOrder ? JSON.parse(pendingOrder) : null
+        const checkoutPriceId =
+          priceIdParam ||
+          parsedPendingOrder?.checkout?.priceId ||
+          parsedPendingOrder?.items?.[0]?.selectedVariant?.stripePriceId ||
+          parsedPendingOrder?.items?.[0]?.selectedVariant?.id ||
+          parsedPendingOrder?.items?.[0]?.product?.stripePriceId ||
+          null
+
+        if (!checkoutPriceId) {
+          throw new Error("Missing checkout price identifier")
+        }
+
         const sessionRes = await fetch("/api/checkout/session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            orderId,
-            successUrl: window.location.origin + `/payment-redirect/return`,
-            cancelUrl: window.location.origin + "/payment-redirect/return?status=failed",
+            priceId: checkoutPriceId,
+            mode: "payment",
+            success_url: window.location.origin + `/payment-redirect/return`,
+            cancel_url: window.location.origin + "/payment-redirect/return?status=failed",
+            redirectUrl: window.location.origin + `/payment-redirect/return`,
           }),
         })
 
@@ -103,7 +120,7 @@ export default function PaymentRedirectPage() {
     return () => {
       cancelled = true
     }
-  }, [retryCount, orderIdParam, cart.items.length])
+  }, [retryCount, orderIdParam, priceIdParam, cart.items.length])
 
   const onRetry = () => {
     setLoading(true)
