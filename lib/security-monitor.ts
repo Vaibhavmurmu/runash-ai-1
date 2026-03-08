@@ -1,12 +1,21 @@
 import { neon } from "@neondatabase/serverless"
 import { AuthLogger } from "./auth-logger"
 
-const sql = neon(process.env.DATABASE_URL!)
+function getSqlClient() {
+  const connectionString = process.env.DATABASE_URL
+  if (!connectionString) {
+    throw new Error("Security monitor database is not configured")
+  }
+
+  return neon(connectionString)
+}
+
+const runQuery = (...args: Parameters<ReturnType<typeof neon>>) => getSqlClient()(...args)
 
 const GEO_CACHE_RETENTION_DAYS = 90
 
 async function upsertThreatIpGeoCache(start: string, end: string): Promise<void> {
-  await sql(
+  await runQuery(
     `
       INSERT INTO auth_ip_geo_cache (
         ip_address,
@@ -102,6 +111,36 @@ export interface SecurityRule {
   updated_at: string
 }
 
+function getEmptySecurityMetrics(): SecurityMetrics {
+  return {
+    activeThreats: 0,
+    resolvedThreats: 0,
+    criticalAlerts: 0,
+    blockedIPs: 0,
+    suspiciousActivities: 0,
+    threatsByType: [],
+    threatTrends: [],
+    topThreats: [],
+    geographicThreats: [],
+  }
+}
+
+async function safeRunSecurityQuery(query: string, params: unknown[] = []): Promise<any[]> {
+  try {
+    return await runQuery(query, params)
+  } catch {
+    return []
+  }
+}
+
+export function aggregateGeographicThreats(rows: Array<{ country?: string; threats?: string | number; risk_score?: string | number }>) {
+  return rows.map((row) => ({
+    country: row.country || "Unknown",
+    threats: Number.parseInt(String(row.threats ?? 0), 10),
+    risk_score: Number.parseFloat(String(row.risk_score ?? 0)),
+  }))
+}
+
 export class SecurityMonitor {
   static async detectThreats(): Promise<void> {
     // Run various threat detection algorithms
@@ -123,16 +162,20 @@ export class SecurityMonitor {
       ORDER BY st.risk_score DESC, st.first_detected DESC
       LIMIT $1
     `
-    return await sql(query, [limit])
+    return await runQuery(query, [limit])
   }
 
   static async getSecurityMetrics(dateRange: { start: string; end: string }): Promise<SecurityMetrics> {
     const { start, end } = dateRange
 
-    await upsertThreatIpGeoCache(start, end)
+    try {
+      await upsertThreatIpGeoCache(start, end)
+    } catch {
+      return getEmptySecurityMetrics()
+    }
 
     // Active and resolved threats
-    const threatCounts = await sql(
+    const threatCounts = await safeRunSecurityQuery(
       `
       SELECT 
         COUNT(CASE WHEN status = 'active' THEN 1 END) as active_threats,
@@ -145,7 +188,7 @@ export class SecurityMonitor {
     )
 
     // Blocked IPs count
-    const blockedIPs = await sql(
+    const blockedIPs = await safeRunSecurityQuery(
       `
       SELECT COUNT(DISTINCT ip_address) as blocked_ips
       FROM ip_blacklist
@@ -155,7 +198,7 @@ export class SecurityMonitor {
     )
 
     // Suspicious activities
-    const suspiciousActivities = await sql(
+    const suspiciousActivities = await safeRunSecurityQuery(
       `
       SELECT COUNT(*) as suspicious_activities
       FROM auth_logs
@@ -165,7 +208,7 @@ export class SecurityMonitor {
     )
 
     // Threats by type
-    const threatsByType = await sql(
+    const threatsByType = await safeRunSecurityQuery(
       `
       SELECT threat_type as type, COUNT(*) as count, severity
       FROM security_threats
@@ -177,7 +220,7 @@ export class SecurityMonitor {
     )
 
     // Threat trends (daily)
-    const threatTrends = await sql(
+    const threatTrends = await safeRunSecurityQuery(
       `
       SELECT 
         DATE(first_detected) as date,
@@ -192,7 +235,7 @@ export class SecurityMonitor {
     )
 
     // Top threats
-    const topThreats = await sql(
+    const topThreats = await safeRunSecurityQuery(
       `
       SELECT 
         threat_type,
@@ -240,12 +283,8 @@ export class SecurityMonitor {
       ORDER BY threats DESC
       LIMIT 10
     `
-    const geographicThreatRows = await sql(geographicThreatsQuery, [start, end])
-    const geographicThreats = geographicThreatRows.map((row: any) => ({
-      country: row.country,
-      threats: Number.parseInt(row.threats),
-      risk_score: Number.parseFloat(row.risk_score || 0),
-    }))
+    const geographicThreatRows = await safeRunSecurityQuery(geographicThreatsQuery, [start, end])
+    const geographicThreats = aggregateGeographicThreats(geographicThreatRows)
 
     return {
       activeThreats: Number.parseInt(threatCounts[0]?.active_threats || 0),
@@ -283,7 +322,7 @@ export class SecurityMonitor {
     riskScore = 5,
     metadata: any = {},
   ): Promise<number> {
-    const result = await sql(
+    const result = await runQuery(
       `
       INSERT INTO security_threats (
         threat_type, severity, title, description, source_ip, target_user_id,
@@ -320,7 +359,7 @@ export class SecurityMonitor {
   }
 
   static async resolveThreat(threatId: number, resolvedBy: number, resolution: string): Promise<void> {
-    await sql(
+    await runQuery(
       `
       UPDATE security_threats 
       SET status = 'resolved', resolved_by = $1, resolved_at = NOW(), 
@@ -334,7 +373,7 @@ export class SecurityMonitor {
   static async blockIP(ipAddress: string, reason: string, duration?: number): Promise<void> {
     const expiresAt = duration ? new Date(Date.now() + duration * 1000) : null
 
-    await sql(
+    await runQuery(
       `
       INSERT INTO ip_blacklist (ip_address, reason, expires_at, created_at)
       VALUES ($1, $2, $3, NOW())
@@ -346,11 +385,11 @@ export class SecurityMonitor {
   }
 
   static async unblockIP(ipAddress: string): Promise<void> {
-    await sql(`DELETE FROM ip_blacklist WHERE ip_address = $1`, [ipAddress])
+    await runQuery(`DELETE FROM ip_blacklist WHERE ip_address = $1`, [ipAddress])
   }
 
   static async getBlockedIPs(): Promise<any[]> {
-    return await sql(`
+    return await runQuery(`
       SELECT * FROM ip_blacklist 
       WHERE expires_at IS NULL OR expires_at > NOW()
       ORDER BY created_at DESC
@@ -358,7 +397,7 @@ export class SecurityMonitor {
   }
 
   static async getSecurityRules(): Promise<SecurityRule[]> {
-    return await sql(`
+    return await runQuery(`
       SELECT * FROM security_rules 
       ORDER BY severity DESC, created_at DESC
     `)
@@ -372,7 +411,7 @@ export class SecurityMonitor {
     actions: any,
     severity: "low" | "medium" | "high" | "critical",
   ): Promise<number> {
-    const result = await sql(
+    const result = await runQuery(
       `
       INSERT INTO security_rules (name, description, rule_type, conditions, actions, severity, enabled, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, true, NOW(), NOW())
@@ -386,7 +425,7 @@ export class SecurityMonitor {
 
   private static async detectBruteForceAttacks(): Promise<void> {
     // Detect multiple failed login attempts from same IP
-    const bruteForceIPs = await sql(`
+    const bruteForceIPs = await runQuery(`
       SELECT 
         ip_address,
         COUNT(*) as failed_attempts,
@@ -400,7 +439,7 @@ export class SecurityMonitor {
     `)
 
     for (const ip of bruteForceIPs) {
-      const existingThreat = await sql(
+      const existingThreat = await runQuery(
         `
         SELECT id FROM security_threats 
         WHERE threat_type = 'brute_force' 
@@ -428,7 +467,7 @@ export class SecurityMonitor {
 
   private static async detectSuspiciousIPs(): Promise<void> {
     // Detect IPs with high risk scores
-    const suspiciousIPs = await sql(`
+    const suspiciousIPs = await runQuery(`
       SELECT 
         ip_address,
         AVG(risk_score) as avg_risk,
@@ -442,7 +481,7 @@ export class SecurityMonitor {
     `)
 
     for (const ip of suspiciousIPs) {
-      const existingThreat = await sql(
+      const existingThreat = await runQuery(
         `
         SELECT id FROM security_threats 
         WHERE threat_type = 'suspicious_ip' 
@@ -470,7 +509,7 @@ export class SecurityMonitor {
 
   private static async detectAnomalousActivity(): Promise<void> {
     // Detect users with unusual login patterns
-    const anomalousUsers = await sql(`
+    const anomalousUsers = await runQuery(`
       SELECT 
         user_id,
         COUNT(DISTINCT ip_address) as unique_ips,
@@ -486,7 +525,7 @@ export class SecurityMonitor {
     `)
 
     for (const user of anomalousUsers) {
-      const existingThreat = await sql(
+      const existingThreat = await runQuery(
         `
         SELECT id FROM security_threats 
         WHERE threat_type = 'anomalous_activity' 
@@ -514,7 +553,7 @@ export class SecurityMonitor {
 
   private static async detectCredentialStuffing(): Promise<void> {
     // Detect rapid login attempts across multiple accounts from same IP
-    const credentialStuffingIPs = await sql(`
+    const credentialStuffingIPs = await runQuery(`
       SELECT 
         ip_address,
         COUNT(DISTINCT user_id) as unique_users,
@@ -529,7 +568,7 @@ export class SecurityMonitor {
     `)
 
     for (const ip of credentialStuffingIPs) {
-      const existingThreat = await sql(
+      const existingThreat = await runQuery(
         `
         SELECT id FROM security_threats 
         WHERE threat_type = 'credential_stuffing' 
@@ -557,7 +596,7 @@ export class SecurityMonitor {
 
   private static async detectAccountTakeover(): Promise<void> {
     // Detect successful logins after multiple failures
-    const takeoverAttempts = await sql(`
+    const takeoverAttempts = await runQuery(`
       WITH failed_then_success AS (
         SELECT 
           user_id,
@@ -581,7 +620,7 @@ export class SecurityMonitor {
     `)
 
     for (const attempt of takeoverAttempts) {
-      const existingThreat = await sql(
+      const existingThreat = await runQuery(
         `
         SELECT id FROM security_threats 
         WHERE threat_type = 'account_takeover' 
@@ -614,12 +653,7 @@ export class SecurityMonitor {
     title: string,
     description: string,
   ): Promise<void> {
-    // In a real implementation, this would send notifications via email, Slack, etc.
-    console.log(`Security Alert [${severity.toUpperCase()}]: ${title}`)
-    console.log(`Description: ${description}`)
-    console.log(`Threat ID: ${threatId}`)
-
-    // Log the alert
+    // Log the alert without sensitive payload content
     await AuthLogger.log(
       null,
       null,
@@ -627,7 +661,7 @@ export class SecurityMonitor {
       true,
       "system",
       "SecurityMonitor",
-      { threat_id: threatId, severity, title, description },
+      { threat_id: threatId, severity, title },
       severity === "critical" ? 10 : severity === "high" ? 8 : severity === "medium" ? 5 : 2,
     )
   }

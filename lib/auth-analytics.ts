@@ -68,8 +68,67 @@ export interface AuthAnalyticsData {
   realTimeMetrics: {
     activeUsers: number
     currentSessions: number
-    avgSessionDuration: number
-    peakConcurrentUsers: number
+    avgSessionDuration: number | null
+    peakConcurrentUsers: number | null
+  }
+}
+
+export function computeRealTimeMetrics(input: {
+  activeUsersRows: Array<{ active_users?: string | number }>
+  currentSessionsRows: Array<{ current_sessions?: string | number }>
+  sessionDurationRows: Array<{ avg_session_seconds?: string | number | null }>
+  peakConcurrentRows: Array<{ peak_concurrent_users?: string | number | null }>
+}) {
+  const activeUsers = Number.parseInt(String(input.activeUsersRows[0]?.active_users ?? 0), 10)
+  const currentSessions = Number.parseInt(String(input.currentSessionsRows[0]?.current_sessions ?? 0), 10)
+
+  const avgSessionSecondsValue = input.sessionDurationRows[0]?.avg_session_seconds
+  const avgSessionDuration =
+    avgSessionSecondsValue === null || avgSessionSecondsValue === undefined
+      ? null
+      : Number.parseFloat((Number(avgSessionSecondsValue) / 60).toFixed(2))
+
+  const peakConcurrentValue = input.peakConcurrentRows[0]?.peak_concurrent_users
+  const peakConcurrentUsers =
+    peakConcurrentValue === null || peakConcurrentValue === undefined
+      ? null
+      : Number.parseInt(String(peakConcurrentValue), 10)
+
+  return {
+    activeUsers,
+    currentSessions,
+    avgSessionDuration,
+    peakConcurrentUsers,
+  }
+}
+
+function emptyOverviewMetrics(): AuthAnalyticsData {
+  return {
+    loginAttempts: {
+      total: 0,
+      successful: 0,
+      failed: 0,
+      successRate: 0,
+    },
+    authMethods: [],
+    userActivity: [],
+    securityEvents: [],
+    geographicData: [],
+    deviceData: [],
+    realTimeMetrics: {
+      activeUsers: 0,
+      currentSessions: 0,
+      avgSessionDuration: null,
+      peakConcurrentUsers: null,
+    },
+  }
+}
+
+async function safeRunAuthQuery(query: string, params: unknown[] = []): Promise<any[]> {
+  try {
+    return await runQuery(query, params)
+  } catch {
+    return []
   }
 }
 
@@ -150,7 +209,11 @@ export class AuthAnalytics {
   static async getOverviewMetrics(dateRange: { start: string; end: string }): Promise<AuthAnalyticsData> {
     const { start, end } = dateRange
 
-    await this.upsertIpGeoCacheForRange(start, end)
+    try {
+      await this.upsertIpGeoCacheForRange(start, end)
+    } catch {
+      return emptyOverviewMetrics()
+    }
 
     // Get login attempts data
     const loginAttemptsQuery = `
@@ -162,8 +225,8 @@ export class AuthAnalytics {
       WHERE event_type = 'login' 
       AND created_at BETWEEN $1 AND $2
     `
-    const loginAttempts = await runQuery(loginAttemptsQuery, [start, end])
-    const loginData = loginAttempts[0]
+    const loginAttempts = await safeRunAuthQuery(loginAttemptsQuery, [start, end])
+    const loginData = loginAttempts[0] ?? { total: 0, successful: 0, failed: 0 }
     const successRate = loginData.total > 0 ? (loginData.successful / loginData.total) * 100 : 0
 
     // Get authentication methods distribution
@@ -178,7 +241,7 @@ export class AuthAnalytics {
       GROUP BY method
       ORDER BY count DESC
     `
-    const authMethodsData = await runQuery(authMethodsQuery, [start, end])
+    const authMethodsData = await safeRunAuthQuery(authMethodsQuery, [start, end])
     const totalSuccessfulLogins = authMethodsData.reduce((sum: number, row: any) => sum + Number.parseInt(row.count), 0)
     const authMethods = authMethodsData.map((row: any) => ({
       method: row.method,
@@ -198,7 +261,7 @@ export class AuthAnalytics {
       GROUP BY DATE(created_at)
       ORDER BY date
     `
-    const userActivity = await runQuery(activityQuery, [start, end])
+    const userActivity = await safeRunAuthQuery(activityQuery, [start, end])
 
     // Get security events
     const securityQuery = `
@@ -215,7 +278,7 @@ export class AuthAnalytics {
       AND created_at BETWEEN $1 AND $2
       GROUP BY event_type
     `
-    const securityEvents = await runQuery(securityQuery, [start, end])
+    const securityEvents = await safeRunAuthQuery(securityQuery, [start, end])
 
     // Get geographic data from geo-enriched cache and materialized aggregate view
     const geographicQuery = `
@@ -249,7 +312,7 @@ export class AuthAnalytics {
       ORDER BY logins DESC
       LIMIT 10
     `
-    const geographicRows = await runQuery(geographicQuery, [start, end])
+    const geographicRows = await safeRunAuthQuery(geographicQuery, [start, end])
     const totalGeographicLogins = geographicRows.reduce((sum: number, row: any) => sum + Number.parseInt(row.logins), 0)
     const geographicData = geographicRows.map((row: any) => ({
       country: row.country,
@@ -272,7 +335,7 @@ export class AuthAnalytics {
       AND created_at BETWEEN $1 AND $2
       GROUP BY device
     `
-    const deviceData = await runQuery(deviceQuery, [start, end])
+    const deviceData = await safeRunAuthQuery(deviceQuery, [start, end])
     const totalDeviceLogins = deviceData.reduce((sum: number, row: any) => sum + Number.parseInt(row.count), 0)
     const deviceDataWithPercentage = deviceData.map((row: any) => ({
       device: row.device,
@@ -287,7 +350,7 @@ export class AuthAnalytics {
       WHERE (expires_at IS NULL OR expires_at > NOW())
       AND COALESCE(is_active, true) = true
     `
-    const activeUsers = await runQuery(activeUsersQuery)
+    const activeUsers = await safeRunAuthQuery(activeUsersQuery)
 
     const currentSessionsQuery = `
       SELECT COUNT(*) as current_sessions
@@ -295,16 +358,16 @@ export class AuthAnalytics {
       WHERE (expires_at IS NULL OR expires_at > NOW())
       AND COALESCE(is_active, true) = true
     `
-    const currentSessions = await runQuery(currentSessionsQuery)
+    const currentSessions = await safeRunAuthQuery(currentSessionsQuery)
 
     const sessionDurationQuery = `
       SELECT
-        COALESCE(AVG(EXTRACT(EPOCH FROM (COALESCE(last_activity, expires_at, NOW()) - created_at))), 0) as avg_session_seconds
+        AVG(EXTRACT(EPOCH FROM (COALESCE(last_activity, expires_at, NOW()) - created_at))) as avg_session_seconds
       FROM user_sessions
       WHERE created_at BETWEEN $1 AND $2
         AND COALESCE(last_activity, expires_at, NOW()) >= created_at
     `
-    const sessionDuration = await runQuery(sessionDurationQuery, [start, end])
+    const sessionDuration = await safeRunAuthQuery(sessionDurationQuery, [start, end])
 
     const peakConcurrentQuery = `
       WITH session_windows AS (
@@ -326,10 +389,17 @@ export class AuthAnalytics {
           SUM(delta) OVER (ORDER BY event_time, delta DESC) as concurrent_sessions
         FROM events
       )
-      SELECT COALESCE(MAX(concurrent_sessions), 0) as peak_concurrent_users
+      SELECT MAX(concurrent_sessions) as peak_concurrent_users
       FROM timeline
     `
-    const peakConcurrentUsers = await runQuery(peakConcurrentQuery, [start, end])
+    const peakConcurrentUsers = await safeRunAuthQuery(peakConcurrentQuery, [start, end])
+
+    const realTimeMetrics = computeRealTimeMetrics({
+      activeUsersRows: activeUsers,
+      currentSessionsRows: currentSessions,
+      sessionDurationRows: sessionDuration,
+      peakConcurrentRows: peakConcurrentUsers,
+    })
 
     return {
       loginAttempts: {
@@ -352,12 +422,7 @@ export class AuthAnalytics {
       })),
       geographicData,
       deviceData: deviceDataWithPercentage,
-      realTimeMetrics: {
-        activeUsers: Number.parseInt(activeUsers[0]?.active_users || 0),
-        currentSessions: Number.parseInt(currentSessions[0]?.current_sessions || 0),
-        avgSessionDuration: Number.parseFloat((Number(sessionDuration[0]?.avg_session_seconds || 0) / 60).toFixed(2)),
-        peakConcurrentUsers: Number.parseInt(peakConcurrentUsers[0]?.peak_concurrent_users || 0),
-      },
+      realTimeMetrics,
     }
   }
 
