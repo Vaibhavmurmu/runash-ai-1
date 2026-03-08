@@ -169,3 +169,26 @@ export type AnalyticsApiResponse =
   | AnalyticsApiEnvelopeSuccess
   | AnalyticsApiEnvelopeFailure
   | AnalyticsApiSummary
+
+export type WidgetAnalyticsMetric = "viewer_count" | "streams" | "live_streams" | "avg_viewers"
+
+export type WidgetAnalyticsDimension = "day" | "status"
+
+export interface WidgetAnalyticsQuery {
+  metric: WidgetAnalyticsMetric
+  period: "24h" | "7d" | "30d" | "90d" | "1y"
+  dimensions?: WidgetAnalyticsDimension[]
+}
+
+export interface WidgetAnalyticsPoint {
+  label: string
+  value: number
+  status?: string
+}
+
+export interface WidgetAnalyticsResponse {
+  metric: WidgetAnalyticsMetric
+  period: WidgetAnalyticsQuery["period"]
+  dimensions: WidgetAnalyticsDimension[]
+  series: WidgetAnalyticsPoint[]
+}
