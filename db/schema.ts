@@ -97,6 +97,23 @@ export const appSchemaTables = {
     table: "waitlist_entries",
     fields: ["id", "email", "name", "company", "use_case", "created_at"],
   },
+  emailSubscriptions: {
+    table: "email_subscriptions",
+    fields: [
+      "id",
+      "email",
+      "status",
+      "source_route",
+      "source_campaign",
+      "user_agent_hash",
+      "created_at",
+      "updated_at",
+      "confirmed_at",
+      "unsubscribed_at",
+    ],
+    indexes: ["idx_email_subscriptions_email_ci_unique", "idx_email_subscriptions_status_created"],
+    uniqueConstraints: ["LOWER(email)"],
+  },
   communityEvents: {
     table: "community_events",
     fields: ["id", "title", "description", "starts_at", "location", "created_at", "updated_at"],
