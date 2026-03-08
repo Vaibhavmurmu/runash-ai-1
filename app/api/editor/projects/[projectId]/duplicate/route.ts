@@ -1,12 +1,25 @@
 import { NextResponse } from "next/server"
 import { requireEditorOperation } from "@/app/api/editor/_lib"
 import { getProjectById, sql } from "@/lib/editor/repository"
+import { claimProjectVersion, parseExpectedVersion } from "@/lib/editor/versioned-mutations"
 
 export async function POST(request: Request, { params }: { params: { projectId: string } }) {
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params
   const body = await request.json().catch(() => ({}))
+  const version = parseExpectedVersion(request, body)
+  if ("error" in version) return version.error
+
+  const claim = await claimProjectVersion({
+    projectId,
+    userId: auth.userId,
+    expectedVersion: version.expectedVersion,
+    mutation: "project.duplicate",
+    targetType: "project",
+    targetId: projectId,
+  })
+  if (!claim.ok) return claim.response
 
   const source = await getProjectById(auth.userId, projectId)
   if (!source) {
@@ -79,5 +92,5 @@ export async function POST(request: Request, { params }: { params: { projectId: 
   await sql`UPDATE editor_projects SET active_timeline_id=${newActiveTimelineId}, updated_at=now() WHERE id=${project.id} AND owner_id=${auth.userId}`
 
   const duplicated = await getProjectById(auth.userId, project.id)
-  return NextResponse.json({ project: duplicated }, { status: 201 })
+  return NextResponse.json({ project: duplicated, sourceVersion: claim.projectVersion }, { status: 201 })
 }

@@ -650,14 +650,14 @@ export function createTwilioSmsProvider(httpClient: TwilioHttpClient = fetch): S
   }
 }
 
-function createNoopSmsProvider(): SmsOtpProvider {
+function createUnavailableSmsProvider(providerName: string): SmsOtpProvider {
   return {
-    name: "noop",
+    name: providerName,
     async sendOtp({ requestId }: SmsOtpProviderSendInput): Promise<SmsDeliveryResult> {
       return {
         success: false,
         state: "failed",
-        provider: "noop",
+        provider: providerName,
         providerRequestId: requestId,
         errorCode: "sms_provider_not_configured",
       }
@@ -665,13 +665,33 @@ function createNoopSmsProvider(): SmsOtpProvider {
   }
 }
 
+function createMockSmsProvider(): SmsOtpProvider {
+  return {
+    name: "mock",
+    async sendOtp({ requestId }: SmsOtpProviderSendInput): Promise<SmsDeliveryResult> {
+      return {
+        success: true,
+        state: "sent",
+        provider: "mock",
+        providerRequestId: requestId,
+      }
+    },
+  }
+}
+
 function getSmsOtpProvider(): SmsOtpProvider {
-  const provider = process.env.OTP_SMS_PROVIDER?.toLowerCase() ?? "twilio"
+  const provider = process.env.OTP_SMS_PROVIDER?.toLowerCase()
+
   if (provider === "twilio") {
     return createTwilioSmsProvider()
   }
 
-  return createNoopSmsProvider()
+  const allowMockInDevelopment = process.env.NODE_ENV === "development" && process.env.OTP_SMS_MOCK_ENABLED === "true"
+  if ((provider === "mock" || !provider) && allowMockInDevelopment) {
+    return createMockSmsProvider()
+  }
+
+  return createUnavailableSmsProvider(provider ?? "unconfigured")
 }
 
 async function sendSMSOTP(phoneNumber: string, code: string, purpose: string): Promise<SmsDeliveryResult> {

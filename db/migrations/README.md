@@ -22,6 +22,8 @@ Current status:
 
 - `0011_email_subscriptions.sql` provisions `email_subscriptions` with case-insensitive unique email constraints, double-opt-in lifecycle status/timestamps, and source metadata fields for subscription auditability.
 
+- `0012_newsletter_subscriptions.sql` provisions `newsletter_subscriptions` for consented newsletter signups with case-insensitive dedupe, status tracking, and audit timestamps.
+
 Operational guidance:
 1. Keep production-safe migration SQL reviewed and idempotent where practical.
 2. When enabling generated Drizzle migrations in CI, add the migration journal metadata in this directory and keep the baseline SQL immutable after release tags.

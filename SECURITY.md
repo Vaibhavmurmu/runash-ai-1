@@ -298,3 +298,10 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
 - Added centralized live/editor authorization policy module with explicit operation matrix (`create/start/stop stream`, `edit_timeline`, `run_generation`, `manage_collaborators`).
 - Live/editor mutation routes now enforce tenant-scoped permission + quota checks and return structured denial codes (`AUTHZ_PERMISSION_DENIED`, `TENANT_QUOTA_*`).
 - Privileged operation audits are recorded with sanitized metadata only (tenant ID, role, operation, outcome, denial code) and no secrets/tokens/media credentials.
+
+## 2026-03 location analytics privacy + retention guardrails
+
+- Geo analytics for auth/security dashboards must use coarse-grained location fields (country code/name and optional region only).
+- Do not persist precise geo coordinates or city-level identifiers for auth/security dashboard telemetry.
+- IP-derived geo cache entries are time-bounded (`expires_at`) and purged during dashboard rollup refresh to enforce location data minimization.
+- Dashboard geographic metrics should be sourced from materialized aggregates and sanitized cache data; avoid embedding static/mock geography in production monitoring paths.

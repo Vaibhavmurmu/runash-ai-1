@@ -77,6 +77,7 @@ export const editorAssetCreateRequestSchema = z.object({
   mimeType: z.string().trim().min(1).max(128).optional(),
   sizeBytes: z.number().int().nonnegative().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  version: z.union([z.number().int().nonnegative(), z.string().trim().min(1)]).optional(),
 })
 
 export const editorSegmentCreateRequestSchema = z.object({

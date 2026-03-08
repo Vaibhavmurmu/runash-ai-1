@@ -384,3 +384,27 @@ Business controls preserved:
 - Data integrity update: completion now persists normalized provider output + output-publication metadata with transactional job/asset updates to reduce split-brain writes.
 - Payment/auth impact: none; no payment contract or auth API signature changed.
 - Risk + rollback: moderate operational risk in queue worker behavior. Rollback by reverting `services/editor/render-worker.ts`, new render-job APIs, and migration `scripts/sql/2026-03-06_editor_render_job_orchestration.sql`; existing queued jobs continue under prior worker semantics after rollback.
+
+## 2026-03 Payment/Auth reliability hardening migration notes
+
+### Behavior changes (backward compatible contracts)
+- Link provider session/verification/save flow now fails with explicit `LINK_PROVIDER_UNAVAILABLE` when Stripe credentials or SDK are unavailable in real environments.
+- Development-only Link mocks are gated behind **both** `NODE_ENV=development` and `LINK_PROVIDER_ENABLE_MOCK=true`.
+- UPI service processing no longer uses random success simulation. Transactions now follow a deterministic state machine: `PENDING -> SUCCESS|FAILED`, finalized by gateway callback/webhook processing.
+- Duplicate gateway callbacks are treated as idempotent and do not replay balance transfer.
+- OTP SMS delivery now uses explicit provider abstraction selection; production paths do not silently fall back to a mock/noop vendor.
+
+### Risks
+1. Environments missing Stripe/Twilio configuration will surface explicit provider-unavailable failures instead of silently succeeding with mocks.
+2. Delayed or missing gateway callbacks can leave transactions in `PENDING` longer; monitoring/alerting on stale pending transactions is required.
+3. Misconfigured provider selection flags in development may block OTP delivery until explicitly configured.
+
+### Rollback
+1. Revert service-layer hardening changes in `lib/services/link-provider-service.ts`, `lib/services/upi-service.ts`, and `lib/otp.ts`.
+2. Re-enable prior non-deterministic/mock behavior only for temporary incident containment in lower environments.
+3. Keep API signatures and field names unchanged during rollback to avoid downstream integration impact.
+
+### Validation commands
+- `npm run lint`
+- `npm run build`
+- `node --loader ./scripts/node-ts-loader.mjs --test lib/services/link-provider-service.test.ts lib/services/upi-service.test.ts lib/otp.test.ts`

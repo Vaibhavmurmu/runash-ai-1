@@ -25,6 +25,11 @@ import {
 import { validateVideoGenerationPayload } from "@/lib/editor/video-models/validation"
 import type { VideoGenerationRequest } from "@/lib/editor/video-models/types"
 import { createRenderJobV1, finalizeMediaUploadV1, initMediaUploadV1 } from "@/lib/api/v1-client"
+import {
+  readOverlapModeEnabled,
+  resolveMediaInsertionDuration,
+  resolveMediaInsertionPlacement,
+} from "@/lib/editor/media-insertion"
 
 type OnboardingState = {
   editorWelcomeCompletedAt?: string
@@ -85,6 +90,69 @@ function getGenerationValidationErrors(modelId: string, payload: VideoGeneration
   }
 }
 
+
+function normalizeRenderJob(value: unknown): EditorRenderJob | null {
+  if (!value || typeof value !== "object") return null
+  const row = value as Record<string, unknown>
+  const id = typeof row.id === "string" ? row.id : null
+  const status = typeof row.status === "string" ? row.status : null
+  const projectId = typeof row.projectId === "string" ? row.projectId : typeof row.project_id === "string" ? row.project_id : null
+  const ownerId = typeof row.ownerId === "string" ? row.ownerId : typeof row.owner_id === "string" ? row.owner_id : ""
+  if (!id || !status || !projectId) return null
+
+  return {
+    id,
+    status: status as EditorRenderJob["status"],
+    projectId,
+    ownerId,
+    requestedBy: typeof row.requestedBy === "string" ? row.requestedBy : typeof row.requested_by === "string" ? row.requested_by : "",
+    payload: row.payload && typeof row.payload === "object" ? (row.payload as Record<string, unknown>) : {},
+    result: row.result && typeof row.result === "object" ? (row.result as Record<string, unknown>) : {},
+    outputAssetId:
+      typeof row.outputAssetId === "string"
+        ? row.outputAssetId
+        : typeof row.output_asset_id === "string"
+          ? row.output_asset_id
+          : null,
+    attemptCount: typeof row.attemptCount === "number" ? row.attemptCount : typeof row.attempt_count === "number" ? row.attempt_count : 0,
+    maxAttempts: typeof row.maxAttempts === "number" ? row.maxAttempts : typeof row.max_attempts === "number" ? row.max_attempts : 0,
+    nextRetryAt: typeof row.nextRetryAt === "string" ? row.nextRetryAt : typeof row.next_retry_at === "string" ? row.next_retry_at : null,
+    cancellationToken:
+      typeof row.cancellationToken === "string"
+        ? row.cancellationToken
+        : typeof row.cancellation_token === "string"
+          ? row.cancellation_token
+          : null,
+    canceledAt: typeof row.canceledAt === "string" ? row.canceledAt : typeof row.canceled_at === "string" ? row.canceled_at : null,
+    lastErrorCode:
+      typeof row.lastErrorCode === "string"
+        ? row.lastErrorCode
+        : typeof row.last_error_code === "string"
+          ? row.last_error_code
+          : null,
+    providerTrace:
+      row.providerTrace && typeof row.providerTrace === "object"
+        ? (row.providerTrace as Record<string, unknown>)
+        : row.provider_trace && typeof row.provider_trace === "object"
+          ? (row.provider_trace as Record<string, unknown>)
+          : {},
+    providerOutput:
+      row.providerOutput && typeof row.providerOutput === "object"
+        ? (row.providerOutput as Record<string, unknown>)
+        : row.provider_output && typeof row.provider_output === "object"
+          ? (row.provider_output as Record<string, unknown>)
+          : {},
+    outputPublication:
+      row.outputPublication && typeof row.outputPublication === "object"
+        ? (row.outputPublication as Record<string, unknown>)
+        : row.output_publication && typeof row.output_publication === "object"
+          ? (row.output_publication as Record<string, unknown>)
+          : {},
+    createdAt: typeof row.createdAt === "string" ? row.createdAt : typeof row.created_at === "string" ? row.created_at : "",
+    updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : typeof row.updated_at === "string" ? row.updated_at : new Date().toISOString(),
+  }
+}
+
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map((entry) => stableSerialize(entry)).join(",")}]`
@@ -123,6 +191,11 @@ export function EditorWorkspace() {
   const [playbackTime, setPlaybackTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [generationJob, setGenerationJob] = useState<EditorRenderJob | null>(null)
+  const [generationHistory, setGenerationHistory] = useState<EditorRenderJob[]>([])
+  const [generationActionState, setGenerationActionState] = useState<{ cancelingJobId: string | null; retryingJobId: string | null }>({
+    cancelingJobId: null,
+    retryingJobId: null,
+  })
   const generationAbortRef = useRef<AbortController | null>(null)
   const generationRunIdRef = useRef(0)
   const generationStreamRef = useRef<EventSource | null>(null)
@@ -143,6 +216,20 @@ export function EditorWorkspace() {
     if (!activeTimeline) return undefined
     return activeTimeline.segments.find((segment) => playbackTime >= segment.startSeconds && playbackTime <= segment.endSeconds)
   }, [activeTimeline, playbackTime])
+
+  const activeSegmentLock = useMemo(() => {
+    if (!selectedSegment?.lockOwnerUserId) return null
+    const expiresAt = selectedSegment.lockExpiresAt ? new Date(selectedSegment.lockExpiresAt).getTime() : null
+    if (expiresAt !== null && expiresAt <= Date.now()) return null
+    const lockedByOther = selectedSegment.lockOwnerUserId !== project?.ownerId
+    return {
+      lockedByOther,
+      ownerUserId: selectedSegment.lockOwnerUserId,
+      expiresAt: selectedSegment.lockExpiresAt ?? null,
+    }
+  }, [selectedSegment, project?.ownerId])
+
+  const isEditingLockedByCollaborator = Boolean(activeSegmentLock?.lockedByOther)
 
   const persistOnboardingState = async (next: OnboardingState) => {
     setIsUpdatingOnboarding(true)
@@ -231,6 +318,7 @@ export function EditorWorkspace() {
         if (!res.ok) throw new Error("Failed to load project")
         const json = await res.json()
         setProject(json.project)
+        setGenerationHistory(Array.isArray(json.project?.renderJobs) ? json.project.renderJobs : [])
         setShowCreateProject(false)
         const savedModel = json.project?.metadata?.selectedModel
         if (typeof savedModel === "string" && savedModel.length > 0) {
@@ -289,7 +377,7 @@ export function EditorWorkspace() {
 
       const metaRes = await fetch(`/api/editor/projects/${project.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "If-Match": String(project.version ?? 0) },
         body: JSON.stringify({
           metadata: {
             ...json.project?.metadata,
@@ -299,14 +387,22 @@ export function EditorWorkspace() {
         }),
       })
 
+      if (metaRes.status === 409) {
+        const conflict = await metaRes.json()
+        if (conflict.latest) {
+          setProject(conflict.latest)
+        }
+        throw new Error("Version conflict")
+      }
       if (!metaRes.ok) throw new Error("Failed to save project metadata")
       const metaJson = await metaRes.json()
 
       setProject(metaJson.project)
       setIsDirty(false)
       toast({ title: "Project saved" })
-    } catch {
-      toast({ title: "Save failed", description: "Your changes were not saved.", variant: "destructive" })
+    } catch (error) {
+      const description = error instanceof Error && error.message === "Version conflict" ? "A collaborator updated this project. Latest changes were loaded." : "Your changes were not saved."
+      toast({ title: "Save failed", description, variant: "destructive" })
     } finally {
       setIsSaving(false)
     }
@@ -336,32 +432,7 @@ export function EditorWorkspace() {
     setUploadInProgress(true)
     try {
       const isVideoAsset = file.type.startsWith("video")
-      const safeDefaultDurationSeconds = 3
-
-      const readNumericMetadataDuration = (value: unknown): number | null => {
-        if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-          return value
-        }
-
-        if (typeof value === "string") {
-          const parsed = Number(value)
-          if (Number.isFinite(parsed) && parsed > 0) {
-            return parsed
-          }
-        }
-
-        return null
-      }
-
-      const resolveDurationFromAssetMetadata = (metadata: unknown): number | null => {
-        if (!metadata || typeof metadata !== "object") return null
-        const metadataRecord = metadata as Record<string, unknown>
-        return (
-          readNumericMetadataDuration(metadataRecord.durationSeconds) ??
-          readNumericMetadataDuration(metadataRecord.duration) ??
-          readNumericMetadataDuration(metadataRecord.videoDurationSeconds)
-        )
-      }
+      const uploadStartedAt = new Date().toISOString()
 
       const resolveVideoDurationSeconds = async (): Promise<number | null> => {
         if (!isVideoAsset || typeof window === "undefined") return null
@@ -416,7 +487,7 @@ export function EditorWorkspace() {
       const storageKey = String(finalizeJson.asset.source_storage_key ?? initJson.upload.storageKey)
       const assetRes = await fetch(`/api/editor/projects/${project.id}/assets`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "If-Match": String(project.version ?? 0) },
         body: JSON.stringify({
           source: "upload",
           uploadFileId: initJson.asset.id,
@@ -439,42 +510,39 @@ export function EditorWorkspace() {
       })
       if (!assetRes.ok) throw new Error("Failed to persist asset")
       const assetJson = await assetRes.json()
+      const uploadCompletedAt = new Date().toISOString()
 
       const track = activeTimeline.tracks[0]
       let nextTimeline: EditorTimeline | null = null
       if (track) {
-        const segmentsOnTrack = activeTimeline.segments.filter((segment) => segment.trackId === track.id)
-        const latestSegmentEnd = segmentsOnTrack.reduce((latest, segment) => {
-          const safeEnd = Number.isFinite(segment.endSeconds) ? Math.max(0, segment.endSeconds) : 0
-          return Math.max(latest, safeEnd)
-        }, 0)
+        const mediaMetadata = assetJson.asset?.metadata as Record<string, unknown> | undefined
+        const timelineMediaMetadata = mediaMetadata?.timelineMedia as Record<string, unknown> | undefined
+        const { durationSeconds: insertionDuration, durationStrategy } = resolveMediaInsertionDuration({
+          isVideoAsset,
+          metadataDurations: [
+            measuredVideoDuration,
+            assetJson.asset?.durationSeconds,
+            assetJson.asset?.duration_seconds,
+            mediaMetadata?.durationSeconds,
+            mediaMetadata?.duration,
+            mediaMetadata?.videoDurationSeconds,
+            timelineMediaMetadata?.durationSeconds,
+            timelineMediaMetadata?.duration,
+            timelineMediaMetadata?.videoDurationSeconds,
+          ],
+        })
 
-        const hasValidPlayhead = Number.isFinite(playbackTime) && playbackTime >= 0
-        const playheadStart = hasValidPlayhead ? Math.max(0, playbackTime) : null
-        const playheadOverlapsExisting =
-          playheadStart !== null &&
-          segmentsOnTrack.some(
-            (segment) =>
-              Number.isFinite(segment.startSeconds) &&
-              Number.isFinite(segment.endSeconds) &&
-              segment.startSeconds < playheadStart &&
-              segment.endSeconds > playheadStart,
-          )
-        const insertionStart =
-          playheadStart === null ? latestSegmentEnd : playheadOverlapsExisting ? latestSegmentEnd : playheadStart
-
-        const metadataDuration = isVideoAsset ? resolveDurationFromAssetMetadata(assetJson.asset?.metadata) : null
-        const transcodeDuration = resolveDurationFromAssetMetadata(
-          (assetJson.asset?.metadata as Record<string, unknown> | undefined)?.timelineMedia,
-        )
-        const insertionDuration = isVideoAsset
-          ? metadataDuration ?? transcodeDuration ?? safeDefaultDurationSeconds
-          : safeDefaultDurationSeconds
-        const insertionEnd = insertionStart + insertionDuration
+        const { insertionStartSeconds, insertionEndSeconds, insertionSource } = resolveMediaInsertionPlacement({
+          segments: activeTimeline.segments,
+          trackId: track.id,
+          durationSeconds: insertionDuration,
+          playheadSeconds: Number.isFinite(playbackTime) ? playbackTime : null,
+          allowOverlaps: readOverlapModeEnabled(track.metadata) || readOverlapModeEnabled(activeTimeline.metadata),
+        })
 
         nextTimeline = {
           ...activeTimeline,
-          durationSeconds: Math.max(activeTimeline.durationSeconds, insertionEnd),
+          durationSeconds: Math.max(activeTimeline.durationSeconds, insertionEndSeconds),
           segments: [
             ...activeTimeline.segments,
             {
@@ -486,11 +554,17 @@ export function EditorWorkspace() {
               assetId: assetJson.asset.id,
               label: file.name,
               segmentType: isVideoAsset ? "video" : "image",
-              startSeconds: insertionStart,
-              endSeconds: insertionEnd,
+              startSeconds: insertionStartSeconds,
+              endSeconds: insertionEndSeconds,
               metadata: {
-                mediaAssetId: (assetJson.asset?.metadata as Record<string, unknown> | undefined)?.mediaAssetId ?? null,
-                timelineMedia: (assetJson.asset?.metadata as Record<string, unknown> | undefined)?.timelineMedia ?? null,
+                mediaAssetId: mediaMetadata?.mediaAssetId ?? null,
+                timelineMedia: mediaMetadata?.timelineMedia ?? null,
+                insertion: {
+                  source: insertionSource,
+                  durationStrategy,
+                  requestedAt: uploadStartedAt,
+                  insertedAt: uploadCompletedAt,
+                },
               },
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -531,7 +605,8 @@ export function EditorWorkspace() {
     try {
       const res = await fetch(`/api/editor/projects/${project.id}/duplicate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "If-Match": String(project.version ?? 0) },
+        body: JSON.stringify({ version: project.version ?? 0 }),
       })
       if (!res.ok) throw new Error("Duplicate failed")
       const json = await res.json()
@@ -551,7 +626,7 @@ export function EditorWorkspace() {
     const deletedId = project.id
     setProject(null)
     try {
-      const res = await fetch(`/api/editor/projects/${deletedId}`, { method: "DELETE" })
+      const res = await fetch(`/api/editor/projects/${deletedId}?version=${project.version ?? 0}`, { method: "DELETE" })
       if (!res.ok) throw new Error("Delete failed")
       toast({ title: "Project deleted" })
       await loadProject()
@@ -668,32 +743,17 @@ export function EditorWorkspace() {
       projectRef.current?.id !== sourceProjectId ||
       activeTimelineIdRef.current !== sourceTimelineId
 
-    const normalizeJob = (value: unknown): EditorRenderJob | null => {
-      if (!value || typeof value !== "object") return null
-      const row = value as Record<string, unknown>
-      const id = typeof row.id === "string" ? row.id : null
-      const status = typeof row.status === "string" ? row.status : null
-      const projectId = typeof row.projectId === "string" ? row.projectId : typeof row.project_id === "string" ? row.project_id : null
-      const ownerId = typeof row.ownerId === "string" ? row.ownerId : typeof row.owner_id === "string" ? row.owner_id : ""
-      if (!id || !status || !projectId) return null
+    const upsertHistoryJob = (nextJob: EditorRenderJob) => {
+      setGenerationHistory((prev) => {
+        const existingIndex = prev.findIndex((entry) => entry.id === nextJob.id)
+        if (existingIndex === -1) {
+          return [nextJob, ...prev].slice(0, 20)
+        }
 
-      return {
-        id,
-        status: status as EditorRenderJob["status"],
-        projectId,
-        ownerId,
-        requestedBy: typeof row.requestedBy === "string" ? row.requestedBy : typeof row.requested_by === "string" ? row.requested_by : "",
-        payload: row.payload && typeof row.payload === "object" ? (row.payload as Record<string, unknown>) : {},
-        result: row.result && typeof row.result === "object" ? (row.result as Record<string, unknown>) : {},
-        outputAssetId:
-          typeof row.outputAssetId === "string"
-            ? row.outputAssetId
-            : typeof row.output_asset_id === "string"
-              ? row.output_asset_id
-              : null,
-        createdAt: typeof row.createdAt === "string" ? row.createdAt : typeof row.created_at === "string" ? row.created_at : "",
-        updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : typeof row.updated_at === "string" ? row.updated_at : new Date().toISOString(),
-      }
+        const next = [...prev]
+        next[existingIndex] = nextJob
+        return next.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 20)
+      })
     }
 
     const pollForCompletion = async (jobId: string) => {
@@ -706,10 +766,14 @@ export function EditorWorkspace() {
         if (!pollRes.ok) break
 
         const pollJson = await pollRes.json()
-        const polled = normalizeJob(pollJson.job)
+        const polled = normalizeRenderJob(pollJson.job)
         if (!polled || isStaleOrCancelled()) return
 
         setGenerationJob(polled)
+        upsertHistoryJob(polled)
+        if (["queued", "processing", "retrying", "completed", "failed", "canceled"].includes(polled.status)) {
+          setGenerationActionState({ cancelingJobId: null, retryingJobId: null })
+        }
         if (polled.status === "completed") {
           toast({ title: "Generation completed", description: "Your render job has completed." })
           return
@@ -774,7 +838,7 @@ export function EditorWorkspace() {
           try {
             const parsed = JSON.parse(event.data) as { payload?: { jobId?: string; status?: string; updatedAt?: string; progress?: number | null; stage?: string | null } }
             if (parsed.payload?.jobId !== jobId) return
-            const nextJob = normalizeJob({
+            const nextJob = normalizeRenderJob({
               ...generationJob,
               id: parsed.payload.jobId,
               status: parsed.payload.status,
@@ -790,6 +854,10 @@ export function EditorWorkspace() {
             if (!nextJob) return
 
             setGenerationJob(nextJob)
+            upsertHistoryJob(nextJob)
+            if (["queued", "processing", "retrying", "completed", "failed", "canceled"].includes(nextJob.status)) {
+              setGenerationActionState({ cancelingJobId: null, retryingJobId: null })
+            }
             if (nextJob.status === "completed") {
               toast({ title: "Generation completed", description: "Your render job has completed." })
               stopStream()
@@ -839,10 +907,11 @@ export function EditorWorkspace() {
         controller.signal,
       )
       if (isStaleOrCancelled()) return
-      const job = normalizeJob(createJson.job)
+      const job = normalizeRenderJob(createJson.job)
       if (!job || isStaleOrCancelled()) return
 
       setGenerationJob(job)
+      upsertHistoryJob(job)
       toast({ title: "Generation queued", description: "Render job started for this timeline." })
 
       try {
@@ -861,6 +930,55 @@ export function EditorWorkspace() {
       if (!isMountedRef.current) return
       if (generationRunIdRef.current !== currentRunId) return
       setIsGeneratingRender(false)
+    }
+  }
+
+
+  const handleCancelRenderJob = async (jobId: string) => {
+    setGenerationActionState((prev) => ({ ...prev, cancelingJobId: jobId }))
+    try {
+      const res = await fetch(`/api/editor/render-jobs/${jobId}/cancel`, { method: "POST" })
+      if (!res.ok) throw new Error("Cancel failed")
+      const json = await res.json()
+      const nextJob = normalizeRenderJob(json.job)
+      if (!nextJob) return
+      setGenerationJob(nextJob)
+      setGenerationHistory((prev) => {
+        const idx = prev.findIndex((entry) => entry.id === nextJob.id)
+        if (idx === -1) return [nextJob, ...prev]
+        const next = [...prev]
+        next[idx] = nextJob
+        return next
+      })
+      toast({ title: "Generation canceled" })
+    } catch {
+      toast({ title: "Cancel failed", description: "Unable to cancel render job.", variant: "destructive" })
+    } finally {
+      setGenerationActionState((prev) => ({ ...prev, cancelingJobId: null }))
+    }
+  }
+
+  const handleRetryRenderJob = async (jobId: string) => {
+    setGenerationActionState((prev) => ({ ...prev, retryingJobId: jobId }))
+    try {
+      const res = await fetch(`/api/editor/render-jobs/${jobId}/retry`, { method: "POST" })
+      if (!res.ok) throw new Error("Retry failed")
+      const json = await res.json()
+      const nextJob = normalizeRenderJob(json.job)
+      if (!nextJob) return
+      setGenerationJob(nextJob)
+      setGenerationHistory((prev) => {
+        const idx = prev.findIndex((entry) => entry.id === nextJob.id)
+        if (idx === -1) return [nextJob, ...prev]
+        const next = [...prev]
+        next[idx] = nextJob
+        return next
+      })
+      toast({ title: "Generation retried", description: "Render job has been re-queued." })
+    } catch {
+      toast({ title: "Retry failed", description: "Unable to retry render job.", variant: "destructive" })
+    } finally {
+      setGenerationActionState((prev) => ({ ...prev, retryingJobId: null }))
     }
   }
 
@@ -900,6 +1018,8 @@ export function EditorWorkspace() {
 
   useEffect(() => {
     setGenerationJob(null)
+    setGenerationHistory([])
+    setGenerationActionState({ cancelingJobId: null, retryingJobId: null })
     generationAbortRef.current?.abort()
     generationStreamRef.current?.close()
     generationStreamRef.current = null
@@ -939,6 +1059,7 @@ export function EditorWorkspace() {
           onOpenCollaboration={() => setIsCollaborationOpen(true)}
           onSave={saveProject}
           isSaving={isSaving}
+          editingLockedReason={isEditingLockedByCollaborator ? "Segment is locked by another collaborator" : undefined}
           onOpenModelDialog={(trigger) =>
             openFromTrigger(
               {
@@ -955,6 +1076,11 @@ export function EditorWorkspace() {
             )
           }
         />
+        {isEditingLockedByCollaborator && (
+          <div className="mx-4 mt-3 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">
+            Segment is currently locked by another collaborator. Editing controls are temporarily disabled.
+          </div>
+        )}
         <div className="flex flex-1 overflow-hidden bg-background pb-24 md:pb-0">
           <LeftSidebar activeTab={activeTab} onTabChange={setActiveTab} isChatOpen={isChatOpen} onChatToggle={setIsChatOpen} />
           <MainCanvas
@@ -976,6 +1102,8 @@ export function EditorWorkspace() {
             generationStatus={generationStatus}
             generationProgress={generationProgress}
             generationStage={generationStage}
+            isReadOnly={isEditingLockedByCollaborator}
+            readOnlyReason={isEditingLockedByCollaborator ? "Segment is locked by another collaborator." : undefined}
           />
           <RightPanel
             selectedModel={selectedModel}
@@ -989,6 +1117,10 @@ export function EditorWorkspace() {
             onTimelineChange={handleTimelineChange}
             selectedSegment={selectedSegment}
             playheadSeconds={playbackTime}
+            generationHistory={generationHistory}
+            generationActionState={generationActionState}
+            onCancelRenderJob={handleCancelRenderJob}
+            onRetryRenderJob={handleRetryRenderJob}
           />
           {isMobile ? (
             <Sheet open={isChatOpen} onOpenChange={setIsChatOpen}>

@@ -1,5 +1,5 @@
 import { queryMany } from "@/lib/db"
-import { getLiveStreamProvider } from "@/services/live-stream/provider"
+import { getLiveStreamProvider, mapLiveStreamProviderError } from "@/services/live-stream/provider"
 import { publishSessionStateChanged } from "@/services/realtime/publishers"
 import type {
   LiveStreamEndpoint,
@@ -425,12 +425,13 @@ export class LiveStreamService {
       await persistIdempotentResponse(input.sessionId, "start", input.idempotencyKey, response)
       return response
     } catch (error) {
+      const providerError = mapLiveStreamProviderError(error)
       await transitionSessionStatus(session, "failed", {
         actorUserId: input.actorUserId,
         idempotencyKey: input.idempotencyKey,
-        reason: error instanceof Error ? error.message : "Failed to start live stream session",
+        reason: providerError.reason,
       })
-      throw new LiveStreamValidationError("Failed to start live stream session", 500)
+      throw new LiveStreamValidationError("Failed to start live stream session", providerError.status)
     }
   }
 
@@ -474,12 +475,13 @@ export class LiveStreamService {
       await persistIdempotentResponse(input.sessionId, "stop", input.idempotencyKey, response)
       return response
     } catch (error) {
+      const providerError = mapLiveStreamProviderError(error)
       await transitionSessionStatus(session, "failed", {
         actorUserId: input.actorUserId,
         idempotencyKey: input.idempotencyKey,
-        reason: error instanceof Error ? error.message : "Failed to stop live stream session",
+        reason: providerError.reason,
       })
-      throw new LiveStreamValidationError("Failed to stop live stream session", 500)
+      throw new LiveStreamValidationError("Failed to stop live stream session", providerError.status)
     }
   }
 

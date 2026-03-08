@@ -93,6 +93,10 @@ async function createStripeClient() {
   return new Stripe(secretKey, { apiVersion: "2026-01-28.clover" })
 }
 
+function isDevelopmentMockEnabled() {
+  return process.env.NODE_ENV === "development" && process.env.LINK_PROVIDER_ENABLE_MOCK === "true"
+}
+
 function maskPhoneFallback() {
   return "*** *** 3421"
 }
@@ -102,6 +106,10 @@ export async function createLinkProviderSession(input: CreateLinkSessionInput): 
   logApiEvent("info", "payments.link.provider.session.create.started", { route: "payments/link/provider", requestId: input.requestId, details: { correlationId: input.requestId, provider: "stripe_link" } })
 
   if (!stripe) {
+    if (!isDevelopmentMockEnabled()) {
+      throw toProviderError("LINK_PROVIDER_UNAVAILABLE", new Error("stripe_not_configured"))
+    }
+
     const mockResponse = {
       provider: "stripe_link",
       providerSessionId: `lps_${randomUUID()}`,
@@ -150,7 +158,11 @@ export async function createLinkProviderSession(input: CreateLinkSessionInput): 
 export async function fetchLinkVerificationFromProvider(providerSessionId: string): Promise<LinkProviderVerification> {
   const stripe = await createStripeClient()
   if (!stripe) {
-    return { status: "pending", providerRequestId: null }
+    if (!isDevelopmentMockEnabled()) {
+      throw toProviderError("LINK_PROVIDER_UNAVAILABLE", new Error("stripe_not_configured"))
+    }
+
+    return { status: "pending", providerRequestId: `mock_req_${providerSessionId}` }
   }
 
   try {
@@ -180,6 +192,10 @@ export async function saveLinkPaymentMethodViaProvider(input: SaveLinkPaymentInp
   const last4 = sanitizedNumber.slice(-4)
 
   if (!stripe) {
+    if (!isDevelopmentMockEnabled()) {
+      throw toProviderError("LINK_PROVIDER_UNAVAILABLE", new Error("stripe_not_configured"))
+    }
+
     return {
       providerPaymentMethodId: `pm_mock_${randomUUID().replace(/-/g, "").slice(0, 18)}`,
       providerRequestId: `mock_req_${input.requestId}`,
