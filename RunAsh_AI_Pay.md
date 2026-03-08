@@ -21,6 +21,13 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Credits purchase routing uses `/pricing?intent=credits`; redeem flow uses in-app validated redeem input before billing handoff.
 - Payment API contract fields, webhook schemas, and auth/payment token formats remain unchanged by these routing updates.
 
+## 2026-03 checkout model-dialog card integration (UI-only, no payment contract changes)
+
+- Added an optional checkout-side model review card (`ModelDialogCard`) in the order-summary payment review region so buyers can inspect plan/model metadata before final submit.
+- Checkout order payload now includes optional metadata keys (`metadata.selectedPlan`, `metadata.selectedModel`) when those query params are present; payment submission remains unblocked when model metadata is absent.
+- No payment API request/response contract fields, webhook schemas, auth/session signatures, or provider redirect contracts were changed.
+- Risk + rollback: low runtime risk (checkout UI + optional metadata only). Rollback by reverting `app/checkout/page.tsx` and `components/checkout/model-dialog-checkout-section.tsx`; no migration required.
+
 ## 2026-03 checkout order DTO unification + POST /api/orders validation hardening
 
 - Checkout and payment redirect now share a single checkout-order DTO/schema (`lib/types/checkout-order.ts`) to keep pending-order/session payloads contract-consistent before server order creation.
