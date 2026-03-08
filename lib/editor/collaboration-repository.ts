@@ -1,5 +1,29 @@
 import { sql } from "@/lib/editor/repository"
 
+export type CollaborationSettings = {
+  allowComments: boolean
+  allowEditing: boolean
+  showActivityLog: boolean
+}
+
+const DEFAULT_COLLABORATION_SETTINGS: CollaborationSettings = {
+  allowComments: true,
+  allowEditing: true,
+  showActivityLog: true,
+}
+
+function normalizeCollaborationSettings(value: unknown): CollaborationSettings {
+  if (!value || typeof value !== "object") return DEFAULT_COLLABORATION_SETTINGS
+  const record = value as Record<string, unknown>
+
+  return {
+    allowComments: typeof record.allowComments === "boolean" ? record.allowComments : DEFAULT_COLLABORATION_SETTINGS.allowComments,
+    allowEditing: typeof record.allowEditing === "boolean" ? record.allowEditing : DEFAULT_COLLABORATION_SETTINGS.allowEditing,
+    showActivityLog:
+      typeof record.showActivityLog === "boolean" ? record.showActivityLog : DEFAULT_COLLABORATION_SETTINGS.showActivityLog,
+  }
+}
+
 export type ProjectCollaboratorRecord = {
   id: string
   project_id: string
@@ -206,3 +230,33 @@ export async function touchCollaboratorPresence(input: {
   `
 }
 
+export async function getCollaborationSettings(projectId: string, ownerId: string): Promise<CollaborationSettings> {
+  await ensureCollaborationSchema()
+  const [project] = (await sql`
+    SELECT metadata
+    FROM editor_projects
+    WHERE id=${projectId} AND owner_id=${ownerId}
+    LIMIT 1
+  `) as Array<{ metadata: Record<string, unknown> | null }>
+
+  const metadata = project?.metadata && typeof project.metadata === "object" ? project.metadata : {}
+  return normalizeCollaborationSettings((metadata as Record<string, unknown>).collaborationSettings)
+}
+
+export async function updateCollaborationSettings(input: {
+  projectId: string
+  ownerId: string
+  settings: CollaborationSettings
+}) {
+  await ensureCollaborationSchema()
+  const [project] = (await sql`
+    UPDATE editor_projects
+    SET
+      metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('collaborationSettings', ${JSON.stringify(input.settings)}::jsonb),
+      updated_at = now()
+    WHERE id=${input.projectId} AND owner_id=${input.ownerId}
+    RETURNING id
+  `) as Array<{ id: string }>
+
+  return project ?? null
+}
