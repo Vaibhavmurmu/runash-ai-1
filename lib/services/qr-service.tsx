@@ -27,6 +27,8 @@ export interface QRScanResult {
   parsedData?: QRCodeData
 }
 
+type QRHistoryPersistenceMode = "local_storage" | "memory_ephemeral"
+
 type QRScanInput = string | Blob | File | ImageData | HTMLImageElement | HTMLCanvasElement | HTMLVideoElement
 
 const QR_SCAN_ERRORS = {
@@ -49,8 +51,14 @@ export interface QRGenerateOptions {
 export class QrService {
   private static instance: QrService
   private scanHistory: QRScanResult[] = []
+  private readonly maxHistoryEntries = 100
+  private readonly scanHistoryStorageKey = "runash.qr.scanHistory"
+  private readonly historyPersistenceMode: QRHistoryPersistenceMode
 
-  private constructor() {}
+  private constructor() {
+    this.historyPersistenceMode = this.canUseLocalStorage() ? "local_storage" : "memory_ephemeral"
+    this.scanHistory = this.loadPersistedHistory()
+  }
 
   static getInstance(): QrService {
     if (!QrService.instance) {
@@ -63,37 +71,68 @@ export class QrService {
    * Parse UPI QR code data
    */
   parseUPIData(qrData: string): UPIData | null {
+    return this.parseUPIDataWithValidation(qrData).data
+  }
+
+  private parseUPIDataWithValidation(qrData: string): { data: UPIData | null } {
     try {
-      // UPI QR codes typically start with "upi://pay?"
-      if (!qrData.toLowerCase().startsWith("upi://pay?")) {
-        return null
+      const normalized = qrData.trim()
+      if (!normalized.toLowerCase().startsWith("upi://pay?")) {
+        return { data: null }
       }
 
-      const url = new URL(qrData)
+      const url = new URL(normalized)
+      if (url.protocol.toLowerCase() !== "upi:" || url.hostname.toLowerCase() !== "pay") {
+        return { data: null }
+      }
+
       const params = url.searchParams
+      const payeeAddress = params.get("pa")?.trim() || ""
+
+      if (!this.validateUPIId(payeeAddress)) {
+        return { data: null }
+      }
+
+      const rawAmount = params.get("am")
+      const parsedAmount = rawAmount ? Number.parseFloat(rawAmount) : undefined
+
+      if (rawAmount && (!Number.isFinite(parsedAmount) || parsedAmount <= 0)) {
+        return { data: null }
+      }
+
+      const currency = (params.get("cu") || "INR").toUpperCase()
+      if (!/^[A-Z]{3}$/.test(currency)) {
+        return { data: null }
+      }
 
       return {
-        payeeAddress: params.get("pa") || "",
-        payeeName: params.get("pn") || undefined,
-        amount: params.get("am") ? Number.parseFloat(params.get("am")!) : undefined,
-        currency: params.get("cu") || "INR",
-        transactionNote: params.get("tn") || undefined,
-        transactionRef: params.get("tr") || undefined,
-        merchantCode: params.get("mc") || undefined,
-        url: qrData,
+        data: {
+          payeeAddress,
+          payeeName: params.get("pn") || undefined,
+          amount: parsedAmount,
+          currency,
+          transactionNote: params.get("tn") || undefined,
+          transactionRef: params.get("tr") || undefined,
+          merchantCode: params.get("mc") || undefined,
+          url: normalized,
+        },
       }
-    } catch (error) {
-      return null
+    } catch {
+      return { data: null }
     }
   }
 
   private isValidDecodedPayload(payload: string): boolean {
-    const parsedData = this.parseQRData(payload)
-    if (parsedData.type !== "UPI") {
+    if (!payload || typeof payload !== "string") {
+      return false
+    }
+
+    const isUPIPayload = payload.trim().toLowerCase().startsWith("upi://pay?")
+    if (!isUPIPayload) {
       return true
     }
 
-    return Boolean(parsedData.data?.payeeAddress)
+    return Boolean(this.parseUPIDataWithValidation(payload).data)
   }
 
   /**
@@ -396,6 +435,11 @@ export class QrService {
    * Scan QR code from image/camera input using BarcodeDetector
    */
   async scanQR(imageData?: QRScanInput): Promise<QRScanResult> {
+    const source = await this.resolveImageSource(imageData)
+    if (!source) {
+      throw new Error(QR_SCAN_ERRORS.unreadableInput)
+    }
+
     const detectorConstructor = globalThis.BarcodeDetector as
       | (new (options?: { formats?: string[] }) => { detect: (source: ImageBitmapSource) => Promise<Array<{ rawValue?: string; format?: string }>> })
       | undefined
@@ -404,19 +448,14 @@ export class QrService {
       throw new Error(QR_SCAN_ERRORS.unsupportedEnvironment)
     }
 
-    const source = await this.resolveImageSource(imageData)
-    if (!source) {
-      throw new Error(QR_SCAN_ERRORS.unreadableInput)
-    }
-
     const detector = new detectorConstructor({ formats: ["qr_code"] })
     const codes = await detector.detect(source)
+    const detectedCode = codes.find((code) => typeof code.rawValue === "string" && code.rawValue.length > 0)
 
     if (typeof ImageBitmap !== "undefined" && source instanceof ImageBitmap) {
       source.close()
     }
 
-    const detectedCode = codes.find((code) => typeof code.rawValue === "string" && code.rawValue.length > 0)
     if (!detectedCode?.rawValue) {
       throw new Error(QR_SCAN_ERRORS.noCodeFound)
     }
@@ -432,7 +471,7 @@ export class QrService {
       parsedData: this.parseQRData(detectedCode.rawValue),
     }
 
-    this.scanHistory.push(result)
+    this.appendToHistory(result)
     return result
   }
 
@@ -473,11 +512,61 @@ export class QrService {
     return [...this.scanHistory]
   }
 
+  getScanHistoryPersistenceMode(): QRHistoryPersistenceMode {
+    return this.historyPersistenceMode
+  }
+
   /**
    * Clear scan history
    */
   clearHistory(): void {
     this.scanHistory = []
+    this.persistHistory()
+  }
+
+  private appendToHistory(result: QRScanResult): void {
+    this.scanHistory = [result, ...this.scanHistory].slice(0, this.maxHistoryEntries)
+    this.persistHistory()
+  }
+
+  private canUseLocalStorage(): boolean {
+    return typeof window !== "undefined" && typeof window.localStorage !== "undefined"
+  }
+
+  private loadPersistedHistory(): QRScanResult[] {
+    if (!this.canUseLocalStorage()) {
+      return []
+    }
+
+    try {
+      const raw = window.localStorage.getItem(this.scanHistoryStorageKey)
+      if (!raw) {
+        return []
+      }
+
+      const parsed = JSON.parse(raw) as Array<QRScanResult & { timestamp: string }>
+      return parsed
+        .map((entry) => ({
+          ...entry,
+          timestamp: new Date(entry.timestamp),
+        }))
+        .filter((entry) => !Number.isNaN(entry.timestamp.getTime()))
+        .slice(0, this.maxHistoryEntries)
+    } catch {
+      return []
+    }
+  }
+
+  private persistHistory(): void {
+    if (!this.canUseLocalStorage()) {
+      return
+    }
+
+    try {
+      window.localStorage.setItem(this.scanHistoryStorageKey, JSON.stringify(this.scanHistory))
+    } catch {
+      // Best effort persistence; in-memory history still works when storage quota/privacy constraints apply.
+    }
   }
 
   // Static methods for backward compatibility
@@ -513,6 +602,7 @@ export function useQRService() {
     scanQR: qrService.scanQR.bind(qrService),
     getScanHistory: qrService.getScanHistory.bind(qrService),
     clearHistory: qrService.clearHistory.bind(qrService),
+    getScanHistoryPersistenceMode: qrService.getScanHistoryPersistenceMode.bind(qrService),
   }
 }
 
