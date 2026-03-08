@@ -24,7 +24,7 @@ export default function DashboardEditorPage() {
         <Button asChild variant="outline" size="sm" className="gap-2">
           <Link href="/editor/docs">
             <BookOpen className="h-4 w-4" />
-            Editor guide
+            Help / Docs
           </Link>
         </Button>
       </div>
