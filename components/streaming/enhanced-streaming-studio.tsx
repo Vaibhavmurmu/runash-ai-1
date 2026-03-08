@@ -70,6 +70,7 @@ import {
   startStreamSession,
 } from "@/lib/stream-session-contract"
 import { saveStudioConsent } from "@/lib/streams-studio-pro-client"
+import { useStreamMetadata } from "@/hooks/use-stream-metadata"
 
 type StreamStage = "permissions" | "preview" | "live"
 type DevicePermissionStatus = "idle" | "granted" | "denied" | "error"
@@ -108,64 +109,56 @@ export function EnhancedStreamingStudio() {
   const [isMetadataHydrated, setIsMetadataHydrated] = useState(false)
   const router = useRouter()
   const studioStreamId = "studio-default"
+  const metadata = useStreamMetadata<Record<string, unknown>>(studioStreamId)
 
   useEffect(() => {
     setAiSettings(pipeline.restoreSettings())
   }, [pipeline])
 
   useEffect(() => {
-    if (typeof window === "undefined") return
-    const raw = window.localStorage.getItem("runash.stream.session.metadata")
-    if (!raw) {
-      setIsMetadataHydrated(true)
+    if (metadata.loading || !metadata.data) {
+      if (!metadata.loading) setIsMetadataHydrated(true)
       return
     }
 
-    try {
-      const parsed = JSON.parse(raw) as {
-        aiSettings?: MediaAIPipelineSettings
-        streamQuality?: number
-        selectedLayout?: string
-        isMuted?: boolean
-        isCameraOn?: boolean
-        selectedDeviceIds?: { mic?: string; camera?: string }
-        consentPreferences?: typeof consentPreferences
-      }
-
-      if (parsed.aiSettings) setAiSettings(parsed.aiSettings)
-      if (typeof parsed.streamQuality === "number") setStreamQuality(parsed.streamQuality)
-      if (parsed.selectedLayout) setSelectedLayout(parsed.selectedLayout)
-      if (typeof parsed.isMuted === "boolean") setIsMuted(parsed.isMuted)
-      if (typeof parsed.isCameraOn === "boolean") setIsCameraOn(parsed.isCameraOn)
-      if (parsed.selectedDeviceIds) {
-        setSelectedDeviceIds({ mic: parsed.selectedDeviceIds.mic ?? "", camera: parsed.selectedDeviceIds.camera ?? "" })
-      }
-      if (parsed.consentPreferences) {
-        setConsentPreferences((prev) => ({ ...prev, ...parsed.consentPreferences }))
-      }
-    } catch {
-      // no-op on corrupted local storage payload
-    } finally {
-      setIsMetadataHydrated(true)
+    const parsed = metadata.data as {
+      aiSettings?: MediaAIPipelineSettings
+      streamQuality?: number
+      selectedLayout?: string
+      isMuted?: boolean
+      isCameraOn?: boolean
+      selectedDeviceIds?: { mic?: string; camera?: string }
+      consentPreferences?: typeof consentPreferences
     }
-  }, [])
+
+    if (parsed.aiSettings) setAiSettings(parsed.aiSettings)
+    if (typeof parsed.streamQuality === "number") setStreamQuality(parsed.streamQuality)
+    if (parsed.selectedLayout) setSelectedLayout(parsed.selectedLayout)
+    if (typeof parsed.isMuted === "boolean") setIsMuted(parsed.isMuted)
+    if (typeof parsed.isCameraOn === "boolean") setIsCameraOn(parsed.isCameraOn)
+    if (parsed.selectedDeviceIds) {
+      setSelectedDeviceIds({ mic: parsed.selectedDeviceIds.mic ?? "", camera: parsed.selectedDeviceIds.camera ?? "" })
+    }
+    if (parsed.consentPreferences) {
+      setConsentPreferences((prev) => ({ ...prev, ...parsed.consentPreferences }))
+    }
+
+    setIsMetadataHydrated(true)
+  }, [metadata.data, metadata.loading])
 
   useEffect(() => {
-    if (!isMetadataHydrated || typeof window === "undefined") return
+    if (!isMetadataHydrated) return
     pipeline.persistSettings(aiSettings)
-    window.localStorage.setItem(
-      "runash.stream.session.metadata",
-      JSON.stringify({
-        updatedAt: new Date().toISOString(),
-        aiSettings,
-        streamQuality,
-        selectedLayout,
-        isMuted,
-        isCameraOn,
-        selectedDeviceIds,
-        consentPreferences,
-      }),
-    )
+    void metadata.update({
+      updatedAt: new Date().toISOString(),
+      aiSettings,
+      streamQuality,
+      selectedLayout,
+      isMuted,
+      isCameraOn,
+      selectedDeviceIds,
+      consentPreferences,
+    })
   }, [
     aiSettings,
     streamQuality,
