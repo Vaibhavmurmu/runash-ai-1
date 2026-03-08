@@ -1,14 +1,18 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { computeRealTimeMetrics } from "@/lib/auth-analytics"
+import { assembleGeographicData, computeRealTimeMetrics } from "@/lib/auth-analytics"
 
 test("computeRealTimeMetrics derives session metrics from query rows", () => {
   const metrics = computeRealTimeMetrics({
-    activeUsersRows: [{ active_users: "4" }],
-    currentSessionsRows: [{ current_sessions: "7" }],
-    sessionDurationRows: [{ avg_session_seconds: "150" }],
-    peakConcurrentRows: [{ peak_concurrent_users: "9" }],
+    metricRows: [
+      {
+        active_users: "4",
+        current_sessions: "7",
+        avg_session_seconds: "150",
+        peak_concurrent_users: "9",
+      },
+    ],
   })
 
   assert.deepEqual(metrics, {
@@ -19,18 +23,29 @@ test("computeRealTimeMetrics derives session metrics from query rows", () => {
   })
 })
 
-test("computeRealTimeMetrics returns unknown/null metrics for empty dataset", () => {
-  const metrics = computeRealTimeMetrics({
-    activeUsersRows: [],
-    currentSessionsRows: [],
-    sessionDurationRows: [],
-    peakConcurrentRows: [],
-  })
+test("computeRealTimeMetrics returns zero metrics for empty dataset", () => {
+  const metrics = computeRealTimeMetrics({ metricRows: [] })
 
   assert.deepEqual(metrics, {
     activeUsers: 0,
     currentSessions: 0,
-    avgSessionDuration: null,
-    peakConcurrentUsers: null,
+    avgSessionDuration: 0,
+    peakConcurrentUsers: 0,
   })
+})
+
+test("assembleGeographicData computes percentages and country fallback", () => {
+  const metrics = assembleGeographicData([
+    { country: "India", logins: "5" },
+    { country: "", logins: 3 },
+  ])
+
+  assert.deepEqual(metrics, [
+    { country: "India", logins: 5, percentage: 62.5 },
+    { country: "Unknown", logins: 3, percentage: 37.5 },
+  ])
+})
+
+test("assembleGeographicData returns empty list for absent enrichment rows", () => {
+  assert.deepEqual(assembleGeographicData([]), [])
 })

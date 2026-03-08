@@ -809,3 +809,5 @@ Use this destructive path only when the application rollback cannot restore serv
 - Stored geo fields are limited to country/region-level attributes for analytics and avoid city/lat/long persistence in auth event payloads.
 - Real-time analytics now computes average session duration and peak concurrent users from `user_sessions` windows instead of fixed constants.
 - Dashboard hot paths now use materialized views (`mv_auth_geographic_login_daily`, `mv_security_geographic_threat_daily`) with a refresh function for predictable query latency.
+- Session concurrency analytics now use a dedicated materialized rollup (`mv_auth_session_concurrency_daily`) with DB-query fallbacks that return zero values when optional enrichment rows are unavailable.
+- Geo/IP and session-concurrency ingestion health is tracked in `auth_analytics_ingestion_telemetry` to keep analytics assembly data-driven and auditable.
