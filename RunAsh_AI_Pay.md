@@ -77,6 +77,12 @@ This document is payment-domain specific. For contributor workflow/process polic
 - **Impacted payment/auth flows identified:** none. This change is stream orchestration + dashboard visibility only; payment API fields, webhook schemas, checkout signatures, and auth/session contracts are unchanged.
 - **Risk + rollback:** medium operational UX risk (aggressive quality downgrade if noisy network telemetry). Rollback by reverting orchestration/network trigger handling and dashboard timeline surface; no payment data migration required.
 
+## 2026-03 live stream provider adapter hardening (no payment contract changes)
+
+- Live stream provisioning now supports real provider adapters (`mux`, `livepeer`, `internal`) selected via `RUNASH_LIVE_STREAM_PROVIDER`; mock adapter fallback was removed from runtime selection.
+- **Impacted payment/auth flows identified:** none. This update is confined to live stream provisioning/teardown behavior and does not modify payment API fields, auth/session contracts, webhook payloads, or billing redirects.
+- **Risk + rollback:** medium operational risk for streaming setup if provider credentials are misconfigured. Rollback by restoring prior provider adapter selection in `services/live-stream/provider.ts`; no payment migration or contract rollback required.
+
 ## Auth dependency notes for payment flows
 
 - OTP email login verification now mints canonical auth sessions and secure Better Auth cookies for `purpose=login`; non-login OTP purposes remain verification-only.
