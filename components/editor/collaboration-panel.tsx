@@ -33,6 +33,18 @@ interface ActivityLog {
   details?: string
 }
 
+interface CollaborationSettingsState {
+  allowComments: boolean
+  allowEditing: boolean
+  showActivityLog: boolean
+}
+
+const DEFAULT_COLLABORATION_SETTINGS: CollaborationSettingsState = {
+  allowComments: true,
+  allowEditing: true,
+  showActivityLog: true,
+}
+
 interface CollaborationPanelProps {
   isOpen: boolean
   onClose: () => void
@@ -96,6 +108,10 @@ export default function CollaborationPanel({ isOpen, onClose, projectId, current
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [revokeError, setRevokeError] = useState<string | null>(null)
   const [realtimeError, setRealtimeError] = useState<string | null>(null)
+  const [settings, setSettings] = useState<CollaborationSettingsState>(DEFAULT_COLLABORATION_SETTINGS)
+  const [settingsError, setSettingsError] = useState<string | null>(null)
+  const [isSavingSettings, setIsSavingSettings] = useState(false)
+  const [copyLinkLabel, setCopyLinkLabel] = useState("Copy Link")
 
   const fetchCollaborationState = useCallback(async () => {
     if (!projectId) return
@@ -112,6 +128,16 @@ export default function CollaborationPanel({ isOpen, onClose, projectId, current
       const payload = (await response.json()) as CollaborationApiPayload
       setCollaborators(normalizeCollaborators(payload.collaborators))
       setActivityLog(normalizeActivity(payload.activity))
+
+      const settingsResponse = await fetch(`/api/editor/projects/${encodeURIComponent(projectId)}/collaboration/settings`, {
+        method: "GET",
+      })
+      if (settingsResponse.ok) {
+        const settingsPayload = (await settingsResponse.json()) as { settings?: CollaborationSettingsState }
+        if (settingsPayload.settings) {
+          setSettings(settingsPayload.settings)
+        }
+      }
     } catch {
       setFetchError("Could not load collaboration members and activity.")
     } finally {
@@ -294,6 +320,45 @@ export default function CollaborationPanel({ isOpen, onClose, projectId, current
     }
   }
 
+  const updateSetting = async (key: keyof CollaborationSettingsState, value: boolean) => {
+    if (!projectId || isSavingSettings) return
+    const nextSettings = { ...settings, [key]: value }
+    setSettings(nextSettings)
+    setSettingsError(null)
+    setIsSavingSettings(true)
+
+    try {
+      const response = await fetch(`/api/editor/projects/${encodeURIComponent(projectId)}/collaboration/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(nextSettings),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to update settings")
+      }
+    } catch {
+      setSettingsError("Could not save share settings. Reverting change.")
+      setSettings((previous) => ({ ...previous, [key]: !value }))
+    } finally {
+      setIsSavingSettings(false)
+    }
+  }
+
+  const handleCopyLink = async () => {
+    if (!projectId || typeof window === "undefined") return
+    const shareLink = `${window.location.origin}/editor?projectId=${projectId}`
+
+    try {
+      await navigator.clipboard.writeText(shareLink)
+      setCopyLinkLabel("Copied")
+      window.setTimeout(() => setCopyLinkLabel("Copy Link"), 1500)
+    } catch {
+      setCopyLinkLabel("Copy failed")
+      window.setTimeout(() => setCopyLinkLabel("Copy Link"), 2000)
+    }
+  }
+
   const formatTimeAgo = (date: Date) => {
     const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000)
     if (seconds < 60) return "now"
@@ -324,12 +389,13 @@ export default function CollaborationPanel({ isOpen, onClose, projectId, current
           </Button>
         </div>
 
-        {(fetchError || realtimeError || inviteError || revokeError || isRealtimeConnecting) && (
+        {(fetchError || realtimeError || inviteError || revokeError || settingsError || isRealtimeConnecting) && (
           <div className="px-6 py-3 text-sm border-b border-border/70 space-y-1">
             {isRealtimeConnecting && <p className="text-muted-foreground">Connecting realtime…</p>}
             {fetchError && <p className="text-destructive">{fetchError}</p>}
             {inviteError && <p className="text-destructive">{inviteError}</p>}
             {revokeError && <p className="text-destructive">{revokeError}</p>}
+            {settingsError && <p className="text-destructive">{settingsError}</p>}
             {realtimeError && <p className="text-orange-500">{realtimeError}</p>}
           </div>
         )}
@@ -443,7 +509,11 @@ export default function CollaborationPanel({ isOpen, onClose, projectId, current
           </TabsContent>
 
           <TabsContent value="activity" className="flex-1 overflow-auto p-6">
-            {isInitialLoading ? (
+            {!settings.showActivityLog ? (
+              <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                Activity log is hidden by current share settings.
+              </div>
+            ) : isInitialLoading ? (
               <div className="h-full flex items-center justify-center text-muted-foreground text-sm gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Loading activity…
@@ -489,17 +559,35 @@ export default function CollaborationPanel({ isOpen, onClose, projectId, current
               <div className="bg-muted/50 border border-border rounded-lg p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-foreground">Allow comments</span>
-                  <input type="checkbox" defaultChecked className="rounded" />
+                  <input
+                    type="checkbox"
+                    checked={settings.allowComments}
+                    onChange={(event) => void updateSetting("allowComments", event.target.checked)}
+                    disabled={!projectId || isSavingSettings}
+                    className="rounded"
+                  />
                 </div>
 
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-foreground">Allow editing</span>
-                  <input type="checkbox" defaultChecked className="rounded" />
+                  <input
+                    type="checkbox"
+                    checked={settings.allowEditing}
+                    onChange={(event) => void updateSetting("allowEditing", event.target.checked)}
+                    disabled={!projectId || isSavingSettings}
+                    className="rounded"
+                  />
                 </div>
 
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-foreground">Show activity log</span>
-                  <input type="checkbox" defaultChecked className="rounded" />
+                  <input
+                    type="checkbox"
+                    checked={settings.showActivityLog}
+                    onChange={(event) => void updateSetting("showActivityLog", event.target.checked)}
+                    disabled={!projectId || isSavingSettings}
+                    className="rounded"
+                  />
                 </div>
               </div>
 
@@ -512,8 +600,8 @@ export default function CollaborationPanel({ isOpen, onClose, projectId, current
                     readOnly
                     className="flex-1 px-3 py-2 rounded-lg border border-border bg-background text-sm"
                   />
-                  <Button size="sm" className="gap-2">
-                    Copy Link
+                  <Button size="sm" className="gap-2" onClick={() => void handleCopyLink()} disabled={!projectId}>
+                    {copyLinkLabel}
                   </Button>
                 </div>
               </div>
