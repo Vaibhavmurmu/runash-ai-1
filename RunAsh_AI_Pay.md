@@ -795,3 +795,20 @@ Risk + rollback:
 - Latest successful provider rates are persisted with upsert semantics in `exchange_rates` and kept in in-memory cache for stale-while-revalidate reads when the upstream provider is unavailable.
 - Currency pairs that cannot be resolved are returned in `unavailableCurrencies`; clients must block conversions for those pairs rather than falling back to `1` or hardcoded rates.
 - Rollback: revert to previous hook/service behavior only if provider and DB path is unavailable; keep the API contract stable (`rates`, `supportedCurrencies`, `unavailableCurrencies`, `stale`, `tooOld`) during rollback.
+
+## 2026-03 checkout UX enhancement for card/UPI/business fields (no payment contract changes)
+
+- Updated `app/checkout/page.tsx` to align the checkout surface with the target flow by adding:
+  - payment method toggle (`Card` / `UPI`),
+  - save-for-faster-checkout consent,
+  - business purchase toggle with business name + GSTIN inputs,
+  - terms acceptance gate before order submission,
+  - UPI app selection modal and action-success confirmation modal.
+- Backward compatibility: no API request/response field names, webhook payloads, or payment route signatures were changed.
+- Impacted payment/auth flows identified:
+  - Checkout UI capture on `/checkout` before redirect to `/payment/runash-pay`.
+  - Session/local storage handoff via `pendingOrder` and existing cart state (`runash-cart`).
+- Risks:
+  1. UX-only flow risk: modal sequencing or required consent validation could block submit if labels/selectors regress.
+  2. No backend contract risk since changes are presentational/client-state only.
+- Rollback: revert `app/checkout/page.tsx` and redeploy; no payment data migration and no API/schema rollback required.
