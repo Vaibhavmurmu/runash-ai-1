@@ -8,7 +8,9 @@ export type CommunityEventRegistrationRecord = {
   id: string
   eventId: string
   userId: string
+  status: "registered"
   createdAt: string
+  updatedAt: string
 }
 
 export async function findCommunityEventById(eventId: string): Promise<CommunityEventRecord | null> {
@@ -33,7 +35,9 @@ export async function findCommunityEventRegistration(
         id::text,
         event_id AS "eventId",
         user_id AS "userId",
-        created_at AS "createdAt"
+        status,
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
       FROM community_event_registrations
       WHERE event_id = $1
         AND user_id = $2
@@ -49,14 +53,16 @@ export async function createCommunityEventRegistration(
 ): Promise<CommunityEventRegistrationRecord | null> {
   return queryOne<CommunityEventRegistrationRecord>(
     `
-      INSERT INTO community_event_registrations (event_id, user_id)
-      VALUES ($1, $2)
+      INSERT INTO community_event_registrations (event_id, user_id, status)
+      VALUES ($1, $2, 'registered')
       ON CONFLICT (event_id, user_id) DO NOTHING
       RETURNING
         id::text,
         event_id AS "eventId",
         user_id AS "userId",
-        created_at AS "createdAt"
+        status,
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
     `,
     [eventId, userId],
   )
