@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { requireEditorOperation } from "@/app/api/editor/_lib"
+import { requireActivityVisible } from "@/app/api/editor/projects/_permissions"
 import {
   appendProjectActivity,
   inviteProjectCollaborator,
@@ -50,9 +51,11 @@ export async function GET(request: Request, { params }: { params: { projectId: s
     return NextResponse.json({ error: "Project not found" }, { status: 404 })
   }
 
+  const activityGuard = await requireActivityVisible(projectId, auth.userId)
+
   const [members, activity] = await Promise.all([
     listProjectCollaborators(projectId, auth.userId),
-    listProjectActivity(projectId, auth.userId, 100),
+    activityGuard ? Promise.resolve([]) : listProjectActivity(projectId, auth.userId, 100),
   ])
 
   const projectOwner = {
@@ -71,6 +74,7 @@ export async function GET(request: Request, { params }: { params: { projectId: s
   return NextResponse.json({
     collaborators: [projectOwner, ...members.map((entry) => toCollaboratorPayload(entry, auth.userId))],
     activity: activity.map(toActivityPayload),
+    activityVisible: !activityGuard,
     currentUser: {
       id: auth.userId,
       name: "You",

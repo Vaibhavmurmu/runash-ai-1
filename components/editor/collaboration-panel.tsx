@@ -56,6 +56,7 @@ interface CollaborationPanelProps {
 }
 
 type CollaborationApiPayload = {
+  activityVisible?: boolean
   collaborators: Array<{
     id: string
     memberId: string
