@@ -389,7 +389,7 @@ Business controls preserved:
 
 ### Behavior changes (backward compatible contracts)
 - Link provider session/verification/save flow now fails with explicit `LINK_PROVIDER_UNAVAILABLE` when Stripe credentials or SDK are unavailable in real environments.
-- Development-only Link mocks are gated behind **both** `NODE_ENV=development` and `LINK_PROVIDER_ENABLE_MOCK=true`.
+- Test-only Link mocks are gated behind **both** `NODE_ENV=test` and `LINK_PROVIDER_ENABLE_MOCK=true`; real flows never issue synthetic Link sessions.
 - UPI service processing no longer uses random success simulation. Transactions now follow a deterministic state machine: `PENDING -> SUCCESS|FAILED`, finalized by gateway callback/webhook processing.
 - Duplicate gateway callbacks are treated as idempotent and do not replay balance transfer.
 - OTP SMS delivery now uses explicit provider abstraction selection; production paths do not silently fall back to a mock/noop vendor.
@@ -408,6 +408,26 @@ Business controls preserved:
 - `npm run lint`
 - `npm run build`
 - `node --loader ./scripts/node-ts-loader.mjs --test lib/services/link-provider-service.test.ts lib/services/upi-service.test.ts lib/otp.test.ts`
+
+
+## 2026-03 Link provider availability hardening (payment-contract safe)
+
+- Impacted flows: Link session creation (`/api/wallet/link/session`), Link verification (`/api/wallet/link/verify`), and Link card save (`/api/wallet/link/save`).
+- Availability behavior: missing Stripe credentials now produce typed `LINK_PROVIDER_UNAVAILABLE` (HTTP `503`) responses with retry-safe messaging and `meta.retryable=true`; Stripe operation failures remain controlled `502` errors.
+- Mock safety: any mock provider behavior is explicitly test-only (`NODE_ENV=test` + `LINK_PROVIDER_ENABLE_MOCK=true`) and cannot be activated in production/staging flows.
+- Backward compatibility: payment field names and API signatures are unchanged; only failure semantics are hardened for unavailable providers.
+
+### Risk and rollback
+
+1. **Risk:** environments without Stripe secrets will fail fast at Link entrypoints rather than silently continuing with fake sessions.
+2. **Mitigation:** deployment readiness check for `STRIPE_SECRET_KEY`/`STRIPE_API_KEY`; alert on `LINK_PROVIDER_UNAVAILABLE` rate.
+3. **Rollback:** revert Link provider availability hardening in `lib/services/link-provider-service.ts` and corresponding wallet Link API handlers; keep API contracts stable during rollback.
+
+### Validation commands
+
+- `npm run lint`
+- `npm run build`
+- `node --loader ./scripts/node-ts-loader.mjs --test lib/services/link-provider-service.test.ts`
 
 ## 2026-03 Link provider config enforcement and webhook credential fail-fast
 

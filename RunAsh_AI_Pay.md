@@ -875,3 +875,11 @@ Risk + rollback:
 - Risk + rollback:
   - **Risk:** environments missing Stripe secrets will hard-fail Link save/session and webhook processing until secrets are configured.
   - **Rollback:** temporarily revert `lib/services/link-provider-service.ts` and `app/api/billing/webhook/_shared.ts` to previous behavior, then redeploy while restoring provider credentials.
+
+
+## 2026-03 Link availability hardening update
+
+- Link provider endpoints now return controlled provider-availability failures instead of synthetic sessions when Stripe credentials are missing.
+- `/api/wallet/link/session`, `/api/wallet/link/verify`, and `/api/wallet/link/save` surface `LINK_PROVIDER_UNAVAILABLE` as retry-safe `503` responses, and provider execution errors as controlled `502` responses.
+- Mock mode is restricted to explicit test-only execution (`NODE_ENV=test` and `LINK_PROVIDER_ENABLE_MOCK=true`) to prevent fake Link state in real checkout flows.
+- Rollback: revert Link provider availability hardening changes and restore prior behavior only as temporary incident containment while reapplying valid Stripe credentials.
