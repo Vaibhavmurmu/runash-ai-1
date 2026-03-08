@@ -315,9 +315,15 @@ Risks + rollback:
   - `LINK_PROVIDER_UNAVAILABLE`
 
 Risks + rollback:
-1. If Stripe SDK/credentials are unavailable in a non-prod environment, provider service falls back to deterministic mock IDs to keep local UX paths testable.
+1. Link provider now fails closed with `LINK_PROVIDER_UNAVAILABLE` when Stripe SDK/credentials are missing in real environments; deterministic mock IDs are only allowed when `NODE_ENV=development` and `LINK_PROVIDER_ENABLE_MOCK=true` are both set.
 2. If webhook event mapping causes false verification transitions, rollback by reverting wallet-link sync logic in `app/api/billing/webhook/route.ts` while preserving existing billing webhook processing.
 3. No breaking API contract changes were introduced; rollback is code revert only (no schema migration required for compatibility due to additive columns).
+
+Migration notes (payment/auth behavior):
+- Existing request/response field names and API signatures remain unchanged.
+- Integrators that relied on implicit Link mock fallback must explicitly opt in during local development with `LINK_PROVIDER_ENABLE_MOCK=true`.
+- UPI transaction lifecycle is now deterministic: `PENDING` is created at initiation and can transition to terminal `SUCCESS`/`FAILED` only via gateway acceptance/webhook callback handling.
+- Gateway callbacks are idempotent: duplicate terminal callbacks return the current transaction state without duplicate fund transfer side-effects.
 
 ## 2026-02 Relay Instant Checkout hardening (RunAshChat → Stripe Link)
 
