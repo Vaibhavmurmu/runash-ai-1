@@ -2,6 +2,10 @@ import { type NextRequest } from "next/server"
 import { sql } from "@/lib/db"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import type {
+  AnalyticsExportFilterContext,
+  AnalyticsExportFormat,
+  AnalyticsExportPayload,
+  AnalyticsExportPagination,
   WidgetAnalyticsDimension,
   WidgetAnalyticsMetric,
   WidgetAnalyticsPoint,
@@ -24,6 +28,54 @@ const PERIOD_TO_INTERVAL: Record<WidgetAnalyticsQuery["period"], string> = {
 
 const ALLOWED_METRICS = new Set<WidgetAnalyticsMetric>(["viewer_count", "streams", "live_streams", "avg_viewers"])
 const ALLOWED_DIMENSIONS = new Set<WidgetAnalyticsDimension>(["day", "status"])
+const ALLOWED_EXPORT_FORMATS = new Set<AnalyticsExportFormat>(["csv", "json", "pdf", "image"])
+const DEFAULT_EXPORT_PAGE_SIZE = 250
+const MAX_EXPORT_PAGE_SIZE = 1000
+
+function parsePositiveInteger(value: string | null, fallback: number) {
+  if (!value) return fallback
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback
+  return parsed
+}
+
+function parseCsvFilter(value: string | null) {
+  return (value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function parseExportContext(searchParams: URLSearchParams): {
+  format: AnalyticsExportFormat
+  filters: AnalyticsExportFilterContext
+  pagination: { page: number; pageSize: number }
+} {
+  const requestedFormat = (searchParams.get("format") || "csv").toLowerCase()
+  const format = ALLOWED_EXPORT_FORMATS.has(requestedFormat as AnalyticsExportFormat)
+    ? (requestedFormat as AnalyticsExportFormat)
+    : "csv"
+
+  const period = (searchParams.get("period") || "7d") as WidgetAnalyticsQuery["period"]
+  const safePeriod = period in PERIOD_TO_INTERVAL ? period : "7d"
+
+  const page = parsePositiveInteger(searchParams.get("page"), 1)
+  const pageSize = Math.min(parsePositiveInteger(searchParams.get("pageSize"), DEFAULT_EXPORT_PAGE_SIZE), MAX_EXPORT_PAGE_SIZE)
+
+  return {
+    format,
+    filters: {
+      period: safePeriod,
+      platforms: parseCsvFilter(searchParams.get("platforms")),
+      categories: parseCsvFilter(searchParams.get("categories")),
+      streamTypes: parseCsvFilter(searchParams.get("streamTypes")),
+    },
+    pagination: {
+      page,
+      pageSize,
+    },
+  }
+}
 
 function parseWidgetQuery(searchParams: URLSearchParams):
   | { mode: "dashboard" }
@@ -130,8 +182,7 @@ export async function GET(req: NextRequest) {
       return respondSuccess(req, payload, { legacy: payload })
     }
 
-    const period = (searchParams.get("period") || "7d") as WidgetAnalyticsQuery["period"]
-    const safePeriod = period in PERIOD_TO_INTERVAL ? period : "7d"
+    const exportContext = parseExportContext(searchParams)
 
     const streamAnalytics = await sql`
       SELECT 
@@ -141,7 +192,7 @@ export async function GET(req: NextRequest) {
         COUNT(CASE WHEN status = 'live' THEN 1 END) as live_streams
       FROM streams s
       WHERE s.user_id = ${session.user.id}
-      AND ${getCreatedAtFilter("s", safePeriod)}
+      AND ${getCreatedAtFilter("s", exportContext.filters.period)}
     `
 
     const chatAnalytics = await sql`
@@ -153,7 +204,7 @@ export async function GET(req: NextRequest) {
       FROM chat_messages cm
       JOIN streams s ON cm.stream_id = s.id
       WHERE s.user_id = ${session.user.id}
-      AND ${getCreatedAtFilter("cm", safePeriod)}
+      AND ${getCreatedAtFilter("cm", exportContext.filters.period)}
     `
 
     const recordingAnalytics = await sql`
@@ -165,29 +216,56 @@ export async function GET(req: NextRequest) {
       FROM recordings r
       JOIN streams s ON r.stream_id = s.id
       WHERE s.user_id = ${session.user.id}
-      AND ${getCreatedAtFilter("r", safePeriod)}
+      AND ${getCreatedAtFilter("r", exportContext.filters.period)}
     `
 
-    const dailyBreakdown = await sql`
+    const rawDailyBreakdown = await sql`
       SELECT 
         DATE(s.created_at) as date,
         COUNT(*) as streams,
         AVG(s.viewer_count) as avg_viewers
       FROM streams s
       WHERE s.user_id = ${session.user.id}
-      AND ${getCreatedAtFilter("s", safePeriod)}
+      AND ${getCreatedAtFilter("s", exportContext.filters.period)}
       GROUP BY DATE(s.created_at)
       ORDER BY date DESC
     `
 
-    const analyticsPayload = {
-      streams: streamAnalytics[0],
-      chat: chatAnalytics[0],
-      recordings: recordingAnalytics[0],
-      daily: dailyBreakdown,
+    const totalRows = rawDailyBreakdown.length
+    const totalPages = Math.max(1, Math.ceil(totalRows / exportContext.pagination.pageSize))
+    const safePage = Math.min(exportContext.pagination.page, totalPages)
+    const start = (safePage - 1) * exportContext.pagination.pageSize
+    const end = start + exportContext.pagination.pageSize
+    const paginatedRows = rawDailyBreakdown.slice(start, end)
+
+    const pagination: AnalyticsExportPagination = {
+      page: safePage,
+      pageSize: exportContext.pagination.pageSize,
+      totalRows,
+      totalPages,
+      hasNextPage: safePage < totalPages,
     }
 
-    return respondSuccess(req, analyticsPayload, { legacy: analyticsPayload })
+    const analyticsPayload: AnalyticsExportPayload = {
+      format: exportContext.format,
+      filters: exportContext.filters,
+      summary: {
+        streams: streamAnalytics[0],
+        chat: chatAnalytics[0],
+        recordings: recordingAnalytics[0],
+      },
+      rows: paginatedRows,
+      pagination,
+    }
+
+    const legacyPayload = {
+      streams: analyticsPayload.summary.streams,
+      chat: analyticsPayload.summary.chat,
+      recordings: analyticsPayload.summary.recordings,
+      daily: analyticsPayload.rows,
+    }
+
+    return respondSuccess(req, analyticsPayload, { legacy: legacyPayload, meta: { pagination, filters: exportContext.filters } })
   } catch {
     return respondError(
       req,

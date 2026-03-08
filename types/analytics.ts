@@ -146,6 +146,31 @@ export interface AnalyticsApiSummary {
   daily: Array<Record<string, string | number | null>>
 }
 
+export type AnalyticsExportFormat = "csv" | "json" | "pdf" | "image"
+
+export interface AnalyticsExportPagination {
+  page: number
+  pageSize: number
+  totalRows: number
+  totalPages: number
+  hasNextPage: boolean
+}
+
+export interface AnalyticsExportFilterContext {
+  period: WidgetAnalyticsQuery["period"]
+  platforms: string[]
+  categories: string[]
+  streamTypes: string[]
+}
+
+export interface AnalyticsExportPayload {
+  summary: Omit<AnalyticsApiSummary, "daily">
+  rows: Array<Record<string, string | number | null>>
+  pagination: AnalyticsExportPagination
+  filters: AnalyticsExportFilterContext
+  format: AnalyticsExportFormat
+}
+
 export interface AnalyticsApiError {
   code: string
   message: string
@@ -153,7 +178,7 @@ export interface AnalyticsApiError {
 
 export interface AnalyticsApiEnvelopeSuccess {
   success: true
-  data: AnalyticsApiSummary
+  data: AnalyticsApiSummary | AnalyticsExportPayload
   error: null
   requestId?: string
 }

@@ -8,8 +8,8 @@ const source = readFileSync(path.join(repoRoot, "app/api/analytics/route.ts"), "
 
 test("analytics route defines widget query contract for metric, period and dimensions", () => {
   assert.match(source, /parseWidgetQuery/)
-  assert.match(source, /metric/) 
-  assert.match(source, /period/) 
+  assert.match(source, /metric/)
+  assert.match(source, /period/)
   assert.match(source, /dimensions/)
   assert.match(source, /viewer_count, streams, live_streams, avg_viewers/)
 })
@@ -18,4 +18,13 @@ test("analytics route returns explicit widget series payload when metric query i
   assert.match(source, /mode: "widget"/)
   assert.match(source, /const payload: WidgetAnalyticsResponse/)
   assert.match(source, /series,/)
+})
+
+test("analytics route aligns export schema, pagination, and filter context for format-aware exports", () => {
+  assert.match(source, /parseExportContext/)
+  assert.match(source, /format: AnalyticsExportFormat/)
+  assert.match(source, /pagination: AnalyticsExportPagination/)
+  assert.match(source, /filters: AnalyticsExportFilterContext/)
+  assert.match(source, /rows: paginatedRows/)
+  assert.match(source, /meta: \{ pagination, filters: exportContext\.filters \}/)
 })
