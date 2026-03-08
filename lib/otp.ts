@@ -1,4 +1,5 @@
 import { createHash, randomInt, randomUUID } from "crypto"
+import { getSmsOtpProvider, type SmsDeliveryResult } from "./sms-provider-client"
 import { logApiEvent } from "./api/logging"
 import { assertDatabaseConfigured, sql } from "./db"
 import { sendOtpCodeEmail } from "./email"
@@ -10,41 +11,6 @@ function ensureOtpDbConfigured() {
 type OtpLogLevel = "info" | "warn" | "error"
 
 type SqlClient = (strings: TemplateStringsArray, ...values: unknown[]) => Promise<Array<Record<string, any>>>
-
-type SmsDeliveryState = "sent" | "queued" | "failed"
-
-type SmsDeliveryResult = {
-  success: boolean
-  state: SmsDeliveryState
-  provider: string
-  providerMessageId?: string
-  providerRequestId?: string
-  retryCount?: number
-  errorCode?: string
-}
-
-type SmsOtpProviderSendInput = {
-  phoneNumber: string
-  code: string
-  purpose: string
-  requestId: string
-}
-
-type SmsOtpProvider = {
-  name: string
-  sendOtp: (input: SmsOtpProviderSendInput) => Promise<SmsDeliveryResult>
-}
-
-type TwilioHttpResponse = {
-  ok: boolean
-  status: number
-  json: () => Promise<Record<string, unknown>>
-  text: () => Promise<string>
-  headers?: { get: (name: string) => string | null }
-}
-
-type TwilioHttpClient = (input: RequestInfo | URL, init?: RequestInit) => Promise<TwilioHttpResponse>
-
 
 function hashIdentifier(identifier: string): string {
   return createHash("sha256").update(identifier).digest("hex").slice(0, 16)
@@ -516,7 +482,6 @@ async function sendEmailOTP(email: string, code: string, purpose: string): Promi
   }
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 function normalizeSmsDeliveryResult(result: boolean | SmsDeliveryResult): SmsDeliveryResult {
   if (typeof result === "boolean") {
@@ -526,172 +491,8 @@ function normalizeSmsDeliveryResult(result: boolean | SmsDeliveryResult): SmsDel
       provider: "legacy",
     }
   }
+
   return result
-}
-
-function buildTwilioAuthHeader(accountSid: string, authToken: string) {
-  return `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`
-}
-
-function parseTwilioState(status: string | undefined): SmsDeliveryState {
-  if (!status) {
-    return "queued"
-  }
-
-  const normalizedStatus = status.toLowerCase()
-  if (normalizedStatus === "sent" || normalizedStatus === "delivered") {
-    return "sent"
-  }
-
-  if (["queued", "accepted", "scheduled", "sending"].includes(normalizedStatus)) {
-    return "queued"
-  }
-
-  return "failed"
-}
-
-export function createTwilioSmsProvider(httpClient: TwilioHttpClient = fetch): SmsOtpProvider {
-  return {
-    name: "twilio",
-    async sendOtp({ phoneNumber, code, purpose, requestId }: SmsOtpProviderSendInput): Promise<SmsDeliveryResult> {
-      const accountSid = process.env.TWILIO_ACCOUNT_SID
-      const authToken = process.env.TWILIO_AUTH_TOKEN
-      const fromNumber = process.env.TWILIO_PHONE_NUMBER
-
-      if (!accountSid || !authToken || !fromNumber) {
-        return {
-          success: false,
-          state: "failed",
-          provider: "twilio",
-          providerRequestId: requestId,
-          errorCode: "twilio_config_missing",
-        }
-      }
-
-      const maxAttempts = Number(process.env.OTP_SMS_PROVIDER_MAX_RETRIES ?? "3")
-      const backoffBaseMs = Number(process.env.OTP_SMS_PROVIDER_BACKOFF_BASE_MS ?? "250")
-
-      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-        try {
-          const body = new URLSearchParams({
-            To: phoneNumber,
-            From: fromNumber,
-            Body: `Your RunAsh OTP for ${purpose} is ${code}. It expires in 5 minutes.`,
-          })
-          const response = await httpClient(
-            `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: buildTwilioAuthHeader(accountSid, authToken),
-                "Content-Type": "application/x-www-form-urlencoded",
-                "X-RunAsh-Request-Id": requestId,
-              },
-              body: body.toString(),
-            },
-          )
-
-          const providerRequestId = response.headers?.get("x-request-id") ?? requestId
-
-          if (!response.ok) {
-            const errorPayload = await response.text()
-            const retryable = response.status === 429 || response.status >= 500
-            if (retryable && attempt < maxAttempts) {
-              await sleep(backoffBaseMs * 2 ** (attempt - 1))
-              continue
-            }
-
-            return {
-              success: false,
-              state: "failed",
-              provider: "twilio",
-              providerRequestId,
-              retryCount: attempt - 1,
-              errorCode: `twilio_http_${response.status}_${errorPayload.slice(0, 48)}`,
-            }
-          }
-
-          const payload = await response.json()
-          const state = parseTwilioState(typeof payload.status === "string" ? payload.status : undefined)
-          return {
-            success: state !== "failed",
-            state,
-            provider: "twilio",
-            providerMessageId: typeof payload.sid === "string" ? payload.sid : undefined,
-            providerRequestId,
-            retryCount: attempt - 1,
-            errorCode: typeof payload.error_code === "string" ? payload.error_code : undefined,
-          }
-        } catch (error) {
-          if (attempt < maxAttempts) {
-            await sleep(backoffBaseMs * 2 ** (attempt - 1))
-            continue
-          }
-
-          return {
-            success: false,
-            state: "failed",
-            provider: "twilio",
-            providerRequestId: requestId,
-            retryCount: attempt - 1,
-            errorCode: error instanceof Error ? error.name : "twilio_network_error",
-          }
-        }
-      }
-
-      return {
-        success: false,
-        state: "failed",
-        provider: "twilio",
-        providerRequestId: requestId,
-        errorCode: "twilio_retry_exhausted",
-      }
-    },
-  }
-}
-
-function createUnavailableSmsProvider(providerName: string): SmsOtpProvider {
-  return {
-    name: providerName,
-    async sendOtp({ requestId }: SmsOtpProviderSendInput): Promise<SmsDeliveryResult> {
-      return {
-        success: false,
-        state: "failed",
-        provider: providerName,
-        providerRequestId: requestId,
-        errorCode: "sms_provider_not_configured",
-      }
-    },
-  }
-}
-
-function createMockSmsProvider(): SmsOtpProvider {
-  return {
-    name: "mock",
-    async sendOtp({ requestId }: SmsOtpProviderSendInput): Promise<SmsDeliveryResult> {
-      return {
-        success: true,
-        state: "sent",
-        provider: "mock",
-        providerRequestId: requestId,
-      }
-    },
-  }
-}
-
-function getSmsOtpProvider(): SmsOtpProvider {
-  const provider = process.env.OTP_SMS_PROVIDER?.toLowerCase()
-
-  if (provider === "twilio") {
-    return createTwilioSmsProvider()
-  }
-
-  const allowMockInDevelopment = process.env.NODE_ENV === "development" && process.env.OTP_SMS_MOCK_ENABLED === "true"
-  if ((provider === "mock" || !provider) && allowMockInDevelopment) {
-    return createMockSmsProvider()
-  }
-
-  return createUnavailableSmsProvider(provider ?? "unconfigured")
 }
 
 async function sendSMSOTP(phoneNumber: string, code: string, purpose: string): Promise<SmsDeliveryResult> {

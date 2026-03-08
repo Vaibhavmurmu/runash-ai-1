@@ -13,6 +13,13 @@ This document is payment-domain specific. For contributor workflow/process polic
 
 ## Current payment reliability notes (2026-02)
 
+## 2026-03 auth SMS OTP provider reliability note (payment-adjacent auth hardening)
+
+- Updated auth SMS OTP delivery to use environment-configured provider retries/timeouts and explicit outage failures; no payment API fields, checkout contract signatures, or webhook schemas were changed.
+- Payment-adjacent auth posture is improved by preventing false OTP-send success responses during provider outages, reducing risk of ambiguous sign-in/step-up states before payment actions.
+- Risk + rollback: low-to-medium auth runtime risk (SMS delivery path only). Roll back by reverting `lib/sms-provider-client.ts`, `lib/otp.ts`, and `lib/auth/plugins/phone-otp.ts` together to restore previous OTP delivery wiring.
+
+
 - RunAsh Chat payment-adjacent actions route through existing settings action APIs:
   - `POST /api/settings/actions/credits-balance`
   - `POST /api/settings/actions/refer-earn`
@@ -375,11 +382,15 @@ Risks + rollback:
   - `QR_SCANNER_NOT_SUPPORTED`
   - `INVALID_QR_PAYLOAD`
 - Existing UPI parser helpers remain backward compatible; decoded UPI payloads are now validated to require a payee address before returning scan success.
+- UPI payload parsing is now strict for scan flows: `pa` must be a valid UPI ID, `am` must be a finite positive number when present, and `cu` must be a 3-letter currency code; malformed UPI payloads fail with `INVALID_QR_PAYLOAD`.
+- `scanQR` now decodes from real image inputs (`Blob`/`File`/`ImageData`/image sources) via `BarcodeDetector` instead of simulated/random scan outcomes.
+- Scan history persistence behavior is explicit: local persistence is used only when `window.localStorage` is available; otherwise history remains in-memory (`memory_ephemeral`) for the active runtime session.
 
 Risks + rollback:
 1. **Risk:** browsers/environments without `BarcodeDetector` support will return `QR_SCANNER_NOT_SUPPORTED`. **Mitigation:** surface deterministic UX fallback and keep manual UPI entry available.
-2. **Risk:** malformed UPI payloads that previously passed as opaque text now fail with `INVALID_QR_PAYLOAD`. **Mitigation:** validation is limited to mandatory UPI payee address only to avoid over-rejection.
+2. **Risk:** malformed UPI payloads that previously passed as opaque text now fail with `INVALID_QR_PAYLOAD` under stricter UPI validation (`pa`/`am`/`cu`). **Mitigation:** checks are constrained to mandatory payment-safety fields and standards-compliant currency format.
 3. **Rollback:** revert `lib/services/qr-service.tsx` to prior mock scan/generate implementation if runtime compatibility issues arise; API signatures remain unchanged.
+4. **Risk:** non-browser/runtime contexts without `BarcodeDetector` support now return `QR_SCANNER_NOT_SUPPORTED`. **Mitigation:** maintain manual UPI entry fallback and environment capability checks before scan initiation.
 
 - Link checkout now enforces validator threshold controls for HITL and MFA before provider session creation.
 - Wallet default payment method updates and subscription lifecycle transitions are treated as high-risk payment actions and require HITL + MFA.
@@ -864,3 +875,11 @@ Risk + rollback:
 - Risk + rollback:
   - **Risk:** environments missing Stripe secrets will hard-fail Link save/session and webhook processing until secrets are configured.
   - **Rollback:** temporarily revert `lib/services/link-provider-service.ts` and `app/api/billing/webhook/_shared.ts` to previous behavior, then redeploy while restoring provider credentials.
+
+
+## 2026-03 Link availability hardening update
+
+- Link provider endpoints now return controlled provider-availability failures instead of synthetic sessions when Stripe credentials are missing.
+- `/api/wallet/link/session`, `/api/wallet/link/verify`, and `/api/wallet/link/save` surface `LINK_PROVIDER_UNAVAILABLE` as retry-safe `503` responses, and provider execution errors as controlled `502` responses.
+- Mock mode is restricted to explicit test-only execution (`NODE_ENV=test` and `LINK_PROVIDER_ENABLE_MOCK=true`) to prevent fake Link state in real checkout flows.
+- Rollback: revert Link provider availability hardening changes and restore prior behavior only as temporary incident containment while reapplying valid Stripe credentials.

@@ -45,10 +45,13 @@ export type ConversionJob = {
   sourceFormat: string
   targetFormat: string
   settings: ConversionSettings
-  status: "queued" | "converting" | "complete" | "failed"
+  status: "queued" | "running" | "converting" | "succeeded" | "complete" | "failed" | "cancelled"
   progress: number
   startTime?: string
   endTime?: string
   error?: string
   outputFileId?: string
+  idempotencyKey?: string
+  attempts?: number
+  maxAttempts?: number
 }

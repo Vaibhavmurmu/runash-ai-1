@@ -83,8 +83,9 @@ export async function POST(request: NextRequest) {
         message: mapped.message,
       },
       {
-        status: 502,
+        status: mapped.status,
         requestId,
+        meta: { retryable: mapped.retryable },
       },
     )
   }

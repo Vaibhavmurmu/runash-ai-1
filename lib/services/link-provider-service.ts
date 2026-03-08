@@ -17,6 +17,13 @@ export class LinkProviderError extends Error {
   }
 }
 
+const PROVIDER_STATUS_BY_CODE: Record<LinkProviderErrorCode, number> = {
+  LINK_SESSION_FAILED: 502,
+  LINK_VERIFICATION_FAILED: 502,
+  LINK_SAVE_FAILED: 502,
+  LINK_PROVIDER_UNAVAILABLE: 503,
+}
+
 type CreateLinkSessionInput = {
   email: string
   userId?: string | null
@@ -65,15 +72,23 @@ const USER_SAFE_MESSAGES: Record<LinkProviderErrorCode, string> = {
 }
 
 function toProviderError(code: LinkProviderErrorCode, _cause: unknown, providerRequestId?: string | null): LinkProviderError {
-  return new LinkProviderError(code, USER_SAFE_MESSAGES[code], 502, providerRequestId)
+  return new LinkProviderError(code, USER_SAFE_MESSAGES[code], PROVIDER_STATUS_BY_CODE[code], providerRequestId)
 }
 
-export function toUserSafeProviderError(error: unknown): { code: LinkProviderErrorCode; message: string; providerRequestId: string | null } {
+export function toUserSafeProviderError(error: unknown): {
+  code: LinkProviderErrorCode
+  message: string
+  providerRequestId: string | null
+  status: number
+  retryable: boolean
+} {
   if (error instanceof LinkProviderError) {
     return {
       code: error.code,
       message: USER_SAFE_MESSAGES[error.code],
       providerRequestId: error.providerRequestId ?? null,
+      status: error.status,
+      retryable: error.status >= 500,
     }
   }
 
@@ -81,16 +96,106 @@ export function toUserSafeProviderError(error: unknown): { code: LinkProviderErr
     code: "LINK_PROVIDER_UNAVAILABLE",
     message: USER_SAFE_MESSAGES.LINK_PROVIDER_UNAVAILABLE,
     providerRequestId: null,
+    status: 503,
+    retryable: true,
   }
 }
 
-async function createStripeClient() {
+function isTestOnlyMockEnabled() {
+  return process.env.NODE_ENV === "test" && process.env.LINK_PROVIDER_ENABLE_MOCK === "true"
+}
+
+function isMockFailure(operation: "session" | "verify" | "save") {
+  return process.env.LINK_PROVIDER_MOCK_FAIL_OP === operation
+}
+
+type StripeLikeClient = {
+  customers: {
+    create: (input: { email: string; metadata: Record<string, string> }) => Promise<{ id: string; lastResponse?: { requestId?: string } }>
+  }
+  setupIntents: {
+    create: (input: unknown) => Promise<{ id: string; status?: string; lastResponse?: { requestId?: string } }>
+    retrieve: (providerSessionId: string) => Promise<{ status: string; lastResponse?: { requestId?: string } }>
+  }
+  tokens: {
+    create: (input: unknown) => Promise<{ id: string; lastResponse?: { requestId?: string } }>
+  }
+  paymentMethods: {
+    create: (input: unknown) => Promise<{ id: string; card?: { brand?: string }; lastResponse?: { requestId?: string } }>
+    attach: (paymentMethodId: string, input: unknown) => Promise<void>
+  }
+}
+
+function createMockStripeClient(): StripeLikeClient {
+  return {
+    customers: {
+      async create() {
+        if (isMockFailure("session") || isMockFailure("save")) {
+          throw new Error("mock_customer_create_failed")
+        }
+        return { id: "cus_mock_123", lastResponse: { requestId: "req_mock_customer" } }
+      },
+    },
+    setupIntents: {
+      async create() {
+        if (isMockFailure("session")) {
+          throw new Error("mock_setup_intent_create_failed")
+        }
+        return { id: "seti_mock_123", status: "requires_action", lastResponse: { requestId: "req_mock_setup_intent" } }
+      },
+      async retrieve(providerSessionId: string) {
+        if (isMockFailure("verify")) {
+          throw new Error("mock_setup_intent_retrieve_failed")
+        }
+
+        if (providerSessionId.includes("succeeded")) {
+          return { status: "succeeded", lastResponse: { requestId: "req_mock_verify" } }
+        }
+
+        return { status: "requires_payment_method", lastResponse: { requestId: "req_mock_verify" } }
+      },
+    },
+    tokens: {
+      async create() {
+        if (isMockFailure("save")) {
+          throw new Error("mock_token_create_failed")
+        }
+        return { id: "tok_mock_123", lastResponse: { requestId: "req_mock_token" } }
+      },
+    },
+    paymentMethods: {
+      async create() {
+        if (isMockFailure("save")) {
+          throw new Error("mock_payment_method_create_failed")
+        }
+        return { id: "pm_mock_123", card: { brand: "visa" }, lastResponse: { requestId: "req_mock_payment_method" } }
+      },
+      async attach() {
+        if (isMockFailure("save")) {
+          throw new Error("mock_payment_method_attach_failed")
+        }
+      },
+    },
+  }
+}
+
+async function createStripeClient(): Promise<StripeLikeClient> {
   const secretKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY
+
+  if (isTestOnlyMockEnabled()) {
+    return createMockStripeClient()
+  }
+
   if (!secretKey) {
     throw toProviderError("LINK_PROVIDER_UNAVAILABLE", new Error("stripe_not_configured"))
   }
+
+  if (process.env.LINK_PROVIDER_ENABLE_MOCK === "true") {
+    throw toProviderError("LINK_PROVIDER_UNAVAILABLE", new Error("link_provider_mock_not_allowed"))
+  }
+
   const Stripe = (await import("stripe")).default
-  return new Stripe(secretKey, { apiVersion: "2026-01-28.clover" })
+  return new Stripe(secretKey, { apiVersion: "2026-01-28.clover" }) as unknown as StripeLikeClient
 }
 
 function maskPhoneFallback() {

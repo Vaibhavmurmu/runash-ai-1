@@ -6,15 +6,22 @@ import test from "node:test"
 const repoRoot = process.cwd()
 const source = readFileSync(path.join(repoRoot, "components/analytics/analytics-export.tsx"), "utf8")
 
-test("analytics export exposes explicit error state with retry and cached snapshot support", () => {
-  assert.match(source, /analytics-export-cache:/)
-  assert.match(source, /Using last successful snapshot/)
-  assert.match(source, /Retry/)
-  assert.doesNotMatch(source, /mock/i)
+test("analytics export supports success state with canonical rows contract", () => {
+  assert.match(source, /fetchState === "success"/)
+  assert.match(source, /Export dataset ready/)
+  assert.match(source, /"rows" in data && Array\.isArray\(data\.rows\)/)
 })
 
-test("analytics export keeps loading and empty states without synthetic fallback rows", () => {
-  assert.match(source, /Loading analytics data for export…/)
+test("analytics export keeps explicit empty dataset state", () => {
+  assert.match(source, /setFetchState\(rows\.length \? "success" : "empty"\)/)
   assert.match(source, /No analytics data found for current filters\./)
+})
+
+test("analytics export shows API failure state, retry action, and export-failure telemetry", () => {
   assert.match(source, /setFetchState\("error"\)/)
+  assert.match(source, /Unable to load analytics for export:/)
+  assert.match(source, />\s*Retry\s*</)
+  assert.match(source, /analytics_export_failure/)
+  assert.match(source, /\/api\/analytics\/export-failure/)
+  assert.doesNotMatch(source, /generateMockData/)
 })
