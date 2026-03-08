@@ -25,6 +25,11 @@ import {
 import { validateVideoGenerationPayload } from "@/lib/editor/video-models/validation"
 import type { VideoGenerationRequest } from "@/lib/editor/video-models/types"
 import { createRenderJobV1, finalizeMediaUploadV1, initMediaUploadV1 } from "@/lib/api/v1-client"
+import {
+  readOverlapModeEnabled,
+  resolveMediaInsertionDuration,
+  resolveMediaInsertionPlacement,
+} from "@/lib/editor/media-insertion"
 
 type OnboardingState = {
   editorWelcomeCompletedAt?: string
@@ -336,32 +341,7 @@ export function EditorWorkspace() {
     setUploadInProgress(true)
     try {
       const isVideoAsset = file.type.startsWith("video")
-      const safeDefaultDurationSeconds = 3
-
-      const readNumericMetadataDuration = (value: unknown): number | null => {
-        if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-          return value
-        }
-
-        if (typeof value === "string") {
-          const parsed = Number(value)
-          if (Number.isFinite(parsed) && parsed > 0) {
-            return parsed
-          }
-        }
-
-        return null
-      }
-
-      const resolveDurationFromAssetMetadata = (metadata: unknown): number | null => {
-        if (!metadata || typeof metadata !== "object") return null
-        const metadataRecord = metadata as Record<string, unknown>
-        return (
-          readNumericMetadataDuration(metadataRecord.durationSeconds) ??
-          readNumericMetadataDuration(metadataRecord.duration) ??
-          readNumericMetadataDuration(metadataRecord.videoDurationSeconds)
-        )
-      }
+      const uploadStartedAt = new Date().toISOString()
 
       const resolveVideoDurationSeconds = async (): Promise<number | null> => {
         if (!isVideoAsset || typeof window === "undefined") return null
@@ -439,42 +419,39 @@ export function EditorWorkspace() {
       })
       if (!assetRes.ok) throw new Error("Failed to persist asset")
       const assetJson = await assetRes.json()
+      const uploadCompletedAt = new Date().toISOString()
 
       const track = activeTimeline.tracks[0]
       let nextTimeline: EditorTimeline | null = null
       if (track) {
-        const segmentsOnTrack = activeTimeline.segments.filter((segment) => segment.trackId === track.id)
-        const latestSegmentEnd = segmentsOnTrack.reduce((latest, segment) => {
-          const safeEnd = Number.isFinite(segment.endSeconds) ? Math.max(0, segment.endSeconds) : 0
-          return Math.max(latest, safeEnd)
-        }, 0)
+        const mediaMetadata = assetJson.asset?.metadata as Record<string, unknown> | undefined
+        const timelineMediaMetadata = mediaMetadata?.timelineMedia as Record<string, unknown> | undefined
+        const { durationSeconds: insertionDuration, durationStrategy } = resolveMediaInsertionDuration({
+          isVideoAsset,
+          metadataDurations: [
+            measuredVideoDuration,
+            assetJson.asset?.durationSeconds,
+            assetJson.asset?.duration_seconds,
+            mediaMetadata?.durationSeconds,
+            mediaMetadata?.duration,
+            mediaMetadata?.videoDurationSeconds,
+            timelineMediaMetadata?.durationSeconds,
+            timelineMediaMetadata?.duration,
+            timelineMediaMetadata?.videoDurationSeconds,
+          ],
+        })
 
-        const hasValidPlayhead = Number.isFinite(playbackTime) && playbackTime >= 0
-        const playheadStart = hasValidPlayhead ? Math.max(0, playbackTime) : null
-        const playheadOverlapsExisting =
-          playheadStart !== null &&
-          segmentsOnTrack.some(
-            (segment) =>
-              Number.isFinite(segment.startSeconds) &&
-              Number.isFinite(segment.endSeconds) &&
-              segment.startSeconds < playheadStart &&
-              segment.endSeconds > playheadStart,
-          )
-        const insertionStart =
-          playheadStart === null ? latestSegmentEnd : playheadOverlapsExisting ? latestSegmentEnd : playheadStart
-
-        const metadataDuration = isVideoAsset ? resolveDurationFromAssetMetadata(assetJson.asset?.metadata) : null
-        const transcodeDuration = resolveDurationFromAssetMetadata(
-          (assetJson.asset?.metadata as Record<string, unknown> | undefined)?.timelineMedia,
-        )
-        const insertionDuration = isVideoAsset
-          ? metadataDuration ?? transcodeDuration ?? safeDefaultDurationSeconds
-          : safeDefaultDurationSeconds
-        const insertionEnd = insertionStart + insertionDuration
+        const { insertionStartSeconds, insertionEndSeconds, insertionSource } = resolveMediaInsertionPlacement({
+          segments: activeTimeline.segments,
+          trackId: track.id,
+          durationSeconds: insertionDuration,
+          playheadSeconds: Number.isFinite(playbackTime) ? playbackTime : null,
+          allowOverlaps: readOverlapModeEnabled(track.metadata) || readOverlapModeEnabled(activeTimeline.metadata),
+        })
 
         nextTimeline = {
           ...activeTimeline,
-          durationSeconds: Math.max(activeTimeline.durationSeconds, insertionEnd),
+          durationSeconds: Math.max(activeTimeline.durationSeconds, insertionEndSeconds),
           segments: [
             ...activeTimeline.segments,
             {
@@ -486,11 +463,17 @@ export function EditorWorkspace() {
               assetId: assetJson.asset.id,
               label: file.name,
               segmentType: isVideoAsset ? "video" : "image",
-              startSeconds: insertionStart,
-              endSeconds: insertionEnd,
+              startSeconds: insertionStartSeconds,
+              endSeconds: insertionEndSeconds,
               metadata: {
-                mediaAssetId: (assetJson.asset?.metadata as Record<string, unknown> | undefined)?.mediaAssetId ?? null,
-                timelineMedia: (assetJson.asset?.metadata as Record<string, unknown> | undefined)?.timelineMedia ?? null,
+                mediaAssetId: mediaMetadata?.mediaAssetId ?? null,
+                timelineMedia: mediaMetadata?.timelineMedia ?? null,
+                insertion: {
+                  source: insertionSource,
+                  durationStrategy,
+                  requestedAt: uploadStartedAt,
+                  insertedAt: uploadCompletedAt,
+                },
               },
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
