@@ -9,6 +9,7 @@ function createRequest(email: unknown): Request {
     headers: {
       "content-type": "application/json",
       "x-forwarded-for": "203.0.113.10",
+      "user-agent": "subscribe-test",
     },
     body: JSON.stringify({ email }),
   })
@@ -31,20 +32,23 @@ test("POST /api/subscribe returns 400 for invalid email", async () => {
   assert.equal(payload.error, "invalid_email")
 })
 
-test("POST /api/subscribe returns 201 for new email", async () => {
+test("POST /api/subscribe returns 201 for first subscribe", async () => {
   const response = await handleSubscribePostRequest(createRequest("NewUser@RunAsh.in"), {
-    upsert: async ({ email }) => ({
-      createdNew: true,
-      record: {
-        id: "1",
-        email,
-        status: "subscribed",
-        source: "api/subscribe",
-        consentedAt: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-    }),
+    upsert: async ({ email, metadata }) => {
+      assert.equal(email, "newuser@runash.in")
+      assert.equal(metadata.source, "api/subscribe")
+      assert.equal(metadata.ip, "203.0.113.10")
+
+      return {
+        createdNew: true,
+        record: {
+          id: "1",
+          email,
+          metadata,
+          createdAt: new Date().toISOString(),
+        },
+      }
+    },
     now: () => Date.now(),
     ipLimits: new Map(),
     emailLimits: new Map(),
@@ -58,18 +62,15 @@ test("POST /api/subscribe returns 201 for new email", async () => {
   assert.equal(payload.alreadySubscribed, false)
 })
 
-test("POST /api/subscribe returns 200 for duplicate email", async () => {
+test("POST /api/subscribe returns idempotent success for duplicate subscribe", async () => {
   const response = await handleSubscribePostRequest(createRequest("duplicate@runash.in"), {
-    upsert: async ({ email }) => ({
+    upsert: async ({ email, metadata }) => ({
       createdNew: false,
       record: {
         id: "2",
         email,
-        status: "subscribed",
-        source: "api/subscribe",
-        consentedAt: new Date().toISOString(),
+        metadata,
         createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
       },
     }),
     now: () => Date.now(),
