@@ -21,6 +21,15 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Credits purchase routing uses `/pricing?intent=credits`; redeem flow uses in-app validated redeem input before billing handoff.
 - Payment API contract fields, webhook schemas, and auth/payment token formats remain unchanged by these routing updates.
 
+## 2026-03 checkout UX modernization (card + UPI, no contract changes)
+
+- Enhanced `/checkout` UI to support clearer card/UPI selection, opt-in saved checkout details, business purchase GST capture, and explicit recurring-terms consent before payment handoff.
+- Existing checkout/order handoff behavior remains backward-compatible: pending order still persists in `sessionStorage` and routes to `/payment/runash-pay`; no payment API signature, webhook schema, or field-name contracts were changed.
+- Sensitive payment data handling remains constrained to client input state with masked storage (`**** **** **** last4`) for pending-order persistence; no new logging of card/UPI/auth secrets was introduced.
+- Risks + rollback:
+  1. Primary risk is UI regression in checkout completion flow (validation gating / layout changes).
+  2. Rollback by reverting `app/checkout/page.tsx` and this documentation entry; no migration, schema rollback, or contract rollback is required.
+
 ## 2026-02 Ecommerce payments theme/UI refactor (no contract changes)
 
 - Updated `/ecommerce/payments` presentation layer to use semantic theme tokens (`bg-background`, `text-foreground`, `border-border`, `muted-foreground`) and shared design-system inputs/select/textarea components.
