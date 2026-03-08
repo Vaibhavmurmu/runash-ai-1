@@ -6,6 +6,7 @@ import {
   fetchLinkVerificationFromProvider,
   LinkProviderError,
   saveLinkPaymentMethodViaProvider,
+  toUserSafeProviderError,
 } from "@/lib/services/link-provider-service"
 
 function withEnv(vars: Record<string, string | undefined>, run: () => Promise<void>) {
@@ -31,7 +32,7 @@ function withEnv(vars: Record<string, string | undefined>, run: () => Promise<vo
   })
 }
 
-test("Link provider session throws provider unavailable when Stripe is not configured outside development mock", async () => {
+test("Link provider operations throw provider unavailable when Stripe is not configured", async () => {
   await withEnv(
     {
       STRIPE_SECRET_KEY: undefined,
@@ -65,33 +66,18 @@ test("Link provider session throws provider unavailable when Stripe is not confi
   )
 })
 
-test("Link provider development mock remains available only when dedicated flag is enabled", async () => {
-  await withEnv(
-    {
-      STRIPE_SECRET_KEY: undefined,
-      STRIPE_API_KEY: undefined,
-      NODE_ENV: "development",
-      LINK_PROVIDER_ENABLE_MOCK: "true",
-    },
-    async () => {
-      const session = await createLinkProviderSession({ email: "dev@example.com", requestId: "req-dev" })
-      assert.match(session.providerSessionId, /^lps_/)
+test("Provider errors map to user-safe message and preserve typed code", () => {
+  const mappedKnown = toUserSafeProviderError(new LinkProviderError("LINK_SAVE_FAILED", "internal details", 502, "req_provider"))
+  assert.deepEqual(mappedKnown, {
+    code: "LINK_SAVE_FAILED",
+    message: "Unable to save payment details right now. Please try again.",
+    providerRequestId: "req_provider",
+  })
 
-      const verification = await fetchLinkVerificationFromProvider("seti_dev")
-      assert.equal(verification.status, "pending")
-      assert.match(verification.providerRequestId ?? "", /^mock_req_/)
-
-      const saved = await saveLinkPaymentMethodViaProvider({
-        email: "dev@example.com",
-        holderName: "Dev User",
-        cardNumber: "4111 1111 1111 1111",
-        expMonth: 10,
-        expYear: 2031,
-        requestId: "req-dev-save",
-      })
-
-      assert.match(saved.providerPaymentMethodId, /^pm_mock_/)
-      assert.equal(saved.last4, "1111")
-    },
-  )
+  const mappedUnknown = toUserSafeProviderError(new Error("unexpected provider stack and card context"))
+  assert.deepEqual(mappedUnknown, {
+    code: "LINK_PROVIDER_UNAVAILABLE",
+    message: "Payment provider is currently unavailable. Please try again shortly.",
+    providerRequestId: null,
+  })
 })

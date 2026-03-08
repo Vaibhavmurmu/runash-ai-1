@@ -1,5 +1,3 @@
-import { randomUUID } from "crypto"
-
 import { logApiEvent } from "@/lib/api/logging"
 
 export type LinkProviderErrorCode =
@@ -88,13 +86,11 @@ export function toUserSafeProviderError(error: unknown): { code: LinkProviderErr
 
 async function createStripeClient() {
   const secretKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY
-  if (!secretKey) return null
+  if (!secretKey) {
+    throw toProviderError("LINK_PROVIDER_UNAVAILABLE", new Error("stripe_not_configured"))
+  }
   const Stripe = (await import("stripe")).default
   return new Stripe(secretKey, { apiVersion: "2026-01-28.clover" })
-}
-
-function isDevelopmentMockEnabled() {
-  return process.env.NODE_ENV === "development" && process.env.LINK_PROVIDER_ENABLE_MOCK === "true"
 }
 
 function maskPhoneFallback() {
@@ -102,24 +98,8 @@ function maskPhoneFallback() {
 }
 
 export async function createLinkProviderSession(input: CreateLinkSessionInput): Promise<LinkProviderSession> {
-  const stripe = await createStripeClient()
   logApiEvent("info", "payments.link.provider.session.create.started", { route: "payments/link/provider", requestId: input.requestId, details: { correlationId: input.requestId, provider: "stripe_link" } })
-
-  if (!stripe) {
-    if (!isDevelopmentMockEnabled()) {
-      throw toProviderError("LINK_PROVIDER_UNAVAILABLE", new Error("stripe_not_configured"))
-    }
-
-    const mockResponse = {
-      provider: "stripe_link",
-      providerSessionId: `lps_${randomUUID()}`,
-      providerCustomerId: `cus_${randomUUID().replace(/-/g, "").slice(0, 14)}`,
-      maskedPhone: maskPhoneFallback(),
-      providerRequestId: `mock_req_${input.requestId}`,
-    }
-    logApiEvent("info", "payments.link.provider.session.create.mock", { route: "payments/link/provider", requestId: input.requestId, details: { correlationId: input.requestId } })
-    return mockResponse
-  }
+  const stripe = await createStripeClient()
 
   try {
     const customer = await stripe.customers.create({
@@ -157,13 +137,6 @@ export async function createLinkProviderSession(input: CreateLinkSessionInput): 
 
 export async function fetchLinkVerificationFromProvider(providerSessionId: string): Promise<LinkProviderVerification> {
   const stripe = await createStripeClient()
-  if (!stripe) {
-    if (!isDevelopmentMockEnabled()) {
-      throw toProviderError("LINK_PROVIDER_UNAVAILABLE", new Error("stripe_not_configured"))
-    }
-
-    return { status: "pending", providerRequestId: `mock_req_${providerSessionId}` }
-  }
 
   try {
     const setupIntent = await stripe.setupIntents.retrieve(providerSessionId)
@@ -186,23 +159,10 @@ export async function fetchLinkVerificationFromProvider(providerSessionId: strin
 }
 
 export async function saveLinkPaymentMethodViaProvider(input: SaveLinkPaymentInput): Promise<LinkProviderSavedPayment> {
-  const stripe = await createStripeClient()
   logApiEvent("info", "payments.link.provider.save.started", { route: "payments/link/provider", requestId: input.requestId, details: { correlationId: input.requestId, provider: "stripe_link" } })
+  const stripe = await createStripeClient()
   const sanitizedNumber = input.cardNumber.replace(/\D/g, "")
   const last4 = sanitizedNumber.slice(-4)
-
-  if (!stripe) {
-    if (!isDevelopmentMockEnabled()) {
-      throw toProviderError("LINK_PROVIDER_UNAVAILABLE", new Error("stripe_not_configured"))
-    }
-
-    return {
-      providerPaymentMethodId: `pm_mock_${randomUUID().replace(/-/g, "").slice(0, 18)}`,
-      providerRequestId: `mock_req_${input.requestId}`,
-      brand: input.brand ?? "card",
-      last4,
-    }
-  }
 
   try {
     const customer = await stripe.customers.create({
@@ -213,10 +173,45 @@ export async function saveLinkPaymentMethodViaProvider(input: SaveLinkPaymentInp
       },
     })
 
+    const token = await stripe.tokens.create({
+      card: {
+        number: sanitizedNumber,
+        exp_month: input.expMonth,
+        exp_year: input.expYear,
+        name: input.holderName,
+        address_line1: input.billingAddress,
+      },
+    })
+
+    const paymentMethod = await stripe.paymentMethods.create({
+      type: "card",
+      card: {
+        token: token.id,
+      },
+      billing_details: {
+        email: input.email,
+        name: input.holderName,
+        address: input.billingAddress
+          ? {
+              line1: input.billingAddress,
+            }
+          : undefined,
+      },
+      metadata: {
+        runash_request_id: input.requestId,
+        runash_link_mode: "instant_checkout",
+      },
+    })
+
+    await stripe.paymentMethods.attach(paymentMethod.id, {
+      customer: customer.id,
+    })
+
     return {
-      providerPaymentMethodId: `pm_link_${customer.id.slice(-12)}`,
-      providerRequestId: customer.lastResponse?.requestId ?? null,
-      brand: input.brand ?? "card",
+      providerPaymentMethodId: paymentMethod.id,
+      providerRequestId:
+        paymentMethod.lastResponse?.requestId ?? token.lastResponse?.requestId ?? customer.lastResponse?.requestId ?? null,
+      brand: paymentMethod.card?.brand ?? input.brand ?? "card",
       last4,
     }
   } catch (error) {
