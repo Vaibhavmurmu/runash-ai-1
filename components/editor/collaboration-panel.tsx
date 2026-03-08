@@ -57,14 +57,6 @@ interface CollaborationPanelProps {
 
 type CollaborationApiPayload = {
   activityVisible?: boolean
-  pendingInvites?: Array<{
-    id: string
-    email: string
-    role: "editor" | "viewer"
-    token: string
-    status: "pending" | "accepted" | "revoked" | "expired"
-    expires_at: string
-  }>
   collaborators: Array<{
     id: string
     memberId: string
@@ -121,7 +113,6 @@ export default function CollaborationPanel({ isOpen, onClose, projectId, current
   const [settingsError, setSettingsError] = useState<string | null>(null)
   const [isSavingSettings, setIsSavingSettings] = useState(false)
   const [copyLinkLabel, setCopyLinkLabel] = useState("Copy Link")
-  const [latestInviteLink, setLatestInviteLink] = useState<string | null>(null)
 
   const fetchCollaborationState = useCallback(async () => {
     if (!projectId) return
@@ -138,9 +129,6 @@ export default function CollaborationPanel({ isOpen, onClose, projectId, current
       const payload = (await response.json()) as CollaborationApiPayload
       setCollaborators(normalizeCollaborators(payload.collaborators))
       setActivityLog(normalizeActivity(payload.activity))
-      if (payload.activityVisible === false) {
-        setSettings((previous) => ({ ...previous, showActivityLog: false }))
-      }
 
       const settingsResponse = await fetch(`/api/editor/projects/${encodeURIComponent(projectId)}/collaboration/settings`, {
         method: "GET",
