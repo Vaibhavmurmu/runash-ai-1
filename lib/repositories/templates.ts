@@ -1,6 +1,7 @@
+import { randomUUID } from "node:crypto"
 import { one, sql } from "@/lib/db"
 
-export type TemplateAccessLevel = "public" | "premium" | "owner" | "workspace"
+export type TemplateScope = "public" | "workspace" | "private" | "premium"
 
 export interface TemplateViewerContext {
   userId: string
@@ -25,9 +26,13 @@ export interface TemplateRecord {
   variables: TemplateVariable[]
   html: string
   css: string
-  javascript?: string
-  isPremium: boolean
+  javascript: string | null
   tags: string[]
+  isPremium: boolean
+  scope: TemplateScope
+  author: string
+  ownerUserId: string
+  workspaceId: number | null
   createdAt: string
   updatedAt: string
   downloadCount: number
@@ -35,10 +40,6 @@ export interface TemplateRecord {
   usageCount: number
   rating: number
   ratingCount: number
-  author: string
-  ownerUserId: string | null
-  workspaceId: number | null
-  accessLevel: TemplateAccessLevel
 }
 
 export interface ListTemplatesFilters {
@@ -48,19 +49,30 @@ export interface ListTemplatesFilters {
 
 export interface CreateTemplateInput {
   name: string
-  category: string
-  html: string
-  css: string
   description?: string | null
+  category: string
   thumbnailUrl?: string | null
   variables?: TemplateVariable[]
+  html: string
+  css: string
   javascript?: string | null
   tags?: string[]
-  author?: string | null
   isPremium?: boolean
-  ownerUserId?: string | null
-  workspaceId?: number | null
-  accessLevel?: TemplateAccessLevel
+  scope?: TemplateScope
+}
+
+export interface UpdateTemplateInput {
+  name?: string
+  description?: string | null
+  category?: string
+  thumbnailUrl?: string | null
+  variables?: TemplateVariable[]
+  html?: string
+  css?: string
+  javascript?: string | null
+  tags?: string[]
+  isPremium?: boolean
+  scope?: TemplateScope
 }
 
 type TemplateRow = {
@@ -73,14 +85,14 @@ type TemplateRow = {
   html: string
   css: string
   javascript: string | null
-  is_premium: boolean
   tags: unknown
+  is_premium: boolean
+  scope: TemplateScope
+  author_name: string | null
+  owner_user_id: string
+  workspace_id: number | null
   created_at: string
   updated_at: string
-  author_name: string | null
-  owner_user_id: string | null
-  workspace_id: number | null
-  access_level: TemplateAccessLevel
   download_count: number | string | null
   view_count: number | string | null
   usage_count: number | string | null
@@ -88,52 +100,14 @@ type TemplateRow = {
   rating_count: number | string | null
 }
 
-let schemaReadyPromise: Promise<void> | null = null
-
-async function ensureTemplateSchema() {
-  if (!schemaReadyPromise) {
-    schemaReadyPromise = (async () => {
-      await sql`
-        CREATE TABLE IF NOT EXISTS templates (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          description TEXT,
-          category TEXT NOT NULL,
-          thumbnail_url TEXT,
-          variables JSONB NOT NULL DEFAULT '[]'::jsonb,
-          html TEXT NOT NULL,
-          css TEXT NOT NULL,
-          javascript TEXT,
-          is_premium BOOLEAN NOT NULL DEFAULT false,
-          tags JSONB NOT NULL DEFAULT '[]'::jsonb,
-          owner_user_id TEXT,
-          workspace_id BIGINT,
-          access_level TEXT NOT NULL DEFAULT 'public' CHECK (access_level IN ('public', 'premium', 'owner', 'workspace')),
-          author_name TEXT,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-        )
-      `
-
-      await sql`
-        CREATE TABLE IF NOT EXISTS template_usage_counters (
-          template_id TEXT PRIMARY KEY REFERENCES templates(id) ON DELETE CASCADE,
-          download_count BIGINT NOT NULL DEFAULT 0,
-          view_count BIGINT NOT NULL DEFAULT 0,
-          usage_count BIGINT NOT NULL DEFAULT 0,
-          rating NUMERIC(3, 2) NOT NULL DEFAULT 0,
-          rating_count BIGINT NOT NULL DEFAULT 0,
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-        )
-      `
-
-      await sql`CREATE INDEX IF NOT EXISTS idx_templates_access_level ON templates(access_level)`
-      await sql`CREATE INDEX IF NOT EXISTS idx_templates_owner_user_id ON templates(owner_user_id)`
-      await sql`CREATE INDEX IF NOT EXISTS idx_templates_workspace_id ON templates(workspace_id)`
-    })()
+function toNumber(value: number | string | null | undefined): number {
+  if (typeof value === "number") return value
+  if (typeof value === "string") {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : 0
   }
 
-  await schemaReadyPromise
+  return 0
 }
 
 function parseVariables(value: unknown): TemplateVariable[] {
@@ -159,48 +133,37 @@ function parseTags(value: unknown): string[] {
   }
 
   if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value)
-      return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : []
-    } catch {
-      return []
-    }
+    return value
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
   }
 
   return []
 }
 
-function toNumber(value: number | string | null | undefined): number {
-  if (typeof value === "number") return value
-  if (typeof value === "string") {
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : 0
-  }
-
-  return 0
+function hasPremiumAccess(role: string): boolean {
+  const normalizedRole = role.toLowerCase()
+  return ["premium", "pro", "business", "enterprise", "admin"].includes(normalizedRole)
 }
 
-function canViewTemplate(template: TemplateRow, viewer: TemplateViewerContext): boolean {
-  if (template.access_level === "public") {
+function canViewerAccessScope(row: TemplateRow, viewer: TemplateViewerContext): boolean {
+  if (row.scope === "public") {
     return true
   }
 
-  const isOwner = Boolean(template.owner_user_id && template.owner_user_id === viewer.userId)
-  const inWorkspace =
-    template.workspace_id !== null && viewer.workspaceId !== null && Number(template.workspace_id) === Number(viewer.workspaceId)
+  const isOwner = row.owner_user_id === viewer.userId
+  const sameWorkspace = row.workspace_id !== null && viewer.workspaceId !== null && row.workspace_id === viewer.workspaceId
 
-  if (template.access_level === "owner") {
+  if (row.scope === "private") {
     return isOwner
   }
 
-  if (template.access_level === "workspace") {
-    return inWorkspace || isOwner
+  if (row.scope === "workspace") {
+    return isOwner || sameWorkspace
   }
 
-  const role = viewer.role.toLowerCase()
-  const hasPremiumAccess = ["premium", "pro", "business", "enterprise", "admin"].includes(role)
-
-  return hasPremiumAccess || isOwner || inWorkspace
+  return isOwner || sameWorkspace || hasPremiumAccess(viewer.role)
 }
 
 function mapTemplateRow(row: TemplateRow): TemplateRecord {
@@ -213,9 +176,13 @@ function mapTemplateRow(row: TemplateRow): TemplateRecord {
     variables: parseVariables(row.variables),
     html: row.html,
     css: row.css,
-    ...(row.javascript ? { javascript: row.javascript } : {}),
-    isPremium: row.is_premium,
+    javascript: row.javascript,
     tags: parseTags(row.tags),
+    isPremium: row.is_premium,
+    scope: row.scope,
+    author: row.author_name ?? "Unknown",
+    ownerUserId: row.owner_user_id,
+    workspaceId: row.workspace_id,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
     downloadCount: toNumber(row.download_count),
@@ -223,20 +190,18 @@ function mapTemplateRow(row: TemplateRow): TemplateRecord {
     usageCount: toNumber(row.usage_count),
     rating: toNumber(row.rating),
     ratingCount: toNumber(row.rating_count),
-    author: row.author_name ?? "Unknown",
-    ownerUserId: row.owner_user_id,
-    workspaceId: row.workspace_id,
-    accessLevel: row.access_level,
   }
 }
 
-export async function listTemplates(filters: ListTemplatesFilters = {}): Promise<TemplateRecord[]> {
-  await ensureTemplateSchema()
-
+export async function listTemplatesForViewer(
+  viewer: TemplateViewerContext,
+  filters: ListTemplatesFilters = {},
+): Promise<TemplateRecord[]> {
   const category = filters.category?.trim() || null
   const tags = (filters.tags ?? []).map((entry) => entry.trim()).filter(Boolean)
 
   const rows = await sql<TemplateRow[]>`
+    
     SELECT
       t.id,
       t.name,
@@ -247,43 +212,117 @@ export async function listTemplates(filters: ListTemplatesFilters = {}): Promise
       t.html,
       t.css,
       t.javascript,
-      t.is_premium,
       t.tags,
-      t.created_at,
-      t.updated_at,
+      t.is_premium,
+      t.scope,
       t.author_name,
       t.owner_user_id,
       t.workspace_id,
-      t.access_level,
-      COALESCE(c.download_count, 0) AS download_count,
-      COALESCE(c.view_count, 0) AS view_count,
-      COALESCE(c.usage_count, 0) AS usage_count,
-      COALESCE(c.rating, 0) AS rating,
-      COALESCE(c.rating_count, 0) AS rating_count
-    FROM templates t
-    LEFT JOIN template_usage_counters c ON c.template_id = t.id
+      t.created_at,
+      t.updated_at,
+      COALESCE(m.download_count, 0) AS download_count,
+      COALESCE(m.view_count, 0) AS view_count,
+      COALESCE(m.usage_count, 0) AS usage_count,
+      COALESCE(m.rating, 0) AS rating,
+      COALESCE(m.rating_count, 0) AS rating_count
+    FROM stream_editor_templates t
+    LEFT JOIN stream_editor_template_metrics m ON m.template_id = t.id
     WHERE (${category}::text IS NULL OR t.category = ${category})
-      AND (
-        ${tags.length} = 0
-        OR EXISTS (
-          SELECT 1
-          FROM jsonb_array_elements_text(t.tags) AS tag
-          WHERE tag = ANY(${tags}::text[])
-        )
-      )
+      AND (${tags.length} = 0 OR t.tags && ${tags}::text[])
     ORDER BY t.updated_at DESC
   `
 
-  return rows.map(mapTemplateRow)
+  return rows.filter((row) => canViewerAccessScope(row, viewer)).map(mapTemplateRow)
 }
 
-export async function createTemplate(input: CreateTemplateInput): Promise<TemplateRecord> {
-  await ensureTemplateSchema()
-
-  const templateId = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+export async function getTemplateById(templateId: string): Promise<TemplateRecord | null> {
   const row = await one<TemplateRow>(sql<TemplateRow[]>`
-    INSERT INTO templates (
+    
+    SELECT
+      t.id,
+      t.name,
+      t.description,
+      t.category,
+      t.thumbnail_url,
+      t.variables,
+      t.html,
+      t.css,
+      t.javascript,
+      t.tags,
+      t.is_premium,
+      t.scope,
+      t.author_name,
+      t.owner_user_id,
+      t.workspace_id,
+      t.created_at,
+      t.updated_at,
+      COALESCE(m.download_count, 0) AS download_count,
+      COALESCE(m.view_count, 0) AS view_count,
+      COALESCE(m.usage_count, 0) AS usage_count,
+      COALESCE(m.rating, 0) AS rating,
+      COALESCE(m.rating_count, 0) AS rating_count
+    FROM stream_editor_templates t
+    LEFT JOIN stream_editor_template_metrics m ON m.template_id = t.id
+    WHERE t.id = ${templateId}
+    LIMIT 1
+  `)
+
+  return row ? mapTemplateRow(row) : null
+}
+
+export async function getTemplateByIdForViewer(
+  templateId: string,
+  viewer: TemplateViewerContext,
+): Promise<TemplateRecord | null> {
+  const row = await one<TemplateRow>(sql<TemplateRow[]>`
+    
+    SELECT
+      t.id,
+      t.name,
+      t.description,
+      t.category,
+      t.thumbnail_url,
+      t.variables,
+      t.html,
+      t.css,
+      t.javascript,
+      t.tags,
+      t.is_premium,
+      t.scope,
+      t.author_name,
+      t.owner_user_id,
+      t.workspace_id,
+      t.created_at,
+      t.updated_at,
+      COALESCE(m.download_count, 0) AS download_count,
+      COALESCE(m.view_count, 0) AS view_count,
+      COALESCE(m.usage_count, 0) AS usage_count,
+      COALESCE(m.rating, 0) AS rating,
+      COALESCE(m.rating_count, 0) AS rating_count
+    FROM stream_editor_templates t
+    LEFT JOIN stream_editor_template_metrics m ON m.template_id = t.id
+    WHERE t.id = ${templateId}
+    LIMIT 1
+  `)
+
+  if (!row || !canViewerAccessScope(row, viewer)) {
+    return null
+  }
+
+  return mapTemplateRow(row)
+}
+
+export async function createTemplate(
+  input: CreateTemplateInput,
+  actor: { userId: string; workspaceId: number | null; author: string },
+): Promise<TemplateRecord> {
+  const id = randomUUID()
+
+  const row = await one<TemplateRow>(sql<TemplateRow[]>`
+    INSERT INTO stream_editor_templates (
       id,
+      owner_user_id,
+      workspace_id,
       name,
       description,
       category,
@@ -292,15 +331,14 @@ export async function createTemplate(input: CreateTemplateInput): Promise<Templa
       html,
       css,
       javascript,
-      is_premium,
       tags,
-      owner_user_id,
-      workspace_id,
-      access_level,
+      is_premium,
+      scope,
       author_name
-    )
-    VALUES (
-      ${templateId},
+    ) VALUES (
+      ${id},
+      ${actor.userId},
+      ${actor.workspaceId},
       ${input.name},
       ${input.description ?? null},
       ${input.category},
@@ -309,12 +347,10 @@ export async function createTemplate(input: CreateTemplateInput): Promise<Templa
       ${input.html},
       ${input.css},
       ${input.javascript ?? null},
+      ${input.tags ?? []}::text[],
       ${input.isPremium ?? false},
-      ${JSON.stringify(input.tags ?? [])}::jsonb,
-      ${input.ownerUserId ?? null},
-      ${input.workspaceId ?? null},
-      ${input.accessLevel ?? "public"},
-      ${input.author ?? "Unknown"}
+      ${input.scope ?? "public"},
+      ${actor.author}
     )
     RETURNING
       id,
@@ -326,14 +362,14 @@ export async function createTemplate(input: CreateTemplateInput): Promise<Templa
       html,
       css,
       javascript,
-      is_premium,
       tags,
-      created_at,
-      updated_at,
+      is_premium,
+      scope,
       author_name,
       owner_user_id,
       workspace_id,
-      access_level,
+      created_at,
+      updated_at,
       0::BIGINT AS download_count,
       0::BIGINT AS view_count,
       0::BIGINT AS usage_count,
@@ -342,88 +378,74 @@ export async function createTemplate(input: CreateTemplateInput): Promise<Templa
   `)
 
   if (!row) {
-    throw new Error("Failed to create template")
+    throw new Error("Template create failed")
   }
 
   return mapTemplateRow(row)
 }
 
-export async function getTemplateByIdForViewer(templateId: string, viewer: TemplateViewerContext): Promise<TemplateRecord | null> {
-  await ensureTemplateSchema()
-
+export async function updateTemplateForOwner(
+  templateId: string,
+  actor: { userId: string; workspaceId: number | null },
+  input: UpdateTemplateInput,
+): Promise<TemplateRecord | null> {
   const row = await one<TemplateRow>(sql<TemplateRow[]>`
-    SELECT
-      t.id,
-      t.name,
-      t.description,
-      t.category,
-      t.thumbnail_url,
-      t.variables,
-      t.html,
-      t.css,
-      t.javascript,
-      t.is_premium,
-      t.tags,
-      t.created_at,
-      t.updated_at,
-      t.author_name,
-      t.owner_user_id,
-      t.workspace_id,
-      t.access_level,
-      COALESCE(c.download_count, 0) AS download_count,
-      COALESCE(c.view_count, 0) AS view_count,
-      COALESCE(c.usage_count, 0) AS usage_count,
-      COALESCE(c.rating, 0) AS rating,
-      COALESCE(c.rating_count, 0) AS rating_count
-    FROM templates t
-    LEFT JOIN template_usage_counters c ON c.template_id = t.id
-    WHERE t.id = ${templateId}
-    LIMIT 1
+    UPDATE stream_editor_templates t
+    SET
+      name = COALESCE(${input.name ?? null}, t.name),
+      description = COALESCE(${input.description ?? null}, t.description),
+      category = COALESCE(${input.category ?? null}, t.category),
+      thumbnail_url = COALESCE(${input.thumbnailUrl ?? null}, t.thumbnail_url),
+      variables = COALESCE(${input.variables ? JSON.stringify(input.variables) : null}::jsonb, t.variables),
+      html = COALESCE(${input.html ?? null}, t.html),
+      css = COALESCE(${input.css ?? null}, t.css),
+      javascript = COALESCE(${input.javascript ?? null}, t.javascript),
+      tags = COALESCE(${input.tags ?? null}::text[], t.tags),
+      is_premium = COALESCE(${input.isPremium ?? null}, t.is_premium),
+      scope = COALESCE(${input.scope ?? null}::text, t.scope),
+      updated_at = now()
+    WHERE
+      t.id = ${templateId}
+      AND (t.owner_user_id = ${actor.userId} OR (t.workspace_id IS NOT NULL AND t.workspace_id = ${actor.workspaceId}))
+    RETURNING
+      id,
+      name,
+      description,
+      category,
+      thumbnail_url,
+      variables,
+      html,
+      css,
+      javascript,
+      tags,
+      is_premium,
+      scope,
+      author_name,
+      owner_user_id,
+      workspace_id,
+      created_at,
+      updated_at,
+      0::BIGINT AS download_count,
+      0::BIGINT AS view_count,
+      0::BIGINT AS usage_count,
+      0::NUMERIC AS rating,
+      0::BIGINT AS rating_count
   `)
 
-  if (!row) return null
-
-  if (!canViewTemplate(row, viewer)) {
-    return null
-  }
-
-  return mapTemplateRow(row)
+  return row ? mapTemplateRow(row) : null
 }
 
-export async function getTemplateById(templateId: string): Promise<TemplateRecord | null> {
-  await ensureTemplateSchema()
-
-  const row = await one<TemplateRow>(sql<TemplateRow[]>`
-    SELECT
-      t.id,
-      t.name,
-      t.description,
-      t.category,
-      t.thumbnail_url,
-      t.variables,
-      t.html,
-      t.css,
-      t.javascript,
-      t.is_premium,
-      t.tags,
-      t.created_at,
-      t.updated_at,
-      t.author_name,
-      t.owner_user_id,
-      t.workspace_id,
-      t.access_level,
-      COALESCE(c.download_count, 0) AS download_count,
-      COALESCE(c.view_count, 0) AS view_count,
-      COALESCE(c.usage_count, 0) AS usage_count,
-      COALESCE(c.rating, 0) AS rating,
-      COALESCE(c.rating_count, 0) AS rating_count
-    FROM templates t
-    LEFT JOIN template_usage_counters c ON c.template_id = t.id
-    WHERE t.id = ${templateId}
-    LIMIT 1
+export async function deleteTemplateForOwner(
+  templateId: string,
+  actor: { userId: string; workspaceId: number | null },
+): Promise<boolean> {
+  const deleted = await one<{ id: string }>(sql<{ id: string }[]>`
+    DELETE FROM stream_editor_templates t
+    WHERE
+      t.id = ${templateId}
+      AND (t.owner_user_id = ${actor.userId} OR (t.workspace_id IS NOT NULL AND t.workspace_id = ${actor.workspaceId}))
+    RETURNING id
   `)
 
-  if (!row) return null
-
-  return mapTemplateRow(row)
+  return Boolean(deleted)
 }

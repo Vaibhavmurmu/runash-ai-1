@@ -23,6 +23,7 @@ Current status:
 - `0011_email_subscriptions.sql` provisions `email_subscriptions` with case-insensitive unique email constraints, double-opt-in lifecycle status/timestamps, and source metadata fields for subscription auditability.
 
 - `0012_newsletter_subscriptions.sql` provisions `newsletter_subscriptions` for consented newsletter signups with case-insensitive dedupe, status tracking, and audit timestamps.
+- `0013_stream_editor_templates.sql` provisions persistent stream/editor templates plus template metrics counters and access-scope indexes.
 
 Operational guidance:
 1. Keep production-safe migration SQL reviewed and idempotent where practical.
