@@ -53,34 +53,41 @@ test("POST /api/community/register returns 201 for first registration", async ()
     body: JSON.stringify({ eventId: "evt-ai-2026-01" }),
   })
 
+  let capturedInput: { eventId: string; userId: string; source: string } | null = null
+
   const response = await handleCommunityRegisterPostRequest(request, {
     getSession: async () => ({
       user: { id: "user-1", email: null, name: null },
       session: { id: "session-1", activeOrganizationId: null },
     }),
-    register: async () => ({
-      status: "created",
-      registration: {
-        id: "reg-1",
-        eventId: "evt-ai-2026-01",
-        userId: "user-1",
-        status: "registered",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-    }),
+    register: async (input) => {
+      capturedInput = input
+      return {
+        status: "created",
+        registration: {
+          id: "reg-1",
+          eventId: "evt-ai-2026-01",
+          userId: "user-1",
+          source: "community_api",
+          status: "registered",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      }
+    },
     audit: async (_input) => {},
   })
 
   const payload = await response.json()
 
   assert.equal(response.status, 201)
+  assert.deepEqual(capturedInput, { eventId: "evt-ai-2026-01", userId: "user-1", source: "community_api" })
   assert.equal(payload.ok, true)
   assert.equal(payload.alreadyRegistered, false)
   assert.equal(payload.status, "registered")
 })
 
-test("POST /api/community/register returns deterministic duplicate response", async () => {
+test("POST /api/community/register returns 409 for duplicate registration", async () => {
   const request = new Request("http://localhost/api/community/register", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -98,6 +105,7 @@ test("POST /api/community/register returns deterministic duplicate response", as
         id: "reg-1",
         eventId: "evt-ai-2026-01",
         userId: "user-1",
+        source: "community_api",
         status: "registered",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -108,7 +116,7 @@ test("POST /api/community/register returns deterministic duplicate response", as
 
   const payload = await response.json()
 
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 409)
   assert.equal(payload.ok, true)
   assert.equal(payload.code, "ALREADY_REGISTERED")
   assert.equal(payload.alreadyRegistered, true)

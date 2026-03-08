@@ -127,7 +127,7 @@ export const appSchemaTables = {
   },
   communityEventRegistrations: {
     table: "community_event_registrations",
-    fields: ["id", "event_id", "user_id", "status", "created_at", "updated_at"],
+    fields: ["id", "event_id", "user_id", "status", "source", "created_at", "updated_at"],
     indexes: ["idx_community_event_registrations_event", "idx_community_event_registrations_user"],
     uniqueConstraints: ["event_id,user_id"],
   },

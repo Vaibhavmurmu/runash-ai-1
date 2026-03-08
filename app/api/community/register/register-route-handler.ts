@@ -5,11 +5,13 @@ const ERROR_CODES = {
   unauthorized: "UNAUTHORIZED",
   invalidEvent: "INVALID_EVENT",
   alreadyRegistered: "ALREADY_REGISTERED",
+  registrationClosed: "REGISTRATION_CLOSED",
   internal: "INTERNAL_ERROR",
 } as const
 
 export type RegisterCommunityEventResult =
   | { status: "invalid_event" }
+  | { status: "registration_closed" }
   | {
       status: "created" | "already_registered"
       registration: {
@@ -20,10 +22,16 @@ export type RegisterCommunityEventResult =
 
 export type CommunityRegisterDependencies = {
   getSession: () => Promise<{ user?: { id?: string | null } | null } | null>
-  register: (input: { eventId: string; userId: string }) => Promise<RegisterCommunityEventResult>
+  register: (input: { eventId: string; userId: string; source: string }) => Promise<RegisterCommunityEventResult>
   audit: (input: {
     actorUserId: string
-    outcome: "unauthorized" | "invalid_request" | "invalid_event" | "already_registered" | "created"
+    outcome:
+      | "unauthorized"
+      | "invalid_request"
+      | "invalid_event"
+      | "registration_closed"
+      | "already_registered"
+      | "created"
     eventId?: string
     registrationId?: string
   }) => Promise<void>
@@ -53,13 +61,23 @@ export async function handleCommunityRegisterPostRequest(request: Request, depen
       )
     }
 
-    const result = await dependencies.register({ eventId, userId })
+    const result = await dependencies.register({ eventId, userId, source: "community_api" })
 
     if (result.status === "invalid_event") {
       await dependencies.audit({ actorUserId: userId, eventId, outcome: "invalid_event" })
       return NextResponse.json(
         { error: { code: ERROR_CODES.invalidEvent, message: "Invalid community event" } },
         { status: 404 },
+      )
+    }
+
+    if (result.status === "registration_closed") {
+      await dependencies.audit({ actorUserId: userId, eventId, outcome: "registration_closed" })
+      return NextResponse.json(
+        {
+          error: { code: ERROR_CODES.registrationClosed, message: "Registration is closed for this event" },
+        },
+        { status: 409 },
       )
     }
 
@@ -79,7 +97,7 @@ export async function handleCommunityRegisterPostRequest(request: Request, depen
           status: result.registration.status,
           alreadyRegistered: true,
         },
-        { status: 200 },
+        { status: 409 },
       )
     }
 
