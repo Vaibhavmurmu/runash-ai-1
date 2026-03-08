@@ -21,6 +21,13 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Credits purchase routing uses `/pricing?intent=credits`; redeem flow uses in-app validated redeem input before billing handoff.
 - Payment API contract fields, webhook schemas, and auth/payment token formats remain unchanged by these routing updates.
 
+## 2026-03 checkout session alias + redirect contract alignment
+
+- Added a public route alias `POST /api/checkout/session` that forwards to canonical billing checkout implementation (`/api/v1/billing/checkout`) to preserve a stable client entrypoint.
+- Checkout success payload now includes `checkoutSessionId` in addition to existing `redirectUrl`/`url`, `provider`, and `providerTransactionReference` contract fields.
+- Payment redirect client now sends canonical checkout request fields (`priceId`, `success_url`, `cancel_url`, optional `redirectUrl`) so request contracts include item/price identifier + return URLs expected by billing checkout.
+- Risk + rollback: low-to-medium (checkout-start path only). Roll back by reverting `app/api/checkout/session/route.ts`, `app/api/v1/billing/checkout/route.ts`, and `app/payment-redirect/page.tsx` together to keep route alias and client contract in sync.
+
 ## 2026-02 Ecommerce payments theme/UI refactor (no contract changes)
 
 - Updated `/ecommerce/payments` presentation layer to use semantic theme tokens (`bg-background`, `text-foreground`, `border-border`, `muted-foreground`) and shared design-system inputs/select/textarea components.
