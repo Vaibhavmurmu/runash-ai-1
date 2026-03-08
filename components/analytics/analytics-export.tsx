@@ -25,57 +25,83 @@ export function AnalyticsExport({ filters }: AnalyticsExportProps) {
   const [fetchState, setFetchState] = useState<AnalyticsFetchState>("idle")
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [fetchedData, setFetchedData] = useState<ExportRow[]>([])
+  const [cachedSnapshot, setCachedSnapshot] = useState<ExportRow[]>([])
   const printableRef = useRef<HTMLDivElement | null>(null)
 
   const serializedFilters = useMemo(() => JSON.stringify(filters ?? {}), [filters])
 
+  const cacheKey = useMemo(() => `analytics-export-cache:${serializedFilters}`, [serializedFilters])
+
+  function readCachedSnapshot() {
+    if (typeof window === "undefined") return []
+    try {
+      const raw = localStorage.getItem(cacheKey)
+      if (!raw) return []
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? (parsed as ExportRow[]) : []
+    } catch {
+      return []
+    }
+  }
+
+  function writeCachedSnapshot(rows: ExportRow[]) {
+    if (typeof window === "undefined") return
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(rows))
+    } catch {
+      // ignore local storage write failures
+    }
+  }
+
+  const loadAnalytics = async () => {
+    setFetchState("loading")
+    setFetchError(null)
+    setFetchedData([])
+
+    const cached = readCachedSnapshot()
+    setCachedSnapshot(cached)
+
+    const params = new URLSearchParams()
+    Object.entries(filters || {}).forEach(([k, v]) => {
+      if (v === undefined || v === null || v === "") return
+      if (Array.isArray(v)) {
+        if (v.length > 0) params.set(k, v.join(","))
+        return
+      }
+      if (typeof v === "object") params.set(k, JSON.stringify(v))
+      else params.set(k, String(v))
+    })
+
+    const res = await fetch(`/api/analytics?${params.toString()}`, { credentials: "include" })
+    const body = (await res.json().catch(() => null)) as AnalyticsApiResponse | null
+
+    if (!res.ok) {
+      const explicitMessage =
+        body && typeof body === "object" && "error" in body && body.error && typeof body.error.message === "string"
+          ? body.error.message
+          : `Analytics API request failed (${res.status}).`
+      throw new Error(explicitMessage)
+    }
+
+    const rows = extractExportRows(body)
+    setFetchedData(rows)
+    setFetchState(rows.length ? "success" : "empty")
+    if (rows.length > 0) {
+      writeCachedSnapshot(rows)
+      setCachedSnapshot(rows)
+    }
+  }
+
   useEffect(() => {
     let isCancelled = false
 
-    const loadAnalytics = async () => {
-      setFetchState("loading")
-      setFetchError(null)
-      setFetchedData([])
-
-      try {
-        const params = new URLSearchParams()
-        Object.entries(filters || {}).forEach(([k, v]) => {
-          if (v === undefined || v === null || v === "") return
-          if (Array.isArray(v)) {
-            if (v.length > 0) params.set(k, v.join(","))
-            return
-          }
-          if (typeof v === "object") params.set(k, JSON.stringify(v))
-          else params.set(k, String(v))
-        })
-
-        const res = await fetch(`/api/analytics?${params.toString()}`, { credentials: "include" })
-        const body = (await res.json().catch(() => null)) as AnalyticsApiResponse | null
-
-        if (!res.ok) {
-          const explicitMessage =
-            body && typeof body === "object" && "error" in body && body.error && typeof body.error.message === "string"
-              ? body.error.message
-              : `Analytics API request failed (${res.status}).`
-          throw new Error(explicitMessage)
-        }
-
-        const rows = extractExportRows(body)
-        if (!isCancelled) {
-          setFetchedData(rows)
-          setFetchState(rows.length ? "success" : "empty")
-        }
-      } catch (err) {
-        if (!isCancelled) {
-          const errorMessage =
-            err instanceof Error ? err.message : "Failed to load analytics data for export. Please try again."
-          setFetchState("error")
-          setFetchError(errorMessage)
-        }
+    loadAnalytics().catch((err) => {
+      if (!isCancelled) {
+        const errorMessage = err instanceof Error ? err.message : "Failed to load analytics data for export."
+        setFetchState("error")
+        setFetchError(errorMessage)
       }
-    }
-
-    loadAnalytics()
+    })
 
     return () => {
       isCancelled = true
@@ -226,12 +252,14 @@ export function AnalyticsExport({ filters }: AnalyticsExportProps) {
   }
 
   async function handleExport(format: "csv" | "json" | "pdf" | "image") {
-    if (fetchState !== "success") {
+    const exportData = fetchState === "success" ? fetchedData : fetchState === "error" ? cachedSnapshot : []
+
+    if (exportData.length === 0) {
       const messageByState: Record<Exclude<AnalyticsFetchState, "success">, string> = {
         idle: "Analytics data is not ready yet.",
         loading: "Analytics data is still loading. Please wait.",
         empty: "No analytics data available for the selected filters.",
-        error: fetchError || "Cannot export because analytics data failed to load.",
+        error: fetchError || "Cannot export because analytics data failed to load and no cached snapshot is available.",
       }
       alert(messageByState[fetchState])
       return
@@ -239,10 +267,10 @@ export function AnalyticsExport({ filters }: AnalyticsExportProps) {
 
     setExporting(format)
     try {
-      if (format === "csv") await exportCSV(fetchedData)
-      else if (format === "json") await exportJSON(fetchedData)
-      else if (format === "pdf") await exportPDF(fetchedData)
-      else if (format === "image") await exportImage(fetchedData)
+      if (format === "csv") await exportCSV(exportData)
+      else if (format === "json") await exportJSON(exportData)
+      else if (format === "pdf") await exportPDF(exportData)
+      else if (format === "image") await exportImage(exportData)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       alert(`Export failed: ${message}`)
@@ -251,7 +279,7 @@ export function AnalyticsExport({ filters }: AnalyticsExportProps) {
     }
   }
 
-  const exportDisabled = !!exporting || fetchState !== "success"
+  const exportDisabled = !!exporting || (fetchState !== "success" && cachedSnapshot.length === 0)
 
   return (
     <>
@@ -288,9 +316,17 @@ export function AnalyticsExport({ filters }: AnalyticsExportProps) {
         {fetchState === "loading" && <p className="text-xs text-muted-foreground">Loading analytics data for export…</p>}
         {fetchState === "empty" && <p className="text-xs text-muted-foreground">No analytics data found for current filters.</p>}
         {fetchState === "error" && (
-          <p className="text-xs text-red-600" role="alert">
-            Unable to load analytics for export: {fetchError}
-          </p>
+          <div className="space-y-1 text-right" role="alert">
+            <p className="text-xs text-red-600">Unable to load analytics for export: {fetchError}</p>
+            <div className="flex items-center justify-end gap-2">
+              {cachedSnapshot.length > 0 && (
+                <p className="text-xs text-muted-foreground">Using last successful snapshot ({cachedSnapshot.length} rows).</p>
+              )}
+              <Button variant="outline" size="sm" onClick={() => void loadAnalytics()} disabled={fetchState === "loading"}>
+                Retry
+              </Button>
+            </div>
+          </div>
         )}
       </div>
     </>

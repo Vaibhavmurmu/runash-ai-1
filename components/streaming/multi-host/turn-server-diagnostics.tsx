@@ -25,6 +25,11 @@ interface TurnCredentialApiResponse {
   expiresAt: number
 }
 
+interface TurnTestServer {
+  url: string
+  protocol: string
+}
+
 const TURN_AUTH_FAILURE_TAG = "turn_auth_failure"
 const TURN_CONNECTIVITY_FAILURE_TAG = "turn_connectivity_failure"
 
@@ -45,12 +50,7 @@ export function TurnServerDiagnostics() {
   const [progress, setProgress] = useState(0)
   const [results, setResults] = useState<TurnTestResult[]>([])
 
-  const testServers = [
-    { url: "turn:global.turn.twilio.com:3478", protocol: "UDP" },
-    { url: "turn:global.turn.twilio.com:3478?transport=tcp", protocol: "TCP" },
-    { url: "turns:global.turn.twilio.com:443?transport=tcp", protocol: "TLS" },
-    // Add more servers as needed
-  ]
+  const [testServers, setTestServers] = useState<TurnTestServer[]>([])
 
   const runDiagnostics = async () => {
     setIsRunning(true)
@@ -60,8 +60,12 @@ export function TurnServerDiagnostics() {
     const newResults: TurnTestResult[] = []
 
     let turnIceServer: RTCIceServer
+    let fetchedServers: TurnTestServer[]
     try {
-      turnIceServer = await fetchTurnCredentials()
+      const credentialPayload = await fetchTurnCredentials()
+      turnIceServer = credentialPayload.iceServer
+      fetchedServers = credentialPayload.testServers
+      setTestServers(fetchedServers)
     } catch (error) {
       const failureMessage = getCredentialFailureMessage(error)
       const authFailureResult: TurnTestResult[] = testServers.map((server) => ({
@@ -92,9 +96,9 @@ export function TurnServerDiagnostics() {
       return
     }
 
-    for (let i = 0; i < testServers.length; i++) {
-      const server = testServers[i]
-      setProgress(Math.round((i / testServers.length) * 100))
+    for (let i = 0; i < fetchedServers.length; i++) {
+      const server = fetchedServers[i]
+      setProgress(Math.round((i / fetchedServers.length) * 100))
 
       try {
         const result = await testTurnServer(turnIceServer, server.url, server.protocol)
@@ -130,10 +134,10 @@ export function TurnServerDiagnostics() {
         description: "All TURN servers are unreachable. NAT traversal may not work properly.",
         variant: "destructive",
       })
-    } else if (successCount < testServers.length) {
+    } else if (successCount < fetchedServers.length) {
       toast({
         title: "Some TURN Servers Available",
-        description: `${successCount} of ${testServers.length} TURN servers are working.`,
+        description: `${successCount} of ${fetchedServers.length} TURN servers are working.`,
       })
     } else {
       toast({
@@ -143,7 +147,7 @@ export function TurnServerDiagnostics() {
     }
   }
 
-  const fetchTurnCredentials = async (): Promise<RTCIceServer> => {
+  const fetchTurnCredentials = async (): Promise<{ iceServer: RTCIceServer; testServers: TurnTestServer[] }> => {
     const response = await fetch("/api/turn-credentials", {
       method: "GET",
       headers: {
@@ -167,14 +171,27 @@ export function TurnServerDiagnostics() {
     const payload = (await response.json()) as TurnCredentialApiResponse
     const relayTurnServer = payload.iceServers.find((server) => {
       const urls = Array.isArray(server.urls) ? server.urls : [server.urls]
-      return urls.some((url) => url.startsWith("turn:"))
+      return urls.some((url) => String(url).startsWith("turn"))
     })
 
     if (!relayTurnServer?.username || !relayTurnServer?.credential) {
       throw new Error("credential_payload_invalid")
     }
 
-    return relayTurnServer
+    const urls = Array.isArray(relayTurnServer.urls) ? relayTurnServer.urls : [relayTurnServer.urls]
+    const servers = urls
+      .filter(Boolean)
+      .map((url) => String(url))
+      .map((url) => ({
+        url,
+        protocol: url.startsWith("turns:") ? "TLS" : url.includes("transport=tcp") ? "TCP" : "UDP",
+      }))
+
+    if (servers.length === 0) {
+      throw new Error("credential_payload_invalid")
+    }
+
+    return { iceServer: relayTurnServer, testServers: servers }
   }
 
   const getCredentialFailureMessage = (error: unknown) => {
