@@ -367,11 +367,15 @@ Risks + rollback:
   - `QR_SCANNER_NOT_SUPPORTED`
   - `INVALID_QR_PAYLOAD`
 - Existing UPI parser helpers remain backward compatible; decoded UPI payloads are now validated to require a payee address before returning scan success.
+- UPI payload parsing is now strict for scan flows: `pa` must be a valid UPI ID, `am` must be a finite positive number when present, and `cu` must be a 3-letter currency code; malformed UPI payloads fail with `INVALID_QR_PAYLOAD`.
+- `scanQR` now decodes from real image inputs (`Blob`/`File`/`ImageData`/image sources) via `BarcodeDetector` instead of simulated/random scan outcomes.
+- Scan history persistence behavior is explicit: local persistence is used only when `window.localStorage` is available; otherwise history remains in-memory (`memory_ephemeral`) for the active runtime session.
 
 Risks + rollback:
 1. **Risk:** browsers/environments without `BarcodeDetector` support will return `QR_SCANNER_NOT_SUPPORTED`. **Mitigation:** surface deterministic UX fallback and keep manual UPI entry available.
-2. **Risk:** malformed UPI payloads that previously passed as opaque text now fail with `INVALID_QR_PAYLOAD`. **Mitigation:** validation is limited to mandatory UPI payee address only to avoid over-rejection.
+2. **Risk:** malformed UPI payloads that previously passed as opaque text now fail with `INVALID_QR_PAYLOAD` under stricter UPI validation (`pa`/`am`/`cu`). **Mitigation:** checks are constrained to mandatory payment-safety fields and standards-compliant currency format.
 3. **Rollback:** revert `lib/services/qr-service.tsx` to prior mock scan/generate implementation if runtime compatibility issues arise; API signatures remain unchanged.
+4. **Risk:** non-browser/runtime contexts without `BarcodeDetector` support now return `QR_SCANNER_NOT_SUPPORTED`. **Mitigation:** maintain manual UPI entry fallback and environment capability checks before scan initiation.
 
 - Link checkout now enforces validator threshold controls for HITL and MFA before provider session creation.
 - Wallet default payment method updates and subscription lifecycle transitions are treated as high-risk payment actions and require HITL + MFA.

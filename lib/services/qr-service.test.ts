@@ -4,8 +4,10 @@ import { QrService, qrScanErrors } from "./qr-service"
 
 const SAMPLE_UPI_PAYLOAD = "upi://pay?pa=merchant@upi&pn=RunAsh%20Store&am=149.99&cu=INR&tn=Order%20Payment"
 
-test("generateQR + scanQR round-trip decodes a scannable payload", async () => {
+test("generateQR + scanQR decodes valid UPI and stores scan history", async () => {
   const service = QrService.getInstance()
+  service.clearHistory()
+
   const originalBarcodeDetector = globalThis.BarcodeDetector
   const originalCreateImageBitmap = globalThis.createImageBitmap
   const originalFetch = globalThis.fetch
@@ -38,20 +40,65 @@ test("generateQR + scanQR round-trip decodes a scannable payload", async () => {
     assert.equal(scanned.data, SAMPLE_UPI_PAYLOAD)
     assert.equal(scanned.parsedData?.type, "UPI")
     assert.equal(scanned.parsedData?.data?.payeeAddress, "merchant@upi")
+
+    const history = service.getScanHistory()
+    assert.equal(history.length, 1)
+    assert.equal(history[0]?.data, SAMPLE_UPI_PAYLOAD)
+    assert.equal(service.getScanHistoryPersistenceMode(), "memory_ephemeral")
   } finally {
     globalThis.BarcodeDetector = originalBarcodeDetector
     globalThis.createImageBitmap = originalCreateImageBitmap
     globalThis.fetch = originalFetch
+    service.clearHistory()
   }
 })
 
-test("scanQR returns deterministic errors for unreadable input and no code found", async () => {
+test("scanQR decodes non-UPI QR payloads as generic types", async () => {
   const service = QrService.getInstance()
+
   const originalBarcodeDetector = globalThis.BarcodeDetector
   const originalCreateImageBitmap = globalThis.createImageBitmap
+
+  globalThis.createImageBitmap = async () => ({ source: "image" }) as ImageBitmap
+
+  class BarcodeDetectorMock {
+    async detect() {
+      return [{ rawValue: "https://runash.in/pay", format: "qr_code" }]
+    }
+  }
+
+  globalThis.BarcodeDetector = BarcodeDetectorMock as unknown as typeof BarcodeDetector
+
+  try {
+    const scanned = await service.scanQR(new Blob(["non-upi"]))
+    assert.equal(scanned.parsedData?.type, "URL")
+    assert.equal(scanned.parsedData?.data?.url, "https://runash.in/pay")
+  } finally {
+    globalThis.BarcodeDetector = originalBarcodeDetector
+    globalThis.createImageBitmap = originalCreateImageBitmap
+  }
+})
+
+test("scanQR returns deterministic errors for unreadable image inputs", async () => {
+  const service = QrService.getInstance()
   const originalFetch = globalThis.fetch
 
   globalThis.fetch = async () => ({ ok: false }) as Response
+
+  try {
+    await assert.rejects(() => service.scanQR("https://example.com/missing.png"), {
+      message: qrScanErrors.unreadableInput,
+    })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("scanQR returns deterministic decode failure when QR cannot be decoded", async () => {
+  const service = QrService.getInstance()
+  const originalBarcodeDetector = globalThis.BarcodeDetector
+  const originalCreateImageBitmap = globalThis.createImageBitmap
+
   globalThis.createImageBitmap = async () => ({ source: "image" }) as ImageBitmap
 
   class BarcodeDetectorMock {
@@ -63,35 +110,26 @@ test("scanQR returns deterministic errors for unreadable input and no code found
   globalThis.BarcodeDetector = BarcodeDetectorMock as unknown as typeof BarcodeDetector
 
   try {
-    await assert.rejects(() => service.scanQR("https://example.com/not-found.png"), {
-      message: qrScanErrors.unreadableInput,
-    })
-
     await assert.rejects(() => service.scanQR(new Blob(["empty"])), {
       message: qrScanErrors.noCodeFound,
     })
   } finally {
     globalThis.BarcodeDetector = originalBarcodeDetector
     globalThis.createImageBitmap = originalCreateImageBitmap
-    globalThis.fetch = originalFetch
   }
 })
 
-test("parseUPIData handles payload edge-cases without changing existing parser behavior", () => {
+test("parseUPIData strictly validates malformed UPI payloads", () => {
   const service = QrService.getInstance()
 
-  const invalidScheme = service.parseUPIData("http://example.com")
-  assert.equal(invalidScheme, null)
-
-  const missingPayee = service.parseUPIData("upi://pay?pn=NoPayee")
-  assert.equal(missingPayee?.payeeAddress, "")
-  assert.equal(missingPayee?.currency, "INR")
-
-  const invalidAmount = service.parseUPIData("upi://pay?pa=merchant@upi&am=nan")
-  assert.ok(Number.isNaN(invalidAmount?.amount))
+  assert.equal(service.parseUPIData("http://example.com"), null)
+  assert.equal(service.parseUPIData("upi://pay?pn=NoPayee"), null)
+  assert.equal(service.parseUPIData("upi://pay?pa=merchant@upi&am=nan"), null)
+  assert.equal(service.parseUPIData("upi://pay?pa=merchant@upi&cu=RUPEE"), null)
 
   const validPayload = service.parseUPIData(SAMPLE_UPI_PAYLOAD)
   assert.equal(validPayload?.payeeAddress, "merchant@upi")
   assert.equal(validPayload?.amount, 149.99)
   assert.equal(validPayload?.currency, "INR")
 })
+
