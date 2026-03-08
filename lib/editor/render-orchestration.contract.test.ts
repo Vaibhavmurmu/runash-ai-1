@@ -37,3 +37,20 @@ test("completion writes are idempotent for same storage key", () => {
 
   assert.deepEqual(mergeIdempotentCompletion(existing, incoming), existing)
 })
+
+
+test("queue -> processing -> canceled transition remains valid", () => {
+  assert.equal(canTransitionRenderJob("queued", "processing"), true)
+  assert.equal(canTransitionRenderJob("processing", "canceled"), true)
+  assert.doesNotThrow(() => assertRenderJobTransition("processing", "canceled"))
+})
+
+test("failed -> queued -> processing -> retrying -> queued -> processing -> completed transition remains valid", () => {
+  assert.equal(canTransitionRenderJob("failed", "queued"), true)
+  assert.equal(canTransitionRenderJob("queued", "processing"), true)
+  assert.equal(canTransitionRenderJob("processing", "retrying"), true)
+  assert.equal(canTransitionRenderJob("retrying", "queued"), true)
+  assert.equal(canTransitionRenderJob("processing", "completed"), true)
+  assert.doesNotThrow(() => assertRenderJobTransition("failed", "queued"))
+  assert.doesNotThrow(() => assertRenderJobTransition("processing", "retrying"))
+})

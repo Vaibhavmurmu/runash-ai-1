@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { getVideoModelMetadata } from "@/lib/editor/video-models/registry"
 import type { VideoGenerationRequest } from "@/lib/editor/video-models/types"
 import { useEditorPanelContext } from "./editor-panel-context"
+import { GenerationHistoryWidget } from "./generation-history-widget"
 
 export interface GeneratePanelProps {
   selectedModel: string
@@ -33,7 +34,14 @@ export default function GeneratePanel({
   validationErrors,
   onGenerationConfigChange,
 }: GeneratePanelProps) {
-  const { activeTimeline, playheadSeconds } = useEditorPanelContext()
+  const {
+    activeTimeline,
+    playheadSeconds,
+    generationHistory,
+    generationActionState,
+    onCancelRenderJob,
+    onRetryRenderJob,
+  } = useEditorPanelContext()
   const model = getVideoModelMetadata(selectedModel)
 
   return (
@@ -200,6 +208,13 @@ export default function GeneratePanel({
           </div>
         </div>
       </div>
+
+      <GenerationHistoryWidget
+        jobs={generationHistory}
+        actionState={generationActionState}
+        onCancel={onCancelRenderJob}
+        onRetry={onRetryRenderJob}
+      />
     </div>
   )
 }

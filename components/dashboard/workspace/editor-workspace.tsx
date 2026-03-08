@@ -90,6 +90,69 @@ function getGenerationValidationErrors(modelId: string, payload: VideoGeneration
   }
 }
 
+
+function normalizeRenderJob(value: unknown): EditorRenderJob | null {
+  if (!value || typeof value !== "object") return null
+  const row = value as Record<string, unknown>
+  const id = typeof row.id === "string" ? row.id : null
+  const status = typeof row.status === "string" ? row.status : null
+  const projectId = typeof row.projectId === "string" ? row.projectId : typeof row.project_id === "string" ? row.project_id : null
+  const ownerId = typeof row.ownerId === "string" ? row.ownerId : typeof row.owner_id === "string" ? row.owner_id : ""
+  if (!id || !status || !projectId) return null
+
+  return {
+    id,
+    status: status as EditorRenderJob["status"],
+    projectId,
+    ownerId,
+    requestedBy: typeof row.requestedBy === "string" ? row.requestedBy : typeof row.requested_by === "string" ? row.requested_by : "",
+    payload: row.payload && typeof row.payload === "object" ? (row.payload as Record<string, unknown>) : {},
+    result: row.result && typeof row.result === "object" ? (row.result as Record<string, unknown>) : {},
+    outputAssetId:
+      typeof row.outputAssetId === "string"
+        ? row.outputAssetId
+        : typeof row.output_asset_id === "string"
+          ? row.output_asset_id
+          : null,
+    attemptCount: typeof row.attemptCount === "number" ? row.attemptCount : typeof row.attempt_count === "number" ? row.attempt_count : 0,
+    maxAttempts: typeof row.maxAttempts === "number" ? row.maxAttempts : typeof row.max_attempts === "number" ? row.max_attempts : 0,
+    nextRetryAt: typeof row.nextRetryAt === "string" ? row.nextRetryAt : typeof row.next_retry_at === "string" ? row.next_retry_at : null,
+    cancellationToken:
+      typeof row.cancellationToken === "string"
+        ? row.cancellationToken
+        : typeof row.cancellation_token === "string"
+          ? row.cancellation_token
+          : null,
+    canceledAt: typeof row.canceledAt === "string" ? row.canceledAt : typeof row.canceled_at === "string" ? row.canceled_at : null,
+    lastErrorCode:
+      typeof row.lastErrorCode === "string"
+        ? row.lastErrorCode
+        : typeof row.last_error_code === "string"
+          ? row.last_error_code
+          : null,
+    providerTrace:
+      row.providerTrace && typeof row.providerTrace === "object"
+        ? (row.providerTrace as Record<string, unknown>)
+        : row.provider_trace && typeof row.provider_trace === "object"
+          ? (row.provider_trace as Record<string, unknown>)
+          : {},
+    providerOutput:
+      row.providerOutput && typeof row.providerOutput === "object"
+        ? (row.providerOutput as Record<string, unknown>)
+        : row.provider_output && typeof row.provider_output === "object"
+          ? (row.provider_output as Record<string, unknown>)
+          : {},
+    outputPublication:
+      row.outputPublication && typeof row.outputPublication === "object"
+        ? (row.outputPublication as Record<string, unknown>)
+        : row.output_publication && typeof row.output_publication === "object"
+          ? (row.output_publication as Record<string, unknown>)
+          : {},
+    createdAt: typeof row.createdAt === "string" ? row.createdAt : typeof row.created_at === "string" ? row.created_at : "",
+    updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : typeof row.updated_at === "string" ? row.updated_at : new Date().toISOString(),
+  }
+}
+
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map((entry) => stableSerialize(entry)).join(",")}]`
@@ -128,6 +191,11 @@ export function EditorWorkspace() {
   const [playbackTime, setPlaybackTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [generationJob, setGenerationJob] = useState<EditorRenderJob | null>(null)
+  const [generationHistory, setGenerationHistory] = useState<EditorRenderJob[]>([])
+  const [generationActionState, setGenerationActionState] = useState<{ cancelingJobId: string | null; retryingJobId: string | null }>({
+    cancelingJobId: null,
+    retryingJobId: null,
+  })
   const generationAbortRef = useRef<AbortController | null>(null)
   const generationRunIdRef = useRef(0)
   const generationStreamRef = useRef<EventSource | null>(null)
@@ -250,6 +318,7 @@ export function EditorWorkspace() {
         if (!res.ok) throw new Error("Failed to load project")
         const json = await res.json()
         setProject(json.project)
+        setGenerationHistory(Array.isArray(json.project?.renderJobs) ? json.project.renderJobs : [])
         setShowCreateProject(false)
         const savedModel = json.project?.metadata?.selectedModel
         if (typeof savedModel === "string" && savedModel.length > 0) {
@@ -674,32 +743,17 @@ export function EditorWorkspace() {
       projectRef.current?.id !== sourceProjectId ||
       activeTimelineIdRef.current !== sourceTimelineId
 
-    const normalizeJob = (value: unknown): EditorRenderJob | null => {
-      if (!value || typeof value !== "object") return null
-      const row = value as Record<string, unknown>
-      const id = typeof row.id === "string" ? row.id : null
-      const status = typeof row.status === "string" ? row.status : null
-      const projectId = typeof row.projectId === "string" ? row.projectId : typeof row.project_id === "string" ? row.project_id : null
-      const ownerId = typeof row.ownerId === "string" ? row.ownerId : typeof row.owner_id === "string" ? row.owner_id : ""
-      if (!id || !status || !projectId) return null
+    const upsertHistoryJob = (nextJob: EditorRenderJob) => {
+      setGenerationHistory((prev) => {
+        const existingIndex = prev.findIndex((entry) => entry.id === nextJob.id)
+        if (existingIndex === -1) {
+          return [nextJob, ...prev].slice(0, 20)
+        }
 
-      return {
-        id,
-        status: status as EditorRenderJob["status"],
-        projectId,
-        ownerId,
-        requestedBy: typeof row.requestedBy === "string" ? row.requestedBy : typeof row.requested_by === "string" ? row.requested_by : "",
-        payload: row.payload && typeof row.payload === "object" ? (row.payload as Record<string, unknown>) : {},
-        result: row.result && typeof row.result === "object" ? (row.result as Record<string, unknown>) : {},
-        outputAssetId:
-          typeof row.outputAssetId === "string"
-            ? row.outputAssetId
-            : typeof row.output_asset_id === "string"
-              ? row.output_asset_id
-              : null,
-        createdAt: typeof row.createdAt === "string" ? row.createdAt : typeof row.created_at === "string" ? row.created_at : "",
-        updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : typeof row.updated_at === "string" ? row.updated_at : new Date().toISOString(),
-      }
+        const next = [...prev]
+        next[existingIndex] = nextJob
+        return next.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 20)
+      })
     }
 
     const pollForCompletion = async (jobId: string) => {
@@ -712,10 +766,14 @@ export function EditorWorkspace() {
         if (!pollRes.ok) break
 
         const pollJson = await pollRes.json()
-        const polled = normalizeJob(pollJson.job)
+        const polled = normalizeRenderJob(pollJson.job)
         if (!polled || isStaleOrCancelled()) return
 
         setGenerationJob(polled)
+        upsertHistoryJob(polled)
+        if (["queued", "processing", "retrying", "completed", "failed", "canceled"].includes(polled.status)) {
+          setGenerationActionState({ cancelingJobId: null, retryingJobId: null })
+        }
         if (polled.status === "completed") {
           toast({ title: "Generation completed", description: "Your render job has completed." })
           return
@@ -780,7 +838,7 @@ export function EditorWorkspace() {
           try {
             const parsed = JSON.parse(event.data) as { payload?: { jobId?: string; status?: string; updatedAt?: string; progress?: number | null; stage?: string | null } }
             if (parsed.payload?.jobId !== jobId) return
-            const nextJob = normalizeJob({
+            const nextJob = normalizeRenderJob({
               ...generationJob,
               id: parsed.payload.jobId,
               status: parsed.payload.status,
@@ -796,6 +854,10 @@ export function EditorWorkspace() {
             if (!nextJob) return
 
             setGenerationJob(nextJob)
+            upsertHistoryJob(nextJob)
+            if (["queued", "processing", "retrying", "completed", "failed", "canceled"].includes(nextJob.status)) {
+              setGenerationActionState({ cancelingJobId: null, retryingJobId: null })
+            }
             if (nextJob.status === "completed") {
               toast({ title: "Generation completed", description: "Your render job has completed." })
               stopStream()
@@ -845,10 +907,11 @@ export function EditorWorkspace() {
         controller.signal,
       )
       if (isStaleOrCancelled()) return
-      const job = normalizeJob(createJson.job)
+      const job = normalizeRenderJob(createJson.job)
       if (!job || isStaleOrCancelled()) return
 
       setGenerationJob(job)
+      upsertHistoryJob(job)
       toast({ title: "Generation queued", description: "Render job started for this timeline." })
 
       try {
@@ -867,6 +930,55 @@ export function EditorWorkspace() {
       if (!isMountedRef.current) return
       if (generationRunIdRef.current !== currentRunId) return
       setIsGeneratingRender(false)
+    }
+  }
+
+
+  const handleCancelRenderJob = async (jobId: string) => {
+    setGenerationActionState((prev) => ({ ...prev, cancelingJobId: jobId }))
+    try {
+      const res = await fetch(`/api/editor/render-jobs/${jobId}/cancel`, { method: "POST" })
+      if (!res.ok) throw new Error("Cancel failed")
+      const json = await res.json()
+      const nextJob = normalizeRenderJob(json.job)
+      if (!nextJob) return
+      setGenerationJob(nextJob)
+      setGenerationHistory((prev) => {
+        const idx = prev.findIndex((entry) => entry.id === nextJob.id)
+        if (idx === -1) return [nextJob, ...prev]
+        const next = [...prev]
+        next[idx] = nextJob
+        return next
+      })
+      toast({ title: "Generation canceled" })
+    } catch {
+      toast({ title: "Cancel failed", description: "Unable to cancel render job.", variant: "destructive" })
+    } finally {
+      setGenerationActionState((prev) => ({ ...prev, cancelingJobId: null }))
+    }
+  }
+
+  const handleRetryRenderJob = async (jobId: string) => {
+    setGenerationActionState((prev) => ({ ...prev, retryingJobId: jobId }))
+    try {
+      const res = await fetch(`/api/editor/render-jobs/${jobId}/retry`, { method: "POST" })
+      if (!res.ok) throw new Error("Retry failed")
+      const json = await res.json()
+      const nextJob = normalizeRenderJob(json.job)
+      if (!nextJob) return
+      setGenerationJob(nextJob)
+      setGenerationHistory((prev) => {
+        const idx = prev.findIndex((entry) => entry.id === nextJob.id)
+        if (idx === -1) return [nextJob, ...prev]
+        const next = [...prev]
+        next[idx] = nextJob
+        return next
+      })
+      toast({ title: "Generation retried", description: "Render job has been re-queued." })
+    } catch {
+      toast({ title: "Retry failed", description: "Unable to retry render job.", variant: "destructive" })
+    } finally {
+      setGenerationActionState((prev) => ({ ...prev, retryingJobId: null }))
     }
   }
 
@@ -906,6 +1018,8 @@ export function EditorWorkspace() {
 
   useEffect(() => {
     setGenerationJob(null)
+    setGenerationHistory([])
+    setGenerationActionState({ cancelingJobId: null, retryingJobId: null })
     generationAbortRef.current?.abort()
     generationStreamRef.current?.close()
     generationStreamRef.current = null
@@ -1003,6 +1117,10 @@ export function EditorWorkspace() {
             onTimelineChange={handleTimelineChange}
             selectedSegment={selectedSegment}
             playheadSeconds={playbackTime}
+            generationHistory={generationHistory}
+            generationActionState={generationActionState}
+            onCancelRenderJob={handleCancelRenderJob}
+            onRetryRenderJob={handleRetryRenderJob}
           />
           {isMobile ? (
             <Sheet open={isChatOpen} onOpenChange={setIsChatOpen}>

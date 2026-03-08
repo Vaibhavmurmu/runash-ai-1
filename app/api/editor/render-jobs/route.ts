@@ -23,6 +23,30 @@ const DEFAULT_MAX_RESOLUTION_PIXELS = Number(process.env.EDITOR_RENDER_MAX_RESOL
 const modelTierOrder = ["standard", "pro", "enterprise"] as const
 type ModelTier = (typeof modelTierOrder)[number]
 
+function mapRenderJobRow(row: Record<string, any>) {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    ownerId: row.owner_id,
+    status: row.status,
+    requestedBy: row.requested_by,
+    payload: row.payload ?? {},
+    result: row.result ?? {},
+    outputAssetId: row.output_asset_id,
+    attemptCount: Number(row.attempt_count ?? 0),
+    maxAttempts: Number(row.max_attempts ?? 0),
+    nextRetryAt: row.next_retry_at ?? null,
+    cancellationToken: row.cancellation_token ?? null,
+    canceledAt: row.canceled_at ?? null,
+    lastErrorCode: row.last_error_code ?? null,
+    providerTrace: row.provider_trace ?? {},
+    providerOutput: row.provider_output ?? {},
+    outputPublication: row.output_publication ?? {},
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
 function parseResolution(resolution?: string): { width: number; height: number } | null {
   if (!resolution) return null
   const matched = /^(\d{2,5})x(\d{2,5})$/i.exec(resolution.trim())
@@ -180,12 +204,31 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url)
   const projectId = searchParams.get("projectId")
+  const status = searchParams.get("status")
+  const historyMode = searchParams.get("history") === "1"
+  const limitParam = Number(searchParams.get("limit") ?? 25)
+  const limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(limitParam, 100)) : 25
+  const cursor = searchParams.get("cursor")
 
-  const jobs = projectId
-    ? await sql`SELECT * FROM editor_render_jobs WHERE owner_id=${auth.userId} AND project_id=${projectId} ORDER BY created_at DESC`
-    : await sql`SELECT * FROM editor_render_jobs WHERE owner_id=${auth.userId} ORDER BY created_at DESC LIMIT 25`
+  const statusFilter =
+    status && ["queued", "processing", "retrying", "completed", "failed", "canceled"].includes(status)
+      ? status
+      : null
 
-  return NextResponse.json({ jobs })
+  const jobs = await sql`
+    SELECT *
+    FROM editor_render_jobs
+    WHERE owner_id=${auth.userId}
+      AND (${projectId}::uuid IS NULL OR project_id=${projectId}::uuid)
+      AND (${statusFilter}::text IS NULL OR status=${statusFilter}::text)
+      AND (${cursor}::timestamptz IS NULL OR created_at < ${cursor}::timestamptz)
+    ORDER BY created_at DESC
+    LIMIT ${historyMode ? limit : Math.min(limit, 25)}
+  `
+
+  const nextCursor = jobs.length === (historyMode ? limit : Math.min(limit, 25)) ? jobs.at(-1)?.created_at ?? null : null
+
+  return NextResponse.json({ jobs: jobs.map(mapRenderJobRow), nextCursor })
 }
 
 export async function POST(request: Request) {
@@ -360,6 +403,15 @@ export async function POST(request: Request) {
     payload: job.payload ?? {},
     result: job.result ?? {},
     outputAssetId: job.output_asset_id,
+    attemptCount: Number(job.attempt_count ?? 0),
+    maxAttempts: Number(job.max_attempts ?? 0),
+    nextRetryAt: job.next_retry_at ?? null,
+    cancellationToken: job.cancellation_token ?? null,
+    canceledAt: job.canceled_at ?? null,
+    lastErrorCode: job.last_error_code ?? null,
+    providerTrace: job.provider_trace ?? {},
+    providerOutput: job.provider_output ?? {},
+    outputPublication: job.output_publication ?? {},
     createdAt: job.created_at,
     updatedAt: job.updated_at,
   })

@@ -82,6 +82,15 @@ export interface EditorRenderJob {
   payload: Record<string, unknown>
   result: Record<string, unknown>
   outputAssetId: string | null
+  attemptCount: number
+  maxAttempts: number
+  nextRetryAt: string | null
+  cancellationToken: string | null
+  canceledAt: string | null
+  lastErrorCode: string | null
+  providerTrace: Record<string, unknown>
+  providerOutput: Record<string, unknown>
+  outputPublication: Record<string, unknown>
   createdAt: string
   updatedAt: string
 }
