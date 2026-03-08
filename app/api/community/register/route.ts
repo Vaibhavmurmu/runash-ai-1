@@ -9,7 +9,7 @@ import { handleCommunityRegisterPostRequest } from "./register-route-handler"
  */
 export async function POST(request: Request) {
   return handleCommunityRegisterPostRequest(request, {
-    getSession: getServerAuthSession,
+    getSession: () => getServerAuthSession(new Headers(request.headers)),
     register: registerCommunityEvent,
     audit: auditCommunityRegistrationAttempt,
   })

@@ -2,6 +2,7 @@ export type CommunityRegistrationAuditOutcome =
   | "unauthorized"
   | "invalid_request"
   | "invalid_event"
+  | "registration_closed"
   | "already_registered"
   | "created"
 
