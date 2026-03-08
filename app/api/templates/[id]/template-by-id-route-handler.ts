@@ -1,20 +1,14 @@
 import { NextResponse } from "next/server"
 import type { ServerAuthSession } from "@/lib/auth"
-import type { TemplateRecord } from "@/lib/repositories/templates"
+import type { TemplateRecord, TemplateViewerContext } from "@/lib/repositories/templates"
 
 export interface TemplateByIdRouteDeps {
   getSession: () => Promise<ServerAuthSession | null>
   getTemplateById: (id: string) => Promise<TemplateRecord | null>
-  getTemplateByIdForViewer: (
-    id: string,
-    viewer: { userId: string; role: string; workspaceId: number | null },
-  ) => Promise<TemplateRecord | null>
+  getTemplateByIdForViewer: (id: string, viewer: TemplateViewerContext) => Promise<TemplateRecord | null>
 }
 
-export async function handleGetTemplateById(
-  templateId: string,
-  deps: TemplateByIdRouteDeps,
-) {
+export async function handleGetTemplateById(templateId: string, deps: TemplateByIdRouteDeps) {
   try {
     const session = await deps.getSession()
     if (!session) {
@@ -47,6 +41,7 @@ export async function handleGetTemplateById(
       css: template.css,
       ...(template.javascript ? { javascript: template.javascript } : {}),
       isPremium: template.isPremium,
+      scope: template.scope,
       tags: template.tags,
       createdAt: template.createdAt,
       updatedAt: template.updatedAt,
