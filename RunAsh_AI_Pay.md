@@ -788,3 +788,10 @@ Risk + rollback:
 1. **Risk:** increased log/metric volume may raise observability ingestion cost.
 2. **Mitigation:** logs are structured/sanitized and scoped to operational lifecycle events.
 3. **Rollback:** revert observability-only changes in API/service files and `lib/operations-observability.ts`; no data/schema rollback required.
+
+## Exchange-rate resiliency contract (2026-03)
+
+- `/api/exchange-rates` now serves payment-safe currency rates from a provider-backed snapshot with stale metadata (`stale`, `tooOld`) so checkout or invoice previews can surface explicit error states instead of silently defaulting to constants.
+- Latest successful provider rates are persisted with upsert semantics in `exchange_rates` and kept in in-memory cache for stale-while-revalidate reads when the upstream provider is unavailable.
+- Currency pairs that cannot be resolved are returned in `unavailableCurrencies`; clients must block conversions for those pairs rather than falling back to `1` or hardcoded rates.
+- Rollback: revert to previous hook/service behavior only if provider and DB path is unavailable; keep the API contract stable (`rates`, `supportedCurrencies`, `unavailableCurrencies`, `stale`, `tooOld`) during rollback.
