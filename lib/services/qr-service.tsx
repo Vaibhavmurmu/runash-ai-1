@@ -1,6 +1,7 @@
 "use client"
 
 import { QrCode, Smartphone, Wifi, User, Globe } from "lucide-react"
+import QRCode from "qrcode"
 
 export interface UPIData {
   payeeAddress: string
@@ -25,6 +26,15 @@ export interface QRScanResult {
   format?: string
   parsedData?: QRCodeData
 }
+
+type QRScanInput = string | Blob | File | ImageData | HTMLImageElement | HTMLCanvasElement | HTMLVideoElement
+
+const QR_SCAN_ERRORS = {
+  unreadableInput: "UNREADABLE_QR_INPUT",
+  noCodeFound: "QR_CODE_NOT_FOUND",
+  unsupportedEnvironment: "QR_SCANNER_NOT_SUPPORTED",
+  invalidPayload: "INVALID_QR_PAYLOAD",
+} as const
 
 export interface QRGenerateOptions {
   size?: number
@@ -73,9 +83,17 @@ export class QrService {
         url: qrData,
       }
     } catch (error) {
-      console.error("Error parsing UPI data:", error)
       return null
     }
+  }
+
+  private isValidDecodedPayload(payload: string): boolean {
+    const parsedData = this.parseQRData(payload)
+    if (parsedData.type !== "UPI") {
+      return true
+    }
+
+    return Boolean(parsedData.data?.payeeAddress)
   }
 
   /**
@@ -346,24 +364,17 @@ export class QrService {
   }
 
   /**
-   * Generate QR code (mock implementation)
+   * Generate QR code data URL using qrcode encoder
    */
   async generateQR(data: string, options?: QRGenerateOptions): Promise<string> {
-    // Mock QR generation - in real implementation, use a QR library
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const size = options?.size || 256
-        resolve(
-          `data:image/svg+xml;base64,${btoa(`
-          <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-            <rect width="100%" height="100%" fill="white"/>
-            <text x="50%" y="50%" textAnchor="middle" dy=".3em" fontFamily="monospace" fontSize="12">
-              QR: ${data.substring(0, 20)}...
-            </text>
-          </svg>
-        `)}`,
-        )
-      }, 100)
+    return QRCode.toDataURL(data, {
+      width: options?.size ?? 256,
+      errorCorrectionLevel: options?.errorCorrectionLevel ?? "M",
+      margin: options?.margin ?? 1,
+      color: {
+        dark: options?.color?.dark ?? "#000000",
+        light: options?.color?.light ?? "#FFFFFF",
+      },
     })
   }
 
@@ -382,29 +393,77 @@ export class QrService {
   }
 
   /**
-   * Scan QR code (mock implementation)
+   * Scan QR code from image/camera input using BarcodeDetector
    */
-  async scanQR(imageData?: string): Promise<QRScanResult> {
-    // Mock scanning - in real implementation, use a QR scanning library
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        if (Math.random() > 0.8) {
-          reject(new Error("No QR code found"))
-          return
+  async scanQR(imageData?: QRScanInput): Promise<QRScanResult> {
+    const detectorConstructor = globalThis.BarcodeDetector as
+      | (new (options?: { formats?: string[] }) => { detect: (source: ImageBitmapSource) => Promise<Array<{ rawValue?: string; format?: string }>> })
+      | undefined
+
+    if (!detectorConstructor) {
+      throw new Error(QR_SCAN_ERRORS.unsupportedEnvironment)
+    }
+
+    const source = await this.resolveImageSource(imageData)
+    if (!source) {
+      throw new Error(QR_SCAN_ERRORS.unreadableInput)
+    }
+
+    const detector = new detectorConstructor({ formats: ["qr_code"] })
+    const codes = await detector.detect(source)
+
+    if (typeof ImageBitmap !== "undefined" && source instanceof ImageBitmap) {
+      source.close()
+    }
+
+    const detectedCode = codes.find((code) => typeof code.rawValue === "string" && code.rawValue.length > 0)
+    if (!detectedCode?.rawValue) {
+      throw new Error(QR_SCAN_ERRORS.noCodeFound)
+    }
+
+    if (!this.isValidDecodedPayload(detectedCode.rawValue)) {
+      throw new Error(QR_SCAN_ERRORS.invalidPayload)
+    }
+
+    const result: QRScanResult = {
+      data: detectedCode.rawValue,
+      timestamp: new Date(),
+      format: detectedCode.format,
+      parsedData: this.parseQRData(detectedCode.rawValue),
+    }
+
+    this.scanHistory.push(result)
+    return result
+  }
+
+  private async resolveImageSource(imageData?: QRScanInput): Promise<ImageBitmapSource | null> {
+    if (!imageData) {
+      return null
+    }
+
+    if (typeof imageData === "string") {
+      try {
+        const response = await fetch(imageData)
+        if (!response.ok) {
+          return null
         }
 
-        const mockData = "upi://pay?pa=test@upi&pn=Test User&am=100&cu=INR"
-        const result: QRScanResult = {
-          data: mockData,
-          timestamp: new Date(),
-          format: "QR_CODE",
-          parsedData: this.parseQRData(mockData),
-        }
+        const blob = await response.blob()
+        return createImageBitmap(blob)
+      } catch {
+        return null
+      }
+    }
 
-        this.scanHistory.push(result)
-        resolve(result)
-      }, 1000)
-    })
+    if (imageData instanceof Blob || imageData instanceof File) {
+      try {
+        return await createImageBitmap(imageData)
+      } catch {
+        return null
+      }
+    }
+
+    return imageData
   }
 
   /**
@@ -467,6 +526,7 @@ export const getQRDescription = QrService.getQRDescription
 export const isValidUPIId = QrService.isValidUPIId
 export const formatAmount = QrService.formatAmount
 export const generatePaymentQR = QrService.generatePaymentQR
+export const qrScanErrors = QR_SCAN_ERRORS
 
 // Default export
 export default QrService
