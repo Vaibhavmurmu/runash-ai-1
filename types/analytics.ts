@@ -138,3 +138,34 @@ export interface AnalyticsFilters {
   categories?: string[]
   streamTypes?: string[]
 }
+
+export interface AnalyticsApiSummary {
+  streams: Record<string, string | number | null>
+  chat: Record<string, string | number | null>
+  recordings: Record<string, string | number | null>
+  daily: Array<Record<string, string | number | null>>
+}
+
+export interface AnalyticsApiError {
+  code: string
+  message: string
+}
+
+export interface AnalyticsApiEnvelopeSuccess {
+  success: true
+  data: AnalyticsApiSummary
+  error: null
+  requestId?: string
+}
+
+export interface AnalyticsApiEnvelopeFailure {
+  success: false
+  data: null
+  error: AnalyticsApiError
+  requestId?: string
+}
+
+export type AnalyticsApiResponse =
+  | AnalyticsApiEnvelopeSuccess
+  | AnalyticsApiEnvelopeFailure
+  | AnalyticsApiSummary
