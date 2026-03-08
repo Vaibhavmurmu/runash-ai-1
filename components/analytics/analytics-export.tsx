@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Download, FileSpreadsheet, FileText, ImageIcon } from "lucide-react"
-import type { AnalyticsApiResponse, AnalyticsFilters } from "@/types/analytics"
+import type { AnalyticsApiResponse, AnalyticsExportFormat, AnalyticsFilters } from "@/types/analytics"
 
 interface AnalyticsExportProps {
   filters?: Partial<AnalyticsFilters>
@@ -21,7 +21,7 @@ type AnalyticsFetchState = "idle" | "loading" | "success" | "empty" | "error"
 const filenameSafe = (s: string) => s.replace(/[^a-z0-9._-]/gi, "-")
 
 export function AnalyticsExport({ filters }: AnalyticsExportProps) {
-  const [exporting, setExporting] = useState<string | null>(null)
+  const [exporting, setExporting] = useState<AnalyticsExportFormat | null>(null)
   const [fetchState, setFetchState] = useState<AnalyticsFetchState>("idle")
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [fetchedData, setFetchedData] = useState<ExportRow[]>([])
@@ -29,8 +29,37 @@ export function AnalyticsExport({ filters }: AnalyticsExportProps) {
   const printableRef = useRef<HTMLDivElement | null>(null)
 
   const serializedFilters = useMemo(() => JSON.stringify(filters ?? {}), [filters])
-
   const cacheKey = useMemo(() => `analytics-export-cache:${serializedFilters}`, [serializedFilters])
+
+  function reportExportFailure(format: AnalyticsExportFormat, reason: string, stage: "fetch" | "download") {
+    if (typeof window === "undefined") return
+
+    const payload = {
+      event: "analytics_export_failure",
+      format,
+      stage,
+      reason,
+      period: filters?.period?.label || "unknown",
+      hasCachedSnapshot: cachedSnapshot.length > 0,
+      occurredAt: new Date().toISOString(),
+    }
+
+    try {
+      const body = JSON.stringify(payload)
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon("/api/analytics/export-failure", body)
+      } else {
+        void fetch("/api/analytics/export-failure", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body,
+          keepalive: true,
+        })
+      }
+    } catch {
+      // telemetry is non-blocking
+    }
+  }
 
   function readCachedSnapshot() {
     if (typeof window === "undefined") return []
@@ -53,7 +82,7 @@ export function AnalyticsExport({ filters }: AnalyticsExportProps) {
     }
   }
 
-  const loadAnalytics = async () => {
+  async function loadAnalytics(format: AnalyticsExportFormat = "csv"): Promise<ExportRow[]> {
     setFetchState("loading")
     setFetchError(null)
     setFetchedData([])
@@ -61,7 +90,7 @@ export function AnalyticsExport({ filters }: AnalyticsExportProps) {
     const cached = readCachedSnapshot()
     setCachedSnapshot(cached)
 
-    const params = new URLSearchParams()
+    const params = new URLSearchParams({ format, page: "1", pageSize: "1000" })
     Object.entries(filters || {}).forEach(([k, v]) => {
       if (v === undefined || v === null || v === "") return
       if (Array.isArray(v)) {
@@ -80,6 +109,7 @@ export function AnalyticsExport({ filters }: AnalyticsExportProps) {
         body && typeof body === "object" && "error" in body && body.error && typeof body.error.message === "string"
           ? body.error.message
           : `Analytics API request failed (${res.status}).`
+      reportExportFailure(format, explicitMessage, "fetch")
       throw new Error(explicitMessage)
     }
 
@@ -90,6 +120,8 @@ export function AnalyticsExport({ filters }: AnalyticsExportProps) {
       writeCachedSnapshot(rows)
       setCachedSnapshot(rows)
     }
+
+    return rows
   }
 
   useEffect(() => {
@@ -119,8 +151,17 @@ export function AnalyticsExport({ filters }: AnalyticsExportProps) {
       if (!payload.success) {
         throw new Error(payload.error?.message || "Analytics API returned an error.")
       }
-      const dailyRows = Array.isArray(payload.data?.daily) ? payload.data.daily : []
-      return dailyRows.filter((row) => !!row && typeof row === "object") as ExportRow[]
+      const data = payload.data
+      if (data && typeof data === "object" && "rows" in data && Array.isArray(data.rows)) {
+        return data.rows.filter((row) => !!row && typeof row === "object") as ExportRow[]
+      }
+
+      const legacyDaily = data && typeof data === "object" && "daily" in data && Array.isArray(data.daily) ? data.daily : []
+      return legacyDaily.filter((row) => !!row && typeof row === "object") as ExportRow[]
+    }
+
+    if ("rows" in payload && Array.isArray(payload.rows)) {
+      return payload.rows.filter((row) => !!row && typeof row === "object") as ExportRow[]
     }
 
     const maybeDaily = "daily" in payload && Array.isArray(payload.daily) ? payload.daily : []
@@ -243,23 +284,23 @@ export function AnalyticsExport({ filters }: AnalyticsExportProps) {
   }
 
   function escapeHtml(s: string) {
-    return s
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;")
+    return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;")
   }
 
-  async function handleExport(format: "csv" | "json" | "pdf" | "image") {
+  async function handleExport(format: AnalyticsExportFormat) {
     const exportData = fetchState === "success" ? fetchedData : fetchState === "error" ? cachedSnapshot : []
+
+    if (fetchState === "error" && cachedSnapshot.length === 0) {
+      alert(fetchError || "Cannot export because analytics data failed to load.")
+      return
+    }
 
     if (exportData.length === 0) {
       const messageByState: Record<Exclude<AnalyticsFetchState, "success">, string> = {
         idle: "Analytics data is not ready yet.",
         loading: "Analytics data is still loading. Please wait.",
         empty: "No analytics data available for the selected filters.",
-        error: fetchError || "Cannot export because analytics data failed to load and no cached snapshot is available.",
+        error: fetchError || "Cannot export because analytics data failed to load.",
       }
       alert(messageByState[fetchState])
       return
@@ -267,12 +308,15 @@ export function AnalyticsExport({ filters }: AnalyticsExportProps) {
 
     setExporting(format)
     try {
-      if (format === "csv") await exportCSV(exportData)
-      else if (format === "json") await exportJSON(exportData)
-      else if (format === "pdf") await exportPDF(exportData)
-      else if (format === "image") await exportImage(exportData)
+      const latestRows = await loadAnalytics(format)
+      const rowsForExport = latestRows.length > 0 ? latestRows : exportData
+      if (format === "csv") await exportCSV(rowsForExport)
+      else if (format === "json") await exportJSON(rowsForExport)
+      else if (format === "pdf") await exportPDF(rowsForExport)
+      else if (format === "image") await exportImage(rowsForExport)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
+      reportExportFailure(format, message, "download")
       alert(`Export failed: ${message}`)
     } finally {
       setExporting(null)
@@ -294,19 +338,19 @@ export function AnalyticsExport({ filters }: AnalyticsExportProps) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem disabled={exportDisabled} onClick={() => handleExport("csv")}>
+            <DropdownMenuItem disabled={exportDisabled} onClick={() => void handleExport("csv")}>
               <FileSpreadsheet className="h-4 w-4 mr-2" />
               Export as CSV
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={exportDisabled} onClick={() => handleExport("json")}>
+            <DropdownMenuItem disabled={exportDisabled} onClick={() => void handleExport("json")}>
               <FileText className="h-4 w-4 mr-2" />
               Export as JSON
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={exportDisabled} onClick={() => handleExport("pdf")}>
+            <DropdownMenuItem disabled={exportDisabled} onClick={() => void handleExport("pdf")}>
               <FileText className="h-4 w-4 mr-2" />
               Export as PDF
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={exportDisabled} onClick={() => handleExport("image")}>
+            <DropdownMenuItem disabled={exportDisabled} onClick={() => void handleExport("image")}>
               <ImageIcon className="h-4 w-4 mr-2" />
               Export as Image
             </DropdownMenuItem>
@@ -314,6 +358,7 @@ export function AnalyticsExport({ filters }: AnalyticsExportProps) {
         </DropdownMenu>
 
         {fetchState === "loading" && <p className="text-xs text-muted-foreground">Loading analytics data for export…</p>}
+        {fetchState === "success" && <p className="text-xs text-muted-foreground">Export dataset ready ({fetchedData.length} rows).</p>}
         {fetchState === "empty" && <p className="text-xs text-muted-foreground">No analytics data found for current filters.</p>}
         {fetchState === "error" && (
           <div className="space-y-1 text-right" role="alert">
