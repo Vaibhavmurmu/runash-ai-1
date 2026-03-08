@@ -41,6 +41,28 @@ export interface TemplateRecord {
   accessLevel: TemplateAccessLevel
 }
 
+export interface ListTemplatesFilters {
+  category?: string | null
+  tags?: string[]
+}
+
+export interface CreateTemplateInput {
+  name: string
+  category: string
+  html: string
+  css: string
+  description?: string | null
+  thumbnailUrl?: string | null
+  variables?: TemplateVariable[]
+  javascript?: string | null
+  tags?: string[]
+  author?: string | null
+  isPremium?: boolean
+  ownerUserId?: string | null
+  workspaceId?: number | null
+  accessLevel?: TemplateAccessLevel
+}
+
 type TemplateRow = {
   id: string
   name: string
@@ -181,6 +203,151 @@ function canViewTemplate(template: TemplateRow, viewer: TemplateViewerContext): 
   return hasPremiumAccess || isOwner || inWorkspace
 }
 
+function mapTemplateRow(row: TemplateRow): TemplateRecord {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    category: row.category,
+    thumbnailUrl: row.thumbnail_url,
+    variables: parseVariables(row.variables),
+    html: row.html,
+    css: row.css,
+    ...(row.javascript ? { javascript: row.javascript } : {}),
+    isPremium: row.is_premium,
+    tags: parseTags(row.tags),
+    createdAt: new Date(row.created_at).toISOString(),
+    updatedAt: new Date(row.updated_at).toISOString(),
+    downloadCount: toNumber(row.download_count),
+    viewCount: toNumber(row.view_count),
+    usageCount: toNumber(row.usage_count),
+    rating: toNumber(row.rating),
+    ratingCount: toNumber(row.rating_count),
+    author: row.author_name ?? "Unknown",
+    ownerUserId: row.owner_user_id,
+    workspaceId: row.workspace_id,
+    accessLevel: row.access_level,
+  }
+}
+
+export async function listTemplates(filters: ListTemplatesFilters = {}): Promise<TemplateRecord[]> {
+  await ensureTemplateSchema()
+
+  const category = filters.category?.trim() || null
+  const tags = (filters.tags ?? []).map((entry) => entry.trim()).filter(Boolean)
+
+  const rows = await sql<TemplateRow[]>`
+    SELECT
+      t.id,
+      t.name,
+      t.description,
+      t.category,
+      t.thumbnail_url,
+      t.variables,
+      t.html,
+      t.css,
+      t.javascript,
+      t.is_premium,
+      t.tags,
+      t.created_at,
+      t.updated_at,
+      t.author_name,
+      t.owner_user_id,
+      t.workspace_id,
+      t.access_level,
+      COALESCE(c.download_count, 0) AS download_count,
+      COALESCE(c.view_count, 0) AS view_count,
+      COALESCE(c.usage_count, 0) AS usage_count,
+      COALESCE(c.rating, 0) AS rating,
+      COALESCE(c.rating_count, 0) AS rating_count
+    FROM templates t
+    LEFT JOIN template_usage_counters c ON c.template_id = t.id
+    WHERE (${category}::text IS NULL OR t.category = ${category})
+      AND (
+        ${tags.length} = 0
+        OR EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements_text(t.tags) AS tag
+          WHERE tag = ANY(${tags}::text[])
+        )
+      )
+    ORDER BY t.updated_at DESC
+  `
+
+  return rows.map(mapTemplateRow)
+}
+
+export async function createTemplate(input: CreateTemplateInput): Promise<TemplateRecord> {
+  await ensureTemplateSchema()
+
+  const templateId = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const row = await one<TemplateRow>(sql<TemplateRow[]>`
+    INSERT INTO templates (
+      id,
+      name,
+      description,
+      category,
+      thumbnail_url,
+      variables,
+      html,
+      css,
+      javascript,
+      is_premium,
+      tags,
+      owner_user_id,
+      workspace_id,
+      access_level,
+      author_name
+    )
+    VALUES (
+      ${templateId},
+      ${input.name},
+      ${input.description ?? null},
+      ${input.category},
+      ${input.thumbnailUrl ?? null},
+      ${JSON.stringify(input.variables ?? [])}::jsonb,
+      ${input.html},
+      ${input.css},
+      ${input.javascript ?? null},
+      ${input.isPremium ?? false},
+      ${JSON.stringify(input.tags ?? [])}::jsonb,
+      ${input.ownerUserId ?? null},
+      ${input.workspaceId ?? null},
+      ${input.accessLevel ?? "public"},
+      ${input.author ?? "Unknown"}
+    )
+    RETURNING
+      id,
+      name,
+      description,
+      category,
+      thumbnail_url,
+      variables,
+      html,
+      css,
+      javascript,
+      is_premium,
+      tags,
+      created_at,
+      updated_at,
+      author_name,
+      owner_user_id,
+      workspace_id,
+      access_level,
+      0::BIGINT AS download_count,
+      0::BIGINT AS view_count,
+      0::BIGINT AS usage_count,
+      0::NUMERIC AS rating,
+      0::BIGINT AS rating_count
+  `)
+
+  if (!row) {
+    throw new Error("Failed to create template")
+  }
+
+  return mapTemplateRow(row)
+}
+
 export async function getTemplateByIdForViewer(templateId: string, viewer: TemplateViewerContext): Promise<TemplateRecord | null> {
   await ensureTemplateSchema()
 
@@ -220,30 +387,7 @@ export async function getTemplateByIdForViewer(templateId: string, viewer: Templ
     return null
   }
 
-  return {
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    category: row.category,
-    thumbnailUrl: row.thumbnail_url,
-    variables: parseVariables(row.variables),
-    html: row.html,
-    css: row.css,
-    ...(row.javascript ? { javascript: row.javascript } : {}),
-    isPremium: row.is_premium,
-    tags: parseTags(row.tags),
-    createdAt: new Date(row.created_at).toISOString(),
-    updatedAt: new Date(row.updated_at).toISOString(),
-    downloadCount: toNumber(row.download_count),
-    viewCount: toNumber(row.view_count),
-    usageCount: toNumber(row.usage_count),
-    rating: toNumber(row.rating),
-    ratingCount: toNumber(row.rating_count),
-    author: row.author_name ?? "Unknown",
-    ownerUserId: row.owner_user_id,
-    workspaceId: row.workspace_id,
-    accessLevel: row.access_level,
-  }
+  return mapTemplateRow(row)
 }
 
 export async function getTemplateById(templateId: string): Promise<TemplateRecord | null> {
@@ -281,28 +425,5 @@ export async function getTemplateById(templateId: string): Promise<TemplateRecor
 
   if (!row) return null
 
-  return {
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    category: row.category,
-    thumbnailUrl: row.thumbnail_url,
-    variables: parseVariables(row.variables),
-    html: row.html,
-    css: row.css,
-    ...(row.javascript ? { javascript: row.javascript } : {}),
-    isPremium: row.is_premium,
-    tags: parseTags(row.tags),
-    createdAt: new Date(row.created_at).toISOString(),
-    updatedAt: new Date(row.updated_at).toISOString(),
-    downloadCount: toNumber(row.download_count),
-    viewCount: toNumber(row.view_count),
-    usageCount: toNumber(row.usage_count),
-    rating: toNumber(row.rating),
-    ratingCount: toNumber(row.rating_count),
-    author: row.author_name ?? "Unknown",
-    ownerUserId: row.owner_user_id,
-    workspaceId: row.workspace_id,
-    accessLevel: row.access_level,
-  }
+  return mapTemplateRow(row)
 }
