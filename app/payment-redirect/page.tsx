@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/contexts/cart-context"
+import { checkoutOrderSchema, type CheckoutOrderDTO } from "@/lib/types/checkout-order"
 
 type RedirectOrchestrationState = {
   checkoutSessionId?: string
@@ -40,7 +41,12 @@ export default function PaymentRedirectPage() {
           if (!pending) {
             throw new Error("No pending order available. Please retry from checkout.")
           }
-          const orderPayload = JSON.parse(pending)
+          const parsedPayload = checkoutOrderSchema.safeParse(JSON.parse(pending))
+          if (!parsedPayload.success) {
+            throw new Error("Pending order data is invalid. Please retry from checkout.")
+          }
+
+          const orderPayload: CheckoutOrderDTO = parsedPayload.data
           const createRes = await fetch("/api/orders", {
             method: "POST",
             headers: { "Content-Type": "application/json" },

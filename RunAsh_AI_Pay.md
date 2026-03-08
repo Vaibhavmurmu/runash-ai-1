@@ -21,6 +21,14 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Credits purchase routing uses `/pricing?intent=credits`; redeem flow uses in-app validated redeem input before billing handoff.
 - Payment API contract fields, webhook schemas, and auth/payment token formats remain unchanged by these routing updates.
 
+## 2026-03 checkout order DTO unification + POST /api/orders validation hardening
+
+- Checkout and payment redirect now share a single checkout-order DTO/schema (`lib/types/checkout-order.ts`) to keep pending-order/session payloads contract-consistent before server order creation.
+- `POST /api/orders` now enforces explicit Zod validation and returns structured `400` payload errors (`code: INVALID_ORDER_PAYLOAD`, `details[]` with path/message/code) for invalid client payloads.
+- Buyer order creation auth now uses authenticated session-user validation (buyer-appropriate), while seller-only guards are preserved for seller order listing (`GET /api/orders`).
+- Backward compatibility: existing `orders` insert fields (`buyer_name`, `buyer_email`, `buyer_phone`, `shipping_address`, `payment_method`, `items`) and seller listing behavior remain unchanged.
+- Risk + rollback: medium auth/validation risk isolated to order creation. Roll back by reverting `app/api/orders/route.ts`, `app/payment-redirect/page.tsx`, `app/checkout/page.tsx`, and `lib/types/checkout-order.ts` together to restore prior payload/auth behavior.
+
 ## 2026-03 checkout session alias + redirect contract alignment
 
 - Added a public route alias `POST /api/checkout/session` that forwards to canonical billing checkout implementation (`/api/v1/billing/checkout`) to preserve a stable client entrypoint.

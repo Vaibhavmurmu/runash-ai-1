@@ -14,6 +14,7 @@ import { useCart } from "@/contexts/cart-context"
 import CartSummary from "@/components/cart/cart-summary"
 import SustainabilityMetrics from "@/components/cart/sustainability-metrics"
 import Link from "next/link"
+import type { CheckoutOrderDTO } from "@/lib/types/checkout-order"
 
 export default function CheckoutPage() {
   const router = useRouter()
@@ -90,7 +91,7 @@ export default function CheckoutPage() {
     if (!validate()) return
 
     // Build order payload from real data (cart + form)
-    const order = {
+    const order: CheckoutOrderDTO = {
       id: `order_${Date.now()}`,
       createdAt: new Date().toISOString(),
       customer: {
@@ -109,7 +110,17 @@ export default function CheckoutPage() {
         saveForFastCheckout,
         buyAsBusiness,
       },
-      items: cart.items,
+      items: cart.items.map((item) => ({
+        product_id: item.product.id,
+        name: item.product.name,
+        quantity: item.quantity,
+        price: item.selectedVariant?.price ?? item.product.price,
+        selectedVariant: item.selectedVariant,
+        product: {
+          id: item.product.id,
+          stripePriceId: (item.product as { stripePriceId?: string }).stripePriceId,
+        },
+      })),
       totals,
     }
 
