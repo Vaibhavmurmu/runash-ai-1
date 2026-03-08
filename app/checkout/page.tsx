@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,9 +15,11 @@ import CartSummary from "@/components/cart/cart-summary"
 import SustainabilityMetrics from "@/components/cart/sustainability-metrics"
 import Link from "next/link"
 import type { CheckoutOrderDTO } from "@/lib/types/checkout-order"
+import { CheckoutModelDialogSection } from "@/components/checkout/model-dialog-checkout-section"
 
 export default function CheckoutPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [mounted, setMounted] = useState(false)
   const { state } = useCart()
   const { cart, totals } = state
@@ -45,6 +47,10 @@ export default function CheckoutPage() {
   const [acceptTerms, setAcceptTerms] = useState(false)
   const [showUpiAppsDialog, setShowUpiAppsDialog] = useState(false)
   const [showActionSuccessDialog, setShowActionSuccessDialog] = useState(false)
+  const [checkoutSubmitError, setCheckoutSubmitError] = useState<string | null>(null)
+
+  const selectedPlan = searchParams.get("plan") ?? undefined
+  const selectedModel = searchParams.get("model") ?? undefined
 
   // Ensure component is mounted before accessing cart
   useEffect(() => {
@@ -88,7 +94,12 @@ export default function CheckoutPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     // Validate form
-    if (!validate()) return
+    if (!validate()) {
+      setCheckoutSubmitError("Please complete required checkout fields before proceeding.")
+      return
+    }
+
+    setCheckoutSubmitError(null)
 
     // Build order payload from real data (cart + form)
     const order: CheckoutOrderDTO = {
@@ -122,6 +133,10 @@ export default function CheckoutPage() {
         },
       })),
       totals,
+      metadata: {
+        ...(selectedPlan ? { selectedPlan } : {}),
+        ...(selectedModel ? { selectedModel } : {}),
+      },
     }
 
     // Persist pending order so the payment page can pick it up
@@ -140,6 +155,17 @@ export default function CheckoutPage() {
     // Here you could call an API to create an order on the backend and get a payment session.
     // For now we navigate to the payment page and the payment page should read `pendingOrder` from sessionStorage.
     router.push("/payment/runash-pay")
+  }
+
+  const submitFromModelReview = () => {
+    if (processing) return
+    if (!validate()) {
+      setCheckoutSubmitError("Please complete required checkout fields before proceeding.")
+      return
+    }
+
+    setCheckoutSubmitError(null)
+    setShowConfirmDialog(true)
   }
 
   // Show loading state during hydration
@@ -466,6 +492,15 @@ export default function CheckoutPage() {
                     {processing ? "Processing..." : paymentMethod === "upi" ? `Pay with UPI - $${totals.total.toFixed(2)}` : `Complete Order - $${totals.total.toFixed(2)}`}
                   </Button>
                 </form>
+
+                <CheckoutModelDialogSection
+                  selectedPlan={selectedPlan}
+                  selectedModelId={selectedModel}
+                  selectedModelLabel={selectedModel}
+                  isSubmitting={processing}
+                  submitError={checkoutSubmitError}
+                  onCheckoutSubmitFromReview={submitFromModelReview}
+                />
 
                 <div className="flex items-center justify-center space-x-4 text-xs text-gray-600">
                   <div className="flex items-center space-x-1">
