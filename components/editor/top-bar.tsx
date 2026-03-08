@@ -36,7 +36,7 @@ export default function TopBar({ isRecording, onRecordingToggle, onOpenCollabora
           <Button
             variant="outline"
             size="sm"
-            className="gap-2 bg-transparent"
+            className="gap-2 bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
             onClick={() => setInputToolsOpen(true)}
             disabled={Boolean(editingLockedReason)}
             aria-label="Open input tools"
@@ -47,7 +47,14 @@ export default function TopBar({ isRecording, onRecordingToggle, onOpenCollabora
             <span className="hidden md:inline">Inputs</span>
           </Button>
 
-          <Button variant="outline" size="sm" className="gap-2 bg-transparent" onClick={(event) => onOpenModelDialog?.(event.currentTarget)} disabled={Boolean(editingLockedReason)}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2 bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            onClick={(event) => onOpenModelDialog?.(event.currentTarget)}
+            disabled={Boolean(editingLockedReason)}
+            aria-label="Open model picker"
+          >
             <Sparkles className="w-4 h-4" />
             <span className="hidden md:inline">Model</span>
           </Button>
@@ -55,7 +62,7 @@ export default function TopBar({ isRecording, onRecordingToggle, onOpenCollabora
           <Button
             variant={isRecording ? "destructive" : "outline"}
             size="sm"
-            className="gap-2"
+            className="gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
             onClick={() => onRecordingToggle(!isRecording)}
             disabled={Boolean(editingLockedReason)}
             aria-label={isRecording ? "Stop recording" : "Start recording"}
@@ -66,24 +73,48 @@ export default function TopBar({ isRecording, onRecordingToggle, onOpenCollabora
 
           {!isMobile && (
             <>
-              <Button variant="outline" size="sm" className="gap-2 bg-transparent" onClick={onSave} disabled={isSaving || Boolean(editingLockedReason)} aria-label="Save project">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                onClick={onSave}
+                disabled={isSaving || Boolean(editingLockedReason)}
+                aria-label="Save project"
+              >
                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}
                 Save
               </Button>
 
-              <Button variant="outline" size="sm" className="gap-2 bg-transparent" onClick={onOpenCollaboration} aria-label="Open collaboration panel">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                onClick={onOpenCollaboration}
+                aria-label="Open collaboration panel"
+              >
                 <Users className="w-4 h-4" />
                 Collaborate
               </Button>
 
-              <Button asChild variant="outline" size="sm" className="gap-2 bg-transparent" aria-label="Open editor guide">
-                <Link href="/editor/docs">
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="gap-2 bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                aria-label="Open editor guide documentation"
+              >
+                <Link href="/editor/docs" aria-label="Open editor guide documentation">
                   <HelpCircle className="w-4 h-4" />
-                  Help/Docs
+                  <span className="hidden lg:inline">Editor Guide</span>
                 </Link>
               </Button>
 
-              <Button variant="outline" size="sm" className="gap-2 bg-transparent" aria-label="Share project">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                aria-label="Share project"
+              >
                 <Share2 className="w-4 h-4" />
                 Share
               </Button>
@@ -97,21 +128,21 @@ export default function TopBar({ isRecording, onRecordingToggle, onOpenCollabora
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => void onSave?.()} disabled={Boolean(editingLockedReason)}>
+              <DropdownMenuItem onClick={() => void onSave?.()} disabled={Boolean(editingLockedReason)} aria-label="Save project">
                 <Cloud className="w-4 h-4" />
                 Save
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={onOpenCollaboration}>
+              <DropdownMenuItem onClick={onOpenCollaboration} aria-label="Open collaboration panel">
                 <Users className="w-4 h-4" />
                 Collaborate
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link href="/editor/docs">
+                <Link href="/editor/docs" aria-label="Open editor guide documentation">
                   <HelpCircle className="w-4 h-4" />
-                  Help/Docs
+                  Editor Guide
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem aria-label="Share project">
                 <Share2 className="w-4 h-4" />
                 Share
               </DropdownMenuItem>
