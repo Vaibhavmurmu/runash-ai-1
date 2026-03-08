@@ -1,34 +1,42 @@
 import { NextResponse } from "next/server"
 import type { ServerAuthSession } from "@/lib/auth"
-import type { TemplateRecord, TemplateViewerContext } from "@/lib/repositories/templates"
+import type { TemplateByIdAccessResult, TemplateViewerContext } from "@/lib/repositories/templates"
 
 export interface TemplateByIdRouteDeps {
   getSession: () => Promise<ServerAuthSession | null>
-  getTemplateById: (id: string) => Promise<TemplateRecord | null>
-  getTemplateByIdForViewer: (id: string, viewer: TemplateViewerContext) => Promise<TemplateRecord | null>
+  getTemplateByIdWithAccess: (id: string, viewer: TemplateViewerContext) => Promise<TemplateByIdAccessResult>
+}
+
+function isValidTemplateId(templateId: string): boolean {
+  return /^[a-zA-Z0-9_-]{1,128}$/.test(templateId)
 }
 
 export async function handleGetTemplateById(templateId: string, deps: TemplateByIdRouteDeps) {
   try {
+    if (!isValidTemplateId(templateId)) {
+      return NextResponse.json({ error: "Malformed template id" }, { status: 400 })
+    }
+
     const session = await deps.getSession()
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const existingTemplate = await deps.getTemplateById(templateId)
-    if (!existingTemplate) {
-      return NextResponse.json({ error: "Template not found" }, { status: 404 })
-    }
-
-    const template = await deps.getTemplateByIdForViewer(templateId, {
+    const templateResult = await deps.getTemplateByIdWithAccess(templateId, {
       userId: session.user.id,
       role: session.user.role,
       workspaceId: session.user.ssoOrganization,
     })
 
-    if (!template) {
+    if (templateResult.status === "not_found") {
+      return NextResponse.json({ error: "Template not found" }, { status: 404 })
+    }
+
+    if (templateResult.status === "forbidden") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
+
+    const template = templateResult.template
 
     return NextResponse.json({
       id: template.id,

@@ -8,7 +8,7 @@ const session = {
     role: "user",
     ssoOrganization: null,
   },
-} as any
+} as const as any
 
 const template = {
   id: "tmpl_1",
@@ -36,35 +36,31 @@ const template = {
 } as const
 
 test("GET /api/templates/[id] returns template payload", async () => {
+  let capturedViewer: { userId: string; role: string; workspaceId: number | null } | null = null
+
   const response = await handleGetTemplateById("tmpl_1", {
     getSession: async () => session,
-    getTemplateById: async () => template,
-    getTemplateByIdForViewer: async () => template,
+    getTemplateByIdWithAccess: async (_id, viewer) => {
+      capturedViewer = viewer
+      return { status: "ok", template }
+    },
   })
 
   const payload = await response.json()
   assert.equal(response.status, 200)
   assert.equal(payload.id, "tmpl_1")
   assert.equal(payload.counters.downloadCount, 0)
-})
-
-test("GET /api/templates/[id] returns 404 when template does not exist", async () => {
-  const response = await handleGetTemplateById("missing", {
-    getSession: async () => session,
-    getTemplateById: async () => null,
-    getTemplateByIdForViewer: async () => template,
+  assert.deepEqual(capturedViewer, {
+    userId: "user_1",
+    role: "user",
+    workspaceId: null,
   })
-
-  const payload = await response.json()
-  assert.equal(response.status, 404)
-  assert.equal(payload.error, "Template not found")
 })
 
 test("GET /api/templates/[id] enforces auth", async () => {
   const response = await handleGetTemplateById("tmpl_1", {
     getSession: async () => null,
-    getTemplateById: async () => template,
-    getTemplateByIdForViewer: async () => template,
+    getTemplateByIdWithAccess: async () => ({ status: "ok", template }),
   })
 
   assert.equal(response.status, 401)
@@ -73,9 +69,32 @@ test("GET /api/templates/[id] enforces auth", async () => {
 test("GET /api/templates/[id] returns 403 when viewer cannot access template", async () => {
   const response = await handleGetTemplateById("tmpl_1", {
     getSession: async () => session,
-    getTemplateById: async () => template,
-    getTemplateByIdForViewer: async () => null,
+    getTemplateByIdWithAccess: async () => ({ status: "forbidden" }),
   })
 
+  const payload = await response.json()
   assert.equal(response.status, 403)
+  assert.equal(payload.error, "Forbidden")
+})
+
+test("GET /api/templates/[id] returns 404 when template does not exist", async () => {
+  const response = await handleGetTemplateById("missing", {
+    getSession: async () => session,
+    getTemplateByIdWithAccess: async () => ({ status: "not_found" }),
+  })
+
+  const payload = await response.json()
+  assert.equal(response.status, 404)
+  assert.equal(payload.error, "Template not found")
+})
+
+test("GET /api/templates/[id] returns 400 for malformed template id", async () => {
+  const response = await handleGetTemplateById("bad id", {
+    getSession: async () => session,
+    getTemplateByIdWithAccess: async () => ({ status: "ok", template }),
+  })
+
+  const payload = await response.json()
+  assert.equal(response.status, 400)
+  assert.equal(payload.error, "Malformed template id")
 })
