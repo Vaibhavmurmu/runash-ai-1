@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto"
 import { sql } from "@/lib/editor/repository"
 
 export type CollaborationSettings = {
@@ -35,6 +36,26 @@ export type ProjectCollaboratorRecord = {
   role: "editor" | "viewer"
   status: "online" | "idle" | "offline"
   last_active_at: string
+  created_at: string
+  updated_at: string
+}
+
+
+
+export type ProjectCollaborationInviteRecord = {
+  id: string
+  project_id: string
+  owner_id: string
+  invited_by_user_id: string | null
+  invited_by_name: string | null
+  email: string
+  role: "editor" | "viewer"
+  token: string
+  status: "pending" | "accepted" | "revoked" | "expired"
+  expires_at: string
+  accepted_at: string | null
+  accepted_by_user_id: string | null
+  accepted_by_email: string | null
   created_at: string
   updated_at: string
 }
@@ -91,6 +112,31 @@ async function ensureCollaborationSchema() {
       `
 
       await sql`CREATE INDEX IF NOT EXISTS idx_editor_project_activity_project_owner ON editor_project_activity(project_id, owner_id, created_at DESC)`
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS editor_project_collaboration_invites (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          project_id uuid NOT NULL REFERENCES editor_projects(id) ON DELETE CASCADE,
+          owner_id text NOT NULL,
+          invited_by_user_id text,
+          invited_by_name text,
+          email text NOT NULL,
+          role text NOT NULL CHECK (role IN ('editor', 'viewer')),
+          token text NOT NULL UNIQUE,
+          status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'revoked', 'expired')),
+          expires_at timestamptz NOT NULL,
+          accepted_at timestamptz,
+          accepted_by_user_id text,
+          accepted_by_email text,
+          created_at timestamptz NOT NULL DEFAULT now(),
+          updated_at timestamptz NOT NULL DEFAULT now(),
+          UNIQUE(project_id, email, status)
+        )
+      `
+
+      await sql`CREATE INDEX IF NOT EXISTS idx_editor_project_collab_invites_project_owner ON editor_project_collaboration_invites(project_id, owner_id, created_at DESC)`
+      await sql`CREATE INDEX IF NOT EXISTS idx_editor_project_collab_invites_token ON editor_project_collaboration_invites(token)`
+
     })()
   }
 

@@ -266,7 +266,7 @@ export default function CollaborationPanel({ isOpen, onClose, projectId, current
     setIsInviting(true)
 
     try {
-      const response = await fetch(`/api/editor/projects/${encodeURIComponent(projectId)}/collaboration`, {
+      const response = await fetch(`/api/editor/projects/${encodeURIComponent(projectId)}/collaboration/invites`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
@@ -276,9 +276,10 @@ export default function CollaborationPanel({ isOpen, onClose, projectId, current
         throw new Error("Failed to invite collaborator")
       }
 
-      const payload = (await response.json()) as { collaborators: CollaborationApiPayload["collaborators"] }
-      setCollaborators(normalizeCollaborators(payload.collaborators))
+      const payload = (await response.json()) as { invite?: { token?: string }; inviteLink?: string }
       setInviteEmail("")
+      const inviteLink = payload.inviteLink ?? (payload.invite?.token ? `/editor/invite/${payload.invite.token}` : null)
+      setLatestInviteLink(inviteLink)
       await fetchCollaborationState()
     } catch {
       setInviteError("Could not send invite. Try again.")
@@ -506,6 +507,25 @@ export default function CollaborationPanel({ isOpen, onClose, projectId, current
                 {isInviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                 Send Invite
               </Button>
+
+              {latestInviteLink && (
+                <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/40 p-2 text-xs">
+                  <span className="truncate">{latestInviteLink}</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(latestInviteLink)
+                      } catch {
+                        // ignore copy failures
+                      }
+                    }}
+                  >
+                    Copy
+                  </Button>
+                </div>
+              )}
             </div>
           </TabsContent>
 
