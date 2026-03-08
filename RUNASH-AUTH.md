@@ -801,3 +801,11 @@ Use this destructive path only when the application rollback cannot restore serv
 - Added centralized live/editor authorization policy module with explicit operation matrix (`create/start/stop stream`, `edit_timeline`, `run_generation`, `manage_collaborators`).
 - Live/editor mutation routes now enforce tenant-scoped permission + quota checks and return structured denial codes (`AUTHZ_PERMISSION_DENIED`, `TENANT_QUOTA_*`).
 - Privileged operation audits are recorded with sanitized metadata only (tenant ID, role, operation, outcome, denial code) and no secrets/tokens/media credentials.
+
+## 2026-03 auth analytics geo-enrichment + session telemetry hardening
+
+- Auth analytics now derives location dashboards from an IP-to-geo cache (`auth_ip_geo_cache`) populated from event/threat metadata and short-lived enrichment sources; static geographic arrays were removed from runtime code paths.
+- Location retention is constrained with an explicit `expires_at` TTL policy (90 days) and periodic cleanup in `refresh_auth_security_dashboard_rollups()`.
+- Stored geo fields are limited to country/region-level attributes for analytics and avoid city/lat/long persistence in auth event payloads.
+- Real-time analytics now computes average session duration and peak concurrent users from `user_sessions` windows instead of fixed constants.
+- Dashboard hot paths now use materialized views (`mv_auth_geographic_login_daily`, `mv_security_geographic_threat_daily`) with a refresh function for predictable query latency.
