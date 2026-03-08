@@ -15,9 +15,10 @@ const runQuery = (...args: Parameters<ReturnType<typeof neon>>) => getSqlClient(
 const GEO_CACHE_RETENTION_DAYS = 90
 
 async function upsertThreatIpGeoCache(start: string, end: string): Promise<void> {
-  await runQuery(
+  const upsertResult = await runQuery(
     `
-      INSERT INTO auth_ip_geo_cache (
+      WITH upserted_rows AS (
+        INSERT INTO auth_ip_geo_cache (
         ip_address,
         country_code,
         country_name,
@@ -60,11 +61,40 @@ async function upsertThreatIpGeoCache(start: string, end: string): Promise<void>
         last_enriched_at = NOW(),
         expires_at = NOW() + ($3::text || ' days')::interval,
         updated_at = NOW()
+        RETURNING 1
+      )
+      SELECT COUNT(*)::bigint as upserted_count FROM upserted_rows
     `,
     [start, end, GEO_CACHE_RETENTION_DAYS],
   )
+
+  await recordIngestionTelemetry("security_threats", "geo_ip_enrichment", Number(upsertResult[0]?.upserted_count ?? 0), {
+    rangeStart: start,
+    rangeEnd: end,
+    retentionDays: GEO_CACHE_RETENTION_DAYS,
+  })
 }
 
+
+
+async function recordIngestionTelemetry(source: string, telemetryType: string, recordsIngested: number, metadata: Record<string, unknown>) {
+  try {
+    await runQuery(
+      `
+      INSERT INTO auth_analytics_ingestion_telemetry (metric_date, source, telemetry_type, records_ingested, metadata, created_at)
+      VALUES (CURRENT_DATE, $1, $2, $3, $4::jsonb, NOW())
+      ON CONFLICT (metric_date, source, telemetry_type) DO UPDATE
+      SET
+        records_ingested = EXCLUDED.records_ingested,
+        metadata = EXCLUDED.metadata,
+        created_at = NOW()
+    `,
+      [source, telemetryType, recordsIngested, JSON.stringify(metadata)],
+    )
+  } catch {
+    // Non-blocking ingestion telemetry.
+  }
+}
 
 export interface SecurityThreat {
   id: number

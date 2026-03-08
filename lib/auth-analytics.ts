@@ -68,30 +68,32 @@ export interface AuthAnalyticsData {
   realTimeMetrics: {
     activeUsers: number
     currentSessions: number
-    avgSessionDuration: number | null
-    peakConcurrentUsers: number | null
+    avgSessionDuration: number
+    peakConcurrentUsers: number
   }
 }
 
 export function computeRealTimeMetrics(input: {
-  activeUsersRows: Array<{ active_users?: string | number }>
-  currentSessionsRows: Array<{ current_sessions?: string | number }>
-  sessionDurationRows: Array<{ avg_session_seconds?: string | number | null }>
-  peakConcurrentRows: Array<{ peak_concurrent_users?: string | number | null }>
+  metricRows: Array<{
+    active_users?: string | number
+    current_sessions?: string | number
+    avg_session_seconds?: string | number | null
+    peak_concurrent_users?: string | number | null
+  }>
 }) {
-  const activeUsers = Number.parseInt(String(input.activeUsersRows[0]?.active_users ?? 0), 10)
-  const currentSessions = Number.parseInt(String(input.currentSessionsRows[0]?.current_sessions ?? 0), 10)
+  const activeUsers = Number.parseInt(String(input.metricRows[0]?.active_users ?? 0), 10)
+  const currentSessions = Number.parseInt(String(input.metricRows[0]?.current_sessions ?? 0), 10)
 
-  const avgSessionSecondsValue = input.sessionDurationRows[0]?.avg_session_seconds
+  const avgSessionSecondsValue = input.metricRows[0]?.avg_session_seconds
   const avgSessionDuration =
     avgSessionSecondsValue === null || avgSessionSecondsValue === undefined
-      ? null
+      ? 0
       : Number.parseFloat((Number(avgSessionSecondsValue) / 60).toFixed(2))
 
-  const peakConcurrentValue = input.peakConcurrentRows[0]?.peak_concurrent_users
+  const peakConcurrentValue = input.metricRows[0]?.peak_concurrent_users
   const peakConcurrentUsers =
     peakConcurrentValue === null || peakConcurrentValue === undefined
-      ? null
+      ? 0
       : Number.parseInt(String(peakConcurrentValue), 10)
 
   return {
@@ -118,9 +120,41 @@ function emptyOverviewMetrics(): AuthAnalyticsData {
     realTimeMetrics: {
       activeUsers: 0,
       currentSessions: 0,
-      avgSessionDuration: null,
-      peakConcurrentUsers: null,
+      avgSessionDuration: 0,
+      peakConcurrentUsers: 0,
     },
+  }
+}
+
+export function assembleGeographicData(rows: Array<{ country?: string; logins?: string | number }>) {
+  const totalGeographicLogins = rows.reduce((sum, row) => sum + Number.parseInt(String(row.logins ?? 0), 10), 0)
+  return rows.map((row) => {
+    const logins = Number.parseInt(String(row.logins ?? 0), 10)
+    return {
+      country: row.country || "Unknown",
+      logins,
+      percentage: totalGeographicLogins > 0 ? (logins / totalGeographicLogins) * 100 : 0,
+    }
+  })
+}
+
+
+async function recordIngestionTelemetry(source: string, telemetryType: string, recordsIngested: number, metadata: Record<string, unknown>) {
+  try {
+    await runQuery(
+      `
+      INSERT INTO auth_analytics_ingestion_telemetry (metric_date, source, telemetry_type, records_ingested, metadata, created_at)
+      VALUES (CURRENT_DATE, $1, $2, $3, $4::jsonb, NOW())
+      ON CONFLICT (metric_date, source, telemetry_type) DO UPDATE
+      SET
+        records_ingested = EXCLUDED.records_ingested,
+        metadata = EXCLUDED.metadata,
+        created_at = NOW()
+    `,
+      [source, telemetryType, recordsIngested, JSON.stringify(metadata)],
+    )
+  } catch {
+    // Non-blocking ingestion telemetry.
   }
 }
 
@@ -156,9 +190,10 @@ export interface SecurityAlert {
 
 export class AuthAnalytics {
   private static async upsertIpGeoCacheForRange(start: string, end: string): Promise<void> {
-    await runQuery(
+    const upsertResult = await runQuery(
       `
-      INSERT INTO auth_ip_geo_cache (
+      WITH upserted_rows AS (
+        INSERT INTO auth_ip_geo_cache (
         ip_address,
         country_code,
         country_name,
@@ -201,9 +236,18 @@ export class AuthAnalytics {
         last_enriched_at = NOW(),
         expires_at = NOW() + ($3::text || ' days')::interval,
         updated_at = NOW()
+        RETURNING 1
+      )
+      SELECT COUNT(*)::bigint as upserted_count FROM upserted_rows
     `,
       [start, end, GEO_CACHE_RETENTION_DAYS],
     )
+
+    await recordIngestionTelemetry("auth_events", "geo_ip_enrichment", Number(upsertResult[0]?.upserted_count ?? 0), {
+      rangeStart: start,
+      rangeEnd: end,
+      retentionDays: GEO_CACHE_RETENTION_DAYS,
+    })
   }
 
   static async getOverviewMetrics(dateRange: { start: string; end: string }): Promise<AuthAnalyticsData> {
@@ -313,12 +357,7 @@ export class AuthAnalytics {
       LIMIT 10
     `
     const geographicRows = await safeRunAuthQuery(geographicQuery, [start, end])
-    const totalGeographicLogins = geographicRows.reduce((sum: number, row: any) => sum + Number.parseInt(row.logins), 0)
-    const geographicData = geographicRows.map((row: any) => ({
-      country: row.country,
-      logins: Number.parseInt(row.logins),
-      percentage: totalGeographicLogins > 0 ? (Number.parseInt(row.logins) / totalGeographicLogins) * 100 : 0,
-    }))
+    const geographicData = assembleGeographicData(geographicRows)
 
     // Get device data (parsed from user agent - simplified)
     const deviceQuery = `
@@ -344,61 +383,63 @@ export class AuthAnalytics {
     }))
 
     // Get real-time metrics
-    const activeUsersQuery = `
-      SELECT COUNT(DISTINCT user_id) as active_users
-      FROM user_sessions 
-      WHERE (expires_at IS NULL OR expires_at > NOW())
-      AND COALESCE(is_active, true) = true
-    `
-    const activeUsers = await safeRunAuthQuery(activeUsersQuery)
-
-    const currentSessionsQuery = `
-      SELECT COUNT(*) as current_sessions
-      FROM user_sessions 
-      WHERE (expires_at IS NULL OR expires_at > NOW())
-      AND COALESCE(is_active, true) = true
-    `
-    const currentSessions = await safeRunAuthQuery(currentSessionsQuery)
-
-    const sessionDurationQuery = `
-      SELECT
-        AVG(EXTRACT(EPOCH FROM (COALESCE(last_activity, expires_at, NOW()) - created_at))) as avg_session_seconds
-      FROM user_sessions
-      WHERE created_at BETWEEN $1 AND $2
-        AND COALESCE(last_activity, expires_at, NOW()) >= created_at
-    `
-    const sessionDuration = await safeRunAuthQuery(sessionDurationQuery, [start, end])
-
-    const peakConcurrentQuery = `
-      WITH session_windows AS (
+    const realTimeMetricsQuery = `
+      WITH metrics_source AS (
         SELECT
-          created_at as started_at,
-          COALESCE(last_activity, expires_at, NOW()) as ended_at
-        FROM user_sessions
-        WHERE created_at <= $2
-          AND COALESCE(last_activity, expires_at, NOW()) >= $1
-      ),
-      events AS (
-        SELECT started_at as event_time, 1 as delta FROM session_windows
+          SUM(active_users)::bigint as active_users,
+          SUM(current_sessions)::bigint as current_sessions,
+          AVG(avg_session_seconds)::numeric as avg_session_seconds,
+          MAX(peak_concurrent_users)::bigint as peak_concurrent_users
+        FROM mv_auth_session_concurrency_daily
+        WHERE date BETWEEN DATE($1) AND DATE($2)
+
         UNION ALL
-        SELECT ended_at as event_time, -1 as delta FROM session_windows
-      ),
-      timeline AS (
+
         SELECT
-          event_time,
-          SUM(delta) OVER (ORDER BY event_time, delta DESC) as concurrent_sessions
-        FROM events
+          COUNT(DISTINCT user_id)::bigint as active_users,
+          COUNT(*)::bigint as current_sessions,
+          AVG(EXTRACT(EPOCH FROM (COALESCE(last_activity, expires_at, NOW()) - created_at)))::numeric as avg_session_seconds,
+          (
+            WITH session_windows AS (
+              SELECT
+                created_at as started_at,
+                COALESCE(last_activity, expires_at, NOW()) as ended_at
+              FROM user_sessions
+              WHERE created_at <= $2
+                AND COALESCE(last_activity, expires_at, NOW()) >= $1
+            ),
+            events AS (
+              SELECT started_at as event_time, 1 as delta FROM session_windows
+              UNION ALL
+              SELECT ended_at as event_time, -1 as delta FROM session_windows
+            ),
+            timeline AS (
+              SELECT SUM(delta) OVER (ORDER BY event_time, delta DESC) as concurrent_sessions
+              FROM events
+            )
+            SELECT COALESCE(MAX(concurrent_sessions), 0)::bigint
+            FROM timeline
+          ) as peak_concurrent_users
+        FROM user_sessions
+        WHERE created_at BETWEEN $1 AND $2
+          AND COALESCE(last_activity, expires_at, NOW()) >= created_at
+          AND NOT EXISTS (
+            SELECT 1
+            FROM mv_auth_session_concurrency_daily mv
+            WHERE mv.date BETWEEN DATE($1) AND DATE($2)
+          )
       )
-      SELECT MAX(concurrent_sessions) as peak_concurrent_users
-      FROM timeline
+      SELECT
+        COALESCE(MAX(active_users), 0)::bigint as active_users,
+        COALESCE(MAX(current_sessions), 0)::bigint as current_sessions,
+        COALESCE(MAX(avg_session_seconds), 0)::numeric as avg_session_seconds,
+        COALESCE(MAX(peak_concurrent_users), 0)::bigint as peak_concurrent_users
+      FROM metrics_source
     `
-    const peakConcurrentUsers = await safeRunAuthQuery(peakConcurrentQuery, [start, end])
+    const realTimeMetricRows = await safeRunAuthQuery(realTimeMetricsQuery, [start, end])
 
     const realTimeMetrics = computeRealTimeMetrics({
-      activeUsersRows: activeUsers,
-      currentSessionsRows: currentSessions,
-      sessionDurationRows: sessionDuration,
-      peakConcurrentRows: peakConcurrentUsers,
+      metricRows: realTimeMetricRows,
     })
 
     return {
