@@ -11,7 +11,9 @@ import CartSummary from "@/components/cart/cart-summary"
 import SustainabilityMetrics from "@/components/cart/sustainability-metrics"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Separator } from "@/components/ui/separator"
+import { ArrowLeft, CheckCircle2, CreditCard, Landmark, Leaf, Lock, QrCode, ShoppingCart, Smartphone } from "lucide-react"
 import { useCart } from "@/contexts/cart-context"
 
 type PaymentMethod = "card" | "upi" | "bank"
@@ -55,6 +57,17 @@ export default function CheckoutPage() {
     businessAddress: "",
   })
 
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [processing, setProcessing] = useState(false)
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "upi">("card")
+  const [buyAsBusiness, setBuyAsBusiness] = useState(false)
+  const [saveForFastCheckout, setSaveForFastCheckout] = useState(true)
+  const [acceptTerms, setAcceptTerms] = useState(false)
+  const [showUpiAppsDialog, setShowUpiAppsDialog] = useState(false)
+  const [showActionSuccessDialog, setShowActionSuccessDialog] = useState(false)
+
+  // Ensure component is mounted before accessing cart
   useEffect(() => {
     setMounted(true)
     try {
@@ -77,42 +90,21 @@ export default function CheckoutPage() {
   const finalTotal = Math.max(totals.total - discount, 0)
 
   const validate = () => {
-    const next: Record<string, string> = {}
-    if (!formData.email) next.email = "Email is required"
-    if (!formData.firstName) next.firstName = "First name is required"
-    if (!formData.lastName) next.lastName = "Last name is required"
-    if (!formData.address) next.address = "Address is required"
-    if (!formData.city) next.city = "City is required"
-    if (!formData.zipCode) next.zipCode = "ZIP code is required"
-
+    const newErrors: Record<string, string> = {}
+    if (!formData.email) newErrors.email = "Email is required"
+    if (!formData.firstName) newErrors.firstName = "First name is required"
+    if (!formData.lastName) newErrors.lastName = "Last name is required"
+    if (!formData.address) newErrors.address = "Address is required"
+    if (!formData.city) newErrors.city = "City is required"
+    if (!formData.zipCode) newErrors.zipCode = "ZIP code is required"
     if (paymentMethod === "card") {
-      if (!formData.nameOnCard) next.nameOnCard = "Cardholder name is required"
-      if (!formData.cardNumber) next.cardNumber = "Card number is required"
-      if (!formData.expiryDate) next.expiryDate = "Expiry date is required"
-      if (!formData.cvv) next.cvv = "CVV is required"
+      if (!formData.cardNumber) newErrors.cardNumber = "Card number is required"
+      if (!formData.expiryDate) newErrors.expiryDate = "Expiry date is required"
+      if (!formData.cvv) newErrors.cvv = "CVV is required"
     }
-
-    if (paymentMethod === "upi" && !formData.upiId) {
-      next.upiId = "UPI ID is required"
-    }
-
-    if (paymentMethod === "bank") {
-      if (!formData.bankAccountHolder) next.bankAccountHolder = "Account holder name is required"
-      if (!formData.bankName) next.bankName = "Bank name is required"
-      if (!formData.accountNumber) next.accountNumber = "Account number is required"
-      if (!formData.ifsc) next.ifsc = "IFSC code is required"
-    }
-
-    if (isBusinessPurchase) {
-      if (!formData.companyName) next.companyName = "Business name is required"
-      if (!formData.gstin) next.gstin = "GSTIN is required"
-      if (!formData.businessAddress) next.businessAddress = "Business address is required"
-    }
-
-    if (!acceptTerms) next.terms = "Please accept terms to continue"
-
-    setErrors(next)
-    return Object.keys(next).length === 0
+    if (!acceptTerms) newErrors.acceptTerms = "Please accept terms to continue"
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
   }
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -134,21 +126,10 @@ export default function CheckoutPage() {
       },
       payment: {
         method: paymentMethod,
-        cardNumber: formData.cardNumber ? `**** **** **** ${formData.cardNumber.slice(-4)}` : "",
+        cardNumber: paymentMethod === "card" && formData.cardNumber ? `**** **** **** ${formData.cardNumber.slice(-4)}` : "",
         nameOnCard: formData.nameOnCard,
-        upiId: formData.upiId,
-        bankAccountHolder: formData.bankAccountHolder,
-        bankName: formData.bankName,
-        accountNumberMasked: formData.accountNumber ? `••••••${formData.accountNumber.slice(-4)}` : "",
-        ifsc: formData.ifsc,
-        saveInfo,
-      },
-      compliance: {
-        isBusinessPurchase,
-        companyName: formData.companyName,
-        gstin: formData.gstin,
-        businessAddress: formData.businessAddress,
-        consentAccepted: acceptTerms,
+        saveForFastCheckout,
+        buyAsBusiness,
       },
       items: cart.items,
       totals: {
@@ -325,152 +306,113 @@ export default function CheckoutPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <CreditCard className="h-5 w-5" />
-                  Payment Method
+                  <span>Payment Method</span>
+                  <Lock className="h-4 w-4 text-green-600" />
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {paymentOptions.map((method) => (
-                    <button
-                      key={method.id}
-                      type="button"
-                      onClick={() => setPaymentMethod(method.id)}
-                      className={`rounded-md border p-3 text-left transition ${
-                        paymentMethod === method.id ? "border-orange-500 bg-orange-50" : "border-gray-200 bg-white"
-                      }`}
-                    >
-                      <span className="inline-flex items-center gap-1.5 text-sm font-medium">
-                        {method.icon}
-                        {method.label}
-                      </span>
-                      <p className="text-xs text-gray-600 mt-1">{method.hint}</p>
-                    </button>
-                  ))}
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod("card")}
+                    className={`rounded-lg border p-3 text-left transition ${paymentMethod === "card" ? "border-orange-500 bg-orange-50" : "border-gray-200"}`}
+                  >
+                    <span className="flex items-center gap-2 text-sm font-medium"><CreditCard className="h-4 w-4" /> Card</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod("upi")}
+                    className={`rounded-lg border p-3 text-left transition ${paymentMethod === "upi" ? "border-orange-500 bg-orange-50" : "border-gray-200"}`}
+                  >
+                    <span className="flex items-center gap-2 text-sm font-medium"><Smartphone className="h-4 w-4" /> UPI</span>
+                  </button>
                 </div>
 
-                {paymentMethod === "card" && (
-                  <div className="space-y-3 rounded-md border border-gray-200 p-4">
+                {paymentMethod === "card" ? (
+                  <>
                     <div>
-                      <Label htmlFor="nameOnCard">Name on card</Label>
-                      <Input id="nameOnCard" value={formData.nameOnCard} onChange={(e) => handleInputChange("nameOnCard", e.target.value)} />
-                      {errors.nameOnCard && <p className="text-xs text-red-500 mt-1">{errors.nameOnCard}</p>}
-                    </div>
-                    <div>
-                      <Label htmlFor="cardNumber">Card number</Label>
-                      <Input id="cardNumber" value={formData.cardNumber} onChange={(e) => handleInputChange("cardNumber", e.target.value)} placeholder="4242 4242 4242 4242" />
+                      <Label htmlFor="cardNumber">Card Number</Label>
+                      <Input
+                        id="cardNumber"
+                        value={formData.cardNumber}
+                        onChange={(e) => handleInputChange("cardNumber", e.target.value)}
+                        placeholder="1234 5678 9012 3456"
+                        required
+                      />
                       {errors.cardNumber && <p className="text-xs text-red-500 mt-1">{errors.cardNumber}</p>}
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label htmlFor="expiryDate">Expiry</Label>
-                        <Input id="expiryDate" value={formData.expiryDate} onChange={(e) => handleInputChange("expiryDate", e.target.value)} placeholder="MM/YY" />
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="col-span-2">
+                        <Label htmlFor="expiryDate">Expiry Date</Label>
+                        <Input
+                          id="expiryDate"
+                          value={formData.expiryDate}
+                          onChange={(e) => handleInputChange("expiryDate", e.target.value)}
+                          placeholder="MM/YY"
+                          required
+                        />
                         {errors.expiryDate && <p className="text-xs text-red-500 mt-1">{errors.expiryDate}</p>}
                       </div>
                       <div>
                         <Label htmlFor="cvv">CVV</Label>
-                        <Input id="cvv" value={formData.cvv} onChange={(e) => handleInputChange("cvv", e.target.value)} placeholder="123" />
+                        <Input
+                          id="cvv"
+                          value={formData.cvv}
+                          onChange={(e) => handleInputChange("cvv", e.target.value)}
+                          placeholder="123"
+                          required
+                        />
                         {errors.cvv && <p className="text-xs text-red-500 mt-1">{errors.cvv}</p>}
                       </div>
                     </div>
-                  </div>
-                )}
-
-                {paymentMethod === "upi" && (
-                  <div className="space-y-3 rounded-md border border-gray-200 p-4">
                     <div>
-                      <Label htmlFor="upiId">UPI ID</Label>
-                      <Input id="upiId" value={formData.upiId} onChange={(e) => handleInputChange("upiId", e.target.value)} placeholder="name@bank" />
-                      {errors.upiId && <p className="text-xs text-red-500 mt-1">{errors.upiId}</p>}
-                    </div>
-                    <p className="text-xs text-gray-600">
-                      After confirmation, we will initiate app handoff. You can complete payment via app or QR verification.
-                    </p>
-                  </div>
-                )}
-
-                {paymentMethod === "bank" && (
-                  <div className="space-y-3 rounded-md border border-gray-200 p-4">
-                    <div>
-                      <Label htmlFor="bankAccountHolder">Account holder</Label>
+                      <Label htmlFor="nameOnCard">Name on Card</Label>
                       <Input
-                        id="bankAccountHolder"
-                        value={formData.bankAccountHolder}
-                        onChange={(e) => handleInputChange("bankAccountHolder", e.target.value)}
+                        id="nameOnCard"
+                        value={formData.nameOnCard}
+                        onChange={(e) => handleInputChange("nameOnCard", e.target.value)}
+                        placeholder="John Doe"
+                        required
                       />
-                      {errors.bankAccountHolder && <p className="text-xs text-red-500 mt-1">{errors.bankAccountHolder}</p>}
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label htmlFor="bankName">Bank name</Label>
-                        <Input id="bankName" value={formData.bankName} onChange={(e) => handleInputChange("bankName", e.target.value)} />
-                        {errors.bankName && <p className="text-xs text-red-500 mt-1">{errors.bankName}</p>}
-                      </div>
-                      <div>
-                        <Label htmlFor="ifsc">IFSC</Label>
-                        <Input id="ifsc" value={formData.ifsc} onChange={(e) => handleInputChange("ifsc", e.target.value)} />
-                        {errors.ifsc && <p className="text-xs text-red-500 mt-1">{errors.ifsc}</p>}
-                      </div>
-                    </div>
-                    <div>
-                      <Label htmlFor="accountNumber">Account number</Label>
-                      <Input id="accountNumber" value={formData.accountNumber} onChange={(e) => handleInputChange("accountNumber", e.target.value)} />
-                      {errors.accountNumber && <p className="text-xs text-red-500 mt-1">{errors.accountNumber}</p>}
-                    </div>
+                  </>
+                ) : (
+                  <div className="rounded-lg border bg-gray-50 p-4 space-y-3">
+                    <p className="text-sm text-gray-700">Pay instantly with any UPI app. We will open your preferred app after confirmation.</p>
+                    <Button type="button" variant="outline" className="w-full" onClick={() => setShowUpiAppsDialog(true)}>
+                      <QrCode className="mr-2 h-4 w-4" /> Choose UPI App
+                    </Button>
                   </div>
                 )}
 
-                <div className="rounded-md border border-gray-200 p-3 space-y-3">
+                <div className="space-y-3 rounded-lg border p-3">
                   <div className="flex items-center gap-2">
-                    <input id="saveInfo" type="checkbox" checked={saveInfo} onChange={(e) => setSaveInfo(e.target.checked)} className="h-4 w-4" />
-                    <Label htmlFor="saveInfo" className="font-normal text-sm">
-                      Save my info for faster checkout
-                    </Label>
+                    <Checkbox id="saveInfo" checked={saveForFastCheckout} onCheckedChange={(checked) => setSaveForFastCheckout(Boolean(checked))} />
+                    <Label htmlFor="saveInfo" className="text-sm">Save my information for faster checkout</Label>
                   </div>
-                  {saveInfo && (
-                    <div>
-                      <Label htmlFor="phone">Phone number</Label>
-                      <Input id="phone" value={formData.phone} onChange={(e) => handleInputChange("phone", e.target.value)} placeholder="+91 98765 43210" />
+                  <div className="flex items-center gap-2">
+                    <Checkbox id="businessBuy" checked={buyAsBusiness} onCheckedChange={(checked) => setBuyAsBusiness(Boolean(checked))} />
+                    <Label htmlFor="businessBuy" className="text-sm">I&apos;m purchasing as a business</Label>
+                  </div>
+                  {buyAsBusiness && (
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      <Input placeholder="Business name" />
+                      <Input placeholder="GSTIN" />
                     </div>
                   )}
                 </div>
 
-                <div className="rounded-md border border-gray-200 p-3 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <input
-                      id="businessPurchase"
-                      type="checkbox"
-                      checked={isBusinessPurchase}
-                      onChange={(e) => setIsBusinessPurchase(e.target.checked)}
-                      className="h-4 w-4"
-                    />
-                    <Label htmlFor="businessPurchase" className="font-normal text-sm inline-flex items-center gap-1">
-                      <Building2 className="h-4 w-4" />
-                      Purchasing as a business
+                <div className="space-y-2 rounded-lg bg-orange-50 p-3">
+                  <div className="flex items-start gap-2">
+                    <Checkbox id="acceptTerms" checked={acceptTerms} onCheckedChange={(checked) => {
+                      setAcceptTerms(Boolean(checked))
+                      setErrors((prev) => ({ ...prev, acceptTerms: "" }))
+                    }} />
+                    <Label htmlFor="acceptTerms" className="text-sm font-normal leading-5">
+                      You&apos;ll be charged the amount shown and agree to RunAsh Terms and Privacy Policy.
                     </Label>
                   </div>
-                  {isBusinessPurchase && (
-                    <>
-                      <div>
-                        <Label htmlFor="companyName">Business name</Label>
-                        <Input id="companyName" value={formData.companyName} onChange={(e) => handleInputChange("companyName", e.target.value)} />
-                        {errors.companyName && <p className="text-xs text-red-500 mt-1">{errors.companyName}</p>}
-                      </div>
-                      <div>
-                        <Label htmlFor="gstin">GSTIN</Label>
-                        <Input id="gstin" value={formData.gstin} onChange={(e) => handleInputChange("gstin", e.target.value)} placeholder="22AAAAA0000A1Z5" />
-                        {errors.gstin && <p className="text-xs text-red-500 mt-1">{errors.gstin}</p>}
-                      </div>
-                      <div>
-                        <Label htmlFor="businessAddress">Business billing address</Label>
-                        <Input
-                          id="businessAddress"
-                          value={formData.businessAddress}
-                          onChange={(e) => handleInputChange("businessAddress", e.target.value)}
-                        />
-                        {errors.businessAddress && <p className="text-xs text-red-500 mt-1">{errors.businessAddress}</p>}
-                      </div>
-                    </>
-                  )}
+                  {errors.acceptTerms && <p className="text-xs text-red-500">{errors.acceptTerms}</p>}
                 </div>
               </CardContent>
             </Card>
@@ -560,8 +502,12 @@ export default function CheckoutPage() {
                 </div>
 
                 <form onSubmit={handleSubmit}>
-                  <Button type="submit" disabled={processing} className="w-full bg-gradient-to-r from-orange-600 to-yellow-500 text-white">
-                    {processing ? "Processing..." : `Complete Order - $${finalTotal.toFixed(2)}`}
+                  <Button
+                    type="submit"
+                    disabled={processing}
+                    className="w-full bg-gradient-to-r from-orange-600 to-yellow-500 hover:from-orange-700 hover:to-yellow-600 text-white"
+                  >
+                    {processing ? "Processing..." : paymentMethod === "upi" ? `Pay with UPI - $${totals.total.toFixed(2)}` : `Complete Order - $${totals.total.toFixed(2)}`}
                   </Button>
                 </form>
 
@@ -597,6 +543,44 @@ export default function CheckoutPage() {
                 <Button variant="ghost" onClick={() => setShowConfirmDialog(false)}>Edit</Button>
                 <Button onClick={proceedToPayment}>{processing ? "Please wait..." : "Proceed to Payment"}</Button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {showUpiAppsDialog && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setShowUpiAppsDialog(false)} />
+            <div className="relative bg-white dark:bg-gray-900 rounded-lg shadow-lg max-w-md w-full p-6 z-10">
+              <h3 className="text-2xl font-semibold text-center mb-2">Authorize payment with your app</h3>
+              <p className="text-sm text-gray-600 text-center mb-5">Please select an app to complete the payment.</p>
+              <div className="grid grid-cols-4 gap-3 mb-4">
+                {["GPay", "PhonePe", "Paytm", "BHIM", "Amazon Pay", "MobiKwik", "CRED", "Kiwi"].map((appName) => (
+                  <Button key={appName} type="button" variant="outline" className="h-16 text-xs" onClick={() => {
+                    setShowUpiAppsDialog(false)
+                    setShowActionSuccessDialog(true)
+                  }}>
+                    {appName}
+                  </Button>
+                ))}
+              </div>
+              <Button type="button" variant="ghost" className="w-full" onClick={() => {
+                setShowUpiAppsDialog(false)
+                setShowActionSuccessDialog(true)
+              }}>
+                <Landmark className="mr-2 h-4 w-4" /> Pay with QR code instead
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {showActionSuccessDialog && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setShowActionSuccessDialog(false)} />
+            <div className="relative bg-white dark:bg-gray-900 rounded-lg shadow-lg max-w-sm w-full p-8 z-10 text-center space-y-3">
+              <CheckCircle2 className="h-14 w-14 text-green-600 mx-auto" />
+              <h3 className="text-2xl font-semibold">Action Successful</h3>
+              <p className="text-sm text-gray-600">Your UPI app is ready. Continue to complete this checkout securely.</p>
+              <Button onClick={() => setShowActionSuccessDialog(false)}>Continue</Button>
             </div>
           </div>
         )}

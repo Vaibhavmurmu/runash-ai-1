@@ -4,7 +4,7 @@ import { useMemo, useState } from "react"
 import { Sparkles, Video, MessageSquare, Radio, Layers, PanelLeft, ChevronRight } from "lucide-react"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { Button } from "@/components/ui/button"
-import { RIGHT_PANEL_TABS } from "./panel-tabs"
+import { RIGHT_PANEL_TABS, type RightPanelTabId } from "./panel-tabs"
 import {
   Sheet,
   SheetContent,
@@ -21,24 +21,41 @@ interface LeftSidebarProps {
   onChatToggle?: (open: boolean) => void
 }
 
+interface ToolItem {
+  id: string
+  label: string
+  icon: typeof Sparkles
+  desc: string
+}
+
+const TAB_ICON_BY_ID: Record<RightPanelTabId, ToolItem["icon"]> = {
+  generate: Sparkles,
+  edit: Video,
+  layers: Layers,
+  stream: Radio,
+}
+
+const TAB_DESC_BY_ID: Record<RightPanelTabId, string> = {
+  generate: "AI video generation",
+  edit: "Video editing tools",
+  layers: "Layer management",
+  stream: "Live streaming",
+}
+
 export default function LeftSidebar({ activeTab, onTabChange, isChatOpen, onChatToggle }: LeftSidebarProps) {
   const isMobile = useIsMobile()
   const [isMobileToolsOpen, setIsMobileToolsOpen] = useState(false)
 
-  const tools = useMemo(
+  const tools = useMemo<ToolItem[]>(
     () => {
-      const tabLabelById = RIGHT_PANEL_TABS.reduce<Record<string, string>>((labels, tab) => {
-        labels[tab.id] = tab.label
-        return labels
-      }, {})
+      const panelTools = RIGHT_PANEL_TABS.map((tab) => ({
+        id: tab.id,
+        label: tab.label,
+        icon: TAB_ICON_BY_ID[tab.id],
+        desc: TAB_DESC_BY_ID[tab.id],
+      }))
 
-      return [
-        { id: "generate", label: tabLabelById.generate, icon: Sparkles, desc: "AI video generation" },
-        { id: "edit", label: tabLabelById.edit, icon: Video, desc: "Video editing tools" },
-        { id: "chat", label: "Chat", icon: MessageSquare, desc: "Talk to AI" },
-        { id: "stream", label: tabLabelById.stream, icon: Radio, desc: "Live streaming" },
-        { id: "layers", label: tabLabelById.layers, icon: Layers, desc: "Layer management" },
-      ]
+      return [...panelTools.slice(0, 2), { id: "chat", label: "Chat", icon: MessageSquare, desc: "Talk to AI" }, ...panelTools.slice(2)]
     },
     [],
   )

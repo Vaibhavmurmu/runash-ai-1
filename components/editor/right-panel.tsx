@@ -59,26 +59,27 @@ const DEFAULT_TAB_PANEL_STATE: TabPanelState = {
 }
 
 export function renderPanelByTab(
-  tabId: RightPanelTabId,
+  tabId: string | undefined,
   sharedPanelProps: SharedPanelProps,
   tabPanelState: TabPanelState,
   setTabPanelState: Dispatch<SetStateAction<TabPanelState>>,
 ): JSX.Element {
-  const panelMap: Record<RightPanelTabId, () => JSX.Element> = {
-    generate: () => <GeneratePanel {...sharedPanelProps} />,
-    edit: () => (
-      <EditPanel
-        state={tabPanelState.edit}
-        onStateChange={(next) => setTabPanelState((prev) => updateTabPanelState(prev, "edit", next))}
-      />
-    ),
-    layers: () => (
-      <LayersPanel />
-    ),
-    stream: () => <StreamPanel />,
+  switch (tabId) {
+    case "edit":
+      return (
+        <EditPanel
+          state={tabPanelState.edit}
+          onStateChange={(next) => setTabPanelState((prev) => updateTabPanelState(prev, "edit", next))}
+        />
+      )
+    case "layers":
+      return <LayersPanel />
+    case "stream":
+      return <StreamPanel />
+    case "generate":
+    default:
+      return <GeneratePanel {...sharedPanelProps} />
   }
-
-  return panelMap[tabId]()
 }
 
 export default function RightPanel({
@@ -119,7 +120,7 @@ export default function RightPanel({
     [selectedModel, onModelChange, generationConfig, validationErrors, onGenerationConfigChange],
   )
 
-  const panelContent = (
+  const renderTabContent = () => (
     <EditorPanelContextProvider
       value={{
         project,
@@ -135,7 +136,7 @@ export default function RightPanel({
 
   return (
     <>
-      <aside className="hidden w-80 overflow-y-auto border-l border-border bg-card lg:block xl:w-96 2xl:w-[28rem]">{panelContent}</aside>
+      <aside className="hidden w-80 overflow-y-auto border-l border-border bg-card lg:block xl:w-96 2xl:w-[28rem]">{renderTabContent()}</aside>
 
       {isNarrowViewport && (
         <div className="fixed bottom-36 right-4 z-30">
@@ -150,7 +151,7 @@ export default function RightPanel({
                 <SheetTitle>Project controls</SheetTitle>
                 <SheetDescription>Models, generation settings, and stream controls.</SheetDescription>
               </SheetHeader>
-              <div className="h-[calc(100%-4.5rem)] overflow-y-auto">{panelContent}</div>
+              <div className="h-[calc(100%-4.5rem)] overflow-y-auto">{renderTabContent()}</div>
             </SheetContent>
           </Sheet>
         </div>
