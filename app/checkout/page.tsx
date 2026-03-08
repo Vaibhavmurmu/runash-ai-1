@@ -15,6 +15,10 @@ import {
   ShieldCheck,
   ShoppingCart,
   WalletCards,
+  ArrowLeft, 
+  CheckCircle2, 
+  Landmark,
+  Smartphone
 } from "lucide-react"
 
 import CartSummary from "@/components/cart/cart-summary"
@@ -25,7 +29,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Separator } from "@/components/ui/separator"
-import { ArrowLeft, CheckCircle2, CreditCard, Landmark, Leaf, Lock, QrCode, ShoppingCart, Smartphone } from "lucide-react"
 import { useCart } from "@/contexts/cart-context"
 
 type PaymentMethod = "card" | "upi" | "bank"
@@ -215,9 +218,9 @@ export default function CheckoutPage() {
               Back to Chat
             </Button>
           </Link>
-          <h1 className="text-3xl font-bold">RunAsh Secure Checkout</h1>
+          <h1 className="text-3xl font-bold">RunAsh AI</h1>
           <p className="text-gray-600 mt-2">
-            Professional B2B subscription + B2C live commerce checkout with secure multi-method flow.
+            B2B subscription + B2C live commerce instant checkout.
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-gray-600">
             <span className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2.5 py-1 text-green-700">
