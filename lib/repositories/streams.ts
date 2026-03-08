@@ -8,6 +8,30 @@ import type {
   DashboardStreamsStore,
 } from "@/lib/types/dashboard-streams"
 
+export type ActiveLiveStreamSession = {
+  id: string
+  userId: string
+  title: string
+  description: string | null
+  category: string | null
+  status: "live"
+  startTime: string | null
+  maxViewers: number
+  viewerCount: number
+  totalRevenue: number
+  thumbnailUrl: string | null
+  streamUrl: string | null
+  hostName: string
+  hostAvatar: string | null
+  tags: string[]
+  featuredProducts: string[]
+}
+
+export type StreamCommercialStats = {
+  purchases: number
+  revenue: number
+}
+
 export type Stream = {
   id: string
   user_id: string
@@ -56,6 +80,11 @@ function parseSettings(settings: unknown): Record<string, any> {
     }
   }
   return {}
+}
+
+function toStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.map((item) => String(item)).filter(Boolean)
 }
 
 function toRecentStream(stream: Stream): DashboardRecentStream {
@@ -418,5 +447,121 @@ export async function createDashboardStreamInvite(userId: string, streamId: stri
     await fs.mkdir(path.join(process.cwd(), "data"), { recursive: true })
     await fs.writeFile(DATA_FILE, JSON.stringify(fallback, null, 2), "utf-8")
     return invite
+  }
+}
+
+export async function getActiveLiveStreamSession(): Promise<ActiveLiveStreamSession | null> {
+  const row = await one<{
+    id: string
+    user_id: string
+    title: string
+    description: string | null
+    category: string | null
+    status: "live"
+    actual_start: string | null
+    max_viewers: number
+    viewer_count: number | null
+    total_revenue: number
+    thumbnail_url: string | null
+    rtmp_url: string | null
+    settings: Record<string, unknown> | string | null
+    host_name: string | null
+    host_avatar: string | null
+  }>(sql`
+    select
+      s.id,
+      s.user_id,
+      s.title,
+      s.description,
+      s.category,
+      s.status,
+      s.actual_start,
+      coalesce(s.max_viewers, 0) as max_viewers,
+      coalesce(s.viewer_count, 0) as viewer_count,
+      coalesce(s.total_revenue, 0) as total_revenue,
+      s.thumbnail_url,
+      s.rtmp_url,
+      s.settings,
+      coalesce(nullif(u.name, ''), nullif(u.email, ''), 'RunAsh Host') as host_name,
+      nullif(u.image, '') as host_avatar
+    from streams s
+    left join users u on u.id = s.user_id
+    where s.status = 'live'
+    order by coalesce(s.actual_start, s.created_at) desc
+    limit 1
+  `)
+
+  if (!row) return null
+
+  const settings = parseSettings(row.settings)
+  const tags = toStringList(settings.tags)
+  const featuredProducts = toStringList(settings.featuredProducts).slice(0, 6)
+
+  return {
+    id: row.id,
+    userId: row.user_id,
+    title: row.title,
+    description: row.description,
+    category: row.category,
+    status: "live",
+    startTime: row.actual_start,
+    maxViewers: Number(row.max_viewers ?? 0),
+    viewerCount: Number(row.viewer_count ?? 0),
+    totalRevenue: Number(row.total_revenue ?? 0),
+    thumbnailUrl: row.thumbnail_url,
+    streamUrl: row.rtmp_url,
+    hostName: row.host_name ?? "RunAsh Host",
+    hostAvatar: row.host_avatar,
+    tags,
+    featuredProducts,
+  }
+}
+
+export async function listStreamProductReferences(productIds: string[]): Promise<string[]> {
+  if (productIds.length === 0) return []
+
+  const normalizedIds = productIds
+    .map((productId) => Number.parseInt(productId, 10))
+    .filter((productId) => Number.isInteger(productId))
+
+  if (normalizedIds.length === 0) return []
+
+  const rows = await queryMany<{ id: number }>(
+    `select id from products where id = any($1::int[]) order by array_position($1::int[], id)`,
+    [normalizedIds],
+  )
+
+  return rows.map((row) => String(row.id))
+}
+
+export async function getStreamCommercialStats(streamId: string, fallbackRevenue = 0): Promise<StreamCommercialStats> {
+  const table = await one<{ exists: string | null }>(sql<{ exists: string | null }[]>`
+    select to_regclass('public.payment_transactions') as exists
+  `)
+
+  if (!table?.exists) {
+    return {
+      purchases: 0,
+      revenue: Number(fallbackRevenue || 0),
+    }
+  }
+
+  const totals = await queryMany<{ purchases: number; revenue: number }>(
+    `
+      select
+        count(*)::int as purchases,
+        coalesce(sum(amount), 0)::numeric as revenue
+      from payment_transactions
+      where stream_id::text = $1
+        and status = 'succeeded'
+    `,
+    [streamId],
+  )
+
+  const row = totals[0]
+
+  return {
+    purchases: Number(row?.purchases ?? 0),
+    revenue: Math.max(Number(row?.revenue ?? 0), Number(fallbackRevenue || 0)),
   }
 }

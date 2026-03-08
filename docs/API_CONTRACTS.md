@@ -259,6 +259,21 @@ For compatibility, selected top-level fields (for example `plans`, `subscription
 - `INVOICE_DOWNLOAD_NOT_AVAILABLE` (`404`)
 - `BILLING_*_FAILED` (`500`) for unexpected failures
 
+## Live Stream Current API (`/api/streams/live/current`)
+
+### `GET /api/streams/live/current`
+- Public endpoint used by grocery live page.
+- Response keeps existing client keys: `stream`, `stats`, and `follow`.
+- When there is no active stream, `stream` is `null` and stats stay present as zeroed fields.
+
+### Contract notes
+- Existing keys remain unchanged for compatibility:
+  - `stream`: `id`, `title`, `description`, `hostId`, `hostName`, `hostAvatar`, `status`, `startTime`, `viewerCount`, `maxViewers`, `category`, `tags`, `thumbnailUrl`, `streamUrl`, `featuredProducts`, `totalSales`, `totalRevenue`
+  - `stats`: `streamId`, `viewerCount`, `peakViewers`, `totalViews`, `chatMessages`, `purchases`, `revenue`, `averageWatchTime`, `engagementRate`
+  - `follow`: `isFollowing`
+- Addition: optional `stats.network` object when network telemetry exists:
+  - `health`, `healthScore`, `sampledAt`
+
 ## Logging & Redaction
 
 Structured API logs include:
