@@ -21,6 +21,32 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Credits purchase routing uses `/pricing?intent=credits`; redeem flow uses in-app validated redeem input before billing handoff.
 - Payment API contract fields, webhook schemas, and auth/payment token formats remain unchanged by these routing updates.
 
+## 2026-03 checkout UX enhancement (no payment contract changes)
+
+- Updated `app/checkout/page.tsx` with a clearer payment experience: card/UPI method toggle, coupon entry (`RUNASH10` demo), consent checkbox, saved-info toggle, and business GSTIN capture for invoice readiness.
+- Payment API/webhook contract shape and existing field names remain unchanged; the update is UI-level plus additive order metadata persisted in client session storage.
+- **Impacted payment/auth flows identified:** web checkout completion (`/checkout` -> `/payment/runash-pay`) and consent capture before order submission.
+- **Risk + rollback:** low runtime risk (presentation + client validation only). Roll back by reverting `app/checkout/page.tsx`; no provider migration or webhook/API rollback required.
+
+
+## 2026-03 checkout UX v2 (B2B/B2C multi-method, no payment contract changes)
+
+- Extended `app/checkout/page.tsx` with a cleaner checkout information architecture for subscription and live-commerce orders.
+- Added additive UI-only payment method options (`card`, `upi`, `bank`) with UPI-ID capture and bank account/IFSC capture in client session payload.
+- Added collapsible order-details section, improved coupon highlight, consent + saved-info blocks, and confirmation modal review card.
+- Preserved existing handoff behavior: pending order persists in `sessionStorage` and redirect remains `/payment/runash-pay`.
+- **Impacted payment/auth flows identified:** checkout confirmation UX and client-side metadata capture prior to runash-pay handoff.
+- **Risk + rollback:** low runtime risk (UI validation + additive metadata only); rollback via revert of `app/checkout/page.tsx`.
+
+
+## 2026-03 checkout UX v2a compile-fix + UPI handoff clarity (no payment contract changes)
+
+- Resolved checkout compile failure caused by duplicate icon import declaration in `app/checkout/page.tsx` (`Identifier 'ArrowLeft' has already been declared`).
+- Refined UPI helper copy with explicit **QR / App handoff** messaging and added supplemental secure-transaction disclosure copy.
+- Preserved runtime behavior: `pendingOrder` session persistence and redirect flow to `/payment/runash-pay` are unchanged.
+- **Impacted payment/auth flows identified:** checkout presentation and client validation copy only; no API or webhook contract changes.
+- **Risk + rollback:** low; revert `app/checkout/page.tsx` and this doc note if regressions occur.
+
 ## 2026-02 Ecommerce payments theme/UI refactor (no contract changes)
 
 - Updated `/ecommerce/payments` presentation layer to use semantic theme tokens (`bg-background`, `text-foreground`, `border-border`, `muted-foreground`) and shared design-system inputs/select/textarea components.
