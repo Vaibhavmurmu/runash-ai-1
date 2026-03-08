@@ -25,6 +25,13 @@ interface RightPanelProps {
   onTimelineChange: (timeline: EditorTimeline) => void
   selectedSegment?: EditorSegment
   playheadSeconds?: number
+  generationHistory: EditorProject["renderJobs"]
+  generationActionState: {
+    cancelingJobId: string | null
+    retryingJobId: string | null
+  }
+  onCancelRenderJob: (jobId: string) => void
+  onRetryRenderJob: (jobId: string) => void
 }
 
 interface SharedPanelProps {
@@ -94,6 +101,10 @@ export default function RightPanel({
   onTimelineChange,
   selectedSegment,
   playheadSeconds = 0,
+  generationHistory,
+  generationActionState,
+  onCancelRenderJob,
+  onRetryRenderJob,
 }: RightPanelProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [isNarrowViewport, setIsNarrowViewport] = useState(false)
@@ -128,6 +139,10 @@ export default function RightPanel({
         onTimelineChange,
         selectedSegment,
         playheadSeconds,
+        generationHistory,
+        generationActionState,
+        onCancelRenderJob,
+        onRetryRenderJob,
       }}
     >
       {renderPanelByTab(resolvedTab, sharedPanelProps, tabPanelState, setTabPanelState)}
