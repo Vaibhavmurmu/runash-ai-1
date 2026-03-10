@@ -15,7 +15,7 @@ const payload = {
   },
 }
 
-test("recommendation cards API returns recipe metadata", async () => {
+test("recommendation cards API returns recipe metadata from providers", async () => {
   const request = new NextRequest("http://localhost/api/chat/recommendation-cards", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -26,7 +26,7 @@ test("recommendation cards API returns recipe metadata", async () => {
   assert.equal(response.status, 200)
   const json = (await response.json()) as { metadata?: { recipes?: Array<{ image: string | null }> } }
   assert.ok((json.metadata?.recipes?.length ?? 0) > 0)
-  assert.equal(json.metadata?.recipes?.[0]?.image, null)
+  assert.equal(Boolean(json.metadata?.recipes?.[0]?.image?.startsWith("https://")), true)
 })
 
 test("recommendation cards API validates request body", async () => {

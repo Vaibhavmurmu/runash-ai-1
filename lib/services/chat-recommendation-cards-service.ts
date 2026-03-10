@@ -1,72 +1,69 @@
-import { getRecommendedProducts } from "@/lib/chat-product-recommendations"
-import { getRecipeSuggestions } from "@/lib/recipe-suggestions"
-import { getSustainabilityTips } from "@/lib/sustainability-tips"
+import { chatRecommendationProviderService } from "@/lib/services/chat-recommendation-provider-service"
 import type {
   ChatRecommendationCardsRequest,
   ChatRecommendationCardsResponse,
   ChatRecommendationIntent,
   ChatRecommendationPayload,
-} from "@/types/chat-fallback-cards"
+} from "@/types/chat-recommendations"
+import type { Product, Recipe, SustainabilityTip, UserPreferences } from "@/types/runash-chat"
 
-const withTextOnlyRecipeCards = (payload: ChatRecommendationPayload): ChatRecommendationPayload => ({
-  ...payload,
-  recipes: payload.recipes?.map((recipe) => ({
-    ...recipe,
-    image: null,
-    imageHd: undefined,
-    imageThumb: undefined,
-    imageAlt: undefined,
-  })),
-})
-
-const buildPayload = ({
-  intent,
-  userInput,
-  userPreferences,
-  limit,
-}: ChatRecommendationCardsRequest): ChatRecommendationPayload => {
-  const normalizedLimit = Number.isFinite(limit) && (limit ?? 0) > 0 ? Math.min(Math.floor(limit as number), 8) : 4
-
-  if (intent === "product") {
-    return {
-      products: getRecommendedProducts(userInput, userPreferences, normalizedLimit),
-    }
-  }
-
-  if (intent === "recipe") {
-    return withTextOnlyRecipeCards({
-      recipes: getRecipeSuggestions(userInput, userPreferences).slice(0, normalizedLimit),
-    })
-  }
-
-  if (intent === "tip") {
-    return {
-      tips: getSustainabilityTips(userInput, userPreferences).slice(0, normalizedLimit),
-    }
-  }
-
-  return withTextOnlyRecipeCards({
-    products: getRecommendedProducts(userInput, userPreferences, normalizedLimit),
-    recipes: getRecipeSuggestions(userInput, userPreferences).slice(0, normalizedLimit),
-    tips: getSustainabilityTips(userInput, userPreferences).slice(0, normalizedLimit),
-  })
+export interface ChatRecommendationCardsProviders {
+  getProducts: (input: string, preferences: UserPreferences, limit?: number) => Promise<Product[]>
+  getRecipes: (input: string, preferences: UserPreferences, limit?: number) => Promise<Recipe[]>
+  getTips: (input: string, preferences: UserPreferences, limit?: number) => Promise<SustainabilityTip[]>
 }
 
-export const createChatRecommendationCardsService = () => ({
-  async getCards(request: ChatRecommendationCardsRequest): Promise<ChatRecommendationCardsResponse> {
-    const payload = buildPayload(request)
+const defaultProviders: ChatRecommendationCardsProviders = {
+  async getProducts(input, preferences, limit) {
+    const payload = await chatRecommendationProviderService.getProducts({ userInput: input, userPreferences: preferences, limit })
+    return payload.data
+  },
+  async getRecipes(input, preferences, limit) {
+    const payload = await chatRecommendationProviderService.getRecipes({ userInput: input, userPreferences: preferences, limit })
+    return payload.data
+  },
+  async getTips(input, preferences, limit) {
+    const payload = await chatRecommendationProviderService.getTips({ userInput: input, userPreferences: preferences, limit })
+    return payload.data
+  },
+}
 
-    return {
-      intent: request.intent,
-      content:
+const normalizeLimit = (limit?: number) => (Number.isFinite(limit) && (limit ?? 0) > 0 ? Math.min(Math.floor(limit as number), 8) : 4)
+
+const getContentByIntent = (intent: ChatRecommendationIntent) =>
+  intent === "product"
+    ? "Here are product recommendations matched to your preferences."
+    : intent === "recipe"
+      ? "Here are recipe recommendations matched to your cooking goals."
+      : intent === "tip"
+        ? "Here are sustainability tips you can apply immediately."
+        : "Here are recommendations based on your request."
+
+export const createChatRecommendationCardsService = (providers: ChatRecommendationCardsProviders = defaultProviders) => ({
+  async getCards(request: ChatRecommendationCardsRequest): Promise<ChatRecommendationCardsResponse> {
+    const limit = normalizeLimit(request.limit)
+
+    try {
+      const metadata: ChatRecommendationPayload =
         request.intent === "product"
-          ? "Here are product recommendations matched to your preferences."
+          ? { products: await providers.getProducts(request.userInput, request.userPreferences, limit) }
           : request.intent === "recipe"
-            ? "Here are recipe recommendations matched to your cooking goals."
+            ? { recipes: await providers.getRecipes(request.userInput, request.userPreferences, limit) }
             : request.intent === "tip"
-              ? "Here are sustainability tips you can apply immediately."
-              : "Here are recommendations based on your request.",
-      metadata: payload,
+              ? { tips: await providers.getTips(request.userInput, request.userPreferences, limit) }
+              : {
+                  products: await providers.getProducts(request.userInput, request.userPreferences, limit),
+                  recipes: await providers.getRecipes(request.userInput, request.userPreferences, limit),
+                  tips: await providers.getTips(request.userInput, request.userPreferences, limit),
+                }
+
+      return { intent: request.intent, content: getContentByIntent(request.intent), metadata }
+    } catch {
+      return {
+        intent: request.intent,
+        content: "Recommendations are temporarily unavailable. Share your goal and I can help with a quick text plan.",
+        metadata: {},
+      }
     }
   },
 })

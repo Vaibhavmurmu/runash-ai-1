@@ -1,4 +1,4 @@
-import type { ChatFallbackRequest, ChatFallbackResponse } from "@/types/chat-fallback-cards"
+import type { ChatFallbackRequest, ChatFallbackResponse } from "@/types/chat-recommendations"
 import type { ChatMessage, UserPreferences } from "@/types/runash-chat"
 
 export async function buildFallbackAssistantResponse(
