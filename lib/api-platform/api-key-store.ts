@@ -1,6 +1,6 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto"
+import { createCipheriv, createHash, randomBytes, randomUUID } from "node:crypto"
 
-import { sql } from "@/lib/db"
+import { getApiKeyRepository, setApiKeyRepositoryForTests, type ApiKeyRepository } from "@/lib/repositories/api-keys"
 
 export type ApiKeyRecord = {
   id: string
@@ -28,33 +28,6 @@ type ApiKeyRow = {
   usage_24h: number | string | null
 }
 
-type ApiSecretRow = {
-  secret_hash: string
-}
-
-type ApiKeyStoreAdapters = {
-  listKeys: () => Promise<ApiKeyRow[]>
-  createKeyWithSecret: (input: {
-    id: string
-    name: string
-    scopes: string[]
-    prefix: string
-    secretMasked: string
-    secretHash: string
-    createdAt: string
-  }) => Promise<void>
-  revokeKeyTransactional: (id: string, revokedAt: string) => Promise<ApiKeyRow | null>
-  rotateKeyTransactional: (input: {
-    id: string
-    rotatedAt: string
-    prefix: string
-    secretMasked: string
-    secretHash: string
-  }) => Promise<ApiKeyRow | null>
-}
-
-let adaptersOverride: ApiKeyStoreAdapters | null = null
-
 function nowIso() {
   return new Date().toISOString()
 }
@@ -74,6 +47,24 @@ function maskSecret(secret: string) {
 
 function hashSecret(secret: string) {
   return createHash("sha256").update(secret).digest("hex")
+}
+
+function getSecretEncryptionKey() {
+  const configured = process.env.RUNASH_API_KEY_ENCRYPTION_KEY
+  if (!configured) {
+    throw new Error("RUNASH_API_KEY_ENCRYPTION_KEY must be configured for API key storage")
+  }
+
+  return createHash("sha256").update(configured).digest()
+}
+
+function encryptSecret(secret: string) {
+  const iv = randomBytes(12)
+  const cipher = createCipheriv("aes-256-gcm", getSecretEncryptionKey(), iv)
+  const encrypted = Buffer.concat([cipher.update(secret, "utf8"), cipher.final()])
+  const tag = cipher.getAuthTag()
+
+  return `${iv.toString("base64url")}.${tag.toString("base64url")}.${encrypted.toString("base64url")}`
 }
 
 function parseScopes(value: ApiKeyRow["scopes"]) {
@@ -101,175 +92,12 @@ function normalizeRow(row: ApiKeyRow): ApiKeyRecord {
   }
 }
 
-const dbAdapters: ApiKeyStoreAdapters = {
-  async listKeys() {
-    return sql<ApiKeyRow>`
-      select
-        m.id,
-        m.name,
-        m.scopes,
-        m.status,
-        m.created_at,
-        m.rotated_at,
-        m.last_used_at,
-        m.secret_prefix,
-        m.secret_masked,
-        coalesce(sum(case when u.bucket_start >= now() - interval '24 hour' then u.request_count else 0 end), 0)::int as usage_24h
-      from api_key_metadata m
-      left join api_key_usage_counters u on u.api_key_id = m.id
-      group by m.id
-      order by m.created_at desc
-    `
-  },
-  async createKeyWithSecret(input) {
-    await sql`begin`
-    try {
-      await sql`
-        insert into api_key_metadata (
-          id,
-          name,
-          scopes,
-          status,
-          created_at,
-          rotated_at,
-          last_used_at,
-          secret_prefix,
-          secret_masked
-        )
-        values (
-          ${input.id},
-          ${input.name},
-          ${JSON.stringify(input.scopes)}::jsonb,
-          'active',
-          ${input.createdAt}::timestamptz,
-          ${input.createdAt}::timestamptz,
-          null,
-          ${input.prefix},
-          ${input.secretMasked}
-        )
-      `
-      await sql`
-        insert into api_key_secret_material (
-          api_key_id,
-          secret_hash,
-          hash_algorithm,
-          created_at
-        )
-        values (
-          ${input.id},
-          ${input.secretHash},
-          'sha256',
-          ${input.createdAt}::timestamptz
-        )
-      `
-      await sql`
-        insert into api_key_rotation_history (
-          api_key_id,
-          action,
-          happened_at,
-          prefix_snapshot,
-          secret_masked_snapshot
-        )
-        values (
-          ${input.id},
-          'created',
-          ${input.createdAt}::timestamptz,
-          ${input.prefix},
-          ${input.secretMasked}
-        )
-      `
-      await sql`
-        insert into api_key_usage_counters (api_key_id, bucket_start, request_count)
-        values (${input.id}, date_trunc('hour', ${input.createdAt}::timestamptz), 0)
-        on conflict (api_key_id, bucket_start) do nothing
-      `
-      await sql`commit`
-    } catch (error) {
-      await sql`rollback`
-      throw error
-    }
-  },
-  async revokeKeyTransactional(id, revokedAt) {
-    await sql`begin`
-    try {
-      const updated = await sql<ApiKeyRow>`
-        update api_key_metadata
-        set status = 'revoked',
-            rotated_at = ${revokedAt}::timestamptz
-        where id = ${id}
-        returning id, name, scopes, status, created_at, rotated_at, last_used_at, secret_prefix, secret_masked, 0::int as usage_24h
-      `
-      const key = updated[0] ?? null
-      if (!key) {
-        await sql`rollback`
-        return null
-      }
-
-      await sql`
-        insert into api_key_rotation_history (api_key_id, action, happened_at, prefix_snapshot, secret_masked_snapshot)
-        values (${id}, 'revoked', ${revokedAt}::timestamptz, ${key.secret_prefix}, ${key.secret_masked})
-      `
-      await sql`commit`
-      return key
-    } catch (error) {
-      await sql`rollback`
-      throw error
-    }
-  },
-  async rotateKeyTransactional(input) {
-    await sql`begin`
-    try {
-      const existing = await sql<ApiSecretRow>`
-        select secret_hash
-        from api_key_secret_material
-        where api_key_id = ${input.id}
-        order by created_at desc
-        limit 1
-      `
-      const previousHash = existing[0]?.secret_hash ?? null
-
-      const updated = await sql<ApiKeyRow>`
-        update api_key_metadata
-        set rotated_at = ${input.rotatedAt}::timestamptz,
-            status = 'active',
-            secret_prefix = ${input.prefix},
-            secret_masked = ${input.secretMasked}
-        where id = ${input.id}
-        returning id, name, scopes, status, created_at, rotated_at, last_used_at, secret_prefix, secret_masked, 0::int as usage_24h
-      `
-      const key = updated[0] ?? null
-      if (!key) {
-        await sql`rollback`
-        return null
-      }
-
-      await sql`
-        insert into api_key_secret_material (api_key_id, secret_hash, hash_algorithm, created_at, rotated_from_hash)
-        values (${input.id}, ${input.secretHash}, 'sha256', ${input.rotatedAt}::timestamptz, ${previousHash})
-      `
-      await sql`
-        insert into api_key_rotation_history (api_key_id, action, happened_at, prefix_snapshot, secret_masked_snapshot)
-        values (${input.id}, 'rotated', ${input.rotatedAt}::timestamptz, ${input.prefix}, ${input.secretMasked})
-      `
-      await sql`commit`
-      return key
-    } catch (error) {
-      await sql`rollback`
-      throw error
-    }
-  },
-}
-
-function getAdapters() {
-  return adaptersOverride ?? dbAdapters
-}
-
-export function setApiKeyStoreAdaptersForTests(adapters: ApiKeyStoreAdapters | null) {
-  adaptersOverride = adapters
+export function setApiKeyStoreAdaptersForTests(repository: ApiKeyRepository | null) {
+  setApiKeyRepositoryForTests(repository)
 }
 
 export async function listApiKeys() {
-  const rows = await getAdapters().listKeys()
+  const rows = await getApiKeyRepository().listKeys()
   return rows.map(normalizeRow)
 }
 
@@ -290,13 +118,14 @@ export async function createApiKey(input: { name: string; scopes: string[] }) {
     secretMasked: maskSecret(secret),
   }
 
-  await getAdapters().createKeyWithSecret({
+  await getApiKeyRepository().createKeyWithSecret({
     id: key.id,
     name: key.name,
     scopes: key.scopes,
     prefix: key.prefix,
     secretMasked: key.secretMasked,
     secretHash: hashSecret(secret),
+    encryptedSecret: encryptSecret(secret),
     createdAt,
   })
 
@@ -304,19 +133,20 @@ export async function createApiKey(input: { name: string; scopes: string[] }) {
 }
 
 export async function revokeApiKey(id: string) {
-  const revoked = await getAdapters().revokeKeyTransactional(id, nowIso())
+  const revoked = await getApiKeyRepository().revokeKeyTransactional(id, nowIso())
   return revoked ? normalizeRow(revoked) : null
 }
 
 export async function rotateApiKey(id: string) {
   const secret = createSecret()
   const rotatedAt = nowIso()
-  const rotated = await getAdapters().rotateKeyTransactional({
+  const rotated = await getApiKeyRepository().rotateKeyTransactional({
     id,
     rotatedAt,
     prefix: secret.slice(0, 12),
     secretMasked: maskSecret(secret),
     secretHash: hashSecret(secret),
+    encryptedSecret: encryptSecret(secret),
   })
 
   if (!rotated) return null

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
+import { rateLimit } from "@/lib/rate-limit"
 import { UpiCheckoutService } from "@/lib/services/upi-checkout-service"
+
+const COMPLETE_RATE_LIMIT = 20
+const COMPLETE_WINDOW_MS = 60_000
 
 function resolveIdempotencyKey(request: NextRequest, body: unknown): string {
   const fromHeader = request.headers.get("idempotency-key")?.trim()
@@ -16,32 +20,32 @@ function resolveIdempotencyKey(request: NextRequest, body: unknown): string {
 }
 
 export async function POST(request: NextRequest) {
+  const limiter = await rateLimit(request, "upi:complete", COMPLETE_RATE_LIMIT, COMPLETE_WINDOW_MS)
+  if (!limiter.success) {
+    return NextResponse.json(
+      {
+        error: "UPI completion is temporarily blocked due to risk controls.",
+        errorCode: "RISK_BLOCKED",
+      },
+      { status: 429 },
+    )
+  }
+
   const body = await request.json().catch(() => ({}))
   const transactionId = typeof body?.transactionId === "string" ? body.transactionId.trim() : ""
 
   if (!transactionId) {
-    return NextResponse.json(
-      {
-        error: "transactionId is required",
-        errorCode: "RISK_BLOCKED",
-      },
-      { status: 400 },
-    )
+    return NextResponse.json({ error: "transactionId is required", errorCode: "RISK_BLOCKED" }, { status: 400 })
   }
 
-  await UpiCheckoutService.completeViaProvider({
+  const result = UpiCheckoutService.completeViaProvider({
     transactionId,
     idempotencyKey: resolveIdempotencyKey(request, body),
-    providerReference: typeof body?.providerReference === "string" ? body.providerReference : undefined,
-    providerStatusReference: typeof body?.providerStatusReference === "string" ? body.providerStatusReference : undefined,
-    status: body?.status === "success" || body?.status === "failed" ? body.status : undefined,
-    failureReason: typeof body?.failureReason === "string" ? body.failureReason : undefined,
-    failureCode:
-      body?.failureCode === "INVALID_PIN" || body?.failureCode === "PIN_ATTEMPTS_EXCEEDED" || body?.failureCode === "RISK_BLOCKED"
-        ? body.failureCode
-        : undefined,
   })
 
-  const status = await UpiCheckoutService.getStatus(transactionId)
-  return NextResponse.json(status.payload, { status: status.found ? 200 : 404 })
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error, errorCode: result.errorCode }, { status: 400 })
+  }
+
+  return NextResponse.json(result)
 }

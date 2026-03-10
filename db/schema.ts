@@ -244,6 +244,37 @@ export const appSchemaTables = {
     table: "scheduler_worker_leases",
     fields: ["lease_name", "worker_id", "leased_until", "updated_at"],
   },
+  apiKeyMetadata: {
+    table: "api_key_metadata",
+    fields: ["id", "name", "scopes", "status", "created_at", "rotated_at", "last_used_at", "secret_prefix", "secret_masked"],
+    indexes: ["api_key_metadata_pkey"],
+  },
+  apiKeySecretMaterial: {
+    table: "api_key_secret_material",
+    fields: [
+      "id",
+      "api_key_id",
+      "secret_hash",
+      "encrypted_secret",
+      "hash_algorithm",
+      "encryption_algorithm",
+      "encryption_key_version",
+      "rotated_from_hash",
+      "created_at",
+    ],
+    indexes: ["idx_api_key_secret_material_key_created"],
+  },
+  apiKeyRotationHistory: {
+    table: "api_key_rotation_history",
+    fields: ["id", "api_key_id", "action", "happened_at", "prefix_snapshot", "secret_masked_snapshot"],
+    indexes: ["idx_api_key_rotation_history_key_happened"],
+  },
+  apiKeyUsageCounters: {
+    table: "api_key_usage_counters",
+    fields: ["id", "api_key_id", "bucket_start", "request_count"],
+    indexes: ["idx_api_key_usage_counters_bucket"],
+    uniqueConstraints: ["api_key_id,bucket_start"],
+  },
   agentRoleDecisions: {
     table: "agent_role_decisions",
     fields: [

@@ -13,25 +13,14 @@ This document is payment-domain specific. For contributor workflow/process polic
 
 ## Current payment reliability notes (2026-02)
 
-## 2026-03 UPI durable transaction persistence (service reliability hardening)
+## 2026-03 checkout UX detailing refresh (UI-only, contract-safe)
 
-- Replaced in-memory UPI state with durable DB persistence via `upi_transactions` and `upi_transaction_events`, covering `transactionId`, `orderId`, amount/currency, lifecycle status (`initiated|pending|success|failed`), provider refs, failure reason/code, idempotency keys, and audit timestamps.
-- `UpiCheckoutService` now reads/writes transaction lifecycle through repository methods (`lib/repositories/upi-transactions.ts`) and preserves existing route response shapes for initiation, status, and provider-completion flows.
-- New provider completion endpoint `POST /api/upi/complete` finalizes pending UPI transactions through the same persisted service state and returns the existing status payload shape.
-- Backward compatibility: payment API response field names remain unchanged for existing UPI initiate/status surfaces; completion is additive.
-- New migration: `db/migrations/0017_upi_transactions.sql`.
-- New env/config dependency: requires one configured Postgres connection env (`DATABASE_URL`, `NEON_DATABASE_URL`, `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `POSTGRES_URL_NON_POOLING`, `runash_POSTGRES_URL`, `runash_POSTGRES_URL_NON_POOLING`) for durable UPI persistence.
-- Risks + rollback:
-  1. Risk: deployments without DB env config will fail UPI transaction persistence at runtime.
-  2. Rollback (code): revert `lib/services/upi-checkout-service.ts`, `lib/repositories/upi-transactions.ts`, and UPI route updates together.
-  3. Rollback (schema): drop `upi_transaction_events` then `upi_transactions` if reverting migration `0017_upi_transactions.sql`.
-
-## 2026-03 checkout visual refresh (UI-only, contract-safe)
-
-- Updated `/checkout` presentation to align with Stripe-style subscription UX: centered plan/amount header, cleaner payment method selector, UPI app-authorization guidance, and stronger primary action hierarchy.
-- Payment/auth compatibility: no checkout API request/response fields were renamed or removed; existing pending-order payload keys and redirect flow contracts remain unchanged.
-- Impacted flow: client-side checkout rendering + form affordances only (`app/checkout/page.tsx`).
-- Risk + rollback: low UI regression risk only. Roll back by reverting `app/checkout/page.tsx`; no migration or backend rollback required.
+- Enhanced `/checkout` with a subscription hero summary, collapsible payment-details panel, card-brand indicator chips, and improved phone capture using country-code + flag selector.
+- UPI section now includes an explicit app-authorization handoff dialog (select app -> redirecting -> success confirmation) and a QR fallback path (`/api/upi/initiate`, `/api/upi/qr`, `/api/upi/complete`, `/api/upi/status/:transactionId`) to support app/QR completion flows.
+- Checkout model review card remains integrated to preserve plan/model visibility before final submit.
+- Payment/auth compatibility: no payment API request/response fields, webhook schemas, redirect contract names, or checkout payload keys were renamed or removed.
+- Impacted flow: client checkout form UX + local pending-order preparation (`app/checkout/page.tsx`) only.
+- Risk + rollback: low UI/regression risk. Roll back by reverting `app/checkout/page.tsx`; no migration/database rollback required.
 
 ## 2026-03 auth SMS OTP provider reliability note (payment-adjacent auth hardening)
 
@@ -919,3 +908,14 @@ Risk + rollback:
 - `/api/wallet/link/session`, `/api/wallet/link/verify`, and `/api/wallet/link/save` surface `LINK_PROVIDER_UNAVAILABLE` as retry-safe `503` responses, and provider execution errors as controlled `502` responses.
 - Mock mode is restricted to explicit test-only execution (`NODE_ENV=test` and `LINK_PROVIDER_ENABLE_MOCK=true`) to prevent fake Link state in real checkout flows.
 - Rollback: revert Link provider availability hardening changes and restore prior behavior only as temporary incident containment while reapplying valid Stripe credentials.
+
+## 2026-03 API key metadata persistence hardening
+
+- Dashboard API key management now persists metadata + lifecycle state in `api_key_metadata`, while secret material is stored as both a SHA-256 hash and encrypted ciphertext (`aes-256-gcm`, key version `v1`) in `api_key_secret_material`.
+- Rotation/revocation lifecycle events are persisted in `api_key_rotation_history`, and usage buckets continue in `api_key_usage_counters` for 24h volume aggregation.
+- Synthetic default keys are removed from initialization; key inventory starts empty until an operator explicitly creates credentials.
+- Plaintext API secrets are returned exactly once (create/rotate response only) and are not persisted in plaintext or emitted in API audit logs.
+
+Risk + rollback
+1. **Risk:** environments missing `RUNASH_API_KEY_ENCRYPTION_KEY` will fail key create/rotate operations. **Mitigation:** set and rotate the managed secret in deployment config before rollout.
+2. **Rollback:** revert `lib/api-platform/api-key-store.ts` and `lib/repositories/api-keys.ts` plus DB migration `0016_api_key_secret_encryption_backfill.sql`, then redeploy previous API key handling while restoring prior secret material expectations.
