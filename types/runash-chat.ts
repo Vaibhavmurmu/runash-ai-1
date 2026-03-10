@@ -136,7 +136,7 @@ export interface Product {
   category: ProductCategory
   isOrganic: boolean
   sustainabilityScore: number
-  image: string
+  image: string | null
   mediaAssets?: ProductMediaAsset[]
   arModelUrl?: string
   imageHd?: string
@@ -170,7 +170,7 @@ export interface Recipe {
   servings: number
   ingredients: Ingredient[]
   instructions: string[]
-  image: string
+  image: string | null
   imageHd?: string
   imageThumb?: string
   imageAlt?: string
