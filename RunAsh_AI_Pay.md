@@ -909,13 +909,13 @@ Risk + rollback:
 - Mock mode is restricted to explicit test-only execution (`NODE_ENV=test` and `LINK_PROVIDER_ENABLE_MOCK=true`) to prevent fake Link state in real checkout flows.
 - Rollback: revert Link provider availability hardening changes and restore prior behavior only as temporary incident containment while reapplying valid Stripe credentials.
 
+## 2026-03 API key metadata persistence hardening
 
-## 2026-03 Non-production UPI/checkout test env stubs
+- Dashboard API key management now persists metadata + lifecycle state in `api_key_metadata`, while secret material is stored as both a SHA-256 hash and encrypted ciphertext (`aes-256-gcm`, key version `v1`) in `api_key_secret_material`.
+- Rotation/revocation lifecycle events are persisted in `api_key_rotation_history`, and usage buckets continue in `api_key_usage_counters` for 24h volume aggregation.
+- Synthetic default keys are removed from initialization; key inventory starts empty until an operator explicitly creates credentials.
+- Plaintext API secrets are returned exactly once (create/rotate response only) and are not persisted in plaintext or emitted in API audit logs.
 
-- Added route/service/integration payment test coverage for UPI QR retrieval, completion idempotency/rate-limit behavior, and checkout modal transition messaging while preserving existing API contract field names.
-- For local + CI non-production test runs, set deterministic stub env values to avoid accidental live provider use:
-  - `RUNASH_UPI_PAYEE_VPA=runash-test@upi`
-  - `RUNASH_UPI_PAYEE_NAME=RunAsh Test`
-  - `STRIPE_SECRET_KEY=sk_test_mock`
-- Backward compatibility: no payment API response shape changes; tests assert stable fields (`transactionId`, `amount`, `currency`, `status`, `transactionReference`, `errorCode`, `idempotencyKey`) explicitly.
-- Risk + rollback: low risk (test/doc-only). Roll back by reverting the added tests/docs if flakiness appears; no migration or production behavior rollback required.
+Risk + rollback
+1. **Risk:** environments missing `RUNASH_API_KEY_ENCRYPTION_KEY` will fail key create/rotate operations. **Mitigation:** set and rotate the managed secret in deployment config before rollout.
+2. **Rollback:** revert `lib/api-platform/api-key-store.ts` and `lib/repositories/api-keys.ts` plus DB migration `0016_api_key_secret_encryption_backfill.sql`, then redeploy previous API key handling while restoring prior secret material expectations.
