@@ -908,3 +908,14 @@ Risk + rollback:
 - `/api/wallet/link/session`, `/api/wallet/link/verify`, and `/api/wallet/link/save` surface `LINK_PROVIDER_UNAVAILABLE` as retry-safe `503` responses, and provider execution errors as controlled `502` responses.
 - Mock mode is restricted to explicit test-only execution (`NODE_ENV=test` and `LINK_PROVIDER_ENABLE_MOCK=true`) to prevent fake Link state in real checkout flows.
 - Rollback: revert Link provider availability hardening changes and restore prior behavior only as temporary incident containment while reapplying valid Stripe credentials.
+
+
+## 2026-03 Non-production UPI/checkout test env stubs
+
+- Added route/service/integration payment test coverage for UPI QR retrieval, completion idempotency/rate-limit behavior, and checkout modal transition messaging while preserving existing API contract field names.
+- For local + CI non-production test runs, set deterministic stub env values to avoid accidental live provider use:
+  - `RUNASH_UPI_PAYEE_VPA=runash-test@upi`
+  - `RUNASH_UPI_PAYEE_NAME=RunAsh Test`
+  - `STRIPE_SECRET_KEY=sk_test_mock`
+- Backward compatibility: no payment API response shape changes; tests assert stable fields (`transactionId`, `amount`, `currency`, `status`, `transactionReference`, `errorCode`, `idempotencyKey`) explicitly.
+- Risk + rollback: low risk (test/doc-only). Roll back by reverting the added tests/docs if flakiness appears; no migration or production behavior rollback required.

@@ -74,3 +74,93 @@ test("UPI transaction details include receipt id and amount", () => {
   assert.equal(details.payload.amount, 777)
   assert.match(details.payload.receiptId, /^RCPT-/)
 })
+
+test("UPI status transitions from pending to terminal with explicit status payload fields", async () => {
+  const initiated = UpiCheckoutService.initiatePayment("init-key-5", 875)
+
+  const confirmation = UpiCheckoutService.confirmPayment({
+    transactionId: initiated.transactionId,
+    pin: "123456",
+    idempotencyKey: "confirm-key-pending",
+  })
+  assert.equal(confirmation.ok, true)
+  if (!confirmation.ok) throw new Error("Expected successful confirmation")
+  assert.equal(confirmation.status, "pending")
+
+  await new Promise((resolve) => setTimeout(resolve, 6_500))
+
+  const status = UpiCheckoutService.getStatus(initiated.transactionId)
+  assert.equal(status.found, true)
+  assert.equal(status.payload.transactionId, initiated.transactionId)
+  assert.equal(status.payload.amount, 875)
+  assert.equal(status.payload.currency, "INR")
+  assert.equal(typeof status.payload.transactionReference, "string")
+  assert.ok(status.payload.status === "success" || status.payload.status === "failed")
+  if (status.payload.status === "failed") {
+    assert.equal(typeof status.payload.failedReason, "string")
+  }
+})
+
+test("UPI completeViaProvider returns explicit contract fields for success, idempotent repeat, and failed transaction", () => {
+  const successTxn = UpiCheckoutService.initiatePayment("init-key-6", 305)
+  const first = UpiCheckoutService.completeViaProvider({
+    transactionId: successTxn.transactionId,
+    idempotencyKey: "complete-key-1",
+  })
+  assert.equal(first.ok, true)
+  if (!first.ok) throw new Error("Expected completeViaProvider success")
+  assert.equal(first.transactionId, successTxn.transactionId)
+  assert.equal(first.status, "success")
+  assert.equal(typeof first.transactionReference, "string")
+  assert.equal(first.idempotencyKey, "complete-key-1")
+
+  const repeat = UpiCheckoutService.completeViaProvider({
+    transactionId: successTxn.transactionId,
+    idempotencyKey: "complete-key-2",
+  })
+  assert.equal(repeat.ok, true)
+  if (!repeat.ok) throw new Error("Expected idempotent success")
+  assert.equal(repeat.transactionId, successTxn.transactionId)
+  assert.equal(repeat.status, "success")
+  assert.equal(typeof repeat.transactionReference, "string")
+  assert.equal(repeat.idempotencyKey, "complete-key-2")
+
+  const failedTxn = UpiCheckoutService.initiatePayment("init-key-7", 440)
+  UpiCheckoutService.confirmPayment({
+    transactionId: failedTxn.transactionId,
+    pin: "000000",
+    idempotencyKey: "force-fail-1",
+  })
+  UpiCheckoutService.confirmPayment({
+    transactionId: failedTxn.transactionId,
+    pin: "000000",
+    idempotencyKey: "force-fail-2",
+  })
+  UpiCheckoutService.confirmPayment({
+    transactionId: failedTxn.transactionId,
+    pin: "000000",
+    idempotencyKey: "force-fail-3",
+  })
+
+  const failed = UpiCheckoutService.completeViaProvider({
+    transactionId: failedTxn.transactionId,
+    idempotencyKey: "complete-key-failed",
+  })
+  assert.equal(failed.ok, false)
+  if (failed.ok) throw new Error("Expected failed transaction")
+  assert.equal(failed.errorCode, "PIN_ATTEMPTS_EXCEEDED")
+  assert.equal(typeof failed.error, "string")
+})
+
+test("UPI getStatus returns stable not-found contract fields", () => {
+  const status = UpiCheckoutService.getStatus("UPI-MISSING-STATUS")
+
+  assert.equal(status.found, false)
+  assert.equal(status.payload.transactionId, "UPI-MISSING-STATUS")
+  assert.equal(status.payload.amount, 0)
+  assert.equal(status.payload.currency, "INR")
+  assert.equal(status.payload.status, "failed")
+  assert.equal(status.payload.errorCode, "RISK_BLOCKED")
+  assert.equal(typeof status.payload.transactionReference, "string")
+  assert.equal(typeof status.payload.failedReason, "string")
+})
