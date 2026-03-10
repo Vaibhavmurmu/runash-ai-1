@@ -1,5 +1,10 @@
 import { permanentRedirect } from "next/navigation"
+import { buildCanonicalRedirectPath } from "@/app/_lib/build-canonical-redirect-path"
 
-export default function DashboardEditorLegacyPage() {
-  permanentRedirect("/editor")
+type DashboardEditorLegacyPageProps = {
+  searchParams?: Record<string, string | string[] | undefined>
+}
+
+export default function DashboardEditorLegacyPage({ searchParams }: DashboardEditorLegacyPageProps) {
+  permanentRedirect(buildCanonicalRedirectPath("/editor", searchParams))
 }
