@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { UpiCheckoutService } from "@/lib/services/upi-checkout-service"
+import { isUpiSandboxCompleteEnabled } from "@/lib/upi-feature-flags"
 
 const COMPLETE_RATE_LIMIT = 20
 const COMPLETE_WINDOW_MS = 60_000
@@ -20,6 +21,13 @@ function resolveIdempotencyKey(request: NextRequest, body: unknown): string {
 }
 
 export async function POST(request: NextRequest) {
+  if (!isUpiSandboxCompleteEnabled()) {
+    return NextResponse.json(
+      { error: "Sandbox completion is disabled. Provider callback verification is required.", errorCode: "RISK_BLOCKED" },
+      { status: 403 },
+    )
+  }
+
   const limiter = await rateLimit(request, "upi:complete", COMPLETE_RATE_LIMIT, COMPLETE_WINDOW_MS)
   if (!limiter.success) {
     return NextResponse.json(

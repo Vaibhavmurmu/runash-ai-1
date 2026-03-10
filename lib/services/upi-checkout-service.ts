@@ -12,6 +12,15 @@ import {
 
 export type { UpiExecutionStatus, UpiErrorCode }
 
+type UpiOrderRecord = {
+  orderId: string
+  transactionId: string
+  amount: number
+  currency: string
+  status: UpiExecutionStatus
+  updatedAt: string
+}
+
 type UpiInitiationResult = {
   transactionId: string
   order_id: number
@@ -75,6 +84,33 @@ function resolveTerminalStatus(transactionId: string): "success" | "failed" {
 
 function assertMaskedPin(_pin: string) {
   return "[REDACTED_PIN]"
+}
+
+function toCanonicalStatus(providerStatus: UpiProviderStatus): UpiExecutionStatus {
+  switch (providerStatus) {
+    case "SUCCESS":
+      return "success"
+    case "FAILED":
+    case "TIMEOUT":
+      return "failed"
+    case "PENDING":
+    case "PROCESSING":
+    case "AUTHORIZED":
+      return "pending"
+    default:
+      return "pending"
+  }
+}
+
+function syncOrderRecord(transaction: UpiTransactionRecord) {
+  orderByOrderId.set(transaction.orderId, {
+    orderId: transaction.orderId,
+    transactionId: transaction.transactionId,
+    amount: transaction.amount,
+    currency: transaction.currency,
+    status: transaction.status,
+    updatedAt: new Date().toISOString(),
+  })
 }
 
 export class UpiCheckoutService {
@@ -388,8 +424,11 @@ export class UpiCheckoutService {
     }
 
     transaction.status = "success"
+    transaction.verifiedAt = new Date().toISOString()
+    transaction.verifiedBy = "sandbox_complete"
     transaction.failureCode = undefined
     transaction.failureReason = undefined
+    syncOrderRecord(transaction)
 
     await UpiCheckoutService.updateOrderPaymentStatus(transaction, sqlClient)
 
@@ -424,5 +463,9 @@ export class UpiCheckoutService {
         receiptId: `RCPT-${status.payload.transactionReference}`,
       },
     }
+  }
+
+  static getOrderRecord(orderId: string) {
+    return orderByOrderId.get(orderId) ?? null
   }
 }

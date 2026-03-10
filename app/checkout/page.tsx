@@ -60,6 +60,9 @@ export default function CheckoutPage() {
   const [upiTransactionId, setUpiTransactionId] = useState<string | null>(null)
   const [upiStatusMessage, setUpiStatusMessage] = useState<string>("")
   const [upiLoadingQr, setUpiLoadingQr] = useState(false)
+  const [upiVerifiedSource, setUpiVerifiedSource] = useState<string | null>(null)
+
+  const upiSandboxCompleteEnabled = process.env.NEXT_PUBLIC_FEATURE_FLAG_UPI_SANDBOX_COMPLETE === "true"
 
   const selectedPlan = searchParams.get("plan") ?? undefined
   const selectedModel = searchParams.get("model") ?? undefined
@@ -256,6 +259,7 @@ export default function CheckoutPage() {
     setUpiQrImage(null)
     setUpiTransactionId(null)
     setUpiStatusMessage("")
+    setUpiVerifiedSource(null)
     setShowUpiAuthDialog(true)
   }
 
@@ -371,12 +375,18 @@ export default function CheckoutPage() {
       try {
         const statusRes = await fetch(`/api/upi/status/${encodeURIComponent(upiTransactionId)}`)
         if (!statusRes.ok) return
-        const statusData = (await statusRes.json()) as { status?: string }
+        const statusData = (await statusRes.json()) as { status?: string; isVerified?: boolean; verifiedBy?: string }
 
-        if (statusData.status === "success") {
-          setUpiStatusMessage("Payment accepted successfully in your UPI app.")
+        if (statusData.status === "success" && statusData.isVerified) {
+          setUpiVerifiedSource(statusData.verifiedBy ?? "provider_callback")
+          setUpiStatusMessage("Payment accepted and cryptographically verified with provider callback.")
           setUpiAuthStep("success")
           window.clearInterval(poll)
+          return
+        }
+
+        if (statusData.status === "success" && !statusData.isVerified) {
+          setUpiStatusMessage("Payment is processing. Waiting for verified provider callback...")
           return
         }
 
@@ -860,7 +870,9 @@ export default function CheckoutPage() {
                   {upiStatusMessage && <p className="mt-2 text-xs text-gray-600">{upiStatusMessage}</p>}
                   <div className="mt-4 flex justify-center gap-2">
                     <Button type="button" variant="outline" onClick={() => setUpiAuthStep("select")}>Choose app instead</Button>
-                    <Button type="button" onClick={markQrPaymentCompleted}>I&apos;ve accepted payment</Button>
+                    {upiSandboxCompleteEnabled ? (
+                      <Button type="button" onClick={markQrPaymentCompleted}>I&apos;ve accepted payment (sandbox)</Button>
+                    ) : null}
                   </div>
                 </div>
               )}
@@ -876,6 +888,7 @@ export default function CheckoutPage() {
                   <CheckCircle2 className="mx-auto h-12 w-12 text-green-600" />
                   <h3 className="mt-4 text-2xl font-semibold">Action Successful</h3>
                   <p className="mt-2 text-sm text-gray-600">Payment authorization completed. You can now proceed to secure payment.</p>
+                  {upiVerifiedSource && <p className="mt-1 text-xs text-gray-500">Verified via: {upiVerifiedSource}</p>}
                   <Button className="mt-5" onClick={() => setShowUpiAuthDialog(false)}>
                     Continue checkout
                   </Button>

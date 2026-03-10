@@ -76,3 +76,58 @@ test("UPI transaction details include receipt id and amount", async () => {
   assert.equal(details.payload.order_id, 1004)
   assert.match(details.payload.receiptId, /^RCPT-/)
 })
+
+
+test("UPI provider callback maps external statuses to canonical statuses and updates order record", () => {
+  const initiated = UpiCheckoutService.initiatePayment("init-key-provider-1", 305, "order_provider_1")
+
+  const callback = UpiCheckoutService.applyProviderCallback({
+    transactionId: initiated.transactionId,
+    providerStatus: "PROCESSING",
+    providerEventId: "evt_upi_1",
+  })
+
+  assert.equal(callback.ok, true)
+  if (!callback.ok) throw new Error("Expected callback to succeed")
+  assert.equal(callback.status, "pending")
+
+  const terminal = UpiCheckoutService.applyProviderCallback({
+    transactionId: initiated.transactionId,
+    providerStatus: "SUCCESS",
+    providerReference: "prov_ref_1",
+    providerEventId: "evt_upi_2",
+  })
+
+  assert.equal(terminal.ok, true)
+  if (!terminal.ok) throw new Error("Expected callback to succeed")
+  assert.equal(terminal.status, "success")
+
+  const status = UpiCheckoutService.getStatus(initiated.transactionId)
+  assert.equal(status.payload.status, "success")
+  assert.equal(status.payload.isVerified, true)
+
+  const order = UpiCheckoutService.getOrderRecord("order_provider_1")
+  assert.ok(order)
+  assert.equal(order?.status, "success")
+})
+
+test("UPI provider callback is idempotent by provider event id", () => {
+  const initiated = UpiCheckoutService.initiatePayment("init-key-provider-2", 450)
+
+  const first = UpiCheckoutService.applyProviderCallback({
+    transactionId: initiated.transactionId,
+    providerStatus: "FAILED",
+    providerEventId: "evt_upi_dup",
+  })
+
+  const second = UpiCheckoutService.applyProviderCallback({
+    transactionId: initiated.transactionId,
+    providerStatus: "SUCCESS",
+    providerEventId: "evt_upi_dup",
+  })
+
+  assert.equal(first.ok, true)
+  assert.equal(second.ok, true)
+  if (!second.ok) throw new Error("Expected callback to be idempotent")
+  assert.equal(second.idempotent, true)
+})
