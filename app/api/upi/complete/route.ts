@@ -5,6 +5,7 @@ import { recordUpiCallbackVerificationFailureMetric, recordUpiFailureMetric } fr
 import { isValidTransactionId, resolveIdempotencyKey, resolveTraceId, resolveUserId } from "@/lib/payments/upi-route-security"
 import { rateLimitByKey } from "@/lib/rate-limit"
 import { UpiCheckoutService } from "@/lib/services/upi-checkout-service"
+import { isUpiSandboxCompleteEnabled } from "@/lib/upi-feature-flags"
 
 const COMPLETE_RATE_LIMIT = 20
 const COMPLETE_WINDOW_MS = 60_000
@@ -13,7 +14,13 @@ const COMPLETE_USER_RATE_LIMIT = 10
 const COMPLETE_TX_RATE_LIMIT = 8
 
 export async function POST(request: NextRequest) {
-  const traceId = resolveTraceId(request)
+  if (!isUpiSandboxCompleteEnabled()) {
+    return NextResponse.json(
+      { error: "Sandbox completion is disabled. Provider callback verification is required.", errorCode: "RISK_BLOCKED" },
+      { status: 403 },
+    )
+  }
+
   const limiter = await rateLimit(request, "upi:complete", COMPLETE_RATE_LIMIT, COMPLETE_WINDOW_MS)
   if (!limiter.success) {
     recordUpiFailureMetric("/api/upi/complete", traceId)
@@ -41,16 +48,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "transactionId is required", errorCode: "RISK_BLOCKED" }, { status: 400 })
   }
 
-  const idempotencyKey = resolveIdempotencyKey(request, body, "upi-complete")
-  logApiEvent("info", "payments.upi.complete.request", {
-    requestId: traceId,
-    route: "/api/upi/complete",
-    method: "POST",
-    userId,
-    details: { transactionId, idempotencyKey },
-  })
-
-  const result = UpiCheckoutService.completeViaProvider({
+  const result = await UpiCheckoutService.completeViaProvider({
     transactionId,
     idempotencyKey,
     userId,

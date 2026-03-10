@@ -50,8 +50,8 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const idempotencyKey = resolveIdempotencyKey(request, body, "upi-confirm")
-  const confirmation = UpiCheckoutService.confirmPayment({
+  const idempotencyKey = resolveIdempotencyKey(request, body)
+  const confirmation = await UpiCheckoutService.confirmPayment({
     transactionId,
     pin,
     idempotencyKey,

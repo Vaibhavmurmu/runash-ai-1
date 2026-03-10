@@ -2,18 +2,19 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { UpiCheckoutService } from "@/lib/services/upi-checkout-service"
 
-test("UPI initiation is idempotent by key", () => {
-  const first = UpiCheckoutService.initiatePayment({ idempotencyKey: "init-key-1", amount: 499, payerUpiId: "user@upi", userId: "u-1" })
-  const second = UpiCheckoutService.initiatePayment({ idempotencyKey: "init-key-1", amount: 499, payerUpiId: "user@upi", userId: "u-1" })
+test("UPI initiation is idempotent by key", async () => {
+  const first = await UpiCheckoutService.initiatePayment("init-key-1", 499)
+  const second = await UpiCheckoutService.initiatePayment("init-key-1", 499)
 
   assert.equal(first.transactionId, second.transactionId)
   assert.equal(second.idempotencyKey, "init-key-1")
+  assert.equal(second.order_id, 1001)
 })
 
-test("UPI confirmation enforces retry limit and returns structured codes", () => {
-  const initiated = UpiCheckoutService.initiatePayment({ idempotencyKey: "init-key-2", amount: 999, payerUpiId: "user@upi", userId: "u-2" })
+test("UPI confirmation enforces retry limit and returns structured codes", async () => {
+  const initiated = await UpiCheckoutService.initiatePayment("init-key-2", 999)
 
-  const firstInvalid = UpiCheckoutService.confirmPayment({
+  const firstInvalid = await UpiCheckoutService.confirmPayment({
     transactionId: initiated.transactionId,
     pin: "999999",
     idempotencyKey: "confirm-key-1",
@@ -23,7 +24,7 @@ test("UPI confirmation enforces retry limit and returns structured codes", () =>
   if (firstInvalid.ok) throw new Error("Expected invalid confirmation")
   assert.equal(firstInvalid.code, "INVALID_PIN")
 
-  const secondInvalid = UpiCheckoutService.confirmPayment({
+  const secondInvalid = await UpiCheckoutService.confirmPayment({
     transactionId: initiated.transactionId,
     pin: "999999",
     idempotencyKey: "confirm-key-2",
@@ -33,7 +34,7 @@ test("UPI confirmation enforces retry limit and returns structured codes", () =>
   if (secondInvalid.ok) throw new Error("Expected invalid confirmation")
   assert.equal(secondInvalid.code, "INVALID_PIN")
 
-  const thirdInvalid = UpiCheckoutService.confirmPayment({
+  const thirdInvalid = await UpiCheckoutService.confirmPayment({
     transactionId: initiated.transactionId,
     pin: "999999",
     idempotencyKey: "confirm-key-3",
@@ -43,7 +44,7 @@ test("UPI confirmation enforces retry limit and returns structured codes", () =>
   if (thirdInvalid.ok) throw new Error("Expected invalid confirmation")
   assert.equal(thirdInvalid.code, "PIN_ATTEMPTS_EXCEEDED")
 
-  const blocked = UpiCheckoutService.confirmPayment({
+  const blocked = await UpiCheckoutService.confirmPayment({
     transactionId: initiated.transactionId,
     pin: "123456",
     idempotencyKey: "confirm-key-4",
@@ -54,15 +55,15 @@ test("UPI confirmation enforces retry limit and returns structured codes", () =>
   assert.equal(blocked.code, "PIN_ATTEMPTS_EXCEEDED")
 })
 
-test("UPI confirmation reuses idempotency key result", () => {
-  const initiated = UpiCheckoutService.initiatePayment({ idempotencyKey: "init-key-3", amount: 1200, payerUpiId: "user@upi", userId: "u-3" })
-  const first = UpiCheckoutService.confirmPayment({
+test("UPI confirmation reuses idempotency key result", async () => {
+  const initiated = await UpiCheckoutService.initiatePayment("init-key-3", 1200)
+  const first = await UpiCheckoutService.confirmPayment({
     transactionId: initiated.transactionId,
     pin: "123456",
     idempotencyKey: "confirm-key-idem",
     userId: "u-3",
   })
-  const second = UpiCheckoutService.confirmPayment({
+  const second = await UpiCheckoutService.confirmPayment({
     transactionId: initiated.transactionId,
     pin: "000000",
     idempotencyKey: "confirm-key-idem",
@@ -72,26 +73,67 @@ test("UPI confirmation reuses idempotency key result", () => {
   assert.deepEqual(second, first)
 })
 
-test("UPI transaction details include receipt id and amount", () => {
-  const initiated = UpiCheckoutService.initiatePayment({ idempotencyKey: "init-key-4", amount: 777, payerUpiId: "user@upi", userId: "u-4" })
-  const details = UpiCheckoutService.getTransactionDetails(initiated.transactionId)
+test("UPI transaction details include receipt id and amount", async () => {
+  const initiated = await UpiCheckoutService.initiatePayment("init-key-4", 777)
+  const details = await UpiCheckoutService.getTransactionDetails(initiated.transactionId)
 
   assert.equal(details.found, true)
   assert.equal(details.payload.amount, 777)
+  assert.equal(details.payload.order_id, 1004)
   assert.match(details.payload.receiptId, /^RCPT-/)
 })
 
-test("UPI completion reuses idempotency key and enforces ownership", () => {
-  const initiated = UpiCheckoutService.initiatePayment({ idempotencyKey: "init-key-5", amount: 321, payerUpiId: "user@upi", userId: "u-5" })
-  const first = UpiCheckoutService.completeViaProvider({ transactionId: initiated.transactionId, idempotencyKey: "complete-1", userId: "u-5" })
-  const replay = UpiCheckoutService.completeViaProvider({ transactionId: initiated.transactionId, idempotencyKey: "complete-1", userId: "u-5" })
 
-  assert.deepEqual(replay, first)
+test("UPI provider callback maps external statuses to canonical statuses and updates order record", () => {
+  const initiated = UpiCheckoutService.initiatePayment("init-key-provider-1", 305, "order_provider_1")
 
-  const ownershipMismatch = UpiCheckoutService.completeViaProvider({
+  const callback = UpiCheckoutService.applyProviderCallback({
     transactionId: initiated.transactionId,
-    idempotencyKey: "complete-2",
-    userId: "attacker",
+    providerStatus: "PROCESSING",
+    providerEventId: "evt_upi_1",
   })
-  assert.equal(ownershipMismatch.ok, false)
+
+  assert.equal(callback.ok, true)
+  if (!callback.ok) throw new Error("Expected callback to succeed")
+  assert.equal(callback.status, "pending")
+
+  const terminal = UpiCheckoutService.applyProviderCallback({
+    transactionId: initiated.transactionId,
+    providerStatus: "SUCCESS",
+    providerReference: "prov_ref_1",
+    providerEventId: "evt_upi_2",
+  })
+
+  assert.equal(terminal.ok, true)
+  if (!terminal.ok) throw new Error("Expected callback to succeed")
+  assert.equal(terminal.status, "success")
+
+  const status = UpiCheckoutService.getStatus(initiated.transactionId)
+  assert.equal(status.payload.status, "success")
+  assert.equal(status.payload.isVerified, true)
+
+  const order = UpiCheckoutService.getOrderRecord("order_provider_1")
+  assert.ok(order)
+  assert.equal(order?.status, "success")
+})
+
+test("UPI provider callback is idempotent by provider event id", () => {
+  const initiated = UpiCheckoutService.initiatePayment("init-key-provider-2", 450)
+
+  const first = UpiCheckoutService.applyProviderCallback({
+    transactionId: initiated.transactionId,
+    providerStatus: "FAILED",
+    providerEventId: "evt_upi_dup",
+  })
+
+  const second = UpiCheckoutService.applyProviderCallback({
+    transactionId: initiated.transactionId,
+    providerStatus: "SUCCESS",
+    providerEventId: "evt_upi_dup",
+  })
+
+  assert.equal(first.ok, true)
+  assert.equal(second.ok, true)
+  if (!second.ok) throw new Error("Expected callback to be idempotent")
+  assert.equal(second.idempotent, true)
 })

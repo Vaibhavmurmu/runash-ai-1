@@ -13,6 +13,16 @@ This document is payment-domain specific. For contributor workflow/process polic
 
 ## Current payment reliability notes (2026-02)
 
+## 2026-03 UPI provider callback verification + canonical status hardening
+
+- Added authoritative provider callback endpoint: `POST /api/upi/webhook/provider` to receive UPI transaction terminal/intermediate states.
+- Callback ingestion now requires a valid `x-upi-signature` HMAC-SHA256 signature (secret: `UPI_PROVIDER_WEBHOOK_SECRET`); unsigned/invalid requests are rejected with `401`.
+- Provider statuses are mapped into canonical internal statuses (`success`, `failed`, `pending`) and persisted into both UPI transaction state and linked in-memory order record state for auditability.
+- `/api/upi/complete` is now sandbox-only behind explicit feature flag `FEATURE_FLAG_UPI_SANDBOX_COMPLETE`; production flow relies on verified provider callbacks.
+- Checkout UPI QR polling now waits for verified status (`isVerified`) before showing success and displays callback verification source when available.
+- Backward compatibility: existing UPI initiation/status/confirm response field names are preserved; verification metadata is additive (`isVerified`, `verifiedAt`, `verifiedBy`).
+- Risk + rollback: medium payment flow risk if provider callback signing secret is misconfigured. Roll back by restoring previous `app/api/upi/complete` behavior and disabling callback-only enforcement while provider webhook configuration is corrected.
+
 ## 2026-03 checkout UX detailing refresh (UI-only, contract-safe)
 
 - Enhanced `/checkout` with a subscription hero summary, collapsible payment-details panel, card-brand indicator chips, and improved phone capture using country-code + flag selector.
@@ -909,28 +919,13 @@ Risk + rollback:
 - Mock mode is restricted to explicit test-only execution (`NODE_ENV=test` and `LINK_PROVIDER_ENABLE_MOCK=true`) to prevent fake Link state in real checkout flows.
 - Rollback: revert Link provider availability hardening changes and restore prior behavior only as temporary incident containment while reapplying valid Stripe credentials.
 
-## 2026-03 UPI API validation + ownership/rate-limit hardening
+## 2026-03 API key metadata persistence hardening
 
-- Hardened UPI route contracts for `POST /api/upi/initiate`, `POST /api/upi/confirm`, `GET /api/upi/qr`, `POST /api/upi/complete`, and `GET /api/upi/status/:transactionId` with strict validation:
-  - payer UPI ID must be syntactically valid,
-  - transaction IDs must match expected UPI transaction format,
-  - amounts are bounded to safe UPI limits (min/max) and normalized before persistence.
-- Added per-user and per-transaction request throttles in addition to existing route-level controls to reduce brute-force, scripted polling, and replay amplification.
-- Enforced transaction ownership checks across UPI read/write routes by binding initiation records to the initiating user and rejecting mismatched access with `RISK_BLOCKED` semantics.
-- Extended idempotency replay protection by persisting completion responses by idempotency key, ensuring duplicate completion retries return stable outcomes without duplicate side effects.
-- Added audit-safe structured logs with trace IDs (`x-trace-id`/request fallback) on UPI initiate/QR/complete/status flows while avoiding sensitive payload logging (no PIN/raw payment secrets).
-- Added UPI reliability/security alert metrics for:
-  - request failure spikes,
-  - provider timeout rate,
-  - callback verification failures.
+- Dashboard API key management now persists metadata + lifecycle state in `api_key_metadata`, while secret material is stored as both a SHA-256 hash and encrypted ciphertext (`aes-256-gcm`, key version `v1`) in `api_key_secret_material`.
+- Rotation/revocation lifecycle events are persisted in `api_key_rotation_history`, and usage buckets continue in `api_key_usage_counters` for 24h volume aggregation.
+- Synthetic default keys are removed from initialization; key inventory starts empty until an operator explicitly creates credentials.
+- Plaintext API secrets are returned exactly once (create/rotate response only) and are not persisted in plaintext or emitted in API audit logs.
 
-### Impacted payment/auth flows
-
-1. UPI initiate -> confirm -> complete lifecycle (ownership and replay controls).
-2. UPI QR and status polling flows (ownership + anti-abuse throttling).
-
-### Risks and rollback
-
-1. **Risk:** stricter validation may reject legacy/malformed client payloads that previously passed. **Mitigation:** failures return deterministic `RISK_BLOCKED`/validation messages; update client input handling.
-2. **Risk:** in-memory rate-limit/idempotency stores reset on process restart. **Mitigation:** behavior remains deterministic per-runtime; migrate to Redis/DB for multi-instance durability.
-3. **Rollback:** revert UPI route hardening helpers and service ownership/idempotency map changes while preserving existing route paths and response field names.
+Risk + rollback
+1. **Risk:** environments missing `RUNASH_API_KEY_ENCRYPTION_KEY` will fail key create/rotate operations. **Mitigation:** set and rotate the managed secret in deployment config before rollout.
+2. **Rollback:** revert `lib/api-platform/api-key-store.ts` and `lib/repositories/api-keys.ts` plus DB migration `0016_api_key_secret_encryption_backfill.sql`, then redeploy previous API key handling while restoring prior secret material expectations.

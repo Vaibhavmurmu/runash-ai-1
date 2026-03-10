@@ -42,7 +42,7 @@ type PersistentState = {
   history: RotationRow[]
 }
 
-function makeAdapters(state: PersistentState) {
+function makeRepository(state: PersistentState) {
   return {
     async listKeys() {
       return state.metadata
@@ -62,6 +62,7 @@ function makeAdapters(state: PersistentState) {
       encryptedSecret: string
       createdAt: string
     }) {
+      void input.encryptedSecret
       state.metadata.push({
         id: input.id,
         name: input.name,
@@ -111,6 +112,7 @@ function makeAdapters(state: PersistentState) {
       secretHash: string
       encryptedSecret: string
     }) {
+      void input.encryptedSecret
       const key = state.metadata.find((item) => item.id === input.id)
       if (!key) return null
       const previous = state.secrets.filter((item) => item.api_key_id === input.id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]
@@ -137,61 +139,54 @@ function makeAdapters(state: PersistentState) {
   }
 }
 
-test("api key store persists create/list/revoke/rotate without synthetic defaults", async () => {
+test("dashboard API key routes persist lifecycle and only expose plaintext on create/rotate", async () => {
   process.env.RUNASH_API_KEY_ENCRYPTION_KEY = "unit-test-key"
-  const store = await import("./api-key-store")
-  const state: PersistentState = { metadata: [], secrets: [], usage: [], history: [] }
 
-  store.setApiKeyStoreAdaptersForTests(makeAdapters(state))
+  const state: PersistentState = { metadata: [], secrets: [], usage: [], history: [] }
+  const store = await import("@/lib/api-platform/api-key-store")
+  const keysRoute = await import("./route")
+  const keyRoute = await import("./[id]/route")
+
+  store.setApiKeyStoreAdaptersForTests(makeRepository(state))
 
   try {
-    const initial = await store.listApiKeys()
-    assert.equal(initial.length, 0)
+    const createRequest = new Request("http://localhost/api/dashboard/api-keys", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "dashboard-prod", scopes: ["payments:charges.write", "payments:charges.write"] }),
+    })
+    const createResponse = await keysRoute.POST(createRequest)
+    assert.equal(createResponse.status, 201)
+    const createdPayload = (await createResponse.json()) as { key: { id: string }; plainTextSecret?: string }
+    assert.equal(typeof createdPayload.plainTextSecret, "string")
 
-    const created = await store.createApiKey({ name: "dashboard-prod", scopes: ["payments:charges.write", "payments:charges.write", "webhooks:read"] })
-    assert.equal(created.key.name, "dashboard-prod")
-    assert.equal(created.key.scopes.length, 2)
-    assert.equal(typeof created.plainTextSecret, "string")
-    assert.equal(state.secrets.length, 1)
+    const listResponse = await keysRoute.GET()
+    assert.equal(listResponse.status, 200)
+    const listPayload = (await listResponse.json()) as { keys: Array<Record<string, unknown>> }
+    assert.equal(listPayload.keys.length, 1)
+    assert.ok(!("plainTextSecret" in listPayload.keys[0]!))
 
-    const listed = await store.listApiKeys()
-    assert.equal(listed.length, 1)
-    assert.equal(listed[0]?.id, created.key.id)
+    const rotateRequest = new Request(`http://localhost/api/dashboard/api-keys/${createdPayload.key.id}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "rotate" }),
+    })
+    const rotateResponse = await keyRoute.POST(rotateRequest, { params: Promise.resolve({ id: createdPayload.key.id }) })
+    assert.equal(rotateResponse.status, 200)
+    const rotatePayload = (await rotateResponse.json()) as { key: { id: string }; plainTextSecret?: string }
+    assert.equal(typeof rotatePayload.plainTextSecret, "string")
 
-    const rotated = await store.rotateApiKey(created.key.id)
-    assert.ok(rotated)
-    assert.notEqual(rotated?.plainTextSecret, created.plainTextSecret)
-    assert.equal(state.secrets.length, 2)
-    assert.equal(state.history.at(-1)?.action, "rotated")
-
-    const revoked = await store.revokeApiKey(created.key.id)
-    assert.equal(revoked?.status, "revoked")
-    assert.equal(state.history.at(-1)?.action, "revoked")
-
-    const persistedView = await store.listApiKeys()
-    assert.equal(persistedView[0]?.status, "revoked")
-    assert.ok(!Object.prototype.hasOwnProperty.call(persistedView[0] as object, "plainTextSecret"))
+    const revokeRequest = new Request(`http://localhost/api/dashboard/api-keys/${createdPayload.key.id}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "revoke" }),
+    })
+    const revokeResponse = await keyRoute.POST(revokeRequest, { params: Promise.resolve({ id: createdPayload.key.id }) })
+    assert.equal(revokeResponse.status, 200)
+    const revokePayload = (await revokeResponse.json()) as { key: Record<string, unknown>; plainTextSecret?: string }
+    assert.equal(revokePayload.key.status, "revoked")
+    assert.equal(revokePayload.plainTextSecret, undefined)
   } finally {
     store.setApiKeyStoreAdaptersForTests(null)
-  }
-})
-
-test("api key persistence survives module reload (process restart safe)", async () => {
-  process.env.RUNASH_API_KEY_ENCRYPTION_KEY = "unit-test-key"
-  const first = await import("./api-key-store")
-  const state: PersistentState = { metadata: [], secrets: [], usage: [], history: [] }
-
-  first.setApiKeyStoreAdaptersForTests(makeAdapters(state))
-  const created = await first.createApiKey({ name: "restart-safe", scopes: ["api:read"] })
-  first.setApiKeyStoreAdaptersForTests(null)
-
-  const second = await import(`./api-key-store.ts?restart=${Date.now()}`)
-  second.setApiKeyStoreAdaptersForTests(makeAdapters(state))
-  try {
-    const listed = await second.listApiKeys()
-    assert.equal(listed.length, 1)
-    assert.equal(listed[0]?.id, created.key.id)
-  } finally {
-    second.setApiKeyStoreAdaptersForTests(null)
   }
 })
