@@ -1,6 +1,6 @@
 import { shouldRecommendProducts } from "@/lib/chat-product-recommendations"
 import { chatRecommendationCardsService } from "@/lib/services/chat-recommendation-cards-service"
-import type { ChatFallbackResponse } from "@/types/chat-fallback-cards"
+import type { ChatFallbackResponse } from "@/types/chat-recommendations"
 import type { Product, Recipe, SustainabilityTip, UserPreferences } from "@/types/runash-chat"
 
 export interface ChatFallbackProviders {

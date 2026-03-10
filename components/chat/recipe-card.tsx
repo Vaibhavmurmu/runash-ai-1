@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Clock, Users, ChefHat, Leaf, Star, BookOpen, Heart } from "lucide-react"
+import { Clock, Users, ChefHat, Leaf, Star, BookOpen, Heart, ImageOff } from "lucide-react"
 import type { Recipe } from "@/types/runash-chat"
 
 interface RecipeCardProps {
@@ -35,7 +35,13 @@ export default function RecipeCard({ recipe }: RecipeCardProps) {
   return (
     <Card className="overflow-hidden hover:shadow-lg transition-shadow">
       <div className="relative">
-        <img src={recipe.image || "/placeholder.svg"} alt={recipe.name} className="w-full h-40 object-cover" />
+        {recipe.image ? (
+          <img src={recipe.image} alt={recipe.imageAlt ?? recipe.name} className="h-40 w-full object-cover" />
+        ) : (
+          <div className="flex h-40 w-full items-center justify-center bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-300">
+            <ImageOff className="mr-1 h-4 w-4" /> Media unavailable
+          </div>
+        )}
         <div className="absolute top-2 left-2 flex space-x-1">
           <Badge className={getDifficultyColor(recipe.difficulty)}>{recipe.difficulty}</Badge>
           <Badge className="bg-green-600 text-white">

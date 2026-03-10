@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Star, Leaf, ShoppingCart, Heart, Info, ScanSearch, ZoomIn, ZoomOut, RotateCcw, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react"
+import { Star, Leaf, ShoppingCart, Heart, Info, ScanSearch, ZoomIn, ZoomOut, RotateCcw, ChevronLeft, ChevronRight, ExternalLink, ImageOff } from "lucide-react"
 import type { Product, ProductMediaAsset } from "@/types/runash-chat"
 import { useCart } from "@/contexts/cart-context"
 
@@ -70,6 +70,7 @@ export default function ProductCard({ product }: ProductCardProps) {
   }, [product])
 
   const activeMedia = mediaAssets[activeMediaIndex]
+  const primaryImage = product.imageHd ?? product.imageThumb ?? product.image
 
   const resetView = () => {
     setZoom(1)
@@ -152,7 +153,13 @@ export default function ProductCard({ product }: ProductCardProps) {
           className="w-full"
           aria-label={`Open ${product.name} media viewer`}
         >
-          <img src={product.image || "/placeholder.svg"} alt={product.name} className="h-32 w-full object-cover" />
+          {primaryImage ? (
+            <img src={primaryImage} alt={product.name} className="h-32 w-full object-cover" />
+          ) : (
+            <div className="flex h-32 w-full items-center justify-center bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-300">
+              <ImageOff className="mr-1 h-4 w-4" /> Media unavailable
+            </div>
+          )}
         </button>
         {product.isOrganic && (
           <Badge className="absolute left-2 top-2 bg-green-600 text-white">
@@ -212,7 +219,13 @@ export default function ProductCard({ product }: ProductCardProps) {
                 <DialogTitle>{product.name}</DialogTitle>
                 <DialogDescription>Detailed product view with certifications and sustainability details.</DialogDescription>
               </DialogHeader>
-              <img src={product.imageHd ?? product.image ?? "/placeholder.svg"} alt={product.name} className="h-56 w-full rounded-md object-cover" />
+              {primaryImage ? (
+                <img src={primaryImage} alt={product.name} className="h-56 w-full rounded-md object-cover" />
+              ) : (
+                <div className="flex h-56 w-full items-center justify-center rounded-md bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-300">
+                  <ImageOff className="mr-1 h-4 w-4" /> Media unavailable
+                </div>
+              )}
               <p className="text-sm text-gray-600 dark:text-gray-300">{product.description}</p>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
@@ -372,7 +385,7 @@ export default function ProductCard({ product }: ProductCardProps) {
           >
             {activeMedia && (
               <img
-                src={activeMedia.hdUrl ?? activeMedia.url ?? "/placeholder.svg"}
+                src={activeMedia.hdUrl ?? activeMedia.url}
                 alt={activeMedia.alt ?? product.imageAlt ?? product.name}
                 className="max-h-full max-w-full select-none object-contain"
                 draggable={false}

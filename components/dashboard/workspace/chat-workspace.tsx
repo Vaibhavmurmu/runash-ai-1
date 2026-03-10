@@ -41,6 +41,7 @@ import { buildRunAshChatQuickActions } from "@/lib/runash-chat/quick-actions"
 import { resolveRequestedToolsForMessage } from "@/lib/runash-chat/tooling"
  
 import { buildFallbackAssistantResponse } from "@/lib/chat/fallback-assistant-response"
+import type { ChatRecommendationPayload } from "@/types/chat-recommendations"
 
 const UPGRADE_METRICS_KEY = "runash_upgrade_metrics_v2"
 const STARTER_CARD_STATE_KEY = "runash_chat_starter_cards_v1"
@@ -319,9 +320,14 @@ export function ChatWorkspace() {
     const record = toRecord(value)
     if (!record) return undefined
 
-    const products = Array.isArray(record.products) ? (record.products as ChatMessage["metadata"]["products"]) : undefined
-    const recipes = Array.isArray(record.recipes) ? (record.recipes as ChatMessage["metadata"]["recipes"]) : undefined
-    const tips = Array.isArray(record.tips) ? (record.tips as ChatMessage["metadata"]["tips"]) : undefined
+    const recommendationPayload = record as ChatRecommendationPayload
+    const products = Array.isArray(recommendationPayload.products)
+      ? (recommendationPayload.products as ChatMessage["metadata"]["products"])
+      : undefined
+    const recipes = Array.isArray(recommendationPayload.recipes)
+      ? (recommendationPayload.recipes as ChatMessage["metadata"]["recipes"])
+      : undefined
+    const tips = Array.isArray(recommendationPayload.tips) ? (recommendationPayload.tips as ChatMessage["metadata"]["tips"]) : undefined
     const automationSuggestions = Array.isArray(record.automationSuggestions)
       ? (record.automationSuggestions as ChatMessage["metadata"]["automationSuggestions"])
       : undefined
