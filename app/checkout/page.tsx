@@ -264,15 +264,52 @@ export default function CheckoutPage() {
     setUpiAuthStep("redirecting")
   }
 
+  const ensureOrderIdForPayment = async () => {
+    const existingOrderId = typeof window !== "undefined" ? sessionStorage.getItem("pendingOrderId") : null
+    if (existingOrderId) {
+      return Number(existingOrderId)
+    }
+
+    const pending = typeof window !== "undefined" ? sessionStorage.getItem("pendingOrder") : null
+    if (!pending) {
+      throw new Error("No pending order available. Please submit checkout details first.")
+    }
+
+    const parsedPayload = checkoutOrderSchema.safeParse(JSON.parse(pending))
+    if (!parsedPayload.success) {
+      throw new Error("Pending order data is invalid. Please retry from checkout.")
+    }
+
+    const createRes = await fetch("/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(parsedPayload.data),
+    })
+
+    if (!createRes.ok) {
+      const e = await createRes.json().catch(() => null)
+      throw new Error(e?.error || "Failed to create order on server")
+    }
+
+    const created = (await createRes.json()) as { id?: number }
+    if (!created.id) {
+      throw new Error("Failed to obtain an order id")
+    }
+
+    sessionStorage.setItem("pendingOrderId", String(created.id))
+    return created.id
+  }
+
   const loadQrCheckout = async () => {
     if (upiLoadingQr) return
     setUpiLoadingQr(true)
     setUpiStatusMessage("")
     try {
+      const orderId = await ensureOrderIdForPayment()
       const initiateRes = await fetch("/api/upi/initiate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ amount: finalTotal }),
+        body: JSON.stringify({ amount: finalTotal, orderId }),
       })
 
       if (!initiateRes.ok) {
@@ -313,7 +350,7 @@ export default function CheckoutPage() {
       const response = await fetch("/api/upi/complete", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ transactionId: upiTransactionId }),
+        body: JSON.stringify({ transactionId: upiTransactionId, orderId: Number(sessionStorage.getItem("pendingOrderId") || 0) }),
       })
 
       if (!response.ok) {

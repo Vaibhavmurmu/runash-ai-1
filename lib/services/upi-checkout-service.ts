@@ -14,6 +14,7 @@ export type { UpiExecutionStatus, UpiErrorCode }
 
 type UpiInitiationResult = {
   transactionId: string
+  order_id: number
   amount: number
   currency: string
   status: "initiated"
@@ -24,6 +25,7 @@ type UpiInitiationResult = {
 type UpiConfirmationSuccess = {
   ok: true
   transactionId: string
+  order_id: number
   status: UpiExecutionStatus
   transactionReference: string
   updatedAt: string
@@ -87,6 +89,22 @@ export class UpiCheckoutService {
         initiatedAt: existing.createdAt.toISOString(),
         idempotencyKey,
       }
+    }
+
+    const [order] = await sqlClient /* sql */`
+      UPDATE public.orders
+      SET status = CASE
+        WHEN status = 'paid' THEN status
+        ELSE 'payment_pending'
+      END,
+      row_version = row_version + 1,
+      updated_at = now()
+      WHERE id = ${orderId}
+      RETURNING id
+    `
+
+    if (!order) {
+      throw new Error("Order not found for UPI initiation")
     }
 
     const transactionId = buildTransactionId()
@@ -298,6 +316,7 @@ export class UpiCheckoutService {
         found: false as const,
         payload: {
           transactionId,
+          order_id: 0,
           amount: 0,
           currency: DEFAULT_CURRENCY,
           status: "failed" as const,
@@ -335,7 +354,7 @@ export class UpiCheckoutService {
     }
   }
 
-  static completeViaProvider(input: { transactionId: string; idempotencyKey: string }) {
+  static async completeViaProvider(input: { transactionId: string; idempotencyKey: string }, sqlClient: SqlClient = getSql()) {
     const transaction = transactionsById.get(input.transactionId)
 
     if (!transaction) {
@@ -347,9 +366,11 @@ export class UpiCheckoutService {
     }
 
     if (transaction.status === "success") {
+      await UpiCheckoutService.updateOrderPaymentStatus(transaction, sqlClient)
       return {
         ok: true as const,
         transactionId: transaction.transactionId,
+        order_id: transaction.orderId,
         status: transaction.status,
         transactionReference: transaction.transactionReference,
         updatedAt: new Date().toISOString(),
@@ -358,6 +379,7 @@ export class UpiCheckoutService {
     }
 
     if (transaction.status === "failed") {
+      await UpiCheckoutService.updateOrderPaymentStatus(transaction, sqlClient)
       return {
         ok: false as const,
         error: transaction.failureReason || "Transaction failed",
@@ -369,9 +391,12 @@ export class UpiCheckoutService {
     transaction.failureCode = undefined
     transaction.failureReason = undefined
 
+    await UpiCheckoutService.updateOrderPaymentStatus(transaction, sqlClient)
+
     return {
       ok: true as const,
       transactionId: transaction.transactionId,
+      order_id: transaction.orderId,
       status: transaction.status,
       transactionReference: transaction.transactionReference,
       updatedAt: new Date().toISOString(),
@@ -379,8 +404,8 @@ export class UpiCheckoutService {
     }
   }
 
-  static getTransactionDetails(transactionId: string) {
-    const status = UpiCheckoutService.getStatus(transactionId)
+  static async getTransactionDetails(transactionId: string, sqlClient: SqlClient = getSql()) {
+    const status = await UpiCheckoutService.getStatus(transactionId, sqlClient)
 
     if (!status.found) {
       return {
