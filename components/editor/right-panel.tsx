@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react"
+import Link from "next/link"
 import { SlidersHorizontal } from "lucide-react"
 import { isRightPanelTabId, type RightPanelTabId } from "./panel-tabs"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
@@ -151,7 +152,20 @@ export default function RightPanel({
 
   return (
     <>
-      <aside className="hidden w-80 overflow-y-auto border-l border-border bg-card lg:block xl:w-96 2xl:w-[28rem]">{renderTabContent()}</aside>
+      <aside className="hidden w-80 overflow-y-auto border-l border-border bg-card lg:block xl:w-96 2xl:w-[28rem]">
+        {resolvedTab === "generate" && (
+          <div className="px-4 pt-4">
+            <Link
+              href="/editor/docs#generation"
+              aria-label="Need help with generation settings? Open documentation"
+              className="text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              Need help?
+            </Link>
+          </div>
+        )}
+        {renderTabContent()}
+      </aside>
 
       {isNarrowViewport && (
         <div className="fixed bottom-36 right-4 z-30">
@@ -165,6 +179,15 @@ export default function RightPanel({
               <SheetHeader className="border-b border-border p-4">
                 <SheetTitle>Project controls</SheetTitle>
                 <SheetDescription>Models, generation settings, and stream controls.</SheetDescription>
+                {resolvedTab === "generate" && (
+                  <Link
+                    href="/editor/docs#generation"
+                    aria-label="Need help with generation settings? Open documentation"
+                    className="w-fit text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    Need help?
+                  </Link>
+                )}
               </SheetHeader>
               <div className="h-[calc(100%-4.5rem)] overflow-y-auto">{renderTabContent()}</div>
             </SheetContent>

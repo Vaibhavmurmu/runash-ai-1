@@ -20,6 +20,7 @@ type Step = {
 
 type Section = {
   id: number
+  anchorId?: string
   title: string
   description: string
   steps: Step[]
@@ -122,6 +123,7 @@ const sections: Section[] = [
   },
   {
     id: 4,
+    anchorId: "timeline",
     title: "Timeline Editing",
     description: "Core timeline operations for structure, pacing, and refinement.",
     steps: [
@@ -153,6 +155,7 @@ const sections: Section[] = [
   },
   {
     id: 5,
+    anchorId: "generation",
     title: "AI Generation Settings",
     description: "Prompting and output controls for quality, speed, and consistency.",
     steps: [
@@ -305,7 +308,7 @@ export default function EditorDocsPage() {
       </section>
 
       {sections.map((section) => (
-        <section key={section.id} className="space-y-4">
+        <section key={section.id} id={section.anchorId} tabIndex={-1} className="space-y-4 scroll-mt-24 focus-visible:outline-none">
           <h2 className="text-2xl font-semibold">
             {section.id}) {section.title}
           </h2>

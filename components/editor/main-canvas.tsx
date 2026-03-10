@@ -3,6 +3,7 @@
 import type React from "react"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import Link from "next/link"
 import { Loader, Settings2, Upload, Video, PlusSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -320,8 +321,17 @@ export default function MainCanvas({
       )}
 
       <div className="bg-card border border-border rounded-lg p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-foreground">Timeline</h3>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Timeline</h3>
+            <Link
+              href="/editor/docs#timeline"
+              aria-label="Need help with timeline controls? Open documentation"
+              className="mt-1 inline-block text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              Need help?
+            </Link>
+          </div>
           <span className="text-xs text-muted-foreground">Model: <span className="font-medium text-foreground">{selectedModel.toUpperCase()}</span></span>
         </div>
 
