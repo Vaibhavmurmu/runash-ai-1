@@ -14,7 +14,10 @@ create table if not exists api_key_secret_material (
   id bigserial primary key,
   api_key_id uuid not null references api_key_metadata(id) on delete cascade,
   secret_hash text not null,
+  encrypted_secret text not null,
   hash_algorithm text not null,
+  encryption_algorithm text not null default 'aes-256-gcm',
+  encryption_key_version text not null default 'v1',
   rotated_from_hash text,
   created_at timestamptz not null default now()
 );
