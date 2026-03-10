@@ -20,7 +20,7 @@ export function QuickActions() {
       title: "Chat Settings",
       description: "Configure chat rules",
       icon: <MessageSquare className="h-4 w-4" />,
-      href: "/dashboard/chat/settings",
+      href: "/runashchat/settings",
     },
     {
       title: "Stream Settings",
