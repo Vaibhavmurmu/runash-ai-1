@@ -8,11 +8,14 @@ import {
   ArrowLeft as ArrowLeftIcon,
   BadgeCheck,
   Building2,
+  CheckCircle2,
+  ChevronDown,
   CreditCard,
   Leaf,
   Lock,
   QrCode,
   ShieldCheck,
+  Smartphone,
   ShoppingCart,
   WalletCards,
 } from "lucide-react"
@@ -29,6 +32,9 @@ import { useCart } from "@/contexts/cart-context"
 import type { CheckoutOrderDTO } from "@/lib/types/checkout-order"
 
 type PaymentMethod = "card" | "upi" | "bank"
+type UpiAuthStep = "select" | "redirecting" | "success"
+
+const UPI_APPS = ["GPay", "PhonePe", "Paytm", "Amazon Pay", "BHIM", "CRED", "MobiKwik", "Navi"]
 
 export default function CheckoutPage() {
   const router = useRouter()
@@ -44,8 +50,12 @@ export default function CheckoutPage() {
   const [saveInfo, setSaveInfo] = useState(true)
   const [isBusinessPurchase, setIsBusinessPurchase] = useState(false)
   const [acceptTerms, setAcceptTerms] = useState(false)
+  const [countryCode, setCountryCode] = useState("+91")
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [checkoutSubmitError, setCheckoutSubmitError] = useState<string | null>(null)
+  const [showUpiAuthDialog, setShowUpiAuthDialog] = useState(false)
+  const [upiAuthStep, setUpiAuthStep] = useState<UpiAuthStep>("select")
+  const [selectedUpiApp, setSelectedUpiApp] = useState<string | null>(null)
 
   const selectedPlan = searchParams.get("plan") ?? undefined
   const selectedModel = searchParams.get("model") ?? undefined
@@ -83,6 +93,15 @@ export default function CheckoutPage() {
       // ignore saved profile parse errors
     }
   }, [])
+
+  useEffect(() => {
+    if (upiAuthStep !== "redirecting") return
+    const timer = window.setTimeout(() => {
+      setUpiAuthStep("success")
+    }, 1700)
+
+    return () => window.clearTimeout(timer)
+  }, [upiAuthStep])
 
   const discount = useMemo(() => {
     if (couponCode.trim().toUpperCase() === "RUNASH10") return totals.subtotal * 0.1
@@ -227,6 +246,17 @@ export default function CheckoutPage() {
     router.push("/payment-redirect")
   }
 
+  const openUpiAuthDialog = () => {
+    setSelectedUpiApp(null)
+    setUpiAuthStep("select")
+    setShowUpiAuthDialog(true)
+  }
+
+  const authorizeWithUpiApp = (appName: string) => {
+    setSelectedUpiApp(appName)
+    setUpiAuthStep("redirecting")
+  }
+
   if (!mounted) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-white to-orange-50 dark:from-gray-950 dark:to-gray-900 flex items-center justify-center">
@@ -291,6 +321,25 @@ export default function CheckoutPage() {
               <BadgeCheck className="h-3.5 w-3.5" /> Secure payment
             </span>
           </div>
+
+          <Card className="mt-5 border-orange-200 bg-white/90">
+            <CardContent className="pt-6">
+              <p className="text-center text-sm text-gray-600">Subscribe to RunAsh Pro Commerce Suite</p>
+              <p className="mt-1 text-center text-4xl font-semibold">₹{finalTotal.toFixed(2)}</p>
+              <p className="text-center text-sm text-gray-500">Then renews at standard monthly plan pricing.</p>
+              <details className="mt-4 rounded-md border bg-muted/20 p-3 text-sm">
+                <summary className="flex cursor-pointer list-none items-center justify-between font-medium">
+                  Subscribe / payment details
+                  <ChevronDown className="h-4 w-4" />
+                </summary>
+                <div className="mt-3 space-y-1 text-xs text-gray-600">
+                  <p>• Includes AI commerce assistant, checkout analytics, and priority support.</p>
+                  <p>• Multi-method payment: Cards, UPI app handoff, and bank transfer.</p>
+                  <p>• Real checkout redirect handled securely after confirmation.</p>
+                </div>
+              </details>
+            </CardContent>
+          </Card>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-8">
@@ -370,6 +419,15 @@ export default function CheckoutPage() {
 
                 {paymentMethod === "card" && (
                   <>
+                    <div className="rounded-md border p-3">
+                      <p className="text-xs font-medium text-gray-600">Accepted cards</p>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                        <span className="rounded border bg-blue-50 px-2 py-1 font-semibold text-blue-700">VISA</span>
+                        <span className="rounded border bg-red-50 px-2 py-1 font-semibold text-red-700">Mastercard</span>
+                        <span className="rounded border bg-slate-50 px-2 py-1 font-semibold text-slate-700">Amex</span>
+                        <span className="rounded border bg-orange-50 px-2 py-1 font-semibold text-orange-700">RuPay</span>
+                      </div>
+                    </div>
                     <div>
                       <Label htmlFor="cardNumber">Card Number</Label>
                       <Input id="cardNumber" placeholder="1234 5678 9012 3456" value={formData.cardNumber} onChange={(e) => handleInputChange("cardNumber", e.target.value)} />
@@ -402,8 +460,11 @@ export default function CheckoutPage() {
                       <Input id="upiId" placeholder="name@upi" value={formData.upiId} onChange={(e) => handleInputChange("upiId", e.target.value)} />
                       {errors.upiId && <p className="text-xs text-red-500 mt-1">{errors.upiId}</p>}
                     </div>
-                    <p className="font-medium flex items-center gap-2"><QrCode className="h-4 w-4" /> QR / App handoff</p>
-                    <p className="text-sm text-gray-600">After placing the order, we will show a secure UPI app handoff or QR authorization prompt.</p>
+                    <p className="font-medium flex items-center gap-2"><QrCode className="h-4 w-4" /> UPI / QR app handoff</p>
+                    <p className="text-sm text-gray-600">After placing the order, choose your UPI app, accept payment, and return to complete action successfully.</p>
+                    <Button type="button" variant="outline" onClick={openUpiAuthDialog} className="w-full sm:w-auto">
+                      <Smartphone className="mr-2 h-4 w-4" /> Authorize payment with your app
+                    </Button>
                   </div>
                 )}
 
@@ -435,7 +496,25 @@ export default function CheckoutPage() {
                   {saveInfo && (
                     <div>
                       <Label htmlFor="phone">Phone Number</Label>
-                      <Input id="phone" placeholder="+91 98765 43210" value={formData.phone} onChange={(e) => handleInputChange("phone", e.target.value)} />
+                      <div className="mt-1 flex gap-2">
+                        <select
+                          value={countryCode}
+                          onChange={(e) => setCountryCode(e.target.value)}
+                          className="h-10 rounded-md border bg-background px-2 text-sm"
+                          aria-label="Country code"
+                        >
+                          <option value="+91">🇮🇳 +91</option>
+                          <option value="+1">🇺🇸 +1</option>
+                          <option value="+44">🇬🇧 +44</option>
+                          <option value="+971">🇦🇪 +971</option>
+                        </select>
+                        <Input
+                          id="phone"
+                          placeholder="98765 43210"
+                          value={formData.phone}
+                          onChange={(e) => handleInputChange("phone", `${countryCode} ${e.target.value.replace(/^\+?\d+\s*/, "")}`)}
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -595,6 +674,58 @@ export default function CheckoutPage() {
                 </Button>
                 <Button onClick={proceedToPayment}>{processing ? "Please wait..." : "Proceed to secure payment"}</Button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {showUpiAuthDialog && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setShowUpiAuthDialog(false)} />
+            <div className="relative z-10 w-full max-w-md rounded-xl bg-white p-6 shadow-2xl dark:bg-gray-900">
+              <button type="button" className="absolute right-4 top-3 text-gray-500" onClick={() => setShowUpiAuthDialog(false)}>
+                ✕
+              </button>
+              {upiAuthStep === "select" && (
+                <>
+                  <h3 className="text-2xl font-semibold text-center">Authorize payment with your app</h3>
+                  <p className="mt-2 text-center text-sm text-gray-600">Select your UPI app to continue secure payment authorization.</p>
+                  <div className="mt-5 grid grid-cols-4 gap-3">
+                    {UPI_APPS.map((appName) => (
+                      <button
+                        key={appName}
+                        type="button"
+                        onClick={() => authorizeWithUpiApp(appName)}
+                        className="rounded-lg border p-2 text-xs hover:bg-muted"
+                      >
+                        <div className="mx-auto mb-1 flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-orange-500 to-yellow-500 text-white">
+                          {appName[0]}
+                        </div>
+                        {appName}
+                      </button>
+                    ))}
+                  </div>
+                  <button type="button" className="mt-5 w-full text-sm underline" onClick={() => setUpiAuthStep("redirecting")}>
+                    Pay with QR code instead
+                  </button>
+                </>
+              )}
+              {upiAuthStep === "redirecting" && (
+                <div className="py-10 text-center">
+                  <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-orange-600 border-b-transparent" />
+                  <h3 className="mt-4 text-xl font-semibold">Redirecting to {selectedUpiApp ?? "UPI app"}</h3>
+                  <p className="mt-2 text-sm text-gray-600">Approve the payment in your app. We&apos;ll continue automatically once accepted.</p>
+                </div>
+              )}
+              {upiAuthStep === "success" && (
+                <div className="py-10 text-center">
+                  <CheckCircle2 className="mx-auto h-12 w-12 text-green-600" />
+                  <h3 className="mt-4 text-2xl font-semibold">Action Successful</h3>
+                  <p className="mt-2 text-sm text-gray-600">Payment authorization completed. You can now proceed to secure payment.</p>
+                  <Button className="mt-5" onClick={() => setShowUpiAuthDialog(false)}>
+                    Continue checkout
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         )}

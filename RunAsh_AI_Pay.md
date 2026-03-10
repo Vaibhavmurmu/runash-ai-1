@@ -13,6 +13,15 @@ This document is payment-domain specific. For contributor workflow/process polic
 
 ## Current payment reliability notes (2026-02)
 
+## 2026-03 checkout UX detailing refresh (UI-only, contract-safe)
+
+- Enhanced `/checkout` with a subscription hero summary, collapsible payment-details panel, card-brand indicator chips, and improved phone capture using country-code + flag selector.
+- UPI section now includes an explicit app-authorization handoff dialog (select app -> redirecting -> success confirmation) to mirror real-world UPI acceptance flow before final checkout redirect.
+- Checkout model review card remains integrated to preserve plan/model visibility before final submit.
+- Payment/auth compatibility: no payment API request/response fields, webhook schemas, redirect contract names, or checkout payload keys were renamed or removed.
+- Impacted flow: client checkout form UX + local pending-order preparation (`app/checkout/page.tsx`) only.
+- Risk + rollback: low UI/regression risk. Roll back by reverting `app/checkout/page.tsx`; no migration/database rollback required.
+
 ## 2026-03 auth SMS OTP provider reliability note (payment-adjacent auth hardening)
 
 - Updated auth SMS OTP delivery to use environment-configured provider retries/timeouts and explicit outage failures; no payment API fields, checkout contract signatures, or webhook schemas were changed.
