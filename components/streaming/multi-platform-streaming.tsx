@@ -58,11 +58,13 @@ function isUnsupportedCapabilityError(error: unknown) {
 
 interface MultiPlatformStreamingProps {
   isStreaming: boolean;
+  selectedPlatforms?: string[];
   onPlatformsChange?: (platforms: string[]) => void;
 }
 
 export default function MultiPlatformStreaming({
   isStreaming,
+  selectedPlatforms = [],
   onPlatformsChange,
 }: MultiPlatformStreamingProps) {
   const [platforms, setPlatforms] = useState<StreamingPlatform[]>([]);
@@ -78,6 +80,9 @@ export default function MultiPlatformStreaming({
   const [platformTestResults, setPlatformTestResults] = useState<
     Record<string, PlatformTestResult>
   >({});
+  const [sessionSelectedPlatforms, setSessionSelectedPlatforms] = useState<Set<string>>(
+    () => new Set(selectedPlatforms),
+  );
 
   const multiPlatformService = MultiPlatformService.getInstance();
   const { toast } = useToast();
@@ -85,6 +90,10 @@ export default function MultiPlatformStreaming({
   useEffect(() => {
     loadPlatforms();
   }, []);
+
+  useEffect(() => {
+    setSessionSelectedPlatforms(new Set(selectedPlatforms));
+  }, [selectedPlatforms]);
 
   useEffect(() => {
     if (isStreaming) {
@@ -100,11 +109,14 @@ export default function MultiPlatformStreaming({
       const userPlatforms = await multiPlatformService.getUserPlatforms();
       setPlatforms(userPlatforms);
 
-      // Notify parent of active platforms
-      const activePlatformIds = userPlatforms
-        .filter((p) => p.is_active)
-        .map((p) => p.id);
-      onPlatformsChange?.(activePlatformIds);
+      // Notify parent with hydrated selection if not yet present
+      if (selectedPlatforms.length === 0) {
+        const activePlatformIds = userPlatforms
+          .filter((p) => p.is_active)
+          .map((p) => p.id);
+        setSessionSelectedPlatforms(new Set(activePlatformIds));
+        onPlatformsChange?.(activePlatformIds);
+      }
     } catch (error) {
       console.error("Failed to load platforms:", error);
       toast({
@@ -172,25 +184,19 @@ export default function MultiPlatformStreaming({
         });
       }
 
-      await multiPlatformService.updatePlatform(platformId, {
-        is_active: active,
-      });
-      setPlatforms((prev) =>
-        prev.map((p) =>
-          p.id === platformId ? { ...p, is_active: active } : p,
-        ),
-      );
+      const nextSelected = new Set(sessionSelectedPlatforms);
+      if (active) {
+        nextSelected.add(platformId);
+      } else {
+        nextSelected.delete(platformId);
+      }
 
-      // Update parent
-      const activePlatformIds = platforms
-        .map((p) => (p.id === platformId ? { ...p, is_active: active } : p))
-        .filter((p) => p.is_active)
-        .map((p) => p.id);
-      onPlatformsChange?.(activePlatformIds);
+      setSessionSelectedPlatforms(nextSelected);
+      onPlatformsChange?.(Array.from(nextSelected));
 
       toast({
-        title: active ? "Platform Activated" : "Platform Deactivated",
-        description: `${platforms.find((p) => p.id === platformId)?.name} is now ${active ? "active" : "inactive"}`,
+        title: active ? "Platform Selected" : "Platform Removed",
+        description: `${platforms.find((p) => p.id === platformId)?.name} ${active ? "included" : "excluded"} for this session`,
       });
     } catch (error) {
       console.error("Failed to toggle platform:", error);
@@ -239,7 +245,7 @@ export default function MultiPlatformStreaming({
     }
   };
 
-  const activePlatforms = platforms.filter((p) => p.is_active);
+  const activePlatforms = platforms.filter((p) => sessionSelectedPlatforms.has(p.id));
   const connectedPlatforms = platforms.filter((p) => p.is_connected);
   const totalEstimatedBandwidth = activePlatforms.reduce(
     (sum, platform) => sum + platform.settings.bitrate,
@@ -434,7 +440,7 @@ export default function MultiPlatformStreaming({
                           </Badge>
                         )}
                         <Switch
-                          checked={platform.is_active}
+                          checked={sessionSelectedPlatforms.has(platform.id)}
                           onCheckedChange={(checked) =>
                             handleTogglePlatform(platform.id, checked)
                           }

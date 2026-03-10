@@ -66,8 +66,9 @@ import {
   endStreamSession,
   getStreamHealthTelemetry,
   getStreamLiveMetrics,
-  reportStreamNetworkMetrics,
   startStreamSession,
+  getSessionPlatformState,
+  updateSessionPlatformState,
 } from "@/lib/stream-session-contract"
 import { saveStudioConsent } from "@/lib/streams-studio-pro-client"
 import { useStreamMetadata } from "@/hooks/use-stream-metadata"
@@ -193,12 +194,19 @@ export function EnhancedStreamingStudio() {
       if (streamSessionId) return
       try {
         const created = await createStreamSession({ title: "Streaming Studio Session", platform: "custom" })
+        const nextSessionId = String(created.session.id)
+        const platformState = await getSessionPlatformState(nextSessionId)
         if (alive) {
-          setStreamSessionId(String(created.session.id))
+          setStreamSessionId(nextSessionId)
           setIsStreaming(created.session.status === "live")
+          setActivePlatforms(platformState.selectedPlatformIds)
         }
-      } catch {
-        toast({ title: "Session Error", description: "Unable to initialize stream session.", variant: "destructive" })
+      } catch (error) {
+        toast({
+          title: "Session Error",
+          description: error instanceof Error ? error.message : "Unable to initialize stream session.",
+          variant: "destructive",
+        })
       }
     }
     void bootstrapSession()
@@ -265,19 +273,6 @@ export function EnhancedStreamingStudio() {
     if (!streamSessionId) return
     const interval = setInterval(async () => {
       try {
-        if (isStreaming) {
-          const sampledAt = new Date().toISOString()
-          const seconds = Math.floor(Date.now() / 1000)
-          await reportStreamNetworkMetrics(streamSessionId, {
-            bitrateKbps: 4200 + (seconds % 5) * 220,
-            rttMs: 85 + (seconds % 6) * 14,
-            packetLossPct: Number(((seconds % 4) * 0.35).toFixed(2)),
-            droppedFrames: seconds % 9,
-            reconnects: seconds % 120 === 0 ? 1 : 0,
-            sampledAt,
-          })
-        }
-
         const [{ metrics, network }, { telemetry }] = await Promise.all([
           getStreamLiveMetrics(streamSessionId),
           getStreamHealthTelemetry(streamSessionId),
@@ -336,7 +331,8 @@ export function EnhancedStreamingStudio() {
           description: "Your stream is now live on your selected platforms.",
           variant: "default",
         })
-        setActivePlatforms(["twitch"])
+        const platformState = await getSessionPlatformState(streamSessionId)
+        setActivePlatforms(platformState.selectedPlatformIds)
       } catch {
         setIsStreaming(previous)
         toast({ title: "Start Failed", description: "Could not start stream session.", variant: "destructive" })
@@ -377,8 +373,18 @@ export function EnhancedStreamingStudio() {
     })
   }
 
-  const handlePlatformChange = (platforms: string[]) => {
+  const handlePlatformChange = async (platforms: string[]) => {
     setActivePlatforms(platforms)
+    if (!streamSessionId) return
+    try {
+      await updateSessionPlatformState(streamSessionId, platforms)
+    } catch (error) {
+      toast({
+        title: "Platform Sync Failed",
+        description: error instanceof Error ? error.message : "Could not persist selected platforms for this session.",
+        variant: "destructive",
+      })
+    }
   }
 
   const toggleFullscreen = () => {
@@ -938,7 +944,11 @@ export function EnhancedStreamingStudio() {
                 </TabsContent>
 
                 <TabsContent value="platforms" className="flex-1 p-3 m-0">
-                  <MultiPlatformStreaming isStreaming={isStreaming} onPlatformsChange={handlePlatformChange} />
+                  <MultiPlatformStreaming
+                    isStreaming={isStreaming}
+                    selectedPlatforms={activePlatforms}
+                    onPlatformsChange={handlePlatformChange}
+                  />
                 </TabsContent>
 
                 <TabsContent value="effects" className="flex-1 p-3 m-0">
