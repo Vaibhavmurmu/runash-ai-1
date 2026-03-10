@@ -40,6 +40,14 @@ export interface StreamHealthTelemetry {
   sampledAt: string | null
 }
 
+export interface StreamingPlatformStatus {
+  id: string
+  name: string
+  platform_type: string
+  is_connected: boolean
+  connection_status: "connected" | "disconnected" | "error" | "testing"
+}
+
 async function readJson<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? "Request failed")
   return res.json() as Promise<T>
@@ -91,4 +99,18 @@ export async function reportStreamNetworkMetrics(
 export async function getStreamHealthTelemetry(id: string) {
   const response = await fetch(`/api/streams/sessions/${id}/health`, { cache: "no-store" })
   return readJson<{ telemetry: StreamHealthTelemetry }>(response)
+}
+
+export async function getSessionPlatformState(id: string) {
+  const response = await fetch(`/api/streams/sessions/${id}/platforms`, { cache: "no-store" })
+  return readJson<{ sessionId: string; selectedPlatformIds: string[]; platforms: StreamingPlatformStatus[] }>(response)
+}
+
+export async function updateSessionPlatformState(id: string, selectedPlatformIds: string[]) {
+  const response = await fetch(`/api/streams/sessions/${id}/platforms`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ selectedPlatformIds }),
+  })
+  return readJson<{ sessionId: string; selectedPlatformIds: string[]; platforms: StreamingPlatformStatus[] }>(response)
 }
