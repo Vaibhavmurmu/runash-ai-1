@@ -16,7 +16,7 @@ This document is payment-domain specific. For contributor workflow/process polic
 ## 2026-03 checkout UX detailing refresh (UI-only, contract-safe)
 
 - Enhanced `/checkout` with a subscription hero summary, collapsible payment-details panel, card-brand indicator chips, and improved phone capture using country-code + flag selector.
-- UPI section now includes an explicit app-authorization handoff dialog (select app -> redirecting -> success confirmation) to mirror real-world UPI acceptance flow before final checkout redirect.
+- UPI section now includes an explicit app-authorization handoff dialog (select app -> redirecting -> success confirmation) and a QR fallback path (`/api/upi/initiate`, `/api/upi/qr`, `/api/upi/complete`, `/api/upi/status/:transactionId`) to support app/QR completion flows.
 - Checkout model review card remains integrated to preserve plan/model visibility before final submit.
 - Payment/auth compatibility: no payment API request/response fields, webhook schemas, redirect contract names, or checkout payload keys were renamed or removed.
 - Impacted flow: client checkout form UX + local pending-order preparation (`app/checkout/page.tsx`) only.

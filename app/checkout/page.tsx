@@ -32,7 +32,7 @@ import { useCart } from "@/contexts/cart-context"
 import type { CheckoutOrderDTO } from "@/lib/types/checkout-order"
 
 type PaymentMethod = "card" | "upi" | "bank"
-type UpiAuthStep = "select" | "redirecting" | "success"
+type UpiAuthStep = "select" | "qr" | "redirecting" | "success"
 
 const UPI_APPS = ["GPay", "PhonePe", "Paytm", "Amazon Pay", "BHIM", "CRED", "MobiKwik", "Navi"]
 
@@ -56,6 +56,10 @@ export default function CheckoutPage() {
   const [showUpiAuthDialog, setShowUpiAuthDialog] = useState(false)
   const [upiAuthStep, setUpiAuthStep] = useState<UpiAuthStep>("select")
   const [selectedUpiApp, setSelectedUpiApp] = useState<string | null>(null)
+  const [upiQrImage, setUpiQrImage] = useState<string | null>(null)
+  const [upiTransactionId, setUpiTransactionId] = useState<string | null>(null)
+  const [upiStatusMessage, setUpiStatusMessage] = useState<string>("")
+  const [upiLoadingQr, setUpiLoadingQr] = useState(false)
 
   const selectedPlan = searchParams.get("plan") ?? undefined
   const selectedModel = searchParams.get("model") ?? undefined
@@ -249,6 +253,9 @@ export default function CheckoutPage() {
   const openUpiAuthDialog = () => {
     setSelectedUpiApp(null)
     setUpiAuthStep("select")
+    setUpiQrImage(null)
+    setUpiTransactionId(null)
+    setUpiStatusMessage("")
     setShowUpiAuthDialog(true)
   }
 
@@ -256,6 +263,97 @@ export default function CheckoutPage() {
     setSelectedUpiApp(appName)
     setUpiAuthStep("redirecting")
   }
+
+  const loadQrCheckout = async () => {
+    if (upiLoadingQr) return
+    setUpiLoadingQr(true)
+    setUpiStatusMessage("")
+    try {
+      const initiateRes = await fetch("/api/upi/initiate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ amount: finalTotal }),
+      })
+
+      if (!initiateRes.ok) {
+        throw new Error("Failed to initialize UPI transaction")
+      }
+
+      const initiated = (await initiateRes.json()) as { transactionId?: string }
+      if (!initiated.transactionId) {
+        throw new Error("UPI transaction id unavailable")
+      }
+
+      setUpiTransactionId(initiated.transactionId)
+
+      const qrRes = await fetch(`/api/upi/qr?transactionId=${encodeURIComponent(initiated.transactionId)}`)
+      if (!qrRes.ok) {
+        throw new Error("Failed to generate QR code")
+      }
+
+      const qrData = (await qrRes.json()) as { qrDataUrl?: string }
+      if (!qrData.qrDataUrl) {
+        throw new Error("QR code unavailable")
+      }
+
+      setUpiQrImage(qrData.qrDataUrl)
+      setUpiAuthStep("qr")
+      setUpiStatusMessage("Scan this QR in your UPI app and accept payment. Status will auto-check.")
+    } catch (error) {
+      setUpiStatusMessage(error instanceof Error ? error.message : "Could not prepare QR payment")
+    } finally {
+      setUpiLoadingQr(false)
+    }
+  }
+
+  const markQrPaymentCompleted = async () => {
+    if (!upiTransactionId) return
+    setUpiStatusMessage("Verifying UPI payment...")
+    try {
+      const response = await fetch("/api/upi/complete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ transactionId: upiTransactionId }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Unable to confirm UPI payment")
+      }
+
+      setUpiStatusMessage("Payment accepted successfully in your UPI app.")
+      setUpiAuthStep("success")
+    } catch (error) {
+      setUpiStatusMessage(error instanceof Error ? error.message : "Payment confirmation failed")
+    }
+  }
+
+  useEffect(() => {
+    if (upiAuthStep !== "qr" || !upiTransactionId) return
+
+    const poll = window.setInterval(async () => {
+      try {
+        const statusRes = await fetch(`/api/upi/status/${encodeURIComponent(upiTransactionId)}`)
+        if (!statusRes.ok) return
+        const statusData = (await statusRes.json()) as { status?: string }
+
+        if (statusData.status === "success") {
+          setUpiStatusMessage("Payment accepted successfully in your UPI app.")
+          setUpiAuthStep("success")
+          window.clearInterval(poll)
+          return
+        }
+
+        if (statusData.status === "failed") {
+          setUpiStatusMessage("UPI authorization failed or timed out. Try again.")
+          window.clearInterval(poll)
+        }
+      } catch {
+        // keep polling silently
+      }
+    }, 3000)
+
+    return () => window.clearInterval(poll)
+  }, [upiAuthStep, upiTransactionId])
 
   if (!mounted) {
     return (
@@ -704,10 +802,30 @@ export default function CheckoutPage() {
                       </button>
                     ))}
                   </div>
-                  <button type="button" className="mt-5 w-full text-sm underline" onClick={() => setUpiAuthStep("redirecting")}>
+                  <button type="button" className="mt-5 w-full text-sm underline" onClick={loadQrCheckout}>
                     Pay with QR code instead
                   </button>
+                  {upiStatusMessage && <p className="mt-2 text-center text-xs text-red-600">{upiStatusMessage}</p>}
                 </>
+              )}
+              {upiAuthStep === "qr" && (
+                <div className="py-4 text-center">
+                  <h3 className="text-xl font-semibold">Pay with QR code</h3>
+                  <p className="mt-2 text-sm text-gray-600">Scan in your UPI app, accept payment, and return automatically.</p>
+                  {upiQrImage ? (
+                    <img src={upiQrImage} alt="UPI payment QR" className="mx-auto mt-4 h-56 w-56 rounded-lg border p-2" />
+                  ) : (
+                    <div className="mx-auto mt-4 flex h-56 w-56 items-center justify-center rounded-lg border text-sm text-gray-500">
+                      {upiLoadingQr ? "Generating QR..." : "QR unavailable"}
+                    </div>
+                  )}
+                  {upiTransactionId && <p className="mt-3 text-xs text-gray-500">Txn ID: {upiTransactionId}</p>}
+                  {upiStatusMessage && <p className="mt-2 text-xs text-gray-600">{upiStatusMessage}</p>}
+                  <div className="mt-4 flex justify-center gap-2">
+                    <Button type="button" variant="outline" onClick={() => setUpiAuthStep("select")}>Choose app instead</Button>
+                    <Button type="button" onClick={markQrPaymentCompleted}>I&apos;ve accepted payment</Button>
+                  </div>
+                </div>
               )}
               {upiAuthStep === "redirecting" && (
                 <div className="py-10 text-center">
