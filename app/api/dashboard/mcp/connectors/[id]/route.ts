@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
+import { canManageMcpConnectors, requireDashboardTenantContext } from "@/app/api/dashboard/_auth"
 import { deleteConnector, getConnectorById, updateConnector } from "@/lib/mcp/connectors-store"
 
 const patchSchema = z.object({
@@ -24,17 +25,31 @@ const patchSchema = z.object({
     .optional(),
 })
 
-export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
-  const connector = getConnectorById(id)
-  if (!connector) {
-    return NextResponse.json({ error: "Connector not found" }, { status: 404 })
-  }
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const context = await requireDashboardTenantContext(request)
+  if (context instanceof Response) return context
 
-  return NextResponse.json({ connector })
+  const { id } = await params
+
+  try {
+    const connector = await getConnectorById(id, { tenantId: context.tenantId })
+    if (!connector) {
+      return NextResponse.json({ error: "Connector not found" }, { status: 404 })
+    }
+
+    return NextResponse.json({ connector })
+  } catch {
+    return NextResponse.json({ error: "Failed to load connector" }, { status: 500 })
+  }
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const context = await requireDashboardTenantContext(request)
+  if (context instanceof Response) return context
+  if (!canManageMcpConnectors(context)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
   const { id } = await params
   const body = await request.json().catch(() => null)
   const parsed = patchSchema.safeParse(body)
@@ -42,20 +57,35 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Invalid patch payload", details: parsed.error.flatten() }, { status: 400 })
   }
 
-  const connector = updateConnector(id, parsed.data)
-  if (!connector) {
-    return NextResponse.json({ error: "Connector not found" }, { status: 404 })
-  }
+  try {
+    const connector = await updateConnector(id, parsed.data, { tenantId: context.tenantId })
+    if (!connector) {
+      return NextResponse.json({ error: "Connector not found" }, { status: 404 })
+    }
 
-  return NextResponse.json({ connector })
+    return NextResponse.json({ connector })
+  } catch {
+    return NextResponse.json({ error: "Failed to update connector" }, { status: 500 })
+  }
 }
 
-export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
-  const deleted = deleteConnector(id)
-  if (!deleted) {
-    return NextResponse.json({ error: "Connector not found" }, { status: 404 })
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const context = await requireDashboardTenantContext(request)
+  if (context instanceof Response) return context
+  if (!canManageMcpConnectors(context)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
-  return NextResponse.json({ success: true })
+  const { id } = await params
+
+  try {
+    const deleted = await deleteConnector(id, { tenantId: context.tenantId })
+    if (!deleted) {
+      return NextResponse.json({ error: "Connector not found" }, { status: 404 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch {
+    return NextResponse.json({ error: "Failed to delete connector" }, { status: 500 })
+  }
 }
