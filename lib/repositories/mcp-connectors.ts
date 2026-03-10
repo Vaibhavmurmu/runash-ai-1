@@ -47,6 +47,8 @@ type McpRepositoryAdapters = {
   listAuditRecords: (limit: number, scope: McpConnectorScope) => Promise<MpcToolAuditRecord[]>
 }
 
+const MCP_AUDIT_RETENTION_MAX_RECORDS_PER_TENANT = 2000
+
 function jsonArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return value.filter((item): item is string => typeof item === "string")
@@ -365,6 +367,21 @@ const defaultRepositoryAdapters: McpRepositoryAdapters = {
     if (!row) {
       throw new Error("Failed to create MCP tool audit record")
     }
+
+    await queryMany(
+      `
+      DELETE FROM mcp_tool_audit_records
+      WHERE tenant_id = $1
+        AND id IN (
+          SELECT id
+          FROM mcp_tool_audit_records
+          WHERE tenant_id = $1
+          ORDER BY created_at DESC
+          OFFSET $2
+        )
+    `,
+      [scope.tenantId, MCP_AUDIT_RETENTION_MAX_RECORDS_PER_TENANT],
+    )
 
     return mapAuditRecord(row)
   },
