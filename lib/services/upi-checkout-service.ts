@@ -2,6 +2,7 @@ import { createHash } from "crypto"
 
 export type UpiExecutionStatus = "initiated" | "pending" | "success" | "failed"
 export type UpiErrorCode = "INVALID_PIN" | "PIN_ATTEMPTS_EXCEEDED" | "RISK_BLOCKED"
+export type UpiProviderStatus = "SUCCESS" | "FAILED" | "PENDING" | "PROCESSING" | "AUTHORIZED" | "TIMEOUT"
 
 type UpiTransactionRecord = {
   transactionId: string
@@ -16,7 +17,22 @@ type UpiTransactionRecord = {
   executionStartedAt?: number
   failureReason?: string
   failureCode?: UpiErrorCode
+  verifiedAt?: string
+  verifiedBy?: "provider_callback" | "sandbox_complete"
+  providerStatus?: UpiProviderStatus
+  providerReference?: string
+  providerEventId?: string
+  orderId: string
   confirmationResultByIdempotencyKey: Map<string, UpiConfirmationResult>
+}
+
+type UpiOrderRecord = {
+  orderId: string
+  transactionId: string
+  amount: number
+  currency: string
+  status: UpiExecutionStatus
+  updatedAt: string
 }
 
 type UpiInitiationResult = {
@@ -49,6 +65,8 @@ type UpiConfirmationResult = UpiConfirmationSuccess | UpiConfirmationFailure
 
 const transactionsById = new Map<string, UpiTransactionRecord>()
 const initiationByIdempotencyKey = new Map<string, UpiInitiationResult>()
+const orderByOrderId = new Map<string, UpiOrderRecord>()
+const processedProviderEvents = new Set<string>()
 
 const DEMO_UPI_PIN = "123456"
 const MAX_PIN_ATTEMPTS = 3
@@ -85,8 +103,35 @@ function assertMaskedPin(_pin: string) {
   return "[REDACTED_PIN]"
 }
 
+function toCanonicalStatus(providerStatus: UpiProviderStatus): UpiExecutionStatus {
+  switch (providerStatus) {
+    case "SUCCESS":
+      return "success"
+    case "FAILED":
+    case "TIMEOUT":
+      return "failed"
+    case "PENDING":
+    case "PROCESSING":
+    case "AUTHORIZED":
+      return "pending"
+    default:
+      return "pending"
+  }
+}
+
+function syncOrderRecord(transaction: UpiTransactionRecord) {
+  orderByOrderId.set(transaction.orderId, {
+    orderId: transaction.orderId,
+    transactionId: transaction.transactionId,
+    amount: transaction.amount,
+    currency: transaction.currency,
+    status: transaction.status,
+    updatedAt: new Date().toISOString(),
+  })
+}
+
 export class UpiCheckoutService {
-  static initiatePayment(idempotencyKey: string, amount: number): UpiInitiationResult {
+  static initiatePayment(idempotencyKey: string, amount: number, orderId?: string): UpiInitiationResult {
     const existing = initiationByIdempotencyKey.get(idempotencyKey)
     if (existing) {
       return existing
@@ -105,6 +150,7 @@ export class UpiCheckoutService {
       pinHash: hashPin(DEMO_UPI_PIN),
       pinAttempts: 0,
       maxPinAttempts: MAX_PIN_ATTEMPTS,
+      orderId: orderId?.trim() || `order_${transactionId}`,
       confirmationResultByIdempotencyKey: new Map(),
     }
 
@@ -120,6 +166,7 @@ export class UpiCheckoutService {
     }
 
     initiationByIdempotencyKey.set(idempotencyKey, result)
+    syncOrderRecord(transaction)
     return result
   }
 
@@ -157,6 +204,7 @@ export class UpiCheckoutService {
       transaction.failureCode = blockedResult.code
       transaction.failureReason = blockedResult.error
       transaction.confirmationResultByIdempotencyKey.set(input.idempotencyKey, blockedResult)
+      syncOrderRecord(transaction)
       return blockedResult
     }
 
@@ -185,6 +233,7 @@ export class UpiCheckoutService {
       }
 
       transaction.confirmationResultByIdempotencyKey.set(input.idempotencyKey, invalidResult)
+      syncOrderRecord(transaction)
       return invalidResult
     }
 
@@ -200,6 +249,7 @@ export class UpiCheckoutService {
         if (terminal === "failed") {
           current.failureReason = "UPI provider declined the payment."
         }
+        syncOrderRecord(current)
       }, EXECUTION_DELAY_MS)
     }
 
@@ -213,6 +263,7 @@ export class UpiCheckoutService {
     }
 
     transaction.confirmationResultByIdempotencyKey.set(input.idempotencyKey, successResult)
+    syncOrderRecord(transaction)
     return successResult
   }
 
@@ -239,6 +290,7 @@ export class UpiCheckoutService {
     if (elapsedMs > 45_000 && transaction.status === "pending") {
       transaction.status = "failed"
       transaction.failureReason = "UPI provider timeout."
+      syncOrderRecord(transaction)
     }
 
     return {
@@ -252,7 +304,66 @@ export class UpiCheckoutService {
         updatedAt: new Date().toISOString(),
         ...(transaction.failureReason ? { failedReason: transaction.failureReason } : {}),
         ...(transaction.failureCode ? { errorCode: transaction.failureCode } : {}),
+        ...(transaction.verifiedAt ? { verifiedAt: transaction.verifiedAt } : {}),
+        ...(transaction.verifiedBy ? { verifiedBy: transaction.verifiedBy } : {}),
+        isVerified: Boolean(transaction.verifiedAt),
       },
+    }
+  }
+
+  static applyProviderCallback(input: {
+    transactionId: string
+    providerStatus: UpiProviderStatus
+    providerReference?: string
+    providerEventId?: string
+  }) {
+    const transaction = transactionsById.get(input.transactionId)
+    if (!transaction) {
+      return {
+        ok: false as const,
+        error: "Transaction not found",
+      }
+    }
+
+    if (input.providerEventId && processedProviderEvents.has(input.providerEventId)) {
+      return {
+        ok: true as const,
+        idempotent: true as const,
+        transactionId: transaction.transactionId,
+        status: transaction.status,
+        orderId: transaction.orderId,
+      }
+    }
+
+    transaction.providerStatus = input.providerStatus
+    transaction.providerReference = input.providerReference
+    transaction.providerEventId = input.providerEventId
+    transaction.status = toCanonicalStatus(input.providerStatus)
+    transaction.verifiedAt = new Date().toISOString()
+    transaction.verifiedBy = "provider_callback"
+
+    if (transaction.status === "failed") {
+      transaction.failureReason = "UPI provider reported a terminal failure."
+      transaction.failureCode = "RISK_BLOCKED"
+    } else {
+      transaction.failureReason = undefined
+      transaction.failureCode = undefined
+    }
+
+    if (input.providerEventId) {
+      processedProviderEvents.add(input.providerEventId)
+    }
+
+    syncOrderRecord(transaction)
+
+    return {
+      ok: true as const,
+      idempotent: false as const,
+      transactionId: transaction.transactionId,
+      status: transaction.status,
+      orderId: transaction.orderId,
+      verifiedAt: transaction.verifiedAt,
+      verifiedBy: transaction.verifiedBy,
     }
   }
 
@@ -287,8 +398,11 @@ export class UpiCheckoutService {
     }
 
     transaction.status = "success"
+    transaction.verifiedAt = new Date().toISOString()
+    transaction.verifiedBy = "sandbox_complete"
     transaction.failureCode = undefined
     transaction.failureReason = undefined
+    syncOrderRecord(transaction)
 
     return {
       ok: true as const,
@@ -320,5 +434,9 @@ export class UpiCheckoutService {
         receiptId: `RCPT-${status.payload.transactionReference}`,
       },
     }
+  }
+
+  static getOrderRecord(orderId: string) {
+    return orderByOrderId.get(orderId) ?? null
   }
 }

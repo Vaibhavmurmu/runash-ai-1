@@ -13,6 +13,16 @@ This document is payment-domain specific. For contributor workflow/process polic
 
 ## Current payment reliability notes (2026-02)
 
+## 2026-03 UPI provider callback verification + canonical status hardening
+
+- Added authoritative provider callback endpoint: `POST /api/upi/webhook/provider` to receive UPI transaction terminal/intermediate states.
+- Callback ingestion now requires a valid `x-upi-signature` HMAC-SHA256 signature (secret: `UPI_PROVIDER_WEBHOOK_SECRET`); unsigned/invalid requests are rejected with `401`.
+- Provider statuses are mapped into canonical internal statuses (`success`, `failed`, `pending`) and persisted into both UPI transaction state and linked in-memory order record state for auditability.
+- `/api/upi/complete` is now sandbox-only behind explicit feature flag `FEATURE_FLAG_UPI_SANDBOX_COMPLETE`; production flow relies on verified provider callbacks.
+- Checkout UPI QR polling now waits for verified status (`isVerified`) before showing success and displays callback verification source when available.
+- Backward compatibility: existing UPI initiation/status/confirm response field names are preserved; verification metadata is additive (`isVerified`, `verifiedAt`, `verifiedBy`).
+- Risk + rollback: medium payment flow risk if provider callback signing secret is misconfigured. Roll back by restoring previous `app/api/upi/complete` behavior and disabling callback-only enforcement while provider webhook configuration is corrected.
+
 ## 2026-03 checkout UX detailing refresh (UI-only, contract-safe)
 
 - Enhanced `/checkout` with a subscription hero summary, collapsible payment-details panel, card-brand indicator chips, and improved phone capture using country-code + flag selector.
