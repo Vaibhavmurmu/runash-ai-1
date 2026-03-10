@@ -30,11 +30,13 @@ This audit covers route destinations referenced by:
 | `/dashboard/feedback` | Sidebar nav | ✅ Ready | Route exists. |
 | `/agents/dashboard` | Sidebar nav | ⚠️ Coming soon | No `app/agents/dashboard/page.tsx`; rendered disabled. |
 | `/automation` | Sidebar nav + quick actions | ✅ Ready | Route exists. |
-| `/dashboard/chat` | Sidebar nav + quick actions | ✅ Ready | Canonical chat workspace route. |
-| `/dashboard/runash-chat` | Legacy chat entry point | ✅ Ready | Redirects to `/dashboard/chat`. |
-| `/chat` | Legacy chat entry point | ✅ Ready | Redirects to `/dashboard/chat`. |
-| `/runash-chat` | Legacy chat entry point | ✅ Ready | Redirects to `/dashboard/chat`. |
-| `/dashboard/editor` | Sidebar nav + quick actions | ✅ Ready | Route exists. |
+| `/runashchat` | Sidebar nav + quick actions | ✅ Ready | Canonical chat workspace route. |
+| `/dashboard/chat` | Legacy chat entry point | ✅ Ready | Permanent redirect to `/runashchat`. |
+| `/dashboard/runash-chat` | Legacy chat entry point | ✅ Ready | Permanent redirect to `/runashchat`. |
+| `/chat` | Legacy chat entry point | ✅ Ready | Permanent redirect to `/runashchat`. |
+| `/runash-chat` | Legacy chat entry point | ✅ Ready | Permanent redirect to `/runashchat`. |
+| `/editor` | Sidebar nav + quick actions | ✅ Ready | Canonical editor workspace route. |
+| `/dashboard/editor` | Legacy editor entry point | ✅ Ready | Permanent redirect to `/editor`. |
 | `/dashboard/seller-studio` | Sidebar nav | ✅ Ready | Route exists. |
 | `/dashboard/store` | Sidebar nav + quick actions | ✅ Ready | Route exists. |
 | `/settings` | Navbar account menu | ✅ Ready | Route exists with settings loading + error boundaries. |
@@ -54,10 +56,22 @@ This audit covers route destinations referenced by:
 
 | Legacy route | Canonical route | Purpose |
 | --- | --- | --- |
-| `/chat` | `/dashboard/chat` | Backward-compatible redirect for historic home/footer links. |
-| `/runash-chat` | `/dashboard/chat` | Backward-compatible redirect for product-named path. |
-| `/dashboard/runash-chat` | `/dashboard/chat` | Backward-compatible redirect for previous dashboard entry point. |
+| `/dashboard/chat` | `/runashchat` | Backward-compatible redirect for prior dashboard chat route. |
+| `/dashboard/runash-chat` | `/runashchat` | Backward-compatible redirect for previous dashboard product entry point. |
+| `/chat` | `/runashchat` | Backward-compatible redirect for historic home/footer links. |
+| `/runash-chat` | `/runashchat` | Backward-compatible redirect for product-named path. |
+| `/dashboard/editor` | `/editor` | Backward-compatible redirect for prior dashboard editor entry point. |
 
 - Product label: **RunAsh Chat**
-- Primary route: `/dashboard/chat`
-- Legacy redirects: `/dashboard/runash-chat`, `/chat`, `/runash-chat` → `/dashboard/chat`
+- Primary route: `/runashchat`
+- Legacy redirects (permanent): `/dashboard/chat`, `/dashboard/runash-chat`, `/chat`, `/runash-chat` → `/runashchat`
+
+## Legacy Redirect Matrix
+
+| Legacy path | Permanent redirect target |
+| --- | --- |
+| `/dashboard/chat` | `/runashchat` |
+| `/dashboard/runash-chat` | `/runashchat` |
+| `/chat` | `/runashchat` |
+| `/runash-chat` | `/runashchat` |
+| `/dashboard/editor` | `/editor` |

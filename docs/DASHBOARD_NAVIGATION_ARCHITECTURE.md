@@ -27,7 +27,7 @@ The dashboard sidebar uses sectioned navigation with shared active-path matching
 - **Intelligence**
   - `/agents/dashboard`
   - `/automation`
-  - `/dashboard/chat`
+  - `/runashchat`
 - **Operations**
   - `/analytics`
   - `/alerts`
@@ -48,12 +48,26 @@ Legacy, route-local sidebar lists should not be reintroduced for dashboard surfa
 
 ## Legacy route redirects
 
-For chat entry points, standardize user-facing navigation to **RunAsh Chat** at `/dashboard/chat`.
-Keep redirects from `/dashboard/runash-chat`, `/chat`, and `/runash-chat` for backwards compatibility.
+Canonical dashboard workspace routes are:
+
+- **Editor:** `/editor`
+- **RunAsh Chat:** `/runashchat`
+
+Legacy entry points remain permanently redirected for backward compatibility.
 
 
 ## Canonical chat route mapping
 
 - Canonical product label: **RunAsh Chat**
-- Canonical route: `/dashboard/chat`
-- Legacy compatibility routes (redirect): `/chat`, `/runash-chat`, `/dashboard/runash-chat`
+- Canonical route: `/runashchat`
+- Legacy compatibility routes (permanent redirect): `/chat`, `/runash-chat`, `/dashboard/runash-chat`, `/dashboard/chat`
+
+## Legacy Redirect Matrix
+
+| Legacy path | Permanent redirect target | Notes |
+| --- | --- | --- |
+| `/dashboard/chat` | `/runashchat` | Old dashboard chat route retained as compatibility alias. |
+| `/dashboard/runash-chat` | `/runashchat` | Previous product-named dashboard path. |
+| `/chat` | `/runashchat` | Historic global chat entry point. |
+| `/runash-chat` | `/runashchat` | Historic hyphenated product path. |
+| `/dashboard/editor` | `/editor` | Prior dashboard editor entry point. |
