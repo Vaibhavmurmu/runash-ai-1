@@ -42,68 +42,130 @@ function createDeps() {
   return { requireUserId, listTemplates, createTemplate, updateTemplate, deleteTemplate }
 }
 
-test("dashboard stream template handlers enforce auth, isolation, and persistence", async () => {
+test("dashboard stream template handlers enforce auth and CRUD", async () => {
   const deps = createDeps()
 
   const unauth = await handleTemplatesGet(new Request("http://localhost"), deps)
   assert.equal(unauth.status, 401)
 
-  const createdResponse = await handleTemplatesPost(new Request("http://localhost", {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: "Bearer user-a" },
-    body: JSON.stringify({ name: "Template A", title: "Title A", tags: ["a"] }),
-  }), deps)
+  const createMissingFields = await handleTemplatesPost(
+    new Request("http://localhost", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer user-a" },
+      body: JSON.stringify({ title: "Missing Name" }),
+    }),
+    deps,
+  )
+  assert.equal(createMissingFields.status, 400)
+
+  const createdResponse = await handleTemplatesPost(
+    new Request("http://localhost", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer user-a" },
+      body: JSON.stringify({ name: "Template A", title: "Title A", tags: ["a"] }),
+    }),
+    deps,
+  )
   assert.equal(createdResponse.status, 201)
   const created = await createdResponse.json()
 
-  const userAListResponse = await handleTemplatesGet(new Request("http://localhost", {
-    headers: { authorization: "Bearer user-a" },
-  }), deps)
+  const userAListResponse = await handleTemplatesGet(
+    new Request("http://localhost", {
+      headers: { authorization: "Bearer user-a" },
+    }),
+    deps,
+  )
   const userAList = await userAListResponse.json()
   assert.equal(userAList.templates.length, 1)
   assert.equal(userAList.templates[0].id, created.id)
 
-  const userBListResponse = await handleTemplatesGet(new Request("http://localhost", {
-    headers: { authorization: "Bearer user-b" },
-  }), deps)
-  const userBList = await userBListResponse.json()
-  assert.equal(userBList.templates.length, 0)
-
-  const userBUpdate = await handleTemplatePut(new Request("http://localhost", {
-    method: "PUT",
-    headers: { "content-type": "application/json", authorization: "Bearer user-b" },
-    body: JSON.stringify({ title: "Hacked" }),
-  }), created.id, deps)
-  assert.equal(userBUpdate.status, 404)
-
-  const userAUpdate = await handleTemplatePut(new Request("http://localhost", {
-    method: "PUT",
-    headers: { "content-type": "application/json", authorization: "Bearer user-a" },
-    body: JSON.stringify({ title: "Title A Updated" }),
-  }), created.id, deps)
+  const userAUpdate = await handleTemplatePut(
+    new Request("http://localhost", {
+      method: "PUT",
+      headers: { "content-type": "application/json", authorization: "Bearer user-a" },
+      body: JSON.stringify({ title: "  Title A Updated  " }),
+    }),
+    created.id,
+    deps,
+  )
   assert.equal(userAUpdate.status, 200)
 
-  const userAListAfterUpdateResponse = await handleTemplatesGet(new Request("http://localhost", {
-    headers: { authorization: "Bearer user-a" },
-  }), deps)
-  const userAListAfterUpdate = await userAListAfterUpdateResponse.json()
-  assert.equal(userAListAfterUpdate.templates[0].title, "Title A Updated")
+  const updated = await userAUpdate.json()
+  assert.equal(updated.title, "Title A Updated")
 
-  const userBDelete = await handleTemplateDelete(new Request("http://localhost", {
-    method: "DELETE",
-    headers: { authorization: "Bearer user-b" },
-  }), created.id, deps)
-  assert.equal(userBDelete.status, 404)
-
-  const userADelete = await handleTemplateDelete(new Request("http://localhost", {
-    method: "DELETE",
-    headers: { authorization: "Bearer user-a" },
-  }), created.id, deps)
+  const userADelete = await handleTemplateDelete(
+    new Request("http://localhost", {
+      method: "DELETE",
+      headers: { authorization: "Bearer user-a" },
+    }),
+    created.id,
+    deps,
+  )
   assert.equal(userADelete.status, 200)
 
-  const userAListAfterDeleteResponse = await handleTemplatesGet(new Request("http://localhost", {
-    headers: { authorization: "Bearer user-a" },
-  }), deps)
+  const userAListAfterDeleteResponse = await handleTemplatesGet(
+    new Request("http://localhost", {
+      headers: { authorization: "Bearer user-a" },
+    }),
+    deps,
+  )
   const userAListAfterDelete = await userAListAfterDeleteResponse.json()
   assert.equal(userAListAfterDelete.templates.length, 0)
+})
+
+test("dashboard stream template handlers enforce cross-user isolation", async () => {
+  const deps = createDeps()
+
+  const createUserATemplate = await handleTemplatesPost(
+    new Request("http://localhost", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer user-a" },
+      body: JSON.stringify({ name: "Template A", title: "Title A", tags: ["a"] }),
+    }),
+    deps,
+  )
+  assert.equal(createUserATemplate.status, 201)
+  const userATemplate = await createUserATemplate.json()
+
+  const createUserBTemplate = await handleTemplatesPost(
+    new Request("http://localhost", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer user-b" },
+      body: JSON.stringify({ name: "Template B", title: "Title B", tags: ["b"] }),
+    }),
+    deps,
+  )
+  assert.equal(createUserBTemplate.status, 201)
+  const userBTemplate = await createUserBTemplate.json()
+
+  const userBUpdateOnA = await handleTemplatePut(
+    new Request("http://localhost", {
+      method: "PUT",
+      headers: { "content-type": "application/json", authorization: "Bearer user-b" },
+      body: JSON.stringify({ title: "Hacked" }),
+    }),
+    userATemplate.id,
+    deps,
+  )
+  assert.equal(userBUpdateOnA.status, 404)
+
+  const userADeleteOnB = await handleTemplateDelete(
+    new Request("http://localhost", {
+      method: "DELETE",
+      headers: { authorization: "Bearer user-a" },
+    }),
+    userBTemplate.id,
+    deps,
+  )
+  assert.equal(userADeleteOnB.status, 404)
+
+  const userBListResponse = await handleTemplatesGet(
+    new Request("http://localhost", {
+      headers: { authorization: "Bearer user-b" },
+    }),
+    deps,
+  )
+  const userBList = await userBListResponse.json()
+  assert.equal(userBList.templates.length, 1)
+  assert.equal(userBList.templates[0].id, userBTemplate.id)
 })

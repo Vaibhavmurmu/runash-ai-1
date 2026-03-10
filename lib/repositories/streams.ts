@@ -340,6 +340,22 @@ export async function listDashboardStreamTemplates(userId: string): Promise<Dash
   return rows.map(toStreamTemplate)
 }
 
+export async function getDashboardStreamTemplateById(
+  userId: string,
+  id: string,
+): Promise<DashboardStreamTemplate | null> {
+  await ensureStreamTemplatesTable()
+
+  const row = await one<StreamTemplateRow>(sql<StreamTemplateRow[]>`
+    select id, user_id, name, title, description, duration, platforms, thumbnail, tags, category, is_public, created_at, updated_at
+    from stream_dashboard_templates
+    where id=${id} and user_id=${userId}
+    limit 1
+  `)
+
+  return row ? toStreamTemplate(row) : null
+}
+
 export async function createDashboardStreamTemplate(
   userId: string,
   input: Omit<DashboardStreamTemplate, "id" | "createdAt" | "updatedAt">,
