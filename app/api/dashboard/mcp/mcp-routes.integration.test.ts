@@ -17,6 +17,8 @@ type PersistentState = {
   audit: Array<{ tenantId: string; value: MpcToolAuditRecord }>
 }
 
+const AUDIT_RETENTION_LIMIT = 2000
+
 function createFixtureAdapters(state: PersistentState) {
   return {
     async listConnectors(scope: { tenantId: string }) {
@@ -78,6 +80,11 @@ function createFixtureAdapters(state: PersistentState) {
         createdAt: new Date().toISOString(),
       }
       state.audit.unshift({ tenantId: scope.tenantId, value: created })
+      const tenantAudit = state.audit.filter((entry) => entry.tenantId === scope.tenantId)
+      if (tenantAudit.length > AUDIT_RETENTION_LIMIT) {
+        const overflow = tenantAudit.slice(AUDIT_RETENTION_LIMIT)
+        state.audit = state.audit.filter((entry) => !overflow.includes(entry))
+      }
       return created
     },
     async listAuditRecords(limit: number, scope: { tenantId: string }) {
@@ -165,6 +172,14 @@ test("MCP dashboard routes enforce tenant scoping, mutating permissions, lifecyc
     )
     assert.equal(enableResponse.status, 200)
 
+    const forbiddenDelete = await connectorByIdRoute.DELETE(
+      new Request(`http://localhost/api/dashboard/mcp/connectors/${connectorId}`, {
+        method: "DELETE",
+      }),
+      { params: Promise.resolve({ id: connectorId }) },
+    )
+    assert.equal(forbiddenDelete.status, 403)
+
     await invokeToolOnMcpConnector({
       toolName: "catalog_lookup",
       actor: { userId: "2", roles: ["user"] },
@@ -184,8 +199,11 @@ test("MCP dashboard routes enforce tenant scoping, mutating permissions, lifecyc
     const auditResponse = await auditRoute.GET(new Request("http://localhost/api/dashboard/mcp/audit?limit=5"))
     const auditPayload = await auditResponse.json()
     assert.equal(auditResponse.status, 200)
-    assert.equal(auditPayload.audit.length, 1)
-    assert.equal(auditPayload.audit[0].status, "denied")
+    assert.equal(auditPayload.audit.some((entry: MpcToolAuditRecord) => entry.toolName === "connector.create" && entry.status === "success"), true)
+    assert.equal(auditPayload.audit.some((entry: MpcToolAuditRecord) => entry.toolName === "connector.update" && entry.status === "success"), true)
+    assert.equal(auditPayload.audit.some((entry: MpcToolAuditRecord) => entry.toolName === "connector.update" && entry.status === "denied"), true)
+    assert.equal(auditPayload.audit.some((entry: MpcToolAuditRecord) => entry.toolName === "connector.delete" && entry.status === "denied"), true)
+    assert.equal(auditPayload.audit.some((entry: MpcToolAuditRecord) => entry.toolName === "catalog_lookup" && entry.status === "denied"), true)
 
     const deleteResponse = await connectorByIdRoute.DELETE(
       new Request(`http://localhost/api/dashboard/mcp/connectors/${connectorId}`, {
@@ -198,6 +216,24 @@ test("MCP dashboard routes enforce tenant scoping, mutating permissions, lifecyc
     const postDeleteList = await connectorsRoute.GET(new Request("http://localhost/api/dashboard/mcp/connectors"))
     const postDeletePayload = await postDeleteList.json()
     assert.equal(postDeletePayload.connectors.length, 0)
+
+    for (let index = 0; index < AUDIT_RETENTION_LIMIT + 50; index += 1) {
+      await connectorsRoute.POST(
+        new Request("http://localhost/api/dashboard/mcp/connectors", {
+          method: "POST",
+          body: JSON.stringify({
+            serverName: `bulk-mcp-${index}`,
+            endpoint: "http://127.0.0.1:1",
+            transport: "http",
+          }),
+        }),
+      )
+    }
+
+    const cappedAuditResponse = await auditRoute.GET(new Request(`http://localhost/api/dashboard/mcp/audit?limit=${AUDIT_RETENTION_LIMIT + 100}`))
+    const cappedAuditPayload = await cappedAuditResponse.json()
+    assert.equal(cappedAuditResponse.status, 200)
+    assert.equal(cappedAuditPayload.audit.length, AUDIT_RETENTION_LIMIT)
   } finally {
     setMcpStoreAdaptersForTests(null)
   }
