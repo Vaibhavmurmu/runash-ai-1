@@ -1,11 +1,10 @@
 import { permanentRedirect } from "next/navigation"
-import { buildCanonicalRedirectPath } from "@/app/dashboard/_lib/legacy-route-redirect"
+import { buildCanonicalRedirectPath } from "@/app/_lib/build-canonical-redirect-path"
 
-interface ChatLegacyPageProps {
-  searchParams?: Promise<Record<string, string | string[] | undefined>>
+type ChatLegacyPageProps = {
+  searchParams?: Record<string, string | string[] | undefined>
 }
 
-export default async function ChatLegacyPage({ searchParams }: ChatLegacyPageProps) {
-  const resolvedSearchParams = searchParams ? await searchParams : undefined
-  permanentRedirect(buildCanonicalRedirectPath("/runashchat", resolvedSearchParams))
+export default function ChatLegacyPage({ searchParams }: ChatLegacyPageProps) {
+  permanentRedirect(buildCanonicalRedirectPath("/runashchat", searchParams))
 }
