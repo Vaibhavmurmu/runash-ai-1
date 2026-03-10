@@ -4,6 +4,12 @@ Last updated: 2026-02
 
 
 
+## API key platform persistence hardening update (2026-03)
+
+- Dashboard API key lifecycle (`create`, `list`, `rotate`, `revoke`) is now backed by persistent repository/database storage instead of process memory, so key metadata and status survive process restarts.
+- API key secret handling guarantees plaintext key values are emitted only once at issuance/rotation response time and are never persisted or logged in plaintext; storage uses secret hash + encrypted secret material.
+- Seeded/default demo API key initialization has been removed to avoid non-production credentials appearing in runtime state.
+
 ## SMS OTP provider delivery hardening update (2026-03)
 
 - OTP SMS dispatch now resolves through a dedicated provider client (`lib/sms-provider-client.ts`) with environment-driven timeout/retry controls and normalized delivery results (`sent`/`queued`/`failed`).

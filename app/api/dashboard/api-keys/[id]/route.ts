@@ -20,12 +20,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   if (body.action === "revoke") {
-    const revoked = await revokeApiKey(id)
-    if (!revoked) {
-      return NextResponse.json({ error: "API key not found" }, { status: 404 })
-    }
+    try {
+      const revoked = await revokeApiKey(id)
+      if (!revoked) {
+        return NextResponse.json({ error: "API key not found" }, { status: 404 })
+      }
 
-    return NextResponse.json({ key: revoked })
+      return NextResponse.json({ key: revoked })
+    } catch {
+      return NextResponse.json({ error: "Failed to revoke API key" }, { status: 500 })
+    }
   }
 
   return NextResponse.json({ error: "Unsupported action" }, { status: 400 })
