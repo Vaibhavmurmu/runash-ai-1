@@ -3,9 +3,11 @@
 import Image from "next/image"
 import Link from "next/link"
 import { useMemo, useState, type ReactNode } from "react"
+import { useTheme } from "next-themes"
 import {
   ArrowRight,
   Bot,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clapperboard,
@@ -13,18 +15,15 @@ import {
   Mic,
   Moon,
   Plus,
+  Search,
   ShoppingBag,
   Sparkles,
   Sun,
   Upload,
   Video,
-  X,
-  ChevronDown,
-  Search,
   Waves,
+  X,
 } from "lucide-react"
-
-type ThemeMode = "light" | "dark"
 
 const sidebarItems = [
   { label: "Live Talk", icon: Waves },
@@ -38,7 +37,7 @@ const sidebarItems = [
 
 const quickActions = [
   { label: "Attach", icon: Upload },
-  { label: "Search", icon: Sparkles },
+  { label: "Search", icon: Search },
   { label: "Shopping", icon: ShoppingBag },
   { label: "Create Video", icon: Clapperboard },
 ]
@@ -95,8 +94,8 @@ function Tag({ children, isDark }: { children: ReactNode; isDark: boolean }) {
     <span
       className={`inline-flex items-center rounded-full border px-3 py-1 text-xs sm:text-sm ${
         isDark
-          ? "border-white/15 bg-white/5 text-white/85"
-          : "border-zinc-200 bg-white text-zinc-700 shadow-sm"
+          ? "border-border bg-card/70 text-foreground"
+          : "border-border bg-card text-foreground shadow-sm"
       }`}
     >
       {children}
@@ -111,7 +110,7 @@ function SidebarContent({ collapsed, isDark }: { collapsed: boolean; isDark: boo
         <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-orange-500 via-amber-500 to-orange-600 p-2">
           <Image src="/logo.png" alt="RunAsh AI" width={20} height={20} className="h-full w-full object-contain" />
         </div>
-        {!collapsed ? <p className={`text-sm font-semibold ${isDark ? "text-white" : "text-zinc-900"}`}>RunAshChat</p> : null}
+        {!collapsed ? <p className="text-sm font-semibold text-foreground">RunAshChat</p> : null}
       </div>
 
       <nav className="space-y-1">
@@ -119,9 +118,7 @@ function SidebarContent({ collapsed, isDark }: { collapsed: boolean; isDark: boo
           <button
             key={label}
             type="button"
-            className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition ${
-              isDark ? "text-white/80 hover:bg-white/10 hover:text-white" : "text-zinc-700 hover:bg-zinc-100"
-            }`}
+            className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-muted-foreground transition hover:bg-accent hover:text-foreground"
           >
             <Icon className="h-4 w-4 shrink-0" />
             {!collapsed ? <span className="ml-3">{label}</span> : null}
@@ -129,25 +126,25 @@ function SidebarContent({ collapsed, isDark }: { collapsed: boolean; isDark: boo
         ))}
       </nav>
 
-      
-       <div className="mt-auto p-3">
+      <div className="mt-auto p-3">
         {!collapsed ? (
-          <div className={`mt-auto rounded-2xl border p-4 ${isDark ? "border-white/10 bg-white/5" : "border-zinc-200 bg-white"}`}>
-          <p className={`text-sm font-medium ${isDark ? "text-white" : "text-zinc-900"}`}>Upgrade Studio</p>
-          <p className={`mt-1 text-xs ${isDark ? "text-white/70" : "text-zinc-600"}`}>
-            Unlock multi-stream control, AI hosts, and premium commerce automations.
-          </p>
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <p className="text-sm font-medium text-foreground">Upgrade Studio</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Unlock multi-stream control, AI hosts, and premium commerce automations.
+            </p>
           </div>
         ) : null}
       </div>
+
       {!collapsed ? (
-        <div className={`mt-auto rounded-2xl border p-4 ${isDark ? "border-white/10 bg-white/5" : "border-zinc-200 bg-white"}`}>
-          <p className={`text-sm font-medium ${isDark ? "text-white" : "text-zinc-900"}`}>Go live faster</p>
-          <p className={`mt-1 text-xs ${isDark ? "text-white/70" : "text-zinc-600"}`}>
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <p className="text-sm font-medium text-foreground">Go live faster</p>
+          <p className="mt-1 text-xs text-muted-foreground">
             Sign in to save studio presets, product bundles, and AI host voices.
           </p>
           <div className="mt-3 flex gap-2">
-            <Link href="/login" className={`rounded-md pUnlock multi-stream control, AI hosts, and premium commerce automations.x-2 py-1 text-xs ${isDark ? "bg-white/10 text-white" : "bg-zinc-100 text-zinc-700"}`}>
+            <Link href="/login" className="rounded-md bg-muted px-2 py-1 text-xs text-foreground hover:bg-accent">
               Log in
             </Link>
             <Link href="/signup" className="rounded-md bg-gradient-to-r from-orange-500 to-amber-500 px-2 py-1 text-xs text-white">
@@ -163,14 +160,14 @@ function SidebarContent({ collapsed, isDark }: { collapsed: boolean; isDark: boo
 export default function RunAshChatLandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [desktopCollapsed, setDesktopCollapsed] = useState(false)
-  const [theme, setTheme] = useState<ThemeMode>("light")
+  const { resolvedTheme, setTheme } = useTheme()
 
-  const isDark = theme === "dark"
+  const isDark = resolvedTheme === "dark"
   const shellClass = useMemo(
     () =>
       isDark
-        ? "bg-[#09090b] text-white"
-        : "bg-gradient-to-b from-orange-50 via-white to-zinc-100 text-zinc-900",
+        ? "bg-background text-foreground"
+        : "bg-gradient-to-b from-orange-50 via-background to-muted text-foreground",
     [isDark],
   )
 
@@ -178,15 +175,13 @@ export default function RunAshChatLandingPage() {
     <main className={`min-h-screen transition-colors ${shellClass}`}>
       <div className="mx-auto flex min-h-screen w-full max-w-[1400px]">
         <aside
-          className={`hidden border-r p-3 md:block ${desktopCollapsed ? "w-20" : "w-72"} ${
-            isDark ? "border-white/10 bg-black/40" : "border-zinc-200/80 bg-white/70"
-          }`}
+          className={`hidden border-r border-border bg-card/80 p-3 md:block ${desktopCollapsed ? "w-20" : "w-72"}`}
         >
           <div className="mb-4 flex justify-end">
             <button
               type="button"
               onClick={() => setDesktopCollapsed((prev) => !prev)}
-              className={`rounded-lg border p-1.5 ${isDark ? "border-white/15 hover:bg-white/10" : "border-zinc-200 hover:bg-zinc-100"}`}
+              className="rounded-lg border border-border p-1.5 hover:bg-accent"
               aria-label={desktopCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
               {desktopCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
@@ -196,35 +191,35 @@ export default function RunAshChatLandingPage() {
         </aside>
 
         <div className="flex flex-1 flex-col">
-          <header className={`sticky top-0 z-20 flex items-center justify-between border-b px-4 py-3 backdrop-blur sm:px-6 ${isDark ? "border-white/10 bg-black/40" : "border-zinc-200/80 bg-white/80"}`}>
+          <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-background/85 px-4 py-3 backdrop-blur sm:px-6">
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen(true)}
-                className={`rounded-lg border p-1.5 md:hidden ${isDark ? "border-white/15" : "border-zinc-200"}`}
+                className="rounded-lg border border-border p-1.5 md:hidden"
                 aria-label="Open sidebar"
               >
                 <Menu className="h-4 w-4" />
               </button>
-              <p className="text-sm font-semibold tracking-wide">RunAsh AI </p>
+              <p className="text-sm font-semibold tracking-wide">RunAsh AI</p>
             </div>
 
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
-                className={`rounded-lg border p-2 ${isDark ? "border-white/15 hover:bg-white/10" : "border-zinc-200 hover:bg-zinc-100"}`}
+                onClick={() => setTheme(isDark ? "light" : "dark")}
+                className="rounded-lg border border-border p-2 hover:bg-accent"
                 aria-label="Toggle theme"
               >
                 {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </button>
               <button
                 type="button"
-                className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white px-3 py-1.5 text-xs text-zinc-700 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100"
-                >
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-foreground"
+              >
                 RunAsh Pro <ChevronDown className="h-3 w-3" />
-               </button>
-              <Link href="/login" className={`rounded-full px-3 py-1.5 text-sm ${isDark ? "text-white/80 hover:bg-white/10" : "text-zinc-700 hover:bg-zinc-100"}`}>
+              </button>
+              <Link href="/login" className="rounded-full px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground">
                 Log in
               </Link>
               <Link href="/signup" className="rounded-full bg-gradient-to-r from-orange-500 to-amber-500 px-3 py-1.5 text-sm font-medium text-white shadow-sm">
@@ -237,15 +232,15 @@ export default function RunAshChatLandingPage() {
             <div className="text-center">
               <Tag isDark={isDark}>Agentic live commerce • AI studio • realtime video</Tag>
               <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-5xl">Where should we begin?</h1>
-              <p className={`mx-auto mt-4 max-w-2xl text-sm sm:text-base ${isDark ? "text-white/70" : "text-zinc-600"}`}>
+              <p className="mx-auto mt-4 max-w-2xl text-sm text-muted-foreground sm:text-base">
                 Build a modern livestream shopping experience with AI hosts, live selling automation, realtime talking agents, and a custom RunAsh editor.
               </p>
             </div>
 
-            <div className={`mx-auto mt-8 max-w-3xl rounded-3xl border p-3 sm:p-4 ${isDark ? "border-white/10 bg-white/[0.03]" : "border-zinc-200 bg-white/90 shadow-lg shadow-orange-100/40"}`}>
+            <div className="mx-auto mt-8 max-w-3xl rounded-3xl border border-border bg-card p-3 shadow-lg shadow-orange-100/40 dark:shadow-none sm:p-4">
               <Link
                 href="/dashboard/chat"
-                className={`flex min-h-14 items-center rounded-2xl px-3 text-left text-sm sm:text-base ${isDark ? "bg-black/30 text-white/65" : "bg-zinc-50 text-zinc-500"}`}
+                className="flex min-h-14 items-center rounded-2xl bg-muted px-3 text-left text-sm text-muted-foreground sm:text-base"
               >
                 Preview prompt: Create a high-converting live-selling stream for tomorrow&apos;s launch.
               </Link>
@@ -264,7 +259,7 @@ export default function RunAshChatLandingPage() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    className={`rounded-full border p-2 ${isDark ? "border-white/15 bg-white/5" : "border-zinc-200 bg-white"}`}
+                    className="rounded-full border border-border bg-card p-2"
                     aria-label="Add attachment"
                   >
                     <Plus className="h-4 w-4" />
@@ -282,48 +277,45 @@ export default function RunAshChatLandingPage() {
 
             <div className="mt-8 grid gap-4 sm:grid-cols-2">
               {productCards.map((item) => (
-                <article
-                  key={item.title}
-                  className={`rounded-2xl border p-5 ${isDark ? "border-white/10 bg-white/[0.03]" : "border-zinc-200 bg-white/90"}`}
-                >
+                <article key={item.title} className="rounded-2xl border border-border bg-card p-5">
                   <h2 className="text-lg font-semibold">{item.title}</h2>
-                  <p className={`mt-2 text-sm ${isDark ? "text-white/70" : "text-zinc-600"}`}>{item.body}</p>
+                  <p className="mt-2 text-sm text-muted-foreground">{item.body}</p>
                 </article>
               ))}
             </div>
 
-            <div className={`mt-8 rounded-2xl border p-5 sm:p-6 ${isDark ? "border-white/10 bg-gradient-to-r from-orange-500/15 to-amber-400/10" : "border-orange-100 bg-gradient-to-r from-orange-100 to-amber-50"}`}>
+            <div className="mt-8 rounded-2xl border border-orange-200 bg-gradient-to-r from-orange-100 to-amber-50 p-5 dark:border-orange-900/50 dark:from-orange-500/15 dark:to-amber-400/10 sm:p-6">
               <p className="text-sm font-medium">Prompt previews</p>
               <div className="mt-3 space-y-2">
                 {previewPrompts.map((prompt) => (
-                  <p key={prompt} className={`rounded-xl px-3 py-2 text-sm ${isDark ? "bg-black/30 text-white/80" : "bg-white text-zinc-700"}`}>
+                  <p key={prompt} className="rounded-xl bg-background px-3 py-2 text-sm text-muted-foreground">
                     {prompt}
                   </p>
                 ))}
               </div>
-              <Link href="/dashboard/chat" className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-orange-600">
+              <Link href="/dashboard/chat" className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-orange-600 dark:text-orange-400">
                 Open RunAshChat Studio <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
-            
+
             <div className="mt-6 flex flex-wrap justify-center gap-3">
               <Link href="/stream" className="rounded-full bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2 text-sm font-medium text-white shadow-sm">
                 Launch RunAsh AI Studio
               </Link>
               <Link
                 href="/ecommerce/dashboard"
-                className={`rounded-full border px-4 py-2 text-sm font-medium ${isDark ? "border-white/15 text-white hover:bg-white/10" : "border-zinc-300 text-zinc-700 hover:bg-zinc-100"}`}
+                className="rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent"
               >
                 Setup Shopping Session
               </Link>
               <Link
                 href="/ai-editor"
-                className={`rounded-full border px-4 py-2 text-sm font-medium ${isDark ? "border-white/15 text-white hover:bg-white/10" : "border-zinc-300 text-zinc-700 hover:bg-zinc-100"}`}
+                className="rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent"
               >
                 Open RunAsh AI Editor
               </Link>
             </div>
-            
+
             <p className="mt-8 text-sm font-medium">RunAsh AI categories</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {categories.map((category) => (
@@ -333,33 +325,32 @@ export default function RunAshChatLandingPage() {
               ))}
             </div>
           </section>
-        
-              
-            <div className={`mt-8 rounded-2xl border p-5 sm:p-6 ${isDark ? "border-white/10 bg-gradient-to-r from-orange-500/15 to-amber-400/10" : "border-orange-100 bg-gradient-to-r from-orange-100 to-amber-50"}`}>
-                <div className="rounded-xl bg-white/15 p-4 dark:bg-white/15 sm:p-5">
-                  <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-                    <div>
-                      <p className="text-lg font-semibold">RunAsh AI Live Studio</p>
-                      <p className="text-sm text-black dark:text-white">
-                        One place for live video generation, studio automation, agentic selling, and custom editor workflows.
-                      </p>
-                    </div>
-                    <Image src="/RunAshChat.png" alt="RunAsh AI preview" width={120} height={40} className="h-10 w-auto rounded-md" />
-                  </div>
+
+          <div className="mt-8 rounded-2xl border border-orange-200 bg-gradient-to-r from-orange-100 to-amber-50 p-5 dark:border-orange-900/50 dark:from-orange-500/15 dark:to-amber-400/10 sm:p-6">
+            <div className="rounded-xl bg-white/70 p-4 dark:bg-white/10 sm:p-5">
+              <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+                <div>
+                  <p className="text-lg font-semibold">RunAsh AI Live Studio</p>
+                  <p className="text-sm text-muted-foreground">
+                    One place for live video generation, studio automation, agentic selling, and custom editor workflows.
+                  </p>
                 </div>
+                <Image src="/RunAshChat.png" alt="RunAsh AI preview" width={120} height={40} className="h-10 w-auto rounded-md" />
               </div>
+            </div>
+          </div>
         </div>
       </div>
 
       {mobileMenuOpen ? (
         <div className="fixed inset-0 z-30 md:hidden">
           <button type="button" className="absolute inset-0 bg-black/50" aria-label="Close sidebar overlay" onClick={() => setMobileMenuOpen(false)} />
-          <aside className={`relative h-full w-72 border-r p-3 ${isDark ? "border-white/10 bg-black" : "border-zinc-200 bg-white"}`}>
+          <aside className="relative h-full w-72 border-r border-border bg-card p-3">
             <div className="mb-4 flex justify-end">
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen(false)}
-                className={`rounded-lg border p-1.5 ${isDark ? "border-white/15" : "border-zinc-200"}`}
+                className="rounded-lg border border-border p-1.5"
                 aria-label="Close sidebar"
               >
                 <X className="h-4 w-4" />
