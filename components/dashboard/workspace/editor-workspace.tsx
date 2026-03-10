@@ -176,6 +176,8 @@ export function EditorWorkspace() {
   const [generationValidationErrors, setGenerationValidationErrors] = useState<Record<string, string>>({})
   const [isRecording, setIsRecording] = useState(false)
   const [isChatOpen, setIsChatOpen] = useState(false)
+  const mobileChatSheetContentRef = useRef<HTMLDivElement | null>(null)
+  const mobileChatReturnFocusRef = useRef<HTMLElement | null>(null)
   const [isCollaborationOpen, setIsCollaborationOpen] = useState(false)
   const [project, setProject] = useState<EditorProject | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -1027,6 +1029,22 @@ export function EditorWorkspace() {
   }, [project?.id])
 
   const generationStatus = generationJob?.status ?? null
+
+  useEffect(() => {
+    if (!isMobile) return
+
+    if (isChatOpen) {
+      mobileChatReturnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      window.requestAnimationFrame(() => {
+        mobileChatSheetContentRef.current?.focus()
+      })
+      return
+    }
+
+    mobileChatReturnFocusRef.current?.focus()
+    mobileChatReturnFocusRef.current = null
+  }, [isMobile, isChatOpen])
+
   const generationProgress =
     typeof generationJob?.result?.progress === "number" ? Math.round(generationJob.result.progress) : null
   const generationStage =
@@ -1125,7 +1143,9 @@ export function EditorWorkspace() {
           {isMobile ? (
             <Sheet open={isChatOpen} onOpenChange={setIsChatOpen}>
               <SheetContent side="left" className="w-[94vw] max-w-sm p-0">
-                <AIChatPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
+                <div ref={mobileChatSheetContentRef} tabIndex={-1} className="h-full focus-visible:outline-none">
+                  <AIChatPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
+                </div>
               </SheetContent>
             </Sheet>
           ) : (

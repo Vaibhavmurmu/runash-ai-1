@@ -181,6 +181,9 @@ export function ChatWorkspace() {
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [hasCompletedFirstMessage, setHasCompletedFirstMessage] = useState(false)
   const attachmentRetryRef = useRef<Map<string, File>>(new Map())
+  const mobileDrawerReturnFocusRef = useRef<HTMLElement | null>(null)
+  const mobileLeftDrawerRef = useRef<HTMLElement | null>(null)
+  const mobileRightDrawerRef = useRef<HTMLElement | null>(null)
 
   const IMAGE_MAX_FILE_SIZE = 8 * 1024 * 1024
   const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"]
@@ -695,6 +698,31 @@ export function ChatWorkspace() {
       return next
     })
   }, [isDesktop])
+
+  useEffect(() => {
+    if (isDesktop) return
+
+    const drawerOpen = leftDrawerOpen || rightDrawerOpen
+    if (drawerOpen) {
+      if (!mobileDrawerReturnFocusRef.current && document.activeElement instanceof HTMLElement) {
+        mobileDrawerReturnFocusRef.current = document.activeElement
+      }
+
+      window.requestAnimationFrame(() => {
+        if (leftDrawerOpen) {
+          mobileLeftDrawerRef.current?.focus()
+          return
+        }
+        if (rightDrawerOpen) {
+          mobileRightDrawerRef.current?.focus()
+        }
+      })
+      return
+    }
+
+    mobileDrawerReturnFocusRef.current?.focus()
+    mobileDrawerReturnFocusRef.current = null
+  }, [isDesktop, leftDrawerOpen, rightDrawerOpen])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -2462,7 +2490,7 @@ export function ChatWorkspace() {
                 aria-label="Close session history"
                 onClick={() => setLeftDrawerOpen(false)}
               />
-              <aside className="fixed left-0 top-0 bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] z-50 w-[92vw] max-w-sm overflow-y-auto border-r border-zinc-800 bg-zinc-950 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:w-[85vw] lg:hidden">
+              <aside ref={mobileLeftDrawerRef} tabIndex={-1} className="fixed left-0 top-0 bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] z-50 w-[92vw] max-w-sm overflow-y-auto border-r border-zinc-800 bg-zinc-950 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] focus-visible:outline-none sm:w-[85vw] lg:hidden">
                 {leftDrawer}
               </aside>
             </>
@@ -2476,7 +2504,7 @@ export function ChatWorkspace() {
                 aria-label="Close utilities panel"
                 onClick={() => setRightDrawerOpen(false)}
               />
-              <aside className="fixed right-0 top-0 bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] z-50 w-[92vw] max-w-sm overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:w-[85vw] lg:hidden">
+              <aside ref={mobileRightDrawerRef} tabIndex={-1} className="fixed right-0 top-0 bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] z-50 w-[92vw] max-w-sm overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] focus-visible:outline-none sm:w-[85vw] lg:hidden">
                 {rightDrawer}
               </aside>
             </>

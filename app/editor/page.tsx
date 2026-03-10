@@ -1,9 +1,8 @@
 import type { Metadata } from "next"
 import dynamic from "next/dynamic"
-import Link from "next/link"
 import { Suspense } from "react"
-import { BookOpen } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { ArrowRightLeft, BookOpen } from "lucide-react"
+import { StandaloneWorkspacePageChrome } from "@/components/dashboard/workspace/common/standalone-workspace-page-chrome"
 import { Skeleton } from "@/components/ui/skeleton"
 
 const EditorWorkspace = dynamic(() => import("@/components/dashboard/workspace/editor-workspace").then((mod) => mod.EditorWorkspace), {
@@ -17,19 +16,34 @@ export const metadata: Metadata = {
 
 export default function EditorPage() {
   return (
-    <div className="mx-auto w-full max-w-[1200px] space-y-4 p-4 md:p-6">
-      <div className="flex justify-end">
-        <Button asChild variant="outline" size="sm" className="gap-2">
-          <Link href="/editor/docs" aria-label="Open the editor guide documentation">
-            <BookOpen className="h-4 w-4" />
-            Editor Guide
-          </Link>
-        </Button>
-      </div>
-
+    <StandaloneWorkspacePageChrome
+      title="Editor Workspace"
+      description="Build, iterate, and ship project timelines from a focused editor surface designed for production workflows."
+      breadcrumbs={[
+        { label: "Workspace", href: "/dashboard" },
+        { label: "Editor" },
+      ]}
+      headerActions={[
+        {
+          label: "Editor Guide",
+          href: "/editor/docs",
+          icon: <BookOpen className="h-4 w-4" aria-hidden="true" />,
+          ariaLabel: "Open the editor guide documentation",
+        },
+        {
+          label: "Open RunAsh Chat",
+          href: "/runashchat",
+          icon: <ArrowRightLeft className="h-4 w-4" aria-hidden="true" />,
+        },
+      ]}
+      keyboardShortcutHints={[
+        { label: "Timeline play/pause", keys: ["Space"] },
+        { label: "Toggle chat", keys: ["Ctrl", "J"] },
+      ]}
+    >
       <Suspense fallback={<Skeleton className="h-[560px] w-full" />}>
         <EditorWorkspace />
       </Suspense>
-    </div>
+    </StandaloneWorkspacePageChrome>
   )
 }
