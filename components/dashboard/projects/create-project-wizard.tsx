@@ -96,7 +96,7 @@ export function CreateProjectWizard() {
       )
 
       toast({ title: "Project created", description: "Editor, chat, and streaming presets are now linked." })
-      router.push(`/dashboard/editor?projectId=${encodeURIComponent(createdProjectId)}&projectName=${encodeURIComponent(payload.name)}`)
+      router.push(`/editor?projectId=${encodeURIComponent(createdProjectId)}&projectName=${encodeURIComponent(payload.name)}`)
     } catch {
       toast({ title: "Creation failed", description: "Unable to create your project right now.", variant: "destructive" })
     } finally {

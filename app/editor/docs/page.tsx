@@ -282,7 +282,7 @@ export default function EditorDocsPage() {
 
         <div className="flex flex-wrap gap-3">
           <Button asChild>
-            <Link href="/dashboard/editor">
+            <Link href="/editor">
               Get Started in Editor
               <ArrowRight className="h-4 w-4" />
             </Link>
@@ -342,7 +342,7 @@ export default function EditorDocsPage() {
         </div>
         <div className="flex flex-wrap gap-3">
           <Button asChild>
-            <Link href="/dashboard/editor">
+            <Link href="/editor">
               Get Started
               <ArrowRight className="h-4 w-4" />
             </Link>
