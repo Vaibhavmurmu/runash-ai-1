@@ -2,18 +2,18 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { UpiCheckoutService } from "@/lib/services/upi-checkout-service"
 
-test("UPI initiation is idempotent by key", () => {
-  const first = UpiCheckoutService.initiatePayment("init-key-1", 499)
-  const second = UpiCheckoutService.initiatePayment("init-key-1", 499)
+test("UPI initiation is idempotent by key", async () => {
+  const first = await UpiCheckoutService.initiatePayment("init-key-1", 499)
+  const second = await UpiCheckoutService.initiatePayment("init-key-1", 499)
 
   assert.equal(first.transactionId, second.transactionId)
   assert.equal(second.idempotencyKey, "init-key-1")
 })
 
-test("UPI confirmation enforces retry limit and returns structured codes", () => {
-  const initiated = UpiCheckoutService.initiatePayment("init-key-2", 999)
+test("UPI confirmation enforces retry limit and returns structured codes", async () => {
+  const initiated = await UpiCheckoutService.initiatePayment("init-key-2", 999)
 
-  const firstInvalid = UpiCheckoutService.confirmPayment({
+  const firstInvalid = await UpiCheckoutService.confirmPayment({
     transactionId: initiated.transactionId,
     pin: "999999",
     idempotencyKey: "confirm-key-1",
@@ -22,7 +22,7 @@ test("UPI confirmation enforces retry limit and returns structured codes", () =>
   if (firstInvalid.ok) throw new Error("Expected invalid confirmation")
   assert.equal(firstInvalid.code, "INVALID_PIN")
 
-  const secondInvalid = UpiCheckoutService.confirmPayment({
+  const secondInvalid = await UpiCheckoutService.confirmPayment({
     transactionId: initiated.transactionId,
     pin: "999999",
     idempotencyKey: "confirm-key-2",
@@ -31,7 +31,7 @@ test("UPI confirmation enforces retry limit and returns structured codes", () =>
   if (secondInvalid.ok) throw new Error("Expected invalid confirmation")
   assert.equal(secondInvalid.code, "INVALID_PIN")
 
-  const thirdInvalid = UpiCheckoutService.confirmPayment({
+  const thirdInvalid = await UpiCheckoutService.confirmPayment({
     transactionId: initiated.transactionId,
     pin: "999999",
     idempotencyKey: "confirm-key-3",
@@ -40,7 +40,7 @@ test("UPI confirmation enforces retry limit and returns structured codes", () =>
   if (thirdInvalid.ok) throw new Error("Expected invalid confirmation")
   assert.equal(thirdInvalid.code, "PIN_ATTEMPTS_EXCEEDED")
 
-  const blocked = UpiCheckoutService.confirmPayment({
+  const blocked = await UpiCheckoutService.confirmPayment({
     transactionId: initiated.transactionId,
     pin: "123456",
     idempotencyKey: "confirm-key-4",
@@ -50,14 +50,14 @@ test("UPI confirmation enforces retry limit and returns structured codes", () =>
   assert.equal(blocked.code, "PIN_ATTEMPTS_EXCEEDED")
 })
 
-test("UPI confirmation reuses idempotency key result", () => {
-  const initiated = UpiCheckoutService.initiatePayment("init-key-3", 1200)
-  const first = UpiCheckoutService.confirmPayment({
+test("UPI confirmation reuses idempotency key result", async () => {
+  const initiated = await UpiCheckoutService.initiatePayment("init-key-3", 1200)
+  const first = await UpiCheckoutService.confirmPayment({
     transactionId: initiated.transactionId,
     pin: "123456",
     idempotencyKey: "confirm-key-idem",
   })
-  const second = UpiCheckoutService.confirmPayment({
+  const second = await UpiCheckoutService.confirmPayment({
     transactionId: initiated.transactionId,
     pin: "000000",
     idempotencyKey: "confirm-key-idem",
@@ -66,9 +66,9 @@ test("UPI confirmation reuses idempotency key result", () => {
   assert.deepEqual(second, first)
 })
 
-test("UPI transaction details include receipt id and amount", () => {
-  const initiated = UpiCheckoutService.initiatePayment("init-key-4", 777)
-  const details = UpiCheckoutService.getTransactionDetails(initiated.transactionId)
+test("UPI transaction details include receipt id and amount", async () => {
+  const initiated = await UpiCheckoutService.initiatePayment("init-key-4", 777)
+  const details = await UpiCheckoutService.getTransactionDetails(initiated.transactionId)
 
   assert.equal(details.found, true)
   assert.equal(details.payload.amount, 777)

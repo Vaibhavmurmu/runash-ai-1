@@ -1,30 +1,16 @@
 import { createHash } from "crypto"
+import {
+  appendUpiTransactionEvent,
+  createUpiTransaction,
+  getUpiConfirmationResult,
+  getUpiTransactionById,
+  getUpiTransactionByInitiationIdempotencyKey,
+  type UpiErrorCode,
+  type UpiExecutionStatus,
+  updateUpiTransaction,
+} from "@/lib/repositories/upi-transactions"
 
-export type UpiExecutionStatus = "initiated" | "pending" | "success" | "failed"
-export type UpiErrorCode = "INVALID_PIN" | "PIN_ATTEMPTS_EXCEEDED" | "RISK_BLOCKED"
-export type UpiProviderStatus = "SUCCESS" | "FAILED" | "PENDING" | "PROCESSING" | "AUTHORIZED" | "TIMEOUT"
-
-type UpiTransactionRecord = {
-  transactionId: string
-  createdAtEpoch: number
-  amount: number
-  currency: string
-  status: UpiExecutionStatus
-  transactionReference: string
-  pinHash: string
-  pinAttempts: number
-  maxPinAttempts: number
-  executionStartedAt?: number
-  failureReason?: string
-  failureCode?: UpiErrorCode
-  verifiedAt?: string
-  verifiedBy?: "provider_callback" | "sandbox_complete"
-  providerStatus?: UpiProviderStatus
-  providerReference?: string
-  providerEventId?: string
-  orderId: string
-  confirmationResultByIdempotencyKey: Map<string, UpiConfirmationResult>
-}
+export type { UpiExecutionStatus, UpiErrorCode }
 
 type UpiOrderRecord = {
   orderId: string
@@ -62,11 +48,6 @@ type UpiConfirmationFailure = {
 }
 
 type UpiConfirmationResult = UpiConfirmationSuccess | UpiConfirmationFailure
-
-const transactionsById = new Map<string, UpiTransactionRecord>()
-const initiationByIdempotencyKey = new Map<string, UpiInitiationResult>()
-const orderByOrderId = new Map<string, UpiOrderRecord>()
-const processedProviderEvents = new Set<string>()
 
 const DEMO_UPI_PIN = "123456"
 const MAX_PIN_ATTEMPTS = 3
@@ -131,51 +112,58 @@ function syncOrderRecord(transaction: UpiTransactionRecord) {
 }
 
 export class UpiCheckoutService {
-  static initiatePayment(idempotencyKey: string, amount: number, orderId?: string): UpiInitiationResult {
-    const existing = initiationByIdempotencyKey.get(idempotencyKey)
+  static async initiatePayment(idempotencyKey: string, amount: number): Promise<UpiInitiationResult> {
+    const existing = await getUpiTransactionByInitiationIdempotencyKey(idempotencyKey)
     if (existing) {
-      return existing
+      return {
+        transactionId: existing.transactionId,
+        amount: existing.amount,
+        currency: existing.currency,
+        status: "initiated",
+        initiatedAt: existing.createdAt.toISOString(),
+        idempotencyKey,
+      }
     }
 
     const transactionId = buildTransactionId()
     const createdAtEpoch = parseTimestamp(transactionId)
-
-    const transaction: UpiTransactionRecord = {
+    const transaction = await createUpiTransaction({
       transactionId,
-      createdAtEpoch,
       amount,
       currency: DEFAULT_CURRENCY,
-      status: "initiated",
       transactionReference: toReference(transactionId),
+      initiationIdempotencyKey: idempotencyKey,
       pinHash: hashPin(DEMO_UPI_PIN),
-      pinAttempts: 0,
       maxPinAttempts: MAX_PIN_ATTEMPTS,
-      orderId: orderId?.trim() || `order_${transactionId}`,
-      confirmationResultByIdempotencyKey: new Map(),
-    }
+    })
 
-    transactionsById.set(transactionId, transaction)
-
-    const result: UpiInitiationResult = {
+    await appendUpiTransactionEvent({
       transactionId,
-      amount,
-      currency: DEFAULT_CURRENCY,
+      eventType: "initiated",
+      idempotencyKey,
+      status: "initiated",
+      payload: {
+        amount,
+        currency: DEFAULT_CURRENCY,
+      },
+    })
+
+    return {
+      transactionId: transaction.transactionId,
+      amount: transaction.amount,
+      currency: transaction.currency,
       status: "initiated",
       initiatedAt: new Date(createdAtEpoch).toISOString(),
       idempotencyKey,
     }
-
-    initiationByIdempotencyKey.set(idempotencyKey, result)
-    syncOrderRecord(transaction)
-    return result
   }
 
-  static confirmPayment(input: {
+  static async confirmPayment(input: {
     transactionId: string
     pin: string
     idempotencyKey: string
-  }): UpiConfirmationResult {
-    const transaction = transactionsById.get(input.transactionId)
+  }): Promise<UpiConfirmationResult> {
+    const transaction = await getUpiTransactionById(input.transactionId)
 
     if (!transaction) {
       return {
@@ -187,9 +175,9 @@ export class UpiCheckoutService {
       }
     }
 
-    const idemResult = transaction.confirmationResultByIdempotencyKey.get(input.idempotencyKey)
+    const idemResult = await getUpiConfirmationResult(input.transactionId, input.idempotencyKey)
     if (idemResult) {
-      return idemResult
+      return idemResult as UpiConfirmationResult
     }
 
     if (transaction.pinAttempts >= transaction.maxPinAttempts) {
@@ -200,11 +188,24 @@ export class UpiCheckoutService {
         error: "PIN attempts exceeded. Please restart the payment.",
         attemptsRemaining: 0,
       }
-      transaction.status = "failed"
-      transaction.failureCode = blockedResult.code
-      transaction.failureReason = blockedResult.error
-      transaction.confirmationResultByIdempotencyKey.set(input.idempotencyKey, blockedResult)
-      syncOrderRecord(transaction)
+
+      await updateUpiTransaction({
+        transactionId: input.transactionId,
+        status: "failed",
+        failureCode: blockedResult.code,
+        failureReason: blockedResult.error,
+      })
+
+      await appendUpiTransactionEvent({
+        transactionId: input.transactionId,
+        eventType: "confirmation_result",
+        idempotencyKey: input.idempotencyKey,
+        status: "failed",
+        failureCode: blockedResult.code,
+        failureReason: blockedResult.error,
+        payload: blockedResult,
+      })
+
       return blockedResult
     }
 
@@ -212,8 +213,8 @@ export class UpiCheckoutService {
     void sanitizedPinForLogs
 
     if (!/^\d{4,6}$/.test(input.pin) || hashPin(input.pin) !== transaction.pinHash) {
-      transaction.pinAttempts += 1
-      const attemptsRemaining = Math.max(0, transaction.maxPinAttempts - transaction.pinAttempts)
+      const pinAttempts = transaction.pinAttempts + 1
+      const attemptsRemaining = Math.max(0, transaction.maxPinAttempts - pinAttempts)
 
       const invalidResult: UpiConfirmationFailure = {
         ok: false,
@@ -226,49 +227,107 @@ export class UpiCheckoutService {
         attemptsRemaining,
       }
 
-      if (attemptsRemaining === 0) {
-        transaction.status = "failed"
-        transaction.failureCode = invalidResult.code
-        transaction.failureReason = invalidResult.error
-      }
+      await updateUpiTransaction({
+        transactionId: input.transactionId,
+        status: attemptsRemaining === 0 ? "failed" : transaction.status,
+        pinAttempts,
+        failureCode: attemptsRemaining === 0 ? invalidResult.code : null,
+        failureReason: attemptsRemaining === 0 ? invalidResult.error : null,
+      })
 
-      transaction.confirmationResultByIdempotencyKey.set(input.idempotencyKey, invalidResult)
-      syncOrderRecord(transaction)
+      await appendUpiTransactionEvent({
+        transactionId: input.transactionId,
+        eventType: "confirmation_result",
+        idempotencyKey: input.idempotencyKey,
+        status: "failed",
+        failureCode: invalidResult.code,
+        failureReason: invalidResult.error,
+        payload: invalidResult,
+      })
+
       return invalidResult
     }
 
-    transaction.status = "pending"
+    const pending = await updateUpiTransaction({
+      transactionId: input.transactionId,
+      status: "pending",
+      executionStartedAt: transaction.executionStartedAt ? null : new Date(),
+      failureCode: null,
+      failureReason: null,
+    })
 
-    if (!transaction.executionStartedAt) {
-      transaction.executionStartedAt = Date.now()
-      setTimeout(() => {
-        const current = transactionsById.get(input.transactionId)
-        if (!current || current.status !== "pending") return
-        const terminal = resolveTerminalStatus(current.transactionId)
-        current.status = terminal
-        if (terminal === "failed") {
-          current.failureReason = "UPI provider declined the payment."
-        }
-        syncOrderRecord(current)
-      }, EXECUTION_DELAY_MS)
-    }
+    setTimeout(() => {
+      void UpiCheckoutService.completeViaProvider({
+        transactionId: input.transactionId,
+        idempotencyKey: `provider-complete:${input.transactionId}`,
+      })
+    }, EXECUTION_DELAY_MS)
 
     const successResult: UpiConfirmationSuccess = {
       ok: true,
       transactionId: transaction.transactionId,
-      status: transaction.status,
+      status: pending?.status ?? "pending",
       transactionReference: transaction.transactionReference,
       updatedAt: new Date().toISOString(),
       idempotencyKey: input.idempotencyKey,
     }
 
-    transaction.confirmationResultByIdempotencyKey.set(input.idempotencyKey, successResult)
-    syncOrderRecord(transaction)
+    await appendUpiTransactionEvent({
+      transactionId: input.transactionId,
+      eventType: "confirmation_result",
+      idempotencyKey: input.idempotencyKey,
+      status: successResult.status,
+      payload: successResult,
+    })
+
     return successResult
   }
 
-  static getStatus(transactionId: string) {
-    const transaction = transactionsById.get(transactionId)
+  static async completeViaProvider(input: {
+    transactionId: string
+    idempotencyKey: string
+    providerReference?: string
+    providerStatusReference?: string
+    status?: "success" | "failed"
+    failureReason?: string
+    failureCode?: UpiErrorCode
+  }) {
+    const transaction = await getUpiTransactionById(input.transactionId)
+    if (!transaction || transaction.status !== "pending") return null
+
+    const terminalStatus = input.status ?? resolveTerminalStatus(transaction.transactionId)
+    const failureReason =
+      terminalStatus === "failed" ? input.failureReason ?? "UPI provider declined the payment." : null
+
+    const updated = await updateUpiTransaction({
+      transactionId: input.transactionId,
+      status: terminalStatus,
+      providerReference: input.providerReference ?? transaction.providerReference,
+      providerStatusReference: input.providerStatusReference ?? transaction.providerStatusReference,
+      failureCode: terminalStatus === "failed" ? input.failureCode ?? null : null,
+      failureReason,
+    })
+
+    await appendUpiTransactionEvent({
+      transactionId: input.transactionId,
+      eventType: "provider_completion",
+      idempotencyKey: input.idempotencyKey,
+      status: terminalStatus,
+      providerReference: input.providerReference,
+      providerStatusReference: input.providerStatusReference,
+      failureCode: terminalStatus === "failed" ? input.failureCode ?? null : null,
+      failureReason,
+      payload: {
+        transactionId: input.transactionId,
+        status: terminalStatus,
+      },
+    })
+
+    return updated
+  }
+
+  static async getStatus(transactionId: string) {
+    const transaction = await getUpiTransactionById(transactionId)
 
     if (!transaction) {
       return {
@@ -286,27 +345,28 @@ export class UpiCheckoutService {
       }
     }
 
-    const elapsedMs = Date.now() - transaction.createdAtEpoch
+    const elapsedMs = Date.now() - transaction.createdAt.getTime()
     if (elapsedMs > 45_000 && transaction.status === "pending") {
-      transaction.status = "failed"
-      transaction.failureReason = "UPI provider timeout."
-      syncOrderRecord(transaction)
+      await updateUpiTransaction({
+        transactionId,
+        status: "failed",
+        failureReason: "UPI provider timeout.",
+      })
     }
+
+    const latest = (await getUpiTransactionById(transactionId)) ?? transaction
 
     return {
       found: true as const,
       payload: {
-        transactionId: transaction.transactionId,
-        amount: transaction.amount,
-        currency: transaction.currency,
-        status: transaction.status,
-        transactionReference: transaction.transactionReference,
+        transactionId: latest.transactionId,
+        amount: latest.amount,
+        currency: latest.currency,
+        status: latest.status,
+        transactionReference: latest.transactionReference,
         updatedAt: new Date().toISOString(),
-        ...(transaction.failureReason ? { failedReason: transaction.failureReason } : {}),
-        ...(transaction.failureCode ? { errorCode: transaction.failureCode } : {}),
-        ...(transaction.verifiedAt ? { verifiedAt: transaction.verifiedAt } : {}),
-        ...(transaction.verifiedBy ? { verifiedBy: transaction.verifiedBy } : {}),
-        isVerified: Boolean(transaction.verifiedAt),
+        ...(latest.failureReason ? { failedReason: latest.failureReason } : {}),
+        ...(latest.failureCode ? { errorCode: latest.failureCode } : {}),
       },
     }
   }

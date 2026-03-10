@@ -44,8 +44,7 @@ export async function POST(request: NextRequest) {
     )
   }
   const idempotencyKey = resolveIdempotencyKey(request, body)
-  const orderId = typeof body?.orderId === "string" ? body.orderId.trim() : ""
-  const initiated = UpiCheckoutService.initiatePayment(idempotencyKey, amount, orderId || undefined)
+  const initiated = await UpiCheckoutService.initiatePayment(idempotencyKey, amount)
 
   return NextResponse.json(initiated)
 }
