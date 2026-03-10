@@ -305,3 +305,12 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
 - Do not persist precise geo coordinates or city-level identifiers for auth/security dashboard telemetry.
 - IP-derived geo cache entries are time-bounded (`expires_at`) and purged during dashboard rollup refresh to enforce location data minimization.
 - Dashboard geographic metrics should be sourced from materialized aggregates and sanitized cache data; avoid embedding static/mock geography in production monitoring paths.
+
+## 2026-03 UPI route security posture expansion
+
+- UPI API endpoints now enforce strict server-side validation for payer UPI IDs, bounded amounts, and transaction ID format checks before state transitions.
+- Transaction ownership is enforced on UPI transaction retrieval/completion/status operations to block cross-user transaction enumeration or forced-completion attempts.
+- Anti-abuse protections now layer route-level, per-user, and per-transaction rate limits across UPI initiate/confirm/complete/status/QR access paths.
+- UPI completion replay protection persists idempotency-key outcomes to prevent duplicate provider-finalization effects during retried requests.
+- UPI audit logs include trace IDs and user scoping while redacting sensitive payment/auth artifacts (notably PIN and credential-like fields).
+- UPI monitoring now emits alertable metrics for failure spikes, timeout-rate anomalies, and callback verification failure spikes.

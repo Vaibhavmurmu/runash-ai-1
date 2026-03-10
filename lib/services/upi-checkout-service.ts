@@ -5,6 +5,8 @@ export type UpiErrorCode = "INVALID_PIN" | "PIN_ATTEMPTS_EXCEEDED" | "RISK_BLOCK
 
 type UpiTransactionRecord = {
   transactionId: string
+  userId: string
+  payerUpiId: string
   createdAtEpoch: number
   amount: number
   currency: string
@@ -21,6 +23,8 @@ type UpiTransactionRecord = {
 
 type UpiInitiationResult = {
   transactionId: string
+  userId: string
+  payerUpiId: string
   amount: number
   currency: string
   status: "initiated"
@@ -46,9 +50,24 @@ type UpiConfirmationFailure = {
 }
 
 type UpiConfirmationResult = UpiConfirmationSuccess | UpiConfirmationFailure
+type UpiCompletionResult =
+  | {
+      ok: true
+      transactionId: string
+      status: UpiExecutionStatus
+      transactionReference: string
+      updatedAt: string
+      idempotencyKey: string
+    }
+  | {
+      ok: false
+      error: string
+      errorCode: UpiErrorCode
+    }
 
 const transactionsById = new Map<string, UpiTransactionRecord>()
 const initiationByIdempotencyKey = new Map<string, UpiInitiationResult>()
+const completionResultByIdempotencyKey = new Map<string, UpiCompletionResult>()
 
 const DEMO_UPI_PIN = "123456"
 const MAX_PIN_ATTEMPTS = 3
@@ -86,7 +105,8 @@ function assertMaskedPin(_pin: string) {
 }
 
 export class UpiCheckoutService {
-  static initiatePayment(idempotencyKey: string, amount: number): UpiInitiationResult {
+  static initiatePayment(input: { idempotencyKey: string; amount: number; payerUpiId: string; userId: string }): UpiInitiationResult {
+    const { idempotencyKey, amount, payerUpiId, userId } = input
     const existing = initiationByIdempotencyKey.get(idempotencyKey)
     if (existing) {
       return existing
@@ -97,6 +117,8 @@ export class UpiCheckoutService {
 
     const transaction: UpiTransactionRecord = {
       transactionId,
+      userId,
+      payerUpiId,
       createdAtEpoch,
       amount,
       currency: DEFAULT_CURRENCY,
@@ -112,6 +134,8 @@ export class UpiCheckoutService {
 
     const result: UpiInitiationResult = {
       transactionId,
+      userId,
+      payerUpiId,
       amount,
       currency: DEFAULT_CURRENCY,
       status: "initiated",
@@ -127,6 +151,7 @@ export class UpiCheckoutService {
     transactionId: string
     pin: string
     idempotencyKey: string
+    userId: string
   }): UpiConfirmationResult {
     const transaction = transactionsById.get(input.transactionId)
 
@@ -136,6 +161,16 @@ export class UpiCheckoutService {
         status: "failed",
         code: "RISK_BLOCKED",
         error: "Transaction is not available for confirmation.",
+        attemptsRemaining: 0,
+      }
+    }
+
+    if (transaction.userId !== input.userId) {
+      return {
+        ok: false,
+        status: "failed",
+        code: "RISK_BLOCKED",
+        error: "Transaction ownership mismatch.",
         attemptsRemaining: 0,
       }
     }
@@ -224,6 +259,8 @@ export class UpiCheckoutService {
         found: false as const,
         payload: {
           transactionId,
+          userId: null,
+          payerUpiId: null,
           amount: 0,
           currency: DEFAULT_CURRENCY,
           status: "failed" as const,
@@ -245,6 +282,8 @@ export class UpiCheckoutService {
       found: true as const,
       payload: {
         transactionId: transaction.transactionId,
+        userId: transaction.userId,
+        payerUpiId: transaction.payerUpiId,
         amount: transaction.amount,
         currency: transaction.currency,
         status: transaction.status,
@@ -256,19 +295,36 @@ export class UpiCheckoutService {
     }
   }
 
-  static completeViaProvider(input: { transactionId: string; idempotencyKey: string }) {
+  static completeViaProvider(input: { transactionId: string; idempotencyKey: string; userId: string }): UpiCompletionResult {
+    const existing = completionResultByIdempotencyKey.get(input.idempotencyKey)
+    if (existing) {
+      return existing
+    }
+
     const transaction = transactionsById.get(input.transactionId)
 
     if (!transaction) {
-      return {
+      const result = {
         ok: false as const,
         error: "Transaction not found",
         errorCode: "RISK_BLOCKED" as UpiErrorCode,
       }
+      completionResultByIdempotencyKey.set(input.idempotencyKey, result)
+      return result
+    }
+
+    if (transaction.userId !== input.userId) {
+      const result = {
+        ok: false as const,
+        error: "Transaction ownership mismatch.",
+        errorCode: "RISK_BLOCKED" as UpiErrorCode,
+      }
+      completionResultByIdempotencyKey.set(input.idempotencyKey, result)
+      return result
     }
 
     if (transaction.status === "success") {
-      return {
+      const result = {
         ok: true as const,
         transactionId: transaction.transactionId,
         status: transaction.status,
@@ -276,21 +332,25 @@ export class UpiCheckoutService {
         updatedAt: new Date().toISOString(),
         idempotencyKey: input.idempotencyKey,
       }
+      completionResultByIdempotencyKey.set(input.idempotencyKey, result)
+      return result
     }
 
     if (transaction.status === "failed") {
-      return {
+      const result = {
         ok: false as const,
         error: transaction.failureReason || "Transaction failed",
         errorCode: transaction.failureCode || ("RISK_BLOCKED" as UpiErrorCode),
       }
+      completionResultByIdempotencyKey.set(input.idempotencyKey, result)
+      return result
     }
 
     transaction.status = "success"
     transaction.failureCode = undefined
     transaction.failureReason = undefined
 
-    return {
+    const result = {
       ok: true as const,
       transactionId: transaction.transactionId,
       status: transaction.status,
@@ -298,6 +358,9 @@ export class UpiCheckoutService {
       updatedAt: new Date().toISOString(),
       idempotencyKey: input.idempotencyKey,
     }
+
+    completionResultByIdempotencyKey.set(input.idempotencyKey, result)
+    return result
   }
 
   static getTransactionDetails(transactionId: string) {

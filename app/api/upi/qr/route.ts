@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import QRCode from "qrcode"
 
+import { logApiEvent } from "@/lib/api/logging"
+import { recordUpiFailureMetric } from "@/lib/payments/upi-observability"
+import { rateLimitByKey } from "@/lib/rate-limit"
+import { isValidTransactionId, resolveTraceId, resolveUserId, validateUpiId } from "@/lib/payments/upi-route-security"
 import { UpiCheckoutService } from "@/lib/services/upi-checkout-service"
 
 const DEFAULT_PAYEE_VPA = process.env.RUNASH_UPI_PAYEE_VPA || "runash@upi"
@@ -18,16 +22,45 @@ function buildUpiUri(params: { amount: number; transactionRef: string; transacti
 }
 
 export async function GET(request: NextRequest) {
+  const traceId = resolveTraceId(request)
+  const userId = resolveUserId(request, null)
   const transactionId = request.nextUrl.searchParams.get("transactionId")?.trim()
+  const txLimiter = await rateLimitByKey(`upi:qr:tx:${transactionId || "unknown"}`, 15, 60_000)
+  const userLimiter = await rateLimitByKey(`upi:qr:user:${userId}`, 20, 60_000)
 
-  if (!transactionId) {
+  if (!txLimiter.success || !userLimiter.success) {
+    recordUpiFailureMetric("/api/upi/qr", traceId)
+    return NextResponse.json({ error: "QR fetch rate limit exceeded", errorCode: "RISK_BLOCKED" }, { status: 429 })
+  }
+
+  if (!transactionId || !isValidTransactionId(transactionId)) {
+    recordUpiFailureMetric("/api/upi/qr", traceId)
     return NextResponse.json({ error: "transactionId is required" }, { status: 400 })
   }
 
   const status = UpiCheckoutService.getStatus(transactionId)
   if (!status.found) {
+    recordUpiFailureMetric("/api/upi/qr", traceId)
     return NextResponse.json({ error: "Transaction not found" }, { status: 404 })
   }
+
+  if (status.payload.userId !== userId) {
+    recordUpiFailureMetric("/api/upi/qr", traceId)
+    return NextResponse.json({ error: "Transaction ownership mismatch", errorCode: "RISK_BLOCKED" }, { status: 403 })
+  }
+
+  if (!validateUpiId(status.payload.payerUpiId)) {
+    recordUpiFailureMetric("/api/upi/qr", traceId)
+    return NextResponse.json({ error: "Stored payer UPI ID is invalid", errorCode: "RISK_BLOCKED" }, { status: 400 })
+  }
+
+  logApiEvent("info", "payments.upi.qr.request", {
+    requestId: traceId,
+    route: "/api/upi/qr",
+    method: "GET",
+    userId,
+    details: { transactionId },
+  })
 
   const upiUri = buildUpiUri({
     amount: status.payload.amount,

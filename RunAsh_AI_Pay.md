@@ -908,3 +908,29 @@ Risk + rollback:
 - `/api/wallet/link/session`, `/api/wallet/link/verify`, and `/api/wallet/link/save` surface `LINK_PROVIDER_UNAVAILABLE` as retry-safe `503` responses, and provider execution errors as controlled `502` responses.
 - Mock mode is restricted to explicit test-only execution (`NODE_ENV=test` and `LINK_PROVIDER_ENABLE_MOCK=true`) to prevent fake Link state in real checkout flows.
 - Rollback: revert Link provider availability hardening changes and restore prior behavior only as temporary incident containment while reapplying valid Stripe credentials.
+
+## 2026-03 UPI API validation + ownership/rate-limit hardening
+
+- Hardened UPI route contracts for `POST /api/upi/initiate`, `POST /api/upi/confirm`, `GET /api/upi/qr`, `POST /api/upi/complete`, and `GET /api/upi/status/:transactionId` with strict validation:
+  - payer UPI ID must be syntactically valid,
+  - transaction IDs must match expected UPI transaction format,
+  - amounts are bounded to safe UPI limits (min/max) and normalized before persistence.
+- Added per-user and per-transaction request throttles in addition to existing route-level controls to reduce brute-force, scripted polling, and replay amplification.
+- Enforced transaction ownership checks across UPI read/write routes by binding initiation records to the initiating user and rejecting mismatched access with `RISK_BLOCKED` semantics.
+- Extended idempotency replay protection by persisting completion responses by idempotency key, ensuring duplicate completion retries return stable outcomes without duplicate side effects.
+- Added audit-safe structured logs with trace IDs (`x-trace-id`/request fallback) on UPI initiate/QR/complete/status flows while avoiding sensitive payload logging (no PIN/raw payment secrets).
+- Added UPI reliability/security alert metrics for:
+  - request failure spikes,
+  - provider timeout rate,
+  - callback verification failures.
+
+### Impacted payment/auth flows
+
+1. UPI initiate -> confirm -> complete lifecycle (ownership and replay controls).
+2. UPI QR and status polling flows (ownership + anti-abuse throttling).
+
+### Risks and rollback
+
+1. **Risk:** stricter validation may reject legacy/malformed client payloads that previously passed. **Mitigation:** failures return deterministic `RISK_BLOCKED`/validation messages; update client input handling.
+2. **Risk:** in-memory rate-limit/idempotency stores reset on process restart. **Mitigation:** behavior remains deterministic per-runtime; migrate to Redis/DB for multi-instance durability.
+3. **Rollback:** revert UPI route hardening helpers and service ownership/idempotency map changes while preserving existing route paths and response field names.
