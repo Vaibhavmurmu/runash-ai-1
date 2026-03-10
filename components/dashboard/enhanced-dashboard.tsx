@@ -355,13 +355,13 @@ export function EnhancedDashboard() {
         title: "Editor",
         description: "Start a fresh edit or continue your latest project timeline.",
         primaryLabel: "New Project",
-        primaryHref: "/dashboard/editor",
+        primaryHref: "/editor",
         continuityLabel: latestEditorProject?.id
           ? `Continue: ${latestEditorProject.name ?? "Untitled Project"}`
           : "Continue last project",
         continuityHref: latestEditorProject?.id
-          ? `/dashboard/editor?projectId=${encodeURIComponent(latestEditorProject.id)}`
-          : "/dashboard/editor",
+          ? `/editor?projectId=${encodeURIComponent(latestEditorProject.id)}`
+          : "/editor",
         continuityDisabled: !latestEditorProject?.id,
         lastUpdatedLabel: formatLastUpdated(latestEditorProject?.updated_at),
         icon: WandSparkles,
@@ -371,13 +371,13 @@ export function EnhancedDashboard() {
         title: "Chat",
         description: "Start a new assistant conversation or continue your recent session context.",
         primaryLabel: "New Chat",
-        primaryHref: "/dashboard/chat",
+        primaryHref: "/runashchat",
         continuityLabel: recentChatSession?.id
           ? `Continue: ${recentChatSession.title ?? "Recent session"}`
           : "Continue recent session",
         continuityHref: recentChatSession?.id
-          ? `/dashboard/chat?sessionId=${encodeURIComponent(recentChatSession.id)}`
-          : "/dashboard/chat",
+          ? `/runashchat?sessionId=${encodeURIComponent(recentChatSession.id)}`
+          : "/runashchat",
         continuityDisabled: !recentChatSession?.id,
         lastUpdatedLabel: formatLastUpdated(recentChatSession?.created_at),
         icon: MessageSquare,
