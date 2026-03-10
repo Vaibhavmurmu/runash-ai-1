@@ -18,6 +18,7 @@ test("UPI confirmation enforces retry limit and returns structured codes", async
     transactionId: initiated.transactionId,
     pin: "999999",
     idempotencyKey: "confirm-key-1",
+    userId: "u-2",
   })
   assert.equal(firstInvalid.ok, false)
   if (firstInvalid.ok) throw new Error("Expected invalid confirmation")
@@ -27,6 +28,7 @@ test("UPI confirmation enforces retry limit and returns structured codes", async
     transactionId: initiated.transactionId,
     pin: "999999",
     idempotencyKey: "confirm-key-2",
+    userId: "u-2",
   })
   assert.equal(secondInvalid.ok, false)
   if (secondInvalid.ok) throw new Error("Expected invalid confirmation")
@@ -36,6 +38,7 @@ test("UPI confirmation enforces retry limit and returns structured codes", async
     transactionId: initiated.transactionId,
     pin: "999999",
     idempotencyKey: "confirm-key-3",
+    userId: "u-2",
   })
   assert.equal(thirdInvalid.ok, false)
   if (thirdInvalid.ok) throw new Error("Expected invalid confirmation")
@@ -45,6 +48,7 @@ test("UPI confirmation enforces retry limit and returns structured codes", async
     transactionId: initiated.transactionId,
     pin: "123456",
     idempotencyKey: "confirm-key-4",
+    userId: "u-2",
   })
   assert.equal(blocked.ok, false)
   if (blocked.ok) throw new Error("Expected blocked confirmation")
@@ -57,11 +61,13 @@ test("UPI confirmation reuses idempotency key result", async () => {
     transactionId: initiated.transactionId,
     pin: "123456",
     idempotencyKey: "confirm-key-idem",
+    userId: "u-3",
   })
   const second = await UpiCheckoutService.confirmPayment({
     transactionId: initiated.transactionId,
     pin: "000000",
     idempotencyKey: "confirm-key-idem",
+    userId: "u-3",
   })
 
   assert.deepEqual(second, first)

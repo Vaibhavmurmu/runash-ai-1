@@ -50,6 +50,20 @@ type UpiConfirmationFailure = {
 }
 
 type UpiConfirmationResult = UpiConfirmationSuccess | UpiConfirmationFailure
+type UpiCompletionResult =
+  | {
+      ok: true
+      transactionId: string
+      status: UpiExecutionStatus
+      transactionReference: string
+      updatedAt: string
+      idempotencyKey: string
+    }
+  | {
+      ok: false
+      error: string
+      errorCode: UpiErrorCode
+    }
 
 const DEMO_UPI_PIN = "123456"
 const MAX_PIN_ATTEMPTS = 3
@@ -394,11 +408,23 @@ export class UpiCheckoutService {
     const transaction = transactionsById.get(input.transactionId)
 
     if (!transaction) {
-      return {
+      const result = {
         ok: false as const,
         error: "Transaction not found",
         errorCode: "RISK_BLOCKED" as UpiErrorCode,
       }
+      completionResultByIdempotencyKey.set(input.idempotencyKey, result)
+      return result
+    }
+
+    if (transaction.userId !== input.userId) {
+      const result = {
+        ok: false as const,
+        error: "Transaction ownership mismatch.",
+        errorCode: "RISK_BLOCKED" as UpiErrorCode,
+      }
+      completionResultByIdempotencyKey.set(input.idempotencyKey, result)
+      return result
     }
 
     if (transaction.status === "success") {
@@ -412,6 +438,8 @@ export class UpiCheckoutService {
         updatedAt: new Date().toISOString(),
         idempotencyKey: input.idempotencyKey,
       }
+      completionResultByIdempotencyKey.set(input.idempotencyKey, result)
+      return result
     }
 
     if (transaction.status === "failed") {
@@ -421,6 +449,8 @@ export class UpiCheckoutService {
         error: transaction.failureReason || "Transaction failed",
         errorCode: transaction.failureCode || ("RISK_BLOCKED" as UpiErrorCode),
       }
+      completionResultByIdempotencyKey.set(input.idempotencyKey, result)
+      return result
     }
 
     transaction.status = "success"
@@ -432,7 +462,7 @@ export class UpiCheckoutService {
 
     await UpiCheckoutService.updateOrderPaymentStatus(transaction, sqlClient)
 
-    return {
+    const result = {
       ok: true as const,
       transactionId: transaction.transactionId,
       order_id: transaction.orderId,
@@ -441,6 +471,9 @@ export class UpiCheckoutService {
       updatedAt: new Date().toISOString(),
       idempotencyKey: input.idempotencyKey,
     }
+
+    completionResultByIdempotencyKey.set(input.idempotencyKey, result)
+    return result
   }
 
   static async getTransactionDetails(transactionId: string, sqlClient: SqlClient = getSql()) {
