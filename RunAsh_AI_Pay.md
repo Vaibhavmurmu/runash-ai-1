@@ -13,13 +13,6 @@ This document is payment-domain specific. For contributor workflow/process polic
 
 ## Current payment reliability notes (2026-02)
 
-## 2026-03 checkout visual refresh (UI-only, contract-safe)
-
-- Updated `/checkout` presentation to align with Stripe-style subscription UX: centered plan/amount header, cleaner payment method selector, UPI app-authorization guidance, and stronger primary action hierarchy.
-- Payment/auth compatibility: no checkout API request/response fields were renamed or removed; existing pending-order payload keys and redirect flow contracts remain unchanged.
-- Impacted flow: client-side checkout rendering + form affordances only (`app/checkout/page.tsx`).
-- Risk + rollback: low UI regression risk only. Roll back by reverting `app/checkout/page.tsx`; no migration or backend rollback required.
-
 ## 2026-03 auth SMS OTP provider reliability note (payment-adjacent auth hardening)
 
 - Updated auth SMS OTP delivery to use environment-configured provider retries/timeouts and explicit outage failures; no payment API fields, checkout contract signatures, or webhook schemas were changed.
