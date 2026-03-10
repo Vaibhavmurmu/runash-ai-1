@@ -9,11 +9,46 @@ function read(relativePath: string) {
   return readFileSync(path.join(repoRoot, relativePath), "utf8")
 }
 
-test("legacy dashboard entry points redirect to standalone app routes", () => {
-  assert.match(read("app/chat/page.tsx"), /permanentRedirect\("\/runashchat"\)/)
-  assert.match(read("app/dashboard/chat/page.tsx"), /permanentRedirect\("\/runashchat"\)/)
-  assert.match(read("app/dashboard/runash-chat/page.tsx"), /permanentRedirect\("\/runashchat"\)/)
-  assert.match(read("app/dashboard/editor/page.tsx"), /permanentRedirect\("\/editor"\)/)
+test("legacy dashboard entry points redirect to standalone app routes and preserve query strings", () => {
+  const redirectUtility = read("app/dashboard/_lib/legacy-route-redirect.ts")
+  assert.match(redirectUtility, /export function buildCanonicalRedirectPath/)
+
+  const dashboardEditorPage = read("app/dashboard/editor/page.tsx")
+  assert.match(dashboardEditorPage, /buildCanonicalRedirectPath\("\/editor"/)
+
+  const dashboardChatPage = read("app/dashboard/chat/page.tsx")
+  assert.match(dashboardChatPage, /buildCanonicalRedirectPath\("\/runashchat"/)
+
+  const dashboardRunAshChatPage = read("app/dashboard/runash-chat/page.tsx")
+  assert.match(dashboardRunAshChatPage, /buildCanonicalRedirectPath\("\/runashchat"/)
+
+  const chatPage = read("app/chat/page.tsx")
+  assert.match(chatPage, /buildCanonicalRedirectPath\("\/runashchat"/)
+})
+
+test("canonical redirect helper maps known legacy routes with query strings", async () => {
+  const { buildCanonicalRedirectPath } = await import("./_lib/legacy-route-redirect.ts")
+
+  assert.equal(
+    buildCanonicalRedirectPath("/editor", { projectId: "project-123" }),
+    "/editor?projectId=project-123",
+  )
+  assert.equal(
+    buildCanonicalRedirectPath("/runashchat", { sessionId: "session-456" }),
+    "/runashchat?sessionId=session-456",
+  )
+})
+
+test("major entry points route users through canonical editor and chat paths", () => {
+  const createProjectWizardSource = read("components/dashboard/projects/create-project-wizard.tsx")
+  assert.match(createProjectWizardSource, /router\.push\(`\/editor\?projectId=/)
+
+  const libraryPageSource = read("components/dashboard/library/dashboard-library-page.tsx")
+  assert.match(libraryPageSource, /router\.push\(`\/editor\?libraryItemId=/)
+
+  const chatSidebarSource = read("components/chat/chat-sidebar.tsx")
+  assert.match(chatSidebarSource, /openWorkspaceTool\("\/editor"\)/)
+  assert.doesNotMatch(chatSidebarSource, /openWorkspaceTool\("\/(?:dashboard\/)?chat"\)/)
 })
 
 test("dashboard destinations render through shared dashboard layout footer", () => {
