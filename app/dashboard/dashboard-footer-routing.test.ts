@@ -22,8 +22,8 @@ test("dashboard destinations render through shared dashboard layout footer", () 
   assert.match(dashboardLayout, /footer=\{<DashboardFooter \/>\}/)
 
   const destinations = [
-    "app/runashchat/page.tsx",
-    "app/editor/page.tsx",
+    "app/(workspace)/runashchat/page.tsx",
+    "app/(workspace)/editor/page.tsx",
     "app/dashboard/runash-chat/page.tsx",
     "app/dashboard/accounting/clients/page.tsx",
     "app/dashboard/live-session/page.tsx",
