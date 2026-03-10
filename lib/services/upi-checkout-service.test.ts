@@ -2,16 +2,24 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { UpiCheckoutService } from "@/lib/services/upi-checkout-service"
 
-test("UPI initiation is idempotent by key", () => {
-  const first = UpiCheckoutService.initiatePayment("init-key-1", 499)
-  const second = UpiCheckoutService.initiatePayment("init-key-1", 499)
+const mockSql = async (_strings: TemplateStringsArray, ...values: unknown[]) => {
+  if (values.length > 0 && typeof values[0] === "number") {
+    return [{ id: values[0] }]
+  }
+  return [{ id: 1 }]
+}
+
+test("UPI initiation is idempotent by key", async () => {
+  const first = await UpiCheckoutService.initiatePayment("init-key-1", 499, 1001, mockSql as never)
+  const second = await UpiCheckoutService.initiatePayment("init-key-1", 499, 1001, mockSql as never)
 
   assert.equal(first.transactionId, second.transactionId)
   assert.equal(second.idempotencyKey, "init-key-1")
+  assert.equal(second.order_id, 1001)
 })
 
-test("UPI confirmation enforces retry limit and returns structured codes", () => {
-  const initiated = UpiCheckoutService.initiatePayment("init-key-2", 999)
+test("UPI confirmation enforces retry limit and returns structured codes", async () => {
+  const initiated = await UpiCheckoutService.initiatePayment("init-key-2", 999, 1002, mockSql as never)
 
   const firstInvalid = UpiCheckoutService.confirmPayment({
     transactionId: initiated.transactionId,
@@ -50,8 +58,8 @@ test("UPI confirmation enforces retry limit and returns structured codes", () =>
   assert.equal(blocked.code, "PIN_ATTEMPTS_EXCEEDED")
 })
 
-test("UPI confirmation reuses idempotency key result", () => {
-  const initiated = UpiCheckoutService.initiatePayment("init-key-3", 1200)
+test("UPI confirmation reuses idempotency key result", async () => {
+  const initiated = await UpiCheckoutService.initiatePayment("init-key-3", 1200, 1003, mockSql as never)
   const first = UpiCheckoutService.confirmPayment({
     transactionId: initiated.transactionId,
     pin: "123456",
@@ -66,11 +74,12 @@ test("UPI confirmation reuses idempotency key result", () => {
   assert.deepEqual(second, first)
 })
 
-test("UPI transaction details include receipt id and amount", () => {
-  const initiated = UpiCheckoutService.initiatePayment("init-key-4", 777)
-  const details = UpiCheckoutService.getTransactionDetails(initiated.transactionId)
+test("UPI transaction details include receipt id, amount, and order_id", async () => {
+  const initiated = await UpiCheckoutService.initiatePayment("init-key-4", 777, 1004, mockSql as never)
+  const details = await UpiCheckoutService.getTransactionDetails(initiated.transactionId, mockSql as never)
 
   assert.equal(details.found, true)
   assert.equal(details.payload.amount, 777)
+  assert.equal(details.payload.order_id, 1004)
   assert.match(details.payload.receiptId, /^RCPT-/)
 })

@@ -448,3 +448,10 @@ Business controls preserved:
 - Service hardening update: `services/conversion-service.ts` moved from simulated conversions to durable job orchestration with persisted lifecycle, cancellation/retry, idempotency keys, and artifact persistence.
 - Payment/auth contract impact: **none** (no payment field/API changes).
 - Rollback: revert conversion service changes; no payment schema rollback required.
+
+## 2026-03-10 reliability hardening: UPI + order contract behavior
+
+- Checkout flow creates an order ID before UPI QR initiation when missing from client session state.
+- `order_id` is attached to UPI transaction records and returned in internal service responses for reconciliation.
+- Order payment status is updated atomically during completion/status checks and guarded to avoid repeated writes.
+- No API field renames were introduced for `POST /api/orders`; compatibility is preserved.

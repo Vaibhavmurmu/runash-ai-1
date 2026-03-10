@@ -34,6 +34,9 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => ({}))
   const amount = typeof body?.amount === "number" && Number.isFinite(body.amount) && body.amount > 0 ? body.amount : null
+  const rawOrderId = (body as { orderId?: unknown; order_id?: unknown })?.orderId ?? (body as { order_id?: unknown })?.order_id
+  const orderId = typeof rawOrderId === "number" && Number.isFinite(rawOrderId) && rawOrderId > 0 ? rawOrderId : null
+
   if (amount == null) {
     return NextResponse.json(
       {
@@ -43,8 +46,24 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     )
   }
-  const idempotencyKey = resolveIdempotencyKey(request, body)
-  const initiated = UpiCheckoutService.initiatePayment(idempotencyKey, amount)
 
-  return NextResponse.json(initiated)
+  if (orderId == null) {
+    return NextResponse.json(
+      {
+        error: "orderId is required and must be a positive number",
+        errorCode: "RISK_BLOCKED",
+      },
+      { status: 400 },
+    )
+  }
+
+  const idempotencyKey = resolveIdempotencyKey(request, body)
+
+  try {
+    const initiated = await UpiCheckoutService.initiatePayment(idempotencyKey, amount, orderId)
+    return NextResponse.json(initiated)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to initialize UPI payment"
+    return NextResponse.json({ error: message, errorCode: "RISK_BLOCKED" }, { status: 404 })
+  }
 }

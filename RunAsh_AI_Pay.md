@@ -908,3 +908,13 @@ Risk + rollback:
 - `/api/wallet/link/session`, `/api/wallet/link/verify`, and `/api/wallet/link/save` surface `LINK_PROVIDER_UNAVAILABLE` as retry-safe `503` responses, and provider execution errors as controlled `502` responses.
 - Mock mode is restricted to explicit test-only execution (`NODE_ENV=test` and `LINK_PROVIDER_ENABLE_MOCK=true`) to prevent fake Link state in real checkout flows.
 - Rollback: revert Link provider availability hardening changes and restore prior behavior only as temporary incident containment while reapplying valid Stripe credentials.
+
+## 2026-03-10 UPI checkout order-state synchronization update
+
+- UPI initiation now requires a pre-existing order and persists `order_id` with each in-memory UPI transaction context.
+- Internal UPI service payloads include `order_id` on initiation, completion, status, and transaction detail lookups.
+- `/api/upi/complete` and `/api/upi/status/:transactionId` now enforce order payment-state synchronization:
+  - `payment_pending -> paid` on terminal success
+  - `payment_pending -> payment_failed` on terminal failure
+- Completion handling is idempotent: repeated callbacks/read-after-write requests do not duplicate state transitions.
+- Existing `POST /api/orders` request/response field names remain unchanged for backward compatibility.
