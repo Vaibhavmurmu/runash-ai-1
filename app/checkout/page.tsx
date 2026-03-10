@@ -36,6 +36,25 @@ type UpiAuthStep = "select" | "qr" | "redirecting" | "success"
 
 const UPI_APPS = ["GPay", "PhonePe", "Paytm", "Amazon Pay", "BHIM", "CRED", "MobiKwik", "Navi"]
 
+export function resolveUpiSelectionTransition(appName: string) {
+  return {
+    selectedUpiApp: appName,
+    upiAuthStep: "redirecting" as const,
+  }
+}
+
+export function resolveUpiQrReadyMessage() {
+  return "Scan this QR in your UPI app and accept payment. Status will auto-check."
+}
+
+export function resolveUpiSuccessMessage() {
+  return "Payment accepted successfully in your UPI app."
+}
+
+export function resolveUpiFailureMessage() {
+  return "UPI authorization failed or timed out. Try again."
+}
+
 export default function CheckoutPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -264,8 +283,9 @@ export default function CheckoutPage() {
   }
 
   const authorizeWithUpiApp = (appName: string) => {
-    setSelectedUpiApp(appName)
-    setUpiAuthStep("redirecting")
+    const next = resolveUpiSelectionTransition(appName)
+    setSelectedUpiApp(next.selectedUpiApp)
+    setUpiAuthStep(next.upiAuthStep)
   }
 
   const ensureOrderIdForPayment = async () => {
@@ -339,7 +359,7 @@ export default function CheckoutPage() {
 
       setUpiQrImage(qrData.qrDataUrl)
       setUpiAuthStep("qr")
-      setUpiStatusMessage("Scan this QR in your UPI app and accept payment. Status will auto-check.")
+      setUpiStatusMessage(resolveUpiQrReadyMessage())
     } catch (error) {
       setUpiStatusMessage(error instanceof Error ? error.message : "Could not prepare QR payment")
     } finally {
@@ -361,7 +381,7 @@ export default function CheckoutPage() {
         throw new Error("Unable to confirm UPI payment")
       }
 
-      setUpiStatusMessage("Payment accepted successfully in your UPI app.")
+      setUpiStatusMessage(resolveUpiSuccessMessage())
       setUpiAuthStep("success")
     } catch (error) {
       setUpiStatusMessage(error instanceof Error ? error.message : "Payment confirmation failed")
@@ -391,7 +411,7 @@ export default function CheckoutPage() {
         }
 
         if (statusData.status === "failed") {
-          setUpiStatusMessage("UPI authorization failed or timed out. Try again.")
+          setUpiStatusMessage(resolveUpiFailureMessage())
           window.clearInterval(poll)
         }
       } catch {

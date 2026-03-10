@@ -128,6 +128,19 @@ Open `http://localhost:3000`.
   - `lib/db/`, `lib/repositories/`, and `lib/data/` contain database access and domain modeling.
   - See `DRIZZLE_ORM.md` for ORM and schema conventions.
 
+
+## Non-production payment test env stubs
+Use these stub values in local/CI runs for UPI/checkout route tests to avoid production credentials while preserving payment contract shape:
+
+```bash
+RUNASH_UPI_PAYEE_VPA=runash-test@upi
+RUNASH_UPI_PAYEE_NAME=RunAsh Test
+STRIPE_SECRET_KEY=sk_test_mock
+```
+
+- Keep test keys scoped to non-production environments only.
+- Route/service tests in `app/api/upi/**` and `lib/services/upi-checkout-service.test.ts` do not require live provider access when these stubs are present.
+
 ## Documentation index
 
 ### Working agreements and team docs
@@ -276,6 +289,19 @@ npm run test:auth
   npm run test
   npm run test:auth
   ```
+
+
+## Non-production payment test env stubs
+Use these stub values in local/CI runs for UPI/checkout route tests to avoid production credentials while preserving payment contract shape:
+
+```bash
+RUNASH_UPI_PAYEE_VPA=runash-test@upi
+RUNASH_UPI_PAYEE_NAME=RunAsh Test
+STRIPE_SECRET_KEY=sk_test_mock
+```
+
+- Keep test keys scoped to non-production environments only.
+- Route/service tests in `app/api/upi/**` and `lib/services/upi-checkout-service.test.ts` do not require live provider access when these stubs are present.
 
 ## Documentation index
 ### Governance and collaboration
