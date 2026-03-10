@@ -13,6 +13,14 @@ This document is payment-domain specific. For contributor workflow/process polic
 
 ## Current payment reliability notes (2026-02)
 
+## 2026-03 RunAsh Pay landing + dashboard route split (UI-only, contract-safe)
+
+- `/payment/runash-pay` now renders a product-facing landing page (hero + product blocks for Wallet/Card/Cash/Link) to clarify the RunAsh Pay value stack.
+- Existing internal operations workflows remain available at `/payment/runash-pay/dashboard`, which continues to render the existing `RunAshPayDashboard` surface.
+- Payment/auth compatibility: no API request/response field names, webhook payload schemas, or auth/session signatures were changed.
+- Impacted flows: RunAsh Pay navigation and presentation only (`app/payment/runash-pay/page.tsx`, `app/payment/runash-pay/dashboard/page.tsx`, `components/payment/runash-pay-landing.tsx`).
+- Risk + rollback: low UI/navigation regression risk. Roll back by restoring `/payment/runash-pay` to directly render `RunAshPayDashboard` and removing the new dashboard sub-route.
+
 ## 2026-03 UPI provider callback verification + canonical status hardening
 
 - Added authoritative provider callback endpoint: `POST /api/upi/webhook/provider` to receive UPI transaction terminal/intermediate states.
