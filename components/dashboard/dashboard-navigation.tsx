@@ -100,7 +100,7 @@ function buildNavigationConfig(baseConfig: DashboardNavigationConfig, counts: Da
       case "/automation":
         return withRouteMatcher({ ...item, metadata }, pathPrefix("/automation", ["/workflows"]))
       case "/workflows":
-        return withRouteMatcher({ ...item, metadata }, pathPrefix("/workflows", ["/dashboard/streaming-studio", "/dashboard/editor", "/editor", "/dashboard/seller-studio"]))
+        return withRouteMatcher({ ...item, metadata }, pathPrefix("/workflows", ["/dashboard/streaming-studio", "/editor", "/dashboard/seller-studio"]))
       case "/dashboard/billing":
         return withRouteMatcher({ ...item, metadata }, pathPrefix("/dashboard/billing", ["/payment/dashboard", "/dashboard/usage", "/dashboard/refer"]))
       case "/dashboard/general":
