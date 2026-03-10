@@ -1,61 +1,26 @@
-import { getRecommendedProducts, shouldRecommendProducts } from "@/lib/chat-product-recommendations"
+import { shouldRecommendProducts } from "@/lib/chat-product-recommendations"
+import { chatRecommendationCardsService } from "@/lib/services/chat-recommendation-cards-service"
 import type { ChatFallbackResponse } from "@/types/chat-fallback-cards"
-import type { Recipe, SustainabilityTip, UserPreferences } from "@/types/runash-chat"
+import type { Product, Recipe, SustainabilityTip, UserPreferences } from "@/types/runash-chat"
 
 export interface ChatFallbackProviders {
-  getRecipes: (preferences: UserPreferences) => Promise<Recipe[]>
-  getTips: () => Promise<SustainabilityTip[]>
+  getProducts: (input: string, preferences: UserPreferences) => Promise<Product[]>
+  getRecipes: (input: string, preferences: UserPreferences) => Promise<Recipe[]>
+  getTips: (input: string, preferences: UserPreferences) => Promise<SustainabilityTip[]>
 }
 
 const defaultProviders: ChatFallbackProviders = {
-  async getRecipes() {
-    return [
-      {
-        id: "quinoa-bowl",
-        name: "Organic Quinoa Buddha Bowl",
-        description: "A nutritious bowl with quinoa, greens, chickpeas, and tahini dressing.",
-        difficulty: "easy",
-        prepTime: 15,
-        cookTime: 20,
-        servings: 2,
-        ingredients: [
-          { id: "q1", name: "Organic quinoa", amount: "1", unit: "cup", isOrganic: true },
-          { id: "q2", name: "Organic kale", amount: "2", unit: "cups", isOrganic: true },
-          { id: "q3", name: "Organic chickpeas", amount: "1", unit: "can", isOrganic: true },
-        ],
-        instructions: [
-          "Cook quinoa according to package instructions.",
-          "Massage kale with olive oil and lemon juice.",
-          "Combine kale, quinoa, and chickpeas. Add tahini dressing.",
-        ],
-        image: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&w=1000&q=80",
-        tags: ["vegan", "high-protein"],
-        sustainabilityScore: 9,
-        nutritionalInfo: { calories: 420, protein: 18, carbs: 65, fat: 12, fiber: 12, sugar: 8, sodium: 380 },
-      },
-    ]
+  async getProducts(input, preferences) {
+    const response = await chatRecommendationCardsService.getCards({ intent: "product", userInput: input, userPreferences: preferences })
+    return response.metadata.products ?? []
   },
-  async getTips() {
-    return [
-      {
-        id: "buy-local-seasonal",
-        title: "Buy Local and Seasonal",
-        description: "Choose local seasonal produce to reduce transport emissions and support nearby farmers.",
-        category: "food",
-        impact: "high",
-        difficulty: "easy",
-        estimatedSavings: 25,
-      },
-      {
-        id: "reduce-food-waste",
-        title: "Reduce Food Waste",
-        description: "Plan meals, use leftovers creatively, and compost scraps when possible.",
-        category: "waste",
-        impact: "high",
-        difficulty: "medium",
-        estimatedSavings: 40,
-      },
-    ]
+  async getRecipes(input, preferences) {
+    const response = await chatRecommendationCardsService.getCards({ intent: "recipe", userInput: input, userPreferences: preferences })
+    return response.metadata.recipes ?? []
+  },
+  async getTips(input, preferences) {
+    const response = await chatRecommendationCardsService.getCards({ intent: "tip", userInput: input, userPreferences: preferences })
+    return response.metadata.tips ?? []
   },
 }
 
@@ -69,7 +34,7 @@ export const createChatFallbackResponseService = (providers: ChatFallbackProvide
 
     try {
       if (shouldRecommendProducts(input)) {
-        const products = getRecommendedProducts(input, userPreferences)
+        const products = await providers.getProducts(input, userPreferences)
         const hasProducts = products.length > 0
         return {
           content: hasProducts
@@ -81,7 +46,7 @@ export const createChatFallbackResponseService = (providers: ChatFallbackProvide
       }
 
       if (isRecipeIntent(input)) {
-        const recipes = await providers.getRecipes(userPreferences)
+        const recipes = await providers.getRecipes(input, userPreferences)
         if (recipes.length > 0) {
           return {
             content: "Here are sustainable recipes aligned with your cooking preferences:",
@@ -92,7 +57,7 @@ export const createChatFallbackResponseService = (providers: ChatFallbackProvide
       }
 
       if (isTipIntent(input)) {
-        const tips = await providers.getTips()
+        const tips = await providers.getTips(input, userPreferences)
         if (tips.length > 0) {
           return {
             content: "Here are sustainability tips to reduce your environmental impact:",

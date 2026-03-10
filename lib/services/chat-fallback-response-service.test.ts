@@ -13,6 +13,7 @@ const defaultPreferences: UserPreferences = {
 
 test("fallback service returns recipe cards when provider succeeds", async () => {
   const service = createChatFallbackResponseService({
+    getProducts: async () => [],
     getRecipes: async () => [
       {
         id: "recipe-1",
@@ -40,6 +41,9 @@ test("fallback service returns recipe cards when provider succeeds", async () =>
 
 test("fallback service degrades to text when provider fails", async () => {
   const service = createChatFallbackResponseService({
+    getProducts: async () => {
+      throw new Error("provider_down")
+    },
     getRecipes: async () => {
       throw new Error("provider_down")
     },

@@ -319,11 +319,28 @@ export function ChatWorkspace() {
     const record = toRecord(value)
     if (!record) return undefined
 
+    const products = Array.isArray(record.products) ? (record.products as ChatMessage["metadata"]["products"]) : undefined
+    const recipes = Array.isArray(record.recipes) ? (record.recipes as ChatMessage["metadata"]["recipes"]) : undefined
+    const tips = Array.isArray(record.tips) ? (record.tips as ChatMessage["metadata"]["tips"]) : undefined
+    const automationSuggestions = Array.isArray(record.automationSuggestions)
+      ? (record.automationSuggestions as ChatMessage["metadata"]["automationSuggestions"])
+      : undefined
+    const searchResults = Array.isArray(record.searchResults) ? (record.searchResults as ChatMessage["metadata"]["searchResults"]) : undefined
+    const linkQuickPay = toRecord(record.linkQuickPay) as ChatMessage["metadata"]["linkQuickPay"] | undefined
+
     const toolExecutions = parseToolExecutionSummaries(record.toolExecutions)
     const toolEvents = parseToolEvents(record.toolEvents)
-    if (!toolExecutions && !toolEvents) return undefined
+    if (!products && !recipes && !tips && !automationSuggestions && !searchResults && !linkQuickPay && !toolExecutions && !toolEvents) {
+      return undefined
+    }
 
     return {
+      ...(products ? { products } : {}),
+      ...(recipes ? { recipes } : {}),
+      ...(tips ? { tips } : {}),
+      ...(automationSuggestions ? { automationSuggestions } : {}),
+      ...(searchResults ? { searchResults } : {}),
+      ...(linkQuickPay ? { linkQuickPay } : {}),
       ...(toolExecutions ? { toolExecutions } : {}),
       ...(toolEvents ? { toolEvents } : {}),
     }
