@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,6 +16,7 @@ import Link from "next/link"
 
 export default function CheckoutPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [mounted, setMounted] = useState(false)
   const { state } = useCart()
   const { cart, totals } = state
@@ -37,6 +38,7 @@ export default function CheckoutPage() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [processing, setProcessing] = useState(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
 
   // Ensure component is mounted before accessing cart
   useEffect(() => {
@@ -76,46 +78,61 @@ export default function CheckoutPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    setCheckoutError(null)
     // Validate form
     if (!validate()) return
-
-    // Build order payload from real data (cart + form)
-    const order = {
-      id: `order_${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      customer: {
-        email: formData.email,
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        address: formData.address,
-        city: formData.city,
-        state: formData.state,
-        zipCode: formData.zipCode,
-      },
-      payment: {
-        cardNumber: formData.cardNumber ? `**** **** **** ${formData.cardNumber.slice(-4)}` : "",
-        nameOnCard: formData.nameOnCard,
-      },
-      items: cart.items,
-      totals,
-    }
-
-    // Persist pending order so the payment page can pick it up
-    try {
-      sessionStorage.setItem("pendingOrder", JSON.stringify(order))
-    } catch (err) {
-      console.error("Failed to save pending order:", err)
-    }
 
     // Show confirmation dialog (add dialog UI design)
     setShowConfirmDialog(true)
   }
 
-  const proceedToPayment = () => {
+  const proceedToPayment = async () => {
     setProcessing(true)
-    // Here you could call an API to create an order on the backend and get a payment session.
-    // For now we navigate to the payment page and the payment page should read `pendingOrder` from sessionStorage.
-    router.push("/payment/runash-pay")
+    setCheckoutError(null)
+
+    try {
+      const checkoutPriceId =
+        searchParams?.get("priceId") || searchParams?.get("price_id") || process.env.NEXT_PUBLIC_CHECKOUT_PRICE_ID || ""
+      const checkoutMode = searchParams?.get("mode") === "subscription" ? "subscription" : "payment"
+
+      if (!checkoutPriceId) {
+        throw new Error("Missing checkout price configuration. Please contact support.")
+      }
+
+      const returnUrl = `${window.location.origin}/payment-redirect/return`
+      const response = await fetch("/api/v1/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          priceId: checkoutPriceId,
+          mode: checkoutMode,
+          success_url: returnUrl,
+          cancel_url: returnUrl,
+          returnUrlSuccess: returnUrl,
+          returnUrlPending: `${returnUrl}?status=pending`,
+          returnUrlFailed: `${returnUrl}?status=failed`,
+          humanConfirmed: true,
+          product_tax_code: "physical_goods",
+          billing_address: {
+            country: "US",
+            state: formData.state,
+            city: formData.city,
+            postal_code: formData.zipCode,
+          },
+        }),
+      })
+
+      const payload = await response.json().catch(() => null)
+      const redirectUrl = payload?.data?.redirectUrl || payload?.data?.url
+      if (!response.ok || !payload?.success || !redirectUrl) {
+        throw new Error(payload?.error?.message || "Failed to start secure checkout")
+      }
+
+      window.location.assign(redirectUrl)
+    } catch (error) {
+      setCheckoutError(error instanceof Error ? error.message : "Failed to start secure checkout")
+      setProcessing(false)
+    }
   }
 
   // Show loading state during hydration
@@ -435,6 +452,7 @@ export default function CheckoutPage() {
                   {processing ? "Please wait..." : "Proceed to Payment"}
                 </Button>
               </div>
+              {checkoutError ? <p className="mt-3 text-sm text-red-600">{checkoutError}</p> : null}
             </div>
           </div>
         )}

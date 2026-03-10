@@ -21,6 +21,16 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Credits purchase routing uses `/pricing?intent=credits`; redeem flow uses in-app validated redeem input before billing handoff.
 - Payment API contract fields, webhook schemas, and auth/payment token formats remain unchanged by these routing updates.
 
+## 2026-03 checkout frontend handoff to billing checkout API (no contract changes)
+
+- `/checkout` now uses a confirmation modal as a pre-submit confirmation only; payment orchestration now starts by calling `POST /api/v1/billing/checkout` instead of writing pending order data to `sessionStorage`.
+- Frontend checkout initiation sends canonical billing checkout fields (`priceId`, `mode`, `success_url`, `cancel_url`) and required billing metadata (`product_tax_code`, `billing_address`, `humanConfirmed`) expected by the existing checkout schema.
+- Successful API response now redirects directly to provider checkout URL/session handoff (`redirectUrl` / `url`) and returns through existing callback flow (`/payment-redirect/return` -> `/api/v1/billing/checkout/callback`) to status routes (`complete`, `pending`, `error`, `incomplete`).
+- Backward compatibility: no payment API field names or response signatures were changed; this is a frontend orchestration path update.
+- Risks + rollback:
+  1. Missing checkout price configuration can block checkout start in frontend environments; rollback by restoring prior client-side handoff while env is corrected.
+  2. If provider redirect initiation regresses, revert `app/checkout/page.tsx` and retain existing backend checkout/callback contracts unchanged.
+
 ## 2026-02 Ecommerce payments theme/UI refactor (no contract changes)
 
 - Updated `/ecommerce/payments` presentation layer to use semantic theme tokens (`bg-background`, `text-foreground`, `border-border`, `muted-foreground`) and shared design-system inputs/select/textarea components.
