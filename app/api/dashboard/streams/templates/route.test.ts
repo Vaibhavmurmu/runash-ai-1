@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { handleTemplatesGet, handleTemplatesPost } from "./templates-route-handler"
-import { handleTemplateDelete, handleTemplatePut } from "./[id]/template-by-id-route-handler"
+import { createTemplateByIdRoutes } from "./[id]/route"
+import { createTemplateRoutes } from "./route"
 
 function createDeps() {
   const store = new Map<string, Array<any>>()
@@ -26,9 +26,11 @@ function createDeps() {
     const current = store.get(userId) ?? []
     const index = current.findIndex((item) => item.id === id)
     if (index === -1) return null
+
     const next = { ...current[index], ...input, updatedAt: new Date().toISOString() }
     current[index] = next
     store.set(userId, current)
+
     return next
   }
 
@@ -42,128 +44,154 @@ function createDeps() {
   return { requireUserId, listTemplates, createTemplate, updateTemplate, deleteTemplate }
 }
 
-test("dashboard stream template handlers enforce auth and CRUD", async () => {
+test("template routes enforce auth for all methods", async () => {
   const deps = createDeps()
+  const routes = createTemplateRoutes(deps)
+  const byIdRoutes = createTemplateByIdRoutes(deps)
 
-  const unauth = await handleTemplatesGet(new Request("http://localhost"), deps)
-  assert.equal(unauth.status, 401)
+  const getResponse = await routes.GET(new Request("http://localhost"))
+  assert.equal(getResponse.status, 401)
 
-  const createMissingFields = await handleTemplatesPost(
+  const postResponse = await routes.POST(
+    new Request("http://localhost", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Template", title: "Title" }),
+    }),
+  )
+  assert.equal(postResponse.status, 401)
+
+  const putResponse = await byIdRoutes.PUT(
+    new Request("http://localhost", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "Title" }),
+    }),
+    { params: { id: "template-id" } },
+  )
+  assert.equal(putResponse.status, 401)
+
+  const deleteResponse = await byIdRoutes.DELETE(new Request("http://localhost", { method: "DELETE" }), {
+    params: { id: "template-id" },
+  })
+  assert.equal(deleteResponse.status, 401)
+})
+
+test("template routes support CRUD with backward-compatible payload shape", async () => {
+  const deps = createDeps()
+  const routes = createTemplateRoutes(deps)
+  const byIdRoutes = createTemplateByIdRoutes(deps)
+
+  const createMissingFields = await routes.POST(
     new Request("http://localhost", {
       method: "POST",
       headers: { "content-type": "application/json", authorization: "Bearer user-a" },
       body: JSON.stringify({ title: "Missing Name" }),
     }),
-    deps,
   )
   assert.equal(createMissingFields.status, 400)
 
-  const createdResponse = await handleTemplatesPost(
+  const createdResponse = await routes.POST(
     new Request("http://localhost", {
       method: "POST",
       headers: { "content-type": "application/json", authorization: "Bearer user-a" },
       body: JSON.stringify({ name: "Template A", title: "Title A", tags: ["a"] }),
     }),
-    deps,
   )
   assert.equal(createdResponse.status, 201)
   const created = await createdResponse.json()
+  assert.equal(typeof created.id, "string")
 
-  const userAListResponse = await handleTemplatesGet(
+  const userAListResponse = await routes.GET(
     new Request("http://localhost", {
       headers: { authorization: "Bearer user-a" },
     }),
-    deps,
   )
+  assert.equal(userAListResponse.status, 200)
   const userAList = await userAListResponse.json()
+  assert.deepEqual(Object.keys(userAList), ["templates"])
   assert.equal(userAList.templates.length, 1)
   assert.equal(userAList.templates[0].id, created.id)
 
-  const userAUpdate = await handleTemplatePut(
+  const userAUpdate = await byIdRoutes.PUT(
     new Request("http://localhost", {
       method: "PUT",
       headers: { "content-type": "application/json", authorization: "Bearer user-a" },
       body: JSON.stringify({ title: "  Title A Updated  " }),
     }),
-    created.id,
-    deps,
+    { params: { id: created.id } },
   )
   assert.equal(userAUpdate.status, 200)
-
   const updated = await userAUpdate.json()
   assert.equal(updated.title, "Title A Updated")
 
-  const userADelete = await handleTemplateDelete(
+  const userADelete = await byIdRoutes.DELETE(
     new Request("http://localhost", {
       method: "DELETE",
       headers: { authorization: "Bearer user-a" },
     }),
-    created.id,
-    deps,
+    { params: { id: created.id } },
   )
   assert.equal(userADelete.status, 200)
+  assert.deepEqual(await userADelete.json(), { ok: true })
 
-  const userAListAfterDeleteResponse = await handleTemplatesGet(
+  const userAListAfterDeleteResponse = await routes.GET(
     new Request("http://localhost", {
       headers: { authorization: "Bearer user-a" },
     }),
-    deps,
   )
   const userAListAfterDelete = await userAListAfterDeleteResponse.json()
   assert.equal(userAListAfterDelete.templates.length, 0)
 })
 
-test("dashboard stream template handlers enforce cross-user isolation", async () => {
+test("template routes enforce cross-user isolation", async () => {
   const deps = createDeps()
+  const routes = createTemplateRoutes(deps)
+  const byIdRoutes = createTemplateByIdRoutes(deps)
 
-  const createUserATemplate = await handleTemplatesPost(
+  const createUserATemplate = await routes.POST(
     new Request("http://localhost", {
       method: "POST",
       headers: { "content-type": "application/json", authorization: "Bearer user-a" },
       body: JSON.stringify({ name: "Template A", title: "Title A", tags: ["a"] }),
     }),
-    deps,
   )
   assert.equal(createUserATemplate.status, 201)
   const userATemplate = await createUserATemplate.json()
 
-  const createUserBTemplate = await handleTemplatesPost(
+  const createUserBTemplate = await routes.POST(
     new Request("http://localhost", {
       method: "POST",
       headers: { "content-type": "application/json", authorization: "Bearer user-b" },
       body: JSON.stringify({ name: "Template B", title: "Title B", tags: ["b"] }),
     }),
-    deps,
   )
   assert.equal(createUserBTemplate.status, 201)
   const userBTemplate = await createUserBTemplate.json()
 
-  const userBUpdateOnA = await handleTemplatePut(
+  const userBUpdateOnA = await byIdRoutes.PUT(
     new Request("http://localhost", {
       method: "PUT",
       headers: { "content-type": "application/json", authorization: "Bearer user-b" },
       body: JSON.stringify({ title: "Hacked" }),
     }),
-    userATemplate.id,
-    deps,
+    { params: { id: userATemplate.id } },
   )
   assert.equal(userBUpdateOnA.status, 404)
 
-  const userADeleteOnB = await handleTemplateDelete(
+  const userADeleteOnB = await byIdRoutes.DELETE(
     new Request("http://localhost", {
       method: "DELETE",
       headers: { authorization: "Bearer user-a" },
     }),
-    userBTemplate.id,
-    deps,
+    { params: { id: userBTemplate.id } },
   )
   assert.equal(userADeleteOnB.status, 404)
 
-  const userBListResponse = await handleTemplatesGet(
+  const userBListResponse = await routes.GET(
     new Request("http://localhost", {
       headers: { authorization: "Bearer user-b" },
     }),
-    deps,
   )
   const userBList = await userBListResponse.json()
   assert.equal(userBList.templates.length, 1)
