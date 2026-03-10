@@ -13,12 +13,14 @@ This document is payment-domain specific. For contributor workflow/process polic
 
 ## Current payment reliability notes (2026-02)
 
-## 2026-03 checkout visual refresh (UI-only, contract-safe)
+## 2026-03 checkout UX detailing refresh (UI-only, contract-safe)
 
-- Updated `/checkout` presentation to align with Stripe-style subscription UX: centered plan/amount header, cleaner payment method selector, UPI app-authorization guidance, and stronger primary action hierarchy.
-- Payment/auth compatibility: no checkout API request/response fields were renamed or removed; existing pending-order payload keys and redirect flow contracts remain unchanged.
-- Impacted flow: client-side checkout rendering + form affordances only (`app/checkout/page.tsx`).
-- Risk + rollback: low UI regression risk only. Roll back by reverting `app/checkout/page.tsx`; no migration or backend rollback required.
+- Enhanced `/checkout` with a subscription hero summary, collapsible payment-details panel, card-brand indicator chips, and improved phone capture using country-code + flag selector.
+- UPI section now includes an explicit app-authorization handoff dialog (select app -> redirecting -> success confirmation) and a QR fallback path (`/api/upi/initiate`, `/api/upi/qr`, `/api/upi/complete`, `/api/upi/status/:transactionId`) to support app/QR completion flows.
+- Checkout model review card remains integrated to preserve plan/model visibility before final submit.
+- Payment/auth compatibility: no payment API request/response fields, webhook schemas, redirect contract names, or checkout payload keys were renamed or removed.
+- Impacted flow: client checkout form UX + local pending-order preparation (`app/checkout/page.tsx`) only.
+- Risk + rollback: low UI/regression risk. Roll back by reverting `app/checkout/page.tsx`; no migration/database rollback required.
 
 ## 2026-03 auth SMS OTP provider reliability note (payment-adjacent auth hardening)
 

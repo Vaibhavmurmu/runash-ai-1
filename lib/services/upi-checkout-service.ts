@@ -256,6 +256,50 @@ export class UpiCheckoutService {
     }
   }
 
+  static completeViaProvider(input: { transactionId: string; idempotencyKey: string }) {
+    const transaction = transactionsById.get(input.transactionId)
+
+    if (!transaction) {
+      return {
+        ok: false as const,
+        error: "Transaction not found",
+        errorCode: "RISK_BLOCKED" as UpiErrorCode,
+      }
+    }
+
+    if (transaction.status === "success") {
+      return {
+        ok: true as const,
+        transactionId: transaction.transactionId,
+        status: transaction.status,
+        transactionReference: transaction.transactionReference,
+        updatedAt: new Date().toISOString(),
+        idempotencyKey: input.idempotencyKey,
+      }
+    }
+
+    if (transaction.status === "failed") {
+      return {
+        ok: false as const,
+        error: transaction.failureReason || "Transaction failed",
+        errorCode: transaction.failureCode || ("RISK_BLOCKED" as UpiErrorCode),
+      }
+    }
+
+    transaction.status = "success"
+    transaction.failureCode = undefined
+    transaction.failureReason = undefined
+
+    return {
+      ok: true as const,
+      transactionId: transaction.transactionId,
+      status: transaction.status,
+      transactionReference: transaction.transactionReference,
+      updatedAt: new Date().toISOString(),
+      idempotencyKey: input.idempotencyKey,
+    }
+  }
+
   static getTransactionDetails(transactionId: string) {
     const status = UpiCheckoutService.getStatus(transactionId)
 
