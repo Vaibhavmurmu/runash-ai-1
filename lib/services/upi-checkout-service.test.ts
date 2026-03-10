@@ -8,6 +8,7 @@ test("UPI initiation is idempotent by key", async () => {
 
   assert.equal(first.transactionId, second.transactionId)
   assert.equal(second.idempotencyKey, "init-key-1")
+  assert.equal(second.order_id, 1001)
 })
 
 test("UPI confirmation enforces retry limit and returns structured codes", async () => {
@@ -72,6 +73,7 @@ test("UPI transaction details include receipt id and amount", async () => {
 
   assert.equal(details.found, true)
   assert.equal(details.payload.amount, 777)
+  assert.equal(details.payload.order_id, 1004)
   assert.match(details.payload.receiptId, /^RCPT-/)
 })
 

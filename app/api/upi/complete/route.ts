@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "transactionId is required", errorCode: "RISK_BLOCKED" }, { status: 400 })
   }
 
-  const result = UpiCheckoutService.completeViaProvider({
+  const result = await UpiCheckoutService.completeViaProvider({
     transactionId,
     idempotencyKey: resolveIdempotencyKey(request, body),
   })
