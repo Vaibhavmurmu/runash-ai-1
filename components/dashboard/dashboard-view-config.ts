@@ -41,7 +41,7 @@ export const dashboardRoleViewConfig: Record<DashboardRolePreset, DashboardRoleV
     expandedRouteLinks: [
       { label: "Streaming studio", href: "/dashboard/streaming-studio" },
       { label: "Recordings", href: "/recordings" },
-      { label: "Editor", href: "/dashboard/editor" },
+      { label: "Editor", href: "/editor" },
       { label: "Analytics", href: "/dashboard/analytics" },
     ],
   },

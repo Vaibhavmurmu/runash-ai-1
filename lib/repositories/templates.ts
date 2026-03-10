@@ -42,6 +42,11 @@ export interface TemplateRecord {
   ratingCount: number
 }
 
+export type TemplateByIdAccessResult =
+  | { status: "not_found" }
+  | { status: "forbidden" }
+  | { status: "ok"; template: TemplateRecord }
+
 export interface ListTemplatesFilters {
   category?: string | null
   tags?: string[]
@@ -310,6 +315,52 @@ export async function getTemplateByIdForViewer(
   }
 
   return mapTemplateRow(row)
+}
+
+export async function getTemplateByIdWithAccess(
+  templateId: string,
+  viewer: TemplateViewerContext,
+): Promise<TemplateByIdAccessResult> {
+  const row = await one<TemplateRow>(sql<TemplateRow[]>`
+    
+    SELECT
+      t.id,
+      t.name,
+      t.description,
+      t.category,
+      t.thumbnail_url,
+      t.variables,
+      t.html,
+      t.css,
+      t.javascript,
+      t.tags,
+      t.is_premium,
+      t.scope,
+      t.author_name,
+      t.owner_user_id,
+      t.workspace_id,
+      t.created_at,
+      t.updated_at,
+      COALESCE(m.download_count, 0) AS download_count,
+      COALESCE(m.view_count, 0) AS view_count,
+      COALESCE(m.usage_count, 0) AS usage_count,
+      COALESCE(m.rating, 0) AS rating,
+      COALESCE(m.rating_count, 0) AS rating_count
+    FROM stream_editor_templates t
+    LEFT JOIN stream_editor_template_metrics m ON m.template_id = t.id
+    WHERE t.id = ${templateId}
+    LIMIT 1
+  `)
+
+  if (!row) {
+    return { status: "not_found" }
+  }
+
+  if (!canViewerAccessScope(row, viewer)) {
+    return { status: "forbidden" }
+  }
+
+  return { status: "ok", template: mapTemplateRow(row) }
 }
 
 export async function createTemplate(

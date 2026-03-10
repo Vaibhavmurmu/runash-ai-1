@@ -429,9 +429,12 @@ export class LiveStreamService {
       await transitionSessionStatus(session, "failed", {
         actorUserId: input.actorUserId,
         idempotencyKey: input.idempotencyKey,
-        reason: providerError.reason,
+        reason: `${providerError.reason} [${providerError.correlationId}]`,
       })
-      throw new LiveStreamValidationError("Failed to start live stream session", providerError.status)
+      throw new LiveStreamValidationError(
+        `${providerError.userMessage} (reference: ${providerError.correlationId})`,
+        providerError.status,
+      )
     }
   }
 
@@ -479,9 +482,12 @@ export class LiveStreamService {
       await transitionSessionStatus(session, "failed", {
         actorUserId: input.actorUserId,
         idempotencyKey: input.idempotencyKey,
-        reason: providerError.reason,
+        reason: `${providerError.reason} [${providerError.correlationId}]`,
       })
-      throw new LiveStreamValidationError("Failed to stop live stream session", providerError.status)
+      throw new LiveStreamValidationError(
+        `${providerError.userMessage} (reference: ${providerError.correlationId})`,
+        providerError.status,
+      )
     }
   }
 

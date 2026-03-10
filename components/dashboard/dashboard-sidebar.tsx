@@ -66,6 +66,9 @@ const knownSidebarRoutes = new Set([
   "/ecommerce/dashboard",
   "/seller/dashboard",
   "/automation",
+  "/editor",
+  "/editor/docs",
+  "/runashchat",
 ]);
 
 const sidebarRouteGuards = {

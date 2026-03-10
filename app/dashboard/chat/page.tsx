@@ -1,7 +1,10 @@
-import { createChatPageMetadata, SharedChatPageShell } from "./_shared-chat-page"
+import { permanentRedirect } from "next/navigation"
+import { buildCanonicalRedirectPath } from "@/app/_lib/build-canonical-redirect-path"
 
-export const metadata = createChatPageMetadata("/dashboard/chat")
+type DashboardChatLegacyPageProps = {
+  searchParams?: Record<string, string | string[] | undefined>
+}
 
-export default function DashboardChatPage() {
-  return <SharedChatPageShell />
+export default function DashboardChatLegacyPage({ searchParams }: DashboardChatLegacyPageProps) {
+  permanentRedirect(buildCanonicalRedirectPath("/runashchat", searchParams))
 }

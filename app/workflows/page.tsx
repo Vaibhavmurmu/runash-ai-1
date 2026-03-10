@@ -13,7 +13,7 @@ export default function WorkflowsPage() {
         title="Workflows"
         summary="Handle advanced execution paths in dedicated pages while keeping this landing page focused."
         ctaLabel="Open workflow builder"
-        ctaHref="/dashboard/editor"
+        ctaHref="/editor"
         secondaryLinks={[
           { label: "Streaming studio", href: "/dashboard/streaming-studio" },
           { label: "Seller studio", href: "/dashboard/seller-studio" },
