@@ -1,4 +1,4 @@
-import { canInvokeConnector, getConnectorById, listConnectors, recordMcpAudit, type MpcConnectorConfig } from "@/lib/mcp/connectors-store"
+import { canInvokeConnector, getConnectorById, listConnectors, recordMcpAudit, type McpStoreScope, type MpcConnectorConfig } from "@/lib/mcp/connectors-store"
 
 export type MpcDiscoveredTool = {
   name: string
@@ -43,8 +43,8 @@ function createHeaders(connector: MpcConnectorConfig) {
   return headers
 }
 
-export async function discoverConnectorTools(connectorId: string) {
-  const connector = getConnectorById(connectorId)
+export async function discoverConnectorTools(connectorId: string, scope?: McpStoreScope) {
+  const connector = await getConnectorById(connectorId, scope)
   if (!connector) {
     throw new Error("Connector not found")
   }
@@ -78,8 +78,8 @@ export async function discoverConnectorTools(connectorId: string) {
   }
 }
 
-export async function checkConnectorHealth(connectorId: string) {
-  const connector = getConnectorById(connectorId)
+export async function checkConnectorHealth(connectorId: string, scope?: McpStoreScope) {
+  const connector = await getConnectorById(connectorId, scope)
   if (!connector) {
     throw new Error("Connector not found")
   }
@@ -114,16 +114,18 @@ export async function checkConnectorHealth(connectorId: string) {
   }
 }
 
-function pickConnectorForTool(toolName: string) {
-  return listConnectors().find((connector) => connector.enabled && connector.enabledTools.includes(toolName)) ?? null
+async function pickConnectorForTool(toolName: string, scope?: McpStoreScope) {
+  const connectors = await listConnectors(scope)
+  return connectors.find((connector) => connector.enabled && connector.enabledTools.includes(toolName)) ?? null
 }
 
 export async function invokeToolOnMcpConnector(input: {
   toolName: string
   args?: Record<string, unknown>
   actor?: { userId?: string | null; roles?: string[] }
+  scope?: McpStoreScope
 }) {
-  const connector = pickConnectorForTool(input.toolName)
+  const connector = await pickConnectorForTool(input.toolName, input.scope)
   if (!connector) {
     return {
       connectorId: "",
@@ -136,7 +138,7 @@ export async function invokeToolOnMcpConnector(input: {
   }
 
   if (!canInvokeConnector(connector, input.actor ?? {})) {
-    recordMcpAudit({
+    await recordMcpAudit({
       connectorId: connector.id,
       connectorName: connector.serverName,
       toolName: input.toolName,
@@ -144,7 +146,7 @@ export async function invokeToolOnMcpConnector(input: {
       actorUserId: input.actor?.userId,
       actorRoles: input.actor?.roles,
       detail: "Permission policy blocked connector invocation",
-    })
+    }, input.scope)
 
     return {
       connectorId: connector.id,
@@ -174,7 +176,7 @@ export async function invokeToolOnMcpConnector(input: {
     }
 
     const payload = await response.json()
-    recordMcpAudit({
+    await recordMcpAudit({
       connectorId: connector.id,
       connectorName: connector.serverName,
       toolName: input.toolName,
@@ -183,7 +185,7 @@ export async function invokeToolOnMcpConnector(input: {
       actorRoles: input.actor?.roles,
       latencyMs: Date.now() - start,
       detail: "Tool call completed",
-    })
+    }, input.scope)
 
     return {
       connectorId: connector.id,
@@ -195,7 +197,7 @@ export async function invokeToolOnMcpConnector(input: {
       message: "MCP tool call succeeded",
     } satisfies MpcToolCallResult
   } catch {
-    recordMcpAudit({
+    await recordMcpAudit({
       connectorId: connector.id,
       connectorName: connector.serverName,
       toolName: input.toolName,
@@ -204,7 +206,7 @@ export async function invokeToolOnMcpConnector(input: {
       actorRoles: input.actor?.roles,
       latencyMs: Date.now() - start,
       detail: "Connector unavailable; fallback path used",
-    })
+    }, input.scope)
 
     return {
       connectorId: connector.id,
