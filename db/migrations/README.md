@@ -25,6 +25,8 @@ Current status:
 - `0012_newsletter_subscriptions.sql` provisions `newsletter_subscriptions` for consented newsletter signups with case-insensitive dedupe, status tracking, and audit timestamps.
 - `0013_stream_editor_templates.sql` provisions persistent stream/editor templates plus template metrics counters and access-scope indexes.
 
+- `0016_mcp_connectors_and_audit.sql` provisions tenant-scoped MCP connector configuration persistence plus MCP tool audit records with lifecycle indexes and connector-cascade cleanup.
+
 Operational guidance:
 1. Keep production-safe migration SQL reviewed and idempotent where practical.
 2. When enabling generated Drizzle migrations in CI, add the migration journal metadata in this directory and keep the baseline SQL immutable after release tags.

@@ -51,6 +51,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const { id } = await params
+
+  const existingConnector = await getConnectorById(id, { tenantId: context.tenantId })
+  if (!existingConnector) {
+    return NextResponse.json({ error: "Connector not found" }, { status: 404 })
+  }
+
   const body = await request.json().catch(() => null)
   const parsed = patchSchema.safeParse(body)
   if (!parsed.success) {
@@ -77,6 +83,11 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   }
 
   const { id } = await params
+
+  const existingConnector = await getConnectorById(id, { tenantId: context.tenantId })
+  if (!existingConnector) {
+    return NextResponse.json({ error: "Connector not found" }, { status: 404 })
+  }
 
   try {
     const deleted = await deleteConnector(id, { tenantId: context.tenantId })

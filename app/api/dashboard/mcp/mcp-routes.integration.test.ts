@@ -12,21 +12,23 @@ type SessionShape = {
   }
 } | null
 
-function createFixtureAdapters() {
-  const connectors: Array<{ tenantId: string; value: MpcConnectorConfig }> = []
-  const audit: Array<{ tenantId: string; value: MpcToolAuditRecord }> = []
+type PersistentState = {
+  connectors: Array<{ tenantId: string; value: MpcConnectorConfig }>
+  audit: Array<{ tenantId: string; value: MpcToolAuditRecord }>
+}
 
+function createFixtureAdapters(state: PersistentState) {
   return {
     async listConnectors(scope: { tenantId: string }) {
-      return connectors.filter((entry) => entry.tenantId === scope.tenantId).map((entry) => ({ ...entry.value }))
+      return state.connectors.filter((entry) => entry.tenantId === scope.tenantId).map((entry) => ({ ...entry.value }))
     },
     async getConnectorById(id: string, scope: { tenantId: string }) {
-      return connectors.find((entry) => entry.tenantId === scope.tenantId && entry.value.id === id)?.value ?? null
+      return state.connectors.find((entry) => entry.tenantId === scope.tenantId && entry.value.id === id)?.value ?? null
     },
     async createConnector(input: any, scope: { tenantId: string }) {
       const now = new Date().toISOString()
       const connector: MpcConnectorConfig = {
-        id: `connector-${connectors.length + 1}`,
+        id: `connector-${state.connectors.length + 1}`,
         serverName: input.serverName,
         endpoint: input.endpoint,
         transport: input.transport,
@@ -46,11 +48,11 @@ function createFixtureAdapters() {
         updatedAt: now,
       }
 
-      connectors.push({ tenantId: scope.tenantId, value: connector })
+      state.connectors.push({ tenantId: scope.tenantId, value: connector })
       return connector
     },
     async updateConnector(id: string, patch: any, scope: { tenantId: string }) {
-      const match = connectors.find((entry) => entry.tenantId === scope.tenantId && entry.value.id === id)
+      const match = state.connectors.find((entry) => entry.tenantId === scope.tenantId && entry.value.id === id)
       if (!match) return null
 
       match.value = {
@@ -64,22 +66,22 @@ function createFixtureAdapters() {
       return { ...match.value }
     },
     async deleteConnector(id: string, scope: { tenantId: string }) {
-      const index = connectors.findIndex((entry) => entry.tenantId === scope.tenantId && entry.value.id === id)
+      const index = state.connectors.findIndex((entry) => entry.tenantId === scope.tenantId && entry.value.id === id)
       if (index < 0) return false
-      connectors.splice(index, 1)
+      state.connectors.splice(index, 1)
       return true
     },
     async createAuditRecord(record: Omit<MpcToolAuditRecord, "id" | "createdAt">, scope: { tenantId: string }) {
       const created: MpcToolAuditRecord = {
         ...record,
-        id: `audit-${audit.length + 1}`,
+        id: `audit-${state.audit.length + 1}`,
         createdAt: new Date().toISOString(),
       }
-      audit.unshift({ tenantId: scope.tenantId, value: created })
+      state.audit.unshift({ tenantId: scope.tenantId, value: created })
       return created
     },
     async listAuditRecords(limit: number, scope: { tenantId: string }) {
-      return audit
+      return state.audit
         .filter((entry) => entry.tenantId === scope.tenantId)
         .slice(0, Math.max(1, Math.min(limit, 500)))
         .map((entry) => ({ ...entry.value }))
@@ -87,7 +89,7 @@ function createFixtureAdapters() {
   }
 }
 
-test("MCP dashboard routes enforce tenant + role scoping while preserving connector lifecycle and audit retrieval", async (t) => {
+test("MCP dashboard routes enforce tenant scoping, mutating permissions, lifecycle, and restart-safe audit retrieval", async (t) => {
   let currentSession: SessionShape = { user: { id: "1", role: "admin", ssoOrganization: 101 } }
 
   t.mock.module("@/lib/auth/session", {
@@ -100,7 +102,8 @@ test("MCP dashboard routes enforce tenant + role scoping while preserving connec
   const connectorByIdRoute = await import("./connectors/[id]/route")
   const auditRoute = await import("./audit/route")
 
-  setMcpStoreAdaptersForTests(createFixtureAdapters())
+  const state: PersistentState = { connectors: [], audit: [] }
+  setMcpStoreAdaptersForTests(createFixtureAdapters(state))
 
   try {
     const createResponse = await connectorsRoute.POST(
@@ -135,22 +138,41 @@ test("MCP dashboard routes enforce tenant + role scoping while preserving connec
     assert.equal(forbiddenWrite.status, 403)
 
     currentSession = { user: { id: "1", role: "admin", ssoOrganization: 101 } }
-    const patchResponse = await connectorByIdRoute.PATCH(
+    const updateResponse = await connectorByIdRoute.PATCH(
       new Request(`http://localhost/api/dashboard/mcp/connectors/${connectorId}`, {
         method: "PATCH",
-        body: JSON.stringify({ permissions: { allowAllUsers: false, allowedRoles: ["admin"], allowedUserIds: [] } }),
+        body: JSON.stringify({ serverName: "catalog-mcp-v2" }),
       }),
       { params: Promise.resolve({ id: connectorId }) },
     )
-    const patchPayload = await patchResponse.json()
-    assert.equal(patchResponse.status, 200)
-    assert.equal(patchPayload.connector.permissions.allowAllUsers, false)
+    assert.equal(updateResponse.status, 200)
+
+    const disableResponse = await connectorByIdRoute.PATCH(
+      new Request(`http://localhost/api/dashboard/mcp/connectors/${connectorId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: false }),
+      }),
+      { params: Promise.resolve({ id: connectorId }) },
+    )
+    assert.equal(disableResponse.status, 200)
+
+    const enableResponse = await connectorByIdRoute.PATCH(
+      new Request(`http://localhost/api/dashboard/mcp/connectors/${connectorId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: true, permissions: { allowAllUsers: false, allowedRoles: ["admin"], allowedUserIds: [] } }),
+      }),
+      { params: Promise.resolve({ id: connectorId }) },
+    )
+    assert.equal(enableResponse.status, 200)
 
     await invokeToolOnMcpConnector({
       toolName: "catalog_lookup",
       actor: { userId: "2", roles: ["user"] },
       scope: { tenantId: "org:101" },
     })
+
+    setMcpStoreAdaptersForTests(null)
+    setMcpStoreAdaptersForTests(createFixtureAdapters(state))
 
     currentSession = { user: { id: "2", role: "user", ssoOrganization: 999 } }
     const crossTenantList = await connectorsRoute.GET(new Request("http://localhost/api/dashboard/mcp/connectors"))
@@ -164,6 +186,18 @@ test("MCP dashboard routes enforce tenant + role scoping while preserving connec
     assert.equal(auditResponse.status, 200)
     assert.equal(auditPayload.audit.length, 1)
     assert.equal(auditPayload.audit[0].status, "denied")
+
+    const deleteResponse = await connectorByIdRoute.DELETE(
+      new Request(`http://localhost/api/dashboard/mcp/connectors/${connectorId}`, {
+        method: "DELETE",
+      }),
+      { params: Promise.resolve({ id: connectorId }) },
+    )
+    assert.equal(deleteResponse.status, 200)
+
+    const postDeleteList = await connectorsRoute.GET(new Request("http://localhost/api/dashboard/mcp/connectors"))
+    const postDeletePayload = await postDeleteList.json()
+    assert.equal(postDeletePayload.connectors.length, 0)
   } finally {
     setMcpStoreAdaptersForTests(null)
   }
