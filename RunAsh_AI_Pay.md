@@ -13,6 +13,19 @@ This document is payment-domain specific. For contributor workflow/process polic
 
 ## Current payment reliability notes (2026-02)
 
+## 2026-03 UPI durable transaction persistence (service reliability hardening)
+
+- Replaced in-memory UPI state with durable DB persistence via `upi_transactions` and `upi_transaction_events`, covering `transactionId`, `orderId`, amount/currency, lifecycle status (`initiated|pending|success|failed`), provider refs, failure reason/code, idempotency keys, and audit timestamps.
+- `UpiCheckoutService` now reads/writes transaction lifecycle through repository methods (`lib/repositories/upi-transactions.ts`) and preserves existing route response shapes for initiation, status, and provider-completion flows.
+- New provider completion endpoint `POST /api/upi/complete` finalizes pending UPI transactions through the same persisted service state and returns the existing status payload shape.
+- Backward compatibility: payment API response field names remain unchanged for existing UPI initiate/status surfaces; completion is additive.
+- New migration: `db/migrations/0017_upi_transactions.sql`.
+- New env/config dependency: requires one configured Postgres connection env (`DATABASE_URL`, `NEON_DATABASE_URL`, `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `POSTGRES_URL_NON_POOLING`, `runash_POSTGRES_URL`, `runash_POSTGRES_URL_NON_POOLING`) for durable UPI persistence.
+- Risks + rollback:
+  1. Risk: deployments without DB env config will fail UPI transaction persistence at runtime.
+  2. Rollback (code): revert `lib/services/upi-checkout-service.ts`, `lib/repositories/upi-transactions.ts`, and UPI route updates together.
+  3. Rollback (schema): drop `upi_transaction_events` then `upi_transactions` if reverting migration `0017_upi_transactions.sql`.
+
 ## 2026-03 checkout visual refresh (UI-only, contract-safe)
 
 - Updated `/checkout` presentation to align with Stripe-style subscription UX: centered plan/amount header, cleaner payment method selector, UPI app-authorization guidance, and stronger primary action hierarchy.

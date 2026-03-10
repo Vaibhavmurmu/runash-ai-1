@@ -27,6 +27,8 @@ Current status:
 
 - `0016_mcp_connectors_and_audit.sql` provisions tenant-scoped MCP connector configuration persistence plus MCP tool audit records with lifecycle indexes and connector-cascade cleanup.
 
+- `0017_upi_transactions.sql` provisions durable UPI transaction state (`upi_transactions`) and append-only lifecycle/event audit records (`upi_transaction_events`) with idempotency-safe lookups.
+
 Operational guidance:
 1. Keep production-safe migration SQL reviewed and idempotent where practical.
 2. When enabling generated Drizzle migrations in CI, add the migration journal metadata in this directory and keep the baseline SQL immutable after release tags.
