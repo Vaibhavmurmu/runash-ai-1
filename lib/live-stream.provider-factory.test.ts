@@ -188,6 +188,8 @@ test("provider failure mapping normalizes provider errors", async () => {
     assert.equal(mapped.code, "PROVIDER_REQUEST_FAILED")
     assert.equal(mapped.status, 502)
     assert.equal(mapped.reason, "Live stream provider request failed")
+    assert.match(mapped.correlationId, /^[0-9a-f-]{36}$/)
+    assert.match(mapped.userMessage, /request failed/i)
     return true
   })
 })
@@ -207,4 +209,37 @@ test("missing credentials do not leak secret values", async () => {
     assert.doesNotMatch(error.message, /token-secret|token-id/i)
     return true
   })
+})
+
+
+test("mock provider requires explicit non-production opt-in", () => {
+  assert.throws(
+    () =>
+      createLiveStreamProvider({
+        env: {
+          RUNASH_LIVE_STREAM_PROVIDER: "mock",
+          NODE_ENV: "production",
+          RUNASH_ENABLE_MOCK_LIVE_STREAM_PROVIDER: "true",
+        },
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof LiveStreamProviderError)
+      assert.equal(error.code, "PROVIDER_CONFIGURATION_ERROR")
+      return true
+    },
+  )
+})
+
+test("mock provider can be used in non-production when explicitly enabled", async () => {
+  const provider = createLiveStreamProvider({
+    env: {
+      RUNASH_LIVE_STREAM_PROVIDER: "mock",
+      NODE_ENV: "test",
+      RUNASH_ENABLE_MOCK_LIVE_STREAM_PROVIDER: "true",
+    },
+  })
+
+  const provisioned = await provider.provision(baseInput)
+  assert.equal(provisioned.provider, "mock")
+  assert.ok(typeof provisioned.metadata.correlationId === "string")
 })

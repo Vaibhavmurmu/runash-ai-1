@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import type { LiveStreamLatencyProfile, LiveStreamPlaybackUrl } from "@/types/live-stream-domain"
 
 export type ProvisionLiveStreamInput = {
@@ -39,7 +40,7 @@ export class LiveStreamProviderError extends Error {
 const MUX_API_BASE = "https://api.mux.com/video/v1"
 const LIVEPEER_API_BASE = "https://livepeer.studio/api"
 
-type ProviderName = "mux" | "livepeer" | "internal"
+type ProviderName = "mux" | "livepeer" | "internal" | "mock"
 type ProviderEnv = NodeJS.ProcessEnv | Record<string, string | undefined>
 
 type MuxCredentials = {
@@ -51,6 +52,14 @@ type ProviderErrorMapping = {
   code: string
   status: number
   reason: string
+  userMessage: string
+  correlationId: string
+}
+
+type LiveStreamVendorAdapter = {
+  readonly provider: Exclude<ProviderName, "mock">
+  provision(input: ProvisionLiveStreamInput, context: { correlationId: string }): Promise<ProvisionLiveStreamResult>
+  stop(input: { sessionId: string; providerSessionId: string }, context: { correlationId: string }): Promise<void>
 }
 
 type MuxCreateLiveStreamResponse = {
@@ -109,6 +118,15 @@ function parseIntegerEnvFromEnv(env: ProviderEnv, name: string, defaultValue: nu
   return parsed
 }
 
+function createCorrelationId(): string {
+  return randomUUID()
+}
+
+function extractCorrelationId(message: string): string {
+  const matched = message.match(/correlationId=([0-9a-f-]{36})/i)
+  return matched?.[1] ?? "unknown"
+}
+
 function readRequiredEnv(env: ProviderEnv, key: string, message: string): string {
   const value = env[key]?.trim()
   if (!value) {
@@ -138,7 +156,7 @@ function createMuxAuthHeader(credentials: MuxCredentials): string {
 }
 
 async function requestProvider<T>(input: {
-  provider: ProviderName
+  provider: Exclude<ProviderName, "mock">
   baseUrl: string
   path: string
   method?: "GET" | "POST" | "DELETE"
@@ -147,6 +165,7 @@ async function requestProvider<T>(input: {
   sessionId: string
   env: ProviderEnv
   headers: Record<string, string>
+  correlationId: string
   fetchImpl?: typeof fetch
 }): Promise<T> {
   const retryCount = parseIntegerEnvFromEnv(input.env, "RUNASH_LIVE_STREAM_PROVIDER_RETRY_COUNT", 2)
@@ -163,6 +182,7 @@ async function requestProvider<T>(input: {
         method: input.method ?? "POST",
         headers: {
           "content-type": "application/json",
+          "x-request-id": input.correlationId,
           ...input.headers,
         },
         body: input.body ? JSON.stringify(input.body) : undefined,
@@ -183,6 +203,7 @@ async function requestProvider<T>(input: {
           maxAttempts,
           status: response.status,
           retrying: canRetry,
+          correlationId: input.correlationId,
           errorType: typeof payload === "object" && payload && "error" in payload ? payload.error?.type ?? null : null,
         })
 
@@ -192,7 +213,7 @@ async function requestProvider<T>(input: {
         }
 
         throw new LiveStreamProviderError(
-          `${input.provider} API request failed for ${input.operation} with status ${response.status}`,
+          `${input.provider} API request failed for ${input.operation} with status ${response.status}. correlationId=${input.correlationId}`,
           "PROVIDER_REQUEST_FAILED",
         )
       }
@@ -211,6 +232,7 @@ async function requestProvider<T>(input: {
         maxAttempts,
         timeoutMs,
         retrying: canRetry,
+        correlationId: input.correlationId,
         ...(isAbortError ? { reason: "timeout" } : { error: sanitizeError(error) }),
       })
 
@@ -219,29 +241,37 @@ async function requestProvider<T>(input: {
         continue
       }
 
-      throw new LiveStreamProviderError(`${input.provider} API request failed`, "PROVIDER_REQUEST_FAILED", { cause: error })
+      throw new LiveStreamProviderError(`${input.provider} API request failed. correlationId=${input.correlationId}`, "PROVIDER_REQUEST_FAILED", {
+        cause: error,
+      })
     } finally {
       clearTimeout(timeout)
     }
   }
 
-  throw new LiveStreamProviderError("Live stream provider unavailable after retries", "PROVIDER_UNAVAILABLE")
+  throw new LiveStreamProviderError(
+    `Live stream provider unavailable after retries. correlationId=${input.correlationId}`,
+    "PROVIDER_UNAVAILABLE",
+  )
 }
 
-class MuxLiveStreamProvider implements LiveStreamProvider {
+class MuxVendorAdapter implements LiveStreamVendorAdapter {
+  readonly provider = "mux" as const
+
   constructor(
     private readonly env: ProviderEnv,
     private readonly fetchImpl?: typeof fetch,
   ) {}
 
-  async provision(input: ProvisionLiveStreamInput): Promise<ProvisionLiveStreamResult> {
+  async provision(input: ProvisionLiveStreamInput, context: { correlationId: string }): Promise<ProvisionLiveStreamResult> {
     const response = await requestProvider<MuxCreateLiveStreamResponse>({
-      provider: "mux",
+      provider: this.provider,
       baseUrl: MUX_API_BASE,
       path: "/live-streams",
       operation: "provision",
       sessionId: input.sessionId,
       env: this.env,
+      correlationId: context.correlationId,
       fetchImpl: this.fetchImpl,
       headers: {
         authorization: createMuxAuthHeader(readMuxCredentials(this.env)),
@@ -265,7 +295,7 @@ class MuxLiveStreamProvider implements LiveStreamProvider {
     }
 
     return {
-      provider: "mux",
+      provider: this.provider,
       providerSessionId,
       ingestUrl: "rtmps://global-live.mux.com:443/app",
       ingestToken: streamKey,
@@ -280,15 +310,16 @@ class MuxLiveStreamProvider implements LiveStreamProvider {
     }
   }
 
-  async stop(input: { sessionId: string; providerSessionId: string }): Promise<void> {
+  async stop(input: { sessionId: string; providerSessionId: string }, context: { correlationId: string }): Promise<void> {
     await requestProvider({
-      provider: "mux",
+      provider: this.provider,
       baseUrl: MUX_API_BASE,
       path: `/live-streams/${encodeURIComponent(input.providerSessionId)}/complete`,
       method: "POST",
       operation: "stop",
       sessionId: input.sessionId,
       env: this.env,
+      correlationId: context.correlationId,
       fetchImpl: this.fetchImpl,
       headers: {
         authorization: createMuxAuthHeader(readMuxCredentials(this.env)),
@@ -297,22 +328,25 @@ class MuxLiveStreamProvider implements LiveStreamProvider {
   }
 }
 
-class LivepeerLiveStreamProvider implements LiveStreamProvider {
+class LivepeerVendorAdapter implements LiveStreamVendorAdapter {
+  readonly provider = "livepeer" as const
+
   constructor(
     private readonly env: ProviderEnv,
     private readonly fetchImpl?: typeof fetch,
   ) {}
 
-  async provision(input: ProvisionLiveStreamInput): Promise<ProvisionLiveStreamResult> {
+  async provision(input: ProvisionLiveStreamInput, context: { correlationId: string }): Promise<ProvisionLiveStreamResult> {
     const apiToken = readRequiredEnv(this.env, "LIVEPEER_API_TOKEN", "Livepeer provider requires LIVEPEER_API_TOKEN")
 
     const response = await requestProvider<LivepeerCreateStreamResponse>({
-      provider: "livepeer",
+      provider: this.provider,
       baseUrl: LIVEPEER_API_BASE,
       path: "/stream",
       operation: "provision",
       sessionId: input.sessionId,
       env: this.env,
+      correlationId: context.correlationId,
       fetchImpl: this.fetchImpl,
       headers: {
         authorization: `Bearer ${apiToken}`,
@@ -334,7 +368,7 @@ class LivepeerLiveStreamProvider implements LiveStreamProvider {
     }
 
     return {
-      provider: "livepeer",
+      provider: this.provider,
       providerSessionId,
       ingestUrl,
       ingestToken,
@@ -350,17 +384,18 @@ class LivepeerLiveStreamProvider implements LiveStreamProvider {
     }
   }
 
-  async stop(input: { sessionId: string; providerSessionId: string }): Promise<void> {
+  async stop(input: { sessionId: string; providerSessionId: string }, context: { correlationId: string }): Promise<void> {
     const apiToken = readRequiredEnv(this.env, "LIVEPEER_API_TOKEN", "Livepeer provider requires LIVEPEER_API_TOKEN")
 
     await requestProvider({
-      provider: "livepeer",
+      provider: this.provider,
       baseUrl: LIVEPEER_API_BASE,
       path: `/stream/${encodeURIComponent(input.providerSessionId)}`,
       method: "DELETE",
       operation: "stop",
       sessionId: input.sessionId,
       env: this.env,
+      correlationId: context.correlationId,
       fetchImpl: this.fetchImpl,
       headers: {
         authorization: `Bearer ${apiToken}`,
@@ -369,13 +404,15 @@ class LivepeerLiveStreamProvider implements LiveStreamProvider {
   }
 }
 
-class InternalLiveStreamProvider implements LiveStreamProvider {
+class InternalVendorAdapter implements LiveStreamVendorAdapter {
+  readonly provider = "internal" as const
+
   constructor(
     private readonly env: ProviderEnv,
     private readonly fetchImpl?: typeof fetch,
   ) {}
 
-  async provision(input: ProvisionLiveStreamInput): Promise<ProvisionLiveStreamResult> {
+  async provision(input: ProvisionLiveStreamInput, context: { correlationId: string }): Promise<ProvisionLiveStreamResult> {
     const baseUrl = readRequiredEnv(
       this.env,
       "RUNASH_INTERNAL_LIVE_STREAM_API_BASE_URL",
@@ -388,12 +425,13 @@ class InternalLiveStreamProvider implements LiveStreamProvider {
     )
 
     const response = await requestProvider<InternalCreateStreamResponse>({
-      provider: "internal",
+      provider: this.provider,
       baseUrl,
       path: "/v1/live-streams",
       operation: "provision",
       sessionId: input.sessionId,
       env: this.env,
+      correlationId: context.correlationId,
       fetchImpl: this.fetchImpl,
       headers: {
         authorization: `Bearer ${apiKey}`,
@@ -420,7 +458,7 @@ class InternalLiveStreamProvider implements LiveStreamProvider {
     }
 
     return {
-      provider: "internal",
+      provider: this.provider,
       providerSessionId,
       ingestUrl,
       ingestToken,
@@ -434,7 +472,7 @@ class InternalLiveStreamProvider implements LiveStreamProvider {
     }
   }
 
-  async stop(input: { sessionId: string; providerSessionId: string }): Promise<void> {
+  async stop(input: { sessionId: string; providerSessionId: string }, context: { correlationId: string }): Promise<void> {
     const baseUrl = readRequiredEnv(
       this.env,
       "RUNASH_INTERNAL_LIVE_STREAM_API_BASE_URL",
@@ -447,13 +485,14 @@ class InternalLiveStreamProvider implements LiveStreamProvider {
     )
 
     await requestProvider({
-      provider: "internal",
+      provider: this.provider,
       baseUrl,
       path: `/v1/live-streams/${encodeURIComponent(input.providerSessionId)}`,
       method: "DELETE",
       operation: "stop",
       sessionId: input.sessionId,
       env: this.env,
+      correlationId: context.correlationId,
       fetchImpl: this.fetchImpl,
       headers: {
         authorization: `Bearer ${apiKey}`,
@@ -462,15 +501,77 @@ class InternalLiveStreamProvider implements LiveStreamProvider {
   }
 }
 
+class ProviderBackedLiveStreamProvider implements LiveStreamProvider {
+  constructor(private readonly adapter: LiveStreamVendorAdapter) {}
+
+  async provision(input: ProvisionLiveStreamInput): Promise<ProvisionLiveStreamResult> {
+    const correlationId = createCorrelationId()
+    const provisioned = await this.adapter.provision(input, { correlationId })
+
+    return {
+      ...provisioned,
+      metadata: {
+        ...provisioned.metadata,
+        correlationId,
+      },
+    }
+  }
+
+  async stop(input: { sessionId: string; providerSessionId: string }): Promise<void> {
+    const correlationId = createCorrelationId()
+    await this.adapter.stop(input, { correlationId })
+  }
+}
+
+class MockLiveStreamProvider implements LiveStreamProvider {
+  async provision(input: ProvisionLiveStreamInput): Promise<ProvisionLiveStreamResult> {
+    const correlationId = createCorrelationId()
+    const providerSessionId = `mock_${input.sessionId}`
+
+    return {
+      provider: "mock",
+      providerSessionId,
+      ingestUrl: "rtmps://mock.ingest.runash.local/app",
+      ingestToken: `mock_token_${providerSessionId}`,
+      tokenExpiresAt: null,
+      playbackUrls: [{ protocol: "hls", url: `https://mock-playback.runash.local/${providerSessionId}.m3u8` }],
+      metadata: {
+        providerSessionId,
+        dvrEnabled: input.dvrEnabled,
+        latencyProfile: input.latencyProfile,
+        ownerUserId: input.ownerUserId,
+        workspaceId: input.workspaceId,
+        correlationId,
+      },
+    }
+  }
+
+  async stop(_input: { sessionId: string; providerSessionId: string }): Promise<void> {
+    return Promise.resolve()
+  }
+}
+
 function readConfiguredProvider(env: ProviderEnv): ProviderName {
   const configuredProvider = env.RUNASH_LIVE_STREAM_PROVIDER?.trim().toLowerCase() ?? ""
+  const mockEnabled = env.RUNASH_ENABLE_MOCK_LIVE_STREAM_PROVIDER?.trim().toLowerCase() === "true"
+  const isProduction = env.NODE_ENV?.trim().toLowerCase() === "production"
 
   if (configuredProvider === "mux") return "mux"
   if (configuredProvider === "livepeer") return "livepeer"
   if (configuredProvider === "internal") return "internal"
+  if (configuredProvider === "mock") {
+    if (!mockEnabled || isProduction) {
+      throw new LiveStreamProviderError(
+        "Mock live stream provider is disabled. Set RUNASH_ENABLE_MOCK_LIVE_STREAM_PROVIDER=true in non-production environments to enable it.",
+        "PROVIDER_CONFIGURATION_ERROR",
+      )
+    }
+
+    return "mock"
+  }
 
   throw new LiveStreamProviderError(
-    "No valid live stream provider is configured. Set RUNASH_LIVE_STREAM_PROVIDER to mux, livepeer, or internal.",
+    "No valid live stream provider is configured. Set RUNASH_LIVE_STREAM_PROVIDER to mux, livepeer, internal, or mock (mock requires explicit non-production flag).",
     "PROVIDER_CONFIGURATION_ERROR",
   )
 }
@@ -483,30 +584,60 @@ export function createLiveStreamProvider(options?: {
   const provider = readConfiguredProvider(env)
 
   if (provider === "mux") {
-    return new MuxLiveStreamProvider(env, options?.fetchImpl)
+    return new ProviderBackedLiveStreamProvider(new MuxVendorAdapter(env, options?.fetchImpl))
   }
 
   if (provider === "livepeer") {
-    return new LivepeerLiveStreamProvider(env, options?.fetchImpl)
+    return new ProviderBackedLiveStreamProvider(new LivepeerVendorAdapter(env, options?.fetchImpl))
   }
 
-  return new InternalLiveStreamProvider(env, options?.fetchImpl)
+  if (provider === "internal") {
+    return new ProviderBackedLiveStreamProvider(new InternalVendorAdapter(env, options?.fetchImpl))
+  }
+
+  return new MockLiveStreamProvider()
 }
 
 export function mapLiveStreamProviderError(error: unknown): ProviderErrorMapping {
   if (error instanceof LiveStreamProviderError) {
+    const correlationId = extractCorrelationId(error.message)
+
     if (error.code === "PROVIDER_UNAVAILABLE") {
-      return { code: error.code, status: 503, reason: "Live stream provider unavailable" }
+      return {
+        code: error.code,
+        status: 503,
+        reason: "Live stream provider unavailable",
+        userMessage: "Live stream service is temporarily unavailable. Please retry in a few minutes.",
+        correlationId,
+      }
     }
 
     if (error.code === "PROVIDER_REQUEST_FAILED") {
-      return { code: error.code, status: 502, reason: "Live stream provider request failed" }
+      return {
+        code: error.code,
+        status: 502,
+        reason: "Live stream provider request failed",
+        userMessage: "Live stream provider request failed. Please verify stream settings and try again.",
+        correlationId,
+      }
     }
 
-    return { code: error.code, status: 500, reason: "Live stream provider configuration error" }
+    return {
+      code: error.code,
+      status: 500,
+      reason: "Live stream provider configuration error",
+      userMessage: "Live stream provider is misconfigured. Please contact support.",
+      correlationId,
+    }
   }
 
-  return { code: "PROVIDER_UNKNOWN", status: 500, reason: "Live stream provider integration failure" }
+  return {
+    code: "PROVIDER_UNKNOWN",
+    status: 500,
+    reason: "Live stream provider integration failure",
+    userMessage: "Live stream provider encountered an unexpected error. Please contact support.",
+    correlationId: "unknown",
+  }
 }
 
 export function getLiveStreamProvider(): LiveStreamProvider {
