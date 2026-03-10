@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import ModelSelector from "@/components/editor/model-selector"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -14,6 +15,7 @@ export interface GeneratePanelProps {
   generationConfig: VideoGenerationRequest
   validationErrors: Record<string, string>
   onGenerationConfigChange: (config: VideoGenerationRequest) => void
+  generationHelpHref?: string
 }
 
 function FieldError({ message }: { message?: string }) {
@@ -33,6 +35,7 @@ export default function GeneratePanel({
   generationConfig,
   validationErrors,
   onGenerationConfigChange,
+  generationHelpHref,
 }: GeneratePanelProps) {
   const {
     activeTimeline,
@@ -50,7 +53,18 @@ export default function GeneratePanel({
 
       <div className="space-y-4 rounded-lg border border-border p-4">
         <div>
-          <h3 className="text-sm font-semibold">Generation config</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">Generation config</h3>
+            {generationHelpHref && (
+              <Link
+                href={generationHelpHref}
+                aria-label="Need help with generation settings? Open documentation"
+                className="text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                Need help?
+              </Link>
+            )}
+          </div>
           <p className="mt-1 text-xs text-muted-foreground">{model.description}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             Timeline: {activeTimeline?.name ?? "No active timeline"} · Playhead: {playheadSeconds.toFixed(1)}s

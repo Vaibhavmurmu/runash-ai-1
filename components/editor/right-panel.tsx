@@ -40,6 +40,7 @@ interface SharedPanelProps {
   generationConfig: VideoGenerationRequest
   validationErrors: Record<string, string>
   onGenerationConfigChange: (config: VideoGenerationRequest) => void
+  generationHelpHref?: string
 }
 
 export function resolveRightPanelTab(activeTab?: string): RightPanelTabId {
@@ -127,6 +128,7 @@ export default function RightPanel({
       generationConfig,
       validationErrors,
       onGenerationConfigChange,
+      generationHelpHref: "/editor/docs#generation",
     }),
     [selectedModel, onModelChange, generationConfig, validationErrors, onGenerationConfigChange],
   )
