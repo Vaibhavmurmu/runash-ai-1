@@ -25,9 +25,9 @@ export default function AcceptEditorInvitePage() {
       }
 
       if (payload.projectId) {
-        router.push(`/dashboard/editor?projectId=${encodeURIComponent(payload.projectId)}`)
+        router.push(`/editor?projectId=${encodeURIComponent(payload.projectId)}`)
       } else {
-        router.push("/dashboard/editor")
+        router.push("/editor")
       }
     } catch (acceptError) {
       setError(acceptError instanceof Error ? acceptError.message : "Unable to accept invite")

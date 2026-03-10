@@ -1,14 +1,18 @@
 import { respondError, respondSuccess } from "@/lib/api/envelope"
-import { getCanonicalStreamUrl, readData, requireStreamDashboardUserId } from "../utils"
+import { listDashboardRecentStreams, listDashboardScheduledStreams } from "@/lib/repositories/streams"
+import { getCanonicalStreamUrl, requireStreamDashboardUserId } from "../utils"
 import type { DashboardStreamDetailsResponse } from "@/lib/types/dashboard-streams"
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   const scopedUserId = await requireStreamDashboardUserId(request)
   if (scopedUserId instanceof Response) return scopedUserId
 
-  const data = await readData(scopedUserId)
+  const [recent, scheduled] = await Promise.all([
+    listDashboardRecentStreams(scopedUserId, 200),
+    listDashboardScheduledStreams(scopedUserId),
+  ])
 
-  const recentStream = data.recent.find((stream) => stream.id === params.id)
+  const recentStream = recent.find((stream) => stream.id === params.id)
   if (recentStream) {
     const payload: DashboardStreamDetailsResponse = {
       stream: {
@@ -26,10 +30,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
     return respondSuccess(request, payload, { legacy: payload })
   }
 
-  const scheduledStream = data.scheduled.find((stream) => stream.id === params.id)
+  const scheduledStream = scheduled.find((stream) => stream.id === params.id)
   if (scheduledStream) {
-    const startsAt = scheduledStream.startsAt ?? (scheduledStream as { dateTime?: string }).dateTime
-
     const payload: DashboardStreamDetailsResponse = {
       stream: {
         id: scheduledStream.id,
@@ -37,7 +39,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
         category: scheduledStream.category,
         status: scheduledStream.status ?? "scheduled",
         url: scheduledStream.url || getCanonicalStreamUrl(scheduledStream.id),
-        startsAt,
+        startsAt: scheduledStream.startsAt,
       },
     }
 

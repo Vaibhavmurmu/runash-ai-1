@@ -9,10 +9,11 @@ function read(relativePath: string) {
   return readFileSync(path.join(repoRoot, relativePath), "utf8")
 }
 
-test("legacy redirect entry points remain unchanged", () => {
-  assert.match(read("app/chat/page.tsx"), /permanentRedirect\("\/dashboard\/chat"\)/)
-  assert.match(read("app/runash-chat/page.tsx"), /permanentRedirect\("\/dashboard\/chat"\)/)
-  assert.match(read("app/editor/page.tsx"), /redirect\("\/dashboard\/editor"\)/)
+test("legacy dashboard entry points redirect to standalone app routes", () => {
+  assert.match(read("app/chat/page.tsx"), /buildCanonicalRedirectPath\("\/runashchat", searchParams\)/)
+  assert.match(read("app/dashboard/chat/page.tsx"), /buildCanonicalRedirectPath\("\/runashchat", searchParams\)/)
+  assert.match(read("app/dashboard/runash-chat/page.tsx"), /buildCanonicalRedirectPath\("\/runashchat", searchParams\)/)
+  assert.match(read("app/dashboard/editor/page.tsx"), /buildCanonicalRedirectPath\("\/editor", searchParams\)/)
 })
 
 test("dashboard destinations render through shared dashboard layout footer", () => {
@@ -21,8 +22,8 @@ test("dashboard destinations render through shared dashboard layout footer", () 
   assert.match(dashboardLayout, /footer=\{<DashboardFooter \/>\}/)
 
   const destinations = [
-    "app/dashboard/chat/page.tsx",
-    "app/dashboard/editor/page.tsx",
+    "app/(workspace)/runashchat/page.tsx",
+    "app/(workspace)/editor/page.tsx",
     "app/dashboard/runash-chat/page.tsx",
     "app/dashboard/accounting/clients/page.tsx",
     "app/dashboard/live-session/page.tsx",

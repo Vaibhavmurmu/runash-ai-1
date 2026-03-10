@@ -1,37 +1,10 @@
-import type { Metadata } from "next"
-import dynamic from "next/dynamic"
-import Link from "next/link"
-import { Suspense } from "react"
-import { BookOpen } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
-import { createDashboardMetadata } from "../metadata"
+import { permanentRedirect } from "next/navigation"
+import { buildCanonicalRedirectPath } from "@/app/_lib/build-canonical-redirect-path"
 
-const EditorWorkspace = dynamic(() => import("@/components/dashboard/workspace/editor-workspace").then((mod) => mod.EditorWorkspace), {
-  loading: () => <Skeleton className="h-[560px] w-full" />,
-})
+type DashboardEditorLegacyPageProps = {
+  searchParams?: Record<string, string | string[] | undefined>
+}
 
-export const metadata: Metadata = createDashboardMetadata({
-  title: "Editor Workspace",
-  description: "Open the dashboard editor workspace for production tooling, draft management, and content workflows.",
-  path: "/dashboard/editor",
-})
-
-export default function DashboardEditorPage() {
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button asChild variant="outline" size="sm" className="gap-2">
-          <Link href="/editor/docs">
-            <BookOpen className="h-4 w-4" />
-            Help / Docs
-          </Link>
-        </Button>
-      </div>
-
-      <Suspense fallback={<Skeleton className="h-[560px] w-full" />}>
-        <EditorWorkspace />
-      </Suspense>
-    </div>
-  )
+export default function DashboardEditorLegacyPage({ searchParams }: DashboardEditorLegacyPageProps) {
+  permanentRedirect(buildCanonicalRedirectPath("/editor", searchParams))
 }

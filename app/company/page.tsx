@@ -25,20 +25,20 @@ export default function CompanyPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 pb-20">
+    <div className="min-h-screen bg-background text-foreground pb-20">
       {/* Header Section */}
-      <header className="bg-white border-b border-slate-200 shadow-sm">
+      <header className="bg-card border-b border-border shadow-sm">
         <div className="max-w-6xl mx-auto px-6 py-12">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
             <div className="space-y-2">
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300">
                 ● {company.status}
               </span>
-              <h1 className="text-4xl font-black tracking-tight text-slate-900">{company.name}</h1>
-              <p className="text-slate-500 font-mono text-sm">CIN: {company.cin}</p>
+              <h1 className="text-4xl font-black tracking-tight text-foreground">{company.name}</h1>
+              <p className="text-muted-foreground font-mono text-sm">CIN: {company.cin}</p>
             </div>
-            <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-              <p className="text-xs uppercase tracking-wider font-bold text-slate-400">Official Contact</p>
+            <div className="bg-muted/40 p-4 rounded-lg border border-border">
+              <p className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Official Contact</p>
               <a href={`mailto:${company.contactEmail}`} className="text-blue-600 font-semibold hover:underline">
                 {company.contactEmail}
               </a>
@@ -49,15 +49,15 @@ export default function CompanyPage() {
 
       <main className="max-w-6xl mx-auto px-6 mt-12 space-y-8">
         {/* Mission Section */}
-        <section className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
           <div className="p-8 md:p-12">
             <h2 className="text-2xl font-bold mb-4">Our Mission</h2>
-            <p className="text-xl text-slate-600 leading-relaxed max-w-4xl">{company.brief}</p>
+            <p className="text-xl text-muted-foreground leading-relaxed max-w-4xl">{company.brief}</p>
             
             <div className="mt-10 grid gap-6 sm:grid-cols-2">
-              <div className="group p-6 bg-slate-50 rounded-xl border border-transparent hover:border-blue-200 transition-all">
+              <div className="group p-6 bg-muted/40 rounded-xl border border-border hover:border-blue-300 dark:hover:border-blue-700 transition-all">
                 <h3 className="font-bold text-lg">What we do</h3>
-                <p className="mt-2 text-slate-600 leading-snug">
+                <p className="mt-2 text-muted-foreground leading-snug">
                   Building a new live streaming marketplace environment where retailers meet buyers and demonstrate products live.
                 </p>
                 <Link href="/about" className="text-blue-600 font-medium mt-4 inline-block hover:gap-2 transition-all">
@@ -65,9 +65,9 @@ export default function CompanyPage() {
                 </Link>
               </div>
 
-              <div className="group p-6 bg-slate-50 rounded-xl border border-transparent hover:border-blue-200 transition-all">
+              <div className="group p-6 bg-muted/40 rounded-xl border border-border hover:border-blue-300 dark:hover:border-blue-700 transition-all">
                 <h3 className="font-bold text-lg">Our Focus</h3>
-                <p className="mt-2 text-slate-600 leading-snug">
+                <p className="mt-2 text-muted-foreground leading-snug">
                   A hybrid platform focused on affordability and sustainability for unorganized retailers globally.
                 </p>
                 <Link href="/about" className="text-blue-600 font-medium mt-4 inline-block hover:gap-2 transition-all">
@@ -80,7 +80,7 @@ export default function CompanyPage() {
 
         <div className="grid gap-8 md:grid-cols-3">
           {/* Official Registry Details */}
-          <section className="md:col-span-2 bg-white p-8 rounded-xl shadow-sm border border-slate-200">
+          <section className="md:col-span-2 bg-card p-8 rounded-xl shadow-sm border border-border">
             <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
               Official Registry Details
             </h3>
@@ -88,33 +88,33 @@ export default function CompanyPage() {
               <Detail label="Registration Number" value={company.registrationNumber} />
               <Detail label="Incorporated On" value={company.incorporatedOn} />
               <Detail label="Registered State" value={company.registeredState} />
-              <div className="sm:col-span-2 pt-4 border-t border-slate-100">
-                <dt className="font-bold text-slate-400 uppercase text-[10px] tracking-widest mb-1">Registered Office</dt>
-                <dd className="text-slate-700 leading-relaxed">{company.registeredOffice}</dd>
+              <div className="sm:col-span-2 pt-4 border-t border-border">
+                <dt className="font-bold text-muted-foreground uppercase text-[10px] tracking-widest mb-1">Registered Office</dt>
+                <dd className="text-foreground/90 leading-relaxed">{company.registeredOffice}</dd>
               </div>
             </dl>
           </section>
 
           {/* Founder & Story */}
-          <section className="bg-white text-black p-8 rounded-xl shadow-sm border border-slate-200">
+          <section className="bg-card text-foreground p-8 rounded-xl shadow-sm border border-border">
             <h3 className="text-xl font-bold mb-4">Founder & Story</h3>
-            <p className="text-slate-600 text-sm leading-relaxed mb-6">
+            <p className="text-muted-foreground text-sm leading-relaxed mb-6">
               {company.founders}
             </p>
 
-            <h4 className="font-bold text-sm uppercase tracking-widest text-slate-700 mb-3">Milestones</h4>
+            <h4 className="font-bold text-sm uppercase tracking-widest text-foreground/80 mb-3">Milestones</h4>
             <ul className="space-y-3">
               {company.milestones.map((m, i) => (
-                <li key={i} className="flex gap-3 text-sm text-slate-600">
-                  <span className="text-black font-bold">0{i+1}</span>
+                <li key={i} className="flex gap-3 text-sm text-muted-foreground">
+                  <span className="text-foreground font-bold">0{i+1}</span>
                   {m}
                 </li>
               ))}
             </ul>
 
-            <div className="mt-10 pt-6 border-t border-slate-200">
-              <p className="text-xs text-slate-600">Supported by open-source communities & initiatives including:</p>
-              <div className="mt-2 flex gap-3 font-bold text-sm text-slate-600">
+            <div className="mt-10 pt-6 border-t border-border">
+              <p className="text-xs text-muted-foreground">Supported by open-source communities & initiatives including:</p>
+              <div className="mt-2 flex gap-3 font-bold text-sm text-muted-foreground">
                 <span>MIT</span> • <span>GitHub</span> • <span>YC School</span>
               </div>
             </div>
@@ -127,9 +127,9 @@ export default function CompanyPage() {
 
 function Detail({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-b border-slate-50 pb-2">
-      <dt className="font-bold text-slate-400 uppercase text-[10px] tracking-widest mb-1">{label}</dt>
-      <dd className="text-slate-700 font-medium">{value}</dd>
+    <div className="border-b border-border pb-2">
+      <dt className="font-bold text-muted-foreground uppercase text-[10px] tracking-widest mb-1">{label}</dt>
+      <dd className="text-foreground/90 font-medium">{value}</dd>
     </div>
   );
       }

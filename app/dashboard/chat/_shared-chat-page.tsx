@@ -12,7 +12,7 @@ const ChatWorkspace = dynamic(() => import("@/components/dashboard/workspace/cha
   loading: () => <Skeleton className="h-[560px] w-full" />,
 })
 
-export function createChatPageMetadata(path: string = "/dashboard/chat"): Metadata {
+export function createChatPageMetadata(path: string = "/runashchat"): Metadata {
   return createDashboardMetadata({
     title: CHAT_PAGE_TITLE,
     description: CHAT_PAGE_DESCRIPTION,

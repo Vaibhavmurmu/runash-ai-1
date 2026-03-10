@@ -69,7 +69,7 @@ const navigationSections = [
     label: "Account",
     items: [
       { name: "Audience", href: "/dashboard/audience", icon: Users, badge: null },
-      { name: "RunAsh Chat", href: "/dashboard/chat", icon: MessageSquare, badge: "12" },
+      { name: "RunAsh Chat", href: "/runashchat", icon: MessageSquare, badge: "12" },
       { name: "Settings", href: "/dashboard/settings", icon: Settings, badge: null },
       { name: "Notifications", href: "/dashboard/notifications", icon: Bell, badge: "5" },
     ],
