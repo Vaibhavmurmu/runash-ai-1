@@ -1,12 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { Database } from "@/lib/database"
-import { getServerAuthSession } from "@/lib/auth/session"
+import { parseOptionalStreamId, parsePeriod, requireAnalyticsSession } from "@/app/api/analytics/_lib"
+import { getHistoricalSeries } from "@/lib/services/analytics-dashboard"
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerAuthSession()
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const sessionState = await requireAnalyticsSession()
+    if ("error" in sessionState) {
+      return sessionState.error
     }
 
     const { searchParams } = new URL(req.url)
@@ -147,14 +147,13 @@ export async function GET(req: NextRequest) {
         value: Number.parseFloat(row.value) || 0,
       }))
 
-    return NextResponse.json({
-      viewerCounts: formatTimeSeriesData(viewerCounts),
-      chatActivity: formatTimeSeriesData(chatActivity),
-      followerGrowth: formatTimeSeriesData(followerGrowth),
-      revenue: formatTimeSeriesData(revenue),
-      engagement: formatTimeSeriesData(engagement),
-      watchTime: formatTimeSeriesData(watchTime),
+    const data = await getHistoricalSeries({
+      userId: sessionState.userId,
+      period: periodState.period,
+      streamId: streamState.streamId,
     })
+
+    return NextResponse.json(data)
   } catch (error) {
     console.error("Historical analytics error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
