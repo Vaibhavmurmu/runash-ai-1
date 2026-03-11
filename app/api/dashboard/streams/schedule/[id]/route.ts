@@ -7,10 +7,7 @@ type UpdateScheduleRequest = Partial<
   Omit<DashboardScheduledStream, "id" | "createdAt">
 >
 
-export async function PUT(
-  request: Request,
-  { params }: { params: { id: string } },
-) {
+async function handleScheduleUpdate(request: Request, streamId: string) {
   const scopedUserId = await requireStreamDashboardUserId(request)
   if (scopedUserId instanceof Response) return scopedUserId
 
@@ -21,8 +18,8 @@ export async function PUT(
     return NextResponse.json({ error: "Invalid body" }, { status: 400 })
   }
 
-  const current = await getStream(params.id)
-  if (!current || current.user_id !== scopedUserId || current.status !== "scheduled") {
+  const current = await getStream(streamId)
+  if (!current || current.user_id !== scopedUserId) {
     return NextResponse.json({ error: "Stream not found" }, { status: 404 })
   }
 
@@ -49,11 +46,17 @@ export async function PUT(
     templateId: body.templateId ?? settings.templateId,
   }
 
-  const updated = await updateStream(params.id, {
+  const nextStatus = body.status === "scheduled" || body.status === "cancelled" || body.status === "live" || body.status === "ended"
+    ? body.status
+    : current.status
+
+  const updated = await updateStream(streamId, {
     title: body.title?.trim() || current.title,
     description: body.description?.trim() ?? current.description,
     category: body.category ?? current.category,
+    status: nextStatus,
     scheduled_start: scheduledStart,
+    actual_start: nextStatus === "live" && !current.actual_start ? new Date().toISOString() : current.actual_start,
     settings: mergedSettings,
   })
 
@@ -62,6 +65,20 @@ export async function PUT(
   }
 
   return NextResponse.json({ ok: true })
+}
+
+export async function PUT(
+  request: Request,
+  { params }: { params: { id: string } },
+) {
+  return handleScheduleUpdate(request, params.id)
+}
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: { id: string } },
+) {
+  return handleScheduleUpdate(request, params.id)
 }
 
 export async function DELETE(
