@@ -14,13 +14,17 @@ import BackgroundFilters from "./background-filters"
 import { Search, Clock, Grid3X3 } from "lucide-react"
 import { useStreamBackgrounds } from "@/hooks/use-stream-backgrounds"
 
-export default function BackgroundLibrary() {
+interface BackgroundLibraryProps {
+  streamId?: string
+}
+
+export default function BackgroundLibrary({ streamId = "studio-default" }: BackgroundLibraryProps) {
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState("browse")
   const [searchQuery, setSearchQuery] = useState("")
   const [filters, setFilters] = useState<BackgroundFilter>({ sortBy: "newest" })
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
-  const { data: backgrounds, loading, error, save, refresh } = useStreamBackgrounds("studio-default")
+  const { data: backgrounds, loading, error, save, refresh } = useStreamBackgrounds(streamId)
 
   const filteredBackgrounds = useMemo(() => {
     let filtered = [...backgrounds]
@@ -134,7 +138,7 @@ export default function BackgroundLibrary() {
             </TabsContent>
 
             <TabsContent value="collections" className="space-y-4 mt-4">
-              <BackgroundCollections />
+              <BackgroundCollections streamId={streamId} />
             </TabsContent>
 
             <TabsContent value="ai" className="space-y-4 mt-4">
@@ -142,7 +146,7 @@ export default function BackgroundLibrary() {
             </TabsContent>
 
             <TabsContent value="upload" className="space-y-4 mt-4">
-              <BackgroundUploader />
+              <BackgroundUploader streamId={streamId} />
             </TabsContent>
           </Tabs>
         </div>

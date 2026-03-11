@@ -33,6 +33,29 @@ export type StreamBackgroundAsset = {
   isPublic?: boolean
 }
 
+
+export type StreamBackgroundCollection = {
+  id: string
+  name: string
+  description: string
+  backgrounds: string[]
+  coverImage: string
+  isPublic: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type StreamBackgroundCategory = {
+  id: string
+  name: string
+  description: string
+  icon: string
+  count: number
+  featured?: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 export type StreamChatParticipant = {
   id: string
   username: string
@@ -52,6 +75,8 @@ type StudioSettings = {
   metadata?: StudioStreamMetadata
   backgrounds?: StreamBackgroundAsset[]
   participants?: StreamChatParticipant[]
+  collections?: StreamBackgroundCollection[]
+  categories?: StreamBackgroundCategory[]
 }
 
 function parseSettings(raw: StreamRow["settings"]): Record<string, unknown> {
@@ -195,4 +220,125 @@ export async function moderateStreamParticipant(
   })
 
   return updated
+}
+
+
+export async function listStreamBackgroundCollections(streamId: string): Promise<StreamBackgroundCollection[]> {
+  const { studio } = await getStream(streamId)
+  return studio.collections ?? []
+}
+
+export async function createStreamBackgroundCollection(
+  streamId: string,
+  input: Omit<StreamBackgroundCollection, "createdAt" | "updatedAt"> & Partial<Pick<StreamBackgroundCollection, "createdAt" | "updatedAt">>,
+): Promise<StreamBackgroundCollection> {
+  const { studio } = await getStream(streamId)
+  const now = new Date().toISOString()
+  const created: StreamBackgroundCollection = {
+    ...input,
+    createdAt: input.createdAt ?? now,
+    updatedAt: input.updatedAt ?? now,
+  }
+
+  await saveStudioData(streamId, {
+    ...studio,
+    collections: [created, ...(studio.collections ?? []).filter((entry) => entry.id !== created.id)],
+  })
+
+  return created
+}
+
+export async function updateStreamBackgroundCollection(
+  streamId: string,
+  collectionId: string,
+  patch: Partial<StreamBackgroundCollection>,
+): Promise<StreamBackgroundCollection> {
+  const { studio } = await getStream(streamId)
+  const collections = studio.collections ?? []
+  const existing = collections.find((entry) => entry.id === collectionId)
+  if (!existing) {
+    throw new Error("Collection not found")
+  }
+
+  const next: StreamBackgroundCollection = {
+    ...existing,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  }
+
+  await saveStudioData(streamId, {
+    ...studio,
+    collections: collections.map((entry) => (entry.id === collectionId ? next : entry)),
+  })
+
+  return next
+}
+
+export async function deleteStreamBackgroundCollection(streamId: string, collectionId: string): Promise<void> {
+  const { studio } = await getStream(streamId)
+  await saveStudioData(streamId, {
+    ...studio,
+    collections: (studio.collections ?? []).filter((entry) => entry.id !== collectionId),
+  })
+}
+
+export async function listStreamBackgroundCategories(streamId: string): Promise<StreamBackgroundCategory[]> {
+  const { studio } = await getStream(streamId)
+  return studio.categories ?? []
+}
+
+export async function createStreamBackgroundCategory(
+  streamId: string,
+  input: Omit<StreamBackgroundCategory, "createdAt" | "updatedAt" | "count"> &
+    Partial<Pick<StreamBackgroundCategory, "createdAt" | "updatedAt" | "count">>,
+): Promise<StreamBackgroundCategory> {
+  const { studio } = await getStream(streamId)
+  const now = new Date().toISOString()
+  const created: StreamBackgroundCategory = {
+    ...input,
+    count: input.count ?? 0,
+    createdAt: input.createdAt ?? now,
+    updatedAt: input.updatedAt ?? now,
+  }
+
+  await saveStudioData(streamId, {
+    ...studio,
+    categories: [created, ...(studio.categories ?? []).filter((entry) => entry.id !== created.id)],
+  })
+
+  return created
+}
+
+export async function updateStreamBackgroundCategory(
+  streamId: string,
+  categoryId: string,
+  patch: Partial<StreamBackgroundCategory>,
+): Promise<StreamBackgroundCategory> {
+  const { studio } = await getStream(streamId)
+  const categories = studio.categories ?? []
+  const existing = categories.find((entry) => entry.id === categoryId)
+  if (!existing) {
+    throw new Error("Category not found")
+  }
+
+  const next: StreamBackgroundCategory = {
+    ...existing,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  }
+
+  await saveStudioData(streamId, {
+    ...studio,
+    categories: categories.map((entry) => (entry.id === categoryId ? next : entry)),
+  })
+
+  return next
+}
+
+export async function deleteStreamBackgroundCategory(streamId: string, categoryId: string): Promise<void> {
+  const { studio } = await getStream(streamId)
+  await saveStudioData(streamId, {
+    ...studio,
+    categories: (studio.categories ?? []).filter((entry) => entry.id !== categoryId),
+  })
 }

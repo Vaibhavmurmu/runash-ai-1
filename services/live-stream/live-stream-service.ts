@@ -378,6 +378,10 @@ export class LiveStreamService {
         latencyProfile: session.latency_profile,
       })
 
+      if (provisioned.provider === "mock") {
+        throw new LiveStreamValidationError("Mock live stream provider cannot be used for runtime sessions", 500)
+      }
+
       await queryMany(
         `
           insert into live_stream_endpoints (

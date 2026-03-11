@@ -137,6 +137,18 @@ This document is payment-domain specific. For contributor workflow/process polic
 
 ## 2026-03 live stream provider adapter hardening (no payment contract changes)
 
+### Live stream provider env migration/config notes (2026-03)
+
+- Runtime sessions must set `RUNASH_LIVE_STREAM_PROVIDER` to one of: `mux`, `livepeer`, or `internal`.
+- Required provider credentials:
+  - `mux`: `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET`
+  - `livepeer`: `LIVEPEER_API_TOKEN`
+  - `internal`: `RUNASH_INTERNAL_LIVE_STREAM_API_BASE_URL`, `RUNASH_INTERNAL_LIVE_STREAM_API_KEY`
+- Optional reliability controls: `RUNASH_LIVE_STREAM_PROVIDER_RETRY_COUNT` and `RUNASH_LIVE_STREAM_PROVIDER_TIMEOUT_MS`.
+- Mock behavior is now test/dev-harness only. `RUNASH_LIVE_STREAM_PROVIDER=mock` is rejected for deployed environments (`NODE_ENV=production`, `VERCEL_ENV=preview|production`, or `RUNASH_ENV=staging|production`) and is also rejected for runtime `getLiveStreamProvider()` paths.
+- Fallback behavior is fail-closed: invalid provider selection or missing credentials returns provider-configuration errors and prevents ingest/playback URL provisioning rather than issuing mock URLs.
+
+
 - Live stream provisioning now supports real provider adapters (`mux`, `livepeer`, `internal`) selected via `RUNASH_LIVE_STREAM_PROVIDER`; mock adapter fallback was removed from runtime selection.
 - **Impacted payment/auth flows identified:** none. This update is confined to live stream provisioning/teardown behavior and does not modify payment API fields, auth/session contracts, webhook payloads, or billing redirects.
 - **Risk + rollback:** medium operational risk for streaming setup if provider credentials are misconfigured. Rollback by restoring prior provider adapter selection in `services/live-stream/provider.ts`; no payment migration or contract rollback required.

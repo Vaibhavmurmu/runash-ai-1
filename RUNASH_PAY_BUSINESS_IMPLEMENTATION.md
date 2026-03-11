@@ -37,6 +37,18 @@ This document is limited to payment/business implementation policy. Generic cont
 
 ## 2026-03 live-stream provider reliability note (payment-contract safe)
 
+### Live stream provider env migration/config notes (2026-03)
+
+- Runtime sessions must set `RUNASH_LIVE_STREAM_PROVIDER` to one of: `mux`, `livepeer`, or `internal`.
+- Required provider credentials:
+  - `mux`: `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET`
+  - `livepeer`: `LIVEPEER_API_TOKEN`
+  - `internal`: `RUNASH_INTERNAL_LIVE_STREAM_API_BASE_URL`, `RUNASH_INTERNAL_LIVE_STREAM_API_KEY`
+- Optional reliability controls: `RUNASH_LIVE_STREAM_PROVIDER_RETRY_COUNT` and `RUNASH_LIVE_STREAM_PROVIDER_TIMEOUT_MS`.
+- Mock behavior is test/dev-harness only and cannot be used in deployed environments (`NODE_ENV=production`, `VERCEL_ENV=preview|production`, or `RUNASH_ENV=staging|production`).
+- Fallback behavior is fail-closed: invalid provider selection or missing credentials returns configuration errors instead of provisioning mock ingest/playback URLs.
+
+
 - Change scope: live-stream provider abstraction in `services/live-stream/*` now supports real backend provisioning/stopping with persisted provider session metadata for reconciliation.
 - Payment/auth impact assessment: no payment API field names, payment webhook schemas, or auth/payment signatures were changed.
 - Risk + rollback: operational risk is isolated to live-stream session start/stop. Rollback by restoring prior live-stream provider implementation and disabling real provider selection env settings.
