@@ -1,25 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { Database } from "@/lib/database"
-import {
-  type AnalyticsPeriod,
-  parseOptionalStreamId,
-  parsePeriod,
-  requireAnalyticsSession,
-} from "@/app/api/analytics/_lib"
-
-const PERIOD_TO_INTERVAL: Record<AnalyticsPeriod, string> = {
-  "24h": "24 hours",
-  "7d": "7 days",
-  "30d": "30 days",
-  "90d": "90 days",
-  "1y": "365 days",
-}
+import { parseOptionalStreamId, parsePeriod, requireAnalyticsSession } from "@/app/api/analytics/_lib"
+import { getHistoricalSeries } from "@/lib/services/analytics-dashboard"
 
 export async function GET(req: NextRequest) {
   try {
-    const auth = await requireAnalyticsSession()
-    if ("error" in auth) {
-      return auth.error
+    const sessionState = await requireAnalyticsSession()
+    if ("error" in sessionState) {
+      return sessionState.error
     }
 
     const { searchParams } = new URL(req.url)
@@ -170,14 +157,13 @@ export async function GET(req: NextRequest) {
         value: Number.parseFloat(row.value) || 0,
       }))
 
-    return NextResponse.json({
-      viewerCounts: formatTimeSeriesData(viewerCounts),
-      chatActivity: formatTimeSeriesData(chatActivity),
-      followerGrowth: formatTimeSeriesData(followerGrowth),
-      revenue: formatTimeSeriesData(revenue),
-      engagement: formatTimeSeriesData(engagement),
-      watchTime: formatTimeSeriesData(watchTime),
+    const data = await getHistoricalSeries({
+      userId: sessionState.userId,
+      period: periodState.period,
+      streamId: streamState.streamId,
     })
+
+    return NextResponse.json(data)
   } catch (error) {
     console.error("Historical analytics error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
