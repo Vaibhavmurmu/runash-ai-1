@@ -8,10 +8,12 @@ import { UpiCheckoutService } from "@/lib/services/upi-checkout-service"
 const { GET } = await import("./route")
 
 test("GET /api/upi/qr returns QR payload for a valid transaction", async () => {
-  const initiated = UpiCheckoutService.initiatePayment(`qr-init-${Date.now()}`, 199.5)
+  const initiated = await UpiCheckoutService.initiatePayment(`qr-init-${Date.now()}`, 199.5, 101, "user-1")
 
   const response = await GET(
-    new NextRequest(`http://localhost/api/upi/qr?transactionId=${encodeURIComponent(initiated.transactionId)}`),
+    new NextRequest(`http://localhost/api/upi/qr?transactionId=${encodeURIComponent(initiated.transactionId)}`, {
+      headers: { "x-user-id": "user-1" },
+    }),
   )
   const payload = await response.json()
 
@@ -30,13 +32,17 @@ test("GET /api/upi/qr rejects request without transactionId", async () => {
   const payload = await response.json()
 
   assert.equal(response.status, 400)
-  assert.deepEqual(payload, { error: "transactionId is required" })
+  assert.deepEqual(payload, { error: "transactionId is required", errorCode: "RISK_BLOCKED" })
 })
 
-test("GET /api/upi/qr returns 404 for unknown transaction", async () => {
-  const response = await GET(new NextRequest("http://localhost/api/upi/qr?transactionId=UPI-MISSING"))
-  const payload = await response.json()
+test("GET /api/upi/qr returns 403 for ownership mismatch", async () => {
+  const initiated = await UpiCheckoutService.initiatePayment(`qr-owner-${Date.now()}`, 100, 202, "user-owner")
 
-  assert.equal(response.status, 404)
-  assert.deepEqual(payload, { error: "Transaction not found" })
+  const response = await GET(
+    new NextRequest(`http://localhost/api/upi/qr?transactionId=${encodeURIComponent(initiated.transactionId)}`, {
+      headers: { "x-user-id": "other-user" },
+    }),
+  )
+
+  assert.equal(response.status, 403)
 })

@@ -19,6 +19,7 @@ type UpiStoredConfirmationResult = {
 export interface UpiTransactionRecord {
   transactionId: string
   orderId: string | null
+  ownerUserId: string | null
   amount: number
   currency: string
   status: UpiExecutionStatus
@@ -45,6 +46,7 @@ async function ensureUpiTables() {
     CREATE TABLE IF NOT EXISTS upi_transactions (
       transaction_id TEXT PRIMARY KEY,
       order_id TEXT,
+      owner_user_id TEXT,
       amount NUMERIC(15,2) NOT NULL,
       currency TEXT NOT NULL,
       status TEXT NOT NULL CHECK (status IN ('initiated', 'pending', 'success', 'failed')),
@@ -80,6 +82,9 @@ async function ensureUpiTables() {
     CREATE INDEX IF NOT EXISTS idx_upi_transactions_status_created
       ON upi_transactions(status, created_at DESC);
 
+    ALTER TABLE upi_transactions
+      ADD COLUMN IF NOT EXISTS owner_user_id TEXT;
+
     CREATE INDEX IF NOT EXISTS idx_upi_txn_events_txn_created
       ON upi_transaction_events(transaction_id, created_at DESC);
   `)
@@ -106,6 +111,7 @@ export async function getUpiTransactionById(transactionId: string): Promise<UpiT
       SELECT
         transaction_id AS "transactionId",
         order_id AS "orderId",
+        owner_user_id AS "ownerUserId",
         amount::float8 AS amount,
         currency,
         status,
@@ -137,6 +143,7 @@ export async function getUpiTransactionByInitiationIdempotencyKey(idempotencyKey
       SELECT
         transaction_id AS "transactionId",
         order_id AS "orderId",
+        owner_user_id AS "ownerUserId",
         amount::float8 AS amount,
         currency,
         status,
@@ -164,6 +171,7 @@ export async function getUpiTransactionByInitiationIdempotencyKey(idempotencyKey
 export async function createUpiTransaction(input: {
   transactionId: string
   orderId?: string | null
+  ownerUserId?: string | null
   amount: number
   currency: string
   transactionReference: string
@@ -177,6 +185,7 @@ export async function createUpiTransaction(input: {
       INSERT INTO upi_transactions (
         transaction_id,
         order_id,
+        owner_user_id,
         amount,
         currency,
         status,
@@ -185,10 +194,11 @@ export async function createUpiTransaction(input: {
         pin_hash,
         max_pin_attempts
       )
-      VALUES ($1, $2, $3, $4, 'initiated', $5, $6, $7, $8)
+      VALUES ($1, $2, $3, $4, $5, 'initiated', $6, $7, $8, $9)
       RETURNING
         transaction_id AS "transactionId",
         order_id AS "orderId",
+        owner_user_id AS "ownerUserId",
         amount::float8 AS amount,
         currency,
         status,
@@ -208,6 +218,7 @@ export async function createUpiTransaction(input: {
     [
       input.transactionId,
       input.orderId ?? null,
+      input.ownerUserId ?? null,
       input.amount,
       input.currency,
       input.transactionReference,
@@ -249,6 +260,7 @@ export async function updateUpiTransaction(input: {
       RETURNING
         transaction_id AS "transactionId",
         order_id AS "orderId",
+        owner_user_id AS "ownerUserId",
         amount::float8 AS amount,
         currency,
         status,
@@ -341,6 +353,24 @@ export async function getUpiConfirmationResult(transactionId: string, idempotenc
       FROM upi_transaction_events
       WHERE transaction_id = $1
         AND event_type = 'confirmation_result'
+        AND idempotency_key = $2
+      LIMIT 1
+    `,
+    [transactionId, idempotencyKey],
+  )
+
+  return row?.payload ?? null
+}
+
+
+export async function getUpiProviderCompletionResult(transactionId: string, idempotencyKey: string) {
+  await ensureUpiTables()
+  const row = await queryOne<{ payload: Record<string, unknown> }>(
+    `
+      SELECT payload
+      FROM upi_transaction_events
+      WHERE transaction_id = $1
+        AND event_type = 'provider_completion'
         AND idempotency_key = $2
       LIMIT 1
     `,

@@ -314,3 +314,13 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
 - UPI completion replay protection persists idempotency-key outcomes to prevent duplicate provider-finalization effects during retried requests.
 - UPI audit logs include trace IDs and user scoping while redacting sensitive payment/auth artifacts (notably PIN and credential-like fields).
 - UPI monitoring now emits alertable metrics for failure spikes, timeout-rate anomalies, and callback verification failure spikes.
+
+
+## 2026-03 UPI API abuse and replay hardening
+
+- UPI initiate/confirm/complete/status routes now enforce strict transaction-id and amount/UPI format validation before processing.
+- Ownership checks are enforced server-side for transaction-scoped reads and state transitions to prevent cross-user access attempts.
+- Per-user and per-transaction throttles are applied on high-risk UPI endpoints to reduce brute-force and abuse windows.
+- Replay defense for completion/callback paths persists idempotency keys and reuses prior outcomes instead of re-executing payment transitions.
+- UPI observability now emits trace-linked failure, timeout, and callback-verification-failure metrics for faster incident detection.
+- Structured API logs remain audit-safe and avoid sensitive values (PIN, credentials, tokens, raw callback secrets).
