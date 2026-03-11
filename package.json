@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "next build",
+    "build": "node scripts/build.js",
     "dev": "next dev",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
