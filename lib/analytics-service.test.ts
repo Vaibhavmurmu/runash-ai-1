@@ -65,6 +65,38 @@ test("analytics service uses standardized historical and realtime endpoints", as
   assert.deepEqual(calls, ["/api/analytics/historical?period=30d&streamId=stream_2", "/api/analytics/realtime?streamId=stream_2"])
 })
 
+
+test("analytics service includes filters in historical and content analytics requests", async () => {
+  const calls: string[] = []
+  global.fetch = (async (input: string | URL | Request) => {
+    calls.push(String(input))
+    return createResponse({ viewerCounts: [], chatActivity: [], followerGrowth: [], revenue: [], engagement: [], watchTime: [] }) as any
+  }) as any
+
+  const service = AnalyticsService.getInstance()
+  await service.getHistoricalAnalytics("30d", "stream_2", {
+    platforms: ["twitch", "youtube"],
+    categories: ["gaming"],
+    streamTypes: ["live"],
+  })
+
+  global.fetch = (async (input: string | URL | Request) => {
+    calls.push(String(input))
+    return createResponse({ topClips: [], topMoments: [], categoryPerformance: [] }) as any
+  }) as any
+
+  await service.getContentAnalytics("30d", "stream_2", {
+    platforms: ["twitch", "youtube"],
+    categories: ["gaming"],
+    streamTypes: ["live"],
+  })
+
+  assert.deepEqual(calls, [
+    "/api/analytics/historical?period=30d&streamId=stream_2&platforms=twitch%2Cyoutube&categories=gaming&streamTypes=live",
+    "/api/analytics/content?period=30d&streamId=stream_2&platforms=twitch%2Cyoutube&categories=gaming&streamTypes=live",
+  ])
+})
+
 test("analytics realtime stream subscription emits payloads", async () => {
   const service = AnalyticsService.getInstance() as any
 

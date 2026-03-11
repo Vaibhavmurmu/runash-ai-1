@@ -40,6 +40,12 @@ export interface AudienceData {
   viewerRetention: { minute: number; percentage: number }[]
 }
 
+export interface AnalyticsRequestFilters {
+  platforms?: string[]
+  categories?: string[]
+  streamTypes?: string[]
+}
+
 export class AnalyticsService {
   private static instance: AnalyticsService
   private eventSource: EventSource | null = null
@@ -116,6 +122,7 @@ export class AnalyticsService {
   public async getHistoricalAnalytics(
     period: string,
     streamId?: string,
+    filters?: AnalyticsRequestFilters,
   ): Promise<{
     viewerCounts: TimeSeriesData[]
     chatActivity: TimeSeriesData[]
@@ -127,6 +134,9 @@ export class AnalyticsService {
     try {
       const params = new URLSearchParams({ period })
       if (streamId) params.append("streamId", streamId)
+      if (filters?.platforms?.length) params.append("platforms", filters.platforms.join(","))
+      if (filters?.categories?.length) params.append("categories", filters.categories.join(","))
+      if (filters?.streamTypes?.length) params.append("streamTypes", filters.streamTypes.join(","))
 
       return await this.fetchJson(`/api/analytics/historical?${params}`)
     } catch (error) {
@@ -145,6 +155,15 @@ export class AnalyticsService {
     const params = new URLSearchParams({ period })
     if (streamId) params.append("streamId", streamId)
     return this.fetchJson(`/api/analytics/overview?${params}`)
+  }
+
+  public async getContentAnalytics(period: string, streamId?: string, filters?: AnalyticsRequestFilters) {
+    const params = new URLSearchParams({ period })
+    if (streamId) params.append("streamId", streamId)
+    if (filters?.platforms?.length) params.append("platforms", filters.platforms.join(","))
+    if (filters?.categories?.length) params.append("categories", filters.categories.join(","))
+    if (filters?.streamTypes?.length) params.append("streamTypes", filters.streamTypes.join(","))
+    return this.fetchJson(`/api/analytics/content?${params}`)
   }
 
   // Platform Analytics
