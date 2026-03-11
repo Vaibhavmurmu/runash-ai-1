@@ -1,6 +1,18 @@
 import { NextResponse } from "next/server"
 import { getSql } from "@/lib/db/neon"
 import { parseOptionalStreamId, parsePeriod, requireAnalyticsSession } from "@/app/api/analytics/_lib"
+import { computePercentChange, getPeriodBounds } from "./change"
+
+type AggregateRow = {
+  current_total_views: number
+  previous_total_views: number
+  current_revenue_est: number
+  previous_revenue_est: number
+  current_avg_watch_time: number
+  previous_avg_watch_time: number
+  current_engagement: number
+  previous_engagement: number
+}
 
 export async function GET(req: Request) {
   try {
@@ -21,47 +33,41 @@ export async function GET(req: Request) {
     }
 
     const sql = getSql()
-    const now = new Date()
-    const from = new Date(now)
-    switch (periodState.period) {
-      case "24h":
-        from.setDate(now.getDate() - 1)
-        break
-      case "30d":
-        from.setDate(now.getDate() - 30)
-        break
-      case "90d":
-        from.setDate(now.getDate() - 90)
-        break
-      case "1y":
-        from.setDate(now.getDate() - 365)
-        break
-      case "7d":
-      default:
-        from.setDate(now.getDate() - 7)
-    }
-
+    const { previousFrom, currentFrom, currentTo } = getPeriodBounds(periodState.period)
     const streamFilter = streamState.streamId ? sql`AND s.id = ${streamState.streamId}` : sql``
 
-    const [agg] = await sql<{ total_views: number; revenue_est: number; avg_watch_time: number; engagement: number }[]>`
+    const [agg] = await sql<AggregateRow[]>`
       SELECT
-        COALESCE(SUM(sa.total_views), 0)::int AS total_views,
-        COALESCE(SUM(sa.donations), 0)::int AS revenue_est,
-        COALESCE(AVG(sa.watch_time), 0)::numeric AS avg_watch_time,
-        COALESCE(AVG(sa.engagement), 0)::numeric AS engagement
+        COALESCE(SUM(CASE WHEN sa.created_at >= ${currentFrom} AND sa.created_at < ${currentTo} THEN sa.total_views ELSE 0 END), 0)::int AS current_total_views,
+        COALESCE(SUM(CASE WHEN sa.created_at >= ${previousFrom} AND sa.created_at < ${currentFrom} THEN sa.total_views ELSE 0 END), 0)::int AS previous_total_views,
+        COALESCE(SUM(CASE WHEN sa.created_at >= ${currentFrom} AND sa.created_at < ${currentTo} THEN sa.donations ELSE 0 END), 0)::int AS current_revenue_est,
+        COALESCE(SUM(CASE WHEN sa.created_at >= ${previousFrom} AND sa.created_at < ${currentFrom} THEN sa.donations ELSE 0 END), 0)::int AS previous_revenue_est,
+        COALESCE(AVG(CASE WHEN sa.created_at >= ${currentFrom} AND sa.created_at < ${currentTo} THEN sa.watch_time END), 0)::numeric AS current_avg_watch_time,
+        COALESCE(AVG(CASE WHEN sa.created_at >= ${previousFrom} AND sa.created_at < ${currentFrom} THEN sa.watch_time END), 0)::numeric AS previous_avg_watch_time,
+        COALESCE(AVG(CASE WHEN sa.created_at >= ${currentFrom} AND sa.created_at < ${currentTo} THEN sa.engagement END), 0)::numeric AS current_engagement,
+        COALESCE(AVG(CASE WHEN sa.created_at >= ${previousFrom} AND sa.created_at < ${currentFrom} THEN sa.engagement END), 0)::numeric AS previous_engagement
       FROM public.streams s
       LEFT JOIN public.stream_analytics sa ON sa.stream_id = s.id
       WHERE s.user_id = ${sessionState.userId}
         ${streamFilter}
-        AND s.created_at >= ${from}
     `
 
+    const totalViews = Number(agg?.current_total_views ?? 0)
+    const revenue = Number(agg?.current_revenue_est ?? 0)
+    const avgWatchTimeSeconds = Number(agg?.current_avg_watch_time ?? 0)
+    const engagementRate = Number(agg?.current_engagement ?? 0)
+
     const stats = {
-      totalViews: Number(agg?.total_views ?? 0),
-      revenue: Number(agg?.revenue_est ?? 0),
-      avgWatchTimeSeconds: Number(agg?.avg_watch_time ?? 0),
-      engagementRate: Number(agg?.engagement ?? 0),
-      change: { views: 12, revenue: 6, watch: 3, engagement: -2 },
+      totalViews,
+      revenue,
+      avgWatchTimeSeconds,
+      engagementRate,
+      change: {
+        views: computePercentChange(totalViews, Number(agg?.previous_total_views ?? 0)),
+        revenue: computePercentChange(revenue, Number(agg?.previous_revenue_est ?? 0)),
+        watch: computePercentChange(avgWatchTimeSeconds, Number(agg?.previous_avg_watch_time ?? 0)),
+        engagement: computePercentChange(engagementRate, Number(agg?.previous_engagement ?? 0)),
+      },
     }
 
     return NextResponse.json(stats)
