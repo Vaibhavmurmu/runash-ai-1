@@ -1,28 +1,49 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { Database } from "@/lib/database"
-import { getServerAuthSession } from "@/lib/auth/session"
+import {
+  type AnalyticsPeriod,
+  parseOptionalStreamId,
+  parsePeriod,
+  requireAnalyticsSession,
+} from "@/app/api/analytics/_lib"
+
+const PERIOD_TO_INTERVAL: Record<AnalyticsPeriod, string> = {
+  "24h": "24 hours",
+  "7d": "7 days",
+  "30d": "30 days",
+  "90d": "90 days",
+  "1y": "365 days",
+}
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerAuthSession()
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const auth = await requireAnalyticsSession()
+    if ("error" in auth) {
+      return auth.error
     }
 
     const { searchParams } = new URL(req.url)
-    const period = searchParams.get("period") || "7d"
-    const streamId = searchParams.get("streamId")
 
-    const userId = session.user.id
-    const days = getPeriodDays(period)
+    const periodResult = parsePeriod(searchParams)
+    if (!periodResult.ok) {
+      return periodResult.response
+    }
+
+    const streamResult = parseOptionalStreamId(searchParams)
+    if (!streamResult.ok) {
+      return streamResult.response
+    }
+
+    const userId = auth.userId
+    const interval = PERIOD_TO_INTERVAL[periodResult.period]
 
     // Build base query conditions
     let streamCondition = "s.user_id = $1"
-    const params: any[] = [userId]
+    const params: string[] = [userId]
 
-    if (streamId) {
+    if (streamResult.streamId) {
       streamCondition += " AND s.id = $2"
-      params.push(Number.parseInt(streamId))
+      params.push(streamResult.streamId)
     }
 
     // Get historical viewer counts
@@ -34,7 +55,7 @@ export async function GET(req: NextRequest) {
       FROM stream_analytics sa
       JOIN streams s ON sa.stream_id = s.id
       WHERE ${streamCondition}
-      AND sa.created_at >= NOW() - INTERVAL '${days} days'
+      AND sa.created_at >= NOW() - INTERVAL '${interval}'
       GROUP BY DATE(sa.created_at)
       ORDER BY date
     `,
@@ -50,7 +71,7 @@ export async function GET(req: NextRequest) {
       FROM stream_analytics sa
       JOIN streams s ON sa.stream_id = s.id
       WHERE ${streamCondition}
-      AND sa.created_at >= NOW() - INTERVAL '${days} days'
+      AND sa.created_at >= NOW() - INTERVAL '${interval}'
       GROUP BY DATE(sa.created_at)
       ORDER BY date
     `,
@@ -65,7 +86,7 @@ export async function GET(req: NextRequest) {
         COUNT(*) as value
       FROM user_followers uf
       WHERE uf.user_id = $1
-      AND uf.created_at >= NOW() - INTERVAL '${days} days'
+      AND uf.created_at >= NOW() - INTERVAL '${interval}'
       GROUP BY DATE(uf.created_at)
       ORDER BY date
     `,
@@ -80,7 +101,7 @@ export async function GET(req: NextRequest) {
         SUM(pt.amount) as value
       FROM payment_transactions pt
       WHERE pt.user_id = $1
-      AND pt.created_at >= NOW() - INTERVAL '${days} days'
+      AND pt.created_at >= NOW() - INTERVAL '${interval}'
       AND pt.status = 'succeeded'
       GROUP BY DATE(pt.created_at)
       ORDER BY date
@@ -97,7 +118,7 @@ export async function GET(req: NextRequest) {
       FROM stream_analytics sa
       JOIN streams s ON sa.stream_id = s.id
       WHERE ${streamCondition}
-      AND sa.created_at >= NOW() - INTERVAL '${days} days'
+      AND sa.created_at >= NOW() - INTERVAL '${interval}'
       GROUP BY DATE(sa.created_at)
       ORDER BY date
     `,
@@ -113,7 +134,7 @@ export async function GET(req: NextRequest) {
       FROM stream_analytics sa
       JOIN streams s ON sa.stream_id = s.id
       WHERE ${streamCondition}
-      AND sa.created_at >= NOW() - INTERVAL '${days} days'
+      AND sa.created_at >= NOW() - INTERVAL '${interval}'
       GROUP BY DATE(sa.created_at)
       ORDER BY date
     `,
@@ -138,22 +159,5 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error("Historical analytics error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
-  }
-}
-
-function getPeriodDays(period: string): number {
-  switch (period) {
-    case "1d":
-      return 1
-    case "7d":
-      return 7
-    case "30d":
-      return 30
-    case "90d":
-      return 90
-    case "1y":
-      return 365
-    default:
-      return 7
   }
 }
