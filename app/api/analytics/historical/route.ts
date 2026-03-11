@@ -16,8 +16,18 @@ export async function GET(req: NextRequest) {
     const categories = parseCsv(searchParams.get("categories")).map((value) => value.toLowerCase())
     const streamTypes = parseCsv(searchParams.get("streamTypes"))
 
-    const userId = session.user.id
-    const days = getPeriodDays(period)
+    const periodResult = parsePeriod(searchParams)
+    if (!periodResult.ok) {
+      return periodResult.response
+    }
+
+    const streamResult = parseOptionalStreamId(searchParams)
+    if (!streamResult.ok) {
+      return streamResult.response
+    }
+
+    const userId = auth.userId
+    const interval = PERIOD_TO_INTERVAL[periodResult.period]
 
     // Build base query conditions
     const conditions: string[] = ["s.user_id = $1"]
@@ -54,7 +64,7 @@ export async function GET(req: NextRequest) {
       FROM stream_analytics sa
       JOIN streams s ON sa.stream_id = s.id
       WHERE ${streamCondition}
-      AND sa.created_at >= NOW() - INTERVAL '${days} days'
+      AND sa.created_at >= NOW() - INTERVAL '${interval}'
       GROUP BY DATE(sa.created_at)
       ORDER BY date
     `,
@@ -70,7 +80,7 @@ export async function GET(req: NextRequest) {
       FROM stream_analytics sa
       JOIN streams s ON sa.stream_id = s.id
       WHERE ${streamCondition}
-      AND sa.created_at >= NOW() - INTERVAL '${days} days'
+      AND sa.created_at >= NOW() - INTERVAL '${interval}'
       GROUP BY DATE(sa.created_at)
       ORDER BY date
     `,
@@ -85,7 +95,7 @@ export async function GET(req: NextRequest) {
         COUNT(*) as value
       FROM user_followers uf
       WHERE uf.user_id = $1
-      AND uf.created_at >= NOW() - INTERVAL '${days} days'
+      AND uf.created_at >= NOW() - INTERVAL '${interval}'
       GROUP BY DATE(uf.created_at)
       ORDER BY date
     `,
@@ -100,7 +110,7 @@ export async function GET(req: NextRequest) {
         SUM(pt.amount) as value
       FROM payment_transactions pt
       WHERE pt.user_id = $1
-      AND pt.created_at >= NOW() - INTERVAL '${days} days'
+      AND pt.created_at >= NOW() - INTERVAL '${interval}'
       AND pt.status = 'succeeded'
       GROUP BY DATE(pt.created_at)
       ORDER BY date
@@ -117,7 +127,7 @@ export async function GET(req: NextRequest) {
       FROM stream_analytics sa
       JOIN streams s ON sa.stream_id = s.id
       WHERE ${streamCondition}
-      AND sa.created_at >= NOW() - INTERVAL '${days} days'
+      AND sa.created_at >= NOW() - INTERVAL '${interval}'
       GROUP BY DATE(sa.created_at)
       ORDER BY date
     `,
@@ -133,7 +143,7 @@ export async function GET(req: NextRequest) {
       FROM stream_analytics sa
       JOIN streams s ON sa.stream_id = s.id
       WHERE ${streamCondition}
-      AND sa.created_at >= NOW() - INTERVAL '${days} days'
+      AND sa.created_at >= NOW() - INTERVAL '${interval}'
       GROUP BY DATE(sa.created_at)
       ORDER BY date
     `,
