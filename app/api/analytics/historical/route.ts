@@ -12,18 +12,38 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const period = searchParams.get("period") || "7d"
     const streamId = searchParams.get("streamId")
+    const platforms = parseCsv(searchParams.get("platforms"))
+    const categories = parseCsv(searchParams.get("categories")).map((value) => value.toLowerCase())
+    const streamTypes = parseCsv(searchParams.get("streamTypes"))
 
     const userId = session.user.id
     const days = getPeriodDays(period)
 
     // Build base query conditions
-    let streamCondition = "s.user_id = $1"
-    const params: any[] = [userId]
+    const conditions: string[] = ["s.user_id = $1"]
+    const params: unknown[] = [userId]
 
     if (streamId) {
-      streamCondition += " AND s.id = $2"
-      params.push(Number.parseInt(streamId))
+      params.push(streamId)
+      conditions.push(`s.id::text = $${params.length}`)
     }
+
+    if (platforms.length > 0) {
+      params.push(platforms)
+      conditions.push(`s.platform = ANY($${params.length})`)
+    }
+
+    if (streamTypes.length > 0) {
+      params.push(streamTypes)
+      conditions.push(`s.status = ANY($${params.length})`)
+    }
+
+    if (categories.length > 0) {
+      params.push(categories)
+      conditions.push(`LOWER(s.platform) = ANY($${params.length})`)
+    }
+
+    const streamCondition = conditions.join(" AND ")
 
     // Get historical viewer counts
     const viewerCounts = await Database.query(
@@ -156,4 +176,11 @@ function getPeriodDays(period: string): number {
     default:
       return 7
   }
+}
+
+function parseCsv(value: string | null): string[] {
+  return (value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
 }
