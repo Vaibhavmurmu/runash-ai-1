@@ -1,13 +1,11 @@
 import { type NextRequest } from "next/server"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
-import { getServerAuthSession } from "@/lib/auth/session"
 import { deleteStreamBackground, updateStreamBackground } from "@/lib/repositories/stream-studio"
+import { requireStreamOwner } from "../_auth"
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string; backgroundId: string } }) {
-  const session = await getServerAuthSession()
-  if (!session) {
-    return respondError(request, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401 })
-  }
+  const access = await requireStreamOwner(request, params.id)
+  if (access.error) return access.error
 
   try {
     const patch = await request.json()
@@ -19,10 +17,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string; backgroundId: string } }) {
-  const session = await getServerAuthSession()
-  if (!session) {
-    return respondError(request, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401 })
-  }
+  const access = await requireStreamOwner(request, params.id)
+  if (access.error) return access.error
 
   try {
     await deleteStreamBackground(params.id, params.backgroundId)

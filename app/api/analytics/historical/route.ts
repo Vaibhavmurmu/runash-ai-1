@@ -23,6 +23,11 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url)
+    const period = searchParams.get("period") || "7d"
+    const streamId = searchParams.get("streamId")
+    const platforms = parseCsv(searchParams.get("platforms"))
+    const categories = parseCsv(searchParams.get("categories")).map((value) => value.toLowerCase())
+    const streamTypes = parseCsv(searchParams.get("streamTypes"))
 
     const periodResult = parsePeriod(searchParams)
     if (!periodResult.ok) {
@@ -38,13 +43,30 @@ export async function GET(req: NextRequest) {
     const interval = PERIOD_TO_INTERVAL[periodResult.period]
 
     // Build base query conditions
-    let streamCondition = "s.user_id = $1"
-    const params: string[] = [userId]
+    const conditions: string[] = ["s.user_id = $1"]
+    const params: unknown[] = [userId]
 
-    if (streamResult.streamId) {
-      streamCondition += " AND s.id = $2"
-      params.push(streamResult.streamId)
+    if (streamId) {
+      params.push(streamId)
+      conditions.push(`s.id::text = $${params.length}`)
     }
+
+    if (platforms.length > 0) {
+      params.push(platforms)
+      conditions.push(`s.platform = ANY($${params.length})`)
+    }
+
+    if (streamTypes.length > 0) {
+      params.push(streamTypes)
+      conditions.push(`s.status = ANY($${params.length})`)
+    }
+
+    if (categories.length > 0) {
+      params.push(categories)
+      conditions.push(`LOWER(s.platform) = ANY($${params.length})`)
+    }
+
+    const streamCondition = conditions.join(" AND ")
 
     // Get historical viewer counts
     const viewerCounts = await Database.query(
@@ -160,4 +182,28 @@ export async function GET(req: NextRequest) {
     console.error("Historical analytics error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
+}
+
+function getPeriodDays(period: string): number {
+  switch (period) {
+    case "1d":
+      return 1
+    case "7d":
+      return 7
+    case "30d":
+      return 30
+    case "90d":
+      return 90
+    case "1y":
+      return 365
+    default:
+      return 7
+  }
+}
+
+function parseCsv(value: string | null): string[] {
+  return (value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
 }

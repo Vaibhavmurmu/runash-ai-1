@@ -551,18 +551,44 @@ class MockLiveStreamProvider implements LiveStreamProvider {
   }
 }
 
-function readConfiguredProvider(env: ProviderEnv): ProviderName {
+function isDeployedEnvironment(env: ProviderEnv): boolean {
+  const nodeEnv = env.NODE_ENV?.trim().toLowerCase() ?? ""
+  const vercelEnv = env.VERCEL_ENV?.trim().toLowerCase() ?? ""
+  const runashEnv = env.RUNASH_ENV?.trim().toLowerCase() ?? ""
+
+  if (nodeEnv === "production") return true
+  if (vercelEnv === "production" || vercelEnv === "preview") return true
+  if (runashEnv === "production" || runashEnv === "staging") return true
+
+  return false
+}
+
+export function resolveLiveStreamProvider(
+  env: ProviderEnv,
+  options?: {
+    allowMockProvider?: boolean
+  },
+): ProviderName {
   const configuredProvider = env.RUNASH_LIVE_STREAM_PROVIDER?.trim().toLowerCase() ?? ""
   const mockEnabled = env.RUNASH_ENABLE_MOCK_LIVE_STREAM_PROVIDER?.trim().toLowerCase() === "true"
-  const isProduction = env.NODE_ENV?.trim().toLowerCase() === "production"
+  const nodeEnv = env.NODE_ENV?.trim().toLowerCase() ?? ""
+  const mockAllowedForHarness = options?.allowMockProvider === true
+  const deployedEnvironment = isDeployedEnvironment(env)
 
   if (configuredProvider === "mux") return "mux"
   if (configuredProvider === "livepeer") return "livepeer"
   if (configuredProvider === "internal") return "internal"
   if (configuredProvider === "mock") {
-    if (!mockEnabled || isProduction) {
+    if (!mockAllowedForHarness) {
       throw new LiveStreamProviderError(
-        "Mock live stream provider is disabled. Set RUNASH_ENABLE_MOCK_LIVE_STREAM_PROVIDER=true in non-production environments to enable it.",
+        "Mock live stream provider is restricted to explicit test/development harness usage via createLiveStreamProvider({ allowMockProvider: true }).",
+        "PROVIDER_CONFIGURATION_ERROR",
+      )
+    }
+
+    if (!mockEnabled || deployedEnvironment || (nodeEnv !== "test" && nodeEnv !== "development")) {
+      throw new LiveStreamProviderError(
+        "Mock live stream provider is disabled. Set RUNASH_ENABLE_MOCK_LIVE_STREAM_PROVIDER=true only for NODE_ENV=test|development harness usage and never in deployed environments.",
         "PROVIDER_CONFIGURATION_ERROR",
       )
     }
@@ -571,7 +597,7 @@ function readConfiguredProvider(env: ProviderEnv): ProviderName {
   }
 
   throw new LiveStreamProviderError(
-    "No valid live stream provider is configured. Set RUNASH_LIVE_STREAM_PROVIDER to mux, livepeer, internal, or mock (mock requires explicit non-production flag).",
+    "No valid live stream provider is configured. Set RUNASH_LIVE_STREAM_PROVIDER to mux, livepeer, or internal for runtime sessions (mock is harness-only).",
     "PROVIDER_CONFIGURATION_ERROR",
   )
 }
@@ -579,9 +605,10 @@ function readConfiguredProvider(env: ProviderEnv): ProviderName {
 export function createLiveStreamProvider(options?: {
   env?: ProviderEnv
   fetchImpl?: typeof fetch
+  allowMockProvider?: boolean
 }): LiveStreamProvider {
   const env = options?.env ?? process.env
-  const provider = readConfiguredProvider(env)
+  const provider = resolveLiveStreamProvider(env, { allowMockProvider: options?.allowMockProvider })
 
   if (provider === "mux") {
     return new ProviderBackedLiveStreamProvider(new MuxVendorAdapter(env, options?.fetchImpl))
@@ -641,5 +668,5 @@ export function mapLiveStreamProviderError(error: unknown): ProviderErrorMapping
 }
 
 export function getLiveStreamProvider(): LiveStreamProvider {
-  return createLiveStreamProvider({ env: process.env })
+  return createLiveStreamProvider({ env: process.env, allowMockProvider: false })
 }

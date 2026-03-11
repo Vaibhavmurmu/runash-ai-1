@@ -1,77 +1,31 @@
 "use client"
 
 import type React from "react"
-
+import { useEffect, useState } from "react"
 import type { BackgroundCategory } from "@/types/virtual-backgrounds"
 import { Button } from "@/components/ui/button"
-import {
-  Briefcase,
-  Mountain,
-  PaintBucket,
-  Palette,
-  Monitor,
-  ImageIcon,
-  Sparkles,
-  Building2,
-  Landmark,
-  Waves,
-} from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Briefcase, Mountain, PaintBucket, Palette, Monitor, ImageIcon, Sparkles, Building2, Landmark, Waves, Plus, Star, Trash2 } from "lucide-react"
 
 interface BackgroundCategoriesProps {
   onCategorySelect: (categoryId: string) => void
+  streamId?: string
 }
 
-export default function BackgroundCategories({ onCategorySelect }: BackgroundCategoriesProps) {
-  // Mock categories with icons
-  const categories: BackgroundCategory[] = [
-    {
-      id: "office",
-      name: "Office",
-      description: "Professional office backgrounds",
-      icon: "Briefcase",
-      count: 24,
-      featured: true,
-    },
-    {
-      id: "nature",
-      name: "Nature",
-      description: "Scenic natural landscapes",
-      icon: "Mountain",
-      count: 32,
-      featured: true,
-    },
-    {
-      id: "abstract",
-      name: "Abstract",
-      description: "Creative abstract designs",
-      icon: "PaintBucket",
-      count: 18,
-      featured: true,
-    },
-    {
-      id: "gradients",
-      name: "Gradients",
-      description: "Smooth color transitions",
-      icon: "Palette",
-      count: 15,
-      featured: true,
-    },
-    {
-      id: "tech",
-      name: "Tech",
-      description: "Technology themed backgrounds",
-      icon: "Monitor",
-      count: 20,
-      featured: true,
-    },
-    { id: "minimal", name: "Minimal", description: "Clean, simple backgrounds", icon: "ImageIcon", count: 12 },
-    { id: "ai-generated", name: "AI Generated", description: "Created with AI", icon: "Sparkles", count: 28 },
-    { id: "cityscape", name: "Cityscape", description: "Urban environments", icon: "Building2", count: 16 },
-    { id: "landmarks", name: "Landmarks", description: "Famous locations", icon: "Landmark", count: 14 },
-    { id: "ocean", name: "Ocean", description: "Underwater and ocean scenes", icon: "Waves", count: 10 },
-  ]
+export default function BackgroundCategories({ onCategorySelect, streamId = "studio-default" }: BackgroundCategoriesProps) {
+  const [categories, setCategories] = useState<BackgroundCategory[]>([])
+  const [newCategoryName, setNewCategoryName] = useState("")
 
-  // Function to get the icon component based on the icon name
+  const load = async () => {
+    const response = await fetch(`/api/streams/${streamId}/backgrounds/categories`, { cache: "no-store" })
+    const payload = await response.json()
+    if (response.ok) setCategories(payload.data?.categories ?? payload.categories ?? [])
+  }
+
+  useEffect(() => {
+    void load()
+  }, [streamId])
+
   const getIconComponent = (iconName: string) => {
     const icons: Record<string, React.ReactNode> = {
       Briefcase: <Briefcase className="h-4 w-4" />,
@@ -88,26 +42,51 @@ export default function BackgroundCategories({ onCategorySelect }: BackgroundCat
     return icons[iconName] || <ImageIcon className="h-4 w-4" />
   }
 
-  // Only show featured categories in the sidebar
+  const createCategory = async () => {
+    if (!newCategoryName.trim()) return
+    const id = newCategoryName.toLowerCase().replace(/\s+/g, "-")
+    await fetch(`/api/streams/${streamId}/backgrounds/categories`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, name: newCategoryName.trim(), description: `${newCategoryName.trim()} backgrounds`, icon: "ImageIcon", count: 0, featured: true }),
+    })
+    setNewCategoryName("")
+    await load()
+  }
+
+  const toggleFeatured = async (category: BackgroundCategory) => {
+    await fetch(`/api/streams/${streamId}/backgrounds/categories/${category.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ featured: !category.featured }),
+    })
+    await load()
+  }
+
+  const deleteCategory = async (categoryId: string) => {
+    await fetch(`/api/streams/${streamId}/backgrounds/categories/${categoryId}`, { method: "DELETE" })
+    await load()
+  }
+
   const featuredCategories = categories.filter((cat) => cat.featured)
 
   return (
     <div className="space-y-2">
+      <div className="flex gap-2">
+        <Input value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} placeholder="New category" className="h-8" />
+        <Button size="sm" onClick={() => void createCategory()}><Plus className="h-3 w-3" /></Button>
+      </div>
       {featuredCategories.map((category) => (
-        <Button
-          key={category.id}
-          variant="ghost"
-          className="w-full justify-start"
-          onClick={() => onCategorySelect(category.id)}
-        >
-          <div className="mr-2 text-orange-500">{getIconComponent(category.icon)}</div>
-          <span className="flex-1 text-left">{category.name}</span>
-          <span className="text-xs text-muted-foreground">{category.count}</span>
-        </Button>
+        <div key={category.id} className="flex items-center gap-1">
+          <Button variant="ghost" className="flex-1 justify-start" onClick={() => onCategorySelect(category.id)}>
+            <div className="mr-2 text-orange-500">{getIconComponent(category.icon)}</div>
+            <span className="flex-1 text-left">{category.name}</span>
+            <span className="text-xs text-muted-foreground">{category.count}</span>
+          </Button>
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => void toggleFeatured(category)}><Star className="h-3 w-3" /></Button>
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => void deleteCategory(category.id)}><Trash2 className="h-3 w-3" /></Button>
+        </div>
       ))}
-      <Button variant="link" className="w-full justify-start text-orange-500">
-        View All Categories
-      </Button>
     </div>
   )
 }

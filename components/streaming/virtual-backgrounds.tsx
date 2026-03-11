@@ -22,6 +22,7 @@ interface UploadPayload {
 }
 
 interface VirtualBackgroundsProps {
+  streamId?: string
   onSelectBackground?: (background: string | null) => void
   onBlurBackground?: (amount: number) => void
   selectedBackground?: string | null
@@ -35,6 +36,7 @@ export default function VirtualBackgrounds({
   selectedBackground,
   blurAmount,
   onPersistUpload,
+  streamId = "studio-default",
 }: VirtualBackgroundsProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [activeCategory, setActiveCategory] = useState("featured")
@@ -46,7 +48,7 @@ export default function VirtualBackgrounds({
   const [isGeneratingAI, setIsGeneratingAI] = useState(false)
   const [internalSelectedBackground, setInternalSelectedBackground] = useState<string | null>(selectedBackground ?? null)
   const [internalBlurAmount, setInternalBlurAmount] = useState(blurAmount ?? 0)
-  const { data: backgrounds, loading, error, upload, remove, refresh } = useStreamBackgrounds("studio-default")
+  const { data: backgrounds, loading, error, upload, remove, refresh } = useStreamBackgrounds(streamId)
 
   useEffect(() => {
     if (selectedBackground !== undefined) setInternalSelectedBackground(selectedBackground ?? null)
@@ -116,18 +118,28 @@ export default function VirtualBackgrounds({
     if (!aiPrompt.trim()) return
     setIsGeneratingAI(true)
     try {
-      const generated = {
-        id: `custom-ai-${Date.now()}`,
-        name: `${aiStyle} · ${aiPrompt.slice(0, 32)}`,
-        url: `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 720'><rect width='1280' height='720' fill='#f97316'/><text x='72' y='598' fill='white' font-size='32'>${aiPrompt.replace(/[<>&]/g, "")}</text><text x='72' y='650' fill='white' font-size='22'>AI style: ${aiStyle}</text></svg>`)}`,
-        thumbnailUrl: "",
-        category: ["custom"],
-        tags: ["ai", aiStyle],
-        isPremium: false,
+      const response = await fetch(`/api/streams/${streamId}/backgrounds/generate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt: aiPrompt, style: aiStyle }),
+      })
+      const payload = await response.json()
+      if (!response.ok) {
+        throw new Error(payload?.error?.message ?? "Failed to generate background")
       }
-      await upload(generated)
+
+      const generated = payload.data?.generated ?? payload.generated
+      const persisted = await upload({
+        id: `custom-ai-${Date.now()}`,
+        name: generated.name,
+        url: generated.url,
+        thumbnailUrl: generated.thumbnailUrl || generated.url,
+        category: Array.isArray(generated.category) ? generated.category : ["custom"],
+        tags: Array.isArray(generated.tags) ? generated.tags : ["ai", aiStyle],
+        isPremium: false,
+      })
       setActiveCategory("custom")
-      handleBackgroundSelect(generated.url)
+      handleBackgroundSelect(persisted.url)
       setIsAIDialogOpen(false)
       setAiPrompt("")
     } finally {

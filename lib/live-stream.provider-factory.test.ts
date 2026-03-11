@@ -6,6 +6,7 @@ import {
   LiveStreamProviderError,
   mapLiveStreamProviderError,
   type ProvisionLiveStreamInput,
+  resolveLiveStreamProvider,
 } from "@/services/live-stream/provider"
 
 const baseInput: ProvisionLiveStreamInput = {
@@ -218,7 +219,7 @@ test("mock provider requires explicit non-production opt-in", () => {
       createLiveStreamProvider({
         env: {
           RUNASH_LIVE_STREAM_PROVIDER: "mock",
-          NODE_ENV: "production",
+          NODE_ENV: "test",
           RUNASH_ENABLE_MOCK_LIVE_STREAM_PROVIDER: "true",
         },
       }),
@@ -237,9 +238,80 @@ test("mock provider can be used in non-production when explicitly enabled", asyn
       NODE_ENV: "test",
       RUNASH_ENABLE_MOCK_LIVE_STREAM_PROVIDER: "true",
     },
+    allowMockProvider: true,
   })
 
   const provisioned = await provider.provision(baseInput)
   assert.equal(provisioned.provider, "mock")
   assert.ok(typeof provisioned.metadata.correlationId === "string")
+})
+
+test("provider resolution matrix enforces runtime-safe combinations", () => {
+  const matrix: Array<{
+    name: string
+    env: Record<string, string>
+    allowMockProvider?: boolean
+    expected?: "mux" | "livepeer" | "internal" | "mock"
+  }> = [
+    {
+      name: "development runtime resolves mux",
+      env: { NODE_ENV: "development", RUNASH_LIVE_STREAM_PROVIDER: "mux" },
+      expected: "mux",
+    },
+    {
+      name: "test runtime resolves livepeer",
+      env: { NODE_ENV: "test", RUNASH_LIVE_STREAM_PROVIDER: "livepeer" },
+      expected: "livepeer",
+    },
+    {
+      name: "production runtime resolves internal",
+      env: { NODE_ENV: "production", RUNASH_LIVE_STREAM_PROVIDER: "internal" },
+      expected: "internal",
+    },
+    {
+      name: "development mock without harness allowance is rejected",
+      env: {
+        NODE_ENV: "development",
+        RUNASH_LIVE_STREAM_PROVIDER: "mock",
+        RUNASH_ENABLE_MOCK_LIVE_STREAM_PROVIDER: "true",
+      },
+    },
+    {
+      name: "test mock with explicit harness allowance is accepted",
+      env: {
+        NODE_ENV: "test",
+        RUNASH_LIVE_STREAM_PROVIDER: "mock",
+        RUNASH_ENABLE_MOCK_LIVE_STREAM_PROVIDER: "true",
+      },
+      allowMockProvider: true,
+      expected: "mock",
+    },
+    {
+      name: "deployed preview environment rejects mock",
+      env: {
+        NODE_ENV: "development",
+        VERCEL_ENV: "preview",
+        RUNASH_LIVE_STREAM_PROVIDER: "mock",
+        RUNASH_ENABLE_MOCK_LIVE_STREAM_PROVIDER: "true",
+      },
+      allowMockProvider: true,
+    },
+  ]
+
+  for (const entry of matrix) {
+    if (entry.expected) {
+      assert.equal(resolveLiveStreamProvider(entry.env, { allowMockProvider: entry.allowMockProvider }), entry.expected, entry.name)
+      continue
+    }
+
+    assert.throws(
+      () => resolveLiveStreamProvider(entry.env, { allowMockProvider: entry.allowMockProvider }),
+      (error: unknown) => {
+        assert.ok(error instanceof LiveStreamProviderError)
+        assert.equal(error.code, "PROVIDER_CONFIGURATION_ERROR")
+        return true
+      },
+      entry.name,
+    )
+  }
 })
