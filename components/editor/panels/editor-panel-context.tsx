@@ -1,13 +1,21 @@
 "use client"
 
 import { createContext, useContext } from "react"
-import type { EditorProject, EditorSegment, EditorTimeline } from "@/lib/editor/domain"
+import type { EditorProject, EditorRenderJob, EditorSegment, EditorTimeline } from "@/lib/editor/domain"
 
 export interface EditorPanelContextValue {
   project?: EditorProject | null
   activeTimeline?: EditorTimeline
+  onTimelineChange: (timeline: EditorTimeline) => void
   selectedSegment?: EditorSegment
   playheadSeconds: number
+  generationHistory: EditorRenderJob[]
+  generationActionState: {
+    cancelingJobId: string | null
+    retryingJobId: string | null
+  }
+  onCancelRenderJob: (jobId: string) => void
+  onRetryRenderJob: (jobId: string) => void
 }
 
 const EditorPanelContext = createContext<EditorPanelContextValue | null>(null)

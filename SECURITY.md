@@ -298,3 +298,29 @@ Use this checklist for Better Auth and RBAC rollout on payment-adjacent traffic.
 - Added centralized live/editor authorization policy module with explicit operation matrix (`create/start/stop stream`, `edit_timeline`, `run_generation`, `manage_collaborators`).
 - Live/editor mutation routes now enforce tenant-scoped permission + quota checks and return structured denial codes (`AUTHZ_PERMISSION_DENIED`, `TENANT_QUOTA_*`).
 - Privileged operation audits are recorded with sanitized metadata only (tenant ID, role, operation, outcome, denial code) and no secrets/tokens/media credentials.
+
+## 2026-03 location analytics privacy + retention guardrails
+
+- Geo analytics for auth/security dashboards must use coarse-grained location fields (country code/name and optional region only).
+- Do not persist precise geo coordinates or city-level identifiers for auth/security dashboard telemetry.
+- IP-derived geo cache entries are time-bounded (`expires_at`) and purged during dashboard rollup refresh to enforce location data minimization.
+- Dashboard geographic metrics should be sourced from materialized aggregates and sanitized cache data; avoid embedding static/mock geography in production monitoring paths.
+
+## 2026-03 UPI route security posture expansion
+
+- UPI API endpoints now enforce strict server-side validation for payer UPI IDs, bounded amounts, and transaction ID format checks before state transitions.
+- Transaction ownership is enforced on UPI transaction retrieval/completion/status operations to block cross-user transaction enumeration or forced-completion attempts.
+- Anti-abuse protections now layer route-level, per-user, and per-transaction rate limits across UPI initiate/confirm/complete/status/QR access paths.
+- UPI completion replay protection persists idempotency-key outcomes to prevent duplicate provider-finalization effects during retried requests.
+- UPI audit logs include trace IDs and user scoping while redacting sensitive payment/auth artifacts (notably PIN and credential-like fields).
+- UPI monitoring now emits alertable metrics for failure spikes, timeout-rate anomalies, and callback verification failure spikes.
+
+
+## 2026-03 UPI API abuse and replay hardening
+
+- UPI initiate/confirm/complete/status routes now enforce strict transaction-id and amount/UPI format validation before processing.
+- Ownership checks are enforced server-side for transaction-scoped reads and state transitions to prevent cross-user access attempts.
+- Per-user and per-transaction throttles are applied on high-risk UPI endpoints to reduce brute-force and abuse windows.
+- Replay defense for completion/callback paths persists idempotency keys and reuses prior outcomes instead of re-executing payment transitions.
+- UPI observability now emits trace-linked failure, timeout, and callback-verification-failure metrics for faster incident detection.
+- Structured API logs remain audit-safe and avoid sensitive values (PIN, credentials, tokens, raw callback secrets).

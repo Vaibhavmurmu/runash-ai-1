@@ -304,6 +304,7 @@ export async function POST(request: NextRequest) {
     return respondSuccess(request, {
       url: session.url,
       redirectUrl: session.url,
+      checkoutSessionId: session.id,
       returnUrlSuccess: finalizedReturnUrlSuccess,
       returnUrlPending: finalizedReturnUrlPending,
       returnUrlFailed: finalizedReturnUrlFailed,

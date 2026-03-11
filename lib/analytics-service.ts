@@ -30,6 +30,20 @@ export interface PlatformAnalytics {
   color: string
 }
 
+export const ANALYTICS_SERVICE_ROUTE_MAP = {
+  subscribeToRealTimeUpdates: "/api/analytics/realtime/stream",
+  getRealTimeAnalytics: "/api/analytics/realtime",
+  getHistoricalAnalytics: "/api/analytics/historical",
+  getOverviewAnalytics: "/api/analytics/overview",
+  getPlatformAnalytics: "/api/analytics/platforms",
+  getAudienceAnalytics: "/api/analytics/audience",
+  getRevenueAnalytics: "/api/analytics/revenue",
+  getStreamHealth: "/api/analytics/stream-health/[streamId]",
+  getComparativeAnalytics: "/api/analytics/compare",
+  exportAnalytics: "/api/analytics/export",
+  getAIInsights: "/api/analytics/ai-insights",
+} as const
+
 export interface AudienceData {
   demographics: {
     ageGroups: { range: string; percentage: number }[]
@@ -38,6 +52,12 @@ export interface AudienceData {
   }
   deviceTypes: { device: string; percentage: number }[]
   viewerRetention: { minute: number; percentage: number }[]
+}
+
+export interface AnalyticsRequestFilters {
+  platforms?: string[]
+  categories?: string[]
+  streamTypes?: string[]
 }
 
 export class AnalyticsService {
@@ -116,6 +136,7 @@ export class AnalyticsService {
   public async getHistoricalAnalytics(
     period: string,
     streamId?: string,
+    filters?: AnalyticsRequestFilters,
   ): Promise<{
     viewerCounts: TimeSeriesData[]
     chatActivity: TimeSeriesData[]
@@ -127,6 +148,9 @@ export class AnalyticsService {
     try {
       const params = new URLSearchParams({ period })
       if (streamId) params.append("streamId", streamId)
+      if (filters?.platforms?.length) params.append("platforms", filters.platforms.join(","))
+      if (filters?.categories?.length) params.append("categories", filters.categories.join(","))
+      if (filters?.streamTypes?.length) params.append("streamTypes", filters.streamTypes.join(","))
 
       return await this.fetchJson(`/api/analytics/historical?${params}`)
     } catch (error) {
@@ -147,6 +171,15 @@ export class AnalyticsService {
     return this.fetchJson(`/api/analytics/overview?${params}`)
   }
 
+  public async getContentAnalytics(period: string, streamId?: string, filters?: AnalyticsRequestFilters) {
+    const params = new URLSearchParams({ period })
+    if (streamId) params.append("streamId", streamId)
+    if (filters?.platforms?.length) params.append("platforms", filters.platforms.join(","))
+    if (filters?.categories?.length) params.append("categories", filters.categories.join(","))
+    if (filters?.streamTypes?.length) params.append("streamTypes", filters.streamTypes.join(","))
+    return this.fetchJson(`/api/analytics/content?${params}`)
+  }
+
   // Platform Analytics
   public async getPlatformAnalytics(period: string): Promise<PlatformAnalytics[]> {
     try {
@@ -164,13 +197,7 @@ export class AnalyticsService {
       const params = new URLSearchParams({ period })
       if (streamId) params.append("streamId", streamId)
 
-      const response = await fetch(`/api/analytics/audience?${params}`)
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch audience analytics")
-      }
-
-      return await response.json()
+      return await this.fetchJson<AudienceData>(`/api/analytics/audience?${params}`)
     } catch (error) {
       console.error("Failed to fetch audience analytics:", error)
       throw error
@@ -185,13 +212,7 @@ export class AnalyticsService {
     topEarningStreams: { streamId: string; title: string; revenue: number }[]
   }> {
     try {
-      const response = await fetch(`/api/analytics/revenue?period=${period}`)
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch revenue analytics")
-      }
-
-      return await response.json()
+      return await this.fetchJson(`/api/analytics/revenue?period=${period}`)
     } catch (error) {
       console.error("Failed to fetch revenue analytics:", error)
       throw error
@@ -209,13 +230,7 @@ export class AnalyticsService {
     issues: { type: string; severity: string; message: string; timestamp: string }[]
   }> {
     try {
-      const response = await fetch(`/api/analytics/stream-health/${streamId}`)
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch stream health")
-      }
-
-      return await response.json()
+      return await this.fetchJson(`/api/analytics/stream-health/${streamId}`)
     } catch (error) {
       console.error("Failed to fetch stream health:", error)
       throw error
@@ -238,17 +253,11 @@ export class AnalyticsService {
     }[]
   }> {
     try {
-      const response = await fetch("/api/analytics/compare", {
+      return await this.fetchJson("/api/analytics/compare", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ streamIds, period }),
       })
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch comparative analytics")
-      }
-
-      return await response.json()
     } catch (error) {
       console.error("Failed to fetch comparative analytics:", error)
       throw error
@@ -261,12 +270,10 @@ export class AnalyticsService {
       const params = new URLSearchParams({ format, period })
       if (streamId) params.append("streamId", streamId)
 
-      const response = await fetch(`/api/analytics/export?${params}`)
-
+      const response = await fetch(`/api/analytics/export?${params}`, { credentials: "include" })
       if (!response.ok) {
         throw new Error("Failed to export analytics")
       }
-
       return await response.blob()
     } catch (error) {
       console.error("Failed to export analytics:", error)
@@ -299,13 +306,7 @@ export class AnalyticsService {
       const params = new URLSearchParams({ period })
       if (streamId) params.append("streamId", streamId)
 
-      const response = await fetch(`/api/analytics/ai-insights?${params}`)
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch AI insights")
-      }
-
-      return await response.json()
+      return await this.fetchJson(`/api/analytics/ai-insights?${params}`)
     } catch (error) {
       console.error("Failed to fetch AI insights:", error)
       throw error

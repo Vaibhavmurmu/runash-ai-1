@@ -1,50 +1,61 @@
 import { NextRequest, NextResponse } from "next/server"
-import { rateLimit } from "@/lib/rate-limit"
+import { logApiEvent } from "@/lib/api/logging"
+import { recordUpiFailureMetric } from "@/lib/payments/upi-observability"
+import { rateLimit, rateLimitByKey } from "@/lib/rate-limit"
+import { resolveIdempotencyKey, resolveTraceId, resolveUserId, validateAmountBounds, validateUpiId } from "@/lib/payments/upi-route-security"
 import { UpiCheckoutService } from "@/lib/services/upi-checkout-service"
 
 const INITIATE_RATE_LIMIT = 20
 const INITIATE_WINDOW_MS = 60_000
-
-function resolveIdempotencyKey(request: NextRequest, body: unknown): string {
-  const fromHeader = request.headers.get("idempotency-key")?.trim()
-  if (fromHeader) return fromHeader
-
-  if (body && typeof body === "object" && "idempotencyKey" in body) {
-    const candidate = (body as { idempotencyKey?: unknown }).idempotencyKey
-    if (typeof candidate === "string" && candidate.trim()) {
-      return candidate.trim()
-    }
-  }
-
-  return `upi-init:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`
-}
+const INITIATE_USER_RATE_LIMIT = 10
 
 export async function POST(request: NextRequest) {
-  const limiter = await rateLimit(request, "upi:initiate", INITIATE_RATE_LIMIT, INITIATE_WINDOW_MS)
-
-  if (!limiter.success) {
-    return NextResponse.json(
-      {
-        error: "Too many payment initiation attempts. Please wait and retry.",
-        errorCode: "RISK_BLOCKED",
-      },
-      { status: 429 },
-    )
-  }
-
+  const traceId = resolveTraceId(request)
   const body = await request.json().catch(() => ({}))
-  const amount = typeof body?.amount === "number" && Number.isFinite(body.amount) && body.amount > 0 ? body.amount : null
-  if (amount == null) {
-    return NextResponse.json(
-      {
-        error: "amount is required and must be a positive number",
-        errorCode: "RISK_BLOCKED",
-      },
-      { status: 400 },
-    )
-  }
-  const idempotencyKey = resolveIdempotencyKey(request, body)
-  const initiated = UpiCheckoutService.initiatePayment(idempotencyKey, amount)
+  const userId = resolveUserId(request, body)
+  const limiter = await rateLimit(request, "upi:initiate", INITIATE_RATE_LIMIT, INITIATE_WINDOW_MS)
+  const userLimiter = await rateLimitByKey(`upi:initiate:user:${userId}`, INITIATE_USER_RATE_LIMIT, INITIATE_WINDOW_MS)
 
-  return NextResponse.json(initiated)
+  if (!limiter.success || !userLimiter.success) {
+    recordUpiFailureMetric("/api/upi/initiate", traceId)
+    return NextResponse.json({ error: "Too many payment initiation attempts. Please wait and retry.", errorCode: "RISK_BLOCKED" }, { status: 429 })
+  }
+
+  const amount = validateAmountBounds((body as { amount?: unknown }).amount)
+  const rawOrderId = (body as { orderId?: unknown; order_id?: unknown })?.orderId ?? (body as { order_id?: unknown })?.order_id
+  const orderId = typeof rawOrderId === "number" && Number.isFinite(rawOrderId) && rawOrderId > 0 ? rawOrderId : null
+  const payerUpiId = validateUpiId((body as { upiId?: unknown; payerUpiId?: unknown }).upiId ?? (body as { payerUpiId?: unknown }).payerUpiId)
+
+  if (amount == null) {
+    recordUpiFailureMetric("/api/upi/initiate", traceId)
+    return NextResponse.json({ error: "amount must be within allowed UPI bounds", errorCode: "RISK_BLOCKED" }, { status: 400 })
+  }
+
+  if (orderId == null) {
+    recordUpiFailureMetric("/api/upi/initiate", traceId)
+    return NextResponse.json({ error: "orderId is required and must be a positive number", errorCode: "RISK_BLOCKED" }, { status: 400 })
+  }
+
+  if (!payerUpiId) {
+    recordUpiFailureMetric("/api/upi/initiate", traceId)
+    return NextResponse.json({ error: "Valid payer UPI ID is required", errorCode: "RISK_BLOCKED" }, { status: 400 })
+  }
+
+  try {
+    const idempotencyKey = resolveIdempotencyKey(request, body, "upi:initiate")
+    const initiated = await UpiCheckoutService.initiatePayment(idempotencyKey, amount, orderId, userId)
+
+    logApiEvent("info", "payments.upi.initiate.success", {
+      requestId: traceId,
+      route: "/api/upi/initiate",
+      method: "POST",
+      userId,
+      details: { transactionId: initiated.transactionId, orderId, amount, idempotencyKey },
+    })
+
+    return NextResponse.json(initiated)
+  } catch (error) {
+    recordUpiFailureMetric("/api/upi/initiate", traceId)
+    return NextResponse.json({ error: "Failed to initialize UPI payment", errorCode: "RISK_BLOCKED" }, { status: 500 })
+  }
 }

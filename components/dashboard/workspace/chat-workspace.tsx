@@ -40,7 +40,8 @@ import { useDashboardModelDialog } from "@/components/dashboard/model-dialog-pro
 import { buildRunAshChatQuickActions } from "@/lib/runash-chat/quick-actions"
 import { resolveRequestedToolsForMessage } from "@/lib/runash-chat/tooling"
  
-import { getRecommendedProducts, shouldRecommendProducts } from "@/lib/chat-product-recommendations"
+import { buildFallbackAssistantResponse } from "@/lib/chat/fallback-assistant-response"
+import type { ChatRecommendationPayload } from "@/types/chat-recommendations"
 
 const UPGRADE_METRICS_KEY = "runash_upgrade_metrics_v2"
 const STARTER_CARD_STATE_KEY = "runash_chat_starter_cards_v1"
@@ -319,11 +320,33 @@ export function ChatWorkspace() {
     const record = toRecord(value)
     if (!record) return undefined
 
+    const recommendationPayload = record as ChatRecommendationPayload
+    const products = Array.isArray(recommendationPayload.products)
+      ? (recommendationPayload.products as ChatMessage["metadata"]["products"])
+      : undefined
+    const recipes = Array.isArray(recommendationPayload.recipes)
+      ? (recommendationPayload.recipes as ChatMessage["metadata"]["recipes"])
+      : undefined
+    const tips = Array.isArray(recommendationPayload.tips) ? (recommendationPayload.tips as ChatMessage["metadata"]["tips"]) : undefined
+    const automationSuggestions = Array.isArray(record.automationSuggestions)
+      ? (record.automationSuggestions as ChatMessage["metadata"]["automationSuggestions"])
+      : undefined
+    const searchResults = Array.isArray(record.searchResults) ? (record.searchResults as ChatMessage["metadata"]["searchResults"]) : undefined
+    const linkQuickPay = toRecord(record.linkQuickPay) as ChatMessage["metadata"]["linkQuickPay"] | undefined
+
     const toolExecutions = parseToolExecutionSummaries(record.toolExecutions)
     const toolEvents = parseToolEvents(record.toolEvents)
-    if (!toolExecutions && !toolEvents) return undefined
+    if (!products && !recipes && !tips && !automationSuggestions && !searchResults && !linkQuickPay && !toolExecutions && !toolEvents) {
+      return undefined
+    }
 
     return {
+      ...(products ? { products } : {}),
+      ...(recipes ? { recipes } : {}),
+      ...(tips ? { tips } : {}),
+      ...(automationSuggestions ? { automationSuggestions } : {}),
+      ...(searchResults ? { searchResults } : {}),
+      ...(linkQuickPay ? { linkQuickPay } : {}),
       ...(toolExecutions ? { toolExecutions } : {}),
       ...(toolEvents ? { toolEvents } : {}),
     }
@@ -1632,7 +1655,7 @@ export function ChatWorkspace() {
         setComposerHealth((prev) => (prev === "ready" ? "provider-error" : prev))
         setStreamControllerState("failed")
         setRunDiagnostics((previous) => ({ ...previous, lastErrorCode: previous.lastErrorCode || "STREAM_REQUEST_FAILED" }))
-        const fallback = buildAssistantResponse(content)
+        const fallback = await buildFallbackAssistantResponse(content, userPreferences)
         setMessages((prev) => prev.map((entry) => (entry.id === assistantId ? { ...fallback, id: assistantId } : entry)))
         assistantSnapshot = { ...fallback, id: assistantId, status: "failed" }
               }
@@ -1752,169 +1775,6 @@ export function ChatWorkspace() {
       attachmentRetryRef.current.clear()
     }
   }, [attachmentPreviews])
-
-  const buildAssistantResponse = (userInput: string): ChatMessage => {
-    const input = userInput.toLowerCase()
-
-    // Product recommendations
-    if (shouldRecommendProducts(input)) {
-      const products = getRecommendedProducts(input, userPreferences)
-      const hasProducts = products.length > 0
-      const productText = hasProducts
-        ? `Here are ${products.length} grocery products matched to your budget and preferences:`
-        : "I couldn't find products matching all filters, but I can broaden the criteria if you'd like."
-
-      return {
-        id: Date.now().toString(),
-        content: productText,
-        role: "assistant",
-        timestamp: new Date(),
-        type: "product",
-        metadata: {
-          products,
-        },
-      }
-    }
-
-    // Recipe suggestions
-    if (input.includes("recipe") || input.includes("cook") || input.includes("meal")) {
-      return {
-        id: Date.now().toString(),
-        content: "Here are some sustainable recipes perfect for your cooking level:",
-        role: "assistant",
-        timestamp: new Date(),
-        type: "recipe",
-        metadata: {
-          recipes: [
-            {
-              id: "1",
-              name: "Organic Quinoa Buddha Bowl",
-              description:
-                "A nutritious and colorful bowl with organic quinoa, seasonal vegetables, and tahini dressing",
-              difficulty: "easy",
-              prepTime: 15,
-              cookTime: 20,
-              servings: 2,
-              ingredients: [
-                { id: "1", name: "Organic Quinoa", amount: "1", unit: "cup", isOrganic: true },
-                { id: "2", name: "Organic Kale", amount: "2", unit: "cups", isOrganic: true },
-                { id: "3", name: "Organic Chickpeas", amount: "1", unit: "can", isOrganic: true },
-              ],
-              instructions: [
-                "Rinse quinoa and cook according to package instructions",
-                "Massage kale with olive oil and lemon juice",
-                "Drain and rinse chickpeas",
-                "Arrange all ingredients in bowls and drizzle with tahini dressing",
-              ],
-              image: "/placeholder.svg?height=300&width=400",
-              tags: ["vegan", "gluten-free", "high-protein"],
-              sustainabilityScore: 9,
-              nutritionalInfo: {
-                calories: 420,
-                protein: 18,
-                carbs: 65,
-                fat: 12,
-                fiber: 12,
-                sugar: 8,
-                sodium: 380,
-              },
-            },
-          ],
-        },
-      }
-    }
-
-    // Sustainability tips
-    if (
-      input.includes("sustainable") ||
-      input.includes("eco") ||
-      input.includes("environment") ||
-      input.includes("carbon")
-    ) {
-      return {
-        id: Date.now().toString(),
-        content: "Here are some sustainability tips to help reduce your environmental impact:",
-        role: "assistant",
-        timestamp: new Date(),
-        type: "tip",
-        metadata: {
-          tips: [
-            {
-              id: "1",
-              title: "Buy Local and Seasonal",
-              description:
-                "Choose locally grown, seasonal produce to reduce transportation emissions and support local farmers.",
-              category: "food",
-              impact: "high",
-              difficulty: "easy",
-              estimatedSavings: 25,
-            },
-            {
-              id: "2",
-              title: "Reduce Food Waste",
-              description: "Plan meals, store food properly, and compost scraps to minimize waste.",
-              category: "waste",
-              impact: "high",
-              difficulty: "medium",
-              estimatedSavings: 40,
-            },
-          ],
-        },
-      }
-    }
-
-    // Automation suggestions
-    if (
-      input.includes("automat") ||
-      input.includes("business") ||
-      input.includes("retail") ||
-      input.includes("inventory")
-    ) {
-      return {
-        id: Date.now().toString(),
-        content: "Here are automation suggestions to optimize your organic retail business:",
-        role: "assistant",
-        timestamp: new Date(),
-        type: "automation",
-        metadata: {
-          automationSuggestions: [
-            {
-              id: "1",
-              title: "Smart Inventory Management",
-              description:
-                "Implement AI-powered inventory tracking to predict demand and reduce waste of perishable organic products.",
-              category: "inventory",
-              complexity: "moderate",
-              estimatedROI: 35,
-              implementationTime: "2-4 weeks",
-              tools: ["RFID tags", "Inventory software", "Demand forecasting AI"],
-            },
-            {
-              id: "2",
-              title: "Automated Customer Segmentation",
-              description:
-                "Use customer data to automatically segment buyers and send personalized organic product recommendations.",
-              category: "marketing",
-              complexity: "simple",
-              estimatedROI: 28,
-              implementationTime: "1-2 weeks",
-              tools: ["CRM software", "Email automation", "Analytics platform"],
-            },
-          ],
-        },
-      }
-    }
-
-    // Default response
-    return {
-      id: Date.now().toString(),
-      content:
-        "I can help you with organic products, sustainable living tips, eco-friendly recipes, and retailing automation. What specific area would you like to explore?",
-      role: "assistant",
-      timestamp: new Date(),
-      type: "text",
-    }
-  }
 
   const handleVoiceInput = (transcript: string) => {
     setVoiceTranscriptHistory((prev) => [transcript, ...prev].slice(0, 5))

@@ -1,60 +1,50 @@
-import { NextResponse } from "next/server";
-import { readData, writeData } from "../../utils";
-import type { DashboardStreamTemplate } from "@/lib/types/dashboard-streams";
+import type { DashboardStreamTemplate } from "@/lib/types/dashboard-streams"
+import { handleTemplateDelete, handleTemplatePut } from "./template-by-id-route-handler"
 
-type UpdateTemplateRequest = Partial<
-  Omit<DashboardStreamTemplate, "id" | "createdAt" | "updatedAt">
->;
+type TemplateByIdRouteDependencies = {
+  requireUserId: (request: Request) => Promise<string | Response>
+  updateTemplate: (
+    userId: string,
+    id: string,
+    input: Partial<Omit<DashboardStreamTemplate, "id" | "createdAt" | "updatedAt">>,
+  ) => Promise<DashboardStreamTemplate | null>
+  deleteTemplate: (userId: string, id: string) => Promise<boolean>
+}
+
+async function resolveDefaultDependencies(): Promise<TemplateByIdRouteDependencies> {
+  const [{ deleteDashboardStreamTemplate, updateDashboardStreamTemplate }, { requireStreamDashboardUserId }] =
+    await Promise.all([import("@/lib/repositories/streams"), import("../../utils")])
+
+  return {
+    requireUserId: requireStreamDashboardUserId,
+    updateTemplate: updateDashboardStreamTemplate,
+    deleteTemplate: deleteDashboardStreamTemplate,
+  }
+}
+
+export function createTemplateByIdRoutes(dependencies: TemplateByIdRouteDependencies) {
+  return {
+    PUT(request: Request, { params }: { params: { id: string } }) {
+      return handleTemplatePut(request, params.id, dependencies)
+    },
+    DELETE(request: Request, { params }: { params: { id: string } }) {
+      return handleTemplateDelete(request, params.id, dependencies)
+    },
+  }
+}
 
 export async function PUT(
   request: Request,
   { params }: { params: { id: string } },
 ) {
-  const body = (await request
-    .json()
-    .catch(() => null)) as UpdateTemplateRequest | null;
-  if (!body) {
-    return NextResponse.json({ error: "Invalid body" }, { status: 400 });
-  }
-
-  const data = await readData();
-  const templates = data.templates ?? [];
-  const index = templates.findIndex((template) => template.id === params.id);
-  if (index === -1) {
-    return NextResponse.json({ error: "Template not found" }, { status: 404 });
-  }
-
-  const previous = templates[index];
-  const updated: DashboardStreamTemplate = {
-    ...previous,
-    ...body,
-    name: body.name?.trim() || previous.name,
-    title: body.title?.trim() || previous.title,
-    description: body.description?.trim() ?? previous.description,
-    updatedAt: new Date().toISOString(),
-  };
-
-  templates[index] = updated;
-  data.templates = templates;
-  await writeData(data);
-
-  return NextResponse.json(updated);
+  const dependencies = await resolveDefaultDependencies()
+  return handleTemplatePut(request, params.id, dependencies)
 }
 
 export async function DELETE(
-  _: Request,
+  request: Request,
   { params }: { params: { id: string } },
 ) {
-  const data = await readData();
-  const templates = data.templates ?? [];
-  const next = templates.filter((template) => template.id !== params.id);
-
-  if (next.length === templates.length) {
-    return NextResponse.json({ error: "Template not found" }, { status: 404 });
-  }
-
-  data.templates = next;
-  await writeData(data);
-
-  return NextResponse.json({ ok: true });
+  const dependencies = await resolveDefaultDependencies()
+  return handleTemplateDelete(request, params.id, dependencies)
 }

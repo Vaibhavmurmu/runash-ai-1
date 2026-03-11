@@ -1,338 +1,76 @@
-<div align="center">
-  <a href="https://www.runash.in">
-    <img src="public/runashlogo.jpg" width="100" height="100" alt="RunAsh AI logo" />
-  </a>
-  <h1>RunAsh AI</h1>
-
-  <p>Open-source agentic live commerce built for retail automation, real-time video workflows, and multimodal customer experiences.</p>
-</div>
-
- 
-
-## Skills Playbooks
-
-Use the repository playbooks in [`SKILLS/README.md`](./SKILLS/README.md) for repeatable workflows:
-
-- [Frontend Feature Workflow](./SKILLS/frontend-feature-workflow.md)
-- [Service Layer Change Workflow](./SKILLS/service-layer-change-workflow.md)
-- [Auth & Payment Change Workflow](./SKILLS/auth-payment-change-workflow.md)
-- [Docs Quality Review Workflow](./SKILLS/docs-quality-review-workflow.md)
-
-## Introduction
-
-## What RunAsh AI is
-
-
-RunAsh AI is a Next.js-based platform for building and running AI-assisted commerce and livestream experiences.
-It combines storefront and content workflows with agentic tooling, authentication, and data services.
-The repository includes product UI, API routes, and shared service/data layers used by the platform.
-
- 
-For AI-oriented contribution guidance, see [LLMs.txt](./LLMs.txt).
-
-## Features
-
-## Quickstart
-
-
-### 1) Install dependencies
-
-```bash
-pnpm install
-```
-
-### 2) Configure environment
-
-- [ ] Create `.env.local` in the project root.
-- [ ] Add the required secrets for auth, AI providers, database, and integrations used in your environment.
-
-#### Neon CLI bootstrap (recommended for new environments)
-
-Use Neon CLI to initialize/select the PostgreSQL project + branch that RunAsh should use:
-
-```bash
-export NEON_API_KEY="<your-neon-api-key>"
-npx neonctl@latest init
-```
-
-During `init`, authenticate with your Neon account/API key, then select:
-
-- the Neon **project** for this deployment target,
-- the Neon **branch** (`dev`, `staging`, or `prod`),
-- the target database/role if prompted.
-
-Map the resulting Neon connection string into app env vars as follows:
-
-- Preferred: `DATABASE_URL` (first in runtime resolution order).
-- Optional explicit alias: `NEON_DATABASE_URL`.
-- Fallbacks recognized by `lib/db.ts`: `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `POSTGRES_URL_NON_POOLING`, `runash_POSTGRES_URL`, `runash_POSTGRES_URL_NON_POOLING`.
-
-`lib/db.ts` resolves these vars in precedence order and throws if none are set, so you can safely standardize on `DATABASE_URL` while keeping backward-compatible fallbacks for existing environments.
-
-For branch conventions and a safe migration workflow, see [`scripts/neon/README.md`](./scripts/neon/README.md).
-
-### Optional tooling: install Better Auth skills
-
-If you use Codex skills locally, install the Better Auth skill pack:
-
-```bash
-npx skills add better-auth/skills
-```
-
-For reproducible setup and post-install verification, use the project helper:
-
-```bash
-pnpm run setup:skills
-```
-
-`setup:skills` executes the `npx` install command and verifies that skill files are present in expected Codex skill directories:
-- `$CODEX_HOME/skills`
-- `~/.codex/skills`
-
-You can also run a manual verification if you want to inspect exact files:
-
-```bash
-find "${CODEX_HOME:-$HOME/.codex}/skills" -maxdepth 3 -type f -name 'SKILL.md'
-```
-
-This step is **optional** for normal RunAsh app development (`pnpm dev`, `pnpm build`, API work), and only needed for Codex Better Auth workflows.
-
-#### Offline/CI fallback guidance
-
-- **Offline or air-gapped machines:** skip skills setup; application development/runtime is unaffected.
-- **CI pipelines:** treat skills setup as non-blocking optional tooling; pre-bake skills into the runner image when needed. `setup:skills` already exits successfully in CI when verification cannot be completed.
-- **Restricted network/proxy:** use approved internal npm/git mirrors before running install.
-- **Best-effort local setup:** run `SKILLS_SETUP_OPTIONAL=1 pnpm run setup:skills` to avoid failing local scripts when you intentionally run without network access.
-- **Verification command:** rerun `pnpm run setup:skills` to retry install + location checks.
-
-### 3) Start the development server
-
-```bash
-pnpm dev
-```
-
-Open `http://localhost:3000`.
-
-## Core architecture summary
-
-- **Next.js App Router application**
-  - `app/` contains routes, pages, layouts, and API handlers.
-  - `components/` contains reusable UI and feature modules.
-- **Service and integration layer**
-  - `services/` and `lib/services/` contain orchestration and business logic.
-  - `lib/auth/`, `lib/workflow/`, and integration-specific modules support platform capabilities.
-- **Background sync API (frontend developer note)**
-  - `BackgroundSync.forceSync()` is the canonical method to manually flush pending sync queue items.
-  - `BackgroundSync.forcSync()` remains as a temporary deprecated alias for backward compatibility and will be removed in a future cleanup.
-- **Data and model layer**
-  - `lib/db/`, `lib/repositories/`, and `lib/data/` contain database access and domain modeling.
-  - See `DRIZZLE_ORM.md` for ORM and schema conventions.
-
-## Documentation index
-
-### Working agreements and team docs
-
-- [AGENTS.md](AGENTS.md)
-- [AGENTS.override.md](AGENTS.override.md)
-- [TEAM_GUIDE.md](TEAM_GUIDE.md)
-
-### Platform and engineering guides
-
-- [PLATFORM_GUIDE.md](PLATFORM_GUIDE.md)
-- [RUNASH-AUTH.md](RUNASH-AUTH.md)
-- [DRIZZLE_ORM.md](DRIZZLE_ORM.md)
-- [SECURITY.md](SECURITY.md)
-- [LLMs.txt](LLMs.txt)
-- [MCP.md](MCP.md)
-- [docs/RUNASHCHAT_UX_PRINCIPLES.md](docs/RUNASHCHAT_UX_PRINCIPLES.md)
-- [docs/RUNASHCHAT_UI_GUIDELINES.md](docs/RUNASHCHAT_UI_GUIDELINES.md)
-
-## Deployment checklist
-
-- [ ] Build locally: `pnpm build`
-- [ ] Validate runtime env vars for target environment
-- [ ] Deploy via Vercel (recommended) or your Node hosting platform
-- [ ] Verify `/`, auth, and key API routes in the deployed environment
-
-## Contribution checklist
-
-- [ ] Create a branch from `main`
-- [ ] Implement and test changes locally (`pnpm dev`, `pnpm build`, `pnpm lint`)
-- [ ] Keep docs updated when behavior or architecture changes
-- [ ] Open a pull request with a clear summary and validation notes
-
-## License
-
-
-  <p>Open-source agentic live commerce platform for retail automation, real-time video generation, and multimodal workflows.</p>
-</div>
-
-## Overview
-RunAsh AI combines live streaming, AI-assisted creation tooling, seller operations, and commerce enablement into a unified platform.
-
-## Seller operations modules
-- Seller dashboard now uses live summary metrics from `/api/seller/dashboard/summary`.
-- Orders and inventory tabs are integrated with backend CRUD endpoints (`/api/orders`, `/api/products`, `/api/products/:id`).
-- Seller business configuration is now API-backed (`GET/PUT /api/seller/settings`) for persisted operations.
-- Payout tab is API-backed (`GET /api/seller/payouts`) with settlement summaries and weekly history.
-- Inventory supports inline stock edits and guarded deletes for production workflows.
-- Dashboard navigation now resolves from the shared sidebar navigation config and route guards (`components/dashboard/dashboard-nav-config.ts` + `components/dashboard/dashboard-sidebar.tsx`) instead of legacy per-surface sidebar definitions.
-
-### Dashboard navigation map
-
-Primary dashboard sections and routes:
-
-| Section | Routes |
-| --- | --- |
-| Core | `/dashboard` |
-| Studio | `/stream`, `/schedule`, `/upload`, `/recordings`, `/editor` |
-| Intelligence | `/agents/dashboard`, `/automation`, `/runash-chat` |
-| Operations | `/analytics`, `/alerts`, `/seller/dashboard`, `/ecommerce/dashboard` |
-| Account | `/settings` |
-
-Sub-navigation and active-state behaviors are controlled by path-prefix matching in the shared navigation config to keep highlighting and expansion behavior consistent across dashboard shells.
-
-### Risk and rollback (dashboard navigation)
-
-- **Risk:** route mismatch or stale links can send users to unavailable pages when nav entries and route guards drift.
-- **Rollback:** if mismatches are discovered post-merge, revert to the previous dashboard nav config/sidebar mapping and re-run route validation smoke checks for `/dashboard`, `/seller/dashboard`, `/ecommerce/dashboard`, and `/runash-chat`.
-- RunAsh Chat landing (`/runash-chat`) includes an enhanced mini preview with quick agentic commerce/payment prompts, with session continuity dependent on `GET /api/sessions/recent` and `GET /api/messages/session/:id` being available.
-- RunAsh Chat now applies retry + timeout safeguards for `GET /api/sessions/recent` and `POST /api/sessions`, validates session payload IDs before navigation, and stores prompt/action continuity metadata in localStorage before routing to `/chat`.
-- Profile dropdown on `/runash-chat` now includes compact controls for theme (`system`/`dark`/`light`), language selection (default `English`), and chat panel position (`Left`/`Right`), persisted in localStorage with safe defaults for invalid values.
-
-### Current limitations (RunAsh Chat preview)
-- If either preview dependency endpoint (`/api/sessions/recent` or `/api/messages/session/:id`) is unavailable in a target deployment, the mini preview falls back to an error or empty state while users can still continue into `/chat`.
-- Preview reliability and roadmap milestones are tracked in [`docs/PRODUCTION_READINESS_AND_AGENTIC_PLAN.md`](docs/PRODUCTION_READINESS_AND_AGENTIC_PLAN.md).
-
-## Quickstart
-1. Clone repository.
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Configure environment variables (copy `.env.example` to `.env.local` when available).
-4. Run development server:
-   ```bash
-   npm run dev
-   ```
-5. Open `http://localhost:3000`.
-
-## Chat API (`/api/chat`)
-
-### `GET /api/chat`
-
-Query parameters:
-- `streamId` (required): stream identifier.
-- `limit` (optional): page size, integer between `1` and `100` (default `50`).
-- `offset` (optional): row offset, integer between `0` and `10000` (default `0`).
-- `cursor` (optional): ISO timestamp for cursor pagination; returns messages older than this timestamp.
-
-Response payload includes:
-- `messages`: chat messages sorted by `timestamp DESC`.
-- `pagination`: `{ limit, offset, nextOffset, hasMore, cursor, nextCursor }`.
-
-`GET /api/chat` requires an authenticated session and only returns chat history for streams owned by the current user.
-
-
-### Optional search integrations
-Set these environment variables to enable live product web search providers:
-- `EXA_API_KEY` for Exa neural web search
-- `RUNASH_MCP_SEARCH_ENDPOINT` for custom MCP-compatible search endpoint
-- `RUNASH_MCP_SEARCH_TOKEN` optional bearer token for MCP endpoint auth
-
-### Email delivery safety flags
-Use these env vars in development/staging to prevent accidental live sends:
-
-- `EMAIL_SAFE_MODE=true|false`: enables safety policy checks before provider send calls.
-- `EMAIL_TEST_RECIPIENTS=comma,separated,list`: allowlist used when safe mode is on.
-- `EMAIL_DRY_RUN=true|false`: skips provider delivery and records simulated/pending tracking.
-- `EMAIL_SAFE_SINK_RECIPIENT=qa-inbox@example.com` (optional): rewrites blocked recipients to a sink inbox instead of returning a safety-blocked error.
-
-When safety mode blocks a send in API handlers that surface policy errors, the response uses code `EMAIL_SAFETY_BLOCKED`.
-
-## Validation commands
-```bash
-npm run lint
-npm run build
-npm run test
-npm run test:auth
-```
-
-## Test command matrix
-- **Local full checks**
-  ```bash
-  npm run lint
-  npm run build
-  npm run test
-  ```
-- **Local quick auth check**
-  ```bash
-  npm run test:auth
-  ```
-- **CI quality job (same scripts to prevent drift)**
-  ```bash
-  npm run lint
-  npm run build
-  npm run test
-  npm run test:auth
-  ```
-
-## Documentation index
-### Governance and collaboration
-- [AGENTS.md](AGENTS.md) – repository-wide contributor/agent rules
-- [AGENTS.override.md](AGENTS.override.md) – high-priority override policies (service/payment scope)
-- [TEAM_GUIDE.md](TEAM_GUIDE.md) – team workflow, ownership, release process
-- [LLMs.txt](LLMs.txt) – compact machine-readable guidance
-- [MCP_SERVER.md](MCP_SERVER.md) – MCP integration guidance
-- [SKILLS/README.md](SKILLS/README.md) – reusable workflow playbooks
-- [CODEX_CUSTOM_INSTRUCTIONS.md](CODEX_CUSTOM_INSTRUCTIONS.md) – custom Codex instruction policy
-
-### Product and platform docs
-- [PLATFORM_GUIDE.md](PLATFORM_GUIDE.md)
-- [RUNASH-AUTH.md](RUNASH-AUTH.md)
-- [SECURITY.md](SECURITY.md)
-- [DRIZZLE_ORM.md](DRIZZLE_ORM.md)
-- [RunAsh_AI_Pay.md](RunAsh_AI_Pay.md)
-- [RUNASH_PAY_BUSINESS_IMPLEMENTATION.md](RUNASH_PAY_BUSINESS_IMPLEMENTATION.md)
-- [docs/PRODUCTION_READINESS_AND_AGENTIC_PLAN.md](docs/PRODUCTION_READINESS_AND_AGENTIC_PLAN.md)
-- [docs/DASHBOARD_NAVIGATION_ARCHITECTURE.md](docs/DASHBOARD_NAVIGATION_ARCHITECTURE.md)
-- [docs/RESPONSIVE_LAYOUT_SPEC.md](docs/RESPONSIVE_LAYOUT_SPEC.md)
-
-## Contribution
-1. Create a focused branch.
-2. Keep code + docs in sync.
-3. Run validation commands.
-4. Open PR with summary, risks, and rollback notes.
-
- 
-Team process, ownership boundaries, and delivery policy are documented in [`TEAM_GUIDE.md`](./TEAM_GUIDE.md).
-
-We welcome contributions to the RunAsh AI live streaming platform. To contribute, follow these steps:
-
-## Contributor and Agent Governance
-
-
-- Default repository policy: [AGENTS.md](./AGENTS.md)
-- Temporary/higher-priority directives: [AGENTS.override.md](./AGENTS.override.md)
-
-## License
-
- 
-1. Create and modify your project using [v0.dev](https://v0.dev)
-2. Deploy your chats from the v0 interface
-3. Changes are automatically pushed to this repository
-4. Vercel deploys the latest version from this repository
-
-## Agent Operations
-
-- [MCP Server Guide](./MCP_SERVER.md)
-- [Agent Working Guide](./AGENTS.md)
-- [Team Guide](./TEAM_GUIDE.md)
-
-MIT and Apache-2.0.
-
-
-## Operations Observability
-
-- Runbook: `docs/OPERATIONS_OBSERVABILITY_RUNBOOK.md`
-- Dashboard queries/panels: `docs/OPERATIONS_DASHBOARD_QUERIES.md`
+# RunAsh AI
+
+RunAsh AI is a real-time AI-powered live commerce platform where AI hosts run shopping streams, interact with viewers, present products, answer questions, support multilingual voice/video experiences, generate clips, and drive purchases through integrated commerce systems.
+
+## Core capabilities
+
+- AI-hosted live commerce sessions
+- Real-time viewer chat and engagement
+- Product overlays and dynamic CTAs
+- English/Hindi speech and translation workflows
+- Clips, highlights, and post-live content generation
+- RunAsh Pay, Pay Link checkout, wallet, and payouts
+- Seller analytics and campaign optimization
+
+## Monorepo structure
+
+- `apps/` — user-facing and internal apps
+- `services/` — domain services and APIs
+- `workers/` — async and heavy background jobs
+- `packages/` — shared libraries and contracts
+- `prompts/` — versioned AI prompt assets
+- `data-contracts/` — canonical event/API/webhook schemas
+- `docs/` — architecture, runbooks, ADRs, and API docs
+- `infrastructure/` — deployment and platform config
+
+## Engineering principles
+
+- Keep live-path latency low
+- Prefer event-driven and async processing
+- Separate media, agent, and commerce concerns
+- Never trust client-authoritative commerce values
+- Enforce idempotency for payments, webhooks, and critical events
+- Use structured logs, metrics, tracing, and correlation IDs
+
+## Getting started
+
+1. Install workspace dependencies
+2. Configure `.env`
+3. Start required local dependencies
+4. Run apps/services in dev mode
+5. Run tests and linters before merging
+
+## Repo rules
+
+See:
+- `AGENTS.md`
+- scoped `AGENTS.md` files in service/app directories
+- `docs/architecture/`
+- `docs/adr/`
+
+## Initial priorities
+
+Recommended v1 focus:
+- `apps/dashboard`
+- `services/live-orchestrator`
+- `services/agent-runtime`
+- `services/product-knowledge`
+- `services/commerce`
+- `services/payments`
+- `services/clips`
+- `workers/media-worker`
+- `workers/webhook-worker`
+
+## Prompt management
+
+Do not hardcode large prompts directly into application logic.
+
+Store prompts in:
+- `prompts/host-agent/`
+- `prompts/seller-copilot/`
+- `prompts/moderation/`
+- `prompts/translation/`
+
+## Contracts
+
+All shared event, API, and webhook contracts should live under `data-contracts/`.

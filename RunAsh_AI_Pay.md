@@ -13,6 +13,52 @@ This document is payment-domain specific. For contributor workflow/process polic
 
 ## Current payment reliability notes (2026-02)
 
+## 2026-03 RunAsh Pay landing + dashboard route split (UI-only, contract-safe)
+
+- `/payment/runash-pay` now renders a product-facing landing page (hero + product blocks for Wallet/Card/Cash/Link) to clarify the RunAsh Pay value stack.
+- Existing internal operations workflows remain available at `/payment/runash-pay/dashboard`, which continues to render the existing `RunAshPayDashboard` surface.
+- Payment/auth compatibility: no API request/response field names, webhook payload schemas, or auth/session signatures were changed.
+- Impacted flows: RunAsh Pay navigation and presentation only (`app/payment/runash-pay/page.tsx`, `app/payment/runash-pay/dashboard/page.tsx`, `components/payment/runash-pay-landing.tsx`).
+- Risk + rollback: low UI/navigation regression risk. Roll back by restoring `/payment/runash-pay` to directly render `RunAshPayDashboard` and removing the new dashboard sub-route.
+
+
+## 2026-03 UPI route security + rate-limiting hardening
+
+- Hardened UPI API routes with strict server-side validation for UPI IDs, amount bounds, and transaction identifiers.
+- Enforced transaction ownership checks on QR/status/transaction retrieval and payment confirmation/completion paths.
+- Added per-user and per-transaction rate limits across initiation, confirmation, completion, and status polling routes.
+- Persisted idempotency outcomes for provider completion/callback processing to strengthen replay protection in payment execution paths.
+- Added trace-ID linked, audit-safe logs for `/api/upi/initiate`, `/api/upi/qr`, `/api/upi/complete`, and `/api/upi/status/:transactionId` with no PIN/sensitive payload exposure.
+- Added alertable metrics coverage for request failures, timeout rates, and callback verification failures in UPI callback/route handlers.
+- Backward compatibility: request/response field names and route signatures are preserved; hardening is additive and policy-enforcing only.
+- Risk + rollback: low-to-medium risk of stricter validation rejecting previously malformed traffic. Roll back by reverting UPI route validation/rate-limit guards and replay-protection persistence changes together.
+
+## 2026-03 UPI provider callback verification + canonical status hardening
+
+- Added authoritative provider callback endpoint: `POST /api/upi/webhook/provider` to receive UPI transaction terminal/intermediate states.
+- Callback ingestion now requires a valid `x-upi-signature` HMAC-SHA256 signature (secret: `UPI_PROVIDER_WEBHOOK_SECRET`); unsigned/invalid requests are rejected with `401`.
+- Provider statuses are mapped into canonical internal statuses (`success`, `failed`, `pending`) and persisted into both UPI transaction state and linked in-memory order record state for auditability.
+- `/api/upi/complete` is now sandbox-only behind explicit feature flag `FEATURE_FLAG_UPI_SANDBOX_COMPLETE`; production flow relies on verified provider callbacks.
+- Checkout UPI QR polling now waits for verified status (`isVerified`) before showing success and displays callback verification source when available.
+- Backward compatibility: existing UPI initiation/status/confirm response field names are preserved; verification metadata is additive (`isVerified`, `verifiedAt`, `verifiedBy`).
+- Risk + rollback: medium payment flow risk if provider callback signing secret is misconfigured. Roll back by restoring previous `app/api/upi/complete` behavior and disabling callback-only enforcement while provider webhook configuration is corrected.
+
+## 2026-03 checkout UX detailing refresh (UI-only, contract-safe)
+
+- Enhanced `/checkout` with a subscription hero summary, collapsible payment-details panel, card-brand indicator chips, and improved phone capture using country-code + flag selector.
+- UPI section now includes an explicit app-authorization handoff dialog (select app -> redirecting -> success confirmation) and a QR fallback path (`/api/upi/initiate`, `/api/upi/qr`, `/api/upi/complete`, `/api/upi/status/:transactionId`) to support app/QR completion flows.
+- Checkout model review card remains integrated to preserve plan/model visibility before final submit.
+- Payment/auth compatibility: no payment API request/response fields, webhook schemas, redirect contract names, or checkout payload keys were renamed or removed.
+- Impacted flow: client checkout form UX + local pending-order preparation (`app/checkout/page.tsx`) only.
+- Risk + rollback: low UI/regression risk. Roll back by reverting `app/checkout/page.tsx`; no migration/database rollback required.
+
+## 2026-03 auth SMS OTP provider reliability note (payment-adjacent auth hardening)
+
+- Updated auth SMS OTP delivery to use environment-configured provider retries/timeouts and explicit outage failures; no payment API fields, checkout contract signatures, or webhook schemas were changed.
+- Payment-adjacent auth posture is improved by preventing false OTP-send success responses during provider outages, reducing risk of ambiguous sign-in/step-up states before payment actions.
+- Risk + rollback: low-to-medium auth runtime risk (SMS delivery path only). Roll back by reverting `lib/sms-provider-client.ts`, `lib/otp.ts`, and `lib/auth/plugins/phone-otp.ts` together to restore previous OTP delivery wiring.
+
+
 - RunAsh Chat payment-adjacent actions route through existing settings action APIs:
   - `POST /api/settings/actions/credits-balance`
   - `POST /api/settings/actions/refer-earn`
@@ -20,6 +66,37 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Project create/import flows initialize with `POST /api/editor/projects` before editor/payment handoff.
 - Credits purchase routing uses `/pricing?intent=credits`; redeem flow uses in-app validated redeem input before billing handoff.
 - Payment API contract fields, webhook schemas, and auth/payment token formats remain unchanged by these routing updates.
+
+## 2026-03 checkout reliability expansion: bank transfer + model-dialog confirmation card
+
+- Checkout page now supports three explicit payment rails (`card`, `upi`, `bank`) with method-specific validation and masked client payload persistence before redirect handoff.
+- Checkout confirmation flow now routes to `/payment-redirect` (server-backed order + checkout-session orchestration) instead of direct dashboard-only handoff, preserving existing billing checkout API contracts.
+- Checkout review now embeds the optional `ModelDialogCard` section to capture plan/model metadata without blocking payment submission.
+- Checkout order payload schema now explicitly accepts bank/UPI detail fields while preserving existing field names and top-level API signatures.
+- Impacted flows: `/checkout` UI validation + pending-order payload, `/payment-redirect` orchestration start, `/api/orders` payload compatibility.
+- Risk + rollback: medium checkout UX/validation risk isolated to frontend + DTO parsing. Rollback by reverting `app/checkout/page.tsx` and `lib/types/checkout-order.ts` together; no database migration rollback required.
+
+## 2026-03 checkout model-dialog card integration (UI-only, no payment contract changes)
+
+- Added an optional checkout-side model review card (`ModelDialogCard`) in the order-summary payment review region so buyers can inspect plan/model metadata before final submit.
+- Checkout order payload now includes optional metadata keys (`metadata.selectedPlan`, `metadata.selectedModel`) when those query params are present; payment submission remains unblocked when model metadata is absent.
+- No payment API request/response contract fields, webhook schemas, auth/session signatures, or provider redirect contracts were changed.
+- Risk + rollback: low runtime risk (checkout UI + optional metadata only). Rollback by reverting `app/checkout/page.tsx` and `components/checkout/model-dialog-checkout-section.tsx`; no migration required.
+
+## 2026-03 checkout order DTO unification + POST /api/orders validation hardening
+
+- Checkout and payment redirect now share a single checkout-order DTO/schema (`lib/types/checkout-order.ts`) to keep pending-order/session payloads contract-consistent before server order creation.
+- `POST /api/orders` now enforces explicit Zod validation and returns structured `400` payload errors (`code: INVALID_ORDER_PAYLOAD`, `details[]` with path/message/code) for invalid client payloads.
+- Buyer order creation auth now uses authenticated session-user validation (buyer-appropriate), while seller-only guards are preserved for seller order listing (`GET /api/orders`).
+- Backward compatibility: existing `orders` insert fields (`buyer_name`, `buyer_email`, `buyer_phone`, `shipping_address`, `payment_method`, `items`) and seller listing behavior remain unchanged.
+- Risk + rollback: medium auth/validation risk isolated to order creation. Roll back by reverting `app/api/orders/route.ts`, `app/payment-redirect/page.tsx`, `app/checkout/page.tsx`, and `lib/types/checkout-order.ts` together to restore prior payload/auth behavior.
+
+## 2026-03 checkout session alias + redirect contract alignment
+
+- Added a public route alias `POST /api/checkout/session` that forwards to canonical billing checkout implementation (`/api/v1/billing/checkout`) to preserve a stable client entrypoint.
+- Checkout success payload now includes `checkoutSessionId` in addition to existing `redirectUrl`/`url`, `provider`, and `providerTransactionReference` contract fields.
+- Payment redirect client now sends canonical checkout request fields (`priceId`, `success_url`, `cancel_url`, optional `redirectUrl`) so request contracts include item/price identifier + return URLs expected by billing checkout.
+- Risk + rollback: low-to-medium (checkout-start path only). Roll back by reverting `app/api/checkout/session/route.ts`, `app/api/v1/billing/checkout/route.ts`, and `app/payment-redirect/page.tsx` together to keep route alias and client contract in sync.
 
 ## 2026-02 Ecommerce payments theme/UI refactor (no contract changes)
 
@@ -69,6 +146,24 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Added automation timeline exposure for stream host transparency via stream dashboard/session automation APIs.
 - **Impacted payment/auth flows identified:** none. This change is stream orchestration + dashboard visibility only; payment API fields, webhook schemas, checkout signatures, and auth/session contracts are unchanged.
 - **Risk + rollback:** medium operational UX risk (aggressive quality downgrade if noisy network telemetry). Rollback by reverting orchestration/network trigger handling and dashboard timeline surface; no payment data migration required.
+
+## 2026-03 live stream provider adapter hardening (no payment contract changes)
+
+### Live stream provider env migration/config notes (2026-03)
+
+- Runtime sessions must set `RUNASH_LIVE_STREAM_PROVIDER` to one of: `mux`, `livepeer`, or `internal`.
+- Required provider credentials:
+  - `mux`: `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET`
+  - `livepeer`: `LIVEPEER_API_TOKEN`
+  - `internal`: `RUNASH_INTERNAL_LIVE_STREAM_API_BASE_URL`, `RUNASH_INTERNAL_LIVE_STREAM_API_KEY`
+- Optional reliability controls: `RUNASH_LIVE_STREAM_PROVIDER_RETRY_COUNT` and `RUNASH_LIVE_STREAM_PROVIDER_TIMEOUT_MS`.
+- Mock behavior is now test/dev-harness only. `RUNASH_LIVE_STREAM_PROVIDER=mock` is rejected for deployed environments (`NODE_ENV=production`, `VERCEL_ENV=preview|production`, or `RUNASH_ENV=staging|production`) and is also rejected for runtime `getLiveStreamProvider()` paths.
+- Fallback behavior is fail-closed: invalid provider selection or missing credentials returns provider-configuration errors and prevents ingest/playback URL provisioning rather than issuing mock URLs.
+
+
+- Live stream provisioning now supports real provider adapters (`mux`, `livepeer`, `internal`) selected via `RUNASH_LIVE_STREAM_PROVIDER`; mock adapter fallback was removed from runtime selection.
+- **Impacted payment/auth flows identified:** none. This update is confined to live stream provisioning/teardown behavior and does not modify payment API fields, auth/session contracts, webhook payloads, or billing redirects.
+- **Risk + rollback:** medium operational risk for streaming setup if provider credentials are misconfigured. Rollback by restoring prior provider adapter selection in `services/live-stream/provider.ts`; no payment migration or contract rollback required.
 
 ## Auth dependency notes for payment flows
 
@@ -315,9 +410,15 @@ Risks + rollback:
   - `LINK_PROVIDER_UNAVAILABLE`
 
 Risks + rollback:
-1. If Stripe SDK/credentials are unavailable in a non-prod environment, provider service falls back to deterministic mock IDs to keep local UX paths testable.
+1. Link provider now fails closed with `LINK_PROVIDER_UNAVAILABLE` when Stripe SDK/credentials are missing in real environments; deterministic mock IDs are only allowed when `NODE_ENV=development` and `LINK_PROVIDER_ENABLE_MOCK=true` are both set.
 2. If webhook event mapping causes false verification transitions, rollback by reverting wallet-link sync logic in `app/api/billing/webhook/route.ts` while preserving existing billing webhook processing.
 3. No breaking API contract changes were introduced; rollback is code revert only (no schema migration required for compatibility due to additive columns).
+
+Migration notes (payment/auth behavior):
+- Existing request/response field names and API signatures remain unchanged.
+- Integrators that relied on implicit Link mock fallback must explicitly opt in during local development with `LINK_PROVIDER_ENABLE_MOCK=true`.
+- UPI transaction lifecycle is now deterministic: `PENDING` is created at initiation and can transition to terminal `SUCCESS`/`FAILED` only via gateway acceptance/webhook callback handling.
+- Gateway callbacks are idempotent: duplicate terminal callbacks return the current transaction state without duplicate fund transfer side-effects.
 
 ## 2026-02 Relay Instant Checkout hardening (RunAshChat → Stripe Link)
 
@@ -338,6 +439,25 @@ Risks + rollback:
 
 
 ## Link Checkout Reliability + Audit Controls
+
+## 2026-03 QR service encoding/decoding hardening (Scan & Pay)
+
+- `lib/services/qr-service.tsx` now uses the production QR encoder (`qrcode`) for `generateQR`, replacing the placeholder SVG mock output with real scannable QR payload images.
+- `scanQR` now uses `BarcodeDetector`-based decoding from camera/image compatible sources and enforces deterministic error codes:
+  - `UNREADABLE_QR_INPUT`
+  - `QR_CODE_NOT_FOUND`
+  - `QR_SCANNER_NOT_SUPPORTED`
+  - `INVALID_QR_PAYLOAD`
+- Existing UPI parser helpers remain backward compatible; decoded UPI payloads are now validated to require a payee address before returning scan success.
+- UPI payload parsing is now strict for scan flows: `pa` must be a valid UPI ID, `am` must be a finite positive number when present, and `cu` must be a 3-letter currency code; malformed UPI payloads fail with `INVALID_QR_PAYLOAD`.
+- `scanQR` now decodes from real image inputs (`Blob`/`File`/`ImageData`/image sources) via `BarcodeDetector` instead of simulated/random scan outcomes.
+- Scan history persistence behavior is explicit: local persistence is used only when `window.localStorage` is available; otherwise history remains in-memory (`memory_ephemeral`) for the active runtime session.
+
+Risks + rollback:
+1. **Risk:** browsers/environments without `BarcodeDetector` support will return `QR_SCANNER_NOT_SUPPORTED`. **Mitigation:** surface deterministic UX fallback and keep manual UPI entry available.
+2. **Risk:** malformed UPI payloads that previously passed as opaque text now fail with `INVALID_QR_PAYLOAD` under stricter UPI validation (`pa`/`am`/`cu`). **Mitigation:** checks are constrained to mandatory payment-safety fields and standards-compliant currency format.
+3. **Rollback:** revert `lib/services/qr-service.tsx` to prior mock scan/generate implementation if runtime compatibility issues arise; API signatures remain unchanged.
+4. **Risk:** non-browser/runtime contexts without `BarcodeDetector` support now return `QR_SCANNER_NOT_SUPPORTED`. **Mitigation:** maintain manual UPI entry fallback and environment capability checks before scan initiation.
 
 - Link checkout now enforces validator threshold controls for HITL and MFA before provider session creation.
 - Wallet default payment method updates and subscription lifecycle transitions are treated as high-risk payment actions and require HITL + MFA.
@@ -788,3 +908,56 @@ Risk + rollback:
 1. **Risk:** increased log/metric volume may raise observability ingestion cost.
 2. **Mitigation:** logs are structured/sanitized and scoped to operational lifecycle events.
 3. **Rollback:** revert observability-only changes in API/service files and `lib/operations-observability.ts`; no data/schema rollback required.
+
+## Exchange-rate resiliency contract (2026-03)
+
+- `/api/exchange-rates` now serves payment-safe currency rates from a provider-backed snapshot with stale metadata (`stale`, `tooOld`) so checkout or invoice previews can surface explicit error states instead of silently defaulting to constants.
+- Latest successful provider rates are persisted with upsert semantics in `exchange_rates` and kept in in-memory cache for stale-while-revalidate reads when the upstream provider is unavailable.
+- Currency pairs that cannot be resolved are returned in `unavailableCurrencies`; clients must block conversions for those pairs rather than falling back to `1` or hardcoded rates.
+- Rollback: revert to previous hook/service behavior only if provider and DB path is unavailable; keep the API contract stable (`rates`, `supportedCurrencies`, `unavailableCurrencies`, `stale`, `tooOld`) during rollback.
+
+## 2026-03 checkout UX enhancement for card/UPI/business fields (no payment contract changes)
+
+- Updated `app/checkout/page.tsx` to align the checkout surface with the target flow by adding:
+  - payment method toggle (`Card` / `UPI`),
+  - save-for-faster-checkout consent,
+  - business purchase toggle with business name + GSTIN inputs,
+  - terms acceptance gate before order submission,
+  - UPI app selection modal and action-success confirmation modal.
+- Backward compatibility: no API request/response field names, webhook payloads, or payment route signatures were changed.
+- Impacted payment/auth flows identified:
+  - Checkout UI capture on `/checkout` before redirect to `/payment/runash-pay`.
+  - Session/local storage handoff via `pendingOrder` and existing cart state (`runash-cart`).
+- Risks:
+  1. UX-only flow risk: modal sequencing or required consent validation could block submit if labels/selectors regress.
+  2. No backend contract risk since changes are presentational/client-state only.
+- Rollback: revert `app/checkout/page.tsx` and redeploy; no payment data migration and no API/schema rollback required.
+
+## 2026-03 Link provider strict configuration + webhook secret hardening
+
+- Removed Link mock-success behavior when Stripe credentials are missing; Link session creation, verification polling, and link-save now return typed `LINK_PROVIDER_UNAVAILABLE` errors with user-safe messaging.
+- Link save now uses provider-native Stripe token + payment method attachment flow and returns real Stripe payment method IDs (no local pseudo `pm_link_*` identifiers).
+- Billing webhook handling now requires `STRIPE_SECRET_KEY`/`STRIPE_API_KEY` and no longer uses placeholder key fallback; webhook requests fail fast with `500` if secrets are missing.
+- Structured payment logs now use request correlation IDs and avoid logging sensitive card/auth values.
+- Risk + rollback:
+  - **Risk:** environments missing Stripe secrets will hard-fail Link save/session and webhook processing until secrets are configured.
+  - **Rollback:** temporarily revert `lib/services/link-provider-service.ts` and `app/api/billing/webhook/_shared.ts` to previous behavior, then redeploy while restoring provider credentials.
+
+
+## 2026-03 Link availability hardening update
+
+- Link provider endpoints now return controlled provider-availability failures instead of synthetic sessions when Stripe credentials are missing.
+- `/api/wallet/link/session`, `/api/wallet/link/verify`, and `/api/wallet/link/save` surface `LINK_PROVIDER_UNAVAILABLE` as retry-safe `503` responses, and provider execution errors as controlled `502` responses.
+- Mock mode is restricted to explicit test-only execution (`NODE_ENV=test` and `LINK_PROVIDER_ENABLE_MOCK=true`) to prevent fake Link state in real checkout flows.
+- Rollback: revert Link provider availability hardening changes and restore prior behavior only as temporary incident containment while reapplying valid Stripe credentials.
+
+## 2026-03 API key metadata persistence hardening
+
+- Dashboard API key management now persists metadata + lifecycle state in `api_key_metadata`, while secret material is stored as both a SHA-256 hash and encrypted ciphertext (`aes-256-gcm`, key version `v1`) in `api_key_secret_material`.
+- Rotation/revocation lifecycle events are persisted in `api_key_rotation_history`, and usage buckets continue in `api_key_usage_counters` for 24h volume aggregation.
+- Synthetic default keys are removed from initialization; key inventory starts empty until an operator explicitly creates credentials.
+- Plaintext API secrets are returned exactly once (create/rotate response only) and are not persisted in plaintext or emitted in API audit logs.
+
+Risk + rollback
+1. **Risk:** environments missing `RUNASH_API_KEY_ENCRYPTION_KEY` will fail key create/rotate operations. **Mitigation:** set and rotate the managed secret in deployment config before rollout.
+2. **Rollback:** revert `lib/api-platform/api-key-store.ts` and `lib/repositories/api-keys.ts` plus DB migration `0016_api_key_secret_encryption_backfill.sql`, then redeploy previous API key handling while restoring prior secret material expectations.

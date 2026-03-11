@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
-import { createConnector, listConnectors } from "@/lib/mcp/connectors-store"
+import { canManageMcpConnectors, requireDashboardTenantContext } from "@/app/api/dashboard/_auth"
+import { createConnector, listConnectors, recordMcpAudit } from "@/lib/mcp/connectors-store"
 
 const createSchema = z.object({
   serverName: z.string().trim().min(1),
@@ -24,17 +25,59 @@ const createSchema = z.object({
     .optional(),
 })
 
-export async function GET() {
-  return NextResponse.json({ connectors: listConnectors() })
+export async function GET(request: Request) {
+  const context = await requireDashboardTenantContext(request)
+  if (context instanceof Response) return context
+
+  try {
+    const connectors = await listConnectors({ tenantId: context.tenantId })
+    return NextResponse.json({ connectors })
+  } catch {
+    return NextResponse.json({ error: "Failed to list connectors" }, { status: 500 })
+  }
 }
 
 export async function POST(request: Request) {
+  const context = await requireDashboardTenantContext(request)
+  if (context instanceof Response) return context
+  if (!canManageMcpConnectors(context)) {
+    await recordMcpAudit(
+      {
+        connectorId: "",
+        connectorName: "mcp-config",
+        toolName: "connector.create",
+        status: "denied",
+        actorUserId: context.userId,
+        actorRoles: [context.role],
+        detail: "Connector create forbidden by role policy",
+      },
+      { tenantId: context.tenantId },
+    )
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
   const body = await request.json().catch(() => null)
   const parsed = createSchema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid connector payload", details: parsed.error.flatten() }, { status: 400 })
   }
 
-  const connector = createConnector(parsed.data)
-  return NextResponse.json({ connector }, { status: 201 })
+  try {
+    const connector = await createConnector(parsed.data, { tenantId: context.tenantId })
+    await recordMcpAudit(
+      {
+        connectorId: connector.id,
+        connectorName: connector.serverName,
+        toolName: "connector.create",
+        status: "success",
+        actorUserId: context.userId,
+        actorRoles: [context.role],
+        detail: "Connector created",
+      },
+      { tenantId: context.tenantId },
+    )
+    return NextResponse.json({ connector }, { status: 201 })
+  } catch {
+    return NextResponse.json({ error: "Failed to create connector" }, { status: 500 })
+  }
 }

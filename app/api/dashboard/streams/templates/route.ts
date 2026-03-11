@@ -1,57 +1,43 @@
-import { NextResponse } from "next/server";
-import { v4 as uuidv4 } from "uuid";
-import { readData, writeData } from "../utils";
-import type {
-  DashboardStreamTemplate,
-  DashboardStreamTemplatesResponse,
-} from "@/lib/types/dashboard-streams";
+import type { DashboardStreamTemplate } from "@/lib/types/dashboard-streams"
+import { handleTemplatesGet, handleTemplatesPost } from "./templates-route-handler"
 
-type CreateTemplateRequest = Omit<
-  DashboardStreamTemplate,
-  "id" | "createdAt" | "updatedAt"
->;
+type TemplateRouteDependencies = {
+  requireUserId: (request: Request) => Promise<string | Response>
+  listTemplates: (userId: string) => Promise<DashboardStreamTemplate[]>
+  createTemplate: (
+    userId: string,
+    input: Omit<DashboardStreamTemplate, "id" | "createdAt" | "updatedAt">,
+  ) => Promise<DashboardStreamTemplate>
+}
 
-export async function GET() {
-  const data = await readData();
-  const payload: DashboardStreamTemplatesResponse = {
-    templates: [...(data.templates ?? [])].sort((a, b) =>
-      b.updatedAt.localeCompare(a.updatedAt),
-    ),
-  };
+async function resolveDefaultDependencies(): Promise<TemplateRouteDependencies> {
+  const [{ createDashboardStreamTemplate, listDashboardStreamTemplates }, { requireStreamDashboardUserId }] =
+    await Promise.all([import("@/lib/repositories/streams"), import("../utils")])
 
-  return NextResponse.json(payload);
+  return {
+    requireUserId: requireStreamDashboardUserId,
+    listTemplates: listDashboardStreamTemplates,
+    createTemplate: createDashboardStreamTemplate,
+  }
+}
+
+export function createTemplateRoutes(dependencies: TemplateRouteDependencies) {
+  return {
+    GET(request: Request) {
+      return handleTemplatesGet(request, dependencies)
+    },
+    POST(request: Request) {
+      return handleTemplatesPost(request, dependencies)
+    },
+  }
+}
+
+export async function GET(request: Request) {
+  const dependencies = await resolveDefaultDependencies()
+  return handleTemplatesGet(request, dependencies)
 }
 
 export async function POST(request: Request) {
-  const body = (await request
-    .json()
-    .catch(() => null)) as Partial<CreateTemplateRequest> | null;
-  if (!body?.name?.trim() || !body?.title?.trim()) {
-    return NextResponse.json(
-      { error: "Missing template name or title" },
-      { status: 400 },
-    );
-  }
-
-  const data = await readData();
-  const now = new Date().toISOString();
-  const template: DashboardStreamTemplate = {
-    id: uuidv4(),
-    name: body.name.trim(),
-    title: body.title.trim(),
-    description: body.description?.trim() ?? "",
-    duration: typeof body.duration === "number" ? body.duration : 60,
-    platforms: Array.isArray(body.platforms) ? body.platforms : [],
-    thumbnail: body.thumbnail,
-    tags: Array.isArray(body.tags) ? body.tags : [],
-    category: body.category ?? "Gaming",
-    isPublic: body.isPublic ?? true,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  data.templates = [template, ...(data.templates ?? [])];
-  await writeData(data);
-
-  return NextResponse.json(template, { status: 201 });
+  const dependencies = await resolveDefaultDependencies()
+  return handleTemplatesPost(request, dependencies)
 }

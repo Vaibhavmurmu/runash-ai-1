@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -9,6 +9,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Button } from "@/components/ui/button"
 import type { StreamingPlatform } from "@/types/platform-chat"
 import { getPlatformIcon } from "./platform-utils"
+import { useToast } from "@/components/ui/use-toast"
+import { useChatParticipants } from "@/hooks/use-chat-participants"
 
 interface ChatUser {
   id: string
@@ -24,43 +26,9 @@ interface PlatformChatUsersProps {
 }
 
 export default function PlatformChatUsers({ platform }: PlatformChatUsersProps) {
-  const [users, setUsers] = useState<ChatUser[]>([])
+  const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
-  const [isLoading, setIsLoading] = useState(true)
-
-  useEffect(() => {
-    // Simulate loading users
-    setIsLoading(true)
-
-    const loadUsers = async () => {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      // Generate mock users
-      const mockUsers: ChatUser[] = []
-
-      const platforms: StreamingPlatform[] = platform ? [platform] : ["twitch", "youtube", "facebook", "tiktok"]
-
-      platforms.forEach((p) => {
-        const count = Math.floor(Math.random() * 10) + 5 // 5-15 users per platform
-
-        for (let i = 0; i < count; i++) {
-          mockUsers.push({
-            id: `${p}-user-${i}`,
-            username: `${p}User${i}`,
-            platform: p,
-            isModerator: Math.random() < 0.2,
-            isSubscriber: Math.random() < 0.4,
-            isVIP: Math.random() < 0.1,
-          })
-        }
-      })
-
-      setUsers(mockUsers)
-      setIsLoading(false)
-    }
-
-    loadUsers()
-  }, [platform])
+  const { data: users, loading: isLoading, error, moderate } = useChatParticipants("studio-default", platform)
 
   const filteredUsers = searchQuery
     ? users.filter((user) => user.username.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -77,6 +45,27 @@ export default function PlatformChatUsers({ platform }: PlatformChatUsersProps) 
         <div className="animate-spin h-5 w-5 border-2 border-orange-500 border-t-transparent rounded-full"></div>
       </div>
     )
+  }
+
+  if (error) {
+    return <div className="p-4 text-sm text-red-500">{error}</div>
+  }
+
+  if (filteredUsers.length === 0) {
+    return <div className="p-4 text-sm text-muted-foreground">No participants found.</div>
+  }
+
+  const handleModeration = async (user: ChatUser, action: "make_moderator" | "make_vip" | "timeout") => {
+    try {
+      await moderate(user.id, action)
+      toast({ title: "Moderation updated", description: `${user.username} has been updated.` })
+    } catch (actionError) {
+      toast({
+        title: "Moderation failed",
+        description: actionError instanceof Error ? actionError.message : "Unable to update participant",
+        variant: "destructive",
+      })
+    }
   }
 
   return (
@@ -102,7 +91,7 @@ export default function PlatformChatUsers({ platform }: PlatformChatUsersProps) 
             </h4>
             <div className="space-y-1">
               {moderators.map((user) => (
-                <UserItem key={user.id} user={user} />
+                <UserItem key={user.id} user={user} onModerate={handleModeration} />
               ))}
             </div>
           </div>
@@ -113,7 +102,7 @@ export default function PlatformChatUsers({ platform }: PlatformChatUsersProps) 
             <h4 className="text-xs font-medium mb-1">VIPs</h4>
             <div className="space-y-1">
               {vips.map((user) => (
-                <UserItem key={user.id} user={user} />
+                <UserItem key={user.id} user={user} onModerate={handleModeration} />
               ))}
             </div>
           </div>
@@ -124,7 +113,7 @@ export default function PlatformChatUsers({ platform }: PlatformChatUsersProps) 
             <h4 className="text-xs font-medium mb-1">Subscribers</h4>
             <div className="space-y-1">
               {subscribers.map((user) => (
-                <UserItem key={user.id} user={user} />
+                <UserItem key={user.id} user={user} onModerate={handleModeration} />
               ))}
             </div>
           </div>
@@ -135,7 +124,7 @@ export default function PlatformChatUsers({ platform }: PlatformChatUsersProps) 
             <h4 className="text-xs font-medium mb-1">Viewers</h4>
             <div className="space-y-1">
               {viewers.map((user) => (
-                <UserItem key={user.id} user={user} />
+                <UserItem key={user.id} user={user} onModerate={handleModeration} />
               ))}
             </div>
           </div>
@@ -145,7 +134,7 @@ export default function PlatformChatUsers({ platform }: PlatformChatUsersProps) 
   )
 }
 
-function UserItem({ user }: { user: ChatUser }) {
+function UserItem({ user, onModerate }: { user: ChatUser; onModerate: (user: ChatUser, action: "make_moderator" | "make_vip" | "timeout") => void }) {
   const PlatformIcon = getPlatformIcon(user.platform)
 
   return (
@@ -200,15 +189,15 @@ function UserItem({ user }: { user: ChatUser }) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onModerate(user, "make_moderator")}>
             <UserPlus className="h-4 w-4 mr-2" />
             Make Moderator
           </DropdownMenuItem>
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onModerate(user, "make_vip")}>
             <Shield className="h-4 w-4 mr-2" />
             Make VIP
           </DropdownMenuItem>
-          <DropdownMenuItem className="text-red-600">
+          <DropdownMenuItem className="text-red-600" onClick={() => onModerate(user, "timeout")}>
             <UserMinus className="h-4 w-4 mr-2" />
             Timeout User
           </DropdownMenuItem>

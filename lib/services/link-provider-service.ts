@@ -1,5 +1,3 @@
-import { randomUUID } from "crypto"
-
 import { logApiEvent } from "@/lib/api/logging"
 
 export type LinkProviderErrorCode =
@@ -17,6 +15,13 @@ export class LinkProviderError extends Error {
   ) {
     super(message)
   }
+}
+
+const PROVIDER_STATUS_BY_CODE: Record<LinkProviderErrorCode, number> = {
+  LINK_SESSION_FAILED: 502,
+  LINK_VERIFICATION_FAILED: 502,
+  LINK_SAVE_FAILED: 502,
+  LINK_PROVIDER_UNAVAILABLE: 503,
 }
 
 type CreateLinkSessionInput = {
@@ -67,15 +72,23 @@ const USER_SAFE_MESSAGES: Record<LinkProviderErrorCode, string> = {
 }
 
 function toProviderError(code: LinkProviderErrorCode, _cause: unknown, providerRequestId?: string | null): LinkProviderError {
-  return new LinkProviderError(code, USER_SAFE_MESSAGES[code], 502, providerRequestId)
+  return new LinkProviderError(code, USER_SAFE_MESSAGES[code], PROVIDER_STATUS_BY_CODE[code], providerRequestId)
 }
 
-export function toUserSafeProviderError(error: unknown): { code: LinkProviderErrorCode; message: string; providerRequestId: string | null } {
+export function toUserSafeProviderError(error: unknown): {
+  code: LinkProviderErrorCode
+  message: string
+  providerRequestId: string | null
+  status: number
+  retryable: boolean
+} {
   if (error instanceof LinkProviderError) {
     return {
       code: error.code,
       message: USER_SAFE_MESSAGES[error.code],
       providerRequestId: error.providerRequestId ?? null,
+      status: error.status,
+      retryable: error.status >= 500,
     }
   }
 
@@ -83,14 +96,106 @@ export function toUserSafeProviderError(error: unknown): { code: LinkProviderErr
     code: "LINK_PROVIDER_UNAVAILABLE",
     message: USER_SAFE_MESSAGES.LINK_PROVIDER_UNAVAILABLE,
     providerRequestId: null,
+    status: 503,
+    retryable: true,
   }
 }
 
-async function createStripeClient() {
+function isTestOnlyMockEnabled() {
+  return process.env.NODE_ENV === "test" && process.env.LINK_PROVIDER_ENABLE_MOCK === "true"
+}
+
+function isMockFailure(operation: "session" | "verify" | "save") {
+  return process.env.LINK_PROVIDER_MOCK_FAIL_OP === operation
+}
+
+type StripeLikeClient = {
+  customers: {
+    create: (input: { email: string; metadata: Record<string, string> }) => Promise<{ id: string; lastResponse?: { requestId?: string } }>
+  }
+  setupIntents: {
+    create: (input: unknown) => Promise<{ id: string; status?: string; lastResponse?: { requestId?: string } }>
+    retrieve: (providerSessionId: string) => Promise<{ status: string; lastResponse?: { requestId?: string } }>
+  }
+  tokens: {
+    create: (input: unknown) => Promise<{ id: string; lastResponse?: { requestId?: string } }>
+  }
+  paymentMethods: {
+    create: (input: unknown) => Promise<{ id: string; card?: { brand?: string }; lastResponse?: { requestId?: string } }>
+    attach: (paymentMethodId: string, input: unknown) => Promise<void>
+  }
+}
+
+function createMockStripeClient(): StripeLikeClient {
+  return {
+    customers: {
+      async create() {
+        if (isMockFailure("session") || isMockFailure("save")) {
+          throw new Error("mock_customer_create_failed")
+        }
+        return { id: "cus_mock_123", lastResponse: { requestId: "req_mock_customer" } }
+      },
+    },
+    setupIntents: {
+      async create() {
+        if (isMockFailure("session")) {
+          throw new Error("mock_setup_intent_create_failed")
+        }
+        return { id: "seti_mock_123", status: "requires_action", lastResponse: { requestId: "req_mock_setup_intent" } }
+      },
+      async retrieve(providerSessionId: string) {
+        if (isMockFailure("verify")) {
+          throw new Error("mock_setup_intent_retrieve_failed")
+        }
+
+        if (providerSessionId.includes("succeeded")) {
+          return { status: "succeeded", lastResponse: { requestId: "req_mock_verify" } }
+        }
+
+        return { status: "requires_payment_method", lastResponse: { requestId: "req_mock_verify" } }
+      },
+    },
+    tokens: {
+      async create() {
+        if (isMockFailure("save")) {
+          throw new Error("mock_token_create_failed")
+        }
+        return { id: "tok_mock_123", lastResponse: { requestId: "req_mock_token" } }
+      },
+    },
+    paymentMethods: {
+      async create() {
+        if (isMockFailure("save")) {
+          throw new Error("mock_payment_method_create_failed")
+        }
+        return { id: "pm_mock_123", card: { brand: "visa" }, lastResponse: { requestId: "req_mock_payment_method" } }
+      },
+      async attach() {
+        if (isMockFailure("save")) {
+          throw new Error("mock_payment_method_attach_failed")
+        }
+      },
+    },
+  }
+}
+
+async function createStripeClient(): Promise<StripeLikeClient> {
   const secretKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY
-  if (!secretKey) return null
+
+  if (isTestOnlyMockEnabled()) {
+    return createMockStripeClient()
+  }
+
+  if (!secretKey) {
+    throw toProviderError("LINK_PROVIDER_UNAVAILABLE", new Error("stripe_not_configured"))
+  }
+
+  if (process.env.LINK_PROVIDER_ENABLE_MOCK === "true") {
+    throw toProviderError("LINK_PROVIDER_UNAVAILABLE", new Error("link_provider_mock_not_allowed"))
+  }
+
   const Stripe = (await import("stripe")).default
-  return new Stripe(secretKey, { apiVersion: "2026-01-28.clover" })
+  return new Stripe(secretKey, { apiVersion: "2026-01-28.clover" }) as unknown as StripeLikeClient
 }
 
 function maskPhoneFallback() {
@@ -98,20 +203,8 @@ function maskPhoneFallback() {
 }
 
 export async function createLinkProviderSession(input: CreateLinkSessionInput): Promise<LinkProviderSession> {
-  const stripe = await createStripeClient()
   logApiEvent("info", "payments.link.provider.session.create.started", { route: "payments/link/provider", requestId: input.requestId, details: { correlationId: input.requestId, provider: "stripe_link" } })
-
-  if (!stripe) {
-    const mockResponse = {
-      provider: "stripe_link",
-      providerSessionId: `lps_${randomUUID()}`,
-      providerCustomerId: `cus_${randomUUID().replace(/-/g, "").slice(0, 14)}`,
-      maskedPhone: maskPhoneFallback(),
-      providerRequestId: `mock_req_${input.requestId}`,
-    }
-    logApiEvent("info", "payments.link.provider.session.create.mock", { route: "payments/link/provider", requestId: input.requestId, details: { correlationId: input.requestId } })
-    return mockResponse
-  }
+  const stripe = await createStripeClient()
 
   try {
     const customer = await stripe.customers.create({
@@ -149,9 +242,6 @@ export async function createLinkProviderSession(input: CreateLinkSessionInput): 
 
 export async function fetchLinkVerificationFromProvider(providerSessionId: string): Promise<LinkProviderVerification> {
   const stripe = await createStripeClient()
-  if (!stripe) {
-    return { status: "pending", providerRequestId: null }
-  }
 
   try {
     const setupIntent = await stripe.setupIntents.retrieve(providerSessionId)
@@ -174,19 +264,10 @@ export async function fetchLinkVerificationFromProvider(providerSessionId: strin
 }
 
 export async function saveLinkPaymentMethodViaProvider(input: SaveLinkPaymentInput): Promise<LinkProviderSavedPayment> {
-  const stripe = await createStripeClient()
   logApiEvent("info", "payments.link.provider.save.started", { route: "payments/link/provider", requestId: input.requestId, details: { correlationId: input.requestId, provider: "stripe_link" } })
+  const stripe = await createStripeClient()
   const sanitizedNumber = input.cardNumber.replace(/\D/g, "")
   const last4 = sanitizedNumber.slice(-4)
-
-  if (!stripe) {
-    return {
-      providerPaymentMethodId: `pm_mock_${randomUUID().replace(/-/g, "").slice(0, 18)}`,
-      providerRequestId: `mock_req_${input.requestId}`,
-      brand: input.brand ?? "card",
-      last4,
-    }
-  }
 
   try {
     const customer = await stripe.customers.create({
@@ -197,10 +278,45 @@ export async function saveLinkPaymentMethodViaProvider(input: SaveLinkPaymentInp
       },
     })
 
+    const token = await stripe.tokens.create({
+      card: {
+        number: sanitizedNumber,
+        exp_month: input.expMonth,
+        exp_year: input.expYear,
+        name: input.holderName,
+        address_line1: input.billingAddress,
+      },
+    })
+
+    const paymentMethod = await stripe.paymentMethods.create({
+      type: "card",
+      card: {
+        token: token.id,
+      },
+      billing_details: {
+        email: input.email,
+        name: input.holderName,
+        address: input.billingAddress
+          ? {
+              line1: input.billingAddress,
+            }
+          : undefined,
+      },
+      metadata: {
+        runash_request_id: input.requestId,
+        runash_link_mode: "instant_checkout",
+      },
+    })
+
+    await stripe.paymentMethods.attach(paymentMethod.id, {
+      customer: customer.id,
+    })
+
     return {
-      providerPaymentMethodId: `pm_link_${customer.id.slice(-12)}`,
-      providerRequestId: customer.lastResponse?.requestId ?? null,
-      brand: input.brand ?? "card",
+      providerPaymentMethodId: paymentMethod.id,
+      providerRequestId:
+        paymentMethod.lastResponse?.requestId ?? token.lastResponse?.requestId ?? customer.lastResponse?.requestId ?? null,
+      brand: paymentMethod.card?.brand ?? input.brand ?? "card",
       last4,
     }
   } catch (error) {

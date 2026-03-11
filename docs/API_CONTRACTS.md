@@ -37,6 +37,66 @@ Error responses use the same shape:
 - If neither header is supplied, the API generates a UUID request ID.
 - The same request ID is returned in the response body (`requestId`) and `x-request-id` response header.
 
+
+## Analytics API (`/api/analytics`)
+
+### `GET /api/analytics`
+- Auth required (server session).
+- Query parameters:
+  - `period` (optional): `24h | 7d | 30d` (defaults to `7d`)
+- Success response envelope:
+
+```json
+{
+  "success": true,
+  "data": {
+    "streams": {
+      "total_streams": 12,
+      "avg_viewers": 54.3,
+      "total_views": 1820,
+      "live_streams": 1
+    },
+    "chat": {
+      "total_messages": 420,
+      "unique_chatters": 87,
+      "donations": 9,
+      "new_followers": 24
+    },
+    "recordings": {
+      "total_recordings": 7,
+      "total_duration": 21400,
+      "avg_duration": 3057,
+      "total_storage": 98304000
+    },
+    "daily": [
+      { "date": "2026-02-20", "streams": 2, "avg_viewers": 60.5 }
+    ]
+  },
+  "error": null,
+  "requestId": "req_analytics_123"
+}
+```
+
+- Failure response envelope (explicit and observable in clients):
+
+```json
+{
+  "success": false,
+  "data": null,
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Unauthorized"
+  },
+  "requestId": "req_analytics_456"
+}
+```
+
+### Analytics error codes
+| Code | HTTP status | Meaning |
+| --- | --- | --- |
+| `UNAUTHORIZED` | `401` | Missing/invalid session for analytics request. |
+| `INTERNAL_ERROR` | `500` | Unexpected analytics server failure. |
+
 ## Chat & Session Endpoint Examples
 
 ### `GET /api/chat?streamId=stream-7&limit=2&offset=0`
@@ -198,6 +258,21 @@ For compatibility, selected top-level fields (for example `plans`, `subscription
 - `INVOICE_NOT_FOUND` (`404`)
 - `INVOICE_DOWNLOAD_NOT_AVAILABLE` (`404`)
 - `BILLING_*_FAILED` (`500`) for unexpected failures
+
+## Live Stream Current API (`/api/streams/live/current`)
+
+### `GET /api/streams/live/current`
+- Public endpoint used by grocery live page.
+- Response keeps existing client keys: `stream`, `stats`, and `follow`.
+- When there is no active stream, `stream` is `null` and stats stay present as zeroed fields.
+
+### Contract notes
+- Existing keys remain unchanged for compatibility:
+  - `stream`: `id`, `title`, `description`, `hostId`, `hostName`, `hostAvatar`, `status`, `startTime`, `viewerCount`, `maxViewers`, `category`, `tags`, `thumbnailUrl`, `streamUrl`, `featuredProducts`, `totalSales`, `totalRevenue`
+  - `stats`: `streamId`, `viewerCount`, `peakViewers`, `totalViews`, `chatMessages`, `purchases`, `revenue`, `averageWatchTime`, `engagementRate`
+  - `follow`: `isFollowing`
+- Addition: optional `stats.network` object when network telemetry exists:
+  - `health`, `healthScore`, `sampledAt`
 
 ## Logging & Redaction
 

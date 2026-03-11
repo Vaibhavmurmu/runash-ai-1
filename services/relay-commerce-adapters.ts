@@ -3,7 +3,6 @@ import { randomUUID } from "crypto"
 import { z } from "zod"
 
 import { parseBuyerPreferences } from "@/lib/commerce/preference-parser"
-import { products as localProducts } from "@/lib/data/store"
 import { estimateTaxPreview } from "@/lib/payments/tax-preview"
 import { listProducts } from "@/lib/repositories/products"
 
@@ -249,9 +248,15 @@ async function loadProducts(tenantOrMerchantId?: string): Promise<ProductProject
       return records
     }
   } catch {
-    // fallback maintained for non-db environments
+    // fallback handled below in explicit dev mode
   }
 
+  const allowDemoSeedStore = process.env.NODE_ENV !== "production" && process.env.RUNASH_ENABLE_DEMO_SEED_STORE === "true"
+  if (!allowDemoSeedStore) {
+    return []
+  }
+
+  const { products: localProducts } = await import("@/lib/data/store")
   return localProducts.map((product) => ({
     id: product.id,
     user_id: product.user_id,

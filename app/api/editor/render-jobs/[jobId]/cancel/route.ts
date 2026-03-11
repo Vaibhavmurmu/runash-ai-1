@@ -14,6 +14,7 @@ export async function POST(request: Request, { params }: { params: { jobId: stri
       status='canceled',
       canceled_at=now(),
       cancellation_token=${randomUUID()},
+      last_error_code='EDITOR_RENDER_CANCELED',
       result=COALESCE(result, '{}'::jsonb) || jsonb_build_object(
         'finishedAt', now(),
         'progress', 100,
@@ -46,6 +47,15 @@ export async function POST(request: Request, { params }: { params: { jobId: stri
     payload: job.payload ?? {},
     result: job.result ?? {},
     outputAssetId: job.output_asset_id,
+    attemptCount: Number(job.attempt_count ?? 0),
+    maxAttempts: Number(job.max_attempts ?? 0),
+    nextRetryAt: job.next_retry_at ?? null,
+    cancellationToken: job.cancellation_token ?? null,
+    canceledAt: job.canceled_at ?? null,
+    lastErrorCode: job.last_error_code ?? null,
+    providerTrace: job.provider_trace ?? {},
+    providerOutput: job.provider_output ?? {},
+    outputPublication: job.output_publication ?? {},
     createdAt: job.created_at,
     updatedAt: job.updated_at,
   })

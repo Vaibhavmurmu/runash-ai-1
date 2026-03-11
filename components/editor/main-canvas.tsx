@@ -28,6 +28,8 @@ interface MainCanvasProps {
   generationStatus?: EditorRenderJob["status"] | null
   generationProgress?: number | null
   generationStage?: string | null
+  isReadOnly?: boolean
+  readOnlyReason?: string
 }
 
 export default function MainCanvas({
@@ -49,6 +51,8 @@ export default function MainCanvas({
   generationStatus,
   generationProgress,
   generationStage,
+  isReadOnly = false,
+  readOnlyReason,
 }: MainCanvasProps) {
   const [internalIsPlaying, setInternalIsPlaying] = useState(false)
   const [internalCurrentTime, setInternalCurrentTime] = useState(0)
@@ -219,7 +223,7 @@ export default function MainCanvas({
   }
 
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!timelineRef.current) return
+    if (!timelineRef.current || isReadOnly) return
     const rect = timelineRef.current.getBoundingClientRect()
     const clickX = e.clientX - rect.left
     const clickRatio = clickX / rect.width
@@ -227,7 +231,7 @@ export default function MainCanvas({
   }
 
   const handleAddSegment = () => {
-    if (!timeline || !onTimelineChange || !timeline.tracks[0]) return
+    if (!timeline || !onTimelineChange || !timeline.tracks[0] || isReadOnly) return
     const start = Math.max(0, duration - 2)
     const next: EditorTimeline = {
       ...timeline,
@@ -348,7 +352,8 @@ export default function MainCanvas({
         </div>
 
         <div className="flex gap-2">
-          <Button onClick={() => void handleGenerateVideo()} disabled={isGenerationInProgress} className="flex-1 gap-2 bg-gradient-to-r from-primary to-accent hover:opacity-90">
+          {isReadOnly && <div className="w-full text-xs text-amber-700 dark:text-amber-200">{readOnlyReason ?? "Editing is locked."}</div>}
+          <Button onClick={() => void handleGenerateVideo()} disabled={isGenerationInProgress || isReadOnly} className="flex-1 gap-2 bg-gradient-to-r from-primary to-accent hover:opacity-90">
             {isGenerationInProgress ? (
               <>
                 <Loader className="w-4 h-4 animate-spin" />
@@ -369,7 +374,7 @@ export default function MainCanvas({
             title="Upload Media"
             aria-label="Upload media"
             onClick={() => document.getElementById("editor-media-upload")?.click()}
-            disabled={uploadInProgress}
+            disabled={uploadInProgress || isReadOnly}
           >
             <Upload className="w-4 h-4" />
           </Button>
@@ -394,6 +399,7 @@ export default function MainCanvas({
             title="Add Segment"
             aria-label="Add segment"
             onClick={handleAddSegment}
+            disabled={isReadOnly}
           >
             <PlusSquare className="w-4 h-4" />
           </Button>

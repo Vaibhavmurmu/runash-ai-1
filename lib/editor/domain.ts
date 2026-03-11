@@ -12,6 +12,10 @@ export interface EditorAsset {
   mimeType: string
   sizeBytes: number
   metadata: Record<string, unknown>
+  lockOwnerUserId?: string | null
+  lockExpiresAt?: string | null
+  lockAcquiredAt?: string | null
+  lockUpdatedAt?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -28,6 +32,10 @@ export interface EditorSegment {
   startSeconds: number
   endSeconds: number
   metadata: Record<string, unknown>
+  lockOwnerUserId?: string | null
+  lockExpiresAt?: string | null
+  lockAcquiredAt?: string | null
+  lockUpdatedAt?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -41,6 +49,10 @@ export interface EditorTrack {
   orderIndex: number
   trackType: string
   metadata: Record<string, unknown>
+  lockOwnerUserId?: string | null
+  lockExpiresAt?: string | null
+  lockAcquiredAt?: string | null
+  lockUpdatedAt?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -70,6 +82,15 @@ export interface EditorRenderJob {
   payload: Record<string, unknown>
   result: Record<string, unknown>
   outputAssetId: string | null
+  attemptCount: number
+  maxAttempts: number
+  nextRetryAt: string | null
+  cancellationToken: string | null
+  canceledAt: string | null
+  lastErrorCode: string | null
+  providerTrace: Record<string, unknown>
+  providerOutput: Record<string, unknown>
+  outputPublication: Record<string, unknown>
   createdAt: string
   updatedAt: string
 }

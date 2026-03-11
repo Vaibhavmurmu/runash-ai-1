@@ -18,6 +18,17 @@ Current status:
 - `0007_normalized_chat_tables.sql` provisions normalized `chat_sessions`, `chat_messages`, `chat_attachments`, and `chat_tool_events` tables with lifecycle/metadata fields plus query indexes.
 
 
+- `0009_community_event_registrations.sql` provisions `community_events` and `community_event_registrations` with duplicate-safe `(event_id, user_id)` registration constraints and lookup indexes.
+
+- `0011_email_subscriptions.sql` provisions `email_subscriptions` with case-insensitive unique email constraints, double-opt-in lifecycle status/timestamps, and source metadata fields for subscription auditability.
+
+- `0012_newsletter_subscriptions.sql` provisions `newsletter_subscriptions` for consented newsletter signups with case-insensitive dedupe, status tracking, and audit timestamps.
+- `0013_stream_editor_templates.sql` provisions persistent stream/editor templates plus template metrics counters and access-scope indexes.
+
+- `0016_mcp_connectors_and_audit.sql` provisions tenant-scoped MCP connector configuration persistence plus MCP tool audit records with lifecycle indexes and connector-cascade cleanup.
+
+- `0017_upi_transactions.sql` provisions durable UPI transaction state (`upi_transactions`) and append-only lifecycle/event audit records (`upi_transaction_events`) with idempotency-safe lookups.
+
 Operational guidance:
 1. Keep production-safe migration SQL reviewed and idempotent where practical.
 2. When enabling generated Drizzle migrations in CI, add the migration journal metadata in this directory and keep the baseline SQL immutable after release tags.

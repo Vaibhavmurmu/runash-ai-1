@@ -1,12 +1,34 @@
-import { promises as fs } from "fs"
-import path from "path"
 import { one, queryMany, sql } from "@/lib/db"
 import type { UUID } from "@/lib/types"
 import type {
   DashboardRecentStream,
   DashboardScheduledStream,
-  DashboardStreamsStore,
+  DashboardStreamTemplate,
 } from "@/lib/types/dashboard-streams"
+
+export type ActiveLiveStreamSession = {
+  id: string
+  userId: string
+  title: string
+  description: string | null
+  category: string | null
+  status: "live"
+  startTime: string | null
+  maxViewers: number
+  viewerCount: number
+  totalRevenue: number
+  thumbnailUrl: string | null
+  streamUrl: string | null
+  hostName: string
+  hostAvatar: string | null
+  tags: string[]
+  featuredProducts: string[]
+}
+
+export type StreamCommercialStats = {
+  purchases: number
+  revenue: number
+}
 
 export type Stream = {
   id: string
@@ -37,13 +59,21 @@ type StreamInvite = {
   sent_at: string
 }
 
-const DATA_FILE = path.join(process.cwd(), "data", "streams.json")
-const DEV_FALLBACK_ENABLED =
-  process.env.NODE_ENV !== "production" && process.env.RUNASH_STREAMS_DEV_FALLBACK === "1"
-const DEV_BOOTSTRAP_ENABLED =
-  process.env.NODE_ENV !== "production" && process.env.RUNASH_STREAMS_DEV_BOOTSTRAP !== "0"
-
-const bootstrappedUsers = new Set<string>()
+type StreamTemplateRow = {
+  id: string
+  user_id: string
+  name: string
+  title: string
+  description: string
+  duration: number
+  platforms: string[] | string | null
+  thumbnail: string | null
+  tags: string[] | string | null
+  category: string
+  is_public: boolean
+  created_at: string
+  updated_at: string
+}
 
 function parseSettings(settings: unknown): Record<string, any> {
   if (settings && typeof settings === "object") return settings as Record<string, any>
@@ -56,6 +86,11 @@ function parseSettings(settings: unknown): Record<string, any> {
     }
   }
   return {}
+}
+
+function toStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.map((item) => String(item)).filter(Boolean)
 }
 
 function toRecentStream(stream: Stream): DashboardRecentStream {
@@ -112,117 +147,46 @@ async function ensureInviteTable() {
   await sql`create index if not exists idx_stream_invites_stream_id on stream_invites(stream_id)`
 }
 
-async function readLegacyStore(): Promise<DashboardStreamsStore | null> {
-  try {
-    const raw = await fs.readFile(DATA_FILE, "utf-8")
-    const parsed = JSON.parse(raw) as Partial<DashboardStreamsStore>
-
-    return {
-      recent: Array.isArray(parsed.recent) ? parsed.recent : [],
-      scheduled: Array.isArray(parsed.scheduled) ? parsed.scheduled : [],
-      invites: Array.isArray(parsed.invites) ? parsed.invites : [],
-      templates: Array.isArray(parsed.templates) ? parsed.templates : [],
-    }
-  } catch {
-    return null
-  }
+async function ensureStreamTemplatesTable() {
+  await sql`
+    create table if not exists stream_dashboard_templates (
+      id uuid primary key default gen_random_uuid(),
+      user_id uuid not null references users(id) on delete cascade,
+      name text not null,
+      title text not null,
+      description text not null default '',
+      duration integer not null default 60,
+      platforms jsonb not null default '[]'::jsonb,
+      thumbnail text,
+      tags jsonb not null default '[]'::jsonb,
+      category text not null default 'Gaming',
+      is_public boolean not null default true,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )
+  `
+  await sql`create index if not exists idx_stream_dashboard_templates_user_id on stream_dashboard_templates(user_id)`
+  await sql`create index if not exists idx_stream_dashboard_templates_updated_at on stream_dashboard_templates(updated_at desc)`
 }
 
-async function bootstrapLegacyDevData(userId: string) {
-  if (!DEV_BOOTSTRAP_ENABLED || bootstrappedUsers.has(userId)) return
+function toStreamTemplate(row: StreamTemplateRow): DashboardStreamTemplate {
+  const platforms = parseSettings(row.platforms)
+  const tags = parseSettings(row.tags)
 
-  const existing = await queryMany<{ id: string }>(
-    `select id from streams where user_id=$1 limit 1`,
-    [userId],
-  )
-
-  if (existing.length > 0) {
-    bootstrappedUsers.add(userId)
-    return
+  return {
+    id: row.id,
+    name: row.name,
+    title: row.title,
+    description: row.description ?? "",
+    duration: Number(row.duration ?? 60),
+    platforms: Array.isArray(platforms) ? platforms.map(String) : [],
+    thumbnail: row.thumbnail ?? undefined,
+    tags: Array.isArray(tags) ? tags.map(String) : [],
+    category: row.category,
+    isPublic: Boolean(row.is_public),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   }
-
-  const legacy = await readLegacyStore()
-  if (!legacy) {
-    bootstrappedUsers.add(userId)
-    return
-  }
-
-  for (const item of legacy.recent) {
-    await sql`
-      insert into streams (
-        user_id, title, description, category, status, actual_start, max_viewers, settings
-      )
-      values (
-        ${userId},
-        ${item.title},
-        ${null},
-        ${item.category ?? null},
-        ${item.status === "live" ? "live" : "ended"},
-        ${item.date},
-        ${item.viewers ?? 0},
-        ${JSON.stringify({ url: item.url, duration: item.duration, viewers: item.viewers ?? 0 })}
-      )
-      on conflict do nothing
-    `
-  }
-
-  for (const item of legacy.scheduled) {
-    await sql`
-      insert into streams (
-        user_id, title, description, category, status, scheduled_start, settings
-      )
-      values (
-        ${userId},
-        ${item.title},
-        ${item.description ?? null},
-        ${item.category ?? null},
-        'scheduled',
-        ${item.startsAt},
-        ${JSON.stringify({
-          url: item.url,
-          duration: item.duration ?? 60,
-          platforms: item.platforms ?? [],
-          isRecurring: item.isRecurring ?? false,
-          recurrencePattern: item.recurrencePattern,
-          tags: item.tags ?? [],
-          isPublic: item.isPublic ?? true,
-          notificationTime: item.notificationTime ?? 15,
-          templateId: item.templateId,
-        })}
-      )
-      on conflict do nothing
-    `
-  }
-
-  if (legacy.invites.length > 0) {
-    await ensureInviteTable()
-    const latestStream = await one<{ id: string }>(sql<{ id: string }[]>`
-      select id from streams where user_id=${userId} order by created_at desc limit 1
-    `)
-
-    if (latestStream) {
-      for (const invite of legacy.invites) {
-        await sql`
-          insert into stream_invites (user_id, stream_id, email, sent_at)
-          values (${userId}, ${latestStream.id}, ${invite.email}, ${invite.sentAt})
-        `
-      }
-    }
-  }
-
-  bootstrappedUsers.add(userId)
-}
-
-async function readLegacyDevFallback(): Promise<DashboardStreamsStore> {
-  const legacy = await readLegacyStore()
-  return (
-    legacy ?? {
-      recent: [],
-      scheduled: [],
-      invites: [],
-      templates: [],
-    }
-  )
 }
 
 export async function listStreams(userId?: UUID): Promise<Stream[]> {
@@ -297,10 +261,7 @@ export async function deleteStream(id: UUID): Promise<boolean> {
 }
 
 export async function createDashboardLiveStream(userId: string, input: DashboardRecentStream) {
-  await bootstrapLegacyDevData(userId)
-
-  try {
-    const rows = await sql<Stream[]>`
+  const rows = await sql<Stream[]>`
       insert into streams (
         user_id, title, category, status, actual_start, max_viewers, settings
       )
@@ -311,22 +272,11 @@ export async function createDashboardLiveStream(userId: string, input: Dashboard
       returning *
     `
 
-    return toRecentStream(rows[0])
-  } catch (error) {
-    if (!DEV_FALLBACK_ENABLED) throw error
-    const fallback = await readLegacyDevFallback()
-    fallback.recent = [input, ...fallback.recent].slice(0, 20)
-    await fs.mkdir(path.join(process.cwd(), "data"), { recursive: true })
-    await fs.writeFile(DATA_FILE, JSON.stringify(fallback, null, 2), "utf-8")
-    return input
-  }
+  return toRecentStream(rows[0])
 }
 
 export async function createDashboardScheduledStream(userId: string, input: DashboardScheduledStream) {
-  await bootstrapLegacyDevData(userId)
-
-  try {
-    const rows = await sql<Stream[]>`
+  const rows = await sql<Stream[]>`
       insert into streams (
         user_id, title, description, category, status, scheduled_start, settings
       )
@@ -347,76 +297,248 @@ export async function createDashboardScheduledStream(userId: string, input: Dash
       returning *
     `
 
-    return toScheduledStream(rows[0])
-  } catch (error) {
-    if (!DEV_FALLBACK_ENABLED) throw error
-    const fallback = await readLegacyDevFallback()
-    fallback.scheduled = [input, ...fallback.scheduled]
-    await fs.mkdir(path.join(process.cwd(), "data"), { recursive: true })
-    await fs.writeFile(DATA_FILE, JSON.stringify(fallback, null, 2), "utf-8")
-    return input
-  }
+  return toScheduledStream(rows[0])
 }
 
 export async function listDashboardRecentStreams(userId: string, limit = 6): Promise<DashboardRecentStream[]> {
-  await bootstrapLegacyDevData(userId)
-
-  try {
-    const rows = await queryMany<Stream>(
-      `select * from streams where user_id=$1 and status in ('live', 'ended') order by coalesce(actual_start, created_at) desc limit $2`,
-      [userId, limit],
-    )
-    return rows.map(toRecentStream)
-  } catch (error) {
-    if (!DEV_FALLBACK_ENABLED) throw error
-    const fallback = await readLegacyDevFallback()
-    return fallback.recent.slice(0, limit)
-  }
+  const rows = await queryMany<Stream>(
+    `select * from streams where user_id=$1 and status in ('live', 'ended') order by coalesce(actual_start, created_at) desc limit $2`,
+    [userId, limit],
+  )
+  return rows.map(toRecentStream)
 }
 
 export async function listDashboardScheduledStreams(userId: string): Promise<DashboardScheduledStream[]> {
-  await bootstrapLegacyDevData(userId)
-
-  try {
-    const rows = await queryMany<Stream>(
-      `select * from streams where user_id=$1 and status='scheduled' order by coalesce(scheduled_start, created_at) asc`,
-      [userId],
-    )
-    return rows.map(toScheduledStream)
-  } catch (error) {
-    if (!DEV_FALLBACK_ENABLED) throw error
-    const fallback = await readLegacyDevFallback()
-    return fallback.scheduled
-  }
+  const rows = await queryMany<Stream>(
+    `select * from streams where user_id=$1 and status='scheduled' order by coalesce(scheduled_start, created_at) asc`,
+    [userId],
+  )
+  return rows.map(toScheduledStream)
 }
 
 export async function createDashboardStreamInvite(userId: string, streamId: string, email: string): Promise<StreamInvite> {
-  await bootstrapLegacyDevData(userId)
+  await ensureInviteTable()
+  const rows = await sql<StreamInvite[]>`
+    insert into stream_invites (user_id, stream_id, email)
+    values (${userId}, ${streamId}, ${email})
+    returning id, user_id, stream_id, email, sent_at
+  `
+  return rows[0]
+}
 
-  try {
-    await ensureInviteTable()
-    const rows = await sql<StreamInvite[]>`
-      insert into stream_invites (user_id, stream_id, email)
-      values (${userId}, ${streamId}, ${email})
-      returning id, user_id, stream_id, email, sent_at
-    `
-    return rows[0]
-  } catch (error) {
-    if (!DEV_FALLBACK_ENABLED) throw error
-    const fallback = await readLegacyDevFallback()
-    const invite: StreamInvite = {
-      id: crypto.randomUUID(),
-      user_id: userId,
-      stream_id: streamId,
-      email,
-      sent_at: new Date().toISOString(),
+export async function listDashboardStreamTemplates(userId: string): Promise<DashboardStreamTemplate[]> {
+  await ensureStreamTemplatesTable()
+
+  const rows = await queryMany<StreamTemplateRow>(
+    `select id, user_id, name, title, description, duration, platforms, thumbnail, tags, category, is_public, created_at, updated_at
+     from stream_dashboard_templates
+     where user_id=$1
+     order by updated_at desc`,
+    [userId],
+  )
+
+  return rows.map(toStreamTemplate)
+}
+
+export async function getDashboardStreamTemplateById(
+  userId: string,
+  id: string,
+): Promise<DashboardStreamTemplate | null> {
+  await ensureStreamTemplatesTable()
+
+  const row = await one<StreamTemplateRow>(sql<StreamTemplateRow[]>`
+    select id, user_id, name, title, description, duration, platforms, thumbnail, tags, category, is_public, created_at, updated_at
+    from stream_dashboard_templates
+    where id=${id} and user_id=${userId}
+    limit 1
+  `)
+
+  return row ? toStreamTemplate(row) : null
+}
+
+export async function createDashboardStreamTemplate(
+  userId: string,
+  input: Omit<DashboardStreamTemplate, "id" | "createdAt" | "updatedAt">,
+): Promise<DashboardStreamTemplate> {
+  await ensureStreamTemplatesTable()
+
+  const rows = await sql<StreamTemplateRow[]>`
+    insert into stream_dashboard_templates (
+      user_id, name, title, description, duration, platforms, thumbnail, tags, category, is_public
+    )
+    values (
+      ${userId}, ${input.name}, ${input.title}, ${input.description}, ${input.duration},
+      ${JSON.stringify(input.platforms ?? [])}::jsonb,
+      ${input.thumbnail ?? null},
+      ${JSON.stringify(input.tags ?? [])}::jsonb,
+      ${input.category}, ${input.isPublic}
+    )
+    returning id, user_id, name, title, description, duration, platforms, thumbnail, tags, category, is_public, created_at, updated_at
+  `
+
+  return toStreamTemplate(rows[0])
+}
+
+export async function updateDashboardStreamTemplate(
+  userId: string,
+  id: string,
+  input: Partial<Omit<DashboardStreamTemplate, "id" | "createdAt" | "updatedAt">>,
+): Promise<DashboardStreamTemplate | null> {
+  await ensureStreamTemplatesTable()
+
+  const current = await one<StreamTemplateRow>(sql<StreamTemplateRow[]>`
+    select id, user_id, name, title, description, duration, platforms, thumbnail, tags, category, is_public, created_at, updated_at
+    from stream_dashboard_templates
+    where id=${id} and user_id=${userId}
+    limit 1
+  `)
+
+  if (!current) return null
+
+  const rows = await sql<StreamTemplateRow[]>`
+    update stream_dashboard_templates
+    set
+      name=${input.name ?? current.name},
+      title=${input.title ?? current.title},
+      description=${input.description ?? current.description},
+      duration=${input.duration ?? current.duration},
+      platforms=${JSON.stringify(input.platforms ?? (Array.isArray(current.platforms) ? current.platforms : []))}::jsonb,
+      thumbnail=${input.thumbnail ?? current.thumbnail},
+      tags=${JSON.stringify(input.tags ?? (Array.isArray(current.tags) ? current.tags : []))}::jsonb,
+      category=${input.category ?? current.category},
+      is_public=${input.isPublic ?? current.is_public},
+      updated_at=now()
+    where id=${id} and user_id=${userId}
+    returning id, user_id, name, title, description, duration, platforms, thumbnail, tags, category, is_public, created_at, updated_at
+  `
+
+  return rows[0] ? toStreamTemplate(rows[0]) : null
+}
+
+export async function deleteDashboardStreamTemplate(userId: string, id: string): Promise<boolean> {
+  await ensureStreamTemplatesTable()
+
+  const rows = await sql<{ id: string }[]>`
+    delete from stream_dashboard_templates
+    where id=${id} and user_id=${userId}
+    returning id
+  `
+
+  return rows.length > 0
+}
+
+export async function getActiveLiveStreamSession(): Promise<ActiveLiveStreamSession | null> {
+  const row = await one<{
+    id: string
+    user_id: string
+    title: string
+    description: string | null
+    category: string | null
+    status: "live"
+    actual_start: string | null
+    max_viewers: number
+    viewer_count: number | null
+    total_revenue: number
+    thumbnail_url: string | null
+    rtmp_url: string | null
+    settings: Record<string, unknown> | string | null
+    host_name: string | null
+    host_avatar: string | null
+  }>(sql`
+    select
+      s.id,
+      s.user_id,
+      s.title,
+      s.description,
+      s.category,
+      s.status,
+      s.actual_start,
+      coalesce(s.max_viewers, 0) as max_viewers,
+      coalesce(s.viewer_count, 0) as viewer_count,
+      coalesce(s.total_revenue, 0) as total_revenue,
+      s.thumbnail_url,
+      s.rtmp_url,
+      s.settings,
+      coalesce(nullif(u.name, ''), nullif(u.email, ''), 'RunAsh Host') as host_name,
+      nullif(u.image, '') as host_avatar
+    from streams s
+    left join users u on u.id = s.user_id
+    where s.status = 'live'
+    order by coalesce(s.actual_start, s.created_at) desc
+    limit 1
+  `)
+
+  if (!row) return null
+
+  const settings = parseSettings(row.settings)
+  const tags = toStringList(settings.tags)
+  const featuredProducts = toStringList(settings.featuredProducts).slice(0, 6)
+
+  return {
+    id: row.id,
+    userId: row.user_id,
+    title: row.title,
+    description: row.description,
+    category: row.category,
+    status: "live",
+    startTime: row.actual_start,
+    maxViewers: Number(row.max_viewers ?? 0),
+    viewerCount: Number(row.viewer_count ?? 0),
+    totalRevenue: Number(row.total_revenue ?? 0),
+    thumbnailUrl: row.thumbnail_url,
+    streamUrl: row.rtmp_url,
+    hostName: row.host_name ?? "RunAsh Host",
+    hostAvatar: row.host_avatar,
+    tags,
+    featuredProducts,
+  }
+}
+
+export async function listStreamProductReferences(productIds: string[]): Promise<string[]> {
+  if (productIds.length === 0) return []
+
+  const normalizedIds = productIds
+    .map((productId) => Number.parseInt(productId, 10))
+    .filter((productId) => Number.isInteger(productId))
+
+  if (normalizedIds.length === 0) return []
+
+  const rows = await queryMany<{ id: number }>(
+    `select id from products where id = any($1::int[]) order by array_position($1::int[], id)`,
+    [normalizedIds],
+  )
+
+  return rows.map((row) => String(row.id))
+}
+
+export async function getStreamCommercialStats(streamId: string, fallbackRevenue = 0): Promise<StreamCommercialStats> {
+  const table = await one<{ exists: string | null }>(sql<{ exists: string | null }[]>`
+    select to_regclass('public.payment_transactions') as exists
+  `)
+
+  if (!table?.exists) {
+    return {
+      purchases: 0,
+      revenue: Number(fallbackRevenue || 0),
     }
-    fallback.invites = [
-      { id: invite.id, streamId: streamId, email, sentAt: invite.sent_at },
-      ...fallback.invites,
-    ]
-    await fs.mkdir(path.join(process.cwd(), "data"), { recursive: true })
-    await fs.writeFile(DATA_FILE, JSON.stringify(fallback, null, 2), "utf-8")
-    return invite
+  }
+
+  const totals = await queryMany<{ purchases: number; revenue: number }>(
+    `
+      select
+        count(*)::int as purchases,
+        coalesce(sum(amount), 0)::numeric as revenue
+      from payment_transactions
+      where stream_id::text = $1
+        and status = 'succeeded'
+    `,
+    [streamId],
+  )
+
+  const row = totals[0]
+
+  return {
+    purchases: Number(row?.purchases ?? 0),
+    revenue: Math.max(Number(row?.revenue ?? 0), Number(fallbackRevenue || 0)),
   }
 }

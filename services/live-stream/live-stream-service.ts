@@ -1,5 +1,5 @@
 import { queryMany } from "@/lib/db"
-import { getLiveStreamProvider } from "@/services/live-stream/provider"
+import { getLiveStreamProvider, mapLiveStreamProviderError } from "@/services/live-stream/provider"
 import { publishSessionStateChanged } from "@/services/realtime/publishers"
 import type {
   LiveStreamEndpoint,
@@ -44,6 +44,7 @@ type DbEndpointRow = {
   id: string
   session_id: string
   provider: string
+  provider_session_id: string
   ingest_url: string
   ingest_token_masked: string
   token_expires_at: string | null
@@ -111,7 +112,10 @@ function toEndpoint(row: DbEndpointRow): LiveStreamEndpoint {
     ingestUrl: row.ingest_url,
     ingestTokenMasked: row.ingest_token_masked,
     tokenExpiresAt: row.token_expires_at,
-    metadata: row.metadata ?? {},
+    metadata: {
+      providerSessionId: row.provider_session_id,
+      ...(row.metadata ?? {}),
+    },
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -135,7 +139,7 @@ function toEvent(row: DbEventRow): LiveStreamEvent {
 async function getLatestEndpoint(sessionId: string): Promise<DbEndpointRow | null> {
   const rows = await queryMany<DbEndpointRow>(
     `
-      select id, session_id, provider, ingest_url, ingest_token_masked, token_expires_at, metadata, created_at, updated_at
+      select id, session_id, provider, provider_session_id, ingest_url, ingest_token_masked, token_expires_at, metadata, created_at, updated_at
       from live_stream_endpoints
       where session_id = $1
       order by created_at desc
@@ -352,8 +356,8 @@ export class LiveStreamService {
 
     let session = await assertOwnership(input.sessionId, input.actorUserId)
     if (session.status === "live" || session.status === "starting") {
-      const endpoint = await getLatestEndpoint(input.sessionId)
-      const response = { session: toSession(session, endpoint) }
+      const latestEndpoint = await getLatestEndpoint(input.sessionId)
+      const response = { session: toSession(session, latestEndpoint) }
       await persistIdempotentResponse(input.sessionId, "start", input.idempotencyKey, response)
       return response
     }
@@ -374,21 +378,27 @@ export class LiveStreamService {
         latencyProfile: session.latency_profile,
       })
 
+      if (provisioned.provider === "mock") {
+        throw new LiveStreamValidationError("Mock live stream provider cannot be used for runtime sessions", 500)
+      }
+
       await queryMany(
         `
           insert into live_stream_endpoints (
             session_id,
             provider,
+            provider_session_id,
             ingest_url,
             ingest_token_masked,
             token_expires_at,
             metadata
           )
-          values ($1, $2, $3, $4, $5, $6::jsonb)
+          values ($1, $2, $3, $4, $5, $6, $7::jsonb)
         `,
         [
           input.sessionId,
           provisioned.provider,
+          provisioned.providerSessionId,
           provisioned.ingestUrl,
           `${provisioned.ingestToken.slice(0, 4)}***${provisioned.ingestToken.slice(-4)}`,
           provisioned.tokenExpiresAt,
@@ -414,17 +424,21 @@ export class LiveStreamService {
         idempotencyKey: input.idempotencyKey,
         reason: "Provider endpoint provisioned",
       })
-      const endpoint = await getLatestEndpoint(input.sessionId)
-      const response = { session: toSession(session, endpoint) }
+      const latestEndpoint = await getLatestEndpoint(input.sessionId)
+      const response = { session: toSession(session, latestEndpoint) }
       await persistIdempotentResponse(input.sessionId, "start", input.idempotencyKey, response)
       return response
     } catch (error) {
+      const providerError = mapLiveStreamProviderError(error)
       await transitionSessionStatus(session, "failed", {
         actorUserId: input.actorUserId,
         idempotencyKey: input.idempotencyKey,
-        reason: error instanceof Error ? error.message : "Failed to start live stream session",
+        reason: `${providerError.reason} [${providerError.correlationId}]`,
       })
-      throw new LiveStreamValidationError("Failed to start live stream session", 500)
+      throw new LiveStreamValidationError(
+        `${providerError.userMessage} (reference: ${providerError.correlationId})`,
+        providerError.status,
+      )
     }
   }
 
@@ -438,8 +452,8 @@ export class LiveStreamService {
 
     let session = await assertOwnership(input.sessionId, input.actorUserId)
     if (session.status === "ended" || session.status === "stopping") {
-      const endpoint = await getLatestEndpoint(input.sessionId)
-      const response = { session: toSession(session, endpoint) }
+      const latestEndpoint = await getLatestEndpoint(input.sessionId)
+      const response = { session: toSession(session, latestEndpoint) }
       await persistIdempotentResponse(input.sessionId, "stop", input.idempotencyKey, response)
       return response
     }
@@ -452,23 +466,32 @@ export class LiveStreamService {
 
     try {
       const provider = getLiveStreamProvider()
-      await provider.stop({ sessionId: input.sessionId })
+      const endpoint = await getLatestEndpoint(input.sessionId)
+      if (!endpoint?.provider_session_id) {
+        throw new LiveStreamValidationError("Provider session metadata not found", 409)
+      }
+
+      await provider.stop({ sessionId: input.sessionId, providerSessionId: endpoint.provider_session_id })
       session = await transitionSessionStatus(session, "ended", {
         actorUserId: input.actorUserId,
         idempotencyKey: input.idempotencyKey,
         reason: "Session stopped",
       })
-      const endpoint = await getLatestEndpoint(input.sessionId)
-      const response = { session: toSession(session, endpoint) }
+      const latestEndpoint = await getLatestEndpoint(input.sessionId)
+      const response = { session: toSession(session, latestEndpoint) }
       await persistIdempotentResponse(input.sessionId, "stop", input.idempotencyKey, response)
       return response
     } catch (error) {
+      const providerError = mapLiveStreamProviderError(error)
       await transitionSessionStatus(session, "failed", {
         actorUserId: input.actorUserId,
         idempotencyKey: input.idempotencyKey,
-        reason: error instanceof Error ? error.message : "Failed to stop live stream session",
+        reason: `${providerError.reason} [${providerError.correlationId}]`,
       })
-      throw new LiveStreamValidationError("Failed to stop live stream session", 500)
+      throw new LiveStreamValidationError(
+        `${providerError.userMessage} (reference: ${providerError.correlationId})`,
+        providerError.status,
+      )
     }
   }
 

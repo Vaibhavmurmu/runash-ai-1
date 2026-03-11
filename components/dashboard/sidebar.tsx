@@ -23,7 +23,7 @@ const navigation = [
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { name: "Streams", href: "/dashboard/streams", icon: Video },
   { name: "Audience", href: "/dashboard/audience", icon: Users },
-  { name: "RunAsh Chat", href: "/dashboard/chat", icon: MessageSquare },
+  { name: "RunAsh Chat", href: "/runashchat", icon: MessageSquare },
   { name: "Notifications", href: "/dashboard/notifications", icon: Bell },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ]

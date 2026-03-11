@@ -4,9 +4,12 @@ import { Suspense } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { createDashboardMetadata } from "../metadata"
 
-const StreamsDashboard = dynamic(() => import("@/components/streams/streams-dashboard").then((mod) => mod.StreamsDashboard), {
-  loading: () => <Skeleton className="h-[560px] w-full" />,
-})
+const EnhancedStreamingStudio = dynamic(
+  () => import("@/components/streaming/enhanced-streaming-studio").then((mod) => mod.EnhancedStreamingStudio),
+  {
+    loading: () => <Skeleton className="h-[560px] w-full" />,
+  },
+)
 
 export const metadata: Metadata = createDashboardMetadata({
   title: "Streaming Studio",
@@ -17,7 +20,7 @@ export const metadata: Metadata = createDashboardMetadata({
 export default function DashboardStreamingStudioPage() {
   return (
     <Suspense fallback={<Skeleton className="h-[560px] w-full" />}>
-      <StreamsDashboard />
+      <EnhancedStreamingStudio />
     </Suspense>
   )
 }

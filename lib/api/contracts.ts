@@ -69,6 +69,37 @@ export const editorRenderJobCreateRequestSchema = z.object({
   payload: z.unknown().optional(),
 })
 
+export const editorAssetCreateRequestSchema = z.object({
+  source: z.enum(["upload", "storage"] as const).optional(),
+  uploadFileId: z.string().trim().min(1).max(255).nullable().optional(),
+  storageKey: z.string().trim().min(1).max(512),
+  accessUrl: z.string().trim().url().max(2048).nullable().optional(),
+  mimeType: z.string().trim().min(1).max(128).optional(),
+  sizeBytes: z.number().int().nonnegative().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  version: z.union([z.number().int().nonnegative(), z.string().trim().min(1)]).optional(),
+})
+
+export const editorSegmentCreateRequestSchema = z.object({
+  timelineId: z.string().trim().min(1).max(120),
+  trackId: z.string().trim().min(1).max(120),
+  assetId: z.string().trim().min(1).max(120).nullable().optional(),
+  label: z.string().trim().min(1).max(120).optional(),
+  segmentType: z.string().trim().min(1).max(64).optional(),
+  startSeconds: z.number().nonnegative().optional(),
+  endSeconds: z.number().nonnegative().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  version: z.union([z.number().int().nonnegative(), z.string().trim().min(1)]).optional(),
+})
+
+export function buildInvalidRequestError(error: z.ZodError, message = "Invalid request body") {
+  return {
+    error: message,
+    code: "INVALID_REQUEST",
+    details: { issues: formatZodIssues(error) },
+  }
+}
+
 export const mediaAssetsQuerySchema = z.object({
   projectId: z.string().trim().min(1).max(120).optional(),
 })

@@ -138,3 +138,82 @@ export interface AnalyticsFilters {
   categories?: string[]
   streamTypes?: string[]
 }
+
+export interface AnalyticsApiSummary {
+  streams: Record<string, string | number | null>
+  chat: Record<string, string | number | null>
+  recordings: Record<string, string | number | null>
+  daily: Array<Record<string, string | number | null>>
+}
+
+export type AnalyticsExportFormat = "csv" | "json" | "pdf" | "image"
+
+export interface AnalyticsExportPagination {
+  page: number
+  pageSize: number
+  totalRows: number
+  totalPages: number
+  hasNextPage: boolean
+}
+
+export interface AnalyticsExportFilterContext {
+  period: WidgetAnalyticsQuery["period"]
+  platforms: string[]
+  categories: string[]
+  streamTypes: string[]
+}
+
+export interface AnalyticsExportPayload {
+  summary: Omit<AnalyticsApiSummary, "daily">
+  rows: Array<Record<string, string | number | null>>
+  pagination: AnalyticsExportPagination
+  filters: AnalyticsExportFilterContext
+  format: AnalyticsExportFormat
+}
+
+export interface AnalyticsApiError {
+  code: string
+  message: string
+}
+
+export interface AnalyticsApiEnvelopeSuccess {
+  success: true
+  data: AnalyticsApiSummary | AnalyticsExportPayload
+  error: null
+  requestId?: string
+}
+
+export interface AnalyticsApiEnvelopeFailure {
+  success: false
+  data: null
+  error: AnalyticsApiError
+  requestId?: string
+}
+
+export type AnalyticsApiResponse =
+  | AnalyticsApiEnvelopeSuccess
+  | AnalyticsApiEnvelopeFailure
+  | AnalyticsApiSummary
+
+export type WidgetAnalyticsMetric = "viewer_count" | "streams" | "live_streams" | "avg_viewers"
+
+export type WidgetAnalyticsDimension = "day" | "status"
+
+export interface WidgetAnalyticsQuery {
+  metric: WidgetAnalyticsMetric
+  period: "24h" | "7d" | "30d" | "90d" | "1y"
+  dimensions?: WidgetAnalyticsDimension[]
+}
+
+export interface WidgetAnalyticsPoint {
+  label: string
+  value: number
+  status?: string
+}
+
+export interface WidgetAnalyticsResponse {
+  metric: WidgetAnalyticsMetric
+  period: WidgetAnalyticsQuery["period"]
+  dimensions: WidgetAnalyticsDimension[]
+  series: WidgetAnalyticsPoint[]
+}

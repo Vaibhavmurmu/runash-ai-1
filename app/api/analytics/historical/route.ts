@@ -1,29 +1,59 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { Database } from "@/lib/database"
-import { getServerAuthSession } from "@/lib/auth/session"
+import { parseOptionalStreamId, parsePeriod, requireAnalyticsSession } from "@/app/api/analytics/_lib"
+import { getHistoricalSeries } from "@/lib/services/analytics-dashboard"
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerAuthSession()
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const sessionState = await requireAnalyticsSession()
+    if ("error" in sessionState) {
+      return sessionState.error
     }
 
     const { searchParams } = new URL(req.url)
     const period = searchParams.get("period") || "7d"
     const streamId = searchParams.get("streamId")
+    const platforms = parseCsv(searchParams.get("platforms"))
+    const categories = parseCsv(searchParams.get("categories")).map((value) => value.toLowerCase())
+    const streamTypes = parseCsv(searchParams.get("streamTypes"))
 
-    const userId = session.user.id
-    const days = getPeriodDays(period)
+    const periodResult = parsePeriod(searchParams)
+    if (!periodResult.ok) {
+      return periodResult.response
+    }
+
+    const streamResult = parseOptionalStreamId(searchParams)
+    if (!streamResult.ok) {
+      return streamResult.response
+    }
+
+    const userId = auth.userId
+    const interval = PERIOD_TO_INTERVAL[periodResult.period]
 
     // Build base query conditions
-    let streamCondition = "s.user_id = $1"
-    const params: any[] = [userId]
+    const conditions: string[] = ["s.user_id = $1"]
+    const params: unknown[] = [userId]
 
     if (streamId) {
-      streamCondition += " AND s.id = $2"
-      params.push(Number.parseInt(streamId))
+      params.push(streamId)
+      conditions.push(`s.id::text = $${params.length}`)
     }
+
+    if (platforms.length > 0) {
+      params.push(platforms)
+      conditions.push(`s.platform = ANY($${params.length})`)
+    }
+
+    if (streamTypes.length > 0) {
+      params.push(streamTypes)
+      conditions.push(`s.status = ANY($${params.length})`)
+    }
+
+    if (categories.length > 0) {
+      params.push(categories)
+      conditions.push(`LOWER(s.platform) = ANY($${params.length})`)
+    }
+
+    const streamCondition = conditions.join(" AND ")
 
     // Get historical viewer counts
     const viewerCounts = await Database.query(
@@ -34,7 +64,7 @@ export async function GET(req: NextRequest) {
       FROM stream_analytics sa
       JOIN streams s ON sa.stream_id = s.id
       WHERE ${streamCondition}
-      AND sa.created_at >= NOW() - INTERVAL '${days} days'
+      AND sa.created_at >= NOW() - INTERVAL '${interval}'
       GROUP BY DATE(sa.created_at)
       ORDER BY date
     `,
@@ -50,7 +80,7 @@ export async function GET(req: NextRequest) {
       FROM stream_analytics sa
       JOIN streams s ON sa.stream_id = s.id
       WHERE ${streamCondition}
-      AND sa.created_at >= NOW() - INTERVAL '${days} days'
+      AND sa.created_at >= NOW() - INTERVAL '${interval}'
       GROUP BY DATE(sa.created_at)
       ORDER BY date
     `,
@@ -65,7 +95,7 @@ export async function GET(req: NextRequest) {
         COUNT(*) as value
       FROM user_followers uf
       WHERE uf.user_id = $1
-      AND uf.created_at >= NOW() - INTERVAL '${days} days'
+      AND uf.created_at >= NOW() - INTERVAL '${interval}'
       GROUP BY DATE(uf.created_at)
       ORDER BY date
     `,
@@ -80,7 +110,7 @@ export async function GET(req: NextRequest) {
         SUM(pt.amount) as value
       FROM payment_transactions pt
       WHERE pt.user_id = $1
-      AND pt.created_at >= NOW() - INTERVAL '${days} days'
+      AND pt.created_at >= NOW() - INTERVAL '${interval}'
       AND pt.status = 'succeeded'
       GROUP BY DATE(pt.created_at)
       ORDER BY date
@@ -97,7 +127,7 @@ export async function GET(req: NextRequest) {
       FROM stream_analytics sa
       JOIN streams s ON sa.stream_id = s.id
       WHERE ${streamCondition}
-      AND sa.created_at >= NOW() - INTERVAL '${days} days'
+      AND sa.created_at >= NOW() - INTERVAL '${interval}'
       GROUP BY DATE(sa.created_at)
       ORDER BY date
     `,
@@ -113,7 +143,7 @@ export async function GET(req: NextRequest) {
       FROM stream_analytics sa
       JOIN streams s ON sa.stream_id = s.id
       WHERE ${streamCondition}
-      AND sa.created_at >= NOW() - INTERVAL '${days} days'
+      AND sa.created_at >= NOW() - INTERVAL '${interval}'
       GROUP BY DATE(sa.created_at)
       ORDER BY date
     `,
@@ -127,14 +157,13 @@ export async function GET(req: NextRequest) {
         value: Number.parseFloat(row.value) || 0,
       }))
 
-    return NextResponse.json({
-      viewerCounts: formatTimeSeriesData(viewerCounts),
-      chatActivity: formatTimeSeriesData(chatActivity),
-      followerGrowth: formatTimeSeriesData(followerGrowth),
-      revenue: formatTimeSeriesData(revenue),
-      engagement: formatTimeSeriesData(engagement),
-      watchTime: formatTimeSeriesData(watchTime),
+    const data = await getHistoricalSeries({
+      userId: sessionState.userId,
+      period: periodState.period,
+      streamId: streamState.streamId,
     })
+
+    return NextResponse.json(data)
   } catch (error) {
     console.error("Historical analytics error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
@@ -156,4 +185,11 @@ function getPeriodDays(period: string): number {
     default:
       return 7
   }
+}
+
+function parseCsv(value: string | null): string[] {
+  return (value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
 }

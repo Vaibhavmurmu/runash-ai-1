@@ -17,91 +17,151 @@ interface ConversionResult {
   exchangeRate: number
 }
 
-const SUPPORTED_CURRENCIES = ["USD", "INR"]
+interface ExchangeRatesApiResponse {
+  success: boolean
+  rates?: Array<{ from: string; to: string; rate: number; lastUpdated: string }>
+  supportedCurrencies?: string[]
+  unavailableCurrencies?: string[]
+  fetchedAt?: string | null
+  stale?: boolean
+  tooOld?: boolean
+  error?: string
+}
 
+const DEFAULT_SUPPORTED_CURRENCIES = ["USD", "INR"]
 const CURRENCY_SYMBOLS: Record<string, string> = {
   USD: "$",
   INR: "₹",
-  
 }
-
-// Mock exchange rates - in production, these would come from a real API
-const MOCK_RATES: Record<string, number> = {
-  "USD-INR": 83.0,
-  "INR-USD": 0.012,
-}
+const STALE_REVALIDATE_INTERVAL_MS = 5 * 60 * 1000
 
 export function useExchangeRates() {
   const [rates, setRates] = useState<ExchangeRate[]>([])
+  const [supportedCurrencies, setSupportedCurrencies] = useState<string[]>(DEFAULT_SUPPORTED_CURRENCIES)
+  const [unavailableCurrencies, setUnavailableCurrencies] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
+  const [revalidating, setRevalidating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null)
 
-  const fetchRates = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      const mockRates: ExchangeRate[] = Object.entries(MOCK_RATES).map(([pair, rate]) => {
-        const [from, to] = pair.split("-")
-        return {
-          from,
-          to,
-          rate,
-          lastUpdated: new Date(),
-        }
-      })
-
-      setRates(mockRates)
-    } catch (err) {
-      setError("Failed to fetch exchange rates")
-      console.error("Exchange rate fetch error:", err)
-    } finally {
-      setLoading(false)
+  const applyRatesResponse = useCallback((payload: ExchangeRatesApiResponse) => {
+    if (!payload.success || !payload.rates) {
+      const apiError = payload.error ?? "Failed to fetch exchange rates"
+      setError(apiError)
+      setUnavailableCurrencies(payload.unavailableCurrencies ?? [])
+      return false
     }
+
+    const parsedRates = payload.rates.map((rate) => ({
+      from: rate.from,
+      to: rate.to,
+      rate: rate.rate,
+      lastUpdated: new Date(rate.lastUpdated),
+    }))
+
+    setRates(parsedRates)
+    setSupportedCurrencies(payload.supportedCurrencies?.length ? payload.supportedCurrencies : DEFAULT_SUPPORTED_CURRENCIES)
+    setUnavailableCurrencies(payload.unavailableCurrencies ?? [])
+    setLastFetchedAt(payload.fetchedAt ? new Date(payload.fetchedAt) : new Date())
+
+    if (payload.tooOld) {
+      setError("Exchange rates are too old to use safely. Please try again shortly.")
+      return false
+    }
+
+    if (payload.stale) {
+      setError("Showing cached exchange rates while fresh data is loading.")
+    } else {
+      setError(null)
+    }
+
+    return true
   }, [])
+
+  const fetchRates = useCallback(
+    async ({ forceRefresh = false, background = false }: { forceRefresh?: boolean; background?: boolean } = {}) => {
+      if (background) {
+        setRevalidating(true)
+      } else {
+        setLoading(true)
+      }
+
+      try {
+        const response = await fetch(`/api/exchange-rates${forceRefresh ? "?refresh=true" : ""}`, {
+          cache: "no-store",
+        })
+        const payload = (await response.json()) as ExchangeRatesApiResponse
+
+        if (!response.ok || !applyRatesResponse(payload)) {
+          return false
+        }
+
+        return true
+      } catch {
+        setError("Could not reach exchange-rate service.")
+        return false
+      } finally {
+        if (background) {
+          setRevalidating(false)
+        } else {
+          setLoading(false)
+        }
+      }
+    },
+    [applyRatesResponse],
+  )
 
   useEffect(() => {
     fetchRates()
   }, [fetchRates])
 
+  useEffect(() => {
+    if (!lastFetchedAt) return
+
+    const age = Date.now() - lastFetchedAt.getTime()
+    const delay = Math.max(STALE_REVALIDATE_INTERVAL_MS - age, 0)
+
+    const timer = window.setTimeout(() => {
+      fetchRates({ background: true, forceRefresh: true })
+    }, delay)
+
+    return () => window.clearTimeout(timer)
+  }, [lastFetchedAt, fetchRates])
+
   const getRate = useCallback(
     (from: string, to: string): number => {
-      if (from === to) return 1
+      const normalizedFrom = from.toUpperCase()
+      const normalizedTo = to.toUpperCase()
 
-      const directRate = rates.find((r) => r.from === from && r.to === to)
+      if (normalizedFrom === normalizedTo) return 1
+
+      if (unavailableCurrencies.includes(normalizedFrom) || unavailableCurrencies.includes(normalizedTo)) {
+        throw new Error(`Currency not currently available: ${normalizedFrom} or ${normalizedTo}`)
+      }
+
+      const directRate = rates.find((rate) => rate.from === normalizedFrom && rate.to === normalizedTo)
       if (directRate) return directRate.rate
 
-      // Try reverse rate
-      const reverseRate = rates.find((r) => r.from === to && r.to === from)
-      if (reverseRate) return 1 / reverseRate.rate
-
-      // Fallback to mock rates
-      const mockRate = MOCK_RATES[`${from}-${to}`]
-      if (mockRate) return mockRate
-
-      const reverseMockRate = MOCK_RATES[`${to}-${from}`]
-      if (reverseMockRate) return 1 / reverseMockRate
-
-      return 1
+      throw new Error(`No exchange rate available for ${normalizedFrom} → ${normalizedTo}`)
     },
-    [rates],
+    [rates, unavailableCurrencies],
   )
 
   return {
     rates,
     loading,
+    revalidating,
     error,
     fetchRates,
     getRate,
-    supportedCurrencies: SUPPORTED_CURRENCIES,
+    supportedCurrencies,
+    unavailableCurrencies,
+    lastFetchedAt,
   }
 }
 
 export function useCurrencyConverter() {
-  const { getRate } = useExchangeRates()
+  const { getRate, supportedCurrencies, unavailableCurrencies, fetchRates, revalidating } = useExchangeRates()
   const [converting, setConverting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -111,9 +171,6 @@ export function useCurrencyConverter() {
       setError(null)
 
       try {
-        // Simulate API delay
-        await new Promise((resolve) => setTimeout(resolve, 500))
-
         const exchangeRate = getRate(fromCurrency, toCurrency)
         const convertedAmount = amount * exchangeRate
 
@@ -124,8 +181,8 @@ export function useCurrencyConverter() {
           toCurrency,
           exchangeRate,
         }
-      } catch (err) {
-        const errorMessage = "Currency conversion failed"
+      } catch {
+        const errorMessage = `Currency conversion unavailable for ${fromCurrency} → ${toCurrency}.`
         setError(errorMessage)
         throw new Error(errorMessage)
       } finally {
@@ -143,8 +200,7 @@ export function useCurrencyConverter() {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       }).format(amount)
-    } catch (err) {
-      // Fallback formatting
+    } catch {
       const symbol = CURRENCY_SYMBOLS[currency] || currency
       return `${symbol}${amount.toFixed(2)}`
     }
@@ -155,14 +211,17 @@ export function useCurrencyConverter() {
   }, [])
 
   const getSupportedCurrencies = useCallback((): string[] => {
-    return SUPPORTED_CURRENCIES
-  }, [])
+    return supportedCurrencies
+  }, [supportedCurrencies])
 
   return {
     convertCurrency,
     formatCurrency,
     getCurrencySymbol,
     getSupportedCurrencies,
+    refreshRates: () => fetchRates({ forceRefresh: true }),
+    unavailableCurrencies,
+    revalidating,
     converting,
     error,
   }

@@ -54,7 +54,7 @@ export function DashboardLibraryPage() {
                 <Button
                   size="sm"
                   onClick={() =>
-                    router.push(`/dashboard/editor?libraryItemId=${encodeURIComponent(item.id)}&libraryItemTitle=${encodeURIComponent(item.title)}`)
+                    router.push(`/editor?libraryItemId=${encodeURIComponent(item.id)}&libraryItemTitle=${encodeURIComponent(item.title)}`)
                   }
                 >
                   Open in editor

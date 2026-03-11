@@ -35,6 +35,7 @@ interface DashboardLayoutFrameProps {
   header?: ReactNode;
   contentClassName?: string;
   contentCollapsedClassName?: string;
+  navConfig?: DashboardNavigationConfig;
 }
 
 export function DashboardLayoutFrame({
@@ -43,6 +44,7 @@ export function DashboardLayoutFrame({
   header,
   contentClassName,
   contentCollapsedClassName,
+  navConfig = dashboardNavigationConfig,
 }: DashboardLayoutFrameProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
@@ -55,7 +57,7 @@ export function DashboardLayoutFrame({
         <DashboardSidebarFrame
           mobileOpen={mobileOpen}
           onMobileOpenChange={setMobileOpen}
-          navConfig={dashboardNavigationConfig}
+          navConfig={navConfig}
           onCollapsedChange={setSidebarCollapsed}
         />
 
@@ -65,7 +67,7 @@ export function DashboardLayoutFrame({
           {header ?? (
             <DashboardHeader
               onOpenMobileMenu={() => setMobileOpen(true)}
-              navConfig={dashboardNavigationConfig}
+              navConfig={navConfig}
             />
           )}
           <DashboardContent

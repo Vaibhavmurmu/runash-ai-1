@@ -135,7 +135,7 @@ export default function ChatSidebar({
                   <button
                     type="button"
                     className="w-full rounded-md border bg-background p-2 text-left transition-colors hover:bg-muted/60"
-                    onClick={() => openWorkspaceTool("/dashboard/editor")}
+                    onClick={() => openWorkspaceTool("/editor")}
                   >
                     <div className="flex items-center gap-2 text-sm font-medium">
                       <SquarePen className="h-4 w-4" />

@@ -3,6 +3,20 @@
 Last updated: 2026-02
 
 
+
+## API key platform persistence hardening update (2026-03)
+
+- Dashboard API key lifecycle (`create`, `list`, `rotate`, `revoke`) is now backed by persistent repository/database storage instead of process memory, so key metadata and status survive process restarts.
+- API key secret handling guarantees plaintext key values are emitted only once at issuance/rotation response time and are never persisted or logged in plaintext; storage uses secret hash + encrypted secret material.
+- Seeded/default demo API key initialization has been removed to avoid non-production credentials appearing in runtime state.
+
+## SMS OTP provider delivery hardening update (2026-03)
+
+- OTP SMS dispatch now resolves through a dedicated provider client (`lib/sms-provider-client.ts`) with environment-driven timeout/retry controls and normalized delivery results (`sent`/`queued`/`failed`).
+- Legacy mock-provider success fallback has been removed from runtime selection; unconfigured or mock-selected providers now return explicit delivery failure so auth flows never report false-positive OTP sends.
+- Auth phone-OTP start/resend paths now persist non-sensitive provider outcome metadata in security audit events (provider/state/request/message ids), while keeping phone identifiers hashed and excluding OTP payloads from logs.
+- Rate-limit and challenge lockout semantics are unchanged; only SMS delivery execution and outage/failure handling behavior were updated.
+
 ## Middleware/admin authorization hardening update (2026-02)
 
 - Middleware public API matching now allowlists only explicit unauthenticated auth endpoints instead of treating the full `/api/auth/**` tree as public.
@@ -801,3 +815,13 @@ Use this destructive path only when the application rollback cannot restore serv
 - Added centralized live/editor authorization policy module with explicit operation matrix (`create/start/stop stream`, `edit_timeline`, `run_generation`, `manage_collaborators`).
 - Live/editor mutation routes now enforce tenant-scoped permission + quota checks and return structured denial codes (`AUTHZ_PERMISSION_DENIED`, `TENANT_QUOTA_*`).
 - Privileged operation audits are recorded with sanitized metadata only (tenant ID, role, operation, outcome, denial code) and no secrets/tokens/media credentials.
+
+## 2026-03 auth analytics geo-enrichment + session telemetry hardening
+
+- Auth analytics now derives location dashboards from an IP-to-geo cache (`auth_ip_geo_cache`) populated from event/threat metadata and short-lived enrichment sources; static geographic arrays were removed from runtime code paths.
+- Location retention is constrained with an explicit `expires_at` TTL policy (90 days) and periodic cleanup in `refresh_auth_security_dashboard_rollups()`.
+- Stored geo fields are limited to country/region-level attributes for analytics and avoid city/lat/long persistence in auth event payloads.
+- Real-time analytics now computes average session duration and peak concurrent users from `user_sessions` windows instead of fixed constants.
+- Dashboard hot paths now use materialized views (`mv_auth_geographic_login_daily`, `mv_security_geographic_threat_daily`) with a refresh function for predictable query latency.
+- Session concurrency analytics now use a dedicated materialized rollup (`mv_auth_session_concurrency_daily`) with DB-query fallbacks that return zero values when optional enrichment rows are unavailable.
+- Geo/IP and session-concurrency ingestion health is tracked in `auth_analytics_ingestion_telemetry` to keep analytics assembly data-driven and auditable.

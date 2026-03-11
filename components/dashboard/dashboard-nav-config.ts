@@ -267,6 +267,8 @@ const dashboardPathLabels: Record<string, string> = {
   seller: "Seller",
   settings: "Settings",
   payments: "Payments",
+  editor: "Editor",
+  runashchat: "RunAshChat",
 }
 
 function formatSegmentLabel(segment: string) {
@@ -283,6 +285,8 @@ function formatSegmentLabel(segment: string) {
 }
 
 function resolveCurrentSection(pathname: string, fallback: string | undefined) {
+  if (matchesPathPrefix(pathname, "/editor")) return "Editor"
+  if (matchesPathPrefix(pathname, "/runashchat")) return "RunAshChat"
   if (matchesPathPrefix(pathname, "/agents")) return "Agents"
   if (matchesPathPrefix(pathname, "/automation")) return "Automation"
   if (matchesPathPrefix(pathname, "/workflows")) return "Workflows"

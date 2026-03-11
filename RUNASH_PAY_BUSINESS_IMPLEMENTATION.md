@@ -35,6 +35,25 @@ This document is limited to payment/business implementation policy. Generic cont
 - Risk + rollback: low-to-medium operational risk (queue behavior changes). Rollback by reverting editor render job API/worker patch if cancellation or queue throughput regressions appear.
 - Security posture: provider request/response operational logs are redacted to prevent sensitive token/prompt leakage in shared logs.
 
+## 2026-03 live-stream provider reliability note (payment-contract safe)
+
+### Live stream provider env migration/config notes (2026-03)
+
+- Runtime sessions must set `RUNASH_LIVE_STREAM_PROVIDER` to one of: `mux`, `livepeer`, or `internal`.
+- Required provider credentials:
+  - `mux`: `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET`
+  - `livepeer`: `LIVEPEER_API_TOKEN`
+  - `internal`: `RUNASH_INTERNAL_LIVE_STREAM_API_BASE_URL`, `RUNASH_INTERNAL_LIVE_STREAM_API_KEY`
+- Optional reliability controls: `RUNASH_LIVE_STREAM_PROVIDER_RETRY_COUNT` and `RUNASH_LIVE_STREAM_PROVIDER_TIMEOUT_MS`.
+- Mock behavior is test/dev-harness only and cannot be used in deployed environments (`NODE_ENV=production`, `VERCEL_ENV=preview|production`, or `RUNASH_ENV=staging|production`).
+- Fallback behavior is fail-closed: invalid provider selection or missing credentials returns configuration errors instead of provisioning mock ingest/playback URLs.
+
+
+- Change scope: live-stream provider abstraction in `services/live-stream/*` now supports real backend provisioning/stopping with persisted provider session metadata for reconciliation.
+- Payment/auth impact assessment: no payment API field names, payment webhook schemas, or auth/payment signatures were changed.
+- Risk + rollback: operational risk is isolated to live-stream session start/stop. Rollback by restoring prior live-stream provider implementation and disabling real provider selection env settings.
+- Security posture: provider request/response logs are structured and explicitly redact credentials/tokens/secrets.
+
 ## Compatibility, risk, and rollback
 
 - Backward compatibility is mandatory for payment routes unless a versioned migration is explicitly introduced.
@@ -377,3 +396,74 @@ Business controls preserved:
 - Data integrity update: completion now persists normalized provider output + output-publication metadata with transactional job/asset updates to reduce split-brain writes.
 - Payment/auth impact: none; no payment contract or auth API signature changed.
 - Risk + rollback: moderate operational risk in queue worker behavior. Rollback by reverting `services/editor/render-worker.ts`, new render-job APIs, and migration `scripts/sql/2026-03-06_editor_render_job_orchestration.sql`; existing queued jobs continue under prior worker semantics after rollback.
+
+## 2026-03 Payment/Auth reliability hardening migration notes
+
+### Behavior changes (backward compatible contracts)
+- Link provider session/verification/save flow now fails with explicit `LINK_PROVIDER_UNAVAILABLE` when Stripe credentials or SDK are unavailable in real environments.
+- Test-only Link mocks are gated behind **both** `NODE_ENV=test` and `LINK_PROVIDER_ENABLE_MOCK=true`; real flows never issue synthetic Link sessions.
+- UPI service processing no longer uses random success simulation. Transactions now follow a deterministic state machine: `PENDING -> SUCCESS|FAILED`, finalized by gateway callback/webhook processing.
+- Duplicate gateway callbacks are treated as idempotent and do not replay balance transfer.
+- OTP SMS delivery now uses explicit provider abstraction selection; production paths do not silently fall back to a mock/noop vendor.
+
+### Risks
+1. Environments missing Stripe/Twilio configuration will surface explicit provider-unavailable failures instead of silently succeeding with mocks.
+2. Delayed or missing gateway callbacks can leave transactions in `PENDING` longer; monitoring/alerting on stale pending transactions is required.
+3. Misconfigured provider selection flags in development may block OTP delivery until explicitly configured.
+
+### Rollback
+1. Revert service-layer hardening changes in `lib/services/link-provider-service.ts`, `lib/services/upi-service.ts`, and `lib/otp.ts`.
+2. Re-enable prior non-deterministic/mock behavior only for temporary incident containment in lower environments.
+3. Keep API signatures and field names unchanged during rollback to avoid downstream integration impact.
+
+### Validation commands
+- `npm run lint`
+- `npm run build`
+- `node --loader ./scripts/node-ts-loader.mjs --test lib/services/link-provider-service.test.ts lib/services/upi-service.test.ts lib/otp.test.ts`
+
+
+## 2026-03 Link provider availability hardening (payment-contract safe)
+
+- Impacted flows: Link session creation (`/api/wallet/link/session`), Link verification (`/api/wallet/link/verify`), and Link card save (`/api/wallet/link/save`).
+- Availability behavior: missing Stripe credentials now produce typed `LINK_PROVIDER_UNAVAILABLE` (HTTP `503`) responses with retry-safe messaging and `meta.retryable=true`; Stripe operation failures remain controlled `502` errors.
+- Mock safety: any mock provider behavior is explicitly test-only (`NODE_ENV=test` + `LINK_PROVIDER_ENABLE_MOCK=true`) and cannot be activated in production/staging flows.
+- Backward compatibility: payment field names and API signatures are unchanged; only failure semantics are hardened for unavailable providers.
+
+### Risk and rollback
+
+1. **Risk:** environments without Stripe secrets will fail fast at Link entrypoints rather than silently continuing with fake sessions.
+2. **Mitigation:** deployment readiness check for `STRIPE_SECRET_KEY`/`STRIPE_API_KEY`; alert on `LINK_PROVIDER_UNAVAILABLE` rate.
+3. **Rollback:** revert Link provider availability hardening in `lib/services/link-provider-service.ts` and corresponding wallet Link API handlers; keep API contracts stable during rollback.
+
+### Validation commands
+
+- `npm run lint`
+- `npm run build`
+- `node --loader ./scripts/node-ts-loader.mjs --test lib/services/link-provider-service.test.ts`
+
+## 2026-03 Link provider config enforcement and webhook credential fail-fast
+
+### Payment-impacting behavior update
+
+- Link provider operations now enforce strict Stripe credential presence (`STRIPE_SECRET_KEY` or `STRIPE_API_KEY`) and map missing-config paths to `LINK_PROVIDER_UNAVAILABLE` instead of mock success.
+- Link save path now performs Stripe-native tokenization + payment method creation/attachment, preserving existing API contract fields while eliminating local pseudo payment-method IDs.
+- Billing webhook shared handler removed placeholder Stripe key fallback and now rejects requests when Stripe secret key configuration is missing.
+
+### Operational risk and rollback notes
+
+- **Primary risk:** production or staging environments without Stripe secrets will receive immediate Link/webhook failures.
+- **Mitigation:** enforce secret checks in deployment readiness and validate via lint/build/tests before release.
+- **Rollback path:** revert the strict-enforcement commit and redeploy, then restore secrets and re-apply once configuration parity is confirmed.
+
+## 2026-03 Conversion reliability note
+
+- Service hardening update: `services/conversion-service.ts` moved from simulated conversions to durable job orchestration with persisted lifecycle, cancellation/retry, idempotency keys, and artifact persistence.
+- Payment/auth contract impact: **none** (no payment field/API changes).
+- Rollback: revert conversion service changes; no payment schema rollback required.
+
+## 2026-03-10 reliability hardening: UPI + order contract behavior
+
+- Checkout flow creates an order ID before UPI QR initiation when missing from client session state.
+- `order_id` is attached to UPI transaction records and returned in internal service responses for reconciliation.
+- Order payment status is updated atomically during completion/status checks and guarded to avoid repeated writes.
+- No API field renames were introduced for `POST /api/orders`; compatibility is preserved.

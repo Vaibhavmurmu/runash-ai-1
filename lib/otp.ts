@@ -1,4 +1,5 @@
 import { createHash, randomInt, randomUUID } from "crypto"
+import { getSmsOtpProvider, type SmsDeliveryResult } from "./sms-provider-client"
 import { logApiEvent } from "./api/logging"
 import { assertDatabaseConfigured, sql } from "./db"
 import { sendOtpCodeEmail } from "./email"
@@ -10,7 +11,6 @@ function ensureOtpDbConfigured() {
 type OtpLogLevel = "info" | "warn" | "error"
 
 type SqlClient = (strings: TemplateStringsArray, ...values: unknown[]) => Promise<Array<Record<string, any>>>
-
 
 function hashIdentifier(identifier: string): string {
   return createHash("sha256").update(identifier).digest("hex").slice(0, 16)
@@ -242,7 +242,7 @@ export async function createSMSOTPWithClient(
     userId?: number
     ipAddress?: string
     userAgent?: string
-    deliverSmsOtp?: (phoneNumber: string, code: string, purpose: string) => Promise<boolean>
+    deliverSmsOtp?: (phoneNumber: string, code: string, purpose: string) => Promise<boolean | SmsDeliveryResult>
     checkRateLimit?: typeof checkOTPRateLimit
   } = {},
 ): Promise<{ success: boolean; message: string; expiresIn?: number }> {
@@ -254,7 +254,7 @@ export async function createSMSOTPWithClient(
       outcome: "attempted",
       identifierHash: hashIdentifier(phoneNumber),
       purpose,
-      vendor: "mock-sms",
+      vendor: getSmsOtpProvider().name,
     })
 
     // Check rate limiting
@@ -286,17 +286,32 @@ export async function createSMSOTPWithClient(
     `
 
     // Send SMS
-    const smsSent = await deliverSmsOtp(phoneNumber, code, purpose)
+    const delivery = normalizeSmsDeliveryResult(await deliverSmsOtp(phoneNumber, code, purpose))
 
-    if (!smsSent) {
+    if (!delivery.success) {
+      logOtpEvent("error", "otp.sms.create.failed", requestId, {
+        outcome: "failed",
+        identifierHash: hashIdentifier(phoneNumber),
+        purpose,
+        vendor: delivery.provider,
+        providerState: delivery.state,
+        providerMessageId: delivery.providerMessageId,
+        providerRequestId: delivery.providerRequestId,
+        retryCount: delivery.retryCount,
+        errorCode: delivery.errorCode,
+      })
       return { success: false, message: "Failed to send SMS OTP" }
     }
 
     logOtpEvent("info", "otp.sms.create.success", requestId, {
-      outcome: "sent",
+      outcome: delivery.state,
       identifierHash: hashIdentifier(phoneNumber),
       purpose,
-      vendor: "mock-sms",
+      vendor: delivery.provider,
+      providerState: delivery.state,
+      providerMessageId: delivery.providerMessageId,
+      providerRequestId: delivery.providerRequestId,
+      retryCount: delivery.retryCount,
     })
 
     return {
@@ -309,7 +324,13 @@ export async function createSMSOTPWithClient(
       "error",
       "otp.sms.create_failed",
       requestId,
-      { outcome: "error", identifierHash: hashIdentifier(phoneNumber), purpose, vendor: "mock-sms" },
+      {
+        outcome: "failed",
+        identifierHash: hashIdentifier(phoneNumber),
+        purpose,
+        vendor: getSmsOtpProvider().name,
+        providerState: "failed",
+      },
       error,
     )
     return { success: false, message: "Failed to create OTP" }
@@ -461,42 +482,47 @@ async function sendEmailOTP(email: string, code: string, purpose: string): Promi
   }
 }
 
-// Send SMS OTP (placeholder - integrate with SMS service like Twilio)
-async function sendSMSOTP(phoneNumber: string, code: string, purpose: string): Promise<boolean> {
-  const requestId = randomUUID()
-  const provider = "mock-sms"
-  try {
-    // TODO: Integrate with SMS service (Twilio, AWS SNS, etc.)
-    // For now, we'll log the SMS content
-    logOtpEvent("info", "otp.sms.mock_sms.send_attempted", requestId, {
-      vendor: provider,
-      outcome: "simulated",
-      purpose,
-      identifierHash: hashIdentifier(phoneNumber),
-      channel: "sms",
-    })
 
-    // In production, replace this with actual SMS service integration:
-    /*
-    const twilio = require('twilio');
-    const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-    
-    await client.messages.create({
-      body: message,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to: phoneNumber
-    });
-    */
-
-    return true
-  } catch (error) {
-    logOtpEvent(
-      "error",
-      "otp.sms.mock_sms.send_failed",
-      requestId,
-      { vendor: provider, outcome: "error", purpose, identifierHash: hashIdentifier(phoneNumber) },
-      error,
-    )
-    return false
+function normalizeSmsDeliveryResult(result: boolean | SmsDeliveryResult): SmsDeliveryResult {
+  if (typeof result === "boolean") {
+    return {
+      success: result,
+      state: result ? "sent" : "failed",
+      provider: "legacy",
+    }
   }
+
+  return result
+}
+
+async function sendSMSOTP(phoneNumber: string, code: string, purpose: string): Promise<SmsDeliveryResult> {
+  const requestId = randomUUID()
+  const smsProvider = getSmsOtpProvider()
+
+  logOtpEvent("info", "otp.sms.provider.send_attempt", requestId, {
+    vendor: smsProvider.name,
+    purpose,
+    identifierHash: hashIdentifier(phoneNumber),
+    outcome: "attempted",
+  })
+
+  const delivery = await smsProvider.sendOtp({
+    phoneNumber,
+    code,
+    purpose,
+    requestId,
+  })
+
+  logOtpEvent(delivery.success ? "info" : "error", "otp.sms.provider.send_result", requestId, {
+    vendor: delivery.provider,
+    purpose,
+    identifierHash: hashIdentifier(phoneNumber),
+    outcome: delivery.state,
+    providerMessageId: delivery.providerMessageId,
+    providerRequestId: delivery.providerRequestId,
+    retryCount: delivery.retryCount,
+    errorCode: delivery.errorCode,
+  })
+
+  return delivery
 }

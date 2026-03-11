@@ -1,3 +1,7 @@
+import { createCipheriv, createHash, randomBytes, randomUUID } from "node:crypto"
+
+import { getApiKeyRepository, setApiKeyRepositoryForTests, type ApiKeyRepository } from "@/lib/repositories/api-keys"
+
 export type ApiKeyRecord = {
   id: string
   name: string
@@ -11,27 +15,29 @@ export type ApiKeyRecord = {
   secretMasked: string
 }
 
-type ApiKeyStoreState = {
-  keys: ApiKeyRecord[]
+type ApiKeyRow = {
+  id: string
+  name: string
+  scopes: string[] | string
+  status: "active" | "revoked"
+  created_at: string
+  rotated_at: string
+  last_used_at: string | null
+  secret_prefix: string
+  secret_masked: string
+  usage_24h: number | string | null
 }
-
-const globalScope = globalThis as typeof globalThis & { __runashApiKeyStore?: ApiKeyStoreState }
 
 function nowIso() {
   return new Date().toISOString()
 }
 
 function createId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID()
-  }
-
-  return `key_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+  return randomUUID()
 }
 
 function createSecret() {
-  const seed = Math.random().toString(36).slice(2, 20)
-  return `rk_live_${seed}`
+  return `rk_live_${randomBytes(24).toString("base64url")}`
 }
 
 function maskSecret(secret: string) {
@@ -39,69 +45,110 @@ function maskSecret(secret: string) {
   return `${secret.slice(0, 8)}••••${secret.slice(-4)}`
 }
 
-function ensureStore() {
-  if (!globalScope.__runashApiKeyStore) {
-    const seedSecret = createSecret()
-    globalScope.__runashApiKeyStore = {
-      keys: [
-        {
-          id: createId(),
-          name: "payments-prod-write",
-          scopes: ["payments:charges.write", "webhooks:read"],
-          status: "active",
-          createdAt: nowIso(),
-          rotatedAt: nowIso(),
-          lastUsedAt: nowIso(),
-          usage24h: 2134,
-          prefix: seedSecret.slice(0, 12),
-          secretMasked: maskSecret(seedSecret),
-        },
-      ],
-    }
+function hashSecret(secret: string) {
+  return createHash("sha256").update(secret).digest("hex")
+}
+
+function getSecretEncryptionKey() {
+  const configured = process.env.RUNASH_API_KEY_ENCRYPTION_KEY
+  if (!configured) {
+    throw new Error("RUNASH_API_KEY_ENCRYPTION_KEY must be configured for API key storage")
   }
 
-  return globalScope.__runashApiKeyStore
+  return createHash("sha256").update(configured).digest()
 }
 
-export function listApiKeys() {
-  return ensureStore().keys.map((key) => ({ ...key, scopes: [...key.scopes] }))
+function encryptSecret(secret: string) {
+  const iv = randomBytes(12)
+  const cipher = createCipheriv("aes-256-gcm", getSecretEncryptionKey(), iv)
+  const encrypted = Buffer.concat([cipher.update(secret, "utf8"), cipher.final()])
+  const tag = cipher.getAuthTag()
+
+  return `${iv.toString("base64url")}.${tag.toString("base64url")}.${encrypted.toString("base64url")}`
 }
 
-export function createApiKey(input: { name: string; scopes: string[] }) {
+function parseScopes(value: ApiKeyRow["scopes"]) {
+  if (Array.isArray(value)) return value
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : []
+  } catch {
+    return []
+  }
+}
+
+function normalizeRow(row: ApiKeyRow): ApiKeyRecord {
+  return {
+    id: row.id,
+    name: row.name,
+    scopes: parseScopes(row.scopes),
+    status: row.status,
+    createdAt: row.created_at,
+    rotatedAt: row.rotated_at,
+    lastUsedAt: row.last_used_at,
+    usage24h: Number(row.usage_24h ?? 0),
+    prefix: row.secret_prefix,
+    secretMasked: row.secret_masked,
+  }
+}
+
+export function setApiKeyStoreAdaptersForTests(repository: ApiKeyRepository | null) {
+  setApiKeyRepositoryForTests(repository)
+}
+
+export async function listApiKeys() {
+  const rows = await getApiKeyRepository().listKeys()
+  return rows.map(normalizeRow)
+}
+
+export async function createApiKey(input: { name: string; scopes: string[] }) {
   const secret = createSecret()
-  const entry: ApiKeyRecord = {
+  const createdAt = nowIso()
+
+  const key: ApiKeyRecord = {
     id: createId(),
     name: input.name.trim(),
     scopes: [...new Set(input.scopes.map((scope) => scope.trim()).filter(Boolean))],
     status: "active",
-    createdAt: nowIso(),
-    rotatedAt: nowIso(),
+    createdAt,
+    rotatedAt: createdAt,
     lastUsedAt: null,
     usage24h: 0,
     prefix: secret.slice(0, 12),
     secretMasked: maskSecret(secret),
   }
 
-  ensureStore().keys.unshift(entry)
-  return { key: entry, plainTextSecret: secret }
+  await getApiKeyRepository().createKeyWithSecret({
+    id: key.id,
+    name: key.name,
+    scopes: key.scopes,
+    prefix: key.prefix,
+    secretMasked: key.secretMasked,
+    secretHash: hashSecret(secret),
+    encryptedSecret: encryptSecret(secret),
+    createdAt,
+  })
+
+  return { key, plainTextSecret: secret }
 }
 
-export function revokeApiKey(id: string) {
-  const key = ensureStore().keys.find((entry) => entry.id === id)
-  if (!key) return null
-  key.status = "revoked"
-  return { ...key }
+export async function revokeApiKey(id: string) {
+  const revoked = await getApiKeyRepository().revokeKeyTransactional(id, nowIso())
+  return revoked ? normalizeRow(revoked) : null
 }
 
-export function rotateApiKey(id: string) {
-  const key = ensureStore().keys.find((entry) => entry.id === id)
-  if (!key) return null
-
+export async function rotateApiKey(id: string) {
   const secret = createSecret()
-  key.rotatedAt = nowIso()
-  key.secretMasked = maskSecret(secret)
-  key.prefix = secret.slice(0, 12)
-  key.status = "active"
+  const rotatedAt = nowIso()
+  const rotated = await getApiKeyRepository().rotateKeyTransactional({
+    id,
+    rotatedAt,
+    prefix: secret.slice(0, 12),
+    secretMasked: maskSecret(secret),
+    secretHash: hashSecret(secret),
+    encryptedSecret: encryptSecret(secret),
+  })
 
-  return { key: { ...key }, plainTextSecret: secret }
+  if (!rotated) return null
+  return { key: normalizeRow(rotated), plainTextSecret: secret }
 }

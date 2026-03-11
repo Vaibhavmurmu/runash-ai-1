@@ -1,6 +1,51 @@
 import { NextResponse } from "next/server"
+import { z } from "zod"
 import { getSql } from "@/lib/db/neon"
 import { requireSellerSessionUserId } from "@/app/api/seller/_auth"
+import { getServerAuthSession } from "@/lib/auth/session"
+import { checkoutOrderSchema } from "@/lib/types/checkout-order"
+
+const createOrderRequestSchema = checkoutOrderSchema.transform((payload) => ({
+  buyer_name: `${payload.customer.firstName} ${payload.customer.lastName}`.trim(),
+  buyer_email: payload.customer.email,
+  buyer_phone: payload.customer.phone ?? "",
+  shipping_address: [payload.customer.address, payload.customer.city, payload.customer.state, payload.customer.zipCode]
+    .filter(Boolean)
+    .join(", "),
+  payment_method: payload.payment.method,
+  items: payload.items,
+}))
+
+function toValidationError(error: z.ZodError) {
+  return NextResponse.json(
+    {
+      error: "Invalid order payload",
+      code: "INVALID_ORDER_PAYLOAD",
+      details: error.issues.map((issue) => ({
+        path: issue.path.join("."),
+        message: issue.message,
+        code: issue.code,
+      })),
+    },
+    { status: 400 },
+  )
+}
+
+async function requireBuyerSessionUserId(req: Request): Promise<number | Response> {
+  const session = await getServerAuthSession(req.headers)
+  const rawUserId = session?.user?.id?.toString().trim()
+
+  if (!rawUserId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const parsedUserId = Number.parseInt(rawUserId, 10)
+  if (Number.isNaN(parsedUserId)) {
+    return NextResponse.json({ error: "Invalid session user id" }, { status: 403 })
+  }
+
+  return parsedUserId
+}
 
 export async function GET(req: Request) {
   try {
@@ -33,13 +78,18 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json()
-    const userId = await requireSellerSessionUserId(req)
+    const userId = await requireBuyerSessionUserId(req)
     if (userId instanceof Response) return userId
-    const sql = getSql()
 
-    const { buyer_name, buyer_email, buyer_phone, shipping_address, payment_method, items = [] } = body
-    const total = items.reduce((sum: number, it: any) => sum + Number(it.price) * Number(it.quantity), 0)
+    const rawBody = await req.json()
+    const parsedBody = createOrderRequestSchema.safeParse(rawBody)
+    if (!parsedBody.success) {
+      return toValidationError(parsedBody.error)
+    }
+
+    const { buyer_name, buyer_email, buyer_phone, shipping_address, payment_method, items } = parsedBody.data
+    const total = items.reduce((sum, it) => sum + Number(it.price) * Number(it.quantity), 0)
+    const sql = getSql()
 
     const [order] =
       await sql /* sql */`INSERT INTO public.orders (user_id, buyer_name, buyer_email, buyer_phone, shipping_address, payment_method, total)

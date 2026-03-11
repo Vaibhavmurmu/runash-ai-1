@@ -41,7 +41,7 @@ export default function Home() {
             <div className="flex items-center justify-center space-x-2">
               <Bell className="w-4 h-4 gap-2 space-x-1" />
               <span className="text-orange-600 dark:text-orange-400 gap-2 font-medium text-sm">
-               <Badge varient="secondary" className="bg-orange-600 text-white gap-2 space-x-1 dark:bg-orange-500 animate-pulse border text-xs">New</Badge>
+               <Badge variant="secondary" className="bg-orange-600 text-white gap-2 space-x-1 dark:bg-orange-500 animate-pulse border text-xs">New</Badge>
                    {" "} Real-time live streaming video generation model! {" "}
                <a href="/ai-overview" className="underline gap-2 font-semibold hover:text-orange-200">
                     Learn more

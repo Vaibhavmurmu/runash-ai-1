@@ -1,5 +1,5 @@
-import { RunAshPayDashboard } from "@/components/payment/runash-pay-dashboard"
+import { RunAshPayLanding } from "@/components/payment/runash-pay-landing"
 
 export default function RunAshPayPage() {
-  return <RunAshPayDashboard />
+  return <RunAshPayLanding />
 }
