@@ -1,13 +1,11 @@
 import { type NextRequest } from "next/server"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
-import { getServerAuthSession } from "@/lib/auth/session"
 import { createStreamBackground, listStreamBackgrounds } from "@/lib/repositories/stream-studio"
+import { requireStreamOwner } from "./_auth"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getServerAuthSession()
-  if (!session) {
-    return respondError(request, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401 })
-  }
+  const access = await requireStreamOwner(request, params.id)
+  if (access.error) return access.error
 
   try {
     const backgrounds = await listStreamBackgrounds(params.id)
@@ -18,10 +16,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getServerAuthSession()
-  if (!session) {
-    return respondError(request, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401 })
-  }
+  const access = await requireStreamOwner(request, params.id)
+  if (access.error) return access.error
 
   try {
     const input = await request.json()

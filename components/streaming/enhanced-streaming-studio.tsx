@@ -952,7 +952,7 @@ export function EnhancedStreamingStudio() {
                 </TabsContent>
 
                 <TabsContent value="effects" className="flex-1 p-3 m-0">
-                  <VirtualBackgrounds />
+                  <VirtualBackgrounds streamId={streamSessionId ?? studioStreamId} />
                 </TabsContent>
                 <TabsContent value="multihost" className="flex-1 p-0 m-0">
                   <MultiHostManager isStreaming={isStreaming} currentUserId="current-user-id" />

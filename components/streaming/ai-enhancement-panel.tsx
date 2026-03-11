@@ -8,7 +8,11 @@ import { Label } from "@/components/ui/label"
 import { Wand2, Sparkles, ImageIcon, Sliders } from "lucide-react"
 import VirtualBackgrounds from "./virtual-backgrounds"
 
-export default function AIEnhancementPanel() {
+interface AIEnhancementPanelProps {
+  streamId?: string
+}
+
+export default function AIEnhancementPanel({ streamId = "studio-default" }: AIEnhancementPanelProps) {
   const [activeTab, setActiveTab] = useState("backgrounds")
   const [selectedBackground, setSelectedBackground] = useState<string | null>(null)
   const [blurAmount, setBlurAmount] = useState(0)
@@ -64,6 +68,7 @@ export default function AIEnhancementPanel() {
 
         <TabsContent value="backgrounds" className="space-y-4 mt-4">
           <VirtualBackgrounds
+            streamId={streamId}
             onSelectBackground={handleBackgroundSelect}
             onBlurBackground={handleBlurChange}
             selectedBackground={selectedBackground}
