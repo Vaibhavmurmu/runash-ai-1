@@ -9,15 +9,14 @@ type State = {
   error: string | null
 }
 
-const DEFAULT_STREAM_ID = "studio-default"
-
-export function useStreamBackgrounds(streamId = DEFAULT_STREAM_ID) {
+export function useStreamBackgrounds(streamId?: string | null) {
+  const resolvedStreamId = streamId ?? "studio-default"
   const [state, setState] = useState<State>({ data: [], loading: true, error: null })
 
   const load = useCallback(async () => {
     setState((prev) => ({ ...prev, loading: true, error: null }))
     try {
-      const response = await fetch(`/api/streams/${streamId}/backgrounds`, { cache: "no-store" })
+      const response = await fetch(`/api/streams/${resolvedStreamId}/backgrounds`, { cache: "no-store" })
       const payload = await response.json()
       if (!response.ok) {
         throw new Error(payload?.error?.message ?? "Failed to load backgrounds")
@@ -26,7 +25,7 @@ export function useStreamBackgrounds(streamId = DEFAULT_STREAM_ID) {
     } catch (error) {
       setState({ data: [], loading: false, error: error instanceof Error ? error.message : "Failed to load backgrounds" })
     }
-  }, [streamId])
+  }, [resolvedStreamId])
 
   useEffect(() => {
     void load()
@@ -34,7 +33,7 @@ export function useStreamBackgrounds(streamId = DEFAULT_STREAM_ID) {
 
   const upload = useCallback(
     async (background: Omit<BackgroundImage, "createdAt" | "downloadCount"> & Partial<Pick<BackgroundImage, "createdAt" | "downloadCount">>) => {
-      const response = await fetch(`/api/streams/${streamId}/backgrounds`, {
+      const response = await fetch(`/api/streams/${resolvedStreamId}/backgrounds`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(background),
@@ -46,12 +45,12 @@ export function useStreamBackgrounds(streamId = DEFAULT_STREAM_ID) {
       await load()
       return payload.data?.background ?? payload.background
     },
-    [load, streamId],
+    [load, resolvedStreamId],
   )
 
   const save = useCallback(
     async (backgroundId: string, patch: Partial<BackgroundImage>) => {
-      const response = await fetch(`/api/streams/${streamId}/backgrounds/${backgroundId}`, {
+      const response = await fetch(`/api/streams/${resolvedStreamId}/backgrounds/${backgroundId}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(patch),
@@ -62,19 +61,19 @@ export function useStreamBackgrounds(streamId = DEFAULT_STREAM_ID) {
       }
       await load()
     },
-    [load, streamId],
+    [load, resolvedStreamId],
   )
 
   const remove = useCallback(
     async (backgroundId: string) => {
-      const response = await fetch(`/api/streams/${streamId}/backgrounds/${backgroundId}`, { method: "DELETE" })
+      const response = await fetch(`/api/streams/${resolvedStreamId}/backgrounds/${backgroundId}`, { method: "DELETE" })
       const payload = await response.json()
       if (!response.ok) {
         throw new Error(payload?.error?.message ?? "Failed to delete background")
       }
       await load()
     },
-    [load, streamId],
+    [load, resolvedStreamId],
   )
 
   return { ...state, refresh: load, upload, save, remove }

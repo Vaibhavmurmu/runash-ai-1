@@ -11,14 +11,18 @@ import { useToast } from "@/components/ui/use-toast"
 import { Upload, X, ImageIcon, FileText, Check, Trash2 } from "lucide-react"
 import { useStreamBackgrounds } from "@/hooks/use-stream-backgrounds"
 
-export default function BackgroundUploader() {
+interface BackgroundUploaderProps {
+  streamId?: string
+}
+
+export default function BackgroundUploader({ streamId = "studio-default" }: BackgroundUploaderProps) {
   const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
   const [uploadStatus, setUploadStatus] = useState<Record<string, "pending" | "uploading" | "complete" | "error">>({})
   const [metadata, setMetadata] = useState({ name: "", category: "", tags: "", isPublic: true })
-  const { data: existing, loading, error, upload, remove } = useStreamBackgrounds("studio-default")
+  const { data: existing, loading, error, upload, remove } = useStreamBackgrounds(streamId)
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return
