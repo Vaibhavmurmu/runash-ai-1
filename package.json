@@ -77,17 +77,17 @@
     "jose": "latest",
     "lucide-react": "^0.454.0",
     "moment": "latest",
-    "next": "15.5.10",
+    "next": "16.1.6",
     "next-auth": "4.24.13",
     "next-themes": "latest",
     "nodemailer": "latest",
     "qrcode": "latest",
-    "react": "^19",
+    "react": "19.2.4",
     "react-big-calendar": "latest",
     "react-day-picker": "latest",
     "react-dnd": "latest",
     "react-dnd-html5-backend": "latest",
-    "react-dom": "^19",
+    "react-dom": "19.2.4",
     "react-grid-layout": "latest",
     "react-hook-form": "latest",
     "react-intersection-observer": "latest",
@@ -108,8 +108,8 @@
   },
   "devDependencies": {
     "@types/node": "^22",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
     "postcss": "^8.5",
     "tailwindcss": "^3.4.17",
     "typescript": "^5"
@@ -123,5 +123,9 @@
       "esbuild",
       "sharp"
     ]
+  },
+  "overrides": {
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3"
   }
 }
