@@ -41,7 +41,7 @@ export function validateUpiId(upiId: unknown): string | null {
   return QrService.isValidUPIId(normalized) ? normalized : null
 }
 
-export function resolveIdempotencyKey(request: NextRequest, body: unknown, fallbackPrefix: string): string {
+export function resolveIdempotencyKey(request: NextRequest, body: unknown, fallbackPrefix = "upi"): string {
   const fromHeader = request.headers.get("idempotency-key")?.trim()
   if (fromHeader && IDEMPOTENCY_KEY_PATTERN.test(fromHeader)) {
     return fromHeader

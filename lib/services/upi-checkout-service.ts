@@ -3,23 +3,15 @@ import {
   appendUpiTransactionEvent,
   createUpiTransaction,
   getUpiConfirmationResult,
+  getUpiProviderCompletionResult,
   getUpiTransactionById,
   getUpiTransactionByInitiationIdempotencyKey,
   type UpiErrorCode,
   type UpiExecutionStatus,
-  updateUpiTransaction,
 } from "@/lib/repositories/upi-transactions"
 
 export type { UpiExecutionStatus, UpiErrorCode }
-
-type UpiOrderRecord = {
-  orderId: string
-  transactionId: string
-  amount: number
-  currency: string
-  status: UpiExecutionStatus
-  updatedAt: string
-}
+export type UpiProviderStatus = "SUCCESS" | "FAILED" | "PENDING" | "PROCESSING" | "AUTHORIZED" | "TIMEOUT"
 
 type UpiInitiationResult = {
   transactionId: string
@@ -50,6 +42,7 @@ type UpiConfirmationFailure = {
 }
 
 type UpiConfirmationResult = UpiConfirmationSuccess | UpiConfirmationFailure
+
 type UpiCompletionResult =
   | {
       ok: true
@@ -67,7 +60,6 @@ type UpiCompletionResult =
 
 const DEMO_UPI_PIN = "123456"
 const MAX_PIN_ATTEMPTS = 3
-const EXECUTION_DELAY_MS = 6_000
 const DEFAULT_CURRENCY = "INR"
 
 function hashPin(pin: string): string {
@@ -78,61 +70,28 @@ function buildTransactionId() {
   return `UPI-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
 }
 
-function parseTimestamp(transactionId: string) {
-  const parts = transactionId.split("-")
-  const epoch = Number(parts[1])
-  return Number.isFinite(epoch) ? epoch : Date.now()
-}
-
 function toReference(transactionId: string): string {
   return `REF-${transactionId.slice(-10).toUpperCase()}`
 }
 
 function resolveTerminalStatus(transactionId: string): "success" | "failed" {
-  const checksum = transactionId
-    .split("")
-    .reduce((sum, char) => sum + char.charCodeAt(0), 0)
-
+  const checksum = transactionId.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0)
   return checksum % 11 === 0 ? "failed" : "success"
 }
 
-function assertMaskedPin(_pin: string) {
-  return "[REDACTED_PIN]"
-}
-
-function toCanonicalStatus(providerStatus: UpiProviderStatus): UpiExecutionStatus {
-  switch (providerStatus) {
-    case "SUCCESS":
-      return "success"
-    case "FAILED":
-    case "TIMEOUT":
-      return "failed"
-    case "PENDING":
-    case "PROCESSING":
-    case "AUTHORIZED":
-      return "pending"
-    default:
-      return "pending"
-  }
-}
-
-function syncOrderRecord(transaction: UpiTransactionRecord) {
-  orderByOrderId.set(transaction.orderId, {
-    orderId: transaction.orderId,
-    transactionId: transaction.transactionId,
-    amount: transaction.amount,
-    currency: transaction.currency,
-    status: transaction.status,
-    updatedAt: new Date().toISOString(),
-  })
+function canonicalProviderStatus(status: UpiProviderStatus): UpiExecutionStatus {
+  if (status === "SUCCESS") return "success"
+  if (status === "FAILED" || status === "TIMEOUT") return "failed"
+  return "pending"
 }
 
 export class UpiCheckoutService {
-  static async initiatePayment(idempotencyKey: string, amount: number): Promise<UpiInitiationResult> {
+  static async initiatePayment(idempotencyKey: string, amount: number, orderId: number, userId: string): Promise<UpiInitiationResult> {
     const existing = await getUpiTransactionByInitiationIdempotencyKey(idempotencyKey)
     if (existing) {
       return {
         transactionId: existing.transactionId,
+        order_id: Number(existing.orderId || orderId),
         amount: existing.amount,
         currency: existing.currency,
         status: "initiated",
@@ -141,26 +100,11 @@ export class UpiCheckoutService {
       }
     }
 
-    const [order] = await sqlClient /* sql */`
-      UPDATE public.orders
-      SET status = CASE
-        WHEN status = 'paid' THEN status
-        ELSE 'payment_pending'
-      END,
-      row_version = row_version + 1,
-      updated_at = now()
-      WHERE id = ${orderId}
-      RETURNING id
-    `
-
-    if (!order) {
-      throw new Error("Order not found for UPI initiation")
-    }
-
     const transactionId = buildTransactionId()
-    const createdAtEpoch = parseTimestamp(transactionId)
     const transaction = await createUpiTransaction({
       transactionId,
+      orderId: String(orderId),
+      ownerUserId: userId,
       amount,
       currency: DEFAULT_CURRENCY,
       transactionReference: toReference(transactionId),
@@ -174,43 +118,28 @@ export class UpiCheckoutService {
       eventType: "initiated",
       idempotencyKey,
       status: "initiated",
-      payload: {
-        amount,
-        currency: DEFAULT_CURRENCY,
-      },
+      payload: { amount, currency: DEFAULT_CURRENCY, orderId, ownerUserId: userId },
     })
 
     return {
       transactionId: transaction.transactionId,
+      order_id: Number(transaction.orderId || orderId),
       amount: transaction.amount,
       currency: transaction.currency,
       status: "initiated",
-      initiatedAt: new Date(createdAtEpoch).toISOString(),
+      initiatedAt: transaction.createdAt.toISOString(),
       idempotencyKey,
     }
   }
 
-  static async confirmPayment(input: {
-    transactionId: string
-    pin: string
-    idempotencyKey: string
-  }): Promise<UpiConfirmationResult> {
+  static async confirmPayment(input: { transactionId: string; pin: string; idempotencyKey: string; userId: string }): Promise<UpiConfirmationResult> {
     const transaction = await getUpiTransactionById(input.transactionId)
-
-    if (!transaction) {
-      return {
-        ok: false,
-        status: "failed",
-        code: "RISK_BLOCKED",
-        error: "Transaction is not available for confirmation.",
-        attemptsRemaining: 0,
-      }
+    if (!transaction || (transaction.ownerUserId && transaction.ownerUserId !== input.userId)) {
+      return { ok: false, status: "failed", code: "RISK_BLOCKED", error: "Transaction ownership mismatch.", attemptsRemaining: 0 }
     }
 
     const idemResult = await getUpiConfirmationResult(input.transactionId, input.idempotencyKey)
-    if (idemResult) {
-      return idemResult as UpiConfirmationResult
-    }
+    if (idemResult) return idemResult as UpiConfirmationResult
 
     if (transaction.pinAttempts >= transaction.maxPinAttempts) {
       const blockedResult: UpiConfirmationFailure = {
@@ -220,14 +149,6 @@ export class UpiCheckoutService {
         error: "PIN attempts exceeded. Please restart the payment.",
         attemptsRemaining: 0,
       }
-
-      await updateUpiTransaction({
-        transactionId: input.transactionId,
-        status: "failed",
-        failureCode: blockedResult.code,
-        failureReason: blockedResult.error,
-      })
-
       await appendUpiTransactionEvent({
         transactionId: input.transactionId,
         eventType: "confirmation_result",
@@ -237,36 +158,18 @@ export class UpiCheckoutService {
         failureReason: blockedResult.error,
         payload: blockedResult,
       })
-
       return blockedResult
     }
 
-    const sanitizedPinForLogs = assertMaskedPin(input.pin)
-    void sanitizedPinForLogs
-
     if (!/^\d{4,6}$/.test(input.pin) || hashPin(input.pin) !== transaction.pinHash) {
-      const pinAttempts = transaction.pinAttempts + 1
-      const attemptsRemaining = Math.max(0, transaction.maxPinAttempts - pinAttempts)
-
+      const attemptsRemaining = Math.max(0, transaction.maxPinAttempts - (transaction.pinAttempts + 1))
       const invalidResult: UpiConfirmationFailure = {
         ok: false,
         status: "failed",
         code: attemptsRemaining === 0 ? "PIN_ATTEMPTS_EXCEEDED" : "INVALID_PIN",
-        error:
-          attemptsRemaining === 0
-            ? "PIN attempts exceeded. Please restart the payment."
-            : "The PIN entered is invalid.",
+        error: attemptsRemaining === 0 ? "PIN attempts exceeded. Please restart the payment." : "The PIN entered is invalid.",
         attemptsRemaining,
       }
-
-      await updateUpiTransaction({
-        transactionId: input.transactionId,
-        status: attemptsRemaining === 0 ? "failed" : transaction.status,
-        pinAttempts,
-        failureCode: attemptsRemaining === 0 ? invalidResult.code : null,
-        failureReason: attemptsRemaining === 0 ? invalidResult.error : null,
-      })
-
       await appendUpiTransactionEvent({
         transactionId: input.transactionId,
         eventType: "confirmation_result",
@@ -276,29 +179,14 @@ export class UpiCheckoutService {
         failureReason: invalidResult.error,
         payload: invalidResult,
       })
-
       return invalidResult
     }
-
-    const pending = await updateUpiTransaction({
-      transactionId: input.transactionId,
-      status: "pending",
-      executionStartedAt: transaction.executionStartedAt ? null : new Date(),
-      failureCode: null,
-      failureReason: null,
-    })
-
-    setTimeout(() => {
-      void UpiCheckoutService.completeViaProvider({
-        transactionId: input.transactionId,
-        idempotencyKey: `provider-complete:${input.transactionId}`,
-      })
-    }, EXECUTION_DELAY_MS)
 
     const successResult: UpiConfirmationSuccess = {
       ok: true,
       transactionId: transaction.transactionId,
-      status: pending?.status ?? "pending",
+      order_id: Number(transaction.orderId || 0),
+      status: "pending",
       transactionReference: transaction.transactionReference,
       updatedAt: new Date().toISOString(),
       idempotencyKey: input.idempotencyKey,
@@ -308,59 +196,50 @@ export class UpiCheckoutService {
       transactionId: input.transactionId,
       eventType: "confirmation_result",
       idempotencyKey: input.idempotencyKey,
-      status: successResult.status,
+      status: "pending",
       payload: successResult,
     })
 
     return successResult
   }
 
-  static async completeViaProvider(input: {
-    transactionId: string
-    idempotencyKey: string
-    providerReference?: string
-    providerStatusReference?: string
-    status?: "success" | "failed"
-    failureReason?: string
-    failureCode?: UpiErrorCode
-  }) {
+  static async completeViaProvider(input: { transactionId: string; idempotencyKey: string; userId: string }): Promise<UpiCompletionResult> {
     const transaction = await getUpiTransactionById(input.transactionId)
-    if (!transaction || transaction.status !== "pending") return null
+    if (!transaction || (transaction.ownerUserId && transaction.ownerUserId !== input.userId)) {
+      return { ok: false, error: "Transaction ownership mismatch.", errorCode: "RISK_BLOCKED" }
+    }
 
-    const terminalStatus = input.status ?? resolveTerminalStatus(transaction.transactionId)
-    const failureReason =
-      terminalStatus === "failed" ? input.failureReason ?? "UPI provider declined the payment." : null
+    const idemResult = await getUpiProviderCompletionResult(input.transactionId, input.idempotencyKey)
+    if (idemResult) return idemResult as UpiCompletionResult
 
-    const updated = await updateUpiTransaction({
-      transactionId: input.transactionId,
-      status: terminalStatus,
-      providerReference: input.providerReference ?? transaction.providerReference,
-      providerStatusReference: input.providerStatusReference ?? transaction.providerStatusReference,
-      failureCode: terminalStatus === "failed" ? input.failureCode ?? null : null,
-      failureReason,
-    })
+    const status = transaction.status === "failed" ? "failed" : resolveTerminalStatus(transaction.transactionId)
+    const result: UpiCompletionResult =
+      status === "failed"
+        ? { ok: false, error: "UPI provider declined the payment.", errorCode: "RISK_BLOCKED" }
+        : {
+            ok: true,
+            transactionId: transaction.transactionId,
+            status: "success",
+            transactionReference: transaction.transactionReference,
+            updatedAt: new Date().toISOString(),
+            idempotencyKey: input.idempotencyKey,
+          }
 
     await appendUpiTransactionEvent({
       transactionId: input.transactionId,
       eventType: "provider_completion",
       idempotencyKey: input.idempotencyKey,
-      status: terminalStatus,
-      providerReference: input.providerReference,
-      providerStatusReference: input.providerStatusReference,
-      failureCode: terminalStatus === "failed" ? input.failureCode ?? null : null,
-      failureReason,
-      payload: {
-        transactionId: input.transactionId,
-        status: terminalStatus,
-      },
+      status: status === "failed" ? "failed" : "success",
+      failureCode: status === "failed" ? "RISK_BLOCKED" : null,
+      failureReason: status === "failed" ? "UPI provider declined the payment." : null,
+      payload: result as Record<string, unknown>,
     })
 
-    return updated
+    return result
   }
 
   static async getStatus(transactionId: string) {
     const transaction = await getUpiTransactionById(transactionId)
-
     if (!transaction) {
       return {
         found: false as const,
@@ -374,123 +253,30 @@ export class UpiCheckoutService {
           updatedAt: new Date().toISOString(),
           failedReason: "Transaction not found.",
           errorCode: "RISK_BLOCKED" as UpiErrorCode,
+          ownerUserId: null,
         },
       }
     }
-
-    const elapsedMs = Date.now() - transaction.createdAt.getTime()
-    if (elapsedMs > 45_000 && transaction.status === "pending") {
-      await updateUpiTransaction({
-        transactionId,
-        status: "failed",
-        failureReason: "UPI provider timeout.",
-      })
-    }
-
-    const latest = (await getUpiTransactionById(transactionId)) ?? transaction
 
     return {
       found: true as const,
       payload: {
-        transactionId: latest.transactionId,
-        amount: latest.amount,
-        currency: latest.currency,
-        status: latest.status,
-        transactionReference: latest.transactionReference,
+        transactionId: transaction.transactionId,
+        order_id: Number(transaction.orderId || 0),
+        amount: transaction.amount,
+        currency: transaction.currency,
+        status: transaction.status,
+        transactionReference: transaction.transactionReference,
         updatedAt: new Date().toISOString(),
-        ...(latest.failureReason ? { failedReason: latest.failureReason } : {}),
-        ...(latest.failureCode ? { errorCode: latest.failureCode } : {}),
+        ownerUserId: transaction.ownerUserId,
       },
     }
   }
 
-  static async completeViaProvider(input: { transactionId: string; idempotencyKey: string }, sqlClient: SqlClient = getSql()) {
-    const transaction = transactionsById.get(input.transactionId)
-
-    if (!transaction) {
-      const result = {
-        ok: false as const,
-        error: "Transaction not found",
-        errorCode: "RISK_BLOCKED" as UpiErrorCode,
-      }
-      completionResultByIdempotencyKey.set(input.idempotencyKey, result)
-      return result
-    }
-
-    if (transaction.userId !== input.userId) {
-      const result = {
-        ok: false as const,
-        error: "Transaction ownership mismatch.",
-        errorCode: "RISK_BLOCKED" as UpiErrorCode,
-      }
-      completionResultByIdempotencyKey.set(input.idempotencyKey, result)
-      return result
-    }
-
-    if (transaction.status === "success") {
-      await UpiCheckoutService.updateOrderPaymentStatus(transaction, sqlClient)
-      return {
-        ok: true as const,
-        transactionId: transaction.transactionId,
-        order_id: transaction.orderId,
-        status: transaction.status,
-        transactionReference: transaction.transactionReference,
-        updatedAt: new Date().toISOString(),
-        idempotencyKey: input.idempotencyKey,
-      }
-      completionResultByIdempotencyKey.set(input.idempotencyKey, result)
-      return result
-    }
-
-    if (transaction.status === "failed") {
-      await UpiCheckoutService.updateOrderPaymentStatus(transaction, sqlClient)
-      return {
-        ok: false as const,
-        error: transaction.failureReason || "Transaction failed",
-        errorCode: transaction.failureCode || ("RISK_BLOCKED" as UpiErrorCode),
-      }
-      completionResultByIdempotencyKey.set(input.idempotencyKey, result)
-      return result
-    }
-
-    transaction.status = "success"
-    transaction.verifiedAt = new Date().toISOString()
-    transaction.verifiedBy = "sandbox_complete"
-    transaction.failureCode = undefined
-    transaction.failureReason = undefined
-    syncOrderRecord(transaction)
-
-    await UpiCheckoutService.updateOrderPaymentStatus(transaction, sqlClient)
-
-    const result = {
-      ok: true as const,
-      transactionId: transaction.transactionId,
-      order_id: transaction.orderId,
-      status: transaction.status,
-      transactionReference: transaction.transactionReference,
-      updatedAt: new Date().toISOString(),
-      idempotencyKey: input.idempotencyKey,
-    }
-
-    completionResultByIdempotencyKey.set(input.idempotencyKey, result)
-    return result
-  }
-
-  static async getTransactionDetails(transactionId: string, sqlClient: SqlClient = getSql()) {
-    const status = await UpiCheckoutService.getStatus(transactionId, sqlClient)
-
-    if (!status.found) {
-      return {
-        found: false as const,
-        payload: {
-          ...status.payload,
-          receiptId: `RCPT-${transactionId}`,
-        },
-      }
-    }
-
+  static async getTransactionDetails(transactionId: string) {
+    const status = await UpiCheckoutService.getStatus(transactionId)
     return {
-      found: true as const,
+      found: status.found,
       payload: {
         ...status.payload,
         receiptId: `RCPT-${status.payload.transactionReference}`,
@@ -498,7 +284,56 @@ export class UpiCheckoutService {
     }
   }
 
-  static getOrderRecord(orderId: string) {
-    return orderByOrderId.get(orderId) ?? null
+  static async applyProviderCallback(input: {
+    transactionId: string
+    providerStatus: UpiProviderStatus
+    providerReference?: string
+    providerEventId?: string
+  }) {
+    const transaction = await getUpiTransactionById(input.transactionId)
+    if (!transaction) {
+      return { ok: false as const, error: "Transaction not found" }
+    }
+
+    const idempotencyKey = `provider-event:${input.providerEventId || `${input.providerStatus}:${input.providerReference || "na"}`}`
+    const previous = await getUpiProviderCompletionResult(input.transactionId, idempotencyKey)
+    if (previous) {
+      return {
+        ok: true as const,
+        idempotent: true,
+        transactionId: transaction.transactionId,
+        orderId: Number(transaction.orderId || 0),
+        status: canonicalProviderStatus(input.providerStatus),
+        verifiedAt: new Date().toISOString(),
+        verifiedBy: "provider_callback",
+      }
+    }
+
+    const status = canonicalProviderStatus(input.providerStatus)
+    await appendUpiTransactionEvent({
+      transactionId: input.transactionId,
+      eventType: "provider_completion",
+      idempotencyKey,
+      status,
+      providerReference: input.providerReference || null,
+      payload: {
+        ok: true,
+        transactionId: transaction.transactionId,
+        orderId: Number(transaction.orderId || 0),
+        status,
+        verifiedAt: new Date().toISOString(),
+        verifiedBy: "provider_callback",
+      },
+    })
+
+    return {
+      ok: true as const,
+      idempotent: false,
+      transactionId: transaction.transactionId,
+      orderId: Number(transaction.orderId || 0),
+      status,
+      verifiedAt: new Date().toISOString(),
+      verifiedBy: "provider_callback",
+    }
   }
 }

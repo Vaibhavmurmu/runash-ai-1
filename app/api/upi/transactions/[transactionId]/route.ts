@@ -7,7 +7,22 @@ export async function GET(request: NextRequest, context: { params: Promise<{ tra
   const traceId = resolveTraceId(request)
   const userId = resolveUserId(request, null)
   const { transactionId } = await context.params
-  const details = await UpiCheckoutService.getTransactionDetails(transactionId)
 
-  return NextResponse.json(details.payload, { status: details.found ? 200 : 404 })
+  if (!transactionId || !isValidTransactionId(transactionId)) {
+    recordUpiFailureMetric("/api/upi/transactions/:transactionId", traceId)
+    return NextResponse.json({ error: "transactionId is required", errorCode: "RISK_BLOCKED" }, { status: 400 })
+  }
+
+  const details = await UpiCheckoutService.getTransactionDetails(transactionId)
+  if (!details.found) {
+    recordUpiFailureMetric("/api/upi/transactions/:transactionId", traceId)
+    return NextResponse.json(details.payload, { status: 404 })
+  }
+
+  if (details.payload.ownerUserId && details.payload.ownerUserId !== userId) {
+    recordUpiFailureMetric("/api/upi/transactions/:transactionId", traceId)
+    return NextResponse.json({ error: "Transaction ownership mismatch", errorCode: "RISK_BLOCKED" }, { status: 403 })
+  }
+
+  return NextResponse.json(details.payload)
 }

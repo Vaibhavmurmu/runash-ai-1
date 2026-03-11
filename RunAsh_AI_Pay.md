@@ -21,6 +21,18 @@ This document is payment-domain specific. For contributor workflow/process polic
 - Impacted flows: RunAsh Pay navigation and presentation only (`app/payment/runash-pay/page.tsx`, `app/payment/runash-pay/dashboard/page.tsx`, `components/payment/runash-pay-landing.tsx`).
 - Risk + rollback: low UI/navigation regression risk. Roll back by restoring `/payment/runash-pay` to directly render `RunAshPayDashboard` and removing the new dashboard sub-route.
 
+
+## 2026-03 UPI route security + rate-limiting hardening
+
+- Hardened UPI API routes with strict server-side validation for UPI IDs, amount bounds, and transaction identifiers.
+- Enforced transaction ownership checks on QR/status/transaction retrieval and payment confirmation/completion paths.
+- Added per-user and per-transaction rate limits across initiation, confirmation, completion, and status polling routes.
+- Persisted idempotency outcomes for provider completion/callback processing to strengthen replay protection in payment execution paths.
+- Added trace-ID linked, audit-safe logs for `/api/upi/initiate`, `/api/upi/qr`, `/api/upi/complete`, and `/api/upi/status/:transactionId` with no PIN/sensitive payload exposure.
+- Added alertable metrics coverage for request failures, timeout rates, and callback verification failures in UPI callback/route handlers.
+- Backward compatibility: request/response field names and route signatures are preserved; hardening is additive and policy-enforcing only.
+- Risk + rollback: low-to-medium risk of stricter validation rejecting previously malformed traffic. Roll back by reverting UPI route validation/rate-limit guards and replay-protection persistence changes together.
+
 ## 2026-03 UPI provider callback verification + canonical status hardening
 
 - Added authoritative provider callback endpoint: `POST /api/upi/webhook/provider` to receive UPI transaction terminal/intermediate states.

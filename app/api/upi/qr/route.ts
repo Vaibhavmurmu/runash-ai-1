@@ -4,7 +4,7 @@ import QRCode from "qrcode"
 import { logApiEvent } from "@/lib/api/logging"
 import { recordUpiFailureMetric } from "@/lib/payments/upi-observability"
 import { rateLimitByKey } from "@/lib/rate-limit"
-import { isValidTransactionId, resolveTraceId, resolveUserId, validateUpiId } from "@/lib/payments/upi-route-security"
+import { isValidTransactionId, resolveTraceId, resolveUserId } from "@/lib/payments/upi-route-security"
 import { UpiCheckoutService } from "@/lib/services/upi-checkout-service"
 
 const DEFAULT_PAYEE_VPA = process.env.RUNASH_UPI_PAYEE_VPA || "runash@upi"
@@ -35,23 +35,18 @@ export async function GET(request: NextRequest) {
 
   if (!transactionId || !isValidTransactionId(transactionId)) {
     recordUpiFailureMetric("/api/upi/qr", traceId)
-    return NextResponse.json({ error: "transactionId is required" }, { status: 400 })
+    return NextResponse.json({ error: "transactionId is required", errorCode: "RISK_BLOCKED" }, { status: 400 })
   }
 
-  const status = UpiCheckoutService.getStatus(transactionId)
+  const status = await UpiCheckoutService.getStatus(transactionId)
   if (!status.found) {
     recordUpiFailureMetric("/api/upi/qr", traceId)
     return NextResponse.json({ error: "Transaction not found" }, { status: 404 })
   }
 
-  if (status.payload.userId !== userId) {
+  if (status.payload.ownerUserId && status.payload.ownerUserId !== userId) {
     recordUpiFailureMetric("/api/upi/qr", traceId)
     return NextResponse.json({ error: "Transaction ownership mismatch", errorCode: "RISK_BLOCKED" }, { status: 403 })
-  }
-
-  if (!validateUpiId(status.payload.payerUpiId)) {
-    recordUpiFailureMetric("/api/upi/qr", traceId)
-    return NextResponse.json({ error: "Stored payer UPI ID is invalid", errorCode: "RISK_BLOCKED" }, { status: 400 })
   }
 
   logApiEvent("info", "payments.upi.qr.request", {
@@ -62,17 +57,8 @@ export async function GET(request: NextRequest) {
     details: { transactionId },
   })
 
-  const upiUri = buildUpiUri({
-    amount: status.payload.amount,
-    transactionRef: status.payload.transactionReference,
-    transactionId: status.payload.transactionId,
-  })
-
-  const qrDataUrl = await QRCode.toDataURL(upiUri, {
-    errorCorrectionLevel: "M",
-    width: 480,
-    margin: 1,
-  })
+  const upiUri = buildUpiUri({ amount: status.payload.amount, transactionRef: status.payload.transactionReference, transactionId: status.payload.transactionId })
+  const qrDataUrl = await QRCode.toDataURL(upiUri, { errorCorrectionLevel: "M", width: 480, margin: 1 })
 
   return NextResponse.json({
     transactionId: status.payload.transactionId,
