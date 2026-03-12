@@ -1,5 +1,10 @@
 name: CI Security & Reliability
 
+env:
+  # Use self-hosted runners by default so CI can still run when GitHub-hosted
+  # minutes are unavailable (for example, during billing lock incidents).
+  RUNASH_GITHUB_RUNNER: ${{ vars.RUNASH_GITHUB_RUNNER || 'self-hosted' }}
+
 on:
   pull_request:
   push:
@@ -8,7 +13,7 @@ on:
 
 jobs:
   quality:
-    runs-on: ubuntu-latest
+    runs-on: ${{ env.RUNASH_GITHUB_RUNNER }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -23,7 +28,7 @@ jobs:
       - run: npm run test:auth
 
   dependency-scan:
-    runs-on: ubuntu-latest
+    runs-on: ${{ env.RUNASH_GITHUB_RUNNER }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,7 +37,7 @@ jobs:
       - run: npm audit --audit-level=high
 
   codeql:
-    runs-on: ubuntu-latest
+    runs-on: ${{ env.RUNASH_GITHUB_RUNNER }}
     permissions:
       security-events: write
       actions: read
