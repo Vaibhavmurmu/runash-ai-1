@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from "uuid"
+import { randomUUID } from "crypto"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { createDashboardLiveStream } from "@/lib/repositories/streams"
 import { getCanonicalStreamUrl, requireStreamDashboardUserId } from "../utils"
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     return respondError(request, { code: "INVALID_STREAM_START_REQUEST", message: "Missing title" }, { status: 400, legacy: { error: "Missing title" } })
   }
 
-  const id = uuidv4()
+  const id = randomUUID()
   const startedAt = new Date().toISOString()
   const url = getCanonicalStreamUrl(id)
 

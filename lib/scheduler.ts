@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from "uuid"
+import { randomUUID } from "crypto"
 import path from "path"
 import { writeFileSync } from "fs"
 import { queryMany, queryOne } from "@/lib/db"
@@ -169,7 +169,7 @@ async function enqueueNextRun(schedule: ScheduleRecord, dueAt: Date) {
     `INSERT INTO scheduler_job_queue (id, schedule_id, job_type, idempotency_key, due_at, status)
      VALUES ($1, $2, $3, $4, $5, 'queued')
      ON CONFLICT (idempotency_key) DO NOTHING`,
-    [uuidv4(), schedule.id, schedule.jobType, idempotencyKey, dueAt.toISOString()],
+    [randomUUID(), schedule.id, schedule.jobType, idempotencyKey, dueAt.toISOString()],
   )
 }
 
@@ -268,7 +268,7 @@ export async function addSchedule({
   jobType?: ScheduledJobType
 }) {
   await ensureSchedulerTables()
-  const id = uuidv4()
+  const id = randomUUID()
   const normalizedFrequency = (frequency as ScheduleFrequency) || "daily"
   const normalizedJobType = jobType || "report_generation"
   const now = new Date()
@@ -450,7 +450,7 @@ export async function processDueScheduledJobs(options?: { workerId?: string; lim
       continue
     }
 
-    const workflowRunId = uuidv4()
+    const workflowRunId = randomUUID()
     await queryMany(
       `INSERT INTO scheduler_workflow_runs (id, queue_id, schedule_id, job_type, idempotency_key, state, attempt)
        VALUES ($1, $2, $3, $4, $5, 'processing', $6)
