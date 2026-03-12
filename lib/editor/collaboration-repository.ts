@@ -306,3 +306,197 @@ export async function updateCollaborationSettings(input: {
 
   return project ?? null
 }
+
+export async function listProjectInvites(projectId: string, ownerId: string): Promise<ProjectCollaborationInviteRecord[]> {
+  await ensureCollaborationSchema()
+  const rows = (await sql`
+    SELECT id, project_id, owner_id, invited_by_user_id, invited_by_name, email, role, token, status, expires_at, accepted_at,
+           accepted_by_user_id, accepted_by_email, created_at, updated_at
+    FROM editor_project_collaboration_invites
+    WHERE project_id=${projectId}
+      AND owner_id=${ownerId}
+      AND status IN ('pending', 'accepted')
+    ORDER BY created_at DESC
+  `) as ProjectCollaborationInviteRecord[]
+
+  const now = Date.now()
+  const expiredIds = rows
+    .filter((row) => row.status === "pending" && new Date(row.expires_at).getTime() < now)
+    .map((row) => row.id)
+
+  if (expiredIds.length > 0) {
+    for (const inviteId of expiredIds) {
+      await sql`
+        UPDATE editor_project_collaboration_invites
+        SET status='expired', updated_at=now()
+        WHERE id=${inviteId}
+      `
+    }
+  }
+
+  return rows.filter((row) => row.status !== "pending" || new Date(row.expires_at).getTime() >= now)
+}
+
+export async function createProjectInvite(input: {
+  projectId: string
+  ownerId: string
+  email: string
+  role: "editor" | "viewer"
+  invitedByUserId: string
+  invitedByName: string
+  expiresInHours?: number
+}) {
+  await ensureCollaborationSchema()
+
+  const expiresInHours = Math.max(1, Math.min(input.expiresInHours ?? 72, 24 * 14))
+  const token = randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "")
+
+  await sql`
+    UPDATE editor_project_collaboration_invites
+    SET status='revoked', updated_at=now()
+    WHERE project_id=${input.projectId}
+      AND owner_id=${input.ownerId}
+      AND lower(email)=lower(${input.email})
+      AND status='pending'
+  `
+
+  const [invite] = (await sql`
+    INSERT INTO editor_project_collaboration_invites (
+      project_id, owner_id, invited_by_user_id, invited_by_name, email, role, token, status, expires_at
+    ) VALUES (
+      ${input.projectId},
+      ${input.ownerId},
+      ${input.invitedByUserId},
+      ${input.invitedByName},
+      lower(${input.email}),
+      ${input.role},
+      ${token},
+      'pending',
+      now() + (${expiresInHours} || ' hours')::interval
+    )
+    RETURNING id, project_id, owner_id, invited_by_user_id, invited_by_name, email, role, token, status, expires_at, accepted_at,
+              accepted_by_user_id, accepted_by_email, created_at, updated_at
+  `) as ProjectCollaborationInviteRecord[]
+
+  await appendProjectActivity({
+    projectId: input.projectId,
+    ownerId: input.ownerId,
+    actorUserId: input.invitedByUserId,
+    actorName: input.invitedByName,
+    action: `created invite for ${invite.email}`,
+    activityType: "collaboration",
+    details: {
+      inviteId: invite.id,
+      inviteEmail: invite.email,
+      role: invite.role,
+      kind: "invite.create",
+    },
+  })
+
+  return invite
+}
+
+export async function revokeProjectInvite(input: {
+  projectId: string
+  ownerId: string
+  inviteId: string
+  revokedByUserId: string
+  revokedByName: string
+}) {
+  await ensureCollaborationSchema()
+
+  const [invite] = (await sql`
+    UPDATE editor_project_collaboration_invites
+    SET status='revoked', updated_at=now()
+    WHERE id=${input.inviteId}
+      AND project_id=${input.projectId}
+      AND owner_id=${input.ownerId}
+      AND status='pending'
+    RETURNING id, project_id, owner_id, invited_by_user_id, invited_by_name, email, role, token, status, expires_at, accepted_at,
+              accepted_by_user_id, accepted_by_email, created_at, updated_at
+  `) as ProjectCollaborationInviteRecord[]
+
+  if (!invite) return null
+
+  await appendProjectActivity({
+    projectId: input.projectId,
+    ownerId: input.ownerId,
+    actorUserId: input.revokedByUserId,
+    actorName: input.revokedByName,
+    action: `revoked invite for ${invite.email}`,
+    activityType: "collaboration",
+    details: {
+      inviteId: invite.id,
+      inviteEmail: invite.email,
+      kind: "invite.revoke",
+    },
+  })
+
+  return invite
+}
+
+export async function acceptProjectInvite(input: {
+  token: string
+  userId: string
+  userEmail: string
+  userName: string
+}) {
+  await ensureCollaborationSchema()
+
+  const [invite] = (await sql`
+    SELECT id, project_id, owner_id, invited_by_user_id, invited_by_name, email, role, token, status, expires_at, accepted_at,
+           accepted_by_user_id, accepted_by_email, created_at, updated_at
+    FROM editor_project_collaboration_invites
+    WHERE token=${input.token}
+    LIMIT 1
+  `) as ProjectCollaborationInviteRecord[]
+
+  if (!invite) return { status: "not_found" as const }
+
+  if (invite.status !== "pending") return { status: "not_pending" as const, invite }
+
+  if (new Date(invite.expires_at).getTime() < Date.now()) {
+    await sql`UPDATE editor_project_collaboration_invites SET status='expired', updated_at=now() WHERE id=${invite.id}`
+    return { status: "expired" as const, invite }
+  }
+
+  if (invite.email.toLowerCase() !== input.userEmail.toLowerCase()) {
+    return { status: "email_mismatch" as const, invite }
+  }
+
+  const [collaborator] = (await sql`
+    INSERT INTO editor_project_collaborators (project_id, owner_id, user_id, name, email, role, status, last_active_at)
+    VALUES (${invite.project_id}, ${invite.owner_id}, ${input.userId}, ${input.userName || input.userEmail}, ${input.userEmail.toLowerCase()}, ${invite.role}, 'online', now())
+    ON CONFLICT (project_id, lower(email)) DO UPDATE
+      SET user_id = EXCLUDED.user_id,
+          name = EXCLUDED.name,
+          role = EXCLUDED.role,
+          status = 'online',
+          last_active_at = now(),
+          updated_at = now()
+    RETURNING id, project_id, owner_id, user_id, name, email, avatar_url, role, status, last_active_at, created_at, updated_at
+  `) as ProjectCollaboratorRecord[]
+
+  await sql`
+    UPDATE editor_project_collaboration_invites
+    SET status='accepted', accepted_at=now(), accepted_by_user_id=${input.userId}, accepted_by_email=${input.userEmail.toLowerCase()}, updated_at=now()
+    WHERE id=${invite.id}
+  `
+
+  await appendProjectActivity({
+    projectId: invite.project_id,
+    ownerId: invite.owner_id,
+    actorUserId: input.userId,
+    actorName: input.userName || input.userEmail,
+    action: `accepted invite as ${invite.role}`,
+    activityType: "collaboration",
+    details: {
+      inviteId: invite.id,
+      collaboratorId: collaborator.id,
+      role: invite.role,
+      kind: "invite.accept",
+    },
+  })
+
+  return { status: "accepted" as const, invite, collaborator }
+}
