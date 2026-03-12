@@ -588,4 +588,46 @@ const products: Product[] = [
       "High Antioxidant Content",
       "Naturally Purple Color",
       "Gluten-Free Grain",
+    ],
+    specifications: {
+      weight: "1kg",
+      origin: "Manipur, India",
+      shelfLife: "12 months",
+      certification: "India Organic",
+      grainType: "Long Grain",
+      cookingTime: "25 minutes",
+    },
+    images: [
+      "/placeholder.svg?height=600&width=600&text=Organic+Black+Rice",
+      "/placeholder.svg?height=600&width=600&text=Black+Rice+Field",
+    ],
+    colors: [{ name: "Deep Purple", value: "#4B0082", inStock: true }],
+    variants: [
+      { name: "1kg Pack", price: 599, inStock: true },
+      { name: "500g Pack", price: 349, inStock: true },
+    ],
+    category: "Grains & Cereals",
+    brand: "MoringaMagic",
+    tags: ["Organic", "Rice", "Superfood", "Gluten-Free"],
+    isOrganic: true,
+    certifications: ["India Organic", "USDA Organic"],
+    origin: "Manipur, India",
+    shelfLife: "12 months",
+  },
+]
+
+export function getProducts(): Product[] {
+  return products
+}
+
+export function getOrganicProducts(): Product[] {
+  return products.filter((product) => product.isOrganic)
+}
+
+export function formatPrice(price: number): string {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+  }).format(price)
+}
     

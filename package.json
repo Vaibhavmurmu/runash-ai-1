@@ -113,6 +113,7 @@
     "sonner": "latest",
     "speakeasy": "latest",
     "stripe": "20.3.1",
+    "uuid": "latest",
     "swr": "latest",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
