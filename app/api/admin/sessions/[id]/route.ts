@@ -79,7 +79,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["system:logs", "system:control"],
     auditEvent: "admin.sessions.delete",
