@@ -3,7 +3,8 @@ import { requireSellerSessionUserId } from "@/app/api/seller/_auth"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { ShippingFulfillmentService } from "@/services/shipping-fulfillment-service"
 
-export async function POST(request: NextRequest, { params }: { params: { shipmentId: string } }) {
+export async function POST(request: NextRequest, context: { params: Promise<{ shipmentId: string }> }) {
+  const params = await context.params
   const sellerUserId = await requireSellerSessionUserId(request)
   if (sellerUserId instanceof Response) return sellerUserId
 

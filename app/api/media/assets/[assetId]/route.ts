@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
 import { sql } from "@/lib/db"
 
-export async function GET(request: NextRequest, { params }: { params: { assetId: string } }) {
+export async function GET(request: NextRequest, context: { params: Promise<{ assetId: string }> }) {
+  const params = await context.params
   const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
 

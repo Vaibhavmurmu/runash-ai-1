@@ -3,16 +3,18 @@ import { listDashboardRecentStreams, listDashboardScheduledStreams } from "@/lib
 import { getCanonicalStreamUrl, requireStreamDashboardUserId } from "../utils"
 import type { DashboardStreamDetailsResponse } from "@/lib/types/dashboard-streams"
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const scopedUserId = await requireStreamDashboardUserId(request)
   if (scopedUserId instanceof Response) return scopedUserId
+
+  const { id } = await params
 
   const [recent, scheduled] = await Promise.all([
     listDashboardRecentStreams(scopedUserId, 200),
     listDashboardScheduledStreams(scopedUserId),
   ])
 
-  const recentStream = recent.find((stream) => stream.id === params.id)
+  const recentStream = recent.find((stream) => stream.id === id)
   if (recentStream) {
     const payload: DashboardStreamDetailsResponse = {
       stream: {

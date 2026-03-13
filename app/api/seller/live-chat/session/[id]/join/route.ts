@@ -18,7 +18,8 @@ const joinSchema = z.object({
     .optional(),
 })
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const correlationId = resolveCorrelationId(request)
 
   try {

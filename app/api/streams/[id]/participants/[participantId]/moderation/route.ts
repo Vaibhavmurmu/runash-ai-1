@@ -3,7 +3,8 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { getServerAuthSession } from "@/lib/auth/session"
 import { moderateStreamParticipant } from "@/lib/repositories/stream-studio"
 
-export async function POST(request: NextRequest, { params }: { params: { id: string; participantId: string } }) {
+export async function POST(request: NextRequest, context: { params: Promise<{ id: string; participantId: string }> }) {
+  const params = await context.params
   const session = await getServerAuthSession()
   if (!session) {
     return respondError(request, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401 })

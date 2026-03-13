@@ -13,7 +13,8 @@ const OPERATOR_ROLES = [
   DEFAULT_ROLES.SUPER_ADMIN,
 ]
 
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
+export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const access = await requireRoleBillingAccess(OPERATOR_ROLES)
   if ("response" in access) return access.response
 
@@ -34,7 +35,8 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   }
 }
 
-export async function DELETE(_: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const access = await requireRoleBillingAccess(OPERATOR_ROLES)
   if ("response" in access) return access.response
 

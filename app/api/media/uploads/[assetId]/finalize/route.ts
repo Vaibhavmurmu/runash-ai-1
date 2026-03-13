@@ -17,7 +17,8 @@ function readNumber(value: unknown): number | null {
   return null
 }
 
-export async function POST(request: NextRequest, { params }: { params: { assetId: string } }) {
+export async function POST(request: NextRequest, context: { params: Promise<{ assetId: string }> }) {
+  const params = await context.params
   const correlationId = resolveCorrelationId(request)
   const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error

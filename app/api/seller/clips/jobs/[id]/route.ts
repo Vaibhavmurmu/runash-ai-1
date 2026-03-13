@@ -5,7 +5,8 @@ import { AIShortclipPipelineService } from "@/services/ai-shortclip-pipeline-ser
 import { createRequestLogContext, logApiEvent } from "@/lib/api/logging"
 import { resolveCorrelationId } from "@/lib/operations-observability"
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const correlationId = resolveCorrelationId(request)
   const sellerUserId = await requireSellerSessionUserId(request)
   if (sellerUserId instanceof Response) return sellerUserId

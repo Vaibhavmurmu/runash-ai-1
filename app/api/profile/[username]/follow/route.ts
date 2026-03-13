@@ -2,7 +2,8 @@ import { type NextRequest, NextResponse } from "next/server"
 import { ProfileManager } from "@/lib/profile-utils"
 import { getServerAuthSession } from "@/lib/auth/session"
 
-export async function POST(request: NextRequest, { params }: { params: { username: string } }) {
+export async function POST(request: NextRequest, context: { params: Promise<{ username: string }> }) {
+  const params = await context.params
   try {
     const session = await getServerAuthSession()
 

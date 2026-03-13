@@ -15,7 +15,8 @@ function getExpectedRowVersion(req: Request, body: { row_version?: number } | nu
   return null
 }
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   try {
     const userId = await requireSellerSessionUserId(req)
     if (userId instanceof Response) return userId
@@ -36,7 +37,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   }
 }
 
-export async function PUT(req: Request, { params }: { params: { id: string } }) {
+export async function PUT(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   try {
     const userId = await requireSellerSessionUserId(req)
     if (userId instanceof Response) return userId
@@ -68,7 +70,8 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   }
 }
 
-export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   try {
     const userId = await requireSellerSessionUserId(req)
     if (userId instanceof Response) return userId

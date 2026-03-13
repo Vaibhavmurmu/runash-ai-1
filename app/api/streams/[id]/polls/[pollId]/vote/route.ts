@@ -1,7 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { votePoll } from "@/lib/live-interactions"
 
-export async function POST(req: NextRequest, { params }: { params: { id: string; pollId: string } }) {
+export async function POST(req: NextRequest, context: { params: Promise<{ id: string; pollId: string }> }) {
+  const params = await context.params
   const body = (await req.json().catch(() => null)) as { optionId?: string } | null
 
   if (!body?.optionId) {

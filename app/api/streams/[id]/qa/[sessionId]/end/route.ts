@@ -2,7 +2,8 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getServerAuthSession } from "@/lib/auth/session"
 import { endQASession } from "@/lib/live-interactions"
 
-export async function POST(_req: NextRequest, { params }: { params: { id: string; sessionId: string } }) {
+export async function POST(_req: NextRequest, context: { params: Promise<{ id: string; sessionId: string }> }) {
+  const params = await context.params
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 

@@ -3,7 +3,8 @@ import { requireStreamDashboardUserId } from "../../utils"
 import { getLiveControlState, upsertLiveControlState } from "@/lib/repositories/stream-live-control"
 import type { LiveControlState } from "@/lib/types/stream-live-control"
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const scopedUserId = await requireStreamDashboardUserId(request)
   if (scopedUserId instanceof NextResponse) return scopedUserId
 
@@ -15,7 +16,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
   }
 }
 
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
+export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const scopedUserId = await requireStreamDashboardUserId(request)
   if (scopedUserId instanceof NextResponse) return scopedUserId
 

@@ -8,6 +8,7 @@ const deps = {
   getTemplateByIdWithAccess,
 }
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   return handleGetTemplateById(params.id, deps)
 }

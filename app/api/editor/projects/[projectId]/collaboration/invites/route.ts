@@ -10,7 +10,8 @@ const createInviteSchema = z.object({
   expiresInHours: z.number().int().min(1).max(24 * 14).optional(),
 })
 
-export async function GET(request: Request, { params }: { params: { projectId: string } }) {
+export async function GET(request: Request, context: { params: Promise<{ projectId: string }> }) {
+  const params = await context.params
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
 
@@ -24,7 +25,8 @@ export async function GET(request: Request, { params }: { params: { projectId: s
   return NextResponse.json({ invites })
 }
 
-export async function POST(request: Request, { params }: { params: { projectId: string } }) {
+export async function POST(request: Request, context: { params: Promise<{ projectId: string }> }) {
+  const params = await context.params
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
 

@@ -61,6 +61,7 @@ export async function handleStartSession(
   return NextResponse.json({ session: updatedStream })
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   return handleStartSession(req, params)
 }

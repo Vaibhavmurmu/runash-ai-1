@@ -1,7 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { ProfileManager } from "@/lib/profile-utils"
 
-export async function GET(request: NextRequest, { params }: { params: { username: string } }) {
+export async function GET(request: NextRequest, context: { params: Promise<{ username: string }> }) {
+  const params = await context.params
   try {
     const { searchParams } = new URL(request.url)
     const limit = Number.parseInt(searchParams.get("limit") || "20")

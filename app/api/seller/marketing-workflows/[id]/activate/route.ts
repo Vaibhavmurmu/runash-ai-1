@@ -4,7 +4,8 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { authorizeRoute, resolveScopedUserId } from "@/lib/api/route-auth"
 import { setMarketingWorkflowRuleActivation } from "@/lib/repositories/marketing-workflows"
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const auth = await authorizeRoute(request, "write", { writePermissions: ["content:write", "admin:access"] })
   if (!auth.ok) return auth.response
 

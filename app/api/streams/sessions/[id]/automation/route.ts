@@ -34,12 +34,14 @@ const actionSchema = z.object({
   mfa_verified: z.boolean().default(false),
 })
 
-export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const events = await listStreamSessionAutomationEvents(params.id)
   return NextResponse.json({ session_id: params.id, events })
 }
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const stream = await Database.getStream(params.id)
   if (!stream) return NextResponse.json({ error: "Stream session not found" }, { status: 404 })
 

@@ -2,7 +2,8 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getServerAuthSession } from "@/lib/auth/session"
 import { getInteractionState, listPolls, listQASessions, listQuestions, updateInteractionState } from "@/lib/live-interactions"
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const state = await getInteractionState(params.id)
   const [polls, qaSessions, questions] = await Promise.all([
     listPolls(params.id),
@@ -18,7 +19,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   })
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 

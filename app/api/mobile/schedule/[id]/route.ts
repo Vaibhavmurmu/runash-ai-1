@@ -29,7 +29,8 @@ const updateSchema = z
   })
   .refine((payload) => Object.keys(payload).length > 0, "At least one field must be provided")
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const requestId = resolveRequestId(request)
   const { id } = params
 
@@ -57,7 +58,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   }
 }
 
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const requestId = resolveRequestId(request)
   const { id } = params
 

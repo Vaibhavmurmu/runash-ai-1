@@ -2,7 +2,8 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getServerAuthSession } from "@/lib/auth/session"
 import { selectQuestion } from "@/lib/live-interactions"
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string; questionId: string } }) {
+export async function PATCH(req: NextRequest, context: { params: Promise<{ id: string; questionId: string }> }) {
+  const params = await context.params
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 

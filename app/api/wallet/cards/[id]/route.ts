@@ -5,7 +5,8 @@ import { WalletStore } from "@/lib/data/wallet-store"
 import { logWalletPaymentTransition } from "@/lib/payments/wallet-audit-log"
 import { evaluateWalletSecurityControls, resolveRequestCountry } from "@/lib/payments/wallet-security-controls"
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const requestId = resolveRequestId(request)
   const body = await request.json().catch(() => ({}))
   const userId = typeof body.userId === "string" ? body.userId : null
@@ -48,7 +49,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   return respondSuccess(request, updated, { requestId })
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const requestId = resolveRequestId(request)
   const userId = request.nextUrl.searchParams.get("userId")
   const deleted = await WalletStore.removeCard(userId || "", params.id)

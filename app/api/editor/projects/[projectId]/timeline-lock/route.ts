@@ -4,7 +4,8 @@ import { sql, touchProject } from "@/lib/editor/repository"
 import { claimProjectVersion, parseExpectedVersion } from "@/lib/editor/versioned-mutations"
 import { publishTimelineLockChanged } from "@/services/realtime/publishers"
 
-export async function PUT(request: Request, { params }: { params: { projectId: string } }) {
+export async function PUT(request: Request, context: { params: Promise<{ projectId: string }> }) {
+  const params = await context.params
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
 

@@ -2,7 +2,8 @@ import { NextResponse } from "next/server"
 import { Database } from "@/lib/database"
 import type { StudioConsentPayload } from "@/lib/analytics-pro"
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const body = (await req.json()) as Partial<StudioConsentPayload>
   const payload: StudioConsentPayload = {
     allowMic: Boolean(body.allowMic),

@@ -49,7 +49,8 @@ async function loadSessionPlatforms(sessionId: string, userId: string) {
   return { stream, platforms, selectedPlatformIds }
 }
 
-export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
@@ -63,7 +64,8 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
   })
 }
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 

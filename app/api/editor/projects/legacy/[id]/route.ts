@@ -37,7 +37,8 @@ const updateProjectSchema = z
   })
   .refine((value) => Object.keys(value).length > 0, { message: "At least one field is required" })
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) {
     return auth.error
@@ -57,7 +58,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) {
     return auth.error
@@ -83,7 +85,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) {
     return auth.error
