@@ -3,7 +3,8 @@ import { AdminSettings } from "@/lib/admin-settings"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { respondInternalServerError } from "@/lib/api/admin-route-utils"
 
-export async function GET(request: NextRequest, { params }: { params: { category: string } }) {
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ category: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings"],
     auditEvent: "admin.settings.category.read",

@@ -63,7 +63,8 @@ function asClientProduct(product: GroceryProductRecord) {
   }
 }
 
-export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const product = await getGroceryProductById(params.id)
     if (!product) {
@@ -77,7 +78,8 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const { userId, role } = getUserContext(request)
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -105,7 +107,8 @@ export async function PUT(request: NextRequest, context: { params: { id: string 
   return PATCH(request, context)
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const { userId, role } = getUserContext(request)
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })

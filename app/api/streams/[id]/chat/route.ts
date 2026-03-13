@@ -4,7 +4,8 @@ import { addMessage } from "@/lib/chat"
 import { applyChatEvent } from "@/lib/stream-session-state"
 import { getServerAuthSession } from "@/lib/auth/session"
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const streamId = Number.parseInt(params.id)
     const { searchParams } = new URL(req.url)
@@ -18,7 +19,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   }
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const session = await getServerAuthSession()
     const body = await req.json()

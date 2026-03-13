@@ -4,7 +4,8 @@ import { getServerAuthSession } from "@/lib/auth/session"
 import { updatePlatformCustomTitle } from "@/lib/repositories/multi-streaming"
 import { updateTitleBodySchema } from "@/lib/streaming/multi-platform-contracts"
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const session = await getServerAuthSession()
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })

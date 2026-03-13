@@ -11,7 +11,8 @@ import { enforceAdminUserTenantBoundary, migrateLegacyUserOrganizationIfNeeded }
 const userIdSchema = z.coerce.number().int().positive()
 const permissionMutationSchema = z.object({ permission: z.string().min(2).max(100) })
 
-export async function GET(request: NextRequest, { params }: { params: { userId: string } }) {
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ userId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:read"],
     auditEvent: "admin.users.permissions.read",
@@ -36,7 +37,8 @@ export async function GET(request: NextRequest, { params }: { params: { userId: 
   }
 }
 
-export async function POST(request: NextRequest, { params }: { params: { userId: string } }) {
+export async function POST(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ userId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:write"],
     auditEvent: "admin.users.permissions.write",
@@ -102,7 +104,8 @@ export async function POST(request: NextRequest, { params }: { params: { userId:
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { userId: string } }) {
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ userId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:write", "system:control"],
     auditEvent: "admin.users.permissions.revoke",

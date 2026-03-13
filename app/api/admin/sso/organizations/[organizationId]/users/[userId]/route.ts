@@ -8,8 +8,9 @@ const idSchema = z.coerce.number().int().positive()
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { organizationId: string; userId: string } },
+  { params: routeParamsPromise }: { params: Promise<{ organizationId: string; userId: string }> },
 ) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:write"],
     auditEvent: "admin.sso.organizations.users.unassign",

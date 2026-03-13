@@ -3,7 +3,8 @@ import { listDashboardRecentStreams, listDashboardScheduledStreams } from "@/lib
 import { getCanonicalStreamUrl, requireStreamDashboardUserId } from "../utils"
 import type { DashboardStreamDetailsResponse } from "@/lib/types/dashboard-streams"
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const scopedUserId = await requireStreamDashboardUserId(request)
   if (scopedUserId instanceof Response) return scopedUserId
 

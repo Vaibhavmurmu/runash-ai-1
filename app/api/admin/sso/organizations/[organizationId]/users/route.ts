@@ -10,7 +10,8 @@ const assignTenantSchema = z.object({
   userId: z.coerce.number().int().positive(),
 })
 
-export async function GET(request: NextRequest, { params }: { params: { organizationId: string } }) {
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ organizationId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:read"],
     auditEvent: "admin.sso.organizations.users.read",
@@ -42,7 +43,8 @@ export async function GET(request: NextRequest, { params }: { params: { organiza
   }
 }
 
-export async function POST(request: NextRequest, { params }: { params: { organizationId: string } }) {
+export async function POST(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ organizationId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:write"],
     auditEvent: "admin.sso.organizations.users.assign",

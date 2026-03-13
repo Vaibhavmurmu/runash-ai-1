@@ -20,7 +20,8 @@ const updateOrganizationSchema = z.object({
   isActive: z.boolean().optional(),
 })
 
-export async function PUT(request: NextRequest, { params }: { params: { organizationId: string } }) {
+export async function PUT(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ organizationId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings"],
     auditEvent: "admin.sso.organizations.update",
@@ -82,7 +83,8 @@ export async function PUT(request: NextRequest, { params }: { params: { organiza
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { organizationId: string } }) {
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ organizationId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings"],
     auditEvent: "admin.sso.organizations.deactivate",
