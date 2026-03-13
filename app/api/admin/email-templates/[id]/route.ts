@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { EmailTemplateManager } from "@/lib/email-templates"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:analytics"],
     auditEvent: "admin.email.templates.item.read",
@@ -10,7 +10,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   if (!auth.success) return auth.response
 
   try {
-    const templateId = Number.parseInt(params.id)
+    const { id } = await params
+    const templateId = Number.parseInt(id)
     if (isNaN(templateId)) {
       return NextResponse.json({ error: "Invalid template ID" }, { status: 400 })
     }
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings"],
     auditEvent: "admin.email.templates.item.update",
@@ -35,7 +36,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   if (!auth.success) return auth.response
 
   try {
-    const templateId = Number.parseInt(params.id)
+    const { id } = await params
+    const templateId = Number.parseInt(id)
     if (isNaN(templateId)) {
       return NextResponse.json({ error: "Invalid template ID" }, { status: 400 })
     }
@@ -67,7 +69,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings"],
     auditEvent: "admin.email.templates.item.delete",
@@ -75,7 +77,8 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
   if (!auth.success) return auth.response
 
   try {
-    const templateId = Number.parseInt(params.id)
+    const { id } = await params
+    const templateId = Number.parseInt(id)
     if (isNaN(templateId)) {
       return NextResponse.json({ error: "Invalid template ID" }, { status: 400 })
     }

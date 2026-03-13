@@ -15,15 +15,16 @@ function getExpectedRowVersion(req: Request, body: { row_version?: number } | nu
   return null
 }
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const userId = await requireSellerSessionUserId(req)
     if (userId instanceof Response) return userId
     const sql = getSql()
+    const { id } = await params
     const [row] = await sql`
       SELECT id, user_id, name, description, price, stock, category, status, rating, sales, image, row_version, created_at, updated_at
       FROM public.products
-      WHERE id = ${Number(params.id)}
+      WHERE id = ${Number(id)}
         AND user_id = ${userId}
     `
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 })
@@ -33,7 +34,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   }
 }
 
-export async function PUT(req: Request, { params }: { params: { id: string } }) {
+export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const userId = await requireSellerSessionUserId(req)
     if (userId instanceof Response) return userId
@@ -50,6 +51,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     }
 
     const sql = getSql()
+    const { id } = await params
     const [row] = await sql/* sql */`
       UPDATE public.products
       SET
@@ -62,7 +64,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
         image = COALESCE(${fields.image}, image),
         row_version = row_version + 1,
         updated_at = now()
-      WHERE id = ${Number(params.id)}
+      WHERE id = ${Number(id)}
         AND user_id = ${userId}
         AND (${expectedRowVersion === null} OR row_version = ${expectedRowVersion})
       RETURNING id, name, description, price, stock, category, status, rating, sales, image, row_version, created_at, updated_at
@@ -70,7 +72,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 
     if (!row) {
       const [existing] = await sql`
-        SELECT id FROM public.products WHERE id = ${Number(params.id)} AND user_id = ${userId}
+        SELECT id FROM public.products WHERE id = ${Number(id)} AND user_id = ${userId}
       `
       if (existing) return NextResponse.json({ error: "Conflict: product has changed", code: "VERSION_CONFLICT" }, { status: 409 })
       return NextResponse.json({ error: "Not found" }, { status: 404 })
@@ -82,26 +84,27 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   }
 }
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return PUT(req, { params })
 }
 
-export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const userId = await requireSellerSessionUserId(req)
     if (userId instanceof Response) return userId
     const expectedRowVersion = getExpectedRowVersion(req, null)
     const sql = getSql()
+    const { id } = await params
     const res = await sql`
       DELETE FROM public.products
-      WHERE id = ${Number(params.id)}
+      WHERE id = ${Number(id)}
         AND user_id = ${userId}
         AND (${expectedRowVersion === null} OR row_version = ${expectedRowVersion})
     `
 
     if ((res.count ?? 0) === 0 && expectedRowVersion !== null) {
       const [existing] = await sql`
-        SELECT id FROM public.products WHERE id = ${Number(params.id)} AND user_id = ${userId}
+        SELECT id FROM public.products WHERE id = ${Number(id)} AND user_id = ${userId}
       `
       if (existing) return NextResponse.json({ error: "Conflict: product has changed", code: "VERSION_CONFLICT" }, { status: 409 })
     }

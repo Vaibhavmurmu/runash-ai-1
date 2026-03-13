@@ -8,7 +8,7 @@ const idSchema = z.coerce.number().int().positive()
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { organizationId: string; userId: string } },
+  { params }: { params: Promise<{ organizationId: string; userId: string }> },
 ) {
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:write"],
@@ -17,8 +17,9 @@ export async function DELETE(
   if (!auth.success) return auth.response
 
   try {
-    const organizationId = idSchema.parse(params.organizationId)
-    const userId = idSchema.parse(params.userId)
+    const { organizationId, userId } = await params
+    const parsedOrganizationId = idSchema.parse(organizationId)
+    const parsedUserId = idSchema.parse(userId)
 
     const updated = await queryOne(
       `UPDATE users
@@ -26,7 +27,7 @@ export async function DELETE(
            updated_at = NOW()
        WHERE id = $1 AND sso_organization_id = $2
        RETURNING id, email, name, role, sso_organization_id, updated_at`,
-      [userId, organizationId],
+      [parsedUserId, parsedOrganizationId],
     )
 
     if (!updated) {
@@ -37,8 +38,8 @@ export async function DELETE(
       actorUserId: auth.userId,
       action: "tenant.user.unassigned",
       entityType: "user",
-      entityId: userId,
-      metadata: { organizationId },
+      entityId: parsedUserId,
+      metadata: { organizationId: parsedOrganizationId },
     })
 
     return NextResponse.json({ data: updated })

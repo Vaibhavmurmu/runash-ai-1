@@ -10,7 +10,7 @@ const patchSchema = z.object({
   details: z.record(z.unknown()).optional(),
 })
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["system:logs"],
     auditEvent: "admin.security.events.read",
@@ -18,14 +18,15 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   if (!auth.success) return auth.response
 
   try {
-    const id = idSchema.parse(params.id)
+    const { id } = await params
+    const parsedId = idSchema.parse(id)
     await ensureAdminAuthMigrationTables()
 
     const row = await queryOne(
       `SELECT id, admin_id, action, target_type, target_id, details, ip_address::text AS ip_address, user_agent, created_at
        FROM admin_activity_logs
        WHERE id = $1 AND target_type = 'security_event'`,
-      [id],
+      [parsedId],
     )
 
     if (!row) return NextResponse.json({ error: "Security event not found" }, { status: 404 })
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["system:maintenance"],
     auditEvent: "admin.security.events.update",
@@ -48,7 +49,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   if (!auth.success) return auth.response
 
   try {
-    const id = idSchema.parse(params.id)
+    const { id } = await params
+    const parsedId = idSchema.parse(id)
     const parsed = patchSchema.parse(await request.json())
     await ensureAdminAuthMigrationTables()
 
@@ -57,7 +59,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
        SET details = COALESCE($2, details)
        WHERE id = $1 AND target_type = 'security_event'
        RETURNING id, admin_id, action, target_type, target_id, details, ip_address::text AS ip_address, user_agent, created_at`,
-      [id, parsed.details],
+      [parsedId, parsed.details],
     )
 
     if (!row) return NextResponse.json({ error: "Security event not found" }, { status: 404 })
@@ -72,7 +74,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["system:control"],
     auditEvent: "admin.security.events.delete",
@@ -80,10 +82,11 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
   if (!auth.success) return auth.response
 
   try {
-    const id = idSchema.parse(params.id)
+    const { id } = await params
+    const parsedId = idSchema.parse(id)
     await ensureAdminAuthMigrationTables()
 
-    const deleted = await queryOne(`DELETE FROM admin_activity_logs WHERE id = $1 AND target_type = 'security_event' RETURNING id`, [id])
+    const deleted = await queryOne(`DELETE FROM admin_activity_logs WHERE id = $1 AND target_type = 'security_event' RETURNING id`, [parsedId])
     if (!deleted) return NextResponse.json({ error: "Security event not found" }, { status: 404 })
 
     return NextResponse.json({ data: deleted })

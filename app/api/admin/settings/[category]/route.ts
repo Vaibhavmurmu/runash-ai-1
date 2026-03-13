@@ -3,7 +3,7 @@ import { AdminSettings } from "@/lib/admin-settings"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { respondInternalServerError } from "@/lib/api/admin-route-utils"
 
-export async function GET(request: NextRequest, { params }: { params: { category: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ category: string }> }) {
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings"],
     auditEvent: "admin.settings.category.read",
@@ -11,7 +11,8 @@ export async function GET(request: NextRequest, { params }: { params: { category
   if (!auth.success) return auth.response
 
   try {
-    const settings = await AdminSettings.getByCategory(params.category)
+    const { category } = await params
+    const settings = await AdminSettings.getByCategory(category)
     return NextResponse.json({ success: true, data: settings })
   } catch (error) {
     return respondInternalServerError(request, error, {

@@ -10,7 +10,7 @@ const assignTenantSchema = z.object({
   userId: z.coerce.number().int().positive(),
 })
 
-export async function GET(request: NextRequest, { params }: { params: { organizationId: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ organizationId: string }> }) {
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:read"],
     auditEvent: "admin.sso.organizations.users.read",
@@ -18,13 +18,14 @@ export async function GET(request: NextRequest, { params }: { params: { organiza
   if (!auth.success) return auth.response
 
   try {
-    const organizationId = orgIdSchema.parse(params.organizationId)
+    const { organizationId } = await params
+    const parsedOrganizationId = orgIdSchema.parse(organizationId)
     const users = await queryMany(
       `SELECT id, email, name, role, sso_organization_id, updated_at
        FROM users
        WHERE sso_organization_id = $1
        ORDER BY updated_at DESC`,
-      [organizationId],
+      [parsedOrganizationId],
     )
 
     return NextResponse.json({ data: users })
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest, { params }: { params: { organiza
   }
 }
 
-export async function POST(request: NextRequest, { params }: { params: { organizationId: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ organizationId: string }> }) {
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:write"],
     auditEvent: "admin.sso.organizations.users.assign",
@@ -50,7 +51,8 @@ export async function POST(request: NextRequest, { params }: { params: { organiz
   if (!auth.success) return auth.response
 
   try {
-    const organizationId = orgIdSchema.parse(params.organizationId)
+    const { organizationId } = await params
+    const parsedOrganizationId = orgIdSchema.parse(organizationId)
     const body = assignTenantSchema.parse(await request.json())
 
     const updated = await queryOne(
@@ -59,7 +61,7 @@ export async function POST(request: NextRequest, { params }: { params: { organiz
            updated_at = NOW()
        WHERE id = $2
        RETURNING id, email, name, role, sso_organization_id, updated_at`,
-      [organizationId, body.userId],
+      [parsedOrganizationId, body.userId],
     )
 
     if (!updated) {
@@ -71,7 +73,7 @@ export async function POST(request: NextRequest, { params }: { params: { organiz
       action: "tenant.user.assigned",
       entityType: "user",
       entityId: body.userId,
-      metadata: { organizationId },
+      metadata: { organizationId: parsedOrganizationId },
     })
 
     return NextResponse.json({ data: updated })
