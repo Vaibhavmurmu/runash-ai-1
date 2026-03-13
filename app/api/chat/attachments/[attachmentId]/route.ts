@@ -4,7 +4,8 @@ import { getServerAuthSession } from "@/lib/auth/session"
 import { CloudStorage } from "@/lib/cloud-storage"
 import { getOwnedChatAttachmentById } from "@/lib/repositories/chat-attachments"
 
-export async function GET(request: NextRequest, { params }: { params: { attachmentId: string } }) {
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ attachmentId: string }> }) {
+  const params = await routeParamsPromise
   const session = await getServerAuthSession()
   const userId = String(session?.user?.id ?? "").trim()
 

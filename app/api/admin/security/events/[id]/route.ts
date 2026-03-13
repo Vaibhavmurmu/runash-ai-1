@@ -10,7 +10,8 @@ const patchSchema = z.object({
   details: z.record(z.unknown()).optional(),
 })
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["system:logs"],
     auditEvent: "admin.security.events.read",
@@ -40,7 +41,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["system:maintenance"],
     auditEvent: "admin.security.events.update",
@@ -72,7 +74,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["system:control"],
     auditEvent: "admin.security.events.delete",

@@ -10,7 +10,8 @@ const updateAuditSchema = z.object({
   metadata: z.record(z.unknown()).optional(),
 })
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, { requiredPermissions: ["system:logs"], auditEvent: "admin.audit_logs.read" })
   if (!auth.success) return auth.response
 
@@ -31,7 +32,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings"],
     auditEvent: "admin.audit_logs.update",
@@ -72,7 +74,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings", "system:control"],
     auditEvent: "admin.audit_logs.delete",

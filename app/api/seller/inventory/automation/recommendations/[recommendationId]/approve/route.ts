@@ -3,14 +3,15 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { requireSellerSessionUserId } from "@/app/api/seller/_auth"
 import { approveInventoryRecommendation } from "@/services/ai-inventory-automation-service"
 
-type Params = { params: { recommendationId: string } }
+type Params = { params: Promise<{ recommendationId: string }> }
 
 export async function POST(request: NextRequest, { params }: Params) {
+  const { recommendationId } = await params
   try {
     const userId = await requireSellerSessionUserId(request)
     if (userId instanceof Response) return userId
 
-    const result = await approveInventoryRecommendation(userId, params.recommendationId, userId)
+    const result = await approveInventoryRecommendation(userId, recommendationId, userId)
     if (!result.ok) {
       if (result.code === "NOT_FOUND") {
         return respondError(request, { code: "NOT_FOUND", message: "Recommendation not found" }, { status: 404, legacy: { error: "Recommendation not found" } })

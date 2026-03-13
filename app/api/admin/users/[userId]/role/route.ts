@@ -19,7 +19,8 @@ const changeRoleSchema = z.object({
 })
 const userIdSchema = z.coerce.number().int().positive()
 
-export async function PUT(request: NextRequest, { params }: { params: { userId: string } }) {
+export async function PUT(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ userId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:write"],
     auditEvent: "admin.users.role.update",

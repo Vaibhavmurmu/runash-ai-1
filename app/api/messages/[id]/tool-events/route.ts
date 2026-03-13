@@ -18,9 +18,10 @@ const requestSchema = z.object({
   events: z.array(toolEventSchema).min(1).max(200),
 })
 
-type RouteContext = { params: { id: string } }
+type RouteContext = { params: Promise<{ id: string }> }
 
 export async function POST(request: Request, { params }: RouteContext) {
+  const resolvedParams = await params
   const requestId = resolveRequestId(request)
   const session = await getServerAuthSession()
   const userId = session?.user?.id ? String(session.user.id) : null
@@ -29,7 +30,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     return respondError(request, { code: "AUTH_REQUIRED", message: "Unauthorized" }, { status: 401, requestId })
   }
 
-  const parsedParams = paramsSchema.safeParse(params)
+  const parsedParams = paramsSchema.safeParse(resolvedParams)
   if (!parsedParams.success) {
     return respondError(request, { code: "MESSAGE_ID_REQUIRED", message: "Message id is required" }, { status: 400, requestId })
   }

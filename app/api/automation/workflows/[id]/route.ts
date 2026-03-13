@@ -5,7 +5,8 @@ import { authorizeRoute, resolveScopedUserId } from "@/lib/api/route-auth"
 import { deleteWorkflow, updateWorkflow } from "@/lib/repositories/automation"
 
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await authorizeRoute(request, "write", { writePermissions: ["content:write", "admin:access"] })
   if (!auth.ok) return auth.response
 
@@ -29,7 +30,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   return respondSuccess(request, workflow, { legacy: { success: true, data: workflow } })
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await authorizeRoute(request, "write", { writePermissions: ["content:delete", "admin:access"] })
   if (!auth.ok) return auth.response
 

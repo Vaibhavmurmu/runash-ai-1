@@ -2,7 +2,8 @@ import { type NextRequest, NextResponse } from "next/server"
 import { ProfileManager } from "@/lib/profile-utils"
 import { getServerAuthSession } from "@/lib/auth/session"
 
-export async function GET(request: NextRequest, { params }: { params: { username: string } }) {
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ username: string }> }) {
+  const params = await routeParamsPromise
   try {
     const session = await getServerAuthSession()
     const viewerId = session?.user?.id ? Number.parseInt(session.user.id) : undefined

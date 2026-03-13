@@ -5,7 +5,8 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 
 const SUPPORTED_PLATFORMS = new Set(["twitch", "youtube", "facebook", "tiktok", "instagram", "linkedin"])
 
-export async function POST(req: NextRequest, { params }: { params: { platform: string } }) {
+export async function POST(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ platform: string }> }) {
+  const params = await routeParamsPromise
   const session = await getServerAuthSession()
   if (!session) {
     return respondError(req, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401 })

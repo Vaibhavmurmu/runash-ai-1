@@ -19,7 +19,8 @@ const updateUserSchema = z.object({
 
 const userIdSchema = z.coerce.number().int().positive()
 
-export async function GET(request: NextRequest, { params }: { params: { userId: string } }) {
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ userId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:read"],
     auditEvent: "admin.users.read",
@@ -48,7 +49,8 @@ export async function GET(request: NextRequest, { params }: { params: { userId: 
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { userId: string } }) {
+export async function PUT(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ userId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:write"],
     auditEvent: "admin.users.update",
@@ -94,7 +96,8 @@ export async function PUT(request: NextRequest, { params }: { params: { userId: 
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { userId: string } }) {
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ userId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:delete", "system:control"],
     auditEvent: "admin.users.delete",
