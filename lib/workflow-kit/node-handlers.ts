@@ -1,11 +1,11 @@
-import { WorkflowNode } from "@/types/workflow-kit"
+import { WorkflowNode } from "../../types/workflow-kit"
 
-export type NodeHandler<Input extends Record<string, unknown> = Record<string, unknown>, Output extends Record<string, unknown> = Record<string, unknown>> = (
+export type NodeHandler<Input extends object = Record<string, unknown>, Output extends object = Record<string, unknown>> = (
   node: WorkflowNode,
   input: Input,
 ) => Promise<Output>
 
-export type NodeRollbackHandler = (node: WorkflowNode, output: Record<string, unknown>) => Promise<string>
+export type NodeRollbackHandler = (node: WorkflowNode, output: any) => Promise<string>
 
 interface EmailBroadcastInput {
   segmentId?: string
@@ -198,7 +198,7 @@ const paymentActionHandler =
     }
   }
 
-export const NODE_HANDLERS: Record<string, NodeHandler> = {
+export const NODE_HANDLERS: Record<string, NodeHandler<any, any>> = {
   "camera-input": async (node) => {
     await sleep(150)
     return { videoFrame: `${node.id}:video`, audioFrame: `${node.id}:audio` }
@@ -242,12 +242,12 @@ export const NODE_HANDLERS: Record<string, NodeHandler> = {
     await sleep(100)
     return { saved: true, artifactId: `recording-${Date.now()}`, input }
   },
-  "email.send_broadcast": emailBroadcastHandler as NodeHandler,
-  "email.send_test": emailTestHandler as NodeHandler,
-  "email.import_contacts": emailImportContactsHandler as NodeHandler,
-  "email.handle_inbound_reply": emailInboundReplyHandler as NodeHandler,
-  "email.webhook_event_trigger": emailWebhookEventTriggerHandler as NodeHandler,
-  "payment.webhook_event_trigger": paymentWebhookEventTriggerHandler as NodeHandler,
+  "email.send_broadcast": emailBroadcastHandler,
+  "email.send_test": emailTestHandler,
+  "email.import_contacts": emailImportContactsHandler,
+  "email.handle_inbound_reply": emailInboundReplyHandler,
+  "email.webhook_event_trigger": emailWebhookEventTriggerHandler,
+  "payment.webhook_event_trigger": paymentWebhookEventTriggerHandler,
   "payment.send_receipt": paymentActionHandler("payment.send_receipt"),
   "payment.notify_support": paymentActionHandler("payment.notify_support"),
   "payment.retry_reminder": paymentActionHandler("payment.retry_reminder"),

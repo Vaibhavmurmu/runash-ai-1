@@ -148,7 +148,7 @@ export class UserManager {
       ${whereClause}
     `
 
-    const countResult = await sql(countQuery, params)
+    const countResult = await (sql as any).unsafe(countQuery, params)
     const total = Number.parseInt(countResult[0].total)
 
     // Get users with pagination
@@ -165,7 +165,7 @@ export class UserManager {
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     `
 
-    const users = await sql(usersQuery, [...params, limit, offset])
+    const users = await (sql as any).unsafe(usersQuery, [...params, limit, offset])
 
     return {
       users: users as UserWithAdmin[],
@@ -184,7 +184,7 @@ export class UserManager {
     role: string
     organizationId?: number | null
   }, adminId: number): Promise<UserWithAdmin> {
-    const result = await sql(
+    const result = await (sql as any).unsafe(
       `INSERT INTO users (name, username, email, role, email_verified, sso_organization_id, created_at, updated_at)
        VALUES ($1, $2, $3, $4, false, $5, NOW(), NOW())
        RETURNING id`,
@@ -224,7 +224,7 @@ export class UserManager {
     `
 
     const params = scope.sessionOrganizationId == null ? [id] : [id, scope.sessionOrganizationId]
-    const result = await sql(query, params)
+    const result = await (sql as any).unsafe(query, params)
     return (result[0] as UserWithAdmin) || null
   }
 
@@ -263,7 +263,7 @@ export class UserManager {
     `
 
     const tenantParams = scope.sessionOrganizationId == null ? [] : [scope.sessionOrganizationId]
-    const result = await sql(query, [...params, ...tenantParams])
+    const result = await (sql as any).unsafe(query, [...params, ...tenantParams])
     const updatedUser = result[0]
 
     // Log the activity
@@ -278,11 +278,11 @@ export class UserManager {
   static async deleteUser(id: number, adminId: number, scope: UserTenantScope = {}): Promise<void> {
     // Soft delete - we'll add a deleted_at field or disable the user
     if (scope.sessionOrganizationId == null) {
-      await sql(`UPDATE users SET role = 'disabled', updated_at = NOW() WHERE id = $1 AND sso_organization_id IS NULL`, [id])
+      await (sql as any).unsafe(`UPDATE users SET role = 'disabled', updated_at = NOW() WHERE id = $1 AND sso_organization_id IS NULL`, [id])
     } else if (scope.allowLegacyNullOrganization ?? true) {
-      await sql(`UPDATE users SET role = 'disabled', updated_at = NOW() WHERE id = $1 AND (sso_organization_id = $2 OR sso_organization_id IS NULL)`, [id, scope.sessionOrganizationId])
+      await (sql as any).unsafe(`UPDATE users SET role = 'disabled', updated_at = NOW() WHERE id = $1 AND (sso_organization_id = $2 OR sso_organization_id IS NULL)`, [id, scope.sessionOrganizationId])
     } else {
-      await sql(`UPDATE users SET role = 'disabled', updated_at = NOW() WHERE id = $1 AND sso_organization_id = $2`, [id, scope.sessionOrganizationId])
+      await (sql as any).unsafe(`UPDATE users SET role = 'disabled', updated_at = NOW() WHERE id = $1 AND sso_organization_id = $2`, [id, scope.sessionOrganizationId])
     }
 
     // Log the activity
@@ -293,11 +293,11 @@ export class UserManager {
 
   static async promoteToAdmin(userId: number, role: string, permissions: any, adminId: number): Promise<void> {
     // Check if user is already an admin
-    const existingAdmin = await sql(`SELECT id FROM admin_users WHERE user_id = $1`, [userId])
+    const existingAdmin = await (sql as any).unsafe(`SELECT id FROM admin_users WHERE user_id = $1`, [userId])
 
     if (existingAdmin.length > 0) {
       // Update existing admin
-      await sql(
+      await (sql as any).unsafe(
         `
         UPDATE admin_users 
         SET role = $1, permissions = $2, updated_at = NOW()
@@ -307,7 +307,7 @@ export class UserManager {
       )
     } else {
       // Create new admin
-      await sql(
+      await (sql as any).unsafe(
         `
         INSERT INTO admin_users (user_id, role, permissions, created_by, created_at, updated_at)
         VALUES ($1, $2, $3, $4, NOW(), NOW())
@@ -324,7 +324,7 @@ export class UserManager {
   }
 
   static async revokeAdmin(userId: number, adminId: number): Promise<void> {
-    await sql(`DELETE FROM admin_users WHERE user_id = $1`, [userId])
+    await (sql as any).unsafe(`DELETE FROM admin_users WHERE user_id = $1`, [userId])
 
     // Log the activity
     await this.logActivity(adminId, "revoke_admin", "user", userId, {
@@ -344,11 +344,11 @@ export class UserManager {
       LIMIT $2
     `
 
-    return await sql(query, [userId, limit])
+    return await (sql as any).unsafe(query, [userId, limit])
   }
 
   static async getUserStats(): Promise<any> {
-    const stats = await sql(`
+    const stats = await sql`
       SELECT 
         COUNT(*) as total_users,
         COUNT(CASE WHEN email_verified = true THEN 1 END) as verified_users,
@@ -357,23 +357,23 @@ export class UserManager {
         COUNT(CASE WHEN created_at >= NOW() - INTERVAL '7 days' THEN 1 END) as new_users_7d
       FROM users
       WHERE role != 'disabled'
-    `)
+    `
 
-    const providerStats = await sql(`
+    const providerStats = await sql`
       SELECT provider, COUNT(*) as count
       FROM users
       WHERE role != 'disabled'
       GROUP BY provider
       ORDER BY count DESC
-    `)
+    `
 
-    const roleStats = await sql(`
+    const roleStats = await sql`
       SELECT role, COUNT(*) as count
       FROM users
       WHERE role != 'disabled'
       GROUP BY role
       ORDER BY count DESC
-    `)
+    `
 
     return {
       overview: stats[0],
@@ -409,7 +409,7 @@ export class UserManager {
       WHERE id = ANY($${paramIndex})
     `
 
-    await sql(query, params)
+    await (sql as any).unsafe(query, params)
 
     // Log the activity
     await this.logActivity(adminId, "bulk_update_users", "user", null, {
@@ -428,7 +428,7 @@ export class UserManager {
     ipAddress?: string,
     userAgent?: string,
   ): Promise<void> {
-    await sql(
+    await (sql as any).unsafe(
       `
       INSERT INTO admin_activity_logs (admin_id, action, target_type, target_id, details, ip_address, user_agent, created_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())

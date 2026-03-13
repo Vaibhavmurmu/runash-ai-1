@@ -49,7 +49,7 @@ const rawUsageEventSchema = z
     totalTokens: z.number().int().nonnegative().optional(),
     delta_ms: z.number().int().nonnegative().optional(),
     deltaMs: z.number().int().nonnegative().optional(),
-    metadata: z.record(z.unknown()).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
     pricingModel: usagePricingModelSchema,
   })
   .strict()
