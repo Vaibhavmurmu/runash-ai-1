@@ -4,7 +4,7 @@ import { getServerAuthSession } from "@/lib/auth/session"
 import { CloudStorage } from "@/lib/cloud-storage"
 import { getOwnedChatAttachmentById } from "@/lib/repositories/chat-attachments"
 
-export async function GET(request: NextRequest, { params }: { params: { attachmentId: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ attachmentId: string }> }) {
   const session = await getServerAuthSession()
   const userId = String(session?.user?.id ?? "").trim()
 
@@ -12,7 +12,8 @@ export async function GET(request: NextRequest, { params }: { params: { attachme
     return NextResponse.json({ error: "Unauthorized", code: "AUTH_REQUIRED" }, { status: 401 })
   }
 
-  const attachment = await getOwnedChatAttachmentById({ userId, attachmentId: params.attachmentId })
+  const { attachmentId } = await params
+  const attachment = await getOwnedChatAttachmentById({ userId, attachmentId })
   if (!attachment) {
     return NextResponse.json({ error: "Attachment not found", code: "NOT_FOUND" }, { status: 404 })
   }
