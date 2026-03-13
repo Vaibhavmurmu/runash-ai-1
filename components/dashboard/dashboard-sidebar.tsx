@@ -60,7 +60,6 @@ const navSectionLabel: Record<DashboardNavSection, string> = {
 
 const knownSidebarRoutes = new Set([
   ...dashboardReadyRoutes,
-  "/agents/dashboard",
   "/workflows",
   "/stream",
   "/ecommerce/dashboard",
