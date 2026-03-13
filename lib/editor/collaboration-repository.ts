@@ -253,6 +253,123 @@ export async function appendProjectActivity(input: {
   return activity
 }
 
+export async function listProjectInvites(projectId: string, ownerId: string): Promise<ProjectCollaborationInviteRecord[]> {
+  await ensureCollaborationSchema()
+  return (await sql`
+    SELECT id, project_id, owner_id, invited_by_user_id, invited_by_name, email, role, token, status, expires_at, accepted_at, accepted_by_user_id, accepted_by_email, created_at, updated_at
+    FROM editor_project_collaboration_invites
+    WHERE project_id=${projectId} AND owner_id=${ownerId}
+    ORDER BY created_at DESC
+  `) as ProjectCollaborationInviteRecord[]
+}
+
+export async function createProjectInvite(input: {
+  projectId: string
+  ownerId: string
+  email: string
+  role: "editor" | "viewer"
+  invitedByUserId: string
+  invitedByName: string
+  expiresInHours?: number
+}) {
+  await ensureCollaborationSchema()
+  const expiresAt = new Date(Date.now() + (input.expiresInHours ?? 24) * 60 * 60 * 1000).toISOString()
+  const token = randomUUID()
+
+  const [invite] = (await sql`
+    INSERT INTO editor_project_collaboration_invites (project_id, owner_id, invited_by_user_id, invited_by_name, email, role, token, status, expires_at)
+    VALUES (${input.projectId}, ${input.ownerId}, ${input.invitedByUserId}, ${input.invitedByName}, ${input.email.toLowerCase()}, ${input.role}, ${token}, 'pending', ${expiresAt})
+    ON CONFLICT (project_id, email, status) DO UPDATE
+      SET token = EXCLUDED.token,
+          invited_by_user_id = EXCLUDED.invited_by_user_id,
+          invited_by_name = EXCLUDED.invited_by_name,
+          role = EXCLUDED.role,
+          expires_at = EXCLUDED.expires_at,
+          updated_at = now(),
+          status = EXCLUDED.status
+    RETURNING id, project_id, owner_id, invited_by_user_id, invited_by_name, email, role, token, status, expires_at, accepted_at, accepted_by_user_id, accepted_by_email, created_at, updated_at
+  `) as ProjectCollaborationInviteRecord[]
+
+  return invite
+}
+
+export async function revokeProjectInvite(input: {
+  projectId: string
+  ownerId: string
+  inviteId: string
+  revokedByUserId: string
+  revokedByName: string
+}) {
+  await ensureCollaborationSchema()
+
+  const [invite] = (await sql`
+    UPDATE editor_project_collaboration_invites
+    SET status = 'revoked', updated_at = now()
+    WHERE id=${input.inviteId} AND project_id=${input.projectId} AND owner_id=${input.ownerId}
+    RETURNING id, project_id, owner_id, invited_by_user_id, invited_by_name, email, role, token, status, expires_at, accepted_at, accepted_by_user_id, accepted_by_email, created_at, updated_at
+  `) as ProjectCollaborationInviteRecord[]
+
+  return invite ?? null
+}
+
+export async function acceptProjectInvite(input: {
+  token: string
+  userId: string
+  userEmail: string
+  userName: string
+}) {
+  await ensureCollaborationSchema()
+
+  const [invite] = (await sql`
+    SELECT id, project_id, owner_id, invited_by_user_id, invited_by_name, email, role, token, status, expires_at, accepted_at, accepted_by_user_id, accepted_by_email, created_at, updated_at
+    FROM editor_project_collaboration_invites
+    WHERE token=${input.token}
+    LIMIT 1
+  `) as ProjectCollaborationInviteRecord[]
+
+  if (!invite) {
+    return { status: "not_found" as const }
+  }
+
+  if (invite.status !== "pending") {
+    return { status: "not_pending" as const, invite }
+  }
+
+  const now = new Date()
+  const expiresAt = new Date(invite.expires_at)
+  if (expiresAt < now) {
+    const [expiredInvite] = (await sql`
+      UPDATE editor_project_collaboration_invites
+      SET status = 'expired', updated_at = now()
+      WHERE id=${invite.id}
+      RETURNING id, project_id, owner_id, invited_by_user_id, invited_by_name, email, role, token, status, expires_at, accepted_at, accepted_by_user_id, accepted_by_email, created_at, updated_at
+    `) as ProjectCollaborationInviteRecord[]
+
+    return { status: "expired" as const, invite: expiredInvite }
+  }
+
+  if (invite.email.trim().toLowerCase() !== input.userEmail.trim().toLowerCase()) {
+    return { status: "email_mismatch" as const, invite }
+  }
+
+  const collaborator = await inviteProjectCollaborator({
+    projectId: invite.project_id,
+    ownerId: invite.owner_id,
+    email: invite.email,
+    role: invite.role,
+    invitedByUserId: input.userId,
+    invitedByName: input.userName,
+  })
+
+  const [acceptedInvite] = (await sql`
+    UPDATE editor_project_collaboration_invites
+    SET status = 'accepted', accepted_at = now(), accepted_by_user_id = ${input.userId}, accepted_by_email = ${input.userEmail}, updated_at = now()
+    WHERE id=${invite.id}
+    RETURNING id, project_id, owner_id, invited_by_user_id, invited_by_name, email, role, token, status, expires_at, accepted_at, accepted_by_user_id, accepted_by_email, created_at, updated_at
+  `) as ProjectCollaborationInviteRecord[]
+
+  return { status: "accepted" as const, invite: acceptedInvite, collaborator }
+}
 
 
 export async function getProjectOwnerId(projectId: string): Promise<string | null> {
