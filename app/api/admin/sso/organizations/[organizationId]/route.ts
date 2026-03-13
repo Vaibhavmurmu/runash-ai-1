@@ -20,7 +20,7 @@ const updateOrganizationSchema = z.object({
   isActive: z.boolean().optional(),
 })
 
-export async function PUT(request: NextRequest, { params }: { params: { organizationId: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ organizationId: string }> }) {
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings"],
     auditEvent: "admin.sso.organizations.update",
@@ -28,7 +28,8 @@ export async function PUT(request: NextRequest, { params }: { params: { organiza
   if (!auth.success) return auth.response
 
   try {
-    const organizationId = orgIdSchema.parse(params.organizationId)
+    const { organizationId } = await params
+    const parsedOrganizationId = orgIdSchema.parse(organizationId)
     const body = updateOrganizationSchema.parse(await request.json())
 
     const updatedOrganization = await queryOne(
@@ -63,7 +64,7 @@ export async function PUT(request: NextRequest, { params }: { params: { organiza
       actorUserId: auth.userId,
       action: "organization.updated",
       entityType: "sso_organization",
-      entityId: organizationId,
+      entityId: parsedOrganizationId,
       metadata: { fields: Object.keys(body) },
     })
 
@@ -82,7 +83,7 @@ export async function PUT(request: NextRequest, { params }: { params: { organiza
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { organizationId: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ organizationId: string }> }) {
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings"],
     auditEvent: "admin.sso.organizations.deactivate",
@@ -90,14 +91,15 @@ export async function DELETE(request: NextRequest, { params }: { params: { organ
   if (!auth.success) return auth.response
 
   try {
-    const organizationId = orgIdSchema.parse(params.organizationId)
+    const { organizationId } = await params
+    const parsedOrganizationId = orgIdSchema.parse(organizationId)
     const deactivatedOrganization = await queryOne(
       `UPDATE sso_organizations
        SET is_active = false,
            updated_at = NOW()
        WHERE id = $1
        RETURNING id, name, slug, is_active, updated_at`,
-      [organizationId],
+      [parsedOrganizationId],
     )
 
     if (!deactivatedOrganization) {
@@ -108,7 +110,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { organ
       actorUserId: auth.userId,
       action: "organization.deactivated",
       entityType: "sso_organization",
-      entityId: organizationId,
+      entityId: parsedOrganizationId,
     })
 
     return NextResponse.json({ data: deactivatedOrganization })
