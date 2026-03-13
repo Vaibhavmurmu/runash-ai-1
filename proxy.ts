@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
-import { logApiEvent } from "@/lib/api/logging"
+import { createRequestLogContext, logApiEvent } from "@/lib/api/logging"
 import { getAuthEndpointRateLimit } from "@/lib/auth-security-config"
 import { recordAuthMetric } from "@/lib/auth-observability"
 
@@ -45,22 +45,18 @@ export async function proxy(request: NextRequest) {
 
   if (isProtectedPath && pathname.startsWith("/api/auth")) {
     // Rate limiting for auth endpoints
-    const rateLimit = getAuthEndpointRateLimit()
+    const rateLimit = getAuthEndpointRateLimit(pathname)
     
     if (request.method === "POST") {
       // Log auth attempt
-      await logApiEvent({
-        type: "auth_attempt",
-        endpoint: pathname,
-        method: request.method,
-        timestamp: new Date().toISOString(),
-      })
+      logApiEvent(
+        "info",
+        "auth.login.attempt",
+        createRequestLogContext(request, { details: { endpoint: pathname } }),
+      )
 
       // Record metric
-      await recordAuthMetric({
-        action: "attempt",
-        endpoint: pathname,
-      })
+      recordAuthMetric("auth.login.attempt", { endpoint: pathname })
     }
   }
 

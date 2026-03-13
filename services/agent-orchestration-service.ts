@@ -18,6 +18,7 @@ import {
 import { createStreamSessionAutomationEvent } from "@/lib/repositories/stream-session-automation-events"
 import {
   executeRoleConditionedTool,
+  relayAgentSkillModules,
   type RelayAgentTool,
 } from "@/lib/skills/relay-tool-registry"
 import { logApiEvent } from "@/lib/api/logging"
@@ -352,6 +353,7 @@ export async function orchestrateNetworkQualityAutomation(input: {
   logApiEvent("info", "stream.network_automation.processed", {
     route: "stream/network-automation",
     requestId: `${input.sessionId}:${input.trigger}`,
+    method: "service",
     details: {
       sessionId: input.sessionId,
       streamId: input.streamId ?? null,
@@ -456,6 +458,7 @@ export async function syncCheckoutResultToAccounting(input: {
     logApiEvent("warn", "relay.checkout.accounting_sync_pending", {
       route: "relay/tool",
       requestId: input.correlationId,
+      method: "service",
       details: {
         eventType,
         merchantId,
@@ -653,7 +656,7 @@ export async function orchestrateProtocolRelease(input: ProtocolOrchestrationInp
     intentId: lock.intentId,
     lockId: lock.lockId,
     eventType: "intent_locked",
-    eventPayload: lock,
+    eventPayload: lock as unknown as Record<string, unknown>,
   })
 
   if (riskLevel === "high" && !input.userConfirmed) {
@@ -707,7 +710,7 @@ export async function orchestrateProtocolRelease(input: ProtocolOrchestrationInp
     intentId: consensus.intentId,
     lockId: consensus.lockId,
     eventType: "consensus_verified",
-    eventPayload: consensus,
+    eventPayload: consensus as unknown as Record<string, unknown>,
   })
 
   if (failedChecks.length > 0) {
@@ -743,7 +746,7 @@ export async function orchestrateProtocolRelease(input: ProtocolOrchestrationInp
     intentId: release.intentId,
     lockId: release.lockId,
     eventType: "execution_released",
-    eventPayload: release,
+    eventPayload: release as unknown as Record<string, unknown>,
   })
 
   return {
@@ -787,6 +790,7 @@ export async function executeToolWithPolicy(
   logApiEvent("info", "relay.tool.execution.started", {
     route: "relay/tool",
     requestId: correlationId,
+    method: "service",
     details: {
       tool,
       sessionId: context.sessionId,
@@ -804,6 +808,7 @@ export async function executeToolWithPolicy(
       logApiEvent("info", "relay.tool.execution.cache_hit", {
         route: "relay/tool",
         requestId: correlationId,
+        method: "service",
         details: { tool, correlationId },
       })
       return { tool, result: cached.value, fromCache: true }
@@ -836,6 +841,14 @@ export async function executeToolWithPolicy(
     },
     web_search: async () => {
       const execution = await executeRoleConditionedTool({ role, tool: "web_search", args: payload })
+      return { ...execution.result, activity_summary_role: execution.activitySummary }
+    },
+    buyer_product_search: async () => {
+      const execution = await executeRoleConditionedTool({ role, tool: "buyer_product_search", args: payload })
+      return { ...execution.result, activity_summary_role: execution.activitySummary }
+    },
+    seller_optimize_commerce: async () => {
+      const execution = await executeRoleConditionedTool({ role, tool: "seller_optimize_commerce", args: payload })
       return { ...execution.result, activity_summary_role: execution.activitySummary }
     },
     initiate_link_checkout: async () => {
@@ -892,6 +905,7 @@ export async function executeToolWithPolicy(
       logApiEvent("info", "relay.tool.execution.completed", {
         route: "relay/tool",
         requestId: correlationId,
+        method: "service",
         details: { tool, correlationId, attempt, role },
       })
       return { tool, result, fromCache: false }
@@ -911,6 +925,7 @@ export async function executeToolWithPolicy(
         logApiEvent("warn", "relay.tool.execution.retry", {
           route: "relay/tool",
           requestId: correlationId,
+          method: "service",
           details: {
             tool,
             correlationId,
@@ -957,6 +972,7 @@ export async function executeToolWithPolicy(
   logApiEvent("error", "relay.tool.execution.failed", {
     route: "relay/tool",
     requestId: correlationId,
+    method: "service",
     error: terminalError,
     details: {
       tool,

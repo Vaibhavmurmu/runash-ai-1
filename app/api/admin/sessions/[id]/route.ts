@@ -12,18 +12,19 @@ const updateSchema = z.object({
   isActive: z.boolean().optional(),
 })
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminAuthorization(request, { requiredPermissions: ["system:logs"], auditEvent: "admin.sessions.read" })
   if (!auth.success) return auth.response
 
   try {
-    const id = idSchema.parse(params.id)
+    const { id } = await params
+    const parsedId = idSchema.parse(id)
     await ensureAdminAuthMigrationTables()
     const session = await queryOne(
       `SELECT id, user_id, device_id, device_name, ip_address::text AS ip_address, user_agent, is_active, last_activity, created_at
        FROM user_sessions
        WHERE id = $1`,
-      [id],
+      [parsedId],
     )
 
     if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 })
@@ -38,12 +39,13 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminAuthorization(request, { requiredPermissions: ["system:logs"], auditEvent: "admin.sessions.update" })
   if (!auth.success) return auth.response
 
   try {
-    const id = idSchema.parse(params.id)
+    const { id } = await params
+    const parsedId = idSchema.parse(id)
     await ensureAdminAuthMigrationTables()
     const parsed = updateSchema.safeParse(await request.json())
     if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
@@ -85,9 +87,10 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
   if (!auth.success) return auth.response
 
   try {
-    const id = idSchema.parse(params.id)
+    const { id } = await params
+    const parsedId = idSchema.parse(id)
     await ensureAdminAuthMigrationTables()
-    const deleted = await queryOne(`DELETE FROM user_sessions WHERE id = $1 RETURNING id, user_id`, [id])
+    const deleted = await queryOne(`DELETE FROM user_sessions WHERE id = $1 RETURNING id, user_id`, [parsedId])
     if (!deleted) return NextResponse.json({ error: "Session not found" }, { status: 404 })
 
     await recordAdminAuditLog({
