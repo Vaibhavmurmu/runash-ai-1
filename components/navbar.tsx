@@ -77,7 +77,7 @@ export default function Navbar() {
                       <Link href="/livex" className="block rounded-md px-3 py-2 text-gray-700 hover:bg-orange-50 hover:text-orange-600 dark:text-gray-300 dark:hover:bg-orange-900/20">LiveX</Link>
                       <Link href="/ai-editor" className="block rounded-md px-3 py-2 text-gray-700 hover:bg-orange-50 hover:text-orange-600 dark:text-gray-300 dark:hover:bg-orange-900/20">EditX</Link>
                       <Link href="/runashchat-landing" className="block rounded-md px-3 py-2 text-gray-700 hover:bg-orange-50 hover:text-orange-600 dark:text-gray-300 dark:hover:bg-orange-900/20">RunAshChat</Link>
-                      <Link href="/login" className="inline-flex items-center px-3 py-2 text-orange-600 font-medium">Browse all <ArrowRight className="ml-1 h-4 w-4" />Dashboard</Link>
+                      <Link href="/" className="inline-flex items-center px-3 py-2 text-orange-600 font-medium">Browse all <ArrowRight className="ml-1 h-4 w-4" />Dashboard</Link>
                     </div>
                   </div>
                 </div>
