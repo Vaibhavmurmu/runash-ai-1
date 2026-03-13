@@ -24,11 +24,11 @@ async function resolveDefaultDependencies(): Promise<TemplateByIdRouteDependenci
 
 export function createTemplateByIdRoutes(dependencies: TemplateByIdRouteDependencies) {
   return {
-    PUT(request: Request, context: { params: Promise<{ id: string }> }) {
+    async PUT(request: Request, context: { params: Promise<{ id: string }> }) {
       const params = await context.params
       return handleTemplatePut(request, params.id, dependencies)
     },
-    DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
+    async DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
       const params = await context.params
       return handleTemplateDelete(request, params.id, dependencies)
     },
