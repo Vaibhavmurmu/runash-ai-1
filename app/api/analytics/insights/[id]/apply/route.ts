@@ -11,11 +11,12 @@ type ApplyInsightResponse = {
   }
 }
 
-export async function POST(request: Request, context: { params: { id: string } }) {
+export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await requireAnalyticsSession()
   if ("error" in auth) return auth.error
 
-  const insightId = context.params.id?.trim()
+  const { id } = await context.params
+  const insightId = id?.trim()
 
   if (!insightId || !/^[a-zA-Z0-9_-]{1,100}$/.test(insightId)) {
     return jsonError(400, "INVALID_PATH", "Invalid insight id in route path.", {

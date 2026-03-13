@@ -19,9 +19,9 @@ const querySchema = z.object({
 })
 
 type RouteContext = {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 function decodeCursor(cursor: string | undefined): RunashSessionMessageListCursor | null {
@@ -52,6 +52,7 @@ async function getAuthenticatedUserId() {
 }
 
 export async function GET(request: Request, { params }: RouteContext) {
+  const resolvedParams = await params
   const requestId = resolveRequestId(request)
   const userId = await getAuthenticatedUserId()
 
@@ -59,7 +60,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     return respondError(request, { code: "AUTH_REQUIRED", message: "Unauthorized" }, { status: 401, requestId })
   }
 
-  const parsedParams = paramsSchema.safeParse(params)
+  const parsedParams = paramsSchema.safeParse(resolvedParams)
   if (!parsedParams.success) {
     return respondError(request, { code: "SESSION_ID_REQUIRED", message: "Session id is required" }, { status: 400, requestId })
   }
