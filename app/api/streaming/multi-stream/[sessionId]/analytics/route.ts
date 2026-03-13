@@ -18,7 +18,8 @@ const streamHealthLabels = {
   1: "poor",
 } as const
 
-export async function GET(req: NextRequest, { params }: { params: { sessionId: string } }) {
+export async function GET(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ sessionId: string }> }) {
+  const params = await routeParamsPromise
   const session = await getServerAuthSession()
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })

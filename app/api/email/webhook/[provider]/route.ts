@@ -52,6 +52,7 @@ export async function handleEmailWebhookPost(request: Request, providerParam: st
   }
 }
 
-export async function POST(request: NextRequest, { params }: { params: { provider: string } }) {
+export async function POST(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ provider: string }> }) {
+  const params = await routeParamsPromise
   return handleEmailWebhookPost(request, params.provider)
 }

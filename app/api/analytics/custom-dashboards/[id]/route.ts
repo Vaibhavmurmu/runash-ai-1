@@ -3,7 +3,8 @@ import { deleteCustomDashboard, getCustomDashboardById, updateCustomDashboard } 
 import type { DashboardLayout, DashboardWidget } from "@/types/custom-dashboard"
 import { getServerAuthSession } from "@/lib/auth/session"
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
+export async function GET(_: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const session = await getServerAuthSession()
     if (!session?.user?.id) {
@@ -22,7 +23,8 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
   }
 }
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const session = await getServerAuthSession()
     if (!session?.user?.id) {
@@ -58,7 +60,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 }
 
-export async function DELETE(_: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const session = await getServerAuthSession()
     if (!session?.user?.id) {

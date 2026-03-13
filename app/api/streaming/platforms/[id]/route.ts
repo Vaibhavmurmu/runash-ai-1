@@ -29,7 +29,8 @@ function buildPlatformProjection() {
   `
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const session = await getServerAuthSession()
     if (!session) {
@@ -75,7 +76,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const session = await getServerAuthSession()
     if (!session) {

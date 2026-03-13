@@ -15,7 +15,8 @@ function getExpectedRowVersion(req: Request, body: { row_version?: number } | nu
   return null
 }
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const userId = await requireSellerSessionUserId(req)
     if (userId instanceof Response) return userId
@@ -33,7 +34,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   }
 }
 
-export async function PUT(req: Request, { params }: { params: { id: string } }) {
+export async function PUT(req: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const userId = await requireSellerSessionUserId(req)
     if (userId instanceof Response) return userId
@@ -82,11 +84,13 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   }
 }
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   return PUT(req, { params })
 }
 
-export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const userId = await requireSellerSessionUserId(req)
     if (userId instanceof Response) return userId

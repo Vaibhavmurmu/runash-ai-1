@@ -24,10 +24,10 @@ async function resolveDefaultDependencies(): Promise<TemplateByIdRouteDependenci
 
 export function createTemplateByIdRoutes(dependencies: TemplateByIdRouteDependencies) {
   return {
-    PUT(request: Request, { params }: { params: { id: string } }) {
+    PUT(request: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
       return handleTemplatePut(request, params.id, dependencies)
     },
-    DELETE(request: Request, { params }: { params: { id: string } }) {
+    DELETE(request: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
       return handleTemplateDelete(request, params.id, dependencies)
     },
   }
@@ -35,16 +35,18 @@ export function createTemplateByIdRoutes(dependencies: TemplateByIdRouteDependen
 
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } },
+  { params: routeParamsPromise }: { params: Promise<{ id: string }> },
 ) {
+  const params = await routeParamsPromise
   const dependencies = await resolveDefaultDependencies()
   return handleTemplatePut(request, params.id, dependencies)
 }
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } },
+  { params: routeParamsPromise }: { params: Promise<{ id: string }> },
 ) {
+  const params = await routeParamsPromise
   const dependencies = await resolveDefaultDependencies()
   return handleTemplateDelete(request, params.id, dependencies)
 }

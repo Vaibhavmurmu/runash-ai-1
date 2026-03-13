@@ -22,7 +22,8 @@ const actionSchema = z
   })
   .strict()
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const access = await requireBillingActionAccess("billing:operate")
   if ("response" in access) return access.response
 
