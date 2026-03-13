@@ -69,15 +69,15 @@ export default function Navbar() {
                       </div>
                       <div className="mt-2">
                         <p className="text-sm font-semibold text-gray-900 dark:text-white">Features</p>
-                        <p className="text-xs text-gray-600 dark:text-gray-300">AI Curated features.</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-300">AI-Powered.</p>
                       </div>
                     </Link>
                     <div className="space-y-2 text-sm">
-                      <Link href="/runashchat" className="block rounded-md px-3 py-2 text-gray-700 hover:bg-orange-50 hover:text-orange-600 dark:text-gray-300 dark:hover:bg-orange-900/20">RunAshChat</Link>
-                      <Link href="/editor" className="block rounded-md px-3 py-2 text-gray-700 hover:bg-orange-50 hover:text-orange-600 dark:text-gray-300 dark:hover:bg-orange-900/20">AI Editor</Link>
-                      <Link href="/studio" className="block rounded-md px-3 py-2 text-gray-700 hover:bg-orange-50 hover:text-orange-600 dark:text-gray-300 dark:hover:bg-orange-900/20">AI Studio</Link>
-                      <Link href="/workflows" className="block rounded-md px-3 py-2 text-gray-700 hover:bg-orange-50 hover:text-orange-600 dark:text-gray-300 dark:hover:bg-orange-900/20">AI Workflow</Link>
-                      <Link href="/dashboard" className="inline-flex items-center px-3 py-2 text-orange-600 font-medium">Browse all <ArrowRight className="ml-1 h-4 w-4" />Dashboard</Link>
+                      <Link href="/ai-agents" className="block rounded-md px-3 py-2 text-gray-700 hover:bg-orange-50 hover:text-orange-600 dark:text-gray-300 dark:hover:bg-orange-900/20">Agent</Link>
+                      <Link href="/livex" className="block rounded-md px-3 py-2 text-gray-700 hover:bg-orange-50 hover:text-orange-600 dark:text-gray-300 dark:hover:bg-orange-900/20">LiveX</Link>
+                      <Link href="/ai-editor" className="block rounded-md px-3 py-2 text-gray-700 hover:bg-orange-50 hover:text-orange-600 dark:text-gray-300 dark:hover:bg-orange-900/20">EditX</Link>
+                      <Link href="/runashchat-landing" className="block rounded-md px-3 py-2 text-gray-700 hover:bg-orange-50 hover:text-orange-600 dark:text-gray-300 dark:hover:bg-orange-900/20">RunAshChat</Link>
+                      <Link href="/" className="inline-flex items-center px-3 py-2 text-orange-600 font-medium">Browse all <ArrowRight className="ml-1 h-4 w-4" />Dashboard</Link>
                     </div>
                   </div>
                 </div>
