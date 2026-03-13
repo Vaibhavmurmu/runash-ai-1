@@ -6,7 +6,7 @@ import { getAgentSessionHistory } from "@/lib/repositories/agent-orchestration"
 
 const AGENT_CHAT_ENABLED = process.env.RUNASH_AGENT_CHAT_ENABLED !== "false"
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const requestId = resolveRequestId(request)
 
   if (!AGENT_CHAT_ENABLED) {
@@ -22,8 +22,9 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   const limit = Number(searchParams.get("limit") ?? "100")
   const offset = Number(searchParams.get("offset") ?? "0")
 
+  const { id } = await params
   const record = await getAgentSessionHistory(
-    params.id,
+    id,
     String(session.user.id),
     Number.isFinite(limit) && limit > 0 ? Math.min(Math.floor(limit), 200) : 100,
     Number.isFinite(offset) && offset >= 0 ? Math.floor(offset) : 0,
