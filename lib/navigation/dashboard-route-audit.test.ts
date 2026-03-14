@@ -5,6 +5,7 @@ import test from "node:test"
 import {
   dashboardRouteAuditEntries,
   dashboardReadyRoutes,
+  isDashboardRouteReady,
   normalizeDashboardHref,
 } from "@/lib/navigation/dashboard-route-audit"
 
@@ -49,4 +50,9 @@ test("coming-soon routes are excluded from ready navigation set", () => {
       `${entry.href} should not be treated as a ready route`,
     )
   }
+})
+
+test("agents dashboard route is marked ready and included in ready route set", () => {
+  assert.equal(isDashboardRouteReady("/agents/dashboard"), true)
+  assert.equal(dashboardReadyRoutes.has(normalizeDashboardHref("/agents/dashboard")), true)
 })

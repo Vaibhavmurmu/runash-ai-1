@@ -53,10 +53,10 @@ export const dashboardRouteAuditEntries: readonly DashboardRouteAuditEntry[] = [
   { href: "/dashboard/feedback", readiness: "ready", source: "sidebar", required: true },
   {
     href: "/agents/dashboard",
-    readiness: "coming-soon",
+    readiness: "ready",
     source: "sidebar",
     required: true,
-    notes: "No app/agents/dashboard/page.tsx route exists yet.",
+    notes: "AI agents workspace dashboard is live.",
   },
   { href: "/automation", readiness: "ready", source: "sidebar", required: true },
   { href: "/runashchat", readiness: "ready", source: "sidebar", required: true },
