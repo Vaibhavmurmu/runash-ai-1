@@ -10,7 +10,8 @@ const assignTenantSchema = z.object({
   userId: z.coerce.number().int().positive(),
 })
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ organizationId: string }> }) {
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ organizationId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:read"],
     auditEvent: "admin.sso.organizations.users.read",
@@ -18,14 +19,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!auth.success) return auth.response
 
   try {
-    const { organizationId } = await params
-    const parsedOrganizationId = orgIdSchema.parse(organizationId)
+    const organizationId = orgIdSchema.parse(params.organizationId)
     const users = await queryMany(
       `SELECT id, email, name, role, sso_organization_id, updated_at
        FROM users
        WHERE sso_organization_id = $1
        ORDER BY updated_at DESC`,
-      [parsedOrganizationId],
+      [organizationId],
     )
 
     return NextResponse.json({ data: users })
@@ -43,7 +43,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ organizationId: string }> }) {
+export async function POST(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ organizationId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:write"],
     auditEvent: "admin.sso.organizations.users.assign",
@@ -51,8 +52,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!auth.success) return auth.response
 
   try {
-    const { organizationId } = await params
-    const parsedOrganizationId = orgIdSchema.parse(organizationId)
+    const organizationId = orgIdSchema.parse(params.organizationId)
     const body = assignTenantSchema.parse(await request.json())
 
     const updated = await queryOne(
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
            updated_at = NOW()
        WHERE id = $2
        RETURNING id, email, name, role, sso_organization_id, updated_at`,
-      [parsedOrganizationId, body.userId],
+      [organizationId, body.userId],
     )
 
     if (!updated) {
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       action: "tenant.user.assigned",
       entityType: "user",
       entityId: body.userId,
-      metadata: { organizationId: parsedOrganizationId },
+      metadata: { organizationId },
     })
 
     return NextResponse.json({ data: updated })

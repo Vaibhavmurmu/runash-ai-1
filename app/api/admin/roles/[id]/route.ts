@@ -11,13 +11,13 @@ const updateRoleSchema = z.object({
   isSystem: z.boolean().optional(),
 })
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, { requiredPermissions: ["admin:settings"], auditEvent: "admin.roles.read" })
   if (!auth.success) return auth.response
 
   try {
-    const { id } = await params
-    const roleId = roleIdSchema.parse(id)
+    const roleId = roleIdSchema.parse(params.id)
     await ensureAdminAuthMigrationTables()
 
     const role = await queryOne(`SELECT id, name, description, is_system, created_at, updated_at FROM admin_roles WHERE id = $1`, [roleId])
@@ -41,13 +41,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, { requiredPermissions: ["admin:settings"], auditEvent: "admin.roles.update" })
   if (!auth.success) return auth.response
 
   try {
-    const { id } = await params
-    const roleId = roleIdSchema.parse(id)
+    const roleId = roleIdSchema.parse(params.id)
     const parsed = updateRoleSchema.safeParse(await request.json())
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
@@ -84,7 +84,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings", "system:control"],
     auditEvent: "admin.roles.delete",
@@ -92,8 +93,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   if (!auth.success) return auth.response
 
   try {
-    const { id } = await params
-    const roleId = roleIdSchema.parse(id)
+    const roleId = roleIdSchema.parse(params.id)
     await ensureAdminAuthMigrationTables()
 
     const deleted = await queryOne(`DELETE FROM admin_roles WHERE id = $1 RETURNING id, name`, [roleId])

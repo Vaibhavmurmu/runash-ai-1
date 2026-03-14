@@ -3,8 +3,8 @@ import { NextResponse } from "next/server"
 import { Database } from "@/lib/database"
 import { listStreamSessionNetworkMetrics } from "@/lib/repositories/stream-session-network-metrics"
 
-export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function GET(_: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const stream = await Database.getStream(params.id)
   if (!stream) return NextResponse.json({ error: "Stream not found" }, { status: 404 })
 

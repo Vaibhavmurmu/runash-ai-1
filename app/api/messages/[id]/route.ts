@@ -14,9 +14,9 @@ const updateMessageSchema = z.object({
 })
 
 type RouteContext = {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 async function getAuthenticatedUserId() {
@@ -25,6 +25,7 @@ async function getAuthenticatedUserId() {
 }
 
 export async function PATCH(request: Request, { params }: RouteContext) {
+  const resolvedParams = await params
   const requestId = resolveRequestId(request)
   const userId = await getAuthenticatedUserId()
 
@@ -32,7 +33,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     return respondError(request, { code: "AUTH_REQUIRED", message: "Unauthorized" }, { status: 401, requestId })
   }
 
-  const parsedParams = paramsSchema.safeParse(params)
+  const parsedParams = paramsSchema.safeParse(resolvedParams)
   if (!parsedParams.success) {
     return respondError(request, { code: "MESSAGE_ID_REQUIRED", message: "Message id is required" }, { status: 400, requestId })
   }
@@ -79,6 +80,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 }
 
 export async function DELETE(request: Request, { params }: RouteContext) {
+  const resolvedParams = await params
   const requestId = resolveRequestId(request)
   const userId = await getAuthenticatedUserId()
 
@@ -86,7 +88,7 @@ export async function DELETE(request: Request, { params }: RouteContext) {
     return respondError(request, { code: "AUTH_REQUIRED", message: "Unauthorized" }, { status: 401, requestId })
   }
 
-  const parsedParams = paramsSchema.safeParse(params)
+  const parsedParams = paramsSchema.safeParse(resolvedParams)
   if (!parsedParams.success) {
     return respondError(request, { code: "MESSAGE_ID_REQUIRED", message: "Message id is required" }, { status: 400, requestId })
   }
@@ -103,7 +105,7 @@ export async function DELETE(request: Request, { params }: RouteContext) {
       return respondError(request, { code: "MESSAGE_NOT_FOUND", message: "Message not found" }, { status: 404, requestId })
     }
 
-    return respondSuccess(request, { id: params.id, deleted: true }, { status: 200, requestId })
+    return respondSuccess(request, { id: parsedParams.data.id, deleted: true }, { status: 200, requestId })
   } catch (error) {
     logApiEvent("error", "messages.delete.failed", {
       requestId,

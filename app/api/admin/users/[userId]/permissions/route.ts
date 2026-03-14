@@ -11,7 +11,8 @@ import { enforceAdminUserTenantBoundary, migrateLegacyUserOrganizationIfNeeded }
 const userIdSchema = z.coerce.number().int().positive()
 const permissionMutationSchema = z.object({ permission: z.string().min(2).max(100) })
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ userId: string }> }) {
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ userId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:read"],
     auditEvent: "admin.users.permissions.read",
@@ -19,12 +20,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!auth.success) return auth.response
 
   try {
-    const { userId } = await params
-    const parsedUserId = userIdSchema.parse(userId)
-    const tenantGuard = await enforceAdminUserTenantBoundary(parsedUserId, auth.session.user.ssoOrganization)
+    const userId = userIdSchema.parse(params.userId)
+    const tenantGuard = await enforceAdminUserTenantBoundary(userId, auth.session.user.ssoOrganization)
     if (!tenantGuard.ok) return tenantGuard.response
 
-    const permissions = await RBACManager.getUserPermissions(parsedUserId)
+    const permissions = await RBACManager.getUserPermissions(userId)
 
     return NextResponse.json({ permissions })
   } catch (error) {
@@ -37,7 +37,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ userId: string }> }) {
+export async function POST(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ userId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:write"],
     auditEvent: "admin.users.permissions.write",
@@ -46,19 +47,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   try {
     const { permission } = permissionMutationSchema.parse(await request.json())
-    const { userId } = await params
-    const parsedUserId = userIdSchema.parse(userId)
+    const userId = userIdSchema.parse(params.userId)
     const adminId = auth.userId
 
-    const tenantGuard = await enforceAdminUserTenantBoundary(parsedUserId, auth.session.user.ssoOrganization)
+    const tenantGuard = await enforceAdminUserTenantBoundary(userId, auth.session.user.ssoOrganization)
     if (!tenantGuard.ok) return tenantGuard.response
 
-    if (parsedUserId === adminId) {
+    if (userId === adminId) {
       return NextResponse.json({ message: "Cannot modify your own permission overrides" }, { status: 400 })
     }
 
     await migrateLegacyUserOrganizationIfNeeded(
-      parsedUserId,
+      userId,
       auth.session.user.ssoOrganization,
       tenantGuard.shouldMigrateLegacyOrganization,
     )
@@ -69,8 +69,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ message: "Unknown permission" }, { status: 400 })
     }
 
-    await RBACManager.grantPermission(parsedUserId, permission, adminId)
-    recordAuthMetric("admin.permission.granted", { adminId, targetUserId: parsedUserId, permission })
+    await RBACManager.grantPermission(userId, permission, adminId)
+    recordAuthMetric("admin.permission.granted", { adminId, targetUserId: userId, permission })
     await recordSecurityAuditEvent({
       event: "admin.permission.granted",
       actorUserId: adminId,
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         kind: "admin_permission_change",
         outcome: "success",
         action: "grant",
-        targetUserId: parsedUserId,
+        targetUserId: userId,
         permission,
       },
     })
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       actorUserId: adminId,
       action: "user.permission.granted",
       entityType: "user",
-      entityId: parsedUserId,
+      entityId: userId,
       metadata: { permission },
     })
 
@@ -104,7 +104,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ userId: string }> }) {
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ userId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:write", "system:control"],
     auditEvent: "admin.users.permissions.revoke",
@@ -113,19 +114,18 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
   try {
     const { permission } = permissionMutationSchema.parse(await request.json())
-    const { userId } = await params
-    const parsedUserId = userIdSchema.parse(userId)
+    const userId = userIdSchema.parse(params.userId)
     const adminId = auth.userId
 
-    const tenantGuard = await enforceAdminUserTenantBoundary(parsedUserId, auth.session.user.ssoOrganization)
+    const tenantGuard = await enforceAdminUserTenantBoundary(userId, auth.session.user.ssoOrganization)
     if (!tenantGuard.ok) return tenantGuard.response
 
-    if (parsedUserId === adminId) {
+    if (userId === adminId) {
       return NextResponse.json({ message: "Cannot modify your own permission overrides" }, { status: 400 })
     }
 
     await migrateLegacyUserOrganizationIfNeeded(
-      parsedUserId,
+      userId,
       auth.session.user.ssoOrganization,
       tenantGuard.shouldMigrateLegacyOrganization,
     )
@@ -136,8 +136,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json({ message: "Unknown permission" }, { status: 400 })
     }
 
-    await RBACManager.revokePermission(parsedUserId, permission, adminId)
-    recordAuthMetric("admin.permission.revoked", { adminId, targetUserId: parsedUserId, permission })
+    await RBACManager.revokePermission(userId, permission, adminId)
+    recordAuthMetric("admin.permission.revoked", { adminId, targetUserId: userId, permission })
     await recordSecurityAuditEvent({
       event: "admin.permission.revoked",
       actorUserId: adminId,
@@ -147,7 +147,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
         kind: "admin_permission_change",
         outcome: "success",
         action: "revoke",
-        targetUserId: parsedUserId,
+        targetUserId: userId,
         permission,
       },
     })
@@ -156,7 +156,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       actorUserId: adminId,
       action: "user.permission.revoked",
       entityType: "user",
-      entityId: parsedUserId,
+      entityId: userId,
       metadata: { permission },
     })
 

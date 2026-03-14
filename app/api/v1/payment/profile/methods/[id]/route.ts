@@ -41,8 +41,8 @@ function resolveSessionContexts(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const access = await requireBillingActionAccess("billing:operate")
   if ("response" in access) return access.response
 
@@ -61,8 +61,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   return respondSuccess(request, method)
 }
 
-export async function PUT(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function PUT(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const access = await requireBillingActionAccess("billing:operate")
   if ("response" in access) return access.response
 
@@ -116,8 +116,8 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
   return respondSuccess(request, updated)
 }
 
-export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function PATCH(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const access = await requireBillingActionAccess("billing:operate")
   if ("response" in access) return access.response
 
@@ -160,8 +160,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   return respondSuccess(request, profile)
 }
 
-export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const access = await requireBillingActionAccess("billing:operate")
   if ("response" in access) return access.response
 

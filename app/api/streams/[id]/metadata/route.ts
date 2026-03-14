@@ -3,8 +3,8 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { getServerAuthSession } from "@/lib/auth/session"
 import { getStreamMetadata, saveStreamMetadata } from "@/lib/repositories/stream-studio"
 
-export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const session = await getServerAuthSession()
   if (!session) {
     return respondError(request, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401 })
@@ -18,8 +18,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   }
 }
 
-export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function PATCH(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const session = await getServerAuthSession()
   if (!session) {
     return respondError(request, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401 })

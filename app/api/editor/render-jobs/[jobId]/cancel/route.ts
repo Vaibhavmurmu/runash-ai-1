@@ -4,8 +4,8 @@ import { requireEditorOperation } from "@/app/api/editor/_lib"
 import { publishRenderJobEvent } from "@/lib/editor/render-job-events"
 import { sql } from "@/lib/editor/repository"
 
-export async function POST(request: Request, context: { params: Promise<{ jobId: string }> }) {
-  const params = await context.params
+export async function POST(request: Request, { params: routeParamsPromise }: { params: Promise<{ jobId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "run_generation")
   if ("error" in auth) return auth.error
 

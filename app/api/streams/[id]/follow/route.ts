@@ -2,14 +2,14 @@ import { type NextRequest, NextResponse } from "next/server"
 
 const FOLLOW_COOKIE_KEY = "runash-live-follow"
 
-export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const isFollowing = request.cookies.get(FOLLOW_COOKIE_KEY)?.value === params.id
   return NextResponse.json({ isFollowing })
 }
 
-export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function POST(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const currentFollow = request.cookies.get(FOLLOW_COOKIE_KEY)?.value
   const isFollowing = currentFollow !== params.id
 

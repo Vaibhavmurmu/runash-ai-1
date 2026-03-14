@@ -18,21 +18,21 @@ const streamHealthLabels = {
   1: "poor",
 } as const
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ sessionId: string }> }) {
+export async function GET(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ sessionId: string }> }) {
+  const params = await routeParamsPromise
   const session = await getServerAuthSession()
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { sessionId } = await params
-  const streamSession = await getMultiStreamSession(sessionId, session.user.id)
+  const streamSession = await getMultiStreamSession(params.sessionId, session.user.id)
   if (!streamSession) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 })
   }
 
   const platforms = await listSessionPlatformAnalytics({
     userId: session.user.id,
-    sessionId,
+    sessionId: params.sessionId,
   })
 
   const totalHealthWeight = platforms.reduce((sum, platform) => sum + streamHealthWeight[platform.stream_health], 0)

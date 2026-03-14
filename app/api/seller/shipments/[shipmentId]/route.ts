@@ -3,8 +3,8 @@ import { requireSellerSessionUserId } from "@/app/api/seller/_auth"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { ShippingFulfillmentService, type ShipmentStatus } from "@/services/shipping-fulfillment-service"
 
-export async function PATCH(request: NextRequest, context: { params: Promise<{ shipmentId: string }> }) {
-  const params = await context.params
+export async function PATCH(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ shipmentId: string }> }) {
+  const params = await routeParamsPromise
   const sellerUserId = await requireSellerSessionUserId(request)
   if (sellerUserId instanceof Response) return sellerUserId
 

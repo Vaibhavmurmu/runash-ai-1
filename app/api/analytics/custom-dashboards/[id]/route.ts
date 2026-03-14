@@ -3,15 +3,15 @@ import { deleteCustomDashboard, getCustomDashboardById, updateCustomDashboard } 
 import type { DashboardLayout, DashboardWidget } from "@/types/custom-dashboard"
 import { getServerAuthSession } from "@/lib/auth/session"
 
-export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(_: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const session = await getServerAuthSession()
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { id } = await params
-    const dashboard = await getCustomDashboardById(id, session.user.id)
+    const dashboard = await getCustomDashboardById(params.id, session.user.id)
     if (!dashboard) {
       return NextResponse.json({ error: "Dashboard not found" }, { status: 404 })
     }
@@ -23,14 +23,14 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   }
 }
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(req: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const session = await getServerAuthSession()
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { id } = await params
     const body = (await req.json()) as {
       name?: string
       description?: string
@@ -40,7 +40,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       sharedWith?: string[]
     }
 
-    const dashboard = await updateCustomDashboard(id, session.user.id, {
+    const dashboard = await updateCustomDashboard(params.id, session.user.id, {
       name: body.name,
       description: body.description,
       widgets: body.widgets,
@@ -60,15 +60,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 }
 
-export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(_: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const session = await getServerAuthSession()
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { id } = await params
-    const deleted = await deleteCustomDashboard(id, session.user.id)
+    const deleted = await deleteCustomDashboard(params.id, session.user.id)
     if (!deleted) {
       return NextResponse.json({ error: "Dashboard not found or unauthorized" }, { status: 404 })
     }

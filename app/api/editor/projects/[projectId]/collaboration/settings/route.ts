@@ -10,8 +10,8 @@ const collaborationSettingsSchema = z.object({
   showActivityLog: z.boolean(),
 })
 
-export async function GET(request: Request, context: { params: Promise<{ projectId: string }> }) {
-  const params = await context.params
+export async function GET(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
 
@@ -25,8 +25,8 @@ export async function GET(request: Request, context: { params: Promise<{ project
   return NextResponse.json({ settings })
 }
 
-export async function PATCH(request: Request, context: { params: Promise<{ projectId: string }> }) {
-  const params = await context.params
+export async function PATCH(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
 

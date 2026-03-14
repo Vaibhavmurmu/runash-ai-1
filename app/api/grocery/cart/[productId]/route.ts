@@ -6,8 +6,8 @@ const updateQuantitySchema = z.object({
   quantity: z.number().int().positive(),
 })
 
-export async function PATCH(request: NextRequest, context: { params: Promise<{ productId: string }> }) {
-  const params = await context.params
+export async function PATCH(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ productId: string }> }) {
+  const params = await routeParamsPromise
   try {
     const userId = request.headers.get("x-user-id")
     if (!userId) {
@@ -42,8 +42,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ p
   }
 }
 
-export async function DELETE(request: NextRequest, context: { params: Promise<{ productId: string }> }) {
-  const params = await context.params
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ productId: string }> }) {
+  const params = await routeParamsPromise
   try {
     const userId = request.headers.get("x-user-id")
     if (!userId) {

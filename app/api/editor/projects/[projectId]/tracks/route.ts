@@ -15,8 +15,8 @@ const createEditorTrackSchema = z.object({
   version: z.union([z.number().int().nonnegative(), z.string().trim().min(1)]).optional(),
 })
 
-export async function GET(request: Request, context: { params: Promise<{ projectId: string }> }) {
-  const params = await context.params
+export async function GET(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params
@@ -30,8 +30,8 @@ export async function GET(request: Request, context: { params: Promise<{ project
   return NextResponse.json({ tracks })
 }
 
-export async function POST(request: Request, context: { params: Promise<{ projectId: string }> }) {
-  const params = await context.params
+export async function POST(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params

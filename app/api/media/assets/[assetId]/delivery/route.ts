@@ -3,8 +3,8 @@ import { requireEditorUser } from "@/app/api/editor/_lib"
 import { sql } from "@/lib/db"
 import { buildSignedCdnUrl } from "@/lib/media/cdn-signing"
 
-export async function GET(request: NextRequest, context: { params: Promise<{ assetId: string }> }) {
-  const params = await context.params
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ assetId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
 

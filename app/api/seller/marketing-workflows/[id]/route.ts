@@ -4,8 +4,8 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { authorizeRoute, resolveScopedUserId } from "@/lib/api/route-auth"
 import { deleteMarketingWorkflowRule, getMarketingWorkflowRule, updateMarketingWorkflowRule } from "@/lib/repositories/marketing-workflows"
 
-export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await authorizeRoute(request, "read")
   if (!auth.ok) return auth.response
 
@@ -22,8 +22,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   return respondSuccess(request, workflow)
 }
 
-export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function PATCH(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await authorizeRoute(request, "write", { writePermissions: ["content:write", "admin:access"] })
   if (!auth.ok) return auth.response
 
@@ -41,8 +41,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   return respondSuccess(request, workflow)
 }
 
-export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await authorizeRoute(request, "write", { writePermissions: ["content:delete", "admin:access"] })
   if (!auth.ok) return auth.response
 

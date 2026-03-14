@@ -2,7 +2,8 @@ import { type NextRequest, NextResponse } from "next/server"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { EmailContactManager } from "@/lib/email-contacts"
 
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PUT(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings"],
     auditEvent: "admin.email.contacts.update",
@@ -10,9 +11,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   if (!auth.success) return auth.response
 
   try {
-    const { id } = await params
-    const parsedId = Number.parseInt(id, 10)
-    if (Number.isNaN(parsedId)) {
+    const id = Number.parseInt(params.id, 10)
+    if (Number.isNaN(id)) {
       return NextResponse.json({ error: "Invalid contact ID" }, { status: 400 })
     }
 
@@ -21,7 +21,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Invalid contact status" }, { status: 400 })
     }
 
-    const updated = await EmailContactManager.updateContact(parsedId, body)
+    const updated = await EmailContactManager.updateContact(id, body)
     if (!updated) {
       return NextResponse.json({ error: "Contact not found" }, { status: 404 })
     }
@@ -33,7 +33,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings"],
     auditEvent: "admin.email.contacts.delete",
@@ -41,13 +42,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   if (!auth.success) return auth.response
 
   try {
-    const { id } = await params
-    const parsedId = Number.parseInt(id, 10)
-    if (Number.isNaN(parsedId)) {
+    const id = Number.parseInt(params.id, 10)
+    if (Number.isNaN(id)) {
       return NextResponse.json({ error: "Invalid contact ID" }, { status: 400 })
     }
 
-    const deleted = await EmailContactManager.deleteContact(parsedId)
+    const deleted = await EmailContactManager.deleteContact(id)
     if (!deleted) {
       return NextResponse.json({ error: "Contact not found" }, { status: 404 })
     }

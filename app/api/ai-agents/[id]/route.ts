@@ -4,11 +4,12 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { authorizeRoute, resolveScopedUserId } from "@/lib/api/route-auth"
 import { deleteAIAgent, updateAIAgent, type UpdateAIAgentInput } from "@/lib/repositories/ai-agents"
 
-export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await authorizeRoute(request, "write", { writePermissions: ["content:write", "admin:access"] })
   if (!auth.ok) return auth.response
 
-  const { id } = await params
+  const { id } = params
   const payload = (await request.json()) as UpdateAIAgentInput & { user_id?: string }
   const userId = resolveScopedUserId(request, auth.sessionUser)
 
@@ -33,11 +34,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   return respondSuccess(request, updatedAgent, { legacy: { success: true, data: updatedAgent } })
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await authorizeRoute(request, "write", { writePermissions: ["content:delete", "admin:access"] })
   if (!auth.ok) return auth.response
 
-  const { id } = await params
+  const { id } = params
   const userId = resolveScopedUserId(request, auth.sessionUser)
 
   if (!userId) {

@@ -25,16 +25,16 @@ function defaultSettings() {
   }
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ platform: string }> }) {
+export async function POST(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ platform: string }> }) {
+  const params = await routeParamsPromise
   try {
     const session = await getServerAuthSession()
     if (!session) {
       return respondError(req, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401 })
     }
 
-    const { platform } = await params
-    const platformLower = platform.toLowerCase()
-    if (!SUPPORTED_PLATFORMS.has(platformLower)) {
+    const platform = params.platform.toLowerCase()
+    if (!SUPPORTED_PLATFORMS.has(platform)) {
       return respondError(req, { code: "STREAMING_PLATFORM_UNSUPPORTED", message: "Unsupported platform" }, { status: 400 })
     }
 

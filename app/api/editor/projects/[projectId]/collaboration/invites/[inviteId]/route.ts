@@ -3,8 +3,8 @@ import { requireEditorOperation } from "@/app/api/editor/_lib"
 import { revokeProjectInvite } from "@/lib/editor/collaboration-repository"
 import { getProjectById } from "@/lib/editor/repository"
 
-export async function DELETE(request: Request, context: { params: Promise<{ projectId: string; inviteId: string }> }) {
-  const params = await context.params
+export async function DELETE(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string; inviteId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
 

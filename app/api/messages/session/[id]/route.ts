@@ -11,8 +11,8 @@ async function requireAuthenticatedUserId() {
 }
 
 
-export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function GET(request: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const userId = await requireAuthenticatedUserId()
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized", code: CHAT_ERROR_CODES.AUTH_REQUIRED }, { status: 401 })

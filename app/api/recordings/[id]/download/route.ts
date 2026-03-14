@@ -8,8 +8,8 @@ async function getSession() {
   return getServerAuthSession()
 }
 
-export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function GET(_req: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const session = await getSession()
     if (!session) {

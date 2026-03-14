@@ -10,8 +10,8 @@ import { bumpTimelineVersion, claimProjectVersion, parseExpectedVersion } from "
 import { getProjectById, sql } from "@/lib/editor/repository"
 import { publishTimelineMutated } from "@/services/realtime/publishers"
 
-export async function GET(request: Request, context: { params: Promise<{ projectId: string }> }) {
-  const params = await context.params
+export async function GET(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params
@@ -22,8 +22,8 @@ export async function GET(request: Request, context: { params: Promise<{ project
   return NextResponse.json({ timelines: project.timelines, activeTimelineId: project.activeTimelineId, version: project.version })
 }
 
-export async function POST(request: Request, context: { params: Promise<{ projectId: string }> }) {
-  const params = await context.params
+export async function POST(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params
@@ -66,8 +66,8 @@ export async function POST(request: Request, context: { params: Promise<{ projec
   return NextResponse.json({ timeline, version: claim.projectVersion }, { status: 201 })
 }
 
-export async function PUT(request: Request, context: { params: Promise<{ projectId: string }> }) {
-  const params = await context.params
+export async function PUT(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params
@@ -133,8 +133,8 @@ export async function PUT(request: Request, context: { params: Promise<{ project
   return NextResponse.json({ project, version: claim.projectVersion })
 }
 
-export async function DELETE(request: Request, context: { params: Promise<{ projectId: string }> }) {
-  const params = await context.params
+export async function DELETE(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params

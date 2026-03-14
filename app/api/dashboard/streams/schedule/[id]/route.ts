@@ -69,25 +69,25 @@ async function handleScheduleUpdate(request: Request, streamId: string) {
 
 export async function PUT(
   request: Request,
-  context: { params: Promise<{ id: string }> },
+  { params: routeParamsPromise }: { params: Promise<{ id: string }> },
 ) {
-  const params = await context.params
+  const params = await routeParamsPromise
   return handleScheduleUpdate(request, params.id)
 }
 
 export async function PATCH(
   request: Request,
-  context: { params: Promise<{ id: string }> },
+  { params: routeParamsPromise }: { params: Promise<{ id: string }> },
 ) {
-  const params = await context.params
+  const params = await routeParamsPromise
   return handleScheduleUpdate(request, params.id)
 }
 
 export async function DELETE(
   request: Request,
-  context: { params: Promise<{ id: string }> },
+  { params: routeParamsPromise }: { params: Promise<{ id: string }> },
 ) {
-  const params = await context.params
+  const params = await routeParamsPromise
   const scopedUserId = await requireStreamDashboardUserId(request)
   if (scopedUserId instanceof Response) return scopedUserId
 

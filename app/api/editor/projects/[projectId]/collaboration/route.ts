@@ -54,8 +54,8 @@ function toInvitePayload(record: Awaited<ReturnType<typeof listProjectInvites>>[
   }
 }
 
-export async function GET(request: Request, context: { params: Promise<{ projectId: string }> }) {
-  const params = await context.params
+export async function GET(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
 
@@ -97,8 +97,8 @@ export async function GET(request: Request, context: { params: Promise<{ project
   })
 }
 
-export async function POST(request: Request, context: { params: Promise<{ projectId: string }> }) {
-  const params = await context.params
+export async function POST(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
 

@@ -10,16 +10,16 @@ const updateAuditSchema = z.object({
   metadata: z.record(z.unknown()).optional(),
 })
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, { requiredPermissions: ["system:logs"], auditEvent: "admin.audit_logs.read" })
   if (!auth.success) return auth.response
 
   try {
-    const { id } = await params
-    const parsedId = idSchema.parse(id)
+    const id = idSchema.parse(params.id)
     await ensureAdminAuthMigrationTables()
 
-    const log = await queryOne(`SELECT id, actor_user_id, action, entity_type, entity_id, metadata, created_at FROM admin_audit_logs WHERE id = $1`, [parsedId])
+    const log = await queryOne(`SELECT id, actor_user_id, action, entity_type, entity_id, metadata, created_at FROM admin_audit_logs WHERE id = $1`, [id])
     if (!log) return NextResponse.json({ error: "Audit log not found" }, { status: 404 })
     return NextResponse.json({ data: log })
   } catch (error) {
@@ -32,7 +32,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings"],
     auditEvent: "admin.audit_logs.update",
@@ -40,8 +41,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!auth.success) return auth.response
 
   try {
-    const { id } = await params
-    const parsedId = idSchema.parse(id)
+    const id = idSchema.parse(params.id)
     const parsed = updateAuditSchema.safeParse(await request.json())
     if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
@@ -50,7 +50,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const updated = await queryOne(
       `UPDATE admin_audit_logs SET metadata = COALESCE($2, metadata) WHERE id = $1
        RETURNING id, actor_user_id, action, entity_type, entity_id, metadata, created_at`,
-      [parsedId, parsed.data.metadata],
+      [id, parsed.data.metadata],
     )
 
     if (!updated) return NextResponse.json({ error: "Audit log not found" }, { status: 404 })
@@ -74,7 +74,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings", "system:control"],
     auditEvent: "admin.audit_logs.delete",
@@ -82,11 +83,10 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   if (!auth.success) return auth.response
 
   try {
-    const { id } = await params
-    const parsedId = idSchema.parse(id)
+    const id = idSchema.parse(params.id)
     await ensureAdminAuthMigrationTables()
 
-    const deleted = await queryOne(`DELETE FROM admin_audit_logs WHERE id = $1 RETURNING id, action, entity_type`, [parsedId])
+    const deleted = await queryOne(`DELETE FROM admin_audit_logs WHERE id = $1 RETURNING id, action, entity_type`, [id])
     if (!deleted) return NextResponse.json({ error: "Audit log not found" }, { status: 404 })
 
     await recordAdminAuditLog({

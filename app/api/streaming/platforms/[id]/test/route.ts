@@ -16,18 +16,18 @@ interface StreamingPlatformRow {
   stream_key: string
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const session = await getServerAuthSession()
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { id } = await params
     const rateLimit = await withRateLimit(req, STREAM_TEST_RATE_LIMIT, STREAM_TEST_RATE_WINDOW_MS)
     if (!rateLimit.allowed) {
       await logAudit(session.user.id, "stream_platform_test_rate_limited", "streaming_platform", {
-        platformId: id,
+        platformId: params.id,
         retryAfter: rateLimit.retryAfter,
       })
 
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       `SELECT id, name, platform_type, rtmp_url, stream_key
        FROM streaming_platforms
        WHERE id = $1 AND user_id = $2`,
-      [id, session.user.id],
+      [params.id, session.user.id],
     )) as StreamingPlatformRow[]
 
     const platform = platformRows[0]
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const streamValidation = await validateStreamingEndpoint(platform)
 
     await logAudit(session.user.id, "stream_platform_test_executed", "streaming_platform", {
-      platformId: id,
+      platformId: params.id,
       platformType: platform.platform_type,
       status: streamValidation.status,
       diagnostics: streamValidation.diagnostics,

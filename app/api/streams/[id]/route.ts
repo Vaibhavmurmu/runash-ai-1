@@ -7,8 +7,8 @@ import { handleGetStream } from "./stream-route-handler"
 
 const ROUTE = "/api/streams/[id]"
 
-export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function GET(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     return await handleGetStream(req, params, {
       getSession: getServerAuthSession,
@@ -27,8 +27,8 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
   }
 }
 
-export async function DELETE(req: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function DELETE(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const requestId = req.headers.get("x-correlation-id") ?? req.headers.get("x-request-id") ?? crypto.randomUUID()
   try {
     const session = await getServerAuthSession()

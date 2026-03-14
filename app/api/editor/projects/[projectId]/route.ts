@@ -3,10 +3,11 @@ import { requireEditorOperation } from "@/app/api/editor/_lib"
 import { getProjectById, sql } from "@/lib/editor/repository"
 import { claimProjectVersion, parseExpectedVersion } from "@/lib/editor/versioned-mutations"
 
-export async function GET(request: Request, { params }: { params: Promise<{ projectId: string }> }) {
+export async function GET(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
-  const { projectId } = await params
+  const { projectId } = params
 
   const project = await getProjectById(auth.userId, projectId)
   if (!project) {
@@ -16,10 +17,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ proj
   return NextResponse.json({ project, version: project.version })
 }
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ projectId: string }> }) {
+export async function PATCH(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
-  const { projectId } = await params
+  const { projectId } = params
 
   const body = await request.json().catch(() => ({}))
   const version = parseExpectedVersion(request, body)
@@ -54,10 +56,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ pr
   return NextResponse.json({ project, version: claim.projectVersion })
 }
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ projectId: string }> }) {
+export async function DELETE(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
-  const { projectId } = await params
+  const { projectId } = params
   const { searchParams } = new URL(request.url)
   const version = parseExpectedVersion(request, { version: searchParams.get("version") })
   if ("error" in version) return version.error

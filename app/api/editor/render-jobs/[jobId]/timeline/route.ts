@@ -2,8 +2,8 @@ import { NextResponse } from "next/server"
 import { requireEditorUser } from "@/app/api/editor/_lib"
 import { sql } from "@/lib/editor/repository"
 
-export async function GET(request: Request, context: { params: Promise<{ jobId: string }> }) {
-  const params = await context.params
+export async function GET(request: Request, { params: routeParamsPromise }: { params: Promise<{ jobId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
 

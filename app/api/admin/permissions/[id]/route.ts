@@ -10,7 +10,8 @@ const updatePermissionSchema = z.object({
   description: z.string().max(300).nullable().optional(),
 })
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings"],
     auditEvent: "admin.permissions.read",
@@ -18,11 +19,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!auth.success) return auth.response
 
   try {
-    const { id } = await params
-    const parsedId = idSchema.parse(id)
+    const id = idSchema.parse(params.id)
     await ensureAdminAuthMigrationTables()
 
-    const permission = await queryOne(`SELECT id, key, description, created_at FROM admin_permissions WHERE id = $1`, [parsedId])
+    const permission = await queryOne(`SELECT id, key, description, created_at FROM admin_permissions WHERE id = $1`, [id])
     if (!permission) return NextResponse.json({ error: "Permission not found" }, { status: 404 })
 
     return NextResponse.json({ data: permission })
@@ -36,7 +36,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings"],
     auditEvent: "admin.permissions.update",
@@ -44,15 +45,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!auth.success) return auth.response
 
   try {
-    const { id } = await params
-    const parsedId = idSchema.parse(id)
+    const id = idSchema.parse(params.id)
     const parsed = updatePermissionSchema.safeParse(await request.json())
     if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
     await ensureAdminAuthMigrationTables()
     const updated = await queryOne(
       `UPDATE admin_permissions SET description = COALESCE($2, description) WHERE id = $1 RETURNING id, key, description, created_at`,
-      [parsedId, parsed.data.description],
+      [id, parsed.data.description],
     )
 
     if (!updated) return NextResponse.json({ error: "Permission not found" }, { status: 404 })
@@ -61,7 +61,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       actorUserId: auth.userId,
       action: "permission.updated",
       entityType: "permission",
-      entityId: parsedId,
+      entityId: id,
       metadata: { fields: Object.keys(parsed.data) },
     })
 
@@ -76,7 +76,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings", "system:control"],
     auditEvent: "admin.permissions.delete",
@@ -84,10 +85,9 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   if (!auth.success) return auth.response
 
   try {
-    const { id } = await params
-    const parsedId = idSchema.parse(id)
+    const id = idSchema.parse(params.id)
     await ensureAdminAuthMigrationTables()
-    const deleted = await queryOne(`DELETE FROM admin_permissions WHERE id = $1 RETURNING id, key`, [parsedId])
+    const deleted = await queryOne(`DELETE FROM admin_permissions WHERE id = $1 RETURNING id, key`, [id])
     if (!deleted) return NextResponse.json({ error: "Permission not found" }, { status: 404 })
 
     await recordAdminAuditLog({

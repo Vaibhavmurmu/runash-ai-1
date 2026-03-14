@@ -6,8 +6,8 @@ const patchSchema = z.object({
   read: z.boolean().optional(),
 })
 
-export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function PATCH(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const userId = request.headers.get("x-user-id") ?? "1"
   const body = await request.json().catch(() => ({}))
   const parsed = patchSchema.safeParse(body)
@@ -26,8 +26,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   return NextResponse.json({ items: next.notifications })
 }
 
-export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const userId = request.headers.get("x-user-id") ?? "1"
 
   const next = await updateCommerceUserData(userId, (current) => ({

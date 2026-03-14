@@ -29,14 +29,14 @@ function buildPlatformProjection() {
   `
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const session = await getServerAuthSession()
     if (!session) {
       return respondError(req, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401 })
     }
 
-    const { id } = await params
     const updates = (await req.json()) as Record<string, unknown>
     const entries = Object.entries(updates).filter(([field, value]) => UPDATABLE_FIELDS.has(field) && value !== undefined)
 
@@ -54,7 +54,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       WHERE id = $${values.length + 1} AND user_id = $${values.length + 2}
       RETURNING *
     `,
-      [...values, id, session.user.id],
+      [...values, params.id, session.user.id],
     )
 
     if (!updated[0]) {
@@ -67,7 +67,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       FROM streaming_platforms sp
       WHERE sp.id = $1 AND sp.user_id = $2
     `,
-      [id, session.user.id],
+      [params.id, session.user.id],
     )
 
     return respondSuccess(req, platformWithStatus[0], { legacy: platformWithStatus[0] })
@@ -76,21 +76,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const session = await getServerAuthSession()
     if (!session) {
       return respondError(req, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401 })
     }
 
-    const { id } = await params
     const deleted = await Database.query(
       `
       DELETE FROM streaming_platforms
       WHERE id = $1 AND user_id = $2
       RETURNING id
     `,
-      [id, session.user.id],
+      [params.id, session.user.id],
     )
 
     if (!deleted[0]) {

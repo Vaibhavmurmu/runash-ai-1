@@ -19,7 +19,8 @@ const updateUserSchema = z.object({
 
 const userIdSchema = z.coerce.number().int().positive()
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ userId: string }> }) {
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ userId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:read"],
     auditEvent: "admin.users.read",
@@ -27,12 +28,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!auth.success) return auth.response
 
   try {
-    const { userId } = await params
-    const parsedUserId = userIdSchema.parse(userId)
-    const tenantGuard = await enforceAdminUserTenantBoundary(parsedUserId, auth.session.user.ssoOrganization)
+    const userId = userIdSchema.parse(params.userId)
+    const tenantGuard = await enforceAdminUserTenantBoundary(userId, auth.session.user.ssoOrganization)
     if (!tenantGuard.ok) return tenantGuard.response
 
-    const user = await UserManager.getUserById(parsedUserId, { sessionOrganizationId: auth.session.user.ssoOrganization })
+    const user = await UserManager.getUserById(userId, { sessionOrganizationId: auth.session.user.ssoOrganization })
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
@@ -49,7 +49,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ userId: string }> }) {
+export async function PUT(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ userId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:write"],
     auditEvent: "admin.users.update",
@@ -57,13 +58,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   if (!auth.success) return auth.response
 
   try {
-    const { userId } = await params
-    const parsedUserId = userIdSchema.parse(userId)
-    const tenantGuard = await enforceAdminUserTenantBoundary(parsedUserId, auth.session.user.ssoOrganization)
+    const userId = userIdSchema.parse(params.userId)
+    const tenantGuard = await enforceAdminUserTenantBoundary(userId, auth.session.user.ssoOrganization)
     if (!tenantGuard.ok) return tenantGuard.response
 
     await migrateLegacyUserOrganizationIfNeeded(
-      parsedUserId,
+      userId,
       auth.session.user.ssoOrganization,
       tenantGuard.shouldMigrateLegacyOrganization,
     )
@@ -75,13 +75,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       ...(validatedData.role ? { role: normalizeRoleForStorage(validatedData.role) } : {}),
     }
 
-    const updatedUser = await UserManager.updateUser(parsedUserId, normalizedData, auth.userId, { sessionOrganizationId: auth.session.user.ssoOrganization })
+    const updatedUser = await UserManager.updateUser(userId, normalizedData, auth.userId, { sessionOrganizationId: auth.session.user.ssoOrganization })
 
     await recordAdminAuditLog({
       actorUserId: auth.userId,
       action: "user.updated",
       entityType: "user",
-      entityId: parsedUserId,
+      entityId: userId,
       metadata: { fields: Object.keys(validatedData) },
     })
 
@@ -96,7 +96,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ userId: string }> }) {
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ userId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:delete", "system:control"],
     auditEvent: "admin.users.delete",
@@ -104,24 +105,23 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   if (!auth.success) return auth.response
 
   try {
-    const { userId } = await params
-    const parsedUserId = userIdSchema.parse(userId)
-    const tenantGuard = await enforceAdminUserTenantBoundary(parsedUserId, auth.session.user.ssoOrganization)
+    const userId = userIdSchema.parse(params.userId)
+    const tenantGuard = await enforceAdminUserTenantBoundary(userId, auth.session.user.ssoOrganization)
     if (!tenantGuard.ok) return tenantGuard.response
 
     await migrateLegacyUserOrganizationIfNeeded(
-      parsedUserId,
+      userId,
       auth.session.user.ssoOrganization,
       tenantGuard.shouldMigrateLegacyOrganization,
     )
 
-    await UserManager.deleteUser(parsedUserId, auth.userId, { sessionOrganizationId: auth.session.user.ssoOrganization })
+    await UserManager.deleteUser(userId, auth.userId, { sessionOrganizationId: auth.session.user.ssoOrganization })
 
     await recordAdminAuditLog({
       actorUserId: auth.userId,
       action: "user.deleted",
       entityType: "user",
-      entityId: parsedUserId,
+      entityId: userId,
     })
 
     return NextResponse.json({ message: "User deleted successfully" })

@@ -14,8 +14,8 @@ const updateEditorTrackSchema = z.object({
   version: z.union([z.number().int().nonnegative(), z.string().trim().min(1)]).optional(),
 })
 
-export async function GET(request: Request, context: { params: Promise<{ projectId: string; trackId: string }> }) {
-  const params = await context.params
+export async function GET(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string; trackId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId, trackId } = params
@@ -26,8 +26,8 @@ export async function GET(request: Request, context: { params: Promise<{ project
   return NextResponse.json({ track })
 }
 
-export async function PATCH(request: Request, context: { params: Promise<{ projectId: string; trackId: string }> }) {
-  const params = await context.params
+export async function PATCH(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string; trackId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId, trackId } = params
@@ -69,8 +69,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ proje
   return NextResponse.json({ track, version: claim.projectVersion })
 }
 
-export async function DELETE(request: Request, context: { params: Promise<{ projectId: string; trackId: string }> }) {
-  const params = await context.params
+export async function DELETE(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string; trackId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId, trackId } = params

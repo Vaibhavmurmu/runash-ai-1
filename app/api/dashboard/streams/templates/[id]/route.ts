@@ -24,12 +24,10 @@ async function resolveDefaultDependencies(): Promise<TemplateByIdRouteDependenci
 
 export function createTemplateByIdRoutes(dependencies: TemplateByIdRouteDependencies) {
   return {
-    async PUT(request: Request, context: { params: Promise<{ id: string }> }) {
-      const params = await context.params
+    PUT(request: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
       return handleTemplatePut(request, params.id, dependencies)
     },
-    async DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
-      const params = await context.params
+    DELETE(request: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
       return handleTemplateDelete(request, params.id, dependencies)
     },
   }
@@ -37,18 +35,18 @@ export function createTemplateByIdRoutes(dependencies: TemplateByIdRouteDependen
 
 export async function PUT(
   request: Request,
-  context: { params: Promise<{ id: string }> },
+  { params: routeParamsPromise }: { params: Promise<{ id: string }> },
 ) {
-  const params = await context.params
+  const params = await routeParamsPromise
   const dependencies = await resolveDefaultDependencies()
   return handleTemplatePut(request, params.id, dependencies)
 }
 
 export async function DELETE(
   request: Request,
-  context: { params: Promise<{ id: string }> },
+  { params: routeParamsPromise }: { params: Promise<{ id: string }> },
 ) {
-  const params = await context.params
+  const params = await routeParamsPromise
   const dependencies = await resolveDefaultDependencies()
   return handleTemplateDelete(request, params.id, dependencies)
 }

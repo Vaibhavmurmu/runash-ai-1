@@ -5,20 +5,20 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 
 const SUPPORTED_PLATFORMS = new Set(["twitch", "youtube", "facebook", "tiktok", "instagram", "linkedin"])
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ platform: string }> }) {
+export async function POST(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ platform: string }> }) {
+  const params = await routeParamsPromise
   const session = await getServerAuthSession()
   if (!session) {
     return respondError(req, { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" }, { status: 401 })
   }
 
-  const { platform } = await params
-  const platformLower = platform.toLowerCase()
-  if (!SUPPORTED_PLATFORMS.has(platformLower)) {
+  const platform = params.platform.toLowerCase()
+  if (!SUPPORTED_PLATFORMS.has(platform)) {
     return respondError(req, { code: "STREAMING_PLATFORM_UNSUPPORTED", message: "Unsupported platform" }, { status: 400 })
   }
 
   const state = crypto.randomUUID()
-  const callbackUrl = new URL(`/api/streaming/platforms/auth/${platformLower}/callback`, req.url)
+  const callbackUrl = new URL(`/api/streaming/platforms/auth/${platform}/callback`, req.url)
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin
 
   const authUrl = new URL(`${appUrl}/oauth/${platform}/authorize`)

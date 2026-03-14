@@ -12,19 +12,19 @@ const updateSchema = z.object({
   isActive: z.boolean().optional(),
 })
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, { requiredPermissions: ["system:logs"], auditEvent: "admin.sessions.read" })
   if (!auth.success) return auth.response
 
   try {
-    const { id } = await params
-    const parsedId = idSchema.parse(id)
+    const id = idSchema.parse(params.id)
     await ensureAdminAuthMigrationTables()
     const session = await queryOne(
       `SELECT id, user_id, device_id, device_name, ip_address::text AS ip_address, user_agent, is_active, last_activity, created_at
        FROM user_sessions
        WHERE id = $1`,
-      [parsedId],
+      [id],
     )
 
     if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 })
@@ -39,13 +39,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, { requiredPermissions: ["system:logs"], auditEvent: "admin.sessions.update" })
   if (!auth.success) return auth.response
 
   try {
-    const { id } = await params
-    const parsedId = idSchema.parse(id)
+    const id = idSchema.parse(params.id)
     await ensureAdminAuthMigrationTables()
     const parsed = updateSchema.safeParse(await request.json())
     if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
@@ -79,7 +79,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["system:logs", "system:control"],
     auditEvent: "admin.sessions.delete",
@@ -87,10 +88,9 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   if (!auth.success) return auth.response
 
   try {
-    const { id } = await params
-    const parsedId = idSchema.parse(id)
+    const id = idSchema.parse(params.id)
     await ensureAdminAuthMigrationTables()
-    const deleted = await queryOne(`DELETE FROM user_sessions WHERE id = $1 RETURNING id, user_id`, [parsedId])
+    const deleted = await queryOne(`DELETE FROM user_sessions WHERE id = $1 RETURNING id, user_id`, [id])
     if (!deleted) return NextResponse.json({ error: "Session not found" }, { status: 404 })
 
     await recordAdminAuditLog({

@@ -14,8 +14,8 @@ function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {}
 }
 
-export async function GET(request: Request, context: { params: Promise<{ jobId: string }> }) {
-  const params = await context.params
+export async function GET(request: Request, { params: routeParamsPromise }: { params: Promise<{ jobId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "run_generation")
   if ("error" in auth) return auth.error
   const { jobId } = params
@@ -26,8 +26,8 @@ export async function GET(request: Request, context: { params: Promise<{ jobId: 
   return NextResponse.json({ job })
 }
 
-export async function PATCH(request: Request, context: { params: Promise<{ jobId: string }> }) {
-  const params = await context.params
+export async function PATCH(request: Request, { params: routeParamsPromise }: { params: Promise<{ jobId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "run_generation")
   if ("error" in auth) return auth.error
   const { jobId } = params

@@ -19,17 +19,17 @@ function parseRangeHours(raw: string | null) {
   return rangeToHours[raw] ?? 1
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const session = await getServerAuthSession()
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { id } = await params
   const rangeHours = parseRangeHours(req.nextUrl.searchParams.get("range"))
   const analytics = await listPlatformAnalytics({
     userId: session.user.id,
-    platformId: id,
+    platformId: params.id,
     rangeHours,
   })
 

@@ -133,6 +133,7 @@ export const dashboardNavItems: DashboardNavItem[] = [
       { label: "Streaming", href: "/stream", optional: true },
       { label: "Store", href: "/ecommerce/dashboard", optional: true },
       { label: "Seller", href: "/seller/dashboard", optional: true },
+      { label: "Seller analytics", href: "/seller/analytics", optional: true },
     ],
     activeMatch: (pathname) =>
       matchesPathPrefix(pathname, "/workflows") ||

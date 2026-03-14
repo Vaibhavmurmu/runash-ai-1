@@ -3,8 +3,8 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { createStreamBackground, listStreamBackgrounds } from "@/lib/repositories/stream-studio"
 import { requireStreamOwner } from "./_auth"
 
-export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const access = await requireStreamOwner(request, params.id)
   if (access.error) return access.error
 
@@ -16,8 +16,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   }
 }
 
-export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function POST(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const access = await requireStreamOwner(request, params.id)
   if (access.error) return access.error
 

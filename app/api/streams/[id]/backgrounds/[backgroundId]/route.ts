@@ -3,8 +3,8 @@ import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { deleteStreamBackground, updateStreamBackground } from "@/lib/repositories/stream-studio"
 import { requireStreamOwner } from "../_auth"
 
-export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string; backgroundId: string }> }) {
-  const params = await context.params
+export async function PATCH(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string; backgroundId: string }> }) {
+  const params = await routeParamsPromise
   const access = await requireStreamOwner(request, params.id)
   if (access.error) return access.error
 
@@ -17,8 +17,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   }
 }
 
-export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string; backgroundId: string }> }) {
-  const params = await context.params
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string; backgroundId: string }> }) {
+  const params = await routeParamsPromise
   const access = await requireStreamOwner(request, params.id)
   if (access.error) return access.error
 

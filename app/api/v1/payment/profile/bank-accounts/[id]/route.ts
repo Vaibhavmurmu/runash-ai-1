@@ -37,8 +37,8 @@ function parseBodyForValidation(body: z.infer<typeof updateBankAccountSchema>) {
   return { ok: true as const }
 }
 
-export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function PATCH(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const access = await requireBillingActionAccess("billing:operate")
   if ("response" in access) return access.response
 
@@ -75,8 +75,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   return respondSuccess(request, result.data)
 }
 
-export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function DELETE(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const access = await requireBillingActionAccess("billing:operate")
   if ("response" in access) return access.response
 

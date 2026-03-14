@@ -19,7 +19,8 @@ const changeRoleSchema = z.object({
 })
 const userIdSchema = z.coerce.number().int().positive()
 
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ userId: string }> }) {
+export async function PUT(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ userId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["users:write"],
     auditEvent: "admin.users.role.update",
@@ -46,21 +47,20 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const normalizedRole = normalizeRoleForStorage(role)
-    const { userId } = await params
-    const parsedUserId = userIdSchema.parse(userId)
+    const userId = userIdSchema.parse(params.userId)
     const adminId = auth.userId
 
-    const tenantGuard = await enforceAdminUserTenantBoundary(parsedUserId, auth.session.user.ssoOrganization)
+    const tenantGuard = await enforceAdminUserTenantBoundary(userId, auth.session.user.ssoOrganization)
     if (!tenantGuard.ok) return tenantGuard.response
 
     await migrateLegacyUserOrganizationIfNeeded(
-      parsedUserId,
+      userId,
       auth.session.user.ssoOrganization,
       tenantGuard.shouldMigrateLegacyOrganization,
     )
 
     // Prevent users from changing their own role
-    if (parsedUserId === adminId) {
+    if (userId === adminId) {
       return NextResponse.json({ message: "Cannot change your own role" }, { status: 400 })
     }
 
@@ -84,8 +84,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return respondAdminError(request, 403, "Only admin-level users can assign admin-capability roles", auth.requestId)
     }
 
-    await RBACManager.changeUserRole(parsedUserId, role, adminId)
-    recordAuthMetric("admin.role.changed", { adminId, targetUserId: parsedUserId, role: normalizedRole })
+    await RBACManager.changeUserRole(userId, role, adminId)
+    recordAuthMetric("admin.role.changed", { adminId, targetUserId: userId, role: normalizedRole })
     await recordSecurityAuditEvent({
       event: "admin.role.changed",
       actorUserId: adminId,
@@ -94,7 +94,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       details: {
         kind: "admin_role_change",
         outcome: "success",
-        targetUserId: parsedUserId,
+        targetUserId: userId,
         requestedRole: role,
         storedRole: normalizedRole,
       },
@@ -104,7 +104,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       actorUserId: adminId,
       action: "user.role.changed",
       entityType: "user",
-      entityId: parsedUserId,
+      entityId: userId,
       metadata: { requestedRole: role, storedRole: normalizedRole },
     })
 

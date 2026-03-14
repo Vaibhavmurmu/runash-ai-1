@@ -4,8 +4,8 @@ import { CloudStorage } from "@/lib/cloud-storage"
 import { getServerAuthSession } from "@/lib/auth/session"
 import { handleGetRecording } from "./recording-detail-route-handler"
 
-export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function GET(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   return handleGetRecording(req, params, {
     getSession: getServerAuthSession,
     getRecording: Database.getRecording.bind(Database),
@@ -13,8 +13,8 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
   })
 }
 
-export async function PATCH(req: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function PATCH(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const session = await getServerAuthSession()
     if (!session) {
@@ -48,8 +48,8 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
   }
 }
 
-export async function DELETE(req: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function DELETE(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const session = await getServerAuthSession()
     if (!session) {

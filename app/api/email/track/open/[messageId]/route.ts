@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { EmailDeliveryTracker } from "@/lib/email-delivery"
 
-export async function GET(request: NextRequest, context: { params: Promise<{ messageId: string }> }) {
-  const params = await context.params
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ messageId: string }> }) {
+  const params = await routeParamsPromise
   try {
     const { messageId } = params
     const ip = request.ip || request.headers.get("x-forwarded-for") || "unknown"

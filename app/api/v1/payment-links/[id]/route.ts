@@ -13,8 +13,8 @@ const OPERATOR_ROLES = [
   DEFAULT_ROLES.SUPER_ADMIN,
 ]
 
-export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function GET(_: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const access = await requireRoleBillingAccess(OPERATOR_ROLES)
   if ("response" in access) return access.response
 
@@ -34,8 +34,8 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
   }
 }
 
-export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function PUT(request: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const access = await requireRoleBillingAccess(OPERATOR_ROLES)
   if ("response" in access) return access.response
 
@@ -56,13 +56,13 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   }
 }
 
-export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function PATCH(request: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   return PUT(request, { params })
 }
 
-export async function DELETE(_: Request, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function DELETE(_: Request, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const access = await requireRoleBillingAccess(OPERATOR_ROLES)
   if ("response" in access) return access.response
 

@@ -147,12 +147,12 @@ export async function handleCreateSessionRecording(
   })
 }
 
-export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function GET(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   return handleGetSessionRecordings(req, params)
 }
 
-export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function POST(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   return handleCreateSessionRecording(req, params)
 }

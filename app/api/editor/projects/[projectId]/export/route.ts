@@ -2,8 +2,8 @@ import { NextResponse } from "next/server"
 import { requireEditorOperation } from "@/app/api/editor/_lib"
 import { getProjectById } from "@/lib/editor/repository"
 
-export async function GET(request: Request, context: { params: Promise<{ projectId: string }> }) {
-  const params = await context.params
+export async function GET(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
 

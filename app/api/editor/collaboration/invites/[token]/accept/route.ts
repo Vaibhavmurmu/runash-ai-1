@@ -3,8 +3,8 @@ import { requireEditorUser } from "@/app/api/editor/_lib"
 import { acceptProjectInvite } from "@/lib/editor/collaboration-repository"
 import { getServerAuthSession } from "@/lib/auth/session"
 
-export async function POST(request: Request, context: { params: Promise<{ token: string }> }) {
-  const params = await context.params
+export async function POST(request: Request, { params: routeParamsPromise }: { params: Promise<{ token: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorUser(request)
   if ("error" in auth) return auth.error
 

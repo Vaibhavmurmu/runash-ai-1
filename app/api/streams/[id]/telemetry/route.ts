@@ -18,8 +18,8 @@ const telemetrySchema = z.object({
   playbackUrl: z.string().url(),
 })
 
-export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params
+export async function POST(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const requestId = request.headers.get("x-correlation-id") ?? request.headers.get("x-request-id") ?? crypto.randomUUID()
 
   const stream = await Database.getStream(params.id)
