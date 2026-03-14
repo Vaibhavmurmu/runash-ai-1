@@ -13,6 +13,14 @@ This document is payment-domain specific. For contributor workflow/process polic
 
 ## Current payment reliability notes (2026-02)
 
+## 2026-03 Next.js Turbopack payment-route compatibility fix (contract-safe)
+
+- Updated payment/billing alias routes to use local handler aliases (`import { POST as routePOST } ...; export const POST = routePOST`) instead of direct re-exports in files that set `dynamic = "force-dynamic"`.
+- This avoids Turbopack static-route-config parsing failures (`dynamic` must be statically declared in the route file and not mixed with unsupported re-export patterns).
+- Backward compatibility: API paths, HTTP methods, request/response fields, and billing/payment flow contracts are unchanged.
+- Impacted aliases: `/api/billing/checkout`, `/api/billing/checkout/callback`, `/api/billing/portal`, `/api/billing/usage`, `/api/billing/usage/reconcile`, `/api/checkout/session`, `/api/payment/status`, `/api/payment/usage/reconcile`.
+- Risk + rollback: low build-compatibility risk only. Rollback by restoring prior route re-export wrappers if needed; no data migration or payment contract rollback required.
+
 ## 2026-03 RunAsh Pay landing + dashboard route split (UI-only, contract-safe)
 
 - `/payment/runash-pay` now renders a product-facing landing page (hero + product blocks for Wallet/Card/Cash/Link) to clarify the RunAsh Pay value stack.

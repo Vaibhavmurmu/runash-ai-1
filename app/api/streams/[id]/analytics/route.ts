@@ -2,7 +2,8 @@ import { type NextRequest, NextResponse } from "next/server"
 import { Database } from "@/lib/database"
 import { getServerAuthSession } from "@/lib/auth/session"
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   try {
     const session = await getServerAuthSession()
     if (!session) {

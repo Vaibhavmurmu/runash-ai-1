@@ -6,7 +6,8 @@ import { getAgentSessionHistory } from "@/lib/repositories/agent-orchestration"
 
 const AGENT_CHAT_ENABLED = process.env.RUNASH_AGENT_CHAT_ENABLED !== "false"
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const requestId = resolveRequestId(request)
 
   if (!AGENT_CHAT_ENABLED) {

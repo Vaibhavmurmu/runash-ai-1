@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireAdminAuthorization } from "@/lib/auth-middleware"
 import { sql } from "@/lib/editor/repository"
 
-export async function POST(request: NextRequest, { params }: { params: { deadLetterId: string } }) {
+export async function POST(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ deadLetterId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireAdminAuthorization(request, {
     requiredPermissions: ["admin:settings"],
     auditEvent: "admin.editor.render_dead_letter.replay",

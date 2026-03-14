@@ -3,7 +3,8 @@ import { requireEditorOperation } from "@/app/api/editor/_lib"
 import { getProjectById, sql } from "@/lib/editor/repository"
 import { claimProjectVersion, parseExpectedVersion } from "@/lib/editor/versioned-mutations"
 
-export async function GET(request: Request, { params }: { params: { projectId: string } }) {
+export async function GET(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params
@@ -16,7 +17,8 @@ export async function GET(request: Request, { params }: { params: { projectId: s
   return NextResponse.json({ project, version: project.version })
 }
 
-export async function PATCH(request: Request, { params }: { params: { projectId: string } }) {
+export async function PATCH(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params
@@ -54,7 +56,8 @@ export async function PATCH(request: Request, { params }: { params: { projectId:
   return NextResponse.json({ project, version: claim.projectVersion })
 }
 
-export async function DELETE(request: Request, { params }: { params: { projectId: string } }) {
+export async function DELETE(request: Request, { params: routeParamsPromise }: { params: Promise<{ projectId: string }> }) {
+  const params = await routeParamsPromise
   const auth = await requireEditorOperation(request, "edit_timeline")
   if ("error" in auth) return auth.error
   const { projectId } = params

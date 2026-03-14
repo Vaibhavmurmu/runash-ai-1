@@ -5,11 +5,11 @@ import { authorizeRoute, resolveScopedUserId } from "@/lib/api/route-auth"
 import { createWorkflowExecution } from "@/lib/repositories/automation"
 
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await authorizeRoute(request, "write", { writePermissions: ["content:write", "admin:access"] })
   if (!auth.ok) return auth.response
 
-  const { id } = params
+  const { id } = await params
   const payload = (await request.json()) as { user_id?: string; input_data?: Record<string, unknown> }
   const userId = resolveScopedUserId(request, auth.sessionUser, payload.user_id)
 

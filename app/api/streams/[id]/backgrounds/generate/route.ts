@@ -7,7 +7,8 @@ type GenerateInput = {
   style?: string
 }
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const access = await requireStreamOwner(request, params.id)
   if (access.error) return access.error
 

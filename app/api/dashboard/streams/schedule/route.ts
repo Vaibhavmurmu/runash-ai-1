@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from "uuid"
+import { randomUUID } from "crypto"
 import { respondError, respondSuccess } from "@/lib/api/envelope"
 import { createDashboardScheduledStream } from "@/lib/repositories/streams"
 import { getCanonicalStreamUrl, requireStreamDashboardUserId } from "../utils"
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
   }
 
   const now = new Date().toISOString()
-  const id = uuidv4()
+  const id = randomUUID()
   const scheduled: DashboardScheduledStream = {
     id,
     title: body.title.trim(),

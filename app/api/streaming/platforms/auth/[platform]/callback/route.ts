@@ -25,7 +25,8 @@ function defaultSettings() {
   }
 }
 
-export async function POST(req: NextRequest, { params }: { params: { platform: string } }) {
+export async function POST(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ platform: string }> }) {
+  const params = await routeParamsPromise
   try {
     const session = await getServerAuthSession()
     if (!session) {

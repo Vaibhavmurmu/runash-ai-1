@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { addMessage } from "@/lib/chat"
 import { applyPollQuizAction } from "@/lib/poll-quiz"
 
-export async function POST(req: NextRequest, { params }: { params: { id: string; pollId: string } }) {
+export async function POST(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string; pollId: string }> }) {
+  const params = await routeParamsPromise
   const body = await req.json()
   const action = body?.action === "close" ? "close" : body?.action === "start" ? "start" : null
 

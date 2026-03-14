@@ -1,7 +1,8 @@
 import type { NextRequest } from "next/server"
 import { getMessages } from "@/lib/chat"
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const streamId = params.id
   const encoder = new TextEncoder()
 

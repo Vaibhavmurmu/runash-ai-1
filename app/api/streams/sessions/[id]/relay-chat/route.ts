@@ -3,7 +3,8 @@ import { addMessage } from "@/lib/chat"
 import { createStreamSessionAutomationEvent } from "@/lib/repositories/stream-session-automation-events"
 import { applyChatEvent } from "@/lib/stream-session-state"
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params: routeParamsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await routeParamsPromise
   const body = await req.json().catch(() => ({}))
   const text = body.message ?? body.text
   if (!text) return NextResponse.json({ error: "Message is required" }, { status: 400 })
