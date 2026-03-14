@@ -23,12 +23,7 @@ export const dashboardRouteAuditEntries: readonly DashboardRouteAuditEntry[] = [
   { href: "/dashboard/live-session", readiness: "ready", source: "sidebar", required: true },
   { href: "/dashboard/analytics", readiness: "ready", source: "sidebar", required: true },
   { href: "/analytics/streams", readiness: "ready", source: "sidebar" },
-  {
-    href: "/seller/analytics",
-    readiness: "coming-soon",
-    source: "sidebar",
-    notes: "No app route exists yet.",
-  },
+  { href: "/seller/analytics", readiness: "ready", source: "sidebar" },
   { href: "/ecommerce/analytics", readiness: "ready", source: "sidebar" },
   { href: "/upload", readiness: "ready", source: "sidebar", required: true },
   { href: "/recordings", readiness: "ready", source: "sidebar", required: true },
