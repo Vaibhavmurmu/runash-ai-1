@@ -15,7 +15,7 @@ type LogLevel = "info" | "warn" | "error"
 export type ApiLogContext = {
   requestId: string
   route: string
-  method: string
+  method?: string
   userId?: string | null
   details?: Record<string, unknown>
   error?: unknown
@@ -71,7 +71,7 @@ export function logApiEvent(level: LogLevel, event: string, context: ApiLogConte
     event,
     requestId: context.requestId,
     route: context.route,
-    method: context.method,
+    method: context.method ?? "unknown",
     userId: context.userId ?? null,
     details: redactValue(context.details ?? {}),
     ...(context.error ? { error: serializeError(context.error) } : {}),

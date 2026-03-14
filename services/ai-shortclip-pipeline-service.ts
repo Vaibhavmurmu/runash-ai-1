@@ -106,12 +106,12 @@ export class AIShortclipPipelineService {
       return null
     }
 
-    const assets = await sql/* sql */`
+    const assets = (await sql/* sql */`
       SELECT id, clip_job_id, title, description, caption_text, duration_seconds, clip_start_seconds, clip_end_seconds, score, preview_url, source_url, storage_key, review_status, published_at, created_at
       FROM public.clip_assets
       WHERE clip_job_id = ${jobId}::uuid
       ORDER BY score DESC, created_at ASC
-    `
+    `) as any[]
 
     return {
       ...job,
@@ -133,7 +133,7 @@ export class AIShortclipPipelineService {
 
   async listAssets(sellerUserId: number) {
     const sql = getSql()
-    const assets = await sql/* sql */`
+    const assets = (await sql/* sql */`
       SELECT
         ca.id,
         ca.clip_job_id,
@@ -158,7 +158,7 @@ export class AIShortclipPipelineService {
       WHERE cj.seller_user_id = ${sellerUserId}
       ORDER BY ca.created_at DESC
       LIMIT 80
-    `
+    `) as any[]
 
     return assets.map((asset) => ({
       id: String(asset.id),

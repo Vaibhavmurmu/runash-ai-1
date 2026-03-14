@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { StreamEmitter } from "./stream-emitter.ts"
+import { StreamEmitter } from "./stream-emitter"
 
 function createMockResponse() {
   const writes: string[] = []
@@ -14,9 +14,11 @@ function createMockResponse() {
     res: {
       write(chunk: string) {
         writes.push(chunk)
+        return true
       },
       end() {
         ended = true
+        return this
       },
     },
   }
@@ -40,9 +42,11 @@ function createThrowingOnFirstWriteResponse() {
         }
 
         writes.push(chunk)
+        return true
       },
       end() {
         endCalls += 1
+        return this
       },
     },
   }

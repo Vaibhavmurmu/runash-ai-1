@@ -122,7 +122,7 @@ export interface Database {
         }
         Insert: {
           id?: string
-          transaction_id: string
+          transaction_id?: string
           sender_id?: string | null
           receiver_id?: string | null
           amount: number

@@ -851,6 +851,10 @@ export async function executeToolWithPolicy(
       const execution = await executeRoleConditionedTool({ role, tool: "seller_optimize_commerce", args: payload })
       return { ...execution.result, activity_summary_role: execution.activitySummary }
     },
+    broker_match_deal: async () => {
+      const execution = await executeRoleConditionedTool({ role, tool: "broker_match_deal", args: payload })
+      return { ...execution.result, activity_summary_role: execution.activitySummary }
+    },
     initiate_link_checkout: async () => {
       const execution = await executeRoleConditionedTool({ role, tool: "initiate_link_checkout", args: payload })
       if (execution.activitySummary.status === "blocked") {

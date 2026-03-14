@@ -2,7 +2,7 @@ import { randomUUID } from "crypto"
 
 import { logApiEvent } from "@/lib/api/logging"
 import { neon } from "@/lib/neon/client"
-import type { Database } from "@/lib/neon/types"
+import type { Database, Json } from "@/lib/neon/types"
 
 type Transaction = Database["public"]["Tables"]["transactions"]["Row"]
 type TransactionInsert = Database["public"]["Tables"]["transactions"]["Insert"]
@@ -51,9 +51,9 @@ function getGatewayProvider(): UpiGatewayProvider {
   }
 }
 
-function mergeGatewayResponse(existing: Transaction["gateway_response"], updates: Record<string, unknown>): Record<string, unknown> {
+function mergeGatewayResponse(existing: Transaction["gateway_response"], updates: Record<string, unknown>): Json {
   const base = typeof existing === "object" && existing !== null ? (existing as Record<string, unknown>) : {}
-  return { ...base, ...updates }
+  return { ...base, ...updates } as Json
 }
 
 export class TransactionService {

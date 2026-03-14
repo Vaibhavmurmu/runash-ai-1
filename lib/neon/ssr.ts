@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth"
 import type { Database } from "./types"
+import { PostgrestClient } from "@supabase/postgrest-js"
 
 type UnsupportedAuthResult<T> = Promise<{ data: T; error: null }>
 
@@ -65,6 +66,16 @@ function createBetterAuthBridge(getSession: () => Promise<SessionShape | null>) 
   }
 }
 
+function createPgClient<T = Database>(url: string, key: string) {
+  const client = new PostgrestClient<T>(url, {
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+    },
+  })
+  return client
+}
+
 export function createBrowserClient<T = Database>(_url: string, _anonKey: string) {
   const authBridge = createBetterAuthBridge(async () => {
     if (typeof window === "undefined") {
@@ -84,9 +95,9 @@ export function createBrowserClient<T = Database>(_url: string, _anonKey: string
     return mapBetterAuthSession(await response.json())
   })
 
-  return {
-    auth: authBridge,
-  } as T & { auth: typeof authBridge }
+  const client = createPgClient<T>(_url, _anonKey)
+
+  return Object.assign(client, { auth: authBridge }) as unknown as PostgrestClient<T> & { auth: typeof authBridge }
 }
 
 export function createServerClient<T = Database>(
@@ -105,7 +116,6 @@ export function createServerClient<T = Database>(
     return mapBetterAuthSession(await auth.api.getSession({ headers }))
   })
 
-  return {
-    auth: authBridge,
-  } as T & { auth: typeof authBridge }
+  const client = createPgClient<T>(_url, _serviceRoleKey)
+  return Object.assign(client, { auth: authBridge }) as unknown as PostgrestClient<T> & { auth: typeof authBridge }
 }

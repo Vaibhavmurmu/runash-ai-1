@@ -140,7 +140,7 @@ function buildIndiaComplianceModel(event: BaseAccountingEventInput) {
 }
 
 function buildUsComplianceModel(event: BaseAccountingEventInput) {
-  const salesTaxTreatment = (event.taxAmount ?? 0) > 0 ? "tax_exclusive" : "non_taxable"
+  const salesTaxTreatment: "tax_exclusive" | "non_taxable" = (event.taxAmount ?? 0) > 0 ? "tax_exclusive" : "non_taxable"
 
   return {
     invoiceTags: ["US_SALES_TAX", "ASC606"],

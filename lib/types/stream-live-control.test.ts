@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { createDefaultLiveControlState, resolveVisibilityDefault } from "./stream-live-control.ts"
+import { createDefaultLiveControlState, resolveVisibilityDefault } from "./stream-live-control"
 
 test("resolveVisibilityDefault uses private default for creators aged 13-17", () => {
   assert.equal(resolveVisibilityDefault(13), "private")

@@ -75,11 +75,12 @@ export const streamingNodes = {
     return {
       success: true,
       platforms,
-      streams: platforms.map((p) => ({
+      streams: platforms.map((p: string) => ({
         platform: p,
         status: 'live',
         url: `rtmp://${p}.com/live/${streamKeys[p] || 'key'}`,
       })),
+
       totalViewers: 0,
       streamTime: 0,
     }

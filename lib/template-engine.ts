@@ -211,8 +211,8 @@ export class TemplateEngine {
       try {
         const parser = new DOMParser()
         const doc = parser.parseFromString(template.html, "text/html")
-        const errors = doc.querySelectorAll("parsererror")
-        if (errors.length > 0) {
+        const parserErrors = doc.querySelectorAll("parsererror")
+        if (parserErrors.length > 0) {
           errors.push("Invalid HTML syntax")
         }
       } catch (error) {

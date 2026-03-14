@@ -52,7 +52,7 @@ export const relayToolExecutionMode: Record<RelayAgentTool, "immediate" | "queue
   broker_settle_deal: "queued",
 }
 
-export const relayAgentSkillModules: Record<string, { name: string; execute: (args: unknown) => Promise<unknown> }> = {
+export const relayAgentSkillModules: Record<string, { name: string; execute: (...args: any[]) => Promise<any> }> = {
   catalog_lookup: {
     name: "catalog_lookup",
     execute: queryCatalogAdapter,

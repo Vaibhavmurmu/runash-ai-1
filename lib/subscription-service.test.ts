@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { SubscriptionService } from "./subscription-service.ts"
+import { SubscriptionService } from "./subscription-service"
 
 type MockFetchRequest = {
   method: string

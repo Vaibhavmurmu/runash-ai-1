@@ -8,9 +8,10 @@ test("generateQR + scanQR decodes valid UPI and stores scan history", async () =
   const service = QrService.getInstance()
   service.clearHistory()
 
-  const originalBarcodeDetector = globalThis.BarcodeDetector
-  const originalCreateImageBitmap = globalThis.createImageBitmap
-  const originalFetch = globalThis.fetch
+  const globalAny = globalThis as any
+  const originalBarcodeDetector = globalAny.BarcodeDetector
+  const originalCreateImageBitmap = globalAny.createImageBitmap
+  const originalFetch = globalAny.fetch
 
   let detectedPayload: string | undefined
 
@@ -20,7 +21,7 @@ test("generateQR + scanQR decodes valid UPI and stores scan history", async () =
       blob: async () => new Blob(["round-trip"]),
     }) as Response
 
-  globalThis.createImageBitmap = async () => ({ source: "image" }) as ImageBitmap
+  globalAny.createImageBitmap = async () => ({ source: "image" }) as unknown as ImageBitmap
 
   class BarcodeDetectorMock {
     async detect() {
@@ -28,7 +29,7 @@ test("generateQR + scanQR decodes valid UPI and stores scan history", async () =
     }
   }
 
-  globalThis.BarcodeDetector = BarcodeDetectorMock as unknown as typeof BarcodeDetector
+  globalAny.BarcodeDetector = BarcodeDetectorMock as any
 
   try {
     const dataUrl = await service.generateQR(SAMPLE_UPI_PAYLOAD)
@@ -46,9 +47,9 @@ test("generateQR + scanQR decodes valid UPI and stores scan history", async () =
     assert.equal(history[0]?.data, SAMPLE_UPI_PAYLOAD)
     assert.equal(service.getScanHistoryPersistenceMode(), "memory_ephemeral")
   } finally {
-    globalThis.BarcodeDetector = originalBarcodeDetector
-    globalThis.createImageBitmap = originalCreateImageBitmap
-    globalThis.fetch = originalFetch
+    globalAny.BarcodeDetector = originalBarcodeDetector
+    globalAny.createImageBitmap = originalCreateImageBitmap
+    globalAny.fetch = originalFetch
     service.clearHistory()
   }
 })
@@ -56,10 +57,10 @@ test("generateQR + scanQR decodes valid UPI and stores scan history", async () =
 test("scanQR decodes non-UPI QR payloads as generic types", async () => {
   const service = QrService.getInstance()
 
-  const originalBarcodeDetector = globalThis.BarcodeDetector
-  const originalCreateImageBitmap = globalThis.createImageBitmap
+  const originalBarcodeDetector = globalAny.BarcodeDetector
+  const originalCreateImageBitmap = globalAny.createImageBitmap
 
-  globalThis.createImageBitmap = async () => ({ source: "image" }) as ImageBitmap
+  globalAny.createImageBitmap = async () => ({ source: "image" }) as unknown as ImageBitmap
 
   class BarcodeDetectorMock {
     async detect() {
@@ -67,15 +68,15 @@ test("scanQR decodes non-UPI QR payloads as generic types", async () => {
     }
   }
 
-  globalThis.BarcodeDetector = BarcodeDetectorMock as unknown as typeof BarcodeDetector
+  globalAny.BarcodeDetector = BarcodeDetectorMock as any
 
   try {
     const scanned = await service.scanQR(new Blob(["non-upi"]))
     assert.equal(scanned.parsedData?.type, "URL")
     assert.equal(scanned.parsedData?.data?.url, "https://runash.in/pay")
   } finally {
-    globalThis.BarcodeDetector = originalBarcodeDetector
-    globalThis.createImageBitmap = originalCreateImageBitmap
+    globalAny.BarcodeDetector = originalBarcodeDetector
+    globalAny.createImageBitmap = originalCreateImageBitmap
   }
 })
 
@@ -96,10 +97,10 @@ test("scanQR returns deterministic errors for unreadable image inputs", async ()
 
 test("scanQR returns deterministic decode failure when QR cannot be decoded", async () => {
   const service = QrService.getInstance()
-  const originalBarcodeDetector = globalThis.BarcodeDetector
-  const originalCreateImageBitmap = globalThis.createImageBitmap
+  const originalBarcodeDetector = globalAny.BarcodeDetector
+  const originalCreateImageBitmap = globalAny.createImageBitmap
 
-  globalThis.createImageBitmap = async () => ({ source: "image" }) as ImageBitmap
+  globalAny.createImageBitmap = async () => ({ source: "image" }) as unknown as ImageBitmap
 
   class BarcodeDetectorMock {
     async detect() {
@@ -107,15 +108,15 @@ test("scanQR returns deterministic decode failure when QR cannot be decoded", as
     }
   }
 
-  globalThis.BarcodeDetector = BarcodeDetectorMock as unknown as typeof BarcodeDetector
+  globalAny.BarcodeDetector = BarcodeDetectorMock as any
 
   try {
     await assert.rejects(() => service.scanQR(new Blob(["empty"])), {
       message: qrScanErrors.noCodeFound,
     })
   } finally {
-    globalThis.BarcodeDetector = originalBarcodeDetector
-    globalThis.createImageBitmap = originalCreateImageBitmap
+    globalAny.BarcodeDetector = originalBarcodeDetector
+    globalAny.createImageBitmap = originalCreateImageBitmap
   }
 })
 

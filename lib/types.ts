@@ -4,13 +4,6 @@ export type SubscriptionTier = "free" | "pro" | "ultra"
 
 export type UUID = string
 
-export type User = {
-  id: UUID
-  email: string
-  name?: string | null
-  avatar_url?: string | null
-}
-
 export interface Profile {
   id: string
   email: string
